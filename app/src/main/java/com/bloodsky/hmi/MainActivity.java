@@ -181,7 +181,7 @@ public class MainActivity extends Activity {
 
     private Widget copyWidget(Widget source) {
         Widget copy = new Widget();
-        copy.type = source.type; copy.text = source.text;
+        copy.type = source.type; copy.text = source.text; copy.connectionInfo = source.connectionInfo;
         copy.x = source.x; copy.y = source.y; copy.w = source.w; copy.h = source.h;
         return copy;
     }
@@ -266,6 +266,14 @@ public class MainActivity extends Activity {
         EditText textField = propertyField(w.text, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         form.addView(textField);
 
+        TextView connectionLabel = new TextView(this);
+        connectionLabel.setText("Привязка к данным (адрес / регистр / устройство)");
+        connectionLabel.setPadding(0, dp(10), 0, 0);
+        form.addView(connectionLabel);
+        EditText connectionField = propertyField(w.connectionInfo == null ? "" : w.connectionInfo, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        connectionField.setHint("Например: Modbus TCP, регистр 40001");
+        form.addView(connectionField);
+
         TextView geometryLabel = new TextView(this);
         geometryLabel.setText("Положение и размер (пиксели)");
         geometryLabel.setPadding(0, dp(10), 0, 0);
@@ -290,6 +298,7 @@ public class MainActivity extends Activity {
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Применить", (dialog, which) -> {
                     w.text = textField.getText().toString();
+                    w.connectionInfo = connectionField.getText().toString().trim();
                     w.x = Math.max(0, readPositiveInt(xField, Math.round(w.x), true));
                     w.y = Math.max(0, readPositiveInt(yField, Math.round(w.y), true));
                     w.w = Math.max(dp(32), readPositiveInt(widthField, Math.round(w.w), false));
@@ -375,6 +384,7 @@ public class MainActivity extends Activity {
     private JSONObject widgetToJson(Widget w) throws Exception {
         JSONObject obj = new JSONObject();
         obj.put("type", w.type); obj.put("text", w.text);
+        obj.put("connectionInfo", w.connectionInfo == null ? "" : w.connectionInfo);
         obj.put("x", w.x); obj.put("y", w.y); obj.put("w", w.w); obj.put("h", w.h);
         return obj;
     }
@@ -388,6 +398,7 @@ public class MainActivity extends Activity {
     private Widget widgetFromJson(JSONObject obj) {
         Widget w = new Widget();
         w.type = obj.optString("type", "Текст"); w.text = obj.optString("text", "Надпись");
+        w.connectionInfo = obj.optString("connectionInfo", "");
         w.x = obj.optInt("x", dp(40)); w.y = obj.optInt("y", dp(50));
         w.w = obj.optInt("w", dp(160)); w.h = obj.optInt("h", dp(58));
         return w;
@@ -458,6 +469,7 @@ public class MainActivity extends Activity {
     private static class Widget {
         String type;
         String text;
+        String connectionInfo = "";
         float x, y, w, h;
     }
 
