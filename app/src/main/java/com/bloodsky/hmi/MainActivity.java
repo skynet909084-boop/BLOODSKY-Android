@@ -632,6 +632,16 @@ public class MainActivity extends Activity {
         return false;
     }
 
+    private boolean reachesFbd(int current, int goal, boolean[] visited, List<FbdConnection> connections) {
+        if (current == goal) return true;
+        if (current < 0 || current >= visited.length || visited[current]) return false;
+        visited[current] = true;
+        for (FbdConnection connection : connections) {
+            if (connection.source == current && reachesFbd(connection.target, goal, visited, connections)) return true;
+        }
+        return false;
+    }
+
     private void connectFbdWidgets(int source, int target) {
         if (source < 0 || target < 0 || source >= widgets.size() || target >= widgets.size() || source == target) {
             Toast.makeText(this, "Выбери два разных FBD-блока", Toast.LENGTH_SHORT).show();
@@ -642,6 +652,10 @@ public class MainActivity extends Activity {
             return;
         }
         Screen screen = screens.get(currentScreenIndex);
+        if (reachesFbd(target, source, new boolean[widgets.size()], screen.connections)) {
+            Toast.makeText(this, "Связь отменена: она создаёт цикл в FBD", Toast.LENGTH_LONG).show();
+            return;
+        }
         for (FbdConnection connection : screen.connections) {
             if (connection.source == source && connection.target == target) {
                 Toast.makeText(this, "Такая связь уже существует", Toast.LENGTH_SHORT).show();
