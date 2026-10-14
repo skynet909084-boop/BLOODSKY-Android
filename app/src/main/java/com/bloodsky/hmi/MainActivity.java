@@ -451,6 +451,7 @@ public class MainActivity extends Activity {
         screenBar.setBackgroundColor(Color.rgb(235, 241, 247));
         screenBar.addView(action("‹", this::previousScreen), new LinearLayout.LayoutParams(dp(48), dp(42)));
         screenBar.addView(action(currentScreenName(), this::renameCurrentScreen), new LinearLayout.LayoutParams(0, dp(42), 1));
+        screenBar.addView(action("Фон", this::editScreenBackground), new LinearLayout.LayoutParams(-2, dp(42)));
         screenBar.addView(action("›", this::nextScreen), new LinearLayout.LayoutParams(dp(48), dp(42)));
         screenBar.addView(action("+ Экран", this::addScreen), new LinearLayout.LayoutParams(-2, dp(42)));
         screenBar.addView(action("−", this::removeCurrentScreen), new LinearLayout.LayoutParams(dp(48), dp(42)));
@@ -655,6 +656,26 @@ public class MainActivity extends Activity {
                     editor = null;
                     persistProject();
                     showEditor();
+                }).show();
+    }
+
+    private void editScreenBackground() {
+        if (screens.isEmpty()) return;
+        Screen screen = screens.get(currentScreenIndex);
+        EditText input = propertyField(String.format(java.util.Locale.ROOT, "#%06X", (0xFFFFFF & screen.backgroundColor)), InputType.TYPE_CLASS_TEXT);
+        input.setHint("#RRGGBB");
+        new AlertDialog.Builder(this).setTitle("Цвет фона экрана").setView(input)
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Применить", (dialog, which) -> {
+                    String value = input.getText().toString().trim();
+                    if (!value.startsWith("#")) value = "#" + value;
+                    if (!value.matches("#[0-9a-fA-F]{6}")) {
+                        Toast.makeText(this, "Укажи цвет в формате #RRGGBB", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    try { screen.backgroundColor = Color.parseColor(value); }
+                    catch (IllegalArgumentException ignored) { return; }
+                    persistProject(); if (editor != null) editor.invalidate();
                 }).show();
     }
 
@@ -999,6 +1020,7 @@ public class MainActivity extends Activity {
             for (Screen screen : screens) {
                 JSONObject screenObj = new JSONObject();
                 screenObj.put("name", screen.name);
+                screenObj.put("backgroundColor", screen.backgroundColor);
                 screenObj.put("widgets", widgetsToJson(screen.widgets));
                 JSONArray connectionArray = new JSONArray();
                 for (FbdConnection connection : screen.connections) {
@@ -1034,6 +1056,7 @@ public class MainActivity extends Activity {
                     for (int i = 0; i < screenArray.length(); i++) {
                         JSONObject screenObj = screenArray.getJSONObject(i);
                         Screen screen = new Screen(screenObj.optString("name", "Экран " + (i + 1)));
+                        screen.backgroundColor = screenObj.optInt("backgroundColor", Color.rgb(250, 252, 255));
                         JSONArray widgetArray = screenObj.optJSONArray("widgets");
                         if (widgetArray != null) for (int j = 0; j < widgetArray.length(); j++) screen.widgets.add(widgetFromJson(widgetArray.getJSONObject(j)));
                         JSONArray connectionArray = screenObj.optJSONArray("connections");
@@ -1068,6 +1091,7 @@ public class MainActivity extends Activity {
 
     private static class Screen {
         String name;
+        int backgroundColor = Color.rgb(250, 252, 255);
         final List<Widget> widgets = new ArrayList<>();
         final List<FbdConnection> connections = new ArrayList<>();
         Screen(String name) { this.name = name; }
@@ -1198,7 +1222,7 @@ public class MainActivity extends Activity {
 
         @Override protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
-            canvas.drawColor(Color.rgb(250, 252, 255));
+            canvas.drawColor(screens.isEmpty() ? Color.rgb(250, 252, 255) : screens.get(currentScreenIndex).backgroundColor);
             paint.setColor(Color.rgb(228, 234, 241));
             paint.setStrokeWidth(1);
             int grid = dp(20);
