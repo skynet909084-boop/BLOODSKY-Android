@@ -486,11 +486,12 @@ public class MainActivity extends Activity {
         fbdAdvancedPalette.setBackgroundColor(Color.rgb(237, 233, 254));
         fbdAdvancedPalette.addView(action("+ XOR", () -> addWidget("FBD XOR", "XOR")), new LinearLayout.LayoutParams(0, dp(40), 1));
         fbdAdvancedPalette.addView(action("+ RS", () -> addWidget("FBD RS", "RS")), new LinearLayout.LayoutParams(0, dp(40), 1));
+        fbdAdvancedPalette.addView(action("+ SR", () -> addWidget("FBD SR", "SR")), new LinearLayout.LayoutParams(0, dp(40), 1));
         fbdAdvancedPalette.addView(action("+ CTU", () -> addWidget("FBD CTU", "CTU")), new LinearLayout.LayoutParams(0, dp(40), 1));
         fbdAdvancedPalette.addView(action("+ R_TRIG", () -> addWidget("FBD R_TRIG", "R_TRIG")), new LinearLayout.LayoutParams(0, dp(40), 1));
         fbdAdvancedPalette.addView(action("+ F_TRIG", () -> addWidget("FBD F_TRIG", "F_TRIG")), new LinearLayout.LayoutParams(0, dp(40), 1));
         TextView fbdHint = new TextView(this);
-        fbdHint.setText("R_TRIG/F_TRIG: импульсы по фронту и спаду • RS • CTU • XOR");
+        fbdHint.setText("R_TRIG/F_TRIG: фронт/спад • RS/SR • CTU • XOR");
         fbdHint.setTextSize(12);
         fbdHint.setGravity(Gravity.CENTER_VERTICAL);
         fbdHint.setPadding(dp(8), 0, dp(8), 0);
@@ -1191,6 +1192,13 @@ public class MainActivity extends Activity {
             boolean reset = inputs.size() > 1 && inputs.get(1);
             if (reset) widget.rsState = false;
             else if (set) widget.rsState = true;
+            return widget.rsState;
+        }
+        if ("FBD SR".equals(widget.type)) {
+            boolean set = !inputs.isEmpty() && inputs.get(0);
+            boolean reset = inputs.size() > 1 && inputs.get(1);
+            if (set) widget.rsState = true;
+            else if (reset) widget.rsState = false;
             return widget.rsState;
         }
         if ("FBD R_TRIG".equals(widget.type)) {
