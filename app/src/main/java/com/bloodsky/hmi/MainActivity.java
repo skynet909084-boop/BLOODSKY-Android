@@ -31,6 +31,7 @@ import java.util.List;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.io.DataInputStream;
+import java.io.IOException;
 import java.io.DataOutputStream;
 
 public class MainActivity extends Activity {
