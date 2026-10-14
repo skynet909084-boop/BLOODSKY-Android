@@ -322,7 +322,7 @@ public class MainActivity extends Activity {
 
     private Widget copyWidget(Widget source) {
         Widget copy = new Widget();
-        copy.type = source.type; copy.text = source.text; copy.connectionInfo = source.connectionInfo; copy.inputValue = source.inputValue; copy.timerPresetMs = source.timerPresetMs; copy.timerStartedAt = source.timerStartedAt;
+        copy.type = source.type; copy.text = source.text; copy.connectionInfo = source.connectionInfo; copy.inputValue = source.inputValue; copy.timerPresetMs = source.timerPresetMs; copy.timerStartedAt = source.timerStartedAt; copy.compareA = source.compareA; copy.compareB = source.compareB; copy.compareOperator = source.compareOperator;
         copy.x = source.x; copy.y = source.y; copy.w = source.w; copy.h = source.h;
         return copy;
     }
@@ -428,6 +428,26 @@ public class MainActivity extends Activity {
             timerPresetField = null;
         }
 
+        final EditText compareLeftField;
+        final EditText compareOperatorField;
+        final EditText compareRightField;
+        if ("FBD Сравнение".equals(w.type)) {
+            TextView compareLabel = new TextView(this);
+            compareLabel.setText("Числовое сравнение A / оператор / B");
+            compareLabel.setPadding(0, dp(10), 0, 0);
+            form.addView(compareLabel);
+            compareLeftField = propertyField(Double.toString(w.compareA), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            compareOperatorField = propertyField(w.compareOperator, InputType.TYPE_CLASS_TEXT);
+            compareRightField = propertyField(Double.toString(w.compareB), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            form.addView(compareLeftField);
+            form.addView(compareOperatorField);
+            form.addView(compareRightField);
+        } else {
+            compareLeftField = null;
+            compareOperatorField = null;
+            compareRightField = null;
+        }
+
         TextView geometryLabel = new TextView(this);
         geometryLabel.setText("Положение и размер (пиксели)");
         geometryLabel.setPadding(0, dp(10), 0, 0);
@@ -458,6 +478,12 @@ public class MainActivity extends Activity {
                         w.timerPresetMs = Math.max(1, Math.min(3600000, newPreset));
                         w.timerStartedAt = 0L;
                     }
+                    if (compareLeftField != null) {
+                        w.compareA = readDouble(compareLeftField, w.compareA);
+                        w.compareB = readDouble(compareRightField, w.compareB);
+                        w.compareOperator = normalizeComparisonOperator(compareOperatorField.getText().toString());
+                        w.text = Double.toString(w.compareA) + " " + w.compareOperator + " " + Double.toString(w.compareB);
+                    }
                     w.x = Math.max(0, readPositiveInt(xField, Math.round(w.x), true));
                     w.y = Math.max(0, readPositiveInt(yField, Math.round(w.y), true));
                     w.w = Math.max(dp(32), readPositiveInt(widthField, Math.round(w.w), false));
@@ -465,6 +491,21 @@ public class MainActivity extends Activity {
                     persistProject();
                     editor.invalidate();
                 }).show();
+    }
+
+    private double readDouble(EditText field, double fallback) {
+        try {
+            double value = Double.parseDouble(field.getText().toString().trim().replace(',', '.'));
+            return Double.isNaN(value) || Double.isInfinite(value) ? fallback : value;
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
+    }
+
+    private String normalizeComparisonOperator(String value) {
+        String operator = value == null ? ">" : value.trim();
+        return operator.equals(">") || operator.equals("<") || operator.equals(">=")
+                || operator.equals("<=") || operator.equals("==") || operator.equals("!=") ? operator : ">";
     }
 
     private int readPositiveInt(EditText field, int fallback, boolean allowZero) {
@@ -488,6 +529,9 @@ public class MainActivity extends Activity {
         clipboardWidget.connectionInfo = source.connectionInfo;
         clipboardWidget.inputValue = source.inputValue;
         clipboardWidget.timerPresetMs = source.timerPresetMs;
+        clipboardWidget.compareA = source.compareA;
+        clipboardWidget.compareB = source.compareB;
+        clipboardWidget.compareOperator = source.compareOperator;
         clipboardWidget.x = source.x;
         clipboardWidget.y = source.y;
         clipboardWidget.w = source.w;
@@ -506,6 +550,9 @@ public class MainActivity extends Activity {
         copy.connectionInfo = clipboardWidget.connectionInfo;
         copy.inputValue = clipboardWidget.inputValue;
         copy.timerPresetMs = clipboardWidget.timerPresetMs;
+        copy.compareA = clipboardWidget.compareA;
+        copy.compareB = clipboardWidget.compareB;
+        copy.compareOperator = clipboardWidget.compareOperator;
         copy.x = Math.min(Math.max(0, editor == null ? clipboardWidget.x + dp(24) : editor.getWidth() - clipboardWidget.w),
                 clipboardWidget.x + dp(24));
         copy.y = clipboardWidget.y + dp(24);
@@ -565,6 +612,7 @@ public class MainActivity extends Activity {
         obj.put("connectionInfo", w.connectionInfo == null ? "" : w.connectionInfo);
         obj.put("inputValue", w.inputValue);
         obj.put("timerPresetMs", w.timerPresetMs);
+        obj.put("compareA", w.compareA); obj.put("compareB", w.compareB); obj.put("compareOperator", w.compareOperator);
         obj.put("x", w.x); obj.put("y", w.y); obj.put("w", w.w); obj.put("h", w.h);
         return obj;
     }
@@ -581,6 +629,8 @@ public class MainActivity extends Activity {
         w.connectionInfo = obj.optString("connectionInfo", "");
         w.inputValue = obj.optBoolean("inputValue", false);
         w.timerPresetMs = Math.max(1, Math.min(3600000, obj.optInt("timerPresetMs", 1000)));
+        w.compareA = obj.optDouble("compareA", 0.0); w.compareB = obj.optDouble("compareB", 0.0);
+        w.compareOperator = normalizeComparisonOperator(obj.optString("compareOperator", ">"));
         w.x = obj.optInt("x", dp(40)); w.y = obj.optInt("y", dp(50));
         w.w = obj.optInt("w", dp(160)); w.h = obj.optInt("h", dp(58));
         return w;
@@ -701,6 +751,16 @@ public class MainActivity extends Activity {
             return false;
         }
         if ("FBD НЕ".equals(widget.type)) return inputs.isEmpty() || !inputs.get(0);
+        if ("FBD Сравнение".equals(widget.type)) {
+            switch (normalizeComparisonOperator(widget.compareOperator)) {
+                case "<": return widget.compareA < widget.compareB;
+                case ">=": return widget.compareA >= widget.compareB;
+                case "<=": return widget.compareA <= widget.compareB;
+                case "==": return Double.compare(widget.compareA, widget.compareB) == 0;
+                case "!=": return Double.compare(widget.compareA, widget.compareB) != 0;
+                default: return widget.compareA > widget.compareB;
+            }
+        }
         if ("FBD Таймер".equals(widget.type)) {
             boolean input = !inputs.isEmpty() && inputs.get(0);
             if (!input) {
@@ -756,6 +816,8 @@ public class MainActivity extends Activity {
         boolean inputValue = false;
         int timerPresetMs = 1000;
         long timerStartedAt = 0L;
+        double compareA = 0.0, compareB = 0.0;
+        String compareOperator = ">";
         float x, y, w, h;
     }
 
