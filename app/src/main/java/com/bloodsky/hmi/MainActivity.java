@@ -481,6 +481,17 @@ public class MainActivity extends Activity {
         fbdPalette.addView(action("+ Таймер", () -> addWidget("FBD Таймер", "TON")), new LinearLayout.LayoutParams(0, dp(44), 1));
         fbdPalette.addView(action("+ Сравнение", () -> addWidget("FBD Сравнение", "A > B")), new LinearLayout.LayoutParams(0, dp(44), 1));
         root.addView(fbdPalette);
+        LinearLayout fbdAdvancedPalette = new LinearLayout(this);
+        fbdAdvancedPalette.setOrientation(LinearLayout.HORIZONTAL);
+        fbdAdvancedPalette.setBackgroundColor(Color.rgb(237, 233, 254));
+        fbdAdvancedPalette.addView(action("+ XOR", () -> addWidget("FBD XOR", "XOR")), new LinearLayout.LayoutParams(0, dp(40), 1));
+        TextView fbdHint = new TextView(this);
+        fbdHint.setText("XOR — нечётное число активных входов");
+        fbdHint.setTextSize(12);
+        fbdHint.setGravity(Gravity.CENTER_VERTICAL);
+        fbdHint.setPadding(dp(8), 0, dp(8), 0);
+        fbdAdvancedPalette.addView(fbdHint, new LinearLayout.LayoutParams(0, dp(40), 2));
+        root.addView(fbdAdvancedPalette);
         root.addView(action("Связать FBD", () -> {
             fbdWireMode = !fbdWireMode;
             wireSource = -1;
@@ -1151,6 +1162,11 @@ public class MainActivity extends Activity {
         if ("FBD ИЛИ".equals(widget.type)) {
             for (Boolean value : inputs) if (value) return true;
             return false;
+        }
+        if ("FBD XOR".equals(widget.type)) {
+            boolean result = false;
+            for (Boolean value : inputs) result ^= value;
+            return result;
         }
         if ("FBD НЕ".equals(widget.type)) return inputs.isEmpty() || !inputs.get(0);
         if ("FBD Сравнение".equals(widget.type)) {
