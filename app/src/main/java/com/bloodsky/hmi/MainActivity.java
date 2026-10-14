@@ -489,6 +489,7 @@ public class MainActivity extends Activity {
         fbdAdvancedPalette.addView(action("+ RS", () -> addWidget("FBD RS", "RS")), new LinearLayout.LayoutParams(0, dp(40), 1));
         fbdAdvancedPalette.addView(action("+ SR", () -> addWidget("FBD SR", "SR")), new LinearLayout.LayoutParams(0, dp(40), 1));
         fbdAdvancedPalette.addView(action("+ CTU", () -> addWidget("FBD CTU", "CTU")), new LinearLayout.LayoutParams(0, dp(40), 1));
+        fbdAdvancedPalette.addView(action("+ CTD", () -> addWidget("FBD CTD", "CTD")), new LinearLayout.LayoutParams(0, dp(40), 1));
         fbdAdvancedPalette.addView(action("+ R_TRIG", () -> addWidget("FBD R_TRIG", "R_TRIG")), new LinearLayout.LayoutParams(0, dp(40), 1));
         fbdAdvancedPalette.addView(action("+ F_TRIG", () -> addWidget("FBD F_TRIG", "F_TRIG")), new LinearLayout.LayoutParams(0, dp(40), 1));
         TextView fbdHint = new TextView(this);
@@ -740,6 +741,7 @@ public class MainActivity extends Activity {
         liveValues.clear();
         if (type.equals("Задатчик")) { w.w = dp(190); w.h = dp(62); }
         if (type.startsWith("FBD ")) { w.w = dp(150); w.h = dp(76); }
+        if ("FBD CTD".equals(type)) w.counterValue = w.counterPreset;
         widgets.add(w);
         persistProject();
         if (editor != null) editor.invalidate();
@@ -791,9 +793,9 @@ public class MainActivity extends Activity {
             timerPresetField = null;
         }
         final EditText counterPresetField;
-        if ("FBD CTU".equals(w.type)) {
+        if ("FBD CTU".equals(w.type) || "FBD CTD".equals(w.type)) {
             TextView counterLabel = new TextView(this);
-            counterLabel.setText("Уставка счётчика CTU");
+            counterLabel.setText("Уставка счётчика " + ("FBD CTD".equals(w.type) ? "CTD" : "CTU"));
             counterLabel.setPadding(0, dp(10), 0, 0);
             form.addView(counterLabel);
             counterPresetField = propertyField(Integer.toString(w.counterPreset), InputType.TYPE_CLASS_NUMBER);
@@ -874,6 +876,7 @@ public class MainActivity extends Activity {
                     }
                     if (counterPresetField != null) {
                         w.counterPreset = Math.max(1, Math.min(1000000, readPositiveInt(counterPresetField, w.counterPreset, false)));
+                        if ("FBD CTD".equals(w.type)) w.counterValue = w.counterPreset;
                     }
                     if (compareLeftField != null) {
                         w.compareA = readDouble(compareLeftField, w.compareA);
@@ -1247,6 +1250,17 @@ public class MainActivity extends Activity {
             widget.counterLastInput = countInput;
             return widget.counterValue >= widget.counterPreset;
         }
+        if ("FBD CTD".equals(widget.type)) {
+            boolean countInput = !inputs.isEmpty() && inputs.get(0);
+            boolean loadInput = inputs.size() > 1 && inputs.get(1);
+            if (loadInput) {
+                widget.counterValue = widget.counterPreset;
+            } else if (countInput && !widget.counterLastInput) {
+                widget.counterValue = Math.max(0, widget.counterValue - 1);
+            }
+            widget.counterLastInput = countInput;
+            return widget.counterValue <= 0;
+        }
         if ("FBD НЕ".equals(widget.type)) return inputs.isEmpty() || !inputs.get(0);
         if ("FBD Сравнение".equals(widget.type)) {
             switch (normalizeComparisonOperator(widget.compareOperator)) {
@@ -1413,7 +1427,7 @@ public class MainActivity extends Activity {
                     paint.setTextSize(dp(w.textSizeSp));
                     if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(24)) / Math.max(4f, w.text.length() * 0.58f))));
                     String blockTitle = "FBD Вход".equals(w.type) ? "Вход " + (w.inputValue ? "1" : "0")
-                            : ("FBD CTU".equals(w.type) ? "CTU " + w.counterValue + "/" + w.counterPreset : w.text);
+                            : (("FBD CTU".equals(w.type) || "FBD CTD".equals(w.type)) ? ("FBD CTD".equals(w.type) ? "CTD " : "CTU ") + w.counterValue + "/" + w.counterPreset : w.text);
                     if (liveValues.containsKey(i) && !"FBD Вход".equals(w.type)) blockTitle += " [" + liveValues.get(i) + "]";
                     canvas.drawText(blockTitle, w.x + dp(12), w.y + dp(23), paint);
                     boolean output = evaluateFbd(i, new boolean[widgets.size()]);
