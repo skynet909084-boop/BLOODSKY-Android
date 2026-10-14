@@ -478,7 +478,8 @@ public class MainActivity extends Activity {
         fbdPalette.addView(action("+ И", () -> addWidget("FBD И", "И")), new LinearLayout.LayoutParams(0, dp(44), 1));
         fbdPalette.addView(action("+ ИЛИ", () -> addWidget("FBD ИЛИ", "ИЛИ")), new LinearLayout.LayoutParams(0, dp(44), 1));
         fbdPalette.addView(action("+ НЕ", () -> addWidget("FBD НЕ", "НЕ")), new LinearLayout.LayoutParams(0, dp(44), 1));
-        fbdPalette.addView(action("+ Таймер", () -> addWidget("FBD Таймер", "TON")), new LinearLayout.LayoutParams(0, dp(44), 1));
+        fbdPalette.addView(action("+ TON", () -> addWidget("FBD Таймер", "TON")), new LinearLayout.LayoutParams(0, dp(44), 1));
+        fbdPalette.addView(action("+ TP", () -> addWidget("FBD TP", "TP")), new LinearLayout.LayoutParams(0, dp(44), 1));
         fbdPalette.addView(action("+ Сравнение", () -> addWidget("FBD Сравнение", "A > B")), new LinearLayout.LayoutParams(0, dp(44), 1));
         root.addView(fbdPalette);
         LinearLayout fbdAdvancedPalette = new LinearLayout(this);
@@ -767,9 +768,9 @@ public class MainActivity extends Activity {
         form.addView(connectionField);
 
         final EditText timerPresetField;
-        if ("FBD Таймер".equals(w.type)) {
+        if ("FBD Таймер".equals(w.type) || "FBD TP".equals(w.type)) {
             TextView timerLabel = new TextView(this);
-            timerLabel.setText("Задержка TON (миллисекунды)");
+            timerLabel.setText("Время " + ("FBD TP".equals(w.type) ? "импульса TP" : "задержки TON") + " (миллисекунды)");
             timerLabel.setPadding(0, dp(10), 0, 0);
             form.addView(timerLabel);
             timerPresetField = propertyField(Integer.toString(w.timerPresetMs), InputType.TYPE_CLASS_NUMBER);
@@ -1244,6 +1245,16 @@ public class MainActivity extends Activity {
             long now = SystemClock.elapsedRealtime();
             if (widget.timerStartedAt == 0L) widget.timerStartedAt = now;
             return now - widget.timerStartedAt >= widget.timerPresetMs;
+        }
+        if ("FBD TP".equals(widget.type)) {
+            boolean input = !inputs.isEmpty() && inputs.get(0);
+            long now = SystemClock.elapsedRealtime();
+            if (input && !widget.counterLastInput) widget.timerStartedAt = now;
+            widget.counterLastInput = input;
+            if (widget.timerStartedAt == 0L) return false;
+            boolean pulseActive = now - widget.timerStartedAt < widget.timerPresetMs;
+            if (!pulseActive) widget.timerStartedAt = 0L;
+            return pulseActive;
         }
         return false;
     }
