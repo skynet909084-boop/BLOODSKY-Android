@@ -1244,7 +1244,7 @@ public class MainActivity extends Activity {
                     if (connection.source < 0 || connection.target < 0 || connection.source >= widgets.size() || connection.target >= widgets.size()) continue;
                     Widget from = widgets.get(connection.source);
                     Widget to = widgets.get(connection.target);
-                    if (!isFbd(from) || !isFbd(to)) continue;
+                    if (!from.visible || !to.visible || !isFbd(from) || !isFbd(to)) continue;
                     float x1 = from.x + from.w, y1 = from.y + from.h / 2;
                     float x2 = to.x, y2 = to.y + to.h / 2;
                     float mid = (x1 + x2) / 2f;
@@ -1361,6 +1361,7 @@ public class MainActivity extends Activity {
                 downX = x; downY = y; dragging = false; selected = -1;
                 for (int i = widgets.size() - 1; i >= 0; i--) {
                     Widget w = widgets.get(i);
+                    if (!w.visible) continue;
                     if (x >= w.x && x <= w.x + w.w && y >= w.y && y <= w.y + w.h) {
                         selected = i; startX = w.x; startY = w.y; break;
                     }
