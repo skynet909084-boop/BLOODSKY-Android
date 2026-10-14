@@ -21,6 +21,8 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Spinner;
+import android.widget.ArrayAdapter;
 import android.widget.Toast;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -156,6 +158,12 @@ public class MainActivity extends Activity {
         EditText unitField = propertyField("1", InputType.TYPE_CLASS_NUMBER);
         unitField.setHint("Unit ID (0–255)");
         form.addView(unitField);
+        Spinner functionSpinner = new Spinner(this);
+        ArrayAdapter<String> functionAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item,
+                new String[]{"Holding registers (FC03)", "Input registers (FC04)"});
+        functionAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        functionSpinner.setAdapter(functionAdapter);
+        form.addView(functionSpinner);
         EditText addressField = propertyField("40001", InputType.TYPE_CLASS_NUMBER);
         addressField.setHint("Первый holding register (например 40001)");
         form.addView(addressField);
@@ -186,11 +194,12 @@ public class MainActivity extends Activity {
                 result.setText("Проверь IP, порт, Unit ID, адрес и количество регистров.");
                 return;
             }
+            final int functionCode = functionSpinner.getSelectedItemPosition() == 0 ? 3 : 4;
             result.setText("Подключаюсь к " + host + ":" + port + "…");
             new Thread(() -> {
                 String report;
                 try {
-                    report = readModbusHoldingRegisters(host, port, unit, startAddress, count);
+                    report = readModbusRegisters(host, port, unit, startAddress, count, functionCode);
                 } catch (Exception ex) {
                     report = "Ошибка Modbus TCP: " + (ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage());
                 }
@@ -203,6 +212,11 @@ public class MainActivity extends Activity {
     }
 
     private String readModbusHoldingRegisters(String host, int port, int unit, int startAddress, int count) throws Exception {
+        return readModbusRegisters(host, port, unit, startAddress, count, 3);
+    }
+
+    private String readModbusRegisters(String host, int port, int unit, int startAddress, int count, int functionCode) throws Exception {
+        if (functionCode != 3 && functionCode != 4) throw new IllegalArgumentException("Unsupported Modbus function");
         int transaction = (int) (SystemClock.elapsedRealtime() & 0xffff);
         try (Socket socket = new Socket()) {
             socket.connect(new InetSocketAddress(host, port), 3000);
@@ -213,7 +227,7 @@ public class MainActivity extends Activity {
             out.writeShort(0); // Modbus protocol identifier
             out.writeShort(6); // Unit ID + function + address + quantity
             out.writeByte(unit);
-            out.writeByte(3); // Read holding registers
+            out.writeByte(functionCode); // Read holding or input registers
             out.writeShort(startAddress);
             out.writeShort(count);
             out.flush();
@@ -230,14 +244,14 @@ public class MainActivity extends Activity {
             byte[] pdu = new byte[length - 1];
             in.readFully(pdu);
             int function = pdu[0] & 0xff;
-            if (function == 0x83 && pdu.length >= 2) {
+            if (function == (functionCode | 0x80) && pdu.length >= 2) {
                 throw new IOException("Код исключения Modbus: " + (pdu[1] & 0xff));
             }
-            if (function != 3 || pdu.length < 2) throw new IOException("Неожиданный код функции");
+            if (function != functionCode || pdu.length < 2) throw new IOException("Неожиданный код функции");
             int byteCount = pdu[1] & 0xff;
             if (byteCount != count * 2 || pdu.length < 2 + byteCount) throw new IOException("Размер ответа не совпадает с запросом");
             StringBuilder report = new StringBuilder();
-            report.append("Успешно: ").append(count).append(" holding registers\n");
+            report.append("Успешно: ").append(count).append(functionCode == 3 ? " holding registers (FC03)\n" : " input registers (FC04)\n");
             for (int i = 0; i < count; i++) {
                 int value = ((pdu[2 + i * 2] & 0xff) << 8) | (pdu[3 + i * 2] & 0xff);
                 report.append(40001 + startAddress + i).append("  |  ")
