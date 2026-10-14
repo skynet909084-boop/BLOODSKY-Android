@@ -29,6 +29,8 @@ public class MainActivity extends Activity {
     private LinearLayout root;
     private EditorCanvas editor;
     private final List<Widget> widgets = new ArrayList<>();
+    private final List<Screen> screens = new ArrayList<>();
+    private int currentScreenIndex = 0;
     private Widget clipboardWidget;
 
     @Override public void onCreate(Bundle state) {
@@ -124,6 +126,15 @@ public class MainActivity extends Activity {
         top.addView(save);
         root.addView(top, new LinearLayout.LayoutParams(-1, dp(52)));
 
+        LinearLayout screenBar = new LinearLayout(this);
+        screenBar.setGravity(Gravity.CENTER_VERTICAL);
+        screenBar.setBackgroundColor(Color.rgb(235, 241, 247));
+        screenBar.addView(action("‹", this::previousScreen), new LinearLayout.LayoutParams(dp(48), dp(42)));
+        screenBar.addView(action(currentScreenName(), this::renameCurrentScreen), new LinearLayout.LayoutParams(0, dp(42), 1));
+        screenBar.addView(action("›", this::nextScreen), new LinearLayout.LayoutParams(dp(48), dp(42)));
+        screenBar.addView(action("+ Экран", this::addScreen), new LinearLayout.LayoutParams(-2, dp(42)));
+        root.addView(screenBar);
+
         LinearLayout palette = new LinearLayout(this);
         palette.setOrientation(LinearLayout.HORIZONTAL);
         palette.setBackgroundColor(Color.rgb(226, 232, 240));
@@ -151,6 +162,66 @@ public class MainActivity extends Activity {
         root.addView(bottom);
         setContentView(root);
         editor.invalidate();
+    }
+
+    private String currentScreenName() {
+        if (screens.isEmpty()) return "Экран 1";
+        currentScreenIndex = Math.max(0, Math.min(currentScreenIndex, screens.size() - 1));
+        return screens.get(currentScreenIndex).name;
+    }
+
+    private void saveActiveScreen() {
+        if (screens.isEmpty()) screens.add(new Screen("Экран 1"));
+        Screen screen = screens.get(Math.max(0, Math.min(currentScreenIndex, screens.size() - 1)));
+        screen.widgets.clear();
+        for (Widget source : widgets) screen.widgets.add(copyWidget(source));
+    }
+
+    private Widget copyWidget(Widget source) {
+        Widget copy = new Widget();
+        copy.type = source.type; copy.text = source.text;
+        copy.x = source.x; copy.y = source.y; copy.w = source.w; copy.h = source.h;
+        return copy;
+    }
+
+    private void activateScreen(int index) {
+        saveActiveScreen();
+        if (screens.isEmpty()) screens.add(new Screen("Экран 1"));
+        currentScreenIndex = Math.max(0, Math.min(index, screens.size() - 1));
+        widgets.clear();
+        for (Widget source : screens.get(currentScreenIndex).widgets) widgets.add(copyWidget(source));
+        persistProject();
+        showEditor();
+    }
+
+    private void previousScreen() {
+        if (screens.size() < 2) { Toast.makeText(this, "Добавь ещё один экран", Toast.LENGTH_SHORT).show(); return; }
+        activateScreen((currentScreenIndex - 1 + screens.size()) % screens.size());
+    }
+
+    private void nextScreen() {
+        if (screens.size() < 2) { Toast.makeText(this, "Добавь ещё один экран", Toast.LENGTH_SHORT).show(); return; }
+        activateScreen((currentScreenIndex + 1) % screens.size());
+    }
+
+    private void addScreen() {
+        saveActiveScreen();
+        screens.add(new Screen("Экран " + (screens.size() + 1)));
+        currentScreenIndex = screens.size() - 1;
+        widgets.clear();
+        persistProject();
+        showEditor();
+    }
+
+    private void renameCurrentScreen() {
+        EditText input = propertyField(currentScreenName(), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        new AlertDialog.Builder(this).setTitle("Имя экрана").setView(input)
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Сохранить", (dialog, which) -> {
+                    String name = input.getText().toString().trim();
+                    if (!name.isEmpty()) screens.get(currentScreenIndex).name = name;
+                    persistProject(); showEditor();
+                }).show();
     }
 
     private void addWidget(String type, String text) {
@@ -283,49 +354,87 @@ public class MainActivity extends Activity {
         editor.invalidate();
     }
 
+    private JSONObject widgetToJson(Widget w) throws Exception {
+        JSONObject obj = new JSONObject();
+        obj.put("type", w.type); obj.put("text", w.text);
+        obj.put("x", w.x); obj.put("y", w.y); obj.put("w", w.w); obj.put("h", w.h);
+        return obj;
+    }
+
+    private JSONArray widgetsToJson(List<Widget> list) throws Exception {
+        JSONArray array = new JSONArray();
+        for (Widget w : list) array.put(widgetToJson(w));
+        return array;
+    }
+
+    private Widget widgetFromJson(JSONObject obj) {
+        Widget w = new Widget();
+        w.type = obj.optString("type", "Текст"); w.text = obj.optString("text", "Надпись");
+        w.x = obj.optInt("x", dp(40)); w.y = obj.optInt("y", dp(50));
+        w.w = obj.optInt("w", dp(160)); w.h = obj.optInt("h", dp(58));
+        return w;
+    }
+
     private void persistProject() {
         try {
-            JSONArray array = new JSONArray();
-            for (Widget w : widgets) {
-                JSONObject obj = new JSONObject();
-                obj.put("type", w.type);
-                obj.put("text", w.text);
-                obj.put("x", w.x);
-                obj.put("y", w.y);
-                obj.put("w", w.w);
-                obj.put("h", w.h);
-                array.put(obj);
+            saveActiveScreen();
+            JSONObject project = new JSONObject();
+            JSONArray screenArray = new JSONArray();
+            for (Screen screen : screens) {
+                JSONObject screenObj = new JSONObject();
+                screenObj.put("name", screen.name);
+                screenObj.put("widgets", widgetsToJson(screen.widgets));
+                screenArray.put(screenObj);
             }
+            project.put("screens", screenArray);
+            project.put("currentScreen", currentScreenIndex);
             getSharedPreferences(PREFS, MODE_PRIVATE).edit()
-                    .putString(ACTIVE_PROJECT, array.toString())
-                    .putString("project_name", projectName)
-                    .apply();
+                    .putString(ACTIVE_PROJECT, project.toString())
+                    .putString("project_name", projectName).apply();
         } catch (Exception ignored) {
             Toast.makeText(this, "Не удалось сохранить проект", Toast.LENGTH_SHORT).show();
         }
     }
 
     private void loadProject() {
-        widgets.clear();
+        widgets.clear(); screens.clear(); currentScreenIndex = 0;
         android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         projectName = prefs.getString("project_name", projectName);
         String json = prefs.getString(ACTIVE_PROJECT, "[]");
         try {
-            JSONArray array = new JSONArray(json);
-            for (int i = 0; i < array.length(); i++) {
-                JSONObject obj = array.getJSONObject(i);
-                Widget w = new Widget();
-                w.type = obj.optString("type", "Текст");
-                w.text = obj.optString("text", "Надпись");
-                w.x = obj.optInt("x", dp(40));
-                w.y = obj.optInt("y", dp(50));
-                w.w = obj.optInt("w", dp(160));
-                w.h = obj.optInt("h", dp(58));
-                widgets.add(w);
+            Object parsed = new org.json.JSONTokener(json).nextValue();
+            if (parsed instanceof JSONObject) {
+                JSONObject project = (JSONObject) parsed;
+                JSONArray screenArray = project.optJSONArray("screens");
+                if (screenArray != null) {
+                    for (int i = 0; i < screenArray.length(); i++) {
+                        JSONObject screenObj = screenArray.getJSONObject(i);
+                        Screen screen = new Screen(screenObj.optString("name", "Экран " + (i + 1)));
+                        JSONArray widgetArray = screenObj.optJSONArray("widgets");
+                        if (widgetArray != null) for (int j = 0; j < widgetArray.length(); j++) screen.widgets.add(widgetFromJson(widgetArray.getJSONObject(j)));
+                        screens.add(screen);
+                    }
+                    currentScreenIndex = Math.max(0, Math.min(project.optInt("currentScreen", 0), Math.max(0, screens.size() - 1)));
+                }
+            } else if (parsed instanceof JSONArray) {
+                // Backward compatibility with the earlier single-screen project format.
+                Screen legacy = new Screen("Экран 1");
+                JSONArray legacyWidgets = (JSONArray) parsed;
+                for (int i = 0; i < legacyWidgets.length(); i++) legacy.widgets.add(widgetFromJson(legacyWidgets.getJSONObject(i)));
+                screens.add(legacy);
             }
         } catch (Exception ignored) {
-            widgets.clear();
+            screens.clear();
         }
+        if (screens.isEmpty()) screens.add(new Screen("Экран 1"));
+        currentScreenIndex = Math.max(0, Math.min(currentScreenIndex, screens.size() - 1));
+        for (Widget w : screens.get(currentScreenIndex).widgets) widgets.add(copyWidget(w));
+    }
+
+    private static class Screen {
+        String name;
+        final List<Widget> widgets = new ArrayList<>();
+        Screen(String name) { this.name = name; }
     }
 
     private static class Widget {
