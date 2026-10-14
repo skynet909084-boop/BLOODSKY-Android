@@ -600,6 +600,7 @@ public class MainActivity extends Activity {
     private Widget copyWidget(Widget source) {
         Widget copy = new Widget();
         copy.type = source.type; copy.text = source.text; copy.connectionInfo = source.connectionInfo; copy.inputValue = source.inputValue; copy.timerPresetMs = source.timerPresetMs; copy.timerStartedAt = source.timerStartedAt; copy.compareA = source.compareA; copy.compareB = source.compareB; copy.compareOperator = source.compareOperator;
+        copy.backgroundColor = source.backgroundColor; copy.textColor = source.textColor; copy.textSizeSp = source.textSizeSp;
         copy.x = source.x; copy.y = source.y; copy.w = source.w; copy.h = source.h;
         return copy;
     }
@@ -766,6 +767,20 @@ public class MainActivity extends Activity {
         heightField.setHint("Высота");
         form.addView(heightField);
 
+        TextView styleLabel = new TextView(this);
+        styleLabel.setText("Оформление");
+        styleLabel.setPadding(0, dp(10), 0, 0);
+        form.addView(styleLabel);
+        EditText backgroundColorField = propertyField(w.backgroundColor == 0 ? "" : String.format(java.util.Locale.ROOT, "#%06X", (0xFFFFFF & w.backgroundColor)), InputType.TYPE_CLASS_TEXT);
+        backgroundColorField.setHint("Фон: #RRGGBB; пусто — цвет по типу");
+        form.addView(backgroundColorField);
+        EditText textColorField = propertyField(String.format(java.util.Locale.ROOT, "#%06X", (0xFFFFFF & w.textColor)), InputType.TYPE_CLASS_TEXT);
+        textColorField.setHint("Цвет текста: #RRGGBB");
+        form.addView(textColorField);
+        EditText textSizeField = propertyField(Integer.toString(w.textSizeSp), InputType.TYPE_CLASS_NUMBER);
+        textSizeField.setHint("Размер текста, 8–48 sp");
+        form.addView(textSizeField);
+
         new AlertDialog.Builder(this)
                 .setTitle("Свойства: " + w.type)
                 .setView(form)
@@ -788,9 +803,23 @@ public class MainActivity extends Activity {
                     w.y = Math.max(0, readPositiveInt(yField, Math.round(w.y), true));
                     w.w = Math.max(dp(32), readPositiveInt(widthField, Math.round(w.w), false));
                     w.h = Math.max(dp(24), readPositiveInt(heightField, Math.round(w.h), false));
+                    w.backgroundColor = parseOptionalColor(backgroundColorField.getText().toString(), 0);
+                    w.textColor = parseOptionalColor(textColorField.getText().toString(), w.textColor);
+                    w.textSizeSp = Math.max(8, Math.min(48, readPositiveInt(textSizeField, w.textSizeSp, false)));
                     persistProject();
                     editor.invalidate();
                 }).show();
+    }
+
+    private int parseOptionalColor(String text, int fallback) {
+        String value = text == null ? "" : text.trim();
+        if (value.isEmpty()) return fallback == 0 ? 0 : fallback;
+        if (!value.startsWith("#")) value = "#" + value;
+        if (value.matches("#[0-9a-fA-F]{6}")) {
+            try { return Color.parseColor(value); } catch (IllegalArgumentException ignored) { return fallback; }
+        }
+        Toast.makeText(this, "Цвет задаётся в формате #RRGGBB", Toast.LENGTH_SHORT).show();
+        return fallback;
     }
 
     private double readDouble(EditText field, double fallback) {
@@ -832,6 +861,7 @@ public class MainActivity extends Activity {
         clipboardWidget.compareA = source.compareA;
         clipboardWidget.compareB = source.compareB;
         clipboardWidget.compareOperator = source.compareOperator;
+        clipboardWidget.backgroundColor = source.backgroundColor; clipboardWidget.textColor = source.textColor; clipboardWidget.textSizeSp = source.textSizeSp;
         clipboardWidget.x = source.x;
         clipboardWidget.y = source.y;
         clipboardWidget.w = source.w;
@@ -853,6 +883,7 @@ public class MainActivity extends Activity {
         copy.compareA = clipboardWidget.compareA;
         copy.compareB = clipboardWidget.compareB;
         copy.compareOperator = clipboardWidget.compareOperator;
+        copy.backgroundColor = clipboardWidget.backgroundColor; copy.textColor = clipboardWidget.textColor; copy.textSizeSp = clipboardWidget.textSizeSp;
         copy.x = Math.min(Math.max(0, editor == null ? clipboardWidget.x + dp(24) : editor.getWidth() - clipboardWidget.w),
                 clipboardWidget.x + dp(24));
         copy.y = clipboardWidget.y + dp(24);
@@ -915,6 +946,7 @@ public class MainActivity extends Activity {
         obj.put("inputValue", w.inputValue);
         obj.put("timerPresetMs", w.timerPresetMs);
         obj.put("compareA", w.compareA); obj.put("compareB", w.compareB); obj.put("compareOperator", w.compareOperator);
+        obj.put("backgroundColor", w.backgroundColor); obj.put("textColor", w.textColor); obj.put("textSizeSp", w.textSizeSp);
         obj.put("x", w.x); obj.put("y", w.y); obj.put("w", w.w); obj.put("h", w.h);
         return obj;
     }
@@ -933,6 +965,8 @@ public class MainActivity extends Activity {
         w.timerPresetMs = Math.max(1, Math.min(3600000, obj.optInt("timerPresetMs", 1000)));
         w.compareA = obj.optDouble("compareA", 0.0); w.compareB = obj.optDouble("compareB", 0.0);
         w.compareOperator = normalizeComparisonOperator(obj.optString("compareOperator", ">"));
+        w.backgroundColor = obj.optInt("backgroundColor", 0); w.textColor = obj.optInt("textColor", Color.rgb(31, 41, 55));
+        w.textSizeSp = Math.max(8, Math.min(48, obj.optInt("textSizeSp", 14)));
         w.x = obj.optInt("x", dp(40)); w.y = obj.optInt("y", dp(50));
         w.w = obj.optInt("w", dp(160)); w.h = obj.optInt("h", dp(58));
         return w;
@@ -1120,6 +1154,9 @@ public class MainActivity extends Activity {
         long timerStartedAt = 0L;
         double compareA = 0.0, compareB = 0.0;
         String compareOperator = ">";
+        int backgroundColor = 0; // 0 keeps the type-specific default
+        int textColor = Color.rgb(31, 41, 55);
+        int textSizeSp = 14;
         float x, y, w, h;
     }
 
@@ -1167,7 +1204,9 @@ public class MainActivity extends Activity {
                 Widget w = widgets.get(i);
                 RectF rect = new RectF(w.x, w.y, w.x + w.w, w.y + w.h);
                 paint.setStyle(Paint.Style.FILL);
-                if (w.type != null && w.type.startsWith("FBD ")) {
+                if (w.backgroundColor != 0) {
+                    paint.setColor(w.backgroundColor);
+                } else if (w.type != null && w.type.startsWith("FBD ")) {
                     paint.setColor(Color.rgb(237, 233, 254));
                 } else if ("Индикатор".equals(w.type)) {
                     paint.setColor(Color.rgb(220, 252, 231));
@@ -1184,8 +1223,8 @@ public class MainActivity extends Activity {
                 paint.setColor(i == selected ? Color.rgb(21, 101, 192) : Color.rgb(148, 163, 184));
                 canvas.drawRoundRect(rect, dp(6), dp(6), paint);
                 paint.setStyle(Paint.Style.FILL);
-                paint.setColor(Color.rgb(31, 41, 55));
-                paint.setTextSize(dp(14));
+                paint.setColor(w.textColor);
+                paint.setTextSize(dp(w.textSizeSp));
                 if (w.type != null && w.type.startsWith("FBD ")) {
                     paint.setColor(Color.rgb(91, 33, 182));
                     paint.setTextSize(dp(13));
