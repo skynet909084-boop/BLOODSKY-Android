@@ -533,7 +533,7 @@ public class MainActivity extends Activity {
                 final Map<Integer, String> updates = new HashMap<>();
                 for (BindingRequest request : requests) {
                     try {
-                        String report = readModbusHoldingRegisters(request.host, request.port, request.unit, request.address, 1);
+                        String report = readModbusRegisters(request.host, request.port, request.unit, request.address, 1, request.functionCode);
                         String[] lines = report.split("\\n");
                         if (lines.length < 2) throw new IOException("Пустой ответ регистра");
                         String[] columns = lines[1].split("\\|");
@@ -571,18 +571,27 @@ public class MainActivity extends Activity {
             int unit = Integer.parseInt(path[1]);
             int enteredAddress = Integer.parseInt(path[2]);
             if (unit < 0 || unit > 255 || enteredAddress < 0 || enteredAddress > 65535) return null;
-            int address = enteredAddress >= 40001 && enteredAddress <= 49999 ? enteredAddress - 40001 : enteredAddress;
-            return new BindingRequest(widgetIndex, uri.getHost(), uri.getPort(), unit, address);
+            int functionCode = 3;
+            int address = enteredAddress;
+            if (enteredAddress >= 30001 && enteredAddress <= 39999) {
+                functionCode = 4;
+                address = enteredAddress - 30001;
+            } else if (enteredAddress >= 40001 && enteredAddress <= 49999) {
+                functionCode = 3;
+                address = enteredAddress - 40001;
+            }
+            return new BindingRequest(widgetIndex, uri.getHost(), uri.getPort(), unit, address, functionCode);
         } catch (Exception ignored) {
             return null;
         }
     }
 
     private static class BindingRequest {
-        final int widgetIndex, port, unit, address;
+        final int widgetIndex, port, unit, address, functionCode;
         final String host;
-        BindingRequest(int widgetIndex, String host, int port, int unit, int address) {
-            this.widgetIndex = widgetIndex; this.host = host; this.port = port; this.unit = unit; this.address = address;
+        BindingRequest(int widgetIndex, String host, int port, int unit, int address, int functionCode) {
+            this.widgetIndex = widgetIndex; this.host = host; this.port = port; this.unit = unit;
+            this.address = address; this.functionCode = functionCode;
         }
     }
 
@@ -738,7 +747,7 @@ public class MainActivity extends Activity {
         connectionLabel.setPadding(0, dp(10), 0, 0);
         form.addView(connectionLabel);
         EditText connectionField = propertyField(w.connectionInfo == null ? "" : w.connectionInfo, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        connectionField.setHint("tcp://192.168.1.10:502/1/40001");
+        connectionField.setHint("tcp://192.168.1.10:502/1/40001; для FC04 укажи 30001");
         form.addView(connectionField);
 
         final EditText timerPresetField;
