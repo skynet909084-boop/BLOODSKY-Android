@@ -6,6 +6,8 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.os.Handler;
+import android.os.Looper;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -30,6 +32,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.net.URI;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.DataOutputStream;
@@ -48,6 +55,17 @@ public class MainActivity extends Activity {
     private Widget clipboardWidget;
     private boolean fbdWireMode = false;
     private int wireSource = -1;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final ExecutorService modbusExecutor = Executors.newSingleThreadExecutor();
+    private final Map<Integer, String> liveValues = new HashMap<>();
+    private boolean modbusPollingActive = false;
+    private final Runnable modbusPollRunnable = new Runnable() {
+        @Override public void run() {
+            if (!modbusPollingActive || editor == null) return;
+            pollBoundWidgets();
+            mainHandler.postDelayed(this, 1000L);
+        }
+    };
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -78,6 +96,8 @@ public class MainActivity extends Activity {
     }
 
     private void showHome() {
+        stopModbusPolling();
+        editor = null;
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.rgb(241, 245, 249));
@@ -115,6 +135,8 @@ public class MainActivity extends Activity {
     }
 
     private void showModbusScanner() {
+        stopModbusPolling();
+        editor = null;
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.rgb(241, 245, 249));
@@ -424,6 +446,78 @@ public class MainActivity extends Activity {
         root.addView(bottom);
         setContentView(root);
         editor.invalidate();
+        startModbusPolling();
+    }
+
+    private void startModbusPolling() {
+        stopModbusPolling();
+        modbusPollingActive = true;
+        mainHandler.postDelayed(modbusPollRunnable, 1000L);
+    }
+
+    private void stopModbusPolling() {
+        modbusPollingActive = false;
+        mainHandler.removeCallbacks(modbusPollRunnable);
+    }
+
+    private void pollBoundWidgets() {
+        final List<BindingRequest> requests = new ArrayList<>();
+        for (int i = 0; i < widgets.size(); i++) {
+            Widget widget = widgets.get(i);
+            BindingRequest request = parseBinding(i, widget.connectionInfo);
+            if (request != null) requests.add(request);
+        }
+        if (requests.isEmpty()) return;
+        modbusExecutor.execute(() -> {
+            final Map<Integer, String> updates = new HashMap<>();
+            for (BindingRequest request : requests) {
+                try {
+                    String report = readModbusHoldingRegisters(request.host, request.port, request.unit, request.address, 1);
+                    String[] lines = report.split("\\n");
+                    if (lines.length < 2) throw new IOException("Пустой ответ регистра");
+                    String[] columns = lines[1].split("\\|");
+                    if (columns.length < 2) throw new IOException("Не удалось разобрать регистр");
+                    updates.put(request.widgetIndex, columns[1].trim());
+                } catch (Exception e) {
+                    updates.put(request.widgetIndex, "ERR");
+                }
+            }
+            runOnUiThread(() -> {
+                if (editor == null) return;
+                liveValues.putAll(updates);
+                for (Map.Entry<Integer, String> entry : updates.entrySet()) {
+                    int index = entry.getKey();
+                    if (index >= 0 && index < widgets.size() && "FBD Вход".equals(widgets.get(index).type)) {
+                        widgets.get(index).inputValue = !"0".equals(entry.getValue()) && !"ERR".equals(entry.getValue());
+                    }
+                }
+                editor.invalidate();
+            });
+        });
+    }
+
+    private BindingRequest parseBinding(int widgetIndex, String binding) {
+        if (binding == null || !binding.startsWith("tcp://")) return null;
+        try {
+            URI uri = URI.create(binding);
+            String[] path = uri.getPath().split("/");
+            if (uri.getHost() == null || uri.getPort() < 1 || uri.getPort() > 65535 || path.length < 3) return null;
+            int unit = Integer.parseInt(path[1]);
+            int enteredAddress = Integer.parseInt(path[2]);
+            if (unit < 0 || unit > 255 || enteredAddress < 0 || enteredAddress > 65535) return null;
+            int address = enteredAddress >= 40001 && enteredAddress <= 49999 ? enteredAddress - 40001 : enteredAddress;
+            return new BindingRequest(widgetIndex, uri.getHost(), uri.getPort(), unit, address);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static class BindingRequest {
+        final int widgetIndex, port, unit, address;
+        final String host;
+        BindingRequest(int widgetIndex, String host, int port, int unit, int address) {
+            this.widgetIndex = widgetIndex; this.host = host; this.port = port; this.unit = unit; this.address = address;
+        }
     }
 
     private String currentScreenName() {
@@ -1028,6 +1122,7 @@ public class MainActivity extends Activity {
                     paint.setColor(Color.rgb(91, 33, 182));
                     paint.setTextSize(dp(13));
                     String blockTitle = "FBD Вход".equals(w.type) ? "Вход " + (w.inputValue ? "1" : "0") : w.text;
+                    if (liveValues.containsKey(i) && !"FBD Вход".equals(w.type)) blockTitle += " [" + liveValues.get(i) + "]";
                     canvas.drawText(blockTitle, w.x + dp(12), w.y + dp(23), paint);
                     boolean output = evaluateFbd(i, new boolean[widgets.size()]);
                     paint.setTextSize(dp(11));
@@ -1046,7 +1141,7 @@ public class MainActivity extends Activity {
                     paint.setColor(Color.rgb(22, 163, 74));
                     canvas.drawCircle(w.x + dp(16), w.y + w.h / 2, dp(6), paint);
                     paint.setColor(Color.rgb(31, 41, 55));
-                    canvas.drawText(w.text, w.x + dp(29), w.y + w.h / 2 + dp(5), paint);
+                    canvas.drawText(w.text + (liveValues.containsKey(i) ? ": " + liveValues.get(i) : ""), w.x + dp(29), w.y + w.h / 2 + dp(5), paint);
                 } else if ("Задатчик".equals(w.type)) {
                     paint.setColor(Color.rgb(120, 80, 10));
                     canvas.drawText(w.text, w.x + dp(9), w.y + dp(21), paint);
@@ -1061,7 +1156,7 @@ public class MainActivity extends Activity {
                 } else {
                     float tx = w.x + dp(10);
                     float ty = w.y + w.h / 2 + dp(5);
-                    canvas.drawText(w.text, tx, ty, paint);
+                    canvas.drawText(w.text + (liveValues.containsKey(i) ? " = " + liveValues.get(i) : ""), tx, ty, paint);
                 }
             }
             for (Widget widget : widgets) {
