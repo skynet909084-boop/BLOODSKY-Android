@@ -481,6 +481,7 @@ public class MainActivity extends Activity {
         fbdPalette.addView(action("+ TON", () -> addWidget("FBD Таймер", "TON")), new LinearLayout.LayoutParams(0, dp(44), 1));
         fbdPalette.addView(action("+ TP", () -> addWidget("FBD TP", "TP")), new LinearLayout.LayoutParams(0, dp(44), 1));
         fbdPalette.addView(action("+ Сравнение", () -> addWidget("FBD Сравнение", "A > B")), new LinearLayout.LayoutParams(0, dp(44), 1));
+        fbdPalette.addView(action("+ TOF", () -> addWidget("FBD TOF", "TOF")), new LinearLayout.LayoutParams(0, dp(44), 1));
         root.addView(fbdPalette);
         LinearLayout fbdAdvancedPalette = new LinearLayout(this);
         fbdAdvancedPalette.setOrientation(LinearLayout.HORIZONTAL);
@@ -493,7 +494,7 @@ public class MainActivity extends Activity {
         fbdAdvancedPalette.addView(action("+ R_TRIG", () -> addWidget("FBD R_TRIG", "R_TRIG")), new LinearLayout.LayoutParams(0, dp(40), 1));
         fbdAdvancedPalette.addView(action("+ F_TRIG", () -> addWidget("FBD F_TRIG", "F_TRIG")), new LinearLayout.LayoutParams(0, dp(40), 1));
         TextView fbdHint = new TextView(this);
-        fbdHint.setText("R_TRIG/F_TRIG: фронт/спад • RS/SR • CTU • XOR");
+        fbdHint.setText("R_TRIG/F_TRIG • RS/SR • CTU/CTD • XOR • TOF");
         fbdHint.setTextSize(12);
         fbdHint.setGravity(Gravity.CENTER_VERTICAL);
         fbdHint.setPadding(dp(8), 0, dp(8), 0);
@@ -782,9 +783,9 @@ public class MainActivity extends Activity {
         form.addView(connectionField);
 
         final EditText timerPresetField;
-        if ("FBD Таймер".equals(w.type) || "FBD TP".equals(w.type)) {
+        if ("FBD Таймер".equals(w.type) || "FBD TP".equals(w.type) || "FBD TOF".equals(w.type)) {
             TextView timerLabel = new TextView(this);
-            timerLabel.setText("Время " + ("FBD TP".equals(w.type) ? "импульса TP" : "задержки TON") + " (миллисекунды)");
+            timerLabel.setText("Время " + ("FBD TP".equals(w.type) ? "импульса TP" : ("FBD TOF".equals(w.type) ? "выключения TOF" : "задержки TON")) + " (миллисекунды)");
             timerLabel.setPadding(0, dp(10), 0, 0);
             form.addView(timerLabel);
             timerPresetField = propertyField(Integer.toString(w.timerPresetMs), InputType.TYPE_CLASS_NUMBER);
@@ -1292,6 +1293,25 @@ public class MainActivity extends Activity {
             if (!pulseActive) widget.timerStartedAt = 0L;
             return pulseActive;
         }
+        if ("FBD TOF".equals(widget.type)) {
+            boolean input = !inputs.isEmpty() && inputs.get(0);
+            long now = SystemClock.elapsedRealtime();
+            if (input) {
+                widget.counterLastInput = true;
+                widget.timerStartedAt = 0L;
+                return true;
+            }
+            if (widget.counterLastInput) {
+                widget.counterLastInput = false;
+                widget.timerStartedAt = now;
+            }
+            if (widget.timerStartedAt == 0L) return false;
+            if (now - widget.timerStartedAt >= widget.timerPresetMs) {
+                widget.timerStartedAt = 0L;
+                return false;
+            }
+            return true;
+        }
         return false;
     }
 
@@ -1476,7 +1496,7 @@ public class MainActivity extends Activity {
                 }
             }
             for (Widget widget : widgets) {
-                if (("FBD Таймер".equals(widget.type) || "FBD TP".equals(widget.type)) && widget.timerStartedAt > 0L
+                if (("FBD Таймер".equals(widget.type) || "FBD TP".equals(widget.type) || "FBD TOF".equals(widget.type)) && widget.timerStartedAt > 0L
                         && SystemClock.elapsedRealtime() - widget.timerStartedAt < widget.timerPresetMs) {
                     postInvalidateDelayed(100L);
                     break;
