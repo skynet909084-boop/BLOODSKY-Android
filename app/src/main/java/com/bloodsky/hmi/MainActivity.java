@@ -1266,11 +1266,9 @@ public class MainActivity extends Activity {
                 } else if ("Индикатор".equals(w.type)) {
                     paint.setColor(Color.rgb(220, 252, 231));
                 } else if ("Кнопка".equals(w.type)) {
-                    paint.setColor(Color.rgb(219, 234, 254));
+                    paint.setColor(w.buttonState ? Color.rgb(187, 247, 208) : Color.rgb(219, 234, 254));
                 } else if ("Задатчик".equals(w.type)) {
                     paint.setColor(Color.rgb(254, 243, 199));
-                } else if ("Кнопка".equals(w.type) && w.buttonState) {
-                    paint.setColor(Color.rgb(187, 247, 208));
                 } else {
                     paint.setColor(Color.WHITE);
                 }
