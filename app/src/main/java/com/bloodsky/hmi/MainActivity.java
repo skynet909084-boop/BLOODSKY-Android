@@ -602,6 +602,7 @@ public class MainActivity extends Activity {
         copy.type = source.type; copy.text = source.text; copy.connectionInfo = source.connectionInfo; copy.inputValue = source.inputValue; copy.timerPresetMs = source.timerPresetMs; copy.timerStartedAt = source.timerStartedAt; copy.compareA = source.compareA; copy.compareB = source.compareB; copy.compareOperator = source.compareOperator;
         copy.backgroundColor = source.backgroundColor; copy.textColor = source.textColor; copy.textSizeSp = source.textSizeSp;
         copy.visible = source.visible; copy.showFrame = source.showFrame; copy.autoResizeText = source.autoResizeText;
+        try { copy.extraFields = new JSONObject(source.extraFields.toString()); } catch (Exception ignored) { copy.extraFields = new JSONObject(); }
         copy.x = source.x; copy.y = source.y; copy.w = source.w; copy.h = source.h;
         return copy;
     }
@@ -949,6 +950,13 @@ public class MainActivity extends Activity {
 
     private JSONObject widgetToJson(Widget w) throws Exception {
         JSONObject obj = new JSONObject();
+        if (w.extraFields != null) {
+            java.util.Iterator<String> keys = w.extraFields.keys();
+            while (keys.hasNext()) {
+                String key = keys.next();
+                obj.put(key, w.extraFields.get(key));
+            }
+        }
         obj.put("type", w.type); obj.put("text", w.text);
         obj.put("connectionInfo", w.connectionInfo == null ? "" : w.connectionInfo);
         obj.put("inputValue", w.inputValue);
@@ -968,6 +976,7 @@ public class MainActivity extends Activity {
 
     private Widget widgetFromJson(JSONObject obj) {
         Widget w = new Widget();
+        try { w.extraFields = new JSONObject(obj.toString()); } catch (Exception ignored) { w.extraFields = new JSONObject(); }
         w.type = obj.optString("type", "Текст"); w.text = obj.optString("text", "Надпись");
         w.connectionInfo = obj.optString("connectionInfo", "");
         w.inputValue = obj.optBoolean("inputValue", false);
@@ -1170,6 +1179,7 @@ public class MainActivity extends Activity {
         boolean visible = true;
         boolean showFrame = true;
         boolean autoResizeText = false;
+        JSONObject extraFields = new JSONObject(); // preserve unknown imported widget metadata for round-trip
         float x, y, w, h;
     }
 
