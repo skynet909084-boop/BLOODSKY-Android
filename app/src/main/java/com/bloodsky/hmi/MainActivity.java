@@ -485,8 +485,9 @@ public class MainActivity extends Activity {
         fbdAdvancedPalette.setOrientation(LinearLayout.HORIZONTAL);
         fbdAdvancedPalette.setBackgroundColor(Color.rgb(237, 233, 254));
         fbdAdvancedPalette.addView(action("+ XOR", () -> addWidget("FBD XOR", "XOR")), new LinearLayout.LayoutParams(0, dp(40), 1));
+        fbdAdvancedPalette.addView(action("+ RS", () -> addWidget("FBD RS", "RS")), new LinearLayout.LayoutParams(0, dp(40), 1));
         TextView fbdHint = new TextView(this);
-        fbdHint.setText("XOR — нечётное число активных входов");
+        fbdHint.setText("RS: 1=SET, 2=RESET • XOR: нечётность");
         fbdHint.setTextSize(12);
         fbdHint.setGravity(Gravity.CENTER_VERTICAL);
         fbdHint.setPadding(dp(8), 0, dp(8), 0);
@@ -621,7 +622,7 @@ public class MainActivity extends Activity {
 
     private Widget copyWidget(Widget source) {
         Widget copy = new Widget();
-        copy.type = source.type; copy.text = source.text; copy.connectionInfo = source.connectionInfo; copy.inputValue = source.inputValue; copy.buttonState = source.buttonState; copy.timerPresetMs = source.timerPresetMs; copy.timerStartedAt = source.timerStartedAt; copy.compareA = source.compareA; copy.compareB = source.compareB; copy.compareOperator = source.compareOperator;
+        copy.type = source.type; copy.text = source.text; copy.connectionInfo = source.connectionInfo; copy.inputValue = source.inputValue; copy.buttonState = source.buttonState; copy.rsState = source.rsState; copy.timerPresetMs = source.timerPresetMs; copy.timerStartedAt = source.timerStartedAt; copy.compareA = source.compareA; copy.compareB = source.compareB; copy.compareOperator = source.compareOperator;
         copy.backgroundColor = source.backgroundColor; copy.textColor = source.textColor; copy.textSizeSp = source.textSizeSp;
         copy.visible = source.visible; copy.showFrame = source.showFrame; copy.autoResizeText = source.autoResizeText;
         try { copy.extraFields = new JSONObject(source.extraFields.toString()); } catch (Exception ignored) { copy.extraFields = new JSONObject(); }
@@ -1001,7 +1002,7 @@ public class MainActivity extends Activity {
         }
         obj.put("type", w.type); obj.put("text", w.text);
         obj.put("connectionInfo", w.connectionInfo == null ? "" : w.connectionInfo);
-        obj.put("inputValue", w.inputValue); obj.put("buttonState", w.buttonState);
+        obj.put("inputValue", w.inputValue); obj.put("buttonState", w.buttonState); obj.put("rsState", w.rsState);
         obj.put("timerPresetMs", w.timerPresetMs);
         obj.put("compareA", w.compareA); obj.put("compareB", w.compareB); obj.put("compareOperator", w.compareOperator);
         obj.put("backgroundColor", w.backgroundColor); obj.put("textColor", w.textColor); obj.put("textSizeSp", w.textSizeSp);
@@ -1021,7 +1022,7 @@ public class MainActivity extends Activity {
         try { w.extraFields = new JSONObject(obj.toString()); } catch (Exception ignored) { w.extraFields = new JSONObject(); }
         w.type = obj.optString("type", "Текст"); w.text = obj.optString("text", "Надпись");
         w.connectionInfo = obj.optString("connectionInfo", "");
-        w.inputValue = obj.optBoolean("inputValue", false); w.buttonState = obj.optBoolean("buttonState", false);
+        w.inputValue = obj.optBoolean("inputValue", false); w.buttonState = obj.optBoolean("buttonState", false); w.rsState = obj.optBoolean("rsState", false);
         w.timerPresetMs = Math.max(1, Math.min(3600000, obj.optInt("timerPresetMs", 1000)));
         w.compareA = obj.optDouble("compareA", 0.0); w.compareB = obj.optDouble("compareB", 0.0);
         w.compareOperator = normalizeComparisonOperator(obj.optString("compareOperator", ">"));
@@ -1168,6 +1169,13 @@ public class MainActivity extends Activity {
             for (Boolean value : inputs) result ^= value;
             return result;
         }
+        if ("FBD RS".equals(widget.type)) {
+            boolean set = !inputs.isEmpty() && inputs.get(0);
+            boolean reset = inputs.size() > 1 && inputs.get(1);
+            if (reset) widget.rsState = false;
+            else if (set) widget.rsState = true;
+            return widget.rsState;
+        }
         if ("FBD НЕ".equals(widget.type)) return inputs.isEmpty() || !inputs.get(0);
         if ("FBD Сравнение".equals(widget.type)) {
             switch (normalizeComparisonOperator(widget.compareOperator)) {
@@ -1233,6 +1241,7 @@ public class MainActivity extends Activity {
         String connectionInfo = "";
         boolean inputValue = false;
         boolean buttonState = false;
+        boolean rsState = false;
         int timerPresetMs = 1000;
         long timerStartedAt = 0L;
         double compareA = 0.0, compareB = 0.0;
