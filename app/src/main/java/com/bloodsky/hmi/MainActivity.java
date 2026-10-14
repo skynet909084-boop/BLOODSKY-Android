@@ -1476,7 +1476,7 @@ public class MainActivity extends Activity {
                 }
             }
             for (Widget widget : widgets) {
-                if ("FBD Таймер".equals(widget.type) && widget.timerStartedAt > 0L
+                if (("FBD Таймер".equals(widget.type) || "FBD TP".equals(widget.type)) && widget.timerStartedAt > 0L
                         && SystemClock.elapsedRealtime() - widget.timerStartedAt < widget.timerPresetMs) {
                     postInvalidateDelayed(100L);
                     break;
