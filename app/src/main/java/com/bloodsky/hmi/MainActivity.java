@@ -488,8 +488,9 @@ public class MainActivity extends Activity {
         fbdAdvancedPalette.addView(action("+ RS", () -> addWidget("FBD RS", "RS")), new LinearLayout.LayoutParams(0, dp(40), 1));
         fbdAdvancedPalette.addView(action("+ CTU", () -> addWidget("FBD CTU", "CTU")), new LinearLayout.LayoutParams(0, dp(40), 1));
         fbdAdvancedPalette.addView(action("+ R_TRIG", () -> addWidget("FBD R_TRIG", "R_TRIG")), new LinearLayout.LayoutParams(0, dp(40), 1));
+        fbdAdvancedPalette.addView(action("+ F_TRIG", () -> addWidget("FBD F_TRIG", "F_TRIG")), new LinearLayout.LayoutParams(0, dp(40), 1));
         TextView fbdHint = new TextView(this);
-        fbdHint.setText("R_TRIG: импульс по фронту • RS • CTU • XOR");
+        fbdHint.setText("R_TRIG/F_TRIG: импульсы по фронту и спаду • RS • CTU • XOR");
         fbdHint.setTextSize(12);
         fbdHint.setGravity(Gravity.CENTER_VERTICAL);
         fbdHint.setPadding(dp(8), 0, dp(8), 0);
@@ -1197,6 +1198,12 @@ public class MainActivity extends Activity {
             boolean risingEdge = input && !widget.counterLastInput;
             widget.counterLastInput = input;
             return risingEdge;
+        }
+        if ("FBD F_TRIG".equals(widget.type)) {
+            boolean input = !inputs.isEmpty() && inputs.get(0);
+            boolean fallingEdge = !input && widget.counterLastInput;
+            widget.counterLastInput = input;
+            return fallingEdge;
         }
         if ("FBD CTU".equals(widget.type)) {
             boolean countInput = !inputs.isEmpty() && inputs.get(0);
