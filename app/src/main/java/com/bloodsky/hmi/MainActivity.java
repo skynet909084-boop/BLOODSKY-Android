@@ -498,6 +498,18 @@ public class MainActivity extends Activity {
         fbdHint.setPadding(dp(8), 0, dp(8), 0);
         fbdAdvancedPalette.addView(fbdHint, new LinearLayout.LayoutParams(0, dp(40), 2));
         root.addView(fbdAdvancedPalette);
+        LinearLayout fbdLogicPalette = new LinearLayout(this);
+        fbdLogicPalette.setOrientation(LinearLayout.HORIZONTAL);
+        fbdLogicPalette.setBackgroundColor(Color.rgb(224, 242, 254));
+        fbdLogicPalette.addView(action("+ NAND", () -> addWidget("FBD NAND", "NAND")), new LinearLayout.LayoutParams(0, dp(38), 1));
+        fbdLogicPalette.addView(action("+ NOR", () -> addWidget("FBD NOR", "NOR")), new LinearLayout.LayoutParams(0, dp(38), 1));
+        TextView fbdLogicHint = new TextView(this);
+        fbdLogicHint.setText("NAND = НЕ И • NOR = НЕ ИЛИ");
+        fbdLogicHint.setTextSize(12);
+        fbdLogicHint.setGravity(Gravity.CENTER_VERTICAL);
+        fbdLogicHint.setPadding(dp(8), 0, dp(8), 0);
+        fbdLogicPalette.addView(fbdLogicHint, new LinearLayout.LayoutParams(0, dp(38), 2));
+        root.addView(fbdLogicPalette);
         root.addView(action("Связать FBD", () -> {
             fbdWireMode = !fbdWireMode;
             wireSource = -1;
@@ -1182,6 +1194,16 @@ public class MainActivity extends Activity {
         if ("FBD ИЛИ".equals(widget.type)) {
             for (Boolean value : inputs) if (value) return true;
             return false;
+        }
+        if ("FBD NAND".equals(widget.type)) {
+            if (inputs.isEmpty()) return false;
+            for (Boolean value : inputs) if (!value) return true;
+            return false;
+        }
+        if ("FBD NOR".equals(widget.type)) {
+            if (inputs.isEmpty()) return false;
+            for (Boolean value : inputs) if (value) return false;
+            return true;
         }
         if ("FBD XOR".equals(widget.type)) {
             boolean result = false;
