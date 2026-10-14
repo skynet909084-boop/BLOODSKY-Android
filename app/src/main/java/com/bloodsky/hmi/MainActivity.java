@@ -154,15 +154,64 @@ public class MainActivity extends Activity {
                     buffer.write(chunk, 0, count);
                 }
                 String json = new String(buffer.toByteArray(), StandardCharsets.UTF_8);
-                Object parsed = new org.json.JSONTokener(json).nextValue();
-                if (!(parsed instanceof JSONObject) && !(parsed instanceof JSONArray)) throw new IllegalArgumentException("Invalid project JSON");
-                getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(ACTIVE_PROJECT, json).apply();
+                validateImportedProject(json);
+                // Commit only after the complete document has passed validation.
+                if (!getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(ACTIVE_PROJECT, json).commit()) throw new IllegalStateException("Could not save imported project");
                 loadProject();
                 showEditor();
                 Toast.makeText(this, "Проект JSON импортирован", Toast.LENGTH_LONG).show();
             } catch (Exception e) {
                 Toast.makeText(this, "Импорт не выполнен: файл не является допустимым JSON-проектом", Toast.LENGTH_LONG).show();
             }
+        }
+    }
+
+
+    private void validateImportedProject(String json) throws Exception {
+        org.json.JSONTokener tokener = new org.json.JSONTokener(json);
+        Object parsed = tokener.nextValue();
+        if (tokener.nextClean() != 0) throw new IllegalArgumentException("Trailing content after JSON");
+        if (parsed instanceof JSONArray) {
+            validateWidgetArray((JSONArray) parsed);
+            return;
+        }
+        if (!(parsed instanceof JSONObject)) throw new IllegalArgumentException("Project must be a JSON object or array");
+        JSONObject project = (JSONObject) parsed;
+        JSONArray screenArray = project.optJSONArray("screens");
+        if (screenArray == null || screenArray.length() == 0 || screenArray.length() > 100) throw new IllegalArgumentException("Invalid screen list");
+        int totalWidgets = 0;
+        for (int i = 0; i < screenArray.length(); i++) {
+            JSONObject screen = screenArray.optJSONObject(i);
+            if (screen == null) throw new IllegalArgumentException("Screen must be an object");
+            JSONArray screenWidgets = screen.optJSONArray("widgets");
+            if (screenWidgets == null) throw new IllegalArgumentException("Screen widgets must be an array");
+            validateWidgetArray(screenWidgets);
+            totalWidgets += screenWidgets.length();
+            if (totalWidgets > 2000) throw new IllegalArgumentException("Too many widgets");
+            JSONArray connections = screen.optJSONArray("connections");
+            if (connections != null) {
+                if (connections.length() > 4000) throw new IllegalArgumentException("Too many connections");
+                for (int j = 0; j < connections.length(); j++) {
+                    JSONObject edge = connections.optJSONObject(j);
+                    if (edge == null) throw new IllegalArgumentException("Connection must be an object");
+                    int source = edge.optInt("source", -1), target = edge.optInt("target", -1);
+                    if (source < 0 || target < 0 || source >= screenWidgets.length() || target >= screenWidgets.length() || source == target) throw new IllegalArgumentException("Connection index out of range");
+                    JSONObject a = screenWidgets.optJSONObject(source), b = screenWidgets.optJSONObject(target);
+                    if (a == null || b == null || !a.optString("type", "").startsWith("FBD ") || !b.optString("type", "").startsWith("FBD ")) throw new IllegalArgumentException("Connections must link FBD blocks");
+                }
+            }
+        }
+    }
+
+    private void validateWidgetArray(JSONArray array) {
+        if (array.length() > 2000) throw new IllegalArgumentException("Too many widgets");
+        for (int i = 0; i < array.length(); i++) {
+            JSONObject widget = array.optJSONObject(i);
+            if (widget == null) throw new IllegalArgumentException("Widget must be an object");
+            String type = widget.optString("type", "Текст"), label = widget.optString("text", "Надпись");
+            if (type.length() > 100 || label.length() > 2000 || widget.optString("connectionInfo", "").length() > 2000) throw new IllegalArgumentException("Widget field too long");
+            int x = widget.optInt("x", 0), y = widget.optInt("y", 0), w = widget.optInt("w", 160), h = widget.optInt("h", 58);
+            if (x < -100000 || x > 100000 || y < -100000 || y > 100000 || w < 1 || w > 100000 || h < 1 || h > 100000) throw new IllegalArgumentException("Widget geometry out of range");
         }
     }
 
