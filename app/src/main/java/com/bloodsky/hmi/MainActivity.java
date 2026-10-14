@@ -49,6 +49,7 @@ public class MainActivity extends Activity {
     private static final int REQUEST_EXPORT_PROJECT = 7101;
     private static final int REQUEST_IMPORT_PROJECT = 7102;
     private String projectName = "Мой проект";
+    private JSONObject projectExtraFields = new JSONObject();
     private LinearLayout root;
     private EditorCanvas editor;
     private final List<Widget> widgets = new ArrayList<>();
@@ -1016,6 +1017,10 @@ public class MainActivity extends Activity {
         try {
             saveActiveScreen();
             JSONObject project = new JSONObject();
+            if (projectExtraFields != null) {
+                java.util.Iterator<String> projectKeys = projectExtraFields.keys();
+                while (projectKeys.hasNext()) { String key = projectKeys.next(); project.put(key, projectExtraFields.get(key)); }
+            }
             JSONArray screenArray = new JSONArray();
             for (Screen screen : screens) {
                 JSONObject screenObj = new JSONObject();
@@ -1048,6 +1053,7 @@ public class MainActivity extends Activity {
 
     private void loadProject() {
         widgets.clear(); screens.clear(); currentScreenIndex = 0;
+        projectExtraFields = new JSONObject();
         android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         projectName = prefs.getString("project_name", projectName);
         String json = prefs.getString(ACTIVE_PROJECT, "[]");
@@ -1055,6 +1061,7 @@ public class MainActivity extends Activity {
             Object parsed = new org.json.JSONTokener(json).nextValue();
             if (parsed instanceof JSONObject) {
                 JSONObject project = (JSONObject) parsed;
+                try { projectExtraFields = new JSONObject(project.toString()); } catch (Exception ignored) { projectExtraFields = new JSONObject(); }
                 JSONArray screenArray = project.optJSONArray("screens");
                 if (screenArray != null) {
                     for (int i = 0; i < screenArray.length(); i++) {
@@ -1080,6 +1087,7 @@ public class MainActivity extends Activity {
                     currentScreenIndex = Math.max(0, Math.min(project.optInt("currentScreen", 0), Math.max(0, screens.size() - 1)));
                 }
             } else if (parsed instanceof JSONArray) {
+                projectExtraFields = new JSONObject();
                 // Backward compatibility with the earlier single-screen project format.
                 Screen legacy = new Screen("Экран 1");
                 JSONArray legacyWidgets = (JSONArray) parsed;
