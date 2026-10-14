@@ -257,6 +257,7 @@ public class MainActivity extends Activity {
         screenBar.addView(action(currentScreenName(), this::renameCurrentScreen), new LinearLayout.LayoutParams(0, dp(42), 1));
         screenBar.addView(action("›", this::nextScreen), new LinearLayout.LayoutParams(dp(48), dp(42)));
         screenBar.addView(action("+ Экран", this::addScreen), new LinearLayout.LayoutParams(-2, dp(42)));
+        screenBar.addView(action("−", this::removeCurrentScreen), new LinearLayout.LayoutParams(dp(48), dp(42)));
         root.addView(screenBar);
 
         LinearLayout palette = new LinearLayout(this);
@@ -354,6 +355,27 @@ public class MainActivity extends Activity {
         widgets.clear();
         persistProject();
         showEditor();
+    }
+
+    private void removeCurrentScreen() {
+        if (screens.size() <= 1) {
+            Toast.makeText(this, "В проекте должен остаться хотя бы один экран", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("Удалить экран?")
+                .setMessage("Экран «" + currentScreenName() + "» и все его элементы будут удалены.")
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Удалить", (dialog, which) -> {
+                    saveActiveScreen();
+                    screens.remove(currentScreenIndex);
+                    currentScreenIndex = Math.max(0, Math.min(currentScreenIndex, screens.size() - 1));
+                    widgets.clear();
+                    for (Widget widget : screens.get(currentScreenIndex).widgets) widgets.add(copyWidget(widget));
+                    editor = null;
+                    persistProject();
+                    showEditor();
+                }).show();
     }
 
     private void renameCurrentScreen() {
