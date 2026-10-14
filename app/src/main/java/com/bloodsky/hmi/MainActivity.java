@@ -165,7 +165,7 @@ public class MainActivity extends Activity {
         functionSpinner.setAdapter(functionAdapter);
         form.addView(functionSpinner);
         EditText addressField = propertyField("40001", InputType.TYPE_CLASS_NUMBER);
-        addressField.setHint("Первый holding register (например 40001)");
+        addressField.setHint("Адрес регистра: FC03 обычно 40001, FC04 обычно 30001");
         form.addView(addressField);
         EditText countField = propertyField("10", InputType.TYPE_CLASS_NUMBER);
         countField.setHint("Количество регистров (1–125)");
@@ -179,6 +179,7 @@ public class MainActivity extends Activity {
         root.addView(form, new LinearLayout.LayoutParams(-1, -2));
         root.addView(action("Считать регистры", () -> {
             final String host = hostField.getText().toString().trim();
+            final int functionCode = functionSpinner.getSelectedItemPosition() == 0 ? 3 : 4;
             final int port, unit, startAddress, count;
             try {
                 port = Integer.parseInt(portField.getText().toString().trim());
@@ -186,15 +187,20 @@ public class MainActivity extends Activity {
                 int enteredAddress = Integer.parseInt(addressField.getText().toString().trim());
                 count = Integer.parseInt(countField.getText().toString().trim());
                 if (port < 1 || port > 65535 || unit < 0 || unit > 255 || count < 1 || count > 125
-                        || enteredAddress < 1 || enteredAddress > 49999) throw new IllegalArgumentException();
-                startAddress = enteredAddress >= 40001 ? enteredAddress - 40001 : enteredAddress;
+                        || enteredAddress < 0 || enteredAddress > 65535) throw new IllegalArgumentException();
+                if (functionCode == 4 && enteredAddress >= 30001 && enteredAddress <= 39999) {
+                    startAddress = enteredAddress - 30001;
+                } else if (enteredAddress >= 40001 && enteredAddress <= 49999) {
+                    startAddress = enteredAddress - 40001;
+                } else {
+                    startAddress = enteredAddress;
+                }
                 if (startAddress < 0 || startAddress > 65535 || startAddress + count > 65536) throw new IllegalArgumentException();
                 if (host.isEmpty()) throw new IllegalArgumentException();
             } catch (Exception ex) {
                 result.setText("Проверь IP, порт, Unit ID, адрес и количество регистров.");
                 return;
             }
-            final int functionCode = functionSpinner.getSelectedItemPosition() == 0 ? 3 : 4;
             result.setText("Подключаюсь к " + host + ":" + port + "…");
             new Thread(() -> {
                 String report;
@@ -254,7 +260,7 @@ public class MainActivity extends Activity {
             report.append("Успешно: ").append(count).append(functionCode == 3 ? " holding registers (FC03)\n" : " input registers (FC04)\n");
             for (int i = 0; i < count; i++) {
                 int value = ((pdu[2 + i * 2] & 0xff) << 8) | (pdu[3 + i * 2] & 0xff);
-                report.append(40001 + startAddress + i).append("  |  ")
+                report.append((functionCode == 3 ? 40001 : 30001) + startAddress + i).append("  |  ")
                         .append(value).append("  |  0x")
                         .append(String.format(java.util.Locale.ROOT, "%04X", value)).append('\n');
             }
