@@ -346,6 +346,21 @@ public class MainActivity extends Activity {
         Toast.makeText(this, "Копия добавлена на экран", Toast.LENGTH_SHORT).show();
     }
 
+    private void adjustSetpoint(Widget widget, int delta) {
+        String current = widget.text == null ? "Задатчик: 0" : widget.text;
+        int split = current.lastIndexOf(':');
+        String prefix = split >= 0 ? current.substring(0, split + 1) + " " : "Задатчик: ";
+        String valueText = split >= 0 ? current.substring(split + 1).trim() : current.trim();
+        try {
+            double value = Double.parseDouble(valueText.replace(',', '.'));
+            widget.text = prefix + (value + delta);
+        } catch (NumberFormatException ignored) {
+            widget.text = prefix + delta;
+        }
+        persistProject();
+        Toast.makeText(MainActivity.this, "Значение: " + widget.text, Toast.LENGTH_SHORT).show();
+    }
+
     private void deleteSelectedWidget() {
         if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
             Toast.makeText(this, "Сначала выбери элемент на экране", Toast.LENGTH_SHORT).show();
@@ -541,8 +556,16 @@ public class MainActivity extends Activity {
                 return true;
             }
             if (event.getAction() == MotionEvent.ACTION_UP) {
-                if (dragging) persistProject();
-                else if (selected >= 0) editSelectedWidget();
+                if (dragging) {
+                    persistProject();
+                } else if (selected >= 0) {
+                    Widget picked = widgets.get(selected);
+                    if ("Задатчик".equals(picked.type) && y >= picked.y + dp(29)) {
+                        adjustSetpoint(picked, x < picked.x + picked.w / 2 ? -1 : 1);
+                    } else {
+                        editSelectedWidget();
+                    }
+                }
                 invalidate();
                 return true;
             }
