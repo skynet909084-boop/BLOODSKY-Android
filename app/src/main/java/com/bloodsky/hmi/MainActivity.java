@@ -461,9 +461,10 @@ public class MainActivity extends Activity {
     }
 
     private void pollBoundWidgets() {
+        final List<Widget> snapshotWidgets = new ArrayList<>(widgets);
         final List<BindingRequest> requests = new ArrayList<>();
-        for (int i = 0; i < widgets.size(); i++) {
-            Widget widget = widgets.get(i);
+        for (int i = 0; i < snapshotWidgets.size(); i++) {
+            Widget widget = snapshotWidgets.get(i);
             BindingRequest request = parseBinding(i, widget.connectionInfo);
             if (request != null) requests.add(request);
         }
@@ -484,10 +485,12 @@ public class MainActivity extends Activity {
             }
             runOnUiThread(() -> {
                 if (editor == null) return;
-                liveValues.putAll(updates);
                 for (Map.Entry<Integer, String> entry : updates.entrySet()) {
                     int index = entry.getKey();
-                    if (index >= 0 && index < widgets.size() && "FBD Вход".equals(widgets.get(index).type)) {
+                    if (index < 0 || index >= widgets.size() || index >= snapshotWidgets.size()
+                            || widgets.get(index) != snapshotWidgets.get(index)) continue;
+                    liveValues.put(index, entry.getValue());
+                    if ("FBD Вход".equals(widgets.get(index).type)) {
                         widgets.get(index).inputValue = !"0".equals(entry.getValue()) && !"ERR".equals(entry.getValue());
                     }
                 }
@@ -544,6 +547,7 @@ public class MainActivity extends Activity {
         saveActiveScreen();
         if (screens.isEmpty()) screens.add(new Screen("Экран 1"));
         currentScreenIndex = Math.max(0, Math.min(index, screens.size() - 1));
+        liveValues.clear();
         widgets.clear();
         for (Widget source : screens.get(currentScreenIndex).widgets) widgets.add(copyWidget(source));
         persistProject();
@@ -609,6 +613,7 @@ public class MainActivity extends Activity {
         w.y = dp(50) + (widgets.size() % 6) * dp(22);
         w.w = type.equals("Индикатор") ? dp(140) : dp(160);
         w.h = type.equals("Индикатор") ? dp(54) : dp(58);
+        liveValues.clear();
         if (type.equals("Задатчик")) { w.w = dp(190); w.h = dp(62); }
         if (type.startsWith("FBD ")) { w.w = dp(150); w.h = dp(76); }
         widgets.add(w);
@@ -647,7 +652,7 @@ public class MainActivity extends Activity {
         connectionLabel.setPadding(0, dp(10), 0, 0);
         form.addView(connectionLabel);
         EditText connectionField = propertyField(w.connectionInfo == null ? "" : w.connectionInfo, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        connectionField.setHint("Например: Modbus TCP, регистр 40001");
+        connectionField.setHint("tcp://192.168.1.10:502/1/40001");
         form.addView(connectionField);
 
         final EditText timerPresetField;
@@ -792,6 +797,7 @@ public class MainActivity extends Activity {
         copy.y = clipboardWidget.y + dp(24);
         copy.w = clipboardWidget.w;
         copy.h = clipboardWidget.h;
+        liveValues.clear();
         widgets.add(copy);
         if (editor != null) {
             editor.selected = widgets.size() - 1;
@@ -836,6 +842,7 @@ public class MainActivity extends Activity {
             screen.connections.addAll(kept);
         }
         editor.selected = -1;
+        liveValues.clear();
         persistProject();
         editor.invalidate();
     }
