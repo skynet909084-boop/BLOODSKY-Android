@@ -487,8 +487,9 @@ public class MainActivity extends Activity {
         fbdAdvancedPalette.addView(action("+ XOR", () -> addWidget("FBD XOR", "XOR")), new LinearLayout.LayoutParams(0, dp(40), 1));
         fbdAdvancedPalette.addView(action("+ RS", () -> addWidget("FBD RS", "RS")), new LinearLayout.LayoutParams(0, dp(40), 1));
         fbdAdvancedPalette.addView(action("+ CTU", () -> addWidget("FBD CTU", "CTU")), new LinearLayout.LayoutParams(0, dp(40), 1));
+        fbdAdvancedPalette.addView(action("+ R_TRIG", () -> addWidget("FBD R_TRIG", "R_TRIG")), new LinearLayout.LayoutParams(0, dp(40), 1));
         TextView fbdHint = new TextView(this);
-        fbdHint.setText("RS: SET/RESET • CTU: счётчик фронтов • XOR");
+        fbdHint.setText("R_TRIG: импульс по фронту • RS • CTU • XOR");
         fbdHint.setTextSize(12);
         fbdHint.setGravity(Gravity.CENTER_VERTICAL);
         fbdHint.setPadding(dp(8), 0, dp(8), 0);
@@ -1190,6 +1191,12 @@ public class MainActivity extends Activity {
             if (reset) widget.rsState = false;
             else if (set) widget.rsState = true;
             return widget.rsState;
+        }
+        if ("FBD R_TRIG".equals(widget.type)) {
+            boolean input = !inputs.isEmpty() && inputs.get(0);
+            boolean risingEdge = input && !widget.counterLastInput;
+            widget.counterLastInput = input;
+            return risingEdge;
         }
         if ("FBD CTU".equals(widget.type)) {
             boolean countInput = !inputs.isEmpty() && inputs.get(0);
