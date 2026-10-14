@@ -161,26 +161,72 @@ public class MainActivity extends Activity {
         if (editor != null) editor.invalidate();
     }
 
+    private EditText propertyField(String value, int inputType) {
+        EditText field = new EditText(this);
+        field.setSingleLine(true);
+        field.setInputType(inputType);
+        field.setText(value);
+        field.setSelectAllOnFocus(true);
+        return field;
+    }
+
     private void editSelectedWidget() {
         if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
             Toast.makeText(this, "Сначала выбери элемент на экране", Toast.LENGTH_SHORT).show();
             return;
         }
         Widget w = widgets.get(editor.selected);
-        EditText input = new EditText(this);
-        input.setSingleLine(true);
-        input.setText(w.text);
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        int pad = dp(16);
+        form.setPadding(pad, dp(4), pad, 0);
+
+        TextView textLabel = new TextView(this);
+        textLabel.setText("Подпись");
+        form.addView(textLabel);
+        EditText textField = propertyField(w.text, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        form.addView(textField);
+
+        TextView geometryLabel = new TextView(this);
+        geometryLabel.setText("Положение и размер (пиксели)");
+        geometryLabel.setPadding(0, dp(10), 0, 0);
+        form.addView(geometryLabel);
+
+        EditText xField = propertyField(Integer.toString(Math.round(w.x)), InputType.TYPE_CLASS_NUMBER);
+        xField.setHint("X");
+        form.addView(xField);
+        EditText yField = propertyField(Integer.toString(Math.round(w.y)), InputType.TYPE_CLASS_NUMBER);
+        yField.setHint("Y");
+        form.addView(yField);
+        EditText widthField = propertyField(Integer.toString(Math.round(w.w)), InputType.TYPE_CLASS_NUMBER);
+        widthField.setHint("Ширина");
+        form.addView(widthField);
+        EditText heightField = propertyField(Integer.toString(Math.round(w.h)), InputType.TYPE_CLASS_NUMBER);
+        heightField.setHint("Высота");
+        form.addView(heightField);
+
         new AlertDialog.Builder(this)
                 .setTitle("Свойства: " + w.type)
-                .setMessage("Измени подпись элемента")
-                .setView(input)
+                .setView(form)
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Применить", (dialog, which) -> {
-                    String value = input.getText().toString();
-                    if (!value.trim().isEmpty()) w.text = value;
+                    w.text = textField.getText().toString();
+                    w.x = Math.max(0, readPositiveInt(xField, Math.round(w.x), true));
+                    w.y = Math.max(0, readPositiveInt(yField, Math.round(w.y), true));
+                    w.w = Math.max(dp(32), readPositiveInt(widthField, Math.round(w.w), false));
+                    w.h = Math.max(dp(24), readPositiveInt(heightField, Math.round(w.h), false));
                     persistProject();
                     editor.invalidate();
                 }).show();
+    }
+
+    private int readPositiveInt(EditText field, int fallback, boolean allowZero) {
+        try {
+            int value = Integer.parseInt(field.getText().toString().trim());
+            return allowZero ? Math.max(0, value) : Math.max(1, value);
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
     }
 
     private void deleteSelectedWidget() {
