@@ -601,6 +601,7 @@ public class MainActivity extends Activity {
         Widget copy = new Widget();
         copy.type = source.type; copy.text = source.text; copy.connectionInfo = source.connectionInfo; copy.inputValue = source.inputValue; copy.timerPresetMs = source.timerPresetMs; copy.timerStartedAt = source.timerStartedAt; copy.compareA = source.compareA; copy.compareB = source.compareB; copy.compareOperator = source.compareOperator;
         copy.backgroundColor = source.backgroundColor; copy.textColor = source.textColor; copy.textSizeSp = source.textSizeSp;
+        copy.visible = source.visible; copy.showFrame = source.showFrame; copy.autoResizeText = source.autoResizeText;
         copy.x = source.x; copy.y = source.y; copy.w = source.w; copy.h = source.h;
         return copy;
     }
@@ -780,6 +781,12 @@ public class MainActivity extends Activity {
         EditText textSizeField = propertyField(Integer.toString(w.textSizeSp), InputType.TYPE_CLASS_NUMBER);
         textSizeField.setHint("Размер текста, 8–48 sp");
         form.addView(textSizeField);
+        android.widget.CheckBox visibleField = new android.widget.CheckBox(this);
+        visibleField.setText("Элемент видим на экране"); visibleField.setChecked(w.visible); form.addView(visibleField);
+        android.widget.CheckBox frameField = new android.widget.CheckBox(this);
+        frameField.setText("Показывать рамку"); frameField.setChecked(w.showFrame); form.addView(frameField);
+        android.widget.CheckBox autoResizeField = new android.widget.CheckBox(this);
+        autoResizeField.setText("Автоподбор размера текста по ширине"); autoResizeField.setChecked(w.autoResizeText); form.addView(autoResizeField);
 
         new AlertDialog.Builder(this)
                 .setTitle("Свойства: " + w.type)
@@ -806,6 +813,7 @@ public class MainActivity extends Activity {
                     w.backgroundColor = parseOptionalColor(backgroundColorField.getText().toString(), 0);
                     w.textColor = parseOptionalColor(textColorField.getText().toString(), w.textColor);
                     w.textSizeSp = Math.max(8, Math.min(48, readPositiveInt(textSizeField, w.textSizeSp, false)));
+                    w.visible = visibleField.isChecked(); w.showFrame = frameField.isChecked(); w.autoResizeText = autoResizeField.isChecked();
                     persistProject();
                     editor.invalidate();
                 }).show();
@@ -947,6 +955,7 @@ public class MainActivity extends Activity {
         obj.put("timerPresetMs", w.timerPresetMs);
         obj.put("compareA", w.compareA); obj.put("compareB", w.compareB); obj.put("compareOperator", w.compareOperator);
         obj.put("backgroundColor", w.backgroundColor); obj.put("textColor", w.textColor); obj.put("textSizeSp", w.textSizeSp);
+        obj.put("visible", w.visible); obj.put("showFrame", w.showFrame); obj.put("autoResizeText", w.autoResizeText);
         obj.put("x", w.x); obj.put("y", w.y); obj.put("w", w.w); obj.put("h", w.h);
         return obj;
     }
@@ -967,6 +976,7 @@ public class MainActivity extends Activity {
         w.compareOperator = normalizeComparisonOperator(obj.optString("compareOperator", ">"));
         w.backgroundColor = obj.optInt("backgroundColor", 0); w.textColor = obj.optInt("textColor", Color.rgb(31, 41, 55));
         w.textSizeSp = Math.max(8, Math.min(48, obj.optInt("textSizeSp", 14)));
+        w.visible = obj.optBoolean("visible", true); w.showFrame = obj.optBoolean("showFrame", true); w.autoResizeText = obj.optBoolean("autoResizeText", false);
         w.x = obj.optInt("x", dp(40)); w.y = obj.optInt("y", dp(50));
         w.w = obj.optInt("w", dp(160)); w.h = obj.optInt("h", dp(58));
         return w;
@@ -1157,6 +1167,9 @@ public class MainActivity extends Activity {
         int backgroundColor = 0; // 0 keeps the type-specific default
         int textColor = Color.rgb(31, 41, 55);
         int textSizeSp = 14;
+        boolean visible = true;
+        boolean showFrame = true;
+        boolean autoResizeText = false;
         float x, y, w, h;
     }
 
@@ -1202,6 +1215,7 @@ public class MainActivity extends Activity {
             }
             for (int i = 0; i < widgets.size(); i++) {
                 Widget w = widgets.get(i);
+                if (!w.visible) continue;
                 RectF rect = new RectF(w.x, w.y, w.x + w.w, w.y + w.h);
                 paint.setStyle(Paint.Style.FILL);
                 if (w.backgroundColor != 0) {
@@ -1218,16 +1232,19 @@ public class MainActivity extends Activity {
                     paint.setColor(Color.WHITE);
                 }
                 canvas.drawRoundRect(rect, dp(6), dp(6), paint);
-                paint.setStyle(Paint.Style.STROKE);
-                paint.setStrokeWidth(dp(i == selected ? 2.5f : 1));
-                paint.setColor(i == selected ? Color.rgb(21, 101, 192) : Color.rgb(148, 163, 184));
-                canvas.drawRoundRect(rect, dp(6), dp(6), paint);
+                if (w.showFrame || i == selected) {
+                    paint.setStyle(Paint.Style.STROKE);
+                    paint.setStrokeWidth(dp(i == selected ? 2.5f : 1));
+                    paint.setColor(i == selected ? Color.rgb(21, 101, 192) : Color.rgb(148, 163, 184));
+                    canvas.drawRoundRect(rect, dp(6), dp(6), paint);
+                }
                 paint.setStyle(Paint.Style.FILL);
                 paint.setColor(w.textColor);
                 paint.setTextSize(dp(w.textSizeSp));
                 if (w.type != null && w.type.startsWith("FBD ")) {
-                    paint.setColor(Color.rgb(91, 33, 182));
-                    paint.setTextSize(dp(13));
+                    paint.setColor(w.textColor);
+                    paint.setTextSize(dp(w.textSizeSp));
+                    if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(24)) / Math.max(4f, w.text.length() * 0.58f))));
                     String blockTitle = "FBD Вход".equals(w.type) ? "Вход " + (w.inputValue ? "1" : "0") : w.text;
                     if (liveValues.containsKey(i) && !"FBD Вход".equals(w.type)) blockTitle += " [" + liveValues.get(i) + "]";
                     canvas.drawText(blockTitle, w.x + dp(12), w.y + dp(23), paint);
@@ -1247,10 +1264,13 @@ public class MainActivity extends Activity {
                 } else if ("Индикатор".equals(w.type)) {
                     paint.setColor(Color.rgb(22, 163, 74));
                     canvas.drawCircle(w.x + dp(16), w.y + w.h / 2, dp(6), paint);
-                    paint.setColor(Color.rgb(31, 41, 55));
-                    canvas.drawText(w.text + (liveValues.containsKey(i) ? ": " + liveValues.get(i) : ""), w.x + dp(29), w.y + w.h / 2 + dp(5), paint);
+                    paint.setColor(w.textColor);
+                    String indicatorText = w.text + (liveValues.containsKey(i) ? ": " + liveValues.get(i) : "");
+                    if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(36)) / Math.max(4f, indicatorText.length() * 0.58f))));
+                    canvas.drawText(indicatorText, w.x + dp(29), w.y + w.h / 2 + dp(5), paint);
                 } else if ("Задатчик".equals(w.type)) {
-                    paint.setColor(Color.rgb(120, 80, 10));
+                    paint.setColor(w.textColor);
+                    if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(18)) / Math.max(4f, w.text.length() * 0.58f))));
                     canvas.drawText(w.text, w.x + dp(9), w.y + dp(21), paint);
                     paint.setColor(Color.rgb(255, 255, 255));
                     canvas.drawRoundRect(new RectF(w.x + dp(8), w.y + dp(29), w.x + w.w - dp(8), w.y + w.h - dp(6)), dp(4), dp(4), paint);
@@ -1263,7 +1283,9 @@ public class MainActivity extends Activity {
                 } else {
                     float tx = w.x + dp(10);
                     float ty = w.y + w.h / 2 + dp(5);
-                    canvas.drawText(w.text + (liveValues.containsKey(i) ? " = " + liveValues.get(i) : ""), tx, ty, paint);
+                    String displayText = w.text + (liveValues.containsKey(i) ? " = " + liveValues.get(i) : "");
+                    if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(20)) / Math.max(4f, displayText.length() * 0.58f))));
+                    canvas.drawText(displayText, tx, ty, paint);
                 }
             }
             for (Widget widget : widgets) {
