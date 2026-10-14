@@ -220,6 +220,16 @@ public class MainActivity extends Activity {
                 new LinearLayout.LayoutParams(0, dp(48), 1));
         root.addView(palette);
 
+        LinearLayout fbdPalette = new LinearLayout(this);
+        fbdPalette.setOrientation(LinearLayout.HORIZONTAL);
+        fbdPalette.setBackgroundColor(Color.rgb(237, 233, 254));
+        fbdPalette.addView(action("+ И", () -> addWidget("FBD И", "И")), new LinearLayout.LayoutParams(0, dp(44), 1));
+        fbdPalette.addView(action("+ ИЛИ", () -> addWidget("FBD ИЛИ", "ИЛИ")), new LinearLayout.LayoutParams(0, dp(44), 1));
+        fbdPalette.addView(action("+ НЕ", () -> addWidget("FBD НЕ", "НЕ")), new LinearLayout.LayoutParams(0, dp(44), 1));
+        fbdPalette.addView(action("+ Таймер", () -> addWidget("FBD Таймер", "TON")), new LinearLayout.LayoutParams(0, dp(44), 1));
+        fbdPalette.addView(action("+ Сравнение", () -> addWidget("FBD Сравнение", "A > B")), new LinearLayout.LayoutParams(0, dp(44), 1));
+        root.addView(fbdPalette);
+
         editor = new EditorCanvas();
         root.addView(editor, new LinearLayout.LayoutParams(-1, 0, 1));
 
@@ -307,6 +317,7 @@ public class MainActivity extends Activity {
         w.w = type.equals("Индикатор") ? dp(140) : dp(160);
         w.h = type.equals("Индикатор") ? dp(54) : dp(58);
         if (type.equals("Задатчик")) { w.w = dp(190); w.h = dp(62); }
+        if (type.startsWith("FBD ")) { w.w = dp(150); w.h = dp(76); }
         widgets.add(w);
         persistProject();
         if (editor != null) editor.invalidate();
@@ -398,6 +409,7 @@ public class MainActivity extends Activity {
         clipboardWidget = new Widget();
         clipboardWidget.type = source.type;
         clipboardWidget.text = source.text;
+        clipboardWidget.connectionInfo = source.connectionInfo;
         clipboardWidget.x = source.x;
         clipboardWidget.y = source.y;
         clipboardWidget.w = source.w;
@@ -413,6 +425,7 @@ public class MainActivity extends Activity {
         Widget copy = new Widget();
         copy.type = clipboardWidget.type;
         copy.text = clipboardWidget.text;
+        copy.connectionInfo = clipboardWidget.connectionInfo;
         copy.x = Math.min(Math.max(0, editor == null ? clipboardWidget.x + dp(24) : editor.getWidth() - clipboardWidget.w),
                 clipboardWidget.x + dp(24));
         copy.y = clipboardWidget.y + dp(24);
@@ -570,7 +583,9 @@ public class MainActivity extends Activity {
                 Widget w = widgets.get(i);
                 RectF rect = new RectF(w.x, w.y, w.x + w.w, w.y + w.h);
                 paint.setStyle(Paint.Style.FILL);
-                if ("Индикатор".equals(w.type)) {
+                if (w.type != null && w.type.startsWith("FBD ")) {
+                    paint.setColor(Color.rgb(237, 233, 254));
+                } else if ("Индикатор".equals(w.type)) {
                     paint.setColor(Color.rgb(220, 252, 231));
                 } else if ("Кнопка".equals(w.type)) {
                     paint.setColor(Color.rgb(219, 234, 254));
@@ -587,7 +602,19 @@ public class MainActivity extends Activity {
                 paint.setStyle(Paint.Style.FILL);
                 paint.setColor(Color.rgb(31, 41, 55));
                 paint.setTextSize(dp(14));
-                if ("Индикатор".equals(w.type)) {
+                if (w.type != null && w.type.startsWith("FBD ")) {
+                    paint.setColor(Color.rgb(91, 33, 182));
+                    paint.setTextSize(dp(13));
+                    canvas.drawText(w.text, w.x + dp(12), w.y + dp(23), paint);
+                    paint.setColor(Color.rgb(109, 40, 217));
+                    canvas.drawLine(w.x, w.y + w.h * 0.38f, w.x + dp(14), w.y + w.h * 0.38f, paint);
+                    canvas.drawLine(w.x, w.y + w.h * 0.68f, w.x + dp(14), w.y + w.h * 0.68f, paint);
+                    canvas.drawLine(w.x + w.w - dp(14), w.y + w.h / 2, w.x + w.w, w.y + w.h / 2, paint);
+                    paint.setStyle(Paint.Style.FILL);
+                    canvas.drawCircle(w.x + dp(4), w.y + w.h * 0.38f, dp(4), paint);
+                    canvas.drawCircle(w.x + dp(4), w.y + w.h * 0.68f, dp(4), paint);
+                    canvas.drawCircle(w.x + w.w - dp(4), w.y + w.h / 2, dp(4), paint);
+                } else if ("Индикатор".equals(w.type)) {
                     paint.setColor(Color.rgb(22, 163, 74));
                     canvas.drawCircle(w.x + dp(16), w.y + w.h / 2, dp(6), paint);
                     paint.setColor(Color.rgb(31, 41, 55));
