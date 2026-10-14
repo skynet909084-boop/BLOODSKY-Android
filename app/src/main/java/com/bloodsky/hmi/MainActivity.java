@@ -144,6 +144,8 @@ public class MainActivity extends Activity {
                 new LinearLayout.LayoutParams(0, dp(48), 1));
         palette.addView(action("+ Индикатор", () -> addWidget("Индикатор", "Индикатор")),
                 new LinearLayout.LayoutParams(0, dp(48), 1));
+        palette.addView(action("+ Задатчик", () -> addWidget("Задатчик", "Задатчик: 0")),
+                new LinearLayout.LayoutParams(0, dp(48), 1));
         root.addView(palette);
 
         editor = new EditorCanvas();
@@ -232,6 +234,7 @@ public class MainActivity extends Activity {
         w.y = dp(50) + (widgets.size() % 6) * dp(22);
         w.w = type.equals("Индикатор") ? dp(140) : dp(160);
         w.h = type.equals("Индикатор") ? dp(54) : dp(58);
+        if (type.equals("Задатчик")) { w.w = dp(190); w.h = dp(62); }
         widgets.add(w);
         persistProject();
         if (editor != null) editor.invalidate();
@@ -472,6 +475,8 @@ public class MainActivity extends Activity {
                     paint.setColor(Color.rgb(220, 252, 231));
                 } else if ("Кнопка".equals(w.type)) {
                     paint.setColor(Color.rgb(219, 234, 254));
+                } else if ("Задатчик".equals(w.type)) {
+                    paint.setColor(Color.rgb(254, 243, 199));
                 } else {
                     paint.setColor(Color.WHITE);
                 }
@@ -488,6 +493,17 @@ public class MainActivity extends Activity {
                     canvas.drawCircle(w.x + dp(16), w.y + w.h / 2, dp(6), paint);
                     paint.setColor(Color.rgb(31, 41, 55));
                     canvas.drawText(w.text, w.x + dp(29), w.y + w.h / 2 + dp(5), paint);
+                } else if ("Задатчик".equals(w.type)) {
+                    paint.setColor(Color.rgb(120, 80, 10));
+                    canvas.drawText(w.text, w.x + dp(9), w.y + dp(21), paint);
+                    paint.setColor(Color.rgb(255, 255, 255));
+                    canvas.drawRoundRect(new RectF(w.x + dp(8), w.y + dp(29), w.x + w.w - dp(8), w.y + w.h - dp(6)), dp(4), dp(4), paint);
+                    paint.setStyle(Paint.Style.STROKE);
+                    paint.setColor(Color.rgb(217, 119, 6));
+                    canvas.drawRoundRect(new RectF(w.x + dp(8), w.y + dp(29), w.x + w.w - dp(8), w.y + w.h - dp(6)), dp(4), dp(4), paint);
+                    paint.setStyle(Paint.Style.FILL);
+                    paint.setColor(Color.rgb(120, 80, 10));
+                    canvas.drawText("−             +", w.x + dp(18), w.y + w.h - dp(16), paint);
                 } else {
                     float tx = w.x + dp(10);
                     float ty = w.y + w.h / 2 + dp(5);
