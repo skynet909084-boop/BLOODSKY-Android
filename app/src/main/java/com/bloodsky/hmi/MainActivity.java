@@ -28,6 +28,10 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 
 public class MainActivity extends Activity {
     private static final String PREFS = "bloodsky_projects";
@@ -97,6 +101,8 @@ public class MainActivity extends Activity {
                 new LinearLayout.LayoutParams(-1, dp(54)));
         root.addView(action("Импорт проекта (JSON)", this::importProject),
                 new LinearLayout.LayoutParams(-1, dp(54)));
+        root.addView(action("Modbus Scanner (TCP)", this::showModbusScanner),
+                new LinearLayout.LayoutParams(-1, dp(54)));
 
         TextView status = new TextView(this);
         status.setText("\nТекущий этап: базовый Android-каркас и редактор экранов.\nFBD, Modbus RTU/TCP и полный перенос оригинальных компонентов будут добавляться отдельными проверяемыми этапами.");
@@ -105,6 +111,117 @@ public class MainActivity extends Activity {
         status.setPadding(dp(20), dp(12), dp(20), dp(20));
         root.addView(status);
         setContentView(root);
+    }
+
+    private void showModbusScanner() {
+        root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(Color.rgb(241, 245, 249));
+        root.addView(heading("BLOODSKY • Modbus TCP Scanner"), new LinearLayout.LayoutParams(-1, dp(60)));
+        root.addView(action("‹ Назад", this::showHome), new LinearLayout.LayoutParams(-1, dp(48)));
+
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(dp(16), dp(8), dp(16), dp(8));
+        EditText hostField = propertyField("192.168.1.10", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        hostField.setHint("IP-адрес устройства");
+        form.addView(hostField);
+        EditText portField = propertyField("502", InputType.TYPE_CLASS_NUMBER);
+        portField.setHint("TCP-порт (обычно 502)");
+        form.addView(portField);
+        EditText unitField = propertyField("1", InputType.TYPE_CLASS_NUMBER);
+        unitField.setHint("Unit ID (0–255)");
+        form.addView(unitField);
+        EditText addressField = propertyField("40001", InputType.TYPE_CLASS_NUMBER);
+        addressField.setHint("Первый holding register (например 40001)");
+        form.addView(addressField);
+        EditText countField = propertyField("10", InputType.TYPE_CLASS_NUMBER);
+        countField.setHint("Количество регистров (1–125)");
+        form.addView(countField);
+
+        TextView result = new TextView(this);
+        result.setTextColor(Color.rgb(31, 41, 55));
+        result.setTextSize(14);
+        result.setPadding(dp(16), dp(10), dp(16), dp(10));
+        result.setText("Готов к чтению holding registers (FC03). Сканирование выполняется по сети; устройство должно быть доступно.");
+        root.addView(form, new LinearLayout.LayoutParams(-1, -2));
+        root.addView(action("Считать регистры", () -> {
+            final String host = hostField.getText().toString().trim();
+            final int port, unit, startAddress, count;
+            try {
+                port = Integer.parseInt(portField.getText().toString().trim());
+                unit = Integer.parseInt(unitField.getText().toString().trim());
+                int enteredAddress = Integer.parseInt(addressField.getText().toString().trim());
+                count = Integer.parseInt(countField.getText().toString().trim());
+                if (port < 1 || port > 65535 || unit < 0 || unit > 255 || count < 1 || count > 125
+                        || enteredAddress < 1 || enteredAddress > 49999) throw new IllegalArgumentException();
+                startAddress = enteredAddress >= 40001 ? enteredAddress - 40001 : enteredAddress;
+                if (startAddress < 0 || startAddress > 65535 || startAddress + count > 65536) throw new IllegalArgumentException();
+                if (host.isEmpty()) throw new IllegalArgumentException();
+            } catch (Exception ex) {
+                result.setText("Проверь IP, порт, Unit ID, адрес и количество регистров.");
+                return;
+            }
+            result.setText("Подключаюсь к " + host + ":" + port + "…");
+            new Thread(() -> {
+                String report;
+                try {
+                    report = readModbusHoldingRegisters(host, port, unit, startAddress, count);
+                } catch (Exception ex) {
+                    report = "Ошибка Modbus TCP: " + (ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage());
+                }
+                final String finalReport = report;
+                runOnUiThread(() -> result.setText(finalReport));
+            }, "bloodsky-modbus-scan").start();
+        }), new LinearLayout.LayoutParams(-1, dp(52)));
+        root.addView(result, new LinearLayout.LayoutParams(-1, 0, 1));
+        setContentView(root);
+    }
+
+    private String readModbusHoldingRegisters(String host, int port, int unit, int startAddress, int count) throws Exception {
+        int transaction = (int) (SystemClock.elapsedRealtime() & 0xffff);
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(host, port), 3000);
+            socket.setSoTimeout(3000);
+            DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+            DataInputStream in = new DataInputStream(socket.getInputStream());
+            out.writeShort(transaction);
+            out.writeShort(0); // Modbus protocol identifier
+            out.writeShort(6); // Unit ID + function + address + quantity
+            out.writeByte(unit);
+            out.writeByte(3); // Read holding registers
+            out.writeShort(startAddress);
+            out.writeShort(count);
+            out.flush();
+
+            byte[] header = new byte[7];
+            in.readFully(header);
+            int responseTransaction = ((header[0] & 0xff) << 8) | (header[1] & 0xff);
+            int protocol = ((header[2] & 0xff) << 8) | (header[3] & 0xff);
+            int length = ((header[4] & 0xff) << 8) | (header[5] & 0xff);
+            int responseUnit = header[6] & 0xff;
+            if (responseTransaction != transaction || protocol != 0 || responseUnit != unit || length < 2 || length > 254) {
+                throw new IOException("Некорректный заголовок ответа");
+            }
+            byte[] pdu = new byte[length - 1];
+            in.readFully(pdu);
+            int function = pdu[0] & 0xff;
+            if (function == 0x83 && pdu.length >= 2) {
+                throw new IOException("Код исключения Modbus: " + (pdu[1] & 0xff));
+            }
+            if (function != 3 || pdu.length < 2) throw new IOException("Неожиданный код функции");
+            int byteCount = pdu[1] & 0xff;
+            if (byteCount != count * 2 || pdu.length < 2 + byteCount) throw new IOException("Размер ответа не совпадает с запросом");
+            StringBuilder report = new StringBuilder();
+            report.append("Успешно: ").append(count).append(" holding registers\n");
+            for (int i = 0; i < count; i++) {
+                int value = ((pdu[2 + i * 2] & 0xff) << 8) | (pdu[3 + i * 2] & 0xff);
+                report.append(40001 + startAddress + i).append("  |  ")
+                        .append(value).append("  |  0x")
+                        .append(String.format(java.util.Locale.ROOT, "%04X", value)).append('\n');
+            }
+            return report.toString();
+        }
     }
 
     private void exportProject() {
