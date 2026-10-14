@@ -486,8 +486,9 @@ public class MainActivity extends Activity {
         fbdAdvancedPalette.setBackgroundColor(Color.rgb(237, 233, 254));
         fbdAdvancedPalette.addView(action("+ XOR", () -> addWidget("FBD XOR", "XOR")), new LinearLayout.LayoutParams(0, dp(40), 1));
         fbdAdvancedPalette.addView(action("+ RS", () -> addWidget("FBD RS", "RS")), new LinearLayout.LayoutParams(0, dp(40), 1));
+        fbdAdvancedPalette.addView(action("+ CTU", () -> addWidget("FBD CTU", "CTU")), new LinearLayout.LayoutParams(0, dp(40), 1));
         TextView fbdHint = new TextView(this);
-        fbdHint.setText("RS: 1=SET, 2=RESET • XOR: нечётность");
+        fbdHint.setText("RS: SET/RESET • CTU: счётчик фронтов • XOR");
         fbdHint.setTextSize(12);
         fbdHint.setGravity(Gravity.CENTER_VERTICAL);
         fbdHint.setPadding(dp(8), 0, dp(8), 0);
@@ -622,7 +623,7 @@ public class MainActivity extends Activity {
 
     private Widget copyWidget(Widget source) {
         Widget copy = new Widget();
-        copy.type = source.type; copy.text = source.text; copy.connectionInfo = source.connectionInfo; copy.inputValue = source.inputValue; copy.buttonState = source.buttonState; copy.rsState = source.rsState; copy.timerPresetMs = source.timerPresetMs; copy.timerStartedAt = source.timerStartedAt; copy.compareA = source.compareA; copy.compareB = source.compareB; copy.compareOperator = source.compareOperator;
+        copy.type = source.type; copy.text = source.text; copy.connectionInfo = source.connectionInfo; copy.inputValue = source.inputValue; copy.buttonState = source.buttonState; copy.rsState = source.rsState; copy.counterPreset = source.counterPreset; copy.counterValue = source.counterValue; copy.counterLastInput = source.counterLastInput; copy.timerPresetMs = source.timerPresetMs; copy.timerStartedAt = source.timerStartedAt; copy.compareA = source.compareA; copy.compareB = source.compareB; copy.compareOperator = source.compareOperator;
         copy.backgroundColor = source.backgroundColor; copy.textColor = source.textColor; copy.textSizeSp = source.textSizeSp;
         copy.visible = source.visible; copy.showFrame = source.showFrame; copy.autoResizeText = source.autoResizeText;
         try { copy.extraFields = new JSONObject(source.extraFields.toString()); } catch (Exception ignored) { copy.extraFields = new JSONObject(); }
@@ -773,6 +774,17 @@ public class MainActivity extends Activity {
         } else {
             timerPresetField = null;
         }
+        final EditText counterPresetField;
+        if ("FBD CTU".equals(w.type)) {
+            TextView counterLabel = new TextView(this);
+            counterLabel.setText("Уставка счётчика CTU");
+            counterLabel.setPadding(0, dp(10), 0, 0);
+            form.addView(counterLabel);
+            counterPresetField = propertyField(Integer.toString(w.counterPreset), InputType.TYPE_CLASS_NUMBER);
+            form.addView(counterPresetField);
+        } else {
+            counterPresetField = null;
+        }
 
         final EditText compareLeftField;
         final EditText compareOperatorField;
@@ -843,6 +855,9 @@ public class MainActivity extends Activity {
                         int newPreset = readPositiveInt(timerPresetField, w.timerPresetMs, false);
                         w.timerPresetMs = Math.max(1, Math.min(3600000, newPreset));
                         w.timerStartedAt = 0L;
+                    }
+                    if (counterPresetField != null) {
+                        w.counterPreset = Math.max(1, Math.min(1000000, readPositiveInt(counterPresetField, w.counterPreset, false)));
                     }
                     if (compareLeftField != null) {
                         w.compareA = readDouble(compareLeftField, w.compareA);
@@ -1002,7 +1017,7 @@ public class MainActivity extends Activity {
         }
         obj.put("type", w.type); obj.put("text", w.text);
         obj.put("connectionInfo", w.connectionInfo == null ? "" : w.connectionInfo);
-        obj.put("inputValue", w.inputValue); obj.put("buttonState", w.buttonState); obj.put("rsState", w.rsState);
+        obj.put("inputValue", w.inputValue); obj.put("buttonState", w.buttonState); obj.put("rsState", w.rsState); obj.put("counterPreset", w.counterPreset); obj.put("counterValue", w.counterValue); obj.put("counterLastInput", w.counterLastInput);
         obj.put("timerPresetMs", w.timerPresetMs);
         obj.put("compareA", w.compareA); obj.put("compareB", w.compareB); obj.put("compareOperator", w.compareOperator);
         obj.put("backgroundColor", w.backgroundColor); obj.put("textColor", w.textColor); obj.put("textSizeSp", w.textSizeSp);
@@ -1022,7 +1037,7 @@ public class MainActivity extends Activity {
         try { w.extraFields = new JSONObject(obj.toString()); } catch (Exception ignored) { w.extraFields = new JSONObject(); }
         w.type = obj.optString("type", "Текст"); w.text = obj.optString("text", "Надпись");
         w.connectionInfo = obj.optString("connectionInfo", "");
-        w.inputValue = obj.optBoolean("inputValue", false); w.buttonState = obj.optBoolean("buttonState", false); w.rsState = obj.optBoolean("rsState", false);
+        w.inputValue = obj.optBoolean("inputValue", false); w.buttonState = obj.optBoolean("buttonState", false); w.rsState = obj.optBoolean("rsState", false); w.counterPreset = Math.max(1, Math.min(1000000, obj.optInt("counterPreset", 1))); w.counterValue = Math.max(0, Math.min(1000000, obj.optInt("counterValue", 0))); w.counterLastInput = obj.optBoolean("counterLastInput", false);
         w.timerPresetMs = Math.max(1, Math.min(3600000, obj.optInt("timerPresetMs", 1000)));
         w.compareA = obj.optDouble("compareA", 0.0); w.compareB = obj.optDouble("compareB", 0.0);
         w.compareOperator = normalizeComparisonOperator(obj.optString("compareOperator", ">"));
@@ -1176,6 +1191,17 @@ public class MainActivity extends Activity {
             else if (set) widget.rsState = true;
             return widget.rsState;
         }
+        if ("FBD CTU".equals(widget.type)) {
+            boolean countInput = !inputs.isEmpty() && inputs.get(0);
+            boolean resetInput = inputs.size() > 1 && inputs.get(1);
+            if (resetInput) {
+                widget.counterValue = 0;
+            } else if (countInput && !widget.counterLastInput) {
+                widget.counterValue = Math.min(1000000, widget.counterValue + 1);
+            }
+            widget.counterLastInput = countInput;
+            return widget.counterValue >= widget.counterPreset;
+        }
         if ("FBD НЕ".equals(widget.type)) return inputs.isEmpty() || !inputs.get(0);
         if ("FBD Сравнение".equals(widget.type)) {
             switch (normalizeComparisonOperator(widget.compareOperator)) {
@@ -1242,6 +1268,9 @@ public class MainActivity extends Activity {
         boolean inputValue = false;
         boolean buttonState = false;
         boolean rsState = false;
+        int counterPreset = 1;
+        int counterValue = 0;
+        boolean counterLastInput = false;
         int timerPresetMs = 1000;
         long timerStartedAt = 0L;
         double compareA = 0.0, compareB = 0.0;
@@ -1328,7 +1357,8 @@ public class MainActivity extends Activity {
                     paint.setColor(w.textColor);
                     paint.setTextSize(dp(w.textSizeSp));
                     if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(24)) / Math.max(4f, w.text.length() * 0.58f))));
-                    String blockTitle = "FBD Вход".equals(w.type) ? "Вход " + (w.inputValue ? "1" : "0") : w.text;
+                    String blockTitle = "FBD Вход".equals(w.type) ? "Вход " + (w.inputValue ? "1" : "0")
+                            : ("FBD CTU".equals(w.type) ? "CTU " + w.counterValue + "/" + w.counterPreset : w.text);
                     if (liveValues.containsKey(i) && !"FBD Вход".equals(w.type)) blockTitle += " [" + liveValues.get(i) + "]";
                     canvas.drawText(blockTitle, w.x + dp(12), w.y + dp(23), paint);
                     boolean output = evaluateFbd(i, new boolean[widgets.size()]);
