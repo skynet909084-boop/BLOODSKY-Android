@@ -56,7 +56,7 @@ jobs:
       - name: Download JADX
         run: |
           set -euo pipefail
-          URL="$(curl -fsSL https://api.github.com/repos/skylot/jadx/releases/latest | jq -r '[.assets[] | select(.name | test("jadx.*\.zip$"; "i"))][0].browser_download_url // empty')"
+          URL="$(curl -fsSL https://api.github.com/repos/skylot/jadx/releases/latest | jq -r '[.assets[] | select(.name | test("jadx.*[.]zip$"; "i"))][0].browser_download_url // empty')"
           if [ -z "$URL" ]; then echo "::error::Не удалось найти ZIP релиза JADX"; exit 1; fi
           curl -fL "$URL" -o /tmp/jadx.zip
           mkdir -p /tmp/jadx
@@ -67,7 +67,7 @@ jobs:
       - name: Download Apktool
         run: |
           set -euo pipefail
-          URL="$(curl -fsSL https://api.github.com/repos/iBotPeaches/Apktool/releases/latest | jq -r '[.assets[] | select(.name | test("apktool.*\.jar$"; "i"))][0].browser_download_url // empty')"
+          URL="$(curl -fsSL https://api.github.com/repos/iBotPeaches/Apktool/releases/latest | jq -r '[.assets[] | select(.name | test("apktool.*[.]jar$"; "i"))][0].browser_download_url // empty')"
           if [ -z "$URL" ]; then echo "::error::Не удалось найти JAR Apktool"; exit 1; fi
           curl -fL "$URL" -o /tmp/apktool.jar
 
