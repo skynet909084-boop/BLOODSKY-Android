@@ -59,6 +59,7 @@ public class MainActivity extends Activity {
     private final ExecutorService modbusExecutor = Executors.newSingleThreadExecutor();
     private final Map<Integer, String> liveValues = new HashMap<>();
     private boolean modbusPollingActive = false;
+    private volatile boolean modbusPollInFlight = false;
     private final Runnable modbusPollRunnable = new Runnable() {
         @Override public void run() {
             if (!modbusPollingActive || editor == null) return;
@@ -468,34 +469,39 @@ public class MainActivity extends Activity {
             BindingRequest request = parseBinding(i, widget.connectionInfo);
             if (request != null) requests.add(request);
         }
-        if (requests.isEmpty()) return;
+        if (requests.isEmpty() || modbusPollInFlight) return;
+        modbusPollInFlight = true;
         modbusExecutor.execute(() -> {
-            final Map<Integer, String> updates = new HashMap<>();
-            for (BindingRequest request : requests) {
-                try {
-                    String report = readModbusHoldingRegisters(request.host, request.port, request.unit, request.address, 1);
-                    String[] lines = report.split("\\n");
-                    if (lines.length < 2) throw new IOException("Пустой ответ регистра");
-                    String[] columns = lines[1].split("\\|");
-                    if (columns.length < 2) throw new IOException("Не удалось разобрать регистр");
-                    updates.put(request.widgetIndex, columns[1].trim());
-                } catch (Exception e) {
-                    updates.put(request.widgetIndex, "ERR");
-                }
-            }
-            runOnUiThread(() -> {
-                if (editor == null) return;
-                for (Map.Entry<Integer, String> entry : updates.entrySet()) {
-                    int index = entry.getKey();
-                    if (index < 0 || index >= widgets.size() || index >= snapshotWidgets.size()
-                            || widgets.get(index) != snapshotWidgets.get(index)) continue;
-                    liveValues.put(index, entry.getValue());
-                    if ("FBD Вход".equals(widgets.get(index).type)) {
-                        widgets.get(index).inputValue = !"0".equals(entry.getValue()) && !"ERR".equals(entry.getValue());
+            try {
+                final Map<Integer, String> updates = new HashMap<>();
+                for (BindingRequest request : requests) {
+                    try {
+                        String report = readModbusHoldingRegisters(request.host, request.port, request.unit, request.address, 1);
+                        String[] lines = report.split("\\n");
+                        if (lines.length < 2) throw new IOException("Пустой ответ регистра");
+                        String[] columns = lines[1].split("\\|");
+                        if (columns.length < 2) throw new IOException("Не удалось разобрать регистр");
+                        updates.put(request.widgetIndex, columns[1].trim());
+                    } catch (Exception e) {
+                        updates.put(request.widgetIndex, "ERR");
                     }
                 }
-                editor.invalidate();
-            });
+                runOnUiThread(() -> {
+                    if (editor == null) return;
+                    for (Map.Entry<Integer, String> entry : updates.entrySet()) {
+                        int index = entry.getKey();
+                        if (index < 0 || index >= widgets.size() || index >= snapshotWidgets.size()
+                                || widgets.get(index) != snapshotWidgets.get(index)) continue;
+                        liveValues.put(index, entry.getValue());
+                        if ("FBD Вход".equals(widgets.get(index).type)) {
+                            widgets.get(index).inputValue = !"0".equals(entry.getValue()) && !"ERR".equals(entry.getValue());
+                        }
+                    }
+                    editor.invalidate();
+                });
+            } finally {
+                modbusPollInFlight = false;
+            }
         });
     }
 
