@@ -225,6 +225,7 @@ public class MainActivity extends Activity {
         LinearLayout fbdPalette = new LinearLayout(this);
         fbdPalette.setOrientation(LinearLayout.HORIZONTAL);
         fbdPalette.setBackgroundColor(Color.rgb(237, 233, 254));
+        fbdPalette.addView(action("+ Вход", () -> addWidget("FBD Вход", "Вход")), new LinearLayout.LayoutParams(0, dp(44), 1));
         fbdPalette.addView(action("+ И", () -> addWidget("FBD И", "И")), new LinearLayout.LayoutParams(0, dp(44), 1));
         fbdPalette.addView(action("+ ИЛИ", () -> addWidget("FBD ИЛИ", "ИЛИ")), new LinearLayout.LayoutParams(0, dp(44), 1));
         fbdPalette.addView(action("+ НЕ", () -> addWidget("FBD НЕ", "НЕ")), new LinearLayout.LayoutParams(0, dp(44), 1));
@@ -271,7 +272,7 @@ public class MainActivity extends Activity {
 
     private Widget copyWidget(Widget source) {
         Widget copy = new Widget();
-        copy.type = source.type; copy.text = source.text; copy.connectionInfo = source.connectionInfo;
+        copy.type = source.type; copy.text = source.text; copy.connectionInfo = source.connectionInfo; copy.inputValue = source.inputValue;
         copy.x = source.x; copy.y = source.y; copy.w = source.w; copy.h = source.h;
         return copy;
     }
@@ -491,6 +492,7 @@ public class MainActivity extends Activity {
         JSONObject obj = new JSONObject();
         obj.put("type", w.type); obj.put("text", w.text);
         obj.put("connectionInfo", w.connectionInfo == null ? "" : w.connectionInfo);
+        obj.put("inputValue", w.inputValue);
         obj.put("x", w.x); obj.put("y", w.y); obj.put("w", w.w); obj.put("h", w.h);
         return obj;
     }
@@ -505,6 +507,7 @@ public class MainActivity extends Activity {
         Widget w = new Widget();
         w.type = obj.optString("type", "Текст"); w.text = obj.optString("text", "Надпись");
         w.connectionInfo = obj.optString("connectionInfo", "");
+        w.inputValue = obj.optBoolean("inputValue", false);
         w.x = obj.optInt("x", dp(40)); w.y = obj.optInt("y", dp(50));
         w.w = obj.optInt("w", dp(160)); w.h = obj.optInt("h", dp(58));
         return w;
@@ -602,6 +605,33 @@ public class MainActivity extends Activity {
         return widget != null && widget.type != null && widget.type.startsWith("FBD ");
     }
 
+    private boolean evaluateFbd(int index, boolean[] visiting) {
+        if (index < 0 || index >= widgets.size() || visiting[index]) return false;
+        Widget widget = widgets.get(index);
+        if (!isFbd(widget)) return false;
+        if ("FBD Вход".equals(widget.type)) return widget.inputValue;
+        visiting[index] = true;
+        List<Boolean> inputs = new ArrayList<>();
+        if (!screens.isEmpty()) {
+            for (FbdConnection connection : screens.get(currentScreenIndex).connections) {
+                if (connection.target == index) inputs.add(evaluateFbd(connection.source, visiting));
+            }
+        }
+        visiting[index] = false;
+        if ("FBD И".equals(widget.type)) {
+            if (inputs.isEmpty()) return false;
+            for (Boolean value : inputs) if (!value) return false;
+            return true;
+        }
+        if ("FBD ИЛИ".equals(widget.type)) {
+            for (Boolean value : inputs) if (value) return true;
+            return false;
+        }
+        if ("FBD НЕ".equals(widget.type)) return inputs.isEmpty() || !inputs.get(0);
+        if ("FBD Таймер".equals(widget.type)) return !inputs.isEmpty() && inputs.get(0);
+        return false;
+    }
+
     private void connectFbdWidgets(int source, int target) {
         if (source < 0 || target < 0 || source >= widgets.size() || target >= widgets.size() || source == target) {
             Toast.makeText(this, "Выбери два разных FBD-блока", Toast.LENGTH_SHORT).show();
@@ -627,6 +657,7 @@ public class MainActivity extends Activity {
         String type;
         String text;
         String connectionInfo = "";
+        boolean inputValue = false;
         float x, y, w, h;
     }
 
@@ -696,7 +727,13 @@ public class MainActivity extends Activity {
                 if (w.type != null && w.type.startsWith("FBD ")) {
                     paint.setColor(Color.rgb(91, 33, 182));
                     paint.setTextSize(dp(13));
-                    canvas.drawText(w.text, w.x + dp(12), w.y + dp(23), paint);
+                    String blockTitle = "FBD Вход".equals(w.type) ? "Вход " + (w.inputValue ? "1" : "0") : w.text;
+                    canvas.drawText(blockTitle, w.x + dp(12), w.y + dp(23), paint);
+                    boolean output = evaluateFbd(i, new boolean[widgets.size()]);
+                    paint.setTextSize(dp(11));
+                    paint.setColor(output ? Color.rgb(22, 163, 74) : Color.rgb(100, 116, 139));
+                    canvas.drawText("OUT = " + (output ? "1" : "0"), w.x + dp(12), w.y + w.h - dp(8), paint);
+                    paint.setTextSize(dp(13));
                     paint.setColor(Color.rgb(109, 40, 217));
                     canvas.drawLine(w.x, w.y + w.h * 0.38f, w.x + dp(14), w.y + w.h * 0.38f, paint);
                     canvas.drawLine(w.x, w.y + w.h * 0.68f, w.x + dp(14), w.y + w.h * 0.68f, paint);
@@ -783,6 +820,10 @@ public class MainActivity extends Activity {
                     Widget picked = widgets.get(selected);
                     if ("Задатчик".equals(picked.type) && y >= picked.y + dp(29)) {
                         adjustSetpoint(picked, x < picked.x + picked.w / 2 ? -1 : 1);
+                    } else if ("FBD Вход".equals(picked.type)) {
+                        picked.inputValue = !picked.inputValue;
+                        persistProject();
+                        Toast.makeText(MainActivity.this, "Вход FBD = " + (picked.inputValue ? "1" : "0"), Toast.LENGTH_SHORT).show();
                     } else {
                         editSelectedWidget();
                     }
