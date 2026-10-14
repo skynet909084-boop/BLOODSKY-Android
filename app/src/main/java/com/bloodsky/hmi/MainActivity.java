@@ -416,7 +416,7 @@ public class MainActivity extends Activity {
         connectionField.setHint("Например: Modbus TCP, регистр 40001");
         form.addView(connectionField);
 
-        EditText timerPresetField = null;
+        final EditText timerPresetField;
         if ("FBD Таймер".equals(w.type)) {
             TextView timerLabel = new TextView(this);
             timerLabel.setText("Задержка TON (миллисекунды)");
@@ -424,6 +424,8 @@ public class MainActivity extends Activity {
             form.addView(timerLabel);
             timerPresetField = propertyField(Integer.toString(w.timerPresetMs), InputType.TYPE_CLASS_NUMBER);
             form.addView(timerPresetField);
+        } else {
+            timerPresetField = null;
         }
 
         TextView geometryLabel = new TextView(this);
