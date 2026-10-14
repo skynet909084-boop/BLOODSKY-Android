@@ -1,27 +1,23 @@
 # BLOODSKY Android
 
-Private development workspace for the BLOODSKY Android SCADA project.
+BLOODSKY is the Android APK project for a faithful, improved successor to Kaskada Craft 1.0.7. The current goal is an installable Android APK; a Windows EXE is not the target of this project.
 
-## Cloud analysis of Kaskada Craft APK
+## Current implementation stage
 
-The repository contains a GitHub Actions workflow at `.github/workflows/decompile-apk.yml`. It downloads an APK from a **private GitHub Release**, runs JADX and Apktool on a GitHub-hosted runner, then uploads the decoded output as an Actions artifact for 7 days.
+The Android application module and CI build are being established. The initial screen editor currently supports:
+- creating text, button and indicator placeholders;
+- selecting, dragging and deleting components;
+- editing a component's displayed text;
+- saving the active draft locally on the device.
 
-### One-time setup from a phone
+This is a foundation, not yet a complete Kaskada Craft replacement. The original component registry, full properties dialogs, FBD execution, Modbus RTU/TCP, original project import/export, archive handling and full UI parity remain to be implemented and tested.
 
-1. Open **Releases**: https://github.com/skynet909084-boop/BLOODSKY-Android/releases
-2. Choose **Create a new release**.
-3. Use tag `kascada-analysis-1`.
-4. Title: `Kaskada Craft APK analysis input`.
-5. Attach the original `.apk` file under **Attach binaries by dropping them here or selecting them**. Keep the repository private and do not publish the APK in a public repository.
-6. Publish the release.
+## Build
 
-### Run the cloud workflow
+GitHub Actions workflow **BLOODSKY Android APK** builds a debug APK from the Android project and uploads it as a workflow artifact. Debug APKs are for development/testing, not public release. A release build must use a properly managed signing key and pass install/runtime checks.
 
-1. Open **Actions**: https://github.com/skynet909084-boop/BLOODSKY-Android/actions/workflows/decompile-apk.yml
-2. Select **Run workflow**.
-3. Leave the release tag blank to use the latest release, or enter `kascada-analysis-1`.
-4. Start the workflow and wait for it to finish.
-5. Open the completed run and download the artifact named **BLOODSKY-Kaskada-decompiled** from the Artifacts section.
-6. Attach that ZIP to the BLOODSKY chat for source analysis.
+## Reverse-engineering notes
 
-The workflow uses the repository-scoped `GITHUB_TOKEN` to access release assets. It does not commit the APK or decoded output into Git history. Decompilation is approximate and may report errors. Only analyze APKs you are authorized to inspect; keep the repository and artifacts private.
+- `docs/BLOODSKY_IMPLEMENTATION_CONTRACT.md` — persistence and compatibility contract.
+- `docs/BLOODSKY_ANDROID_COMPONENT_INVENTORY.md` — decompiled component and FBD inventory.
+- `tools/project_archive_inspector.py` and its tests — defensive, read-only project archive validation.
