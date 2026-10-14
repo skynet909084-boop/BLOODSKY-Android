@@ -1019,6 +1019,10 @@ public class MainActivity extends Activity {
             JSONArray screenArray = new JSONArray();
             for (Screen screen : screens) {
                 JSONObject screenObj = new JSONObject();
+                if (screen.extraFields != null) {
+                    java.util.Iterator<String> keys = screen.extraFields.keys();
+                    while (keys.hasNext()) { String key = keys.next(); screenObj.put(key, screen.extraFields.get(key)); }
+                }
                 screenObj.put("name", screen.name);
                 screenObj.put("backgroundColor", screen.backgroundColor);
                 screenObj.put("widgets", widgetsToJson(screen.widgets));
@@ -1057,6 +1061,7 @@ public class MainActivity extends Activity {
                         JSONObject screenObj = screenArray.getJSONObject(i);
                         Screen screen = new Screen(screenObj.optString("name", "Экран " + (i + 1)));
                         screen.backgroundColor = screenObj.optInt("backgroundColor", Color.rgb(250, 252, 255));
+                        try { screen.extraFields = new JSONObject(screenObj.toString()); } catch (Exception ignored) { screen.extraFields = new JSONObject(); }
                         JSONArray widgetArray = screenObj.optJSONArray("widgets");
                         if (widgetArray != null) for (int j = 0; j < widgetArray.length(); j++) screen.widgets.add(widgetFromJson(widgetArray.getJSONObject(j)));
                         JSONArray connectionArray = screenObj.optJSONArray("connections");
@@ -1092,6 +1097,7 @@ public class MainActivity extends Activity {
     private static class Screen {
         String name;
         int backgroundColor = Color.rgb(250, 252, 255);
+        JSONObject extraFields = new JSONObject();
         final List<Widget> widgets = new ArrayList<>();
         final List<FbdConnection> connections = new ArrayList<>();
         Screen(String name) { this.name = name; }
