@@ -599,7 +599,7 @@ public class MainActivity extends Activity {
 
     private Widget copyWidget(Widget source) {
         Widget copy = new Widget();
-        copy.type = source.type; copy.text = source.text; copy.connectionInfo = source.connectionInfo; copy.inputValue = source.inputValue; copy.timerPresetMs = source.timerPresetMs; copy.timerStartedAt = source.timerStartedAt; copy.compareA = source.compareA; copy.compareB = source.compareB; copy.compareOperator = source.compareOperator;
+        copy.type = source.type; copy.text = source.text; copy.connectionInfo = source.connectionInfo; copy.inputValue = source.inputValue; copy.buttonState = source.buttonState; copy.timerPresetMs = source.timerPresetMs; copy.timerStartedAt = source.timerStartedAt; copy.compareA = source.compareA; copy.compareB = source.compareB; copy.compareOperator = source.compareOperator;
         copy.backgroundColor = source.backgroundColor; copy.textColor = source.textColor; copy.textSizeSp = source.textSizeSp;
         copy.visible = source.visible; copy.showFrame = source.showFrame; copy.autoResizeText = source.autoResizeText;
         try { copy.extraFields = new JSONObject(source.extraFields.toString()); } catch (Exception ignored) { copy.extraFields = new JSONObject(); }
@@ -959,7 +959,7 @@ public class MainActivity extends Activity {
         }
         obj.put("type", w.type); obj.put("text", w.text);
         obj.put("connectionInfo", w.connectionInfo == null ? "" : w.connectionInfo);
-        obj.put("inputValue", w.inputValue);
+        obj.put("inputValue", w.inputValue); obj.put("buttonState", w.buttonState);
         obj.put("timerPresetMs", w.timerPresetMs);
         obj.put("compareA", w.compareA); obj.put("compareB", w.compareB); obj.put("compareOperator", w.compareOperator);
         obj.put("backgroundColor", w.backgroundColor); obj.put("textColor", w.textColor); obj.put("textSizeSp", w.textSizeSp);
@@ -979,7 +979,7 @@ public class MainActivity extends Activity {
         try { w.extraFields = new JSONObject(obj.toString()); } catch (Exception ignored) { w.extraFields = new JSONObject(); }
         w.type = obj.optString("type", "Текст"); w.text = obj.optString("text", "Надпись");
         w.connectionInfo = obj.optString("connectionInfo", "");
-        w.inputValue = obj.optBoolean("inputValue", false);
+        w.inputValue = obj.optBoolean("inputValue", false); w.buttonState = obj.optBoolean("buttonState", false);
         w.timerPresetMs = Math.max(1, Math.min(3600000, obj.optInt("timerPresetMs", 1000)));
         w.compareA = obj.optDouble("compareA", 0.0); w.compareB = obj.optDouble("compareB", 0.0);
         w.compareOperator = normalizeComparisonOperator(obj.optString("compareOperator", ">"));
@@ -1169,6 +1169,7 @@ public class MainActivity extends Activity {
         String text;
         String connectionInfo = "";
         boolean inputValue = false;
+        boolean buttonState = false;
         int timerPresetMs = 1000;
         long timerStartedAt = 0L;
         double compareA = 0.0, compareB = 0.0;
@@ -1238,6 +1239,8 @@ public class MainActivity extends Activity {
                     paint.setColor(Color.rgb(219, 234, 254));
                 } else if ("Задатчик".equals(w.type)) {
                     paint.setColor(Color.rgb(254, 243, 199));
+                } else if ("Кнопка".equals(w.type) && w.buttonState) {
+                    paint.setColor(Color.rgb(187, 247, 208));
                 } else {
                     paint.setColor(Color.WHITE);
                 }
@@ -1278,6 +1281,11 @@ public class MainActivity extends Activity {
                     String indicatorText = w.text + (liveValues.containsKey(i) ? ": " + liveValues.get(i) : "");
                     if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(36)) / Math.max(4f, indicatorText.length() * 0.58f))));
                     canvas.drawText(indicatorText, w.x + dp(29), w.y + w.h / 2 + dp(5), paint);
+                } else if ("Кнопка".equals(w.type)) {
+                    String buttonText = w.text + (w.buttonState ? "  [ВКЛ]" : "  [ВЫКЛ]");
+                    paint.setColor(w.textColor);
+                    if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(20)) / Math.max(4f, buttonText.length() * 0.58f))));
+                    canvas.drawText(buttonText, w.x + dp(10), w.y + w.h / 2 + dp(5), paint);
                 } else if ("Задатчик".equals(w.type)) {
                     paint.setColor(w.textColor);
                     if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(18)) / Math.max(4f, w.text.length() * 0.58f))));
@@ -1361,6 +1369,10 @@ public class MainActivity extends Activity {
                     Widget picked = widgets.get(selected);
                     if ("Задатчик".equals(picked.type) && y >= picked.y + dp(29)) {
                         adjustSetpoint(picked, x < picked.x + picked.w / 2 ? -1 : 1);
+                    } else if ("Кнопка".equals(picked.type)) {
+                        picked.buttonState = !picked.buttonState;
+                        persistProject();
+                        Toast.makeText(MainActivity.this, picked.text + (picked.buttonState ? ": ВКЛ" : ": ВЫКЛ"), Toast.LENGTH_SHORT).show();
                     } else if ("FBD Вход".equals(picked.type)) {
                         picked.inputValue = !picked.inputValue;
                         persistProject();
