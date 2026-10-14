@@ -2,6 +2,8 @@ package com.bloodsky.hmi;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -19,12 +21,18 @@ import android.widget.TextView;
 import android.widget.Toast;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity extends Activity {
     private static final String PREFS = "bloodsky_projects";
     private static final String ACTIVE_PROJECT = "active_project";
+    private static final int REQUEST_EXPORT_PROJECT = 7101;
+    private static final int REQUEST_IMPORT_PROJECT = 7102;
     private String projectName = "Мой проект";
     private LinearLayout root;
     private EditorCanvas editor;
@@ -82,6 +90,10 @@ public class MainActivity extends Activity {
 
         root.addView(action("Имя проекта", () -> editProjectName()),
                 new LinearLayout.LayoutParams(-1, dp(54)));
+        root.addView(action("Экспорт проекта (JSON)", this::exportProject),
+                new LinearLayout.LayoutParams(-1, dp(54)));
+        root.addView(action("Импорт проекта (JSON)", this::importProject),
+                new LinearLayout.LayoutParams(-1, dp(54)));
 
         TextView status = new TextView(this);
         status.setText("\nТекущий этап: базовый Android-каркас и редактор экранов.\nFBD, Modbus RTU/TCP и полный перенос оригинальных компонентов будут добавляться отдельными проверяемыми этапами.");
@@ -90,6 +102,66 @@ public class MainActivity extends Activity {
         status.setPadding(dp(20), dp(12), dp(20), dp(20));
         root.addView(status);
         setContentView(root);
+    }
+
+    private void exportProject() {
+        persistProject();
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("application/json");
+        intent.putExtra(Intent.EXTRA_TITLE, projectName.replaceAll("[^A-Za-zА-Яа-я0-9._-]", "_") + ".bloodsky.json");
+        try {
+            startActivityForResult(intent, REQUEST_EXPORT_PROJECT);
+        } catch (Exception e) {
+            Toast.makeText(this, "Не удалось открыть выбор файла", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void importProject() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        try {
+            startActivityForResult(intent, REQUEST_IMPORT_PROJECT);
+        } catch (Exception e) {
+            Toast.makeText(this, "Не удалось открыть выбор файла", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
+        Uri uri = data.getData();
+        if (requestCode == REQUEST_EXPORT_PROJECT) {
+            try (OutputStream out = getContentResolver().openOutputStream(uri)) {
+                if (out == null) throw new IllegalStateException("Output stream unavailable");
+                String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
+                out.write(json.getBytes(StandardCharsets.UTF_8));
+                Toast.makeText(this, "JSON проекта экспортирован", Toast.LENGTH_LONG).show();
+            } catch (Exception e) {
+                Toast.makeText(this, "Ошибка экспорта проекта", Toast.LENGTH_LONG).show();
+            }
+        } else if (requestCode == REQUEST_IMPORT_PROJECT) {
+            try (InputStream in = getContentResolver().openInputStream(uri);
+                 ByteArrayOutputStream buffer = new ByteArrayOutputStream()) {
+                if (in == null) throw new IllegalStateException("Input stream unavailable");
+                byte[] chunk = new byte[8192];
+                int count;
+                while ((count = in.read(chunk)) != -1) {
+                    if (buffer.size() + count > 8 * 1024 * 1024) throw new IllegalArgumentException("Project file too large");
+                    buffer.write(chunk, 0, count);
+                }
+                String json = new String(buffer.toByteArray(), StandardCharsets.UTF_8);
+                Object parsed = new org.json.JSONTokener(json).nextValue();
+                if (!(parsed instanceof JSONObject) && !(parsed instanceof JSONArray)) throw new IllegalArgumentException("Invalid project JSON");
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(ACTIVE_PROJECT, json).apply();
+                loadProject();
+                showEditor();
+                Toast.makeText(this, "Проект JSON импортирован", Toast.LENGTH_LONG).show();
+            } catch (Exception e) {
+                Toast.makeText(this, "Импорт не выполнен: файл не является допустимым JSON-проектом", Toast.LENGTH_LONG).show();
+            }
+        }
     }
 
     private void editProjectName() {
