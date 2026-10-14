@@ -5,6 +5,7 @@ import android.app.AlertDialog;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -321,7 +322,7 @@ public class MainActivity extends Activity {
 
     private Widget copyWidget(Widget source) {
         Widget copy = new Widget();
-        copy.type = source.type; copy.text = source.text; copy.connectionInfo = source.connectionInfo; copy.inputValue = source.inputValue;
+        copy.type = source.type; copy.text = source.text; copy.connectionInfo = source.connectionInfo; copy.inputValue = source.inputValue; copy.timerPresetMs = source.timerPresetMs; copy.timerStartedAt = source.timerStartedAt;
         copy.x = source.x; copy.y = source.y; copy.w = source.w; copy.h = source.h;
         return copy;
     }
@@ -415,6 +416,16 @@ public class MainActivity extends Activity {
         connectionField.setHint("Например: Modbus TCP, регистр 40001");
         form.addView(connectionField);
 
+        EditText timerPresetField = null;
+        if ("FBD Таймер".equals(w.type)) {
+            TextView timerLabel = new TextView(this);
+            timerLabel.setText("Задержка TON (миллисекунды)");
+            timerLabel.setPadding(0, dp(10), 0, 0);
+            form.addView(timerLabel);
+            timerPresetField = propertyField(Integer.toString(w.timerPresetMs), InputType.TYPE_CLASS_NUMBER);
+            form.addView(timerPresetField);
+        }
+
         TextView geometryLabel = new TextView(this);
         geometryLabel.setText("Положение и размер (пиксели)");
         geometryLabel.setPadding(0, dp(10), 0, 0);
@@ -440,6 +451,11 @@ public class MainActivity extends Activity {
                 .setPositiveButton("Применить", (dialog, which) -> {
                     w.text = textField.getText().toString();
                     w.connectionInfo = connectionField.getText().toString().trim();
+                    if (timerPresetField != null) {
+                        int newPreset = readPositiveInt(timerPresetField, w.timerPresetMs, false);
+                        w.timerPresetMs = Math.max(1, Math.min(3600000, newPreset));
+                        w.timerStartedAt = 0L;
+                    }
                     w.x = Math.max(0, readPositiveInt(xField, Math.round(w.x), true));
                     w.y = Math.max(0, readPositiveInt(yField, Math.round(w.y), true));
                     w.w = Math.max(dp(32), readPositiveInt(widthField, Math.round(w.w), false));
@@ -468,6 +484,8 @@ public class MainActivity extends Activity {
         clipboardWidget.type = source.type;
         clipboardWidget.text = source.text;
         clipboardWidget.connectionInfo = source.connectionInfo;
+        clipboardWidget.inputValue = source.inputValue;
+        clipboardWidget.timerPresetMs = source.timerPresetMs;
         clipboardWidget.x = source.x;
         clipboardWidget.y = source.y;
         clipboardWidget.w = source.w;
@@ -484,6 +502,8 @@ public class MainActivity extends Activity {
         copy.type = clipboardWidget.type;
         copy.text = clipboardWidget.text;
         copy.connectionInfo = clipboardWidget.connectionInfo;
+        copy.inputValue = clipboardWidget.inputValue;
+        copy.timerPresetMs = clipboardWidget.timerPresetMs;
         copy.x = Math.min(Math.max(0, editor == null ? clipboardWidget.x + dp(24) : editor.getWidth() - clipboardWidget.w),
                 clipboardWidget.x + dp(24));
         copy.y = clipboardWidget.y + dp(24);
@@ -542,6 +562,7 @@ public class MainActivity extends Activity {
         obj.put("type", w.type); obj.put("text", w.text);
         obj.put("connectionInfo", w.connectionInfo == null ? "" : w.connectionInfo);
         obj.put("inputValue", w.inputValue);
+        obj.put("timerPresetMs", w.timerPresetMs);
         obj.put("x", w.x); obj.put("y", w.y); obj.put("w", w.w); obj.put("h", w.h);
         return obj;
     }
@@ -557,6 +578,7 @@ public class MainActivity extends Activity {
         w.type = obj.optString("type", "Текст"); w.text = obj.optString("text", "Надпись");
         w.connectionInfo = obj.optString("connectionInfo", "");
         w.inputValue = obj.optBoolean("inputValue", false);
+        w.timerPresetMs = Math.max(1, Math.min(3600000, obj.optInt("timerPresetMs", 1000)));
         w.x = obj.optInt("x", dp(40)); w.y = obj.optInt("y", dp(50));
         w.w = obj.optInt("w", dp(160)); w.h = obj.optInt("h", dp(58));
         return w;
@@ -677,7 +699,16 @@ public class MainActivity extends Activity {
             return false;
         }
         if ("FBD НЕ".equals(widget.type)) return inputs.isEmpty() || !inputs.get(0);
-        if ("FBD Таймер".equals(widget.type)) return !inputs.isEmpty() && inputs.get(0);
+        if ("FBD Таймер".equals(widget.type)) {
+            boolean input = !inputs.isEmpty() && inputs.get(0);
+            if (!input) {
+                widget.timerStartedAt = 0L;
+                return false;
+            }
+            long now = SystemClock.elapsedRealtime();
+            if (widget.timerStartedAt == 0L) widget.timerStartedAt = now;
+            return now - widget.timerStartedAt >= widget.timerPresetMs;
+        }
         return false;
     }
 
@@ -721,6 +752,8 @@ public class MainActivity extends Activity {
         String text;
         String connectionInfo = "";
         boolean inputValue = false;
+        int timerPresetMs = 1000;
+        long timerStartedAt = 0L;
         float x, y, w, h;
     }
 
@@ -825,6 +858,13 @@ public class MainActivity extends Activity {
                     float tx = w.x + dp(10);
                     float ty = w.y + w.h / 2 + dp(5);
                     canvas.drawText(w.text, tx, ty, paint);
+                }
+            }
+            for (Widget widget : widgets) {
+                if ("FBD Таймер".equals(widget.type) && widget.timerStartedAt > 0L
+                        && SystemClock.elapsedRealtime() - widget.timerStartedAt < widget.timerPresetMs) {
+                    postInvalidateDelayed(100L);
+                    break;
                 }
             }
             if (fbdWireMode) {
