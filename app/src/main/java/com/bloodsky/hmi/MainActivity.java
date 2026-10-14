@@ -40,6 +40,8 @@ public class MainActivity extends Activity {
     private final List<Screen> screens = new ArrayList<>();
     private int currentScreenIndex = 0;
     private Widget clipboardWidget;
+    private boolean fbdWireMode = false;
+    private int wireSource = -1;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -229,6 +231,12 @@ public class MainActivity extends Activity {
         fbdPalette.addView(action("+ Таймер", () -> addWidget("FBD Таймер", "TON")), new LinearLayout.LayoutParams(0, dp(44), 1));
         fbdPalette.addView(action("+ Сравнение", () -> addWidget("FBD Сравнение", "A > B")), new LinearLayout.LayoutParams(0, dp(44), 1));
         root.addView(fbdPalette);
+        root.addView(action("Связать FBD", () -> {
+            fbdWireMode = !fbdWireMode;
+            wireSource = -1;
+            Toast.makeText(this, fbdWireMode ? "Режим связи: выбери исходный FBD-блок, затем целевой" : "Режим связи выключен", Toast.LENGTH_LONG).show();
+            if (editor != null) editor.invalidate();
+        }), new LinearLayout.LayoutParams(-1, dp(42)));
 
         editor = new EditorCanvas();
         root.addView(editor, new LinearLayout.LayoutParams(-1, 0, 1));
@@ -460,7 +468,20 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "Сначала выбери элемент на экране", Toast.LENGTH_SHORT).show();
             return;
         }
-        widgets.remove(editor.selected);
+        int removed = editor.selected;
+        widgets.remove(removed);
+        if (!screens.isEmpty()) {
+            Screen screen = screens.get(currentScreenIndex);
+            List<FbdConnection> kept = new ArrayList<>();
+            for (FbdConnection connection : screen.connections) {
+                if (connection.source == removed || connection.target == removed) continue;
+                if (connection.source > removed) connection.source--;
+                if (connection.target > removed) connection.target--;
+                kept.add(connection);
+            }
+            screen.connections.clear();
+            screen.connections.addAll(kept);
+        }
         editor.selected = -1;
         persistProject();
         editor.invalidate();
@@ -498,6 +519,14 @@ public class MainActivity extends Activity {
                 JSONObject screenObj = new JSONObject();
                 screenObj.put("name", screen.name);
                 screenObj.put("widgets", widgetsToJson(screen.widgets));
+                JSONArray connectionArray = new JSONArray();
+                for (FbdConnection connection : screen.connections) {
+                    JSONObject connectionObj = new JSONObject();
+                    connectionObj.put("source", connection.source);
+                    connectionObj.put("target", connection.target);
+                    connectionArray.put(connectionObj);
+                }
+                screenObj.put("connections", connectionArray);
                 screenArray.put(screenObj);
             }
             project.put("screens", screenArray);
@@ -526,6 +555,17 @@ public class MainActivity extends Activity {
                         Screen screen = new Screen(screenObj.optString("name", "Экран " + (i + 1)));
                         JSONArray widgetArray = screenObj.optJSONArray("widgets");
                         if (widgetArray != null) for (int j = 0; j < widgetArray.length(); j++) screen.widgets.add(widgetFromJson(widgetArray.getJSONObject(j)));
+                        JSONArray connectionArray = screenObj.optJSONArray("connections");
+                        if (connectionArray != null) for (int j = 0; j < connectionArray.length(); j++) {
+                            JSONObject connectionObj = connectionArray.optJSONObject(j);
+                            if (connectionObj == null) continue;
+                            int source = connectionObj.optInt("source", -1);
+                            int target = connectionObj.optInt("target", -1);
+                            if (source >= 0 && target >= 0 && source < screen.widgets.size() && target < screen.widgets.size()
+                                    && source != target && isFbd(screen.widgets.get(source)) && isFbd(screen.widgets.get(target))) {
+                                screen.connections.add(new FbdConnection(source, target));
+                            }
+                        }
                         screens.add(screen);
                     }
                     currentScreenIndex = Math.max(0, Math.min(project.optInt("currentScreen", 0), Math.max(0, screens.size() - 1)));
@@ -548,7 +588,39 @@ public class MainActivity extends Activity {
     private static class Screen {
         String name;
         final List<Widget> widgets = new ArrayList<>();
+        final List<FbdConnection> connections = new ArrayList<>();
         Screen(String name) { this.name = name; }
+    }
+
+    private static class FbdConnection {
+        int source;
+        int target;
+        FbdConnection(int source, int target) { this.source = source; this.target = target; }
+    }
+
+    private boolean isFbd(Widget widget) {
+        return widget != null && widget.type != null && widget.type.startsWith("FBD ");
+    }
+
+    private void connectFbdWidgets(int source, int target) {
+        if (source < 0 || target < 0 || source >= widgets.size() || target >= widgets.size() || source == target) {
+            Toast.makeText(this, "Выбери два разных FBD-блока", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (!isFbd(widgets.get(source)) || !isFbd(widgets.get(target))) {
+            Toast.makeText(this, "Связи можно создавать только между FBD-блоками", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Screen screen = screens.get(currentScreenIndex);
+        for (FbdConnection connection : screen.connections) {
+            if (connection.source == source && connection.target == target) {
+                Toast.makeText(this, "Такая связь уже существует", Toast.LENGTH_SHORT).show();
+                return;
+            }
+        }
+        screen.connections.add(new FbdConnection(source, target));
+        persistProject();
+        Toast.makeText(this, "Связь FBD добавлена", Toast.LENGTH_SHORT).show();
     }
 
     private static class Widget {
@@ -579,6 +651,25 @@ public class MainActivity extends Activity {
             for (int x = 0; x < getWidth(); x += grid) canvas.drawLine(x, 0, x, getHeight(), paint);
             for (int y = 0; y < getHeight(); y += grid) canvas.drawLine(0, y, getWidth(), y, paint);
 
+            if (!screens.isEmpty()) {
+                Screen screen = screens.get(currentScreenIndex);
+                paint.setColor(Color.rgb(124, 58, 237));
+                paint.setStrokeWidth(dp(2));
+                paint.setStyle(Paint.Style.STROKE);
+                for (FbdConnection connection : screen.connections) {
+                    if (connection.source < 0 || connection.target < 0 || connection.source >= widgets.size() || connection.target >= widgets.size()) continue;
+                    Widget from = widgets.get(connection.source);
+                    Widget to = widgets.get(connection.target);
+                    if (!isFbd(from) || !isFbd(to)) continue;
+                    float x1 = from.x + from.w, y1 = from.y + from.h / 2;
+                    float x2 = to.x, y2 = to.y + to.h / 2;
+                    float mid = (x1 + x2) / 2f;
+                    canvas.drawLine(x1, y1, mid, y1, paint);
+                    canvas.drawLine(mid, y1, mid, y2, paint);
+                    canvas.drawLine(mid, y2, x2, y2, paint);
+                }
+                paint.setStyle(Paint.Style.FILL);
+            }
             for (int i = 0; i < widgets.size(); i++) {
                 Widget w = widgets.get(i);
                 RectF rect = new RectF(w.x, w.y, w.x + w.w, w.y + w.h);
@@ -636,6 +727,12 @@ public class MainActivity extends Activity {
                     canvas.drawText(w.text, tx, ty, paint);
                 }
             }
+            if (fbdWireMode) {
+                paint.setStyle(Paint.Style.FILL);
+                paint.setColor(Color.rgb(109, 40, 217));
+                paint.setTextSize(dp(12));
+                canvas.drawText(wireSource < 0 ? "РЕЖИМ СВЯЗИ: выбери источник" : "РЕЖИМ СВЯЗИ: выбери цель", dp(10), dp(18), paint);
+            }
             paint.setStyle(Paint.Style.FILL);
             paint.setTextSize(dp(11));
             paint.setColor(Color.rgb(100, 116, 139));
@@ -669,6 +766,19 @@ public class MainActivity extends Activity {
             if (event.getAction() == MotionEvent.ACTION_UP) {
                 if (dragging) {
                     persistProject();
+                } else if (selected >= 0 && fbdWireMode) {
+                    Widget picked = widgets.get(selected);
+                    if (!isFbd(picked)) {
+                        Toast.makeText(MainActivity.this, "В режиме связи выбери FBD-блок", Toast.LENGTH_SHORT).show();
+                    } else if (wireSource < 0) {
+                        wireSource = selected;
+                        Toast.makeText(MainActivity.this, "Источник выбран: " + picked.text + ". Теперь выбери целевой блок", Toast.LENGTH_LONG).show();
+                    } else {
+                        int source = wireSource;
+                        wireSource = -1;
+                        connectFbdWidgets(source, selected);
+                        fbdWireMode = false;
+                    }
                 } else if (selected >= 0) {
                     Widget picked = widgets.get(selected);
                     if ("Задатчик".equals(picked.type) && y >= picked.y + dp(29)) {
