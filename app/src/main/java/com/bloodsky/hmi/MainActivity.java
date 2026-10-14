@@ -29,6 +29,7 @@ public class MainActivity extends Activity {
     private LinearLayout root;
     private EditorCanvas editor;
     private final List<Widget> widgets = new ArrayList<>();
+    private Widget clipboardWidget;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -139,7 +140,11 @@ public class MainActivity extends Activity {
 
         LinearLayout bottom = new LinearLayout(this);
         bottom.setBackgroundColor(Color.rgb(241, 245, 249));
-        bottom.addView(action("Свойства выбранного", this::editSelectedWidget),
+        bottom.addView(action("Свойства", this::editSelectedWidget),
+                new LinearLayout.LayoutParams(0, dp(50), 1));
+        bottom.addView(action("Копировать", this::copySelectedWidget),
+                new LinearLayout.LayoutParams(0, dp(50), 1));
+        bottom.addView(action("Вставить", this::pasteWidget),
                 new LinearLayout.LayoutParams(0, dp(50), 1));
         bottom.addView(action("Удалить", this::deleteSelectedWidget),
                 new LinearLayout.LayoutParams(0, dp(50), 1));
@@ -227,6 +232,44 @@ public class MainActivity extends Activity {
         } catch (NumberFormatException ignored) {
             return fallback;
         }
+    }
+
+    private void copySelectedWidget() {
+        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
+            Toast.makeText(this, "Сначала выбери элемент на экране", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Widget source = widgets.get(editor.selected);
+        clipboardWidget = new Widget();
+        clipboardWidget.type = source.type;
+        clipboardWidget.text = source.text;
+        clipboardWidget.x = source.x;
+        clipboardWidget.y = source.y;
+        clipboardWidget.w = source.w;
+        clipboardWidget.h = source.h;
+        Toast.makeText(this, "Элемент скопирован", Toast.LENGTH_SHORT).show();
+    }
+
+    private void pasteWidget() {
+        if (clipboardWidget == null) {
+            Toast.makeText(this, "Сначала скопируй элемент", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Widget copy = new Widget();
+        copy.type = clipboardWidget.type;
+        copy.text = clipboardWidget.text;
+        copy.x = Math.min(Math.max(0, editor == null ? clipboardWidget.x + dp(24) : editor.getWidth() - clipboardWidget.w),
+                clipboardWidget.x + dp(24));
+        copy.y = clipboardWidget.y + dp(24);
+        copy.w = clipboardWidget.w;
+        copy.h = clipboardWidget.h;
+        widgets.add(copy);
+        if (editor != null) {
+            editor.selected = widgets.size() - 1;
+            editor.invalidate();
+        }
+        persistProject();
+        Toast.makeText(this, "Копия добавлена на экран", Toast.LENGTH_SHORT).show();
     }
 
     private void deleteSelectedWidget() {
