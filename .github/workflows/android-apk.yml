@@ -95,13 +95,17 @@ jobs:
               for p in sorted(target.glob("kc_*.png"))
           ), encoding="utf-8")
           PY
+          # Preserve ALL decoded resource directories and original app assets
+          # as addressable runtime APK assets, including XML, fonts and audio.
+          python3 tools/bundle_craft_resources.py /tmp/kascada-decompiled app
       - name: Upload original image resource bundle
         uses: actions/upload-artifact@v4
         with:
-          name: BLOODSKY-KaScada-original-drawables
+          name: BLOODSKY-KaScada-original-resource-library
           path: |
             app/src/main/res/drawable-nodpi/kc_*.png
             app/src/main/res/original-kascada-assets.sha256
+            app/src/main/assets/kascada_original/**
           if-no-files-found: error
           retention-days: 30
       - name: Run Android unit tests
