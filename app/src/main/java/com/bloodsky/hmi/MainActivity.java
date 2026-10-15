@@ -524,12 +524,12 @@ public class MainActivity extends Activity {
         top.setBackgroundColor(Color.rgb(35, 35, 35));
         top.addView(legacyIconButton(R.drawable.bloodsky_icon_menu, "Меню редактора", this::showEditorOptionsMenu),
                 new LinearLayout.LayoutParams(dp(40), dp(48)));
-        top.addView(legacyIconButton(R.drawable.bloodsky_icon_save, "Сохранить проект", () -> {
-            persistProject();
-            Toast.makeText(this, "Проект сохранён на устройстве", Toast.LENGTH_SHORT).show();
-        }), new LinearLayout.LayoutParams(dp(40), dp(48)));
+        top.addView(legacyIconButton(R.drawable.bloodsky_icon_calculator, "Калькулятор", this::showCalculatorDialog),
+                new LinearLayout.LayoutParams(dp(40), dp(48)));
+        top.addView(legacyIconButton(R.drawable.bloodsky_icon_info, "Справка", this::showEditorHelpDialog),
+                new LinearLayout.LayoutParams(dp(40), dp(48)));
         top.addView(legacyIconButton(R.drawable.bloodsky_icon_arrow_left, "Предыдущий экран", this::previousScreen),
-                new LinearLayout.LayoutParams(dp(36), dp(48)));
+                new LinearLayout.LayoutParams(dp(40), dp(48)));
 
         TextView screenName = new TextView(this);
         screenName.setText(currentScreenName());
@@ -546,7 +546,7 @@ public class MainActivity extends Activity {
         top.addView(screenName, new LinearLayout.LayoutParams(0, dp(48), 1));
 
         top.addView(legacyIconButton(R.drawable.bloodsky_icon_arrow_right, "Следующий экран", this::nextScreen),
-                new LinearLayout.LayoutParams(dp(36), dp(48)));
+                new LinearLayout.LayoutParams(dp(40), dp(48)));
         top.addView(legacyIconButton(R.drawable.bloodsky_icon_overflow, "Дополнительные действия", this::showEditorOptionsMenu),
                 new LinearLayout.LayoutParams(dp(40), dp(48)));
         root.addView(top, new LinearLayout.LayoutParams(-1, dp(56)));
@@ -600,6 +600,61 @@ public class MainActivity extends Activity {
         icon.setFocusable(true);
         icon.setOnClickListener(v -> task.run());
         return icon;
+    }
+
+    private void showCalculatorDialog() {
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(dp(20), dp(8), dp(20), dp(4));
+
+        EditText first = new EditText(this);
+        first.setSingleLine(true);
+        first.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
+        first.setHint("Первое число");
+        form.addView(first, new LinearLayout.LayoutParams(-1, dp(48)));
+
+        Spinner operation = new Spinner(this);
+        String[] operators = {"+", "−", "×", "÷"};
+        operation.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, operators));
+        form.addView(operation, new LinearLayout.LayoutParams(-1, dp(48)));
+
+        EditText second = new EditText(this);
+        second.setSingleLine(true);
+        second.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
+        second.setHint("Второе число");
+        form.addView(second, new LinearLayout.LayoutParams(-1, dp(48)));
+
+        new AlertDialog.Builder(this)
+                .setTitle("Калькулятор")
+                .setView(form)
+                .setNegativeButton("Закрыть", null)
+                .setPositiveButton("Вычислить", (dialog, which) -> {
+                    try {
+                        double a = Double.parseDouble(first.getText().toString().trim().replace(',', '.'));
+                        double b = Double.parseDouble(second.getText().toString().trim().replace(',', '.'));
+                        double result;
+                        switch (operation.getSelectedItemPosition()) {
+                            case 0: result = a + b; break;
+                            case 1: result = a - b; break;
+                            case 2: result = a * b; break;
+                            default:
+                                if (b == 0.0) throw new ArithmeticException("division by zero");
+                                result = a / b;
+                                break;
+                        }
+                        Toast.makeText(this, "Результат: " + result, Toast.LENGTH_LONG).show();
+                    } catch (Exception error) {
+                        Toast.makeText(this, "Проверь числа и операцию", Toast.LENGTH_SHORT).show();
+                    }
+                }).show();
+    }
+
+    private void showEditorHelpDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle("Справка BLOODSKY")
+                .setMessage("Нажми «+» внизу слева, чтобы добавить элемент. Долгое нажатие на элемент открывает его свойства и действия. Стрелки переключают экраны. В меню доступны сохранение проекта, фон экрана, управление экранами, FBD-связи и диагностика Modbus.")
+                .setPositiveButton("Понятно", null)
+                .show();
     }
 
     private void showEditorOptionsMenu() {
