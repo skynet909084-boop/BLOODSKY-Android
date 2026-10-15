@@ -1070,13 +1070,52 @@ public class MainActivity extends Activity {
                     : "Кнопка".equals(type) ? "button"
                     : "Задатчик".equals(type) ? "tab_digital_setters"
                     : "Текст".equals(type) ? "tab_text"
-                    : type.startsWith("FBD ") ? "logic_ico" : "no_picture");
+                    : "no_picture");
             int originalId = getResources().getIdentifier(resourceName, "drawable", getPackageName());
             if (originalId != 0) {
                 Drawable original = getResources().getDrawable(originalId);
                 int inset = dp(3);
                 original.setBounds(inset, inset, getWidth() - inset, getHeight() - inset);
                 original.draw(canvas);
+                return;
+            }
+            // The original FBD blocks are Canvas-drawn, not a logic_ico bitmap.
+            // Render a miniature schematic in the picker and properties dialog.
+            if (type.startsWith("FBD ")) {
+                float width = getWidth(), height = getHeight();
+                float inset = Math.min(dp(7), width / 7f);
+                float left = inset, right = width - inset;
+                float top = dp(2), bottom = height - dp(2);
+                boolean split = "FBD XOR".equals(type) || "FBD RS".equals(type)
+                        || "FBD SR".equals(type) || "FBD Таймер".equals(type)
+                        || "FBD TP".equals(type) || "FBD TOF".equals(type);
+                previewPaint.setStyle(Paint.Style.FILL);
+                previewPaint.setColor(Color.rgb(136, 136, 136));
+                canvas.drawRect(left, top, right, bottom, previewPaint);
+                previewPaint.setStyle(Paint.Style.STROKE);
+                previewPaint.setStrokeWidth(dp(1));
+                previewPaint.setColor(Color.BLACK);
+                canvas.drawRect(left, top, right, bottom, previewPaint);
+                float port1 = split ? height / 2f : height / 4f;
+                float port2 = split ? height * 5f / 6f : height * 3f / 4f;
+                canvas.drawLine(0, port1, left, port1, previewPaint);
+                canvas.drawLine(0, port2, left, port2, previewPaint);
+                canvas.drawLine(right, height / 2f, width, height / 2f, previewPaint);
+                if (split) {
+                    canvas.drawLine(left, height / 3f, right, height / 3f, previewPaint);
+                    canvas.drawLine(width / 2f, height / 3f,
+                            width / 2f, bottom, previewPaint);
+                }
+                previewPaint.setStyle(Paint.Style.FILL);
+                previewPaint.setTextAlign(Paint.Align.CENTER);
+                previewPaint.setTextSize(dp(10));
+                String title = "FBD И".equals(type) ? "AND"
+                        : "FBD ИЛИ".equals(type) ? "OR"
+                        : "FBD Таймер".equals(type) ? "TON" : label;
+                float baseline = split ? height / 6f : height / 2f;
+                canvas.drawText(title, width / 2f,
+                        baseline - (previewPaint.ascent() + previewPaint.descent()) / 2f,
+                        previewPaint);
                 return;
             }
             float width = getWidth(), height = getHeight();
