@@ -63,6 +63,18 @@ public class ProjectJsonCodecTest {
     }
 
     @Test
+    public void mergedCurrentNestedValuesAreDetachedFromTheCaller() throws Exception {
+        JSONObject currentNested = new JSONObject()
+                .put("limits", new JSONArray().put(10).put(20));
+        JSONObject current = new JSONObject().put("newVendorField", currentNested);
+
+        JSONObject merged = ProjectJsonCodec.mergePreservedFields(new JSONObject(), current);
+        merged.getJSONObject("newVendorField").getJSONArray("limits").put(0, 999);
+
+        assertEquals(10, currentNested.getJSONArray("limits").getInt(0));
+    }
+
+    @Test
     public void acceptsLegacySingleScreenWidgetArrayWithoutChangingItsShape() throws Exception {
         JSONArray legacy = new JSONArray()
                 .put(new JSONObject().put("type", "Текст").put("text", "Старый проект").put("legacyFlag", true));
