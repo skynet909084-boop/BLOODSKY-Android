@@ -490,65 +490,96 @@ public class MainActivity extends Activity {
                 }).show();
     }
 
+    private Button legacyToolbarButton(String text, Runnable task) {
+        Button button = new Button(this);
+        button.setText(text);
+        button.setTextSize(12);
+        button.setTextColor(Color.rgb(20, 20, 20));
+        button.setAllCaps(false);
+        button.setMinHeight(0);
+        button.setMinimumHeight(0);
+        button.setPadding(dp(5), 0, dp(5), 0);
+        button.setGravity(Gravity.CENTER);
+        GradientDrawable face = new GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[] { Color.rgb(190, 190, 190), Color.rgb(145, 145, 145), Color.rgb(190, 190, 190) });
+        face.setCornerRadius(dp(2));
+        face.setStroke(dp(1), Color.rgb(70, 70, 70));
+        button.setBackground(face);
+        button.setOnClickListener(v -> task.run());
+        return button;
+    }
+
     private void showEditor() {
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.WHITE);
+        root.setBackgroundColor(Color.rgb(35, 35, 35));
 
+        // Compact charcoal toolbar inspired by Kaskada Craft's icon strip.
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
-        top.setBackgroundColor(Color.rgb(16, 36, 58));
-        Button back = action("‹ Проекты", this::showHome);
-        Button rename = action(projectName, this::editProjectName);
-        Button save = action("Сохранить", () -> {
+        top.setPadding(dp(3), dp(2), dp(3), dp(2));
+        top.setBackgroundColor(Color.rgb(35, 35, 35));
+        top.addView(legacyToolbarButton("☰", this::showHome),
+                new LinearLayout.LayoutParams(dp(42), dp(38)));
+        Button rename = legacyToolbarButton(projectName, this::editProjectName);
+        top.addView(rename, new LinearLayout.LayoutParams(0, dp(38), 1));
+        top.addView(legacyToolbarButton("💾", () -> {
             persistProject();
             Toast.makeText(this, "Проект сохранён на устройстве", Toast.LENGTH_SHORT).show();
-        });
-        top.addView(back);
-        top.addView(rename, new LinearLayout.LayoutParams(0, dp(48), 1));
-        top.addView(save);
-        root.addView(top, new LinearLayout.LayoutParams(-1, dp(52)));
+        }), new LinearLayout.LayoutParams(dp(48), dp(38)));
+        root.addView(top, new LinearLayout.LayoutParams(-1, dp(42)));
 
         LinearLayout screenBar = new LinearLayout(this);
         screenBar.setGravity(Gravity.CENTER_VERTICAL);
-        screenBar.setBackgroundColor(Color.rgb(235, 241, 247));
-        screenBar.addView(action("‹", this::previousScreen), new LinearLayout.LayoutParams(dp(48), dp(42)));
-        screenBar.addView(action(currentScreenName(), this::renameCurrentScreen), new LinearLayout.LayoutParams(0, dp(42), 1));
-        screenBar.addView(action("Фон", this::editScreenBackground), new LinearLayout.LayoutParams(-2, dp(42)));
-        screenBar.addView(action("›", this::nextScreen), new LinearLayout.LayoutParams(dp(48), dp(42)));
-        screenBar.addView(action("+ Экран", this::addScreen), new LinearLayout.LayoutParams(-2, dp(42)));
-        screenBar.addView(action("−", this::removeCurrentScreen), new LinearLayout.LayoutParams(dp(48), dp(42)));
-        root.addView(screenBar);
+        screenBar.setPadding(dp(3), dp(1), dp(3), dp(1));
+        screenBar.setBackgroundColor(Color.rgb(48, 48, 48));
+        screenBar.addView(legacyToolbarButton("◀", this::previousScreen),
+                new LinearLayout.LayoutParams(dp(38), dp(34)));
+        screenBar.addView(legacyToolbarButton(currentScreenName(), this::renameCurrentScreen),
+                new LinearLayout.LayoutParams(0, dp(34), 1));
+        screenBar.addView(legacyToolbarButton("Фон", this::editScreenBackground),
+                new LinearLayout.LayoutParams(dp(54), dp(34)));
+        screenBar.addView(legacyToolbarButton("▶", this::nextScreen),
+                new LinearLayout.LayoutParams(dp(38), dp(34)));
+        screenBar.addView(legacyToolbarButton("+", this::addScreen),
+                new LinearLayout.LayoutParams(dp(38), dp(34)));
+        screenBar.addView(legacyToolbarButton("−", this::removeCurrentScreen),
+                new LinearLayout.LayoutParams(dp(38), dp(34)));
+        root.addView(screenBar, new LinearLayout.LayoutParams(-1, dp(36)));
 
-        // Keep the canvas tall on phones: component choices live in one compact list menu.
-        root.addView(action("+ Добавить элемент", this::showAddWidgetMenu),
-                new LinearLayout.LayoutParams(-1, dp(44)));
         LinearLayout toolsBar = new LinearLayout(this);
-        toolsBar.setOrientation(LinearLayout.HORIZONTAL);
-        toolsBar.addView(action("Связать FBD", () -> {
+        toolsBar.setGravity(Gravity.CENTER_VERTICAL);
+        toolsBar.setPadding(dp(3), dp(2), dp(3), dp(2));
+        toolsBar.setBackgroundColor(Color.rgb(35, 35, 35));
+        toolsBar.addView(legacyToolbarButton("+ Элемент", this::showAddWidgetMenu),
+                new LinearLayout.LayoutParams(0, dp(36), 1));
+        toolsBar.addView(legacyToolbarButton(fbdWireMode ? "Связь: ВКЛ" : "Связать FBD", () -> {
             fbdWireMode = !fbdWireMode;
             wireSource = -1;
             Toast.makeText(this, fbdWireMode ? "Режим связи: выбери исходный FBD-блок, затем целевой" : "Режим связи выключен", Toast.LENGTH_LONG).show();
-            if (editor != null) editor.invalidate();
-        }), new LinearLayout.LayoutParams(0, dp(42), 1));
-        toolsBar.addView(action("Диагностика Modbus", this::showModbusDiagnostics),
-                new LinearLayout.LayoutParams(0, dp(42), 1));
-        root.addView(toolsBar);
+            showEditor();
+        }), new LinearLayout.LayoutParams(0, dp(36), 1));
+        toolsBar.addView(legacyToolbarButton("Modbus", this::showModbusDiagnostics),
+                new LinearLayout.LayoutParams(dp(78), dp(36)));
+        root.addView(toolsBar, new LinearLayout.LayoutParams(-1, dp(40)));
 
         editor = new EditorCanvas();
         root.addView(editor, new LinearLayout.LayoutParams(-1, 0, 1));
 
         LinearLayout bottom = new LinearLayout(this);
-        bottom.setBackgroundColor(Color.rgb(241, 245, 249));
-        bottom.addView(action("Свойства", this::editSelectedWidget),
-                new LinearLayout.LayoutParams(0, dp(50), 1));
-        bottom.addView(action("Копировать", this::copySelectedWidget),
-                new LinearLayout.LayoutParams(0, dp(50), 1));
-        bottom.addView(action("Вставить", this::pasteWidget),
-                new LinearLayout.LayoutParams(0, dp(50), 1));
-        bottom.addView(action("Удалить", this::deleteSelectedWidget),
-                new LinearLayout.LayoutParams(0, dp(50), 1));
-        root.addView(bottom);
+        bottom.setGravity(Gravity.CENTER_VERTICAL);
+        bottom.setPadding(dp(3), dp(2), dp(3), dp(2));
+        bottom.setBackgroundColor(Color.rgb(35, 35, 35));
+        bottom.addView(legacyToolbarButton("Свойства", this::editSelectedWidget),
+                new LinearLayout.LayoutParams(0, dp(40), 1));
+        bottom.addView(legacyToolbarButton("Копировать", this::copySelectedWidget),
+                new LinearLayout.LayoutParams(0, dp(40), 1));
+        bottom.addView(legacyToolbarButton("Вставить", this::pasteWidget),
+                new LinearLayout.LayoutParams(0, dp(40), 1));
+        bottom.addView(legacyToolbarButton("Удалить", this::deleteSelectedWidget),
+                new LinearLayout.LayoutParams(0, dp(40), 1));
+        root.addView(bottom, new LinearLayout.LayoutParams(-1, dp(44)));
         setContentView(root);
         editor.invalidate();
         startModbusPolling();
