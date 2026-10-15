@@ -34,6 +34,18 @@ This matrix separates source-confirmed Kaskada Craft behavior from BLOODSKY impl
 - [ ] A polling task cannot update a destroyed screen or activity.
 - [ ] Automated tests use mocks/simulators; no hardware access is required for CI.
 
+## Verified automated coverage (current checkpoint)
+
+- [x] Import validator accepts a multi-screen project and the legacy single-screen widget-array format.
+- [x] Import validator rejects malformed JSON, trailing content, empty/missing screen lists, invalid current-screen indices, malformed widget/screen structures, invalid FBD edges and cyclic FBD graphs.
+- [x] The metadata-copy helper is exercised with nested unknown fields and arrays; a caller-written current value is verified to override an older value after the metadata copy.
+- [x] The CI workflow has completed successfully for the current pull-request head and produced the debug APK artifact.
+- [ ] End-to-end load/edit/save/reopen round-trip tests for project-, screen- and widget-level unknown metadata are still outstanding.
+- [ ] Android device/emulator smoke tests and pixel-by-pixel comparison with Kaskada Craft are still outstanding.
+- [ ] Modbus RTU and full original protocol/component parity remain outstanding.
+
+The metadata helper test validates the copy operation, not the entire Android persistence lifecycle. Keep the release gate below in force until the outstanding checks are implemented and exercised.
+
 ## Release gate
 
 Do not label a build release-ready until the GitHub Actions APK artifact exists, the APK installs, the editor launches, and smoke tests cover project save/reopen, screen navigation, component property editing and a simulated Modbus read. The current workflow produces a debug APK for development; it is not a signed public release.
