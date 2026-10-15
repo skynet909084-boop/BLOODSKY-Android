@@ -866,9 +866,15 @@ public class MainActivity extends Activity {
         android.widget.CheckBox autoResizeField = new android.widget.CheckBox(this);
         autoResizeField.setText("Автоподбор размера текста по ширине"); autoResizeField.setChecked(w.autoResizeText); form.addView(autoResizeField);
 
+        // The full property form can exceed a phone's viewport; keep every field reachable.
+        android.widget.ScrollView propertyScroll = new android.widget.ScrollView(this);
+        propertyScroll.setFillViewport(true);
+        propertyScroll.setClipToPadding(false);
+        propertyScroll.addView(form);
+
         new AlertDialog.Builder(this)
                 .setTitle("Свойства: " + w.type)
-                .setView(form)
+                .setView(propertyScroll)
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Применить", (dialog, which) -> {
                     w.text = textField.getText().toString();
