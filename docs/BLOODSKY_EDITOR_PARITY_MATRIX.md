@@ -37,10 +37,10 @@ This matrix separates source-confirmed Kaskada Craft behavior from BLOODSKY impl
 ## Verified automated coverage (current checkpoint)
 
 - [x] Import validator accepts a multi-screen project and the legacy single-screen widget-array format.
-- [x] Import validator rejects malformed JSON, trailing content, empty/missing screen lists, invalid current-screen indices, malformed widget/screen structures, malformed `connections` fields, invalid/self-referential/duplicate FBD edges and cyclic FBD graphs.
+- [x] Import validator rejects malformed JSON, trailing content, empty/missing screen lists, invalid current-screen indices, non-integer indices/geometry, malformed widget/screen structures, malformed `connections` fields, invalid/self-referential/duplicate FBD edges and cyclic FBD graphs.
 - [x] Backward compatibility is tested for older projects that omit the optional `connections` array.
 - [x] The metadata-copy helper is exercised with nested unknown fields and arrays; a caller-written current value is verified to override an older value after the metadata copy.
-- [x] The CI workflow completed successfully for commit `1656a3c948dd0a43d1d1da7ca875ac7953878dc4` (unit tests and debug APK build passed; run [38681111818](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/38681111818)).
+- [x] The CI workflow completed successfully for commit `f8ebe8b81cc83674001d30a48a32524eee360294` (unit tests and debug APK build passed; run [38681284597](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/38681284597)).
 - [ ] End-to-end load/edit/save/reopen round-trip tests for project-, screen- and widget-level unknown metadata are still outstanding.
 - [ ] Android device/emulator smoke tests and pixel-by-pixel comparison with Kaskada Craft are still outstanding.
 - [ ] Modbus RTU and full original protocol/component parity remain outstanding.
