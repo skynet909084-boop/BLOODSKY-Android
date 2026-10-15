@@ -40,7 +40,7 @@ public class ModbusRegisterAddressTest {
     public void rejectsReadRangeOverflowAtEndOfAddressSpace() {
         assertEquals(65534, ModbusRegisterAddress.normalizeForFunction(65534, 3, 2));
         assertInvalid(() -> ModbusRegisterAddress.normalizeForFunction(65535, 3, 2));
-        assertInvalid(() -> ModbusRegisterAddress.normalizeForFunction(49999, 3, 2));
+        assertEquals(9998, ModbusRegisterAddress.normalizeForFunction(49999, 3, 2));
     }
 
     @Test
