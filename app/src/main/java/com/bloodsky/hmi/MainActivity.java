@@ -1879,6 +1879,15 @@ public class MainActivity extends Activity {
                     canvas.drawLine(w.x, w.y + w.h / 4f, body.left, w.y + w.h / 4f, paint);
                     canvas.drawLine(w.x, w.y + w.h * 3f / 4f, body.left, w.y + w.h * 3f / 4f, paint);
                     canvas.drawLine(body.right, w.y + w.h / 2f, w.x + w.w, w.y + w.h / 2f, paint);
+                    // Original FB_XOR/FB_RS split the block into a header and
+                    // two lower cells; FB_AND/FB_OR have no internal dividers.
+                    if ("FBD XOR".equals(w.type) || "FBD RS".equals(w.type)
+                            || "FBD SR".equals(w.type)) {
+                        float headerY = w.y + w.h / 3f;
+                        float centerX = w.x + w.w / 2f;
+                        canvas.drawLine(body.left, headerY, body.right, headerY, paint);
+                        canvas.drawLine(centerX, headerY, centerX, body.bottom, paint);
+                    }
                     paint.setStyle(Paint.Style.FILL);
                 } else {
                     canvas.drawRoundRect(rect, dp(6), dp(6), paint);
