@@ -51,6 +51,11 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("if (previous != null && !previous.equals(next))", self.source)
         self.assertIn("changes.putString(ACTIVE_PROJECT, next)", self.source)
 
+    def test_widget_picker_prefers_original_kascada_resources(self):
+        self.assertIn('String resourceName = "kc_"', self.source)
+        self.assertIn('getResources().getIdentifier(resourceName, "drawable"', self.source)
+        self.assertIn('original.draw(canvas);', self.source)
+
     def test_widget_picker_renders_visual_previews(self):
         self.assertIn("private class WidgetPreview extends View", self.source)
         self.assertIn("new WidgetPreview(types[i], defaults[i])", self.source)
