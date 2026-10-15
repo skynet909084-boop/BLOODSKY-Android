@@ -72,6 +72,15 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("Trailing content after project JSON", self.codec_source)
         self.assertIn("Project file too large", self.source)
 
+    def test_import_preserves_previous_valid_project_as_backup(self):
+        start = self.source.index("} else if (requestCode == REQUEST_IMPORT_PROJECT)")
+        end = self.source.index("private void validateImportedProject", start)
+        import_code = self.source[start:end]
+        self.assertIn("validateImportedProject(json);", import_code)
+        self.assertIn("validateImportedProject(previous);", import_code)
+        self.assertIn("changes.putString(BACKUP_PROJECT, previous)", import_code)
+        self.assertIn("changes.putString(ACTIVE_PROJECT, json).commit()", import_code)
+
     def test_import_uses_shared_strict_json_parser(self):
         start = self.source.index("private void validateImportedProject")
         end = self.source.index("private void validateWidgetArray", start)
