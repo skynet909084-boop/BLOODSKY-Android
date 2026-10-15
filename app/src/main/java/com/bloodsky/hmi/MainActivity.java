@@ -1225,8 +1225,11 @@ public class MainActivity extends Activity {
     private boolean drawCraftStateImage(Canvas canvas, Widget w, int widgetIndex) {
         if (w.imageOff.isEmpty() && w.imageOn.isEmpty()) return false;
         boolean active = "Кнопка".equals(w.type) ? w.buttonState : w.inputValue;
-        Double live = liveValues.get(widgetIndex);
-        if (live != null) active = live != 0d;
+        String live = liveValues.get(widgetIndex);
+        if (live != null) {
+            try { active = Double.parseDouble(live.trim().replace(',', '.')) != 0d; }
+            catch (NumberFormatException ignored) { active = "true".equalsIgnoreCase(live.trim()); }
+        }
         String imageName = active ? w.imageOn : w.imageOff;
         if (imageName.isEmpty()) return false;
         int id = getResources().getIdentifier("kc_" + imageName, "drawable", getPackageName());
