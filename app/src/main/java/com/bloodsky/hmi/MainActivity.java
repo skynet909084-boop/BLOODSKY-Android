@@ -140,6 +140,10 @@ public class MainActivity extends Activity {
 
     private void showHome() {
         stopModbusPolling();
+        runtimeMode = false;
+        editorToolbarHidden = false;
+        fbdWireMode = false;
+        wireSource = -1;
         editor = null;
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -2120,7 +2124,13 @@ public class MainActivity extends Activity {
                 if (event.getAction() == MotionEvent.ACTION_UP) {
                     int target = runtimeTarget;
                     runtimeTarget = -1;
-                    if (target >= 0) activateRuntimeWidget(target, x, y);
+                    if (target >= 0 && target < widgets.size()) {
+                        Widget picked = widgets.get(target);
+                        if (picked.visible && x >= picked.x && x <= picked.x + picked.w
+                                && y >= picked.y && y <= picked.y + picked.h) {
+                            activateRuntimeWidget(target, x, y);
+                        }
+                    }
                     return true;
                 }
                 if (event.getAction() == MotionEvent.ACTION_CANCEL) runtimeTarget = -1;
