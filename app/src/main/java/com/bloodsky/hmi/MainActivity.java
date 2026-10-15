@@ -298,31 +298,25 @@ public class MainActivity extends Activity {
 
             byte[] header = new byte[7];
             in.readFully(header);
-            int responseTransaction = ((header[0] & 0xff) << 8) | (header[1] & 0xff);
-            int protocol = ((header[2] & 0xff) << 8) | (header[3] & 0xff);
-            int length = ((header[4] & 0xff) << 8) | (header[5] & 0xff);
-            int responseUnit = header[6] & 0xff;
-            if (responseTransaction != transaction || protocol != 0 || responseUnit != unit || length < 2 || length > 254) {
-                throw new IOException("Некорректный заголовок ответа");
-            }
+            int length = ModbusTcpResponseValidator.validateHeader(header, transaction, unit, functionCode, count);
             byte[] pdu = new byte[length - 1];
             in.readFully(pdu);
-            int function = pdu[0] & 0xff;
-            if (function == (functionCode | 0x80)) {
-                if (pdu.length != 2) throw new IOException("Некорректный ответ с исключением Modbus");
-                int exceptionCode = pdu[1] & 0xff;
-                throw new IOException("Modbus: " + describeModbusExceptionCode(exceptionCode)
-                        + " (код " + exceptionCode + ")");
-            }
-            if (function != functionCode || pdu.length < 2) throw new IOException("Неожиданный код функции");
-            int byteCount = pdu[1] & 0xff;
-            if (byteCount != count * 2 || pdu.length != 2 + byteCount) {
-                throw new IOException("Размер ответа не совпадает с запросом");
+            final int[] registerValues;
+            try {
+                registerValues = ModbusTcpResponseValidator.validateAndDecodePdu(pdu, functionCode, count);
+            } catch (IOException validationError) {
+                String message = validationError.getMessage();
+                if (message != null && message.startsWith("Modbus exception response: code ")) {
+                    int exceptionCode = Integer.parseInt(message.substring(message.lastIndexOf(' ') + 1));
+                    throw new IOException("Modbus: " + describeModbusExceptionCode(exceptionCode)
+                            + " (код " + exceptionCode + ")");
+                }
+                throw validationError;
             }
             StringBuilder report = new StringBuilder();
             report.append("Успешно: ").append(count).append(functionCode == 3 ? " holding registers (FC03)\n" : " input registers (FC04)\n");
             for (int i = 0; i < count; i++) {
-                int value = ((pdu[2 + i * 2] & 0xff) << 8) | (pdu[3 + i * 2] & 0xff);
+                int value = registerValues[i];
                 report.append((functionCode == 3 ? 40001 : 30001) + startAddress + i).append("  |  ")
                         .append(value).append("  |  0x")
                         .append(String.format(java.util.Locale.ROOT, "%04X", value)).append('\n');
