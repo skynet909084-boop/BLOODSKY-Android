@@ -51,6 +51,10 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("if (previous != null && !previous.equals(next))", self.source)
         self.assertIn("changes.putString(ACTIVE_PROJECT, next)", self.source)
 
+    def test_properties_dialog_shows_original_widget_preview(self):
+        self.assertIn('previewHeader.addView(new WidgetPreview(w.type, w.text)', self.source)
+        self.assertIn('form.addView(previewHeader', self.source)
+
     def test_original_fbd_and_setter_artwork_is_drawn(self):
         self.assertIn('"kc_logic_ico", "drawable"', self.source)
         self.assertIn('logicIcon.draw(canvas);', self.source)
