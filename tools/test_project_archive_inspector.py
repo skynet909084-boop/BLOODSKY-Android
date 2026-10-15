@@ -54,6 +54,16 @@ class ArchiveInspectorTests(unittest.TestCase):
         self.assertTrue(any(issue.severity == "error" and issue.entry == "../outside.json"
                             for issue in report.issues))
 
+    def test_duplicate_json_names_are_rejected_without_parsing(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', UserWarning)
+            path = self.make_archive([("project.json", '{"TableComponent": []}'),
+                                     ("project.json", '{"TableNameProject": {}}')])
+        report = inspect_archive(path)
+        self.assertEqual(report.json_entries, 0)
+        self.assertTrue(any(issue.severity == "error" and issue.message == "Duplicate ZIP entry name"
+                            for issue in report.issues))
+
     def test_non_zip_file_returns_error_report(self):
         temp = tempfile.NamedTemporaryFile(delete=False)
         temp.write(b"not a zip")
