@@ -98,6 +98,7 @@ jobs:
           # Preserve ALL decoded resource directories and original app assets
           # as addressable runtime APK assets, including XML, fonts and audio.
           python3 tools/bundle_craft_resources.py /tmp/kascada-decompiled app
+          python3 tools/catalogue_craft_resources.py app/src/main/assets/kascada_original /tmp/kascada-resource-catalogue.md
       - name: Upload original image resource bundle
         uses: actions/upload-artifact@v4
         with:
@@ -106,6 +107,7 @@ jobs:
             app/src/main/res/drawable-nodpi/kc_*.png
             app/src/main/res/original-kascada-assets.sha256
             app/src/main/assets/kascada_original/**
+            /tmp/kascada-resource-catalogue.md
           if-no-files-found: error
           retention-days: 30
       - name: Run Android unit tests
