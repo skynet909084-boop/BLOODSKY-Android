@@ -420,10 +420,7 @@ public class MainActivity extends Activity {
             totalWidgets += screenWidgets.length();
             if (totalWidgets > 2000) throw new IllegalArgumentException("Too many widgets");
 
-            JSONArray connections = screen.optJSONArray("connections");
-            if (connections == null) continue;
-            if (connections.length() > 4000) throw new IllegalArgumentException("Too many connections");
-            FbdGraphValidator.validate(screenWidgets, connections);
+            FbdGraphValidator.validateScreenConnections(screen, screenWidgets);
         }
     }
 
