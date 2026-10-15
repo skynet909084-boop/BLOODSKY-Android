@@ -1332,17 +1332,14 @@ public class MainActivity extends Activity {
             JSONObject project = new JSONObject();
             JSONArray screenArray = new JSONArray();
             for (Screen screen : screens) {
-                JSONObject screenObj = new JSONObject();
-                screenObj.put("name", screen.name);
-                screenObj.put("backgroundColor", screen.backgroundColor);
-                screenObj.put("widgets", widgetsToJson(screen.widgets));
                 JSONArray connectionArray = new JSONArray();
                 for (FbdConnection connection : screen.connections) {
                     connectionArray.put(FbdConnectionJsonCodec.toJson(
                             connection.source, connection.target, connection.extraFields));
                 }
-                screenObj.put("connections", connectionArray);
-                screenArray.put(ProjectJsonCodec.mergePreservedFields(screen.extraFields, screenObj));
+                screenArray.put(ProjectScreenJsonCodec.toJson(
+                        screen.name, screen.backgroundColor, widgetsToJson(screen.widgets),
+                        connectionArray, screen.extraFields));
             }
             project.put("screens", screenArray);
             project.put("currentScreen", currentScreenIndex);
