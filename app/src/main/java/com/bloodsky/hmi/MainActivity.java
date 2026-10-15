@@ -1883,8 +1883,9 @@ public class MainActivity extends Activity {
                     if (dividedFbd) {
                         // FB_XOR / FB_RS: input pins at 1/2 of the lower
                         // two thirds, unlike FB_AND / FB_OR quarter pins.
-                        float input1Y = w.y + w.h / 2f;
-                        float input2Y = w.y + w.h * 5f / 6f;
+                        int thirdHeight = (int) (w.h / 3f);
+                        float input1Y = w.y + thirdHeight / 2 + thirdHeight;
+                        float input2Y = w.y + thirdHeight / 2 + thirdHeight * 2;
                         canvas.drawLine(w.x, input1Y, body.left, input1Y, paint);
                         canvas.drawLine(w.x, input2Y, body.left, input2Y, paint);
                     } else {
