@@ -49,9 +49,10 @@ class AndroidSourceContractTests(unittest.TestCase):
 
     def test_project_backup_preserves_last_valid_json_and_recovers_bad_primary(self):
         self.assertIn('private static final String BACKUP_PROJECT = "backup_project"', self.source)
-        self.assertIn("ProjectJsonCodec.parse(previous)", self.source)
+        self.assertIn("validateImportedProject(previous)", self.source)
         self.assertIn("changes.putString(BACKUP_PROJECT, previous)", self.source)
-        self.assertIn("ProjectJsonCodec.parse(backup)", self.source)
+        self.assertIn("validateImportedProject(backup)", self.source)
+        self.assertIn("validateImportedProject(json);\n        } catch (Exception invalidPrimary)", self.source)
         self.assertIn("json = backup;", self.source)
         self.assertIn("Проект восстановлен из резервной копии", self.source)
 
