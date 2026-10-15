@@ -100,4 +100,32 @@ public class FbdGraphValidatorTest {
     public void acceptsEmptyConnectionList() throws Exception {
         FbdGraphValidator.validate(widgets(2), new JSONArray());
     }
+
+    @Test
+    public void rejectsMissingConnectionEndpoints() throws Exception {
+        JSONArray missingSource = new JSONArray().put(new JSONObject().put("target", 1));
+        JSONArray missingTarget = new JSONArray().put(new JSONObject().put("source", 0));
+        assertInvalid(widgets(2), missingSource, "Connection index out of range");
+        assertInvalid(widgets(2), missingTarget, "Connection index out of range");
+    }
+
+    @Test
+    public void rejectsNonObjectConnectionEntries() throws Exception {
+        assertInvalid(widgets(2), new JSONArray().put("0->1"), "Connection must be an object");
+        assertInvalid(widgets(2), new JSONArray().put(JSONObject.NULL), "Connection must be an object");
+    }
+
+    @Test
+    public void rejectsConnectionCountAboveLimitBeforeGraphTraversal() throws Exception {
+        JSONArray tooMany = new JSONArray();
+        for (int i = 0; i < 4001; i++) tooMany.put(new JSONObject());
+        assertInvalid(widgets(2), tooMany, "Too many connections");
+    }
+
+    @Test
+    public void rejectsConnectionIndicesOutsideIntegerRange() throws Exception {
+        JSONArray oversized = new JSONArray().put(new JSONObject()
+                .put("source", 0).put("target", 2147483648L));
+        assertInvalid(widgets(2), oversized, "Connection index out of range");
+    }
 }
