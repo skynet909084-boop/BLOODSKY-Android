@@ -47,6 +47,9 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn('if (persistProject()) Toast.makeText(this, "Проект сохранён на устройстве"', self.source)
         self.assertIn("if (editor != null && !persistProject()) return;", self.source)
 
+    def test_home_navigation_stays_in_editor_when_save_fails(self):
+        self.assertIn("if (editor != null && !persistProject()) return;", self.source)
+
     def test_project_backup_preserves_last_valid_json_and_recovers_bad_primary(self):
         self.assertIn('private static final String BACKUP_PROJECT = "backup_project"', self.source)
         self.assertIn("validateImportedProject(previous)", self.source)
