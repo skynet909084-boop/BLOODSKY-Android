@@ -44,6 +44,6 @@ jobs:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY || secrets.API }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          model: deepseek/deepseek-v4-flash
+          model: deepseek/deepseek-flash
           use_github_token: true
           share: false
