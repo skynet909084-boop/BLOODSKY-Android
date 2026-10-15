@@ -51,6 +51,10 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("if (previous != null && !previous.equals(next))", self.source)
         self.assertIn("changes.putString(ACTIVE_PROJECT, next)", self.source)
 
+    def test_fbd_blocks_use_rectangular_technical_shape(self):
+        self.assertIn('if (fbdBlock) canvas.drawRect(rect, paint);', self.source)
+        self.assertIn('paint.setColor(Color.rgb(245, 246, 248));', self.source)
+
     def test_properties_dialog_shows_original_widget_preview(self):
         self.assertIn('previewHeader.addView(new WidgetPreview(w.type, w.text)', self.source)
         self.assertIn('form.addView(previewHeader', self.source)
