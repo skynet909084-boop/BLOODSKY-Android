@@ -393,9 +393,7 @@ public class MainActivity extends Activity {
 
 
     private void validateImportedProject(String json) throws Exception {
-        org.json.JSONTokener tokener = new org.json.JSONTokener(json);
-        Object parsed = tokener.nextValue();
-        if (tokener.nextClean() != 0) throw new IllegalArgumentException("Trailing content after JSON");
+        Object parsed = ProjectJsonCodec.parse(json);
         if (parsed instanceof JSONArray) {
             validateWidgetArray((JSONArray) parsed);
             return;
