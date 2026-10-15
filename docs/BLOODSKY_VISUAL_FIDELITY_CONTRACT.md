@@ -30,6 +30,24 @@ For each original screen, record a reference image and compare BLOODSKY at the s
 
 Use a side-by-side comparison and, where possible, a 50% alpha overlay or pixel-difference image. Fix the largest structural differences first, then typography/assets, then minor spacing. Keep a regression screenshot set so later feature work cannot silently drift the interface.
 
+## BLOODSKY current checkpoint — 2026-10-15
+
+The decompiled `apktool/res/layout/activity_work_old.xml` confirms these source-level reference details:
+- charcoal editor toolbar background `#232323`;
+- toolbar controls based on 40dp icons;
+- left/right screen navigation and a clickable screen-name label in the top row;
+- a floating lower-left control and a compact bottom-centered selection-action strip for cut, copy, paste and alignment;
+- separate start/work-mode, calculator, information and overflow controls.
+
+The current UI branch (`ui/kaskada-editor-toolbar-parity`, PR #5) now follows that composition with hand-recreated vector icons, toolbar hide/restore, calculator/help actions, a component-picker thumbnail list, cut/alignment actions and a first work/runtime-mode slice. Runtime mode currently prevents canvas dragging/resizing and supports button, setpoint and FBD-input interactions.
+
+Still unverified or incomplete:
+- no screenshot captured from a running BLOODSKY APK on a device/emulator, so pixel comparison is not complete;
+- recreated vector icons are not the original raster assets;
+- the component catalogue remains a subset of Kaskada Craft;
+- full operator-mode lifecycle, original lock/password flow, multi-selection/alignment semantics, and full component-specific property dialogs are not ported;
+- the UI has passed CI compilation/unit tests, but that does not substitute for interactive device testing.
+
 ## Release gate
 
 - [ ] Original home/project menu matched.
