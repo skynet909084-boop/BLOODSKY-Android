@@ -19,6 +19,11 @@ class AndroidSourceContractTests(unittest.TestCase):
         cls.source = SOURCE.read_text(encoding="utf-8")
         cls.workflow = WORKFLOW.read_text(encoding="utf-8")
 
+    def test_json_metadata_copy_helper_is_used_for_project_screen_and_widget_load(self):
+        self.assertIn("JsonObjectCopy.deepCopy(obj)", self.source)
+        self.assertIn("JsonObjectCopy.deepCopy(project)", self.source)
+        self.assertIn("JsonObjectCopy.deepCopy(screenObj)", self.source)
+
     def test_project_persistence_serializes_screens_and_widgets(self):
         self.assertIn("private void persistProject()", self.source)
         self.assertIn('project.put("screens", screenArray)', self.source)
