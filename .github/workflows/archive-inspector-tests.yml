@@ -5,12 +5,12 @@ on:
     branches: [main]
     paths:
       - "tools/project_archive_inspector.py"
-      - "tests/test_project_archive_inspector.py"
+      - "tools/test_project_archive_inspector.py"
       - ".github/workflows/archive-inspector-tests.yml"
   pull_request:
     paths:
       - "tools/project_archive_inspector.py"
-      - "tests/test_project_archive_inspector.py"
+      - "tools/test_project_archive_inspector.py"
       - ".github/workflows/archive-inspector-tests.yml"
   workflow_dispatch:
 
@@ -20,6 +20,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,5 +28,5 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Run unit tests
-        run: PYTHONPATH=tools python -m unittest discover -s tests -v
+      - name: Run archive inspector unit tests
+        run: python -m unittest discover -s tools -p 'test_*.py' -v
