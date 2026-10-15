@@ -484,8 +484,9 @@ public class MainActivity extends Activity {
         Button rename = legacyToolbarButton(projectName, this::editProjectName);
         top.addView(rename, new LinearLayout.LayoutParams(0, dp(38), 1));
         top.addView(legacyToolbarButton("💾", () -> {
-            persistProject();
-            Toast.makeText(this, "Проект сохранён на устройстве", Toast.LENGTH_SHORT).show();
+            if (persistProject()) {
+                Toast.makeText(this, "Проект сохранён на устройстве", Toast.LENGTH_SHORT).show();
+            }
         }), new LinearLayout.LayoutParams(dp(48), dp(38)));
         root.addView(top, new LinearLayout.LayoutParams(-1, dp(42)));
 
@@ -1326,7 +1327,7 @@ public class MainActivity extends Activity {
         return w;
     }
 
-    private void persistProject() {
+    private boolean persistProject() {
         try {
             saveActiveScreen();
             JSONObject project = new JSONObject();
@@ -1344,12 +1345,15 @@ public class MainActivity extends Activity {
             project.put("screens", screenArray);
             project.put("currentScreen", currentScreenIndex);
             project.put("projectName", projectName);
-            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+            boolean saved = getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                     .putString(ACTIVE_PROJECT, ProjectJsonCodec.serialize(
                             ProjectJsonCodec.mergePreservedFields(projectExtraFields, project)))
-                    .putString("project_name", projectName).apply();
+                    .putString("project_name", projectName).commit();
+            if (!saved) throw new IllegalStateException("Project preferences commit failed");
+            return true;
         } catch (Exception ignored) {
             Toast.makeText(this, "Не удалось сохранить проект", Toast.LENGTH_SHORT).show();
+            return false;
         }
     }
 
