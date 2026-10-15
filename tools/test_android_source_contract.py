@@ -51,6 +51,12 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("if (previous != null && !previous.equals(next))", self.source)
         self.assertIn("changes.putString(ACTIVE_PROJECT, next)", self.source)
 
+    def test_original_craft_toolbar_artwork_is_used(self):
+        self.assertIn('"action_copy"', self.source)
+        self.assertIn('"action_paste"', self.source)
+        self.assertIn('"basket"', self.source)
+        self.assertIn('button.setCompoundDrawables(icon, null, null, null)', self.source)
+
     def test_widget_picker_prefers_original_kascada_resources(self):
         self.assertIn('String resourceName = "kc_"', self.source)
         self.assertIn('getResources().getIdentifier(resourceName, "drawable"', self.source)
