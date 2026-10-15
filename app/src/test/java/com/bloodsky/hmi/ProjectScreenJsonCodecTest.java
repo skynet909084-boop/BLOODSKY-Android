@@ -79,6 +79,46 @@ public class ProjectScreenJsonCodecTest {
     }
 
     @Test
+    public void saveReopenKeepsUnknownWidgetFieldsAndConnectionsAfterEditing() throws Exception {
+        JSONObject preserved = new JSONObject()
+                .put("name", "Экран")
+                .put("vendorScreen", new JSONObject().put("version", 107));
+        JSONObject widget = new JSONObject()
+                .put("type", "Переключатель")
+                .put("text", "Насос")
+                .put("connectionInfo", "tcp://192.0.2.1:502/1/40001")
+                .put("other", new JSONObject()
+                        .put("onImage", "images/on.png")
+                        .put("offImage", "images/off.png"))
+                .put("vendorFlags", new JSONArray().put("blink").put("alarm"));
+        JSONObject connection = new JSONObject()
+                .put("source", 1).put("target", 2)
+                .put("vendorWire", new JSONObject().put("label", "A"));
+        JSONObject saved = ProjectScreenJsonCodec.toJson(
+                "Экран", 0xff102030, new JSONArray().put(widget),
+                new JSONArray().put(connection), preserved);
+        JSONObject reopened = (JSONObject) ProjectJsonCodec.parse(
+                ProjectJsonCodec.serialize(saved));
+        JSONObject restoredWidget = reopened.getJSONArray("widgets").getJSONObject(0);
+        assertEquals("Насос", restoredWidget.getString("text"));
+        assertEquals("tcp://192.0.2.1:502/1/40001",
+                restoredWidget.getString("connectionInfo"));
+        assertEquals("images/on.png", restoredWidget.getJSONObject("other").getString("onImage"));
+        assertEquals("images/off.png", restoredWidget.getJSONObject("other").getString("offImage"));
+        assertEquals("alarm", restoredWidget.getJSONArray("vendorFlags").getString(1));
+        assertEquals("A", reopened.getJSONArray("connections").getJSONObject(0)
+                .getJSONObject("vendorWire").getString("label"));
+        assertEquals(107, reopened.getJSONObject("vendorScreen").getInt("version"));
+
+        // Saving must detach nested widgets and connections from caller-owned arrays.
+        restoredWidget.getJSONObject("other").put("onImage", "modified.png");
+        reopened.getJSONArray("connections").getJSONObject(0)
+                .getJSONObject("vendorWire").put("label", "changed");
+        assertEquals("images/on.png", widget.getJSONObject("other").getString("onImage"));
+        assertEquals("A", connection.getJSONObject("vendorWire").getString("label"));
+    }
+
+    @Test
     public void rejectsMissingScreenArrays() throws Exception {
         try {
             ProjectScreenJsonCodec.toJson("Экран", 0, null, new JSONArray(), new JSONObject());
