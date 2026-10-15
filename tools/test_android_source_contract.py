@@ -87,7 +87,9 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("screen.connections.addAll(kept)", delete_method)
 
     def test_import_rejects_invalid_and_duplicate_fbd_edges_and_cycles(self):
-        self.assertIn("FbdGraphValidator.validate(screenWidgets, connections)", self.source)
+        self.assertIn("FbdGraphValidator.validateScreenConnections(screen, screenWidgets)", self.source)
+        self.assertIn("FbdGraphValidator.validate(widgets, connections)", self.validator_source)
+        self.assertIn('throw new IllegalArgumentException("Connections must be an array")', self.validator_source)
         self.assertIn('throw new IllegalArgumentException("Connection index out of range")', self.validator_source)
         self.assertIn('throw new IllegalArgumentException("Connections must link FBD blocks")', self.validator_source)
         self.assertIn('throw new IllegalArgumentException("Duplicate FBD connection")', self.validator_source)
