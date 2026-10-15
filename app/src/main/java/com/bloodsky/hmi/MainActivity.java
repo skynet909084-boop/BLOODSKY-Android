@@ -139,6 +139,27 @@ public class MainActivity extends Activity {
         face.setCornerRadius(dp(2));
         face.setStroke(dp(1), Color.rgb(76, 76, 76));
         button.setBackground(face);
+        // Reuse the original Craft toolbar artwork instead of emoji icons.
+        String iconName = "💾".equals(text) ? "archive"
+                : "Копировать".equals(text) ? "action_copy"
+                : "Вставить".equals(text) ? "action_paste"
+                : "Удалить".equals(text) ? "basket"
+                : "◀".equals(text) ? "arrow_left"
+                : "▶".equals(text) ? "arrow_right"
+                : "+ Элемент".equals(text) ? "menu_bar_component"
+                : "Modbus".equals(text) ? "wifi_rtu"
+                : null;
+        if (iconName != null) {
+            int drawableId = getResources().getIdentifier("kc_" + iconName,
+                    "drawable", getPackageName());
+            if (drawableId != 0) {
+                Drawable icon = getResources().getDrawable(drawableId);
+                icon.setBounds(0, 0, dp(19), dp(19));
+                button.setCompoundDrawables(icon, null, null, null);
+                button.setCompoundDrawablePadding(dp(3));
+                if ("💾".equals(text)) button.setText("");
+            }
+        }
         button.setOnClickListener(v -> task.run());
         return button;
     }
