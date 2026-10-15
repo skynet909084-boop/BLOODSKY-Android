@@ -461,60 +461,9 @@ public class MainActivity extends Activity {
         screenBar.addView(action("−", this::removeCurrentScreen), new LinearLayout.LayoutParams(dp(48), dp(42)));
         root.addView(screenBar);
 
-        LinearLayout palette = new LinearLayout(this);
-        palette.setOrientation(LinearLayout.HORIZONTAL);
-        palette.setBackgroundColor(Color.rgb(226, 232, 240));
-        palette.addView(action("+ Текст", () -> addWidget("Текст", "Надпись")),
-                new LinearLayout.LayoutParams(0, dp(48), 1));
-        palette.addView(action("+ Кнопка", () -> addWidget("Кнопка", "Кнопка")),
-                new LinearLayout.LayoutParams(0, dp(48), 1));
-        palette.addView(action("+ Индикатор", () -> addWidget("Индикатор", "Индикатор")),
-                new LinearLayout.LayoutParams(0, dp(48), 1));
-        palette.addView(action("+ Задатчик", () -> addWidget("Задатчик", "Задатчик: 0")),
-                new LinearLayout.LayoutParams(0, dp(48), 1));
-        root.addView(palette);
-
-        LinearLayout fbdPalette = new LinearLayout(this);
-        fbdPalette.setOrientation(LinearLayout.HORIZONTAL);
-        fbdPalette.setBackgroundColor(Color.rgb(237, 233, 254));
-        fbdPalette.addView(action("+ Вход", () -> addWidget("FBD Вход", "Вход")), new LinearLayout.LayoutParams(0, dp(44), 1));
-        fbdPalette.addView(action("+ И", () -> addWidget("FBD И", "И")), new LinearLayout.LayoutParams(0, dp(44), 1));
-        fbdPalette.addView(action("+ ИЛИ", () -> addWidget("FBD ИЛИ", "ИЛИ")), new LinearLayout.LayoutParams(0, dp(44), 1));
-        fbdPalette.addView(action("+ НЕ", () -> addWidget("FBD НЕ", "НЕ")), new LinearLayout.LayoutParams(0, dp(44), 1));
-        fbdPalette.addView(action("+ TON", () -> addWidget("FBD Таймер", "TON")), new LinearLayout.LayoutParams(0, dp(44), 1));
-        fbdPalette.addView(action("+ TP", () -> addWidget("FBD TP", "TP")), new LinearLayout.LayoutParams(0, dp(44), 1));
-        fbdPalette.addView(action("+ Сравнение", () -> addWidget("FBD Сравнение", "A > B")), new LinearLayout.LayoutParams(0, dp(44), 1));
-        fbdPalette.addView(action("+ TOF", () -> addWidget("FBD TOF", "TOF")), new LinearLayout.LayoutParams(0, dp(44), 1));
-        root.addView(fbdPalette);
-        LinearLayout fbdAdvancedPalette = new LinearLayout(this);
-        fbdAdvancedPalette.setOrientation(LinearLayout.HORIZONTAL);
-        fbdAdvancedPalette.setBackgroundColor(Color.rgb(237, 233, 254));
-        fbdAdvancedPalette.addView(action("+ XOR", () -> addWidget("FBD XOR", "XOR")), new LinearLayout.LayoutParams(0, dp(40), 1));
-        fbdAdvancedPalette.addView(action("+ RS", () -> addWidget("FBD RS", "RS")), new LinearLayout.LayoutParams(0, dp(40), 1));
-        fbdAdvancedPalette.addView(action("+ SR", () -> addWidget("FBD SR", "SR")), new LinearLayout.LayoutParams(0, dp(40), 1));
-        fbdAdvancedPalette.addView(action("+ CTU", () -> addWidget("FBD CTU", "CTU")), new LinearLayout.LayoutParams(0, dp(40), 1));
-        fbdAdvancedPalette.addView(action("+ CTD", () -> addWidget("FBD CTD", "CTD")), new LinearLayout.LayoutParams(0, dp(40), 1));
-        fbdAdvancedPalette.addView(action("+ R_TRIG", () -> addWidget("FBD R_TRIG", "R_TRIG")), new LinearLayout.LayoutParams(0, dp(40), 1));
-        fbdAdvancedPalette.addView(action("+ F_TRIG", () -> addWidget("FBD F_TRIG", "F_TRIG")), new LinearLayout.LayoutParams(0, dp(40), 1));
-        TextView fbdHint = new TextView(this);
-        fbdHint.setText("R_TRIG/F_TRIG • RS/SR • CTU/CTD • XOR • TOF");
-        fbdHint.setTextSize(12);
-        fbdHint.setGravity(Gravity.CENTER_VERTICAL);
-        fbdHint.setPadding(dp(8), 0, dp(8), 0);
-        fbdAdvancedPalette.addView(fbdHint, new LinearLayout.LayoutParams(0, dp(40), 2));
-        root.addView(fbdAdvancedPalette);
-        LinearLayout fbdLogicPalette = new LinearLayout(this);
-        fbdLogicPalette.setOrientation(LinearLayout.HORIZONTAL);
-        fbdLogicPalette.setBackgroundColor(Color.rgb(224, 242, 254));
-        fbdLogicPalette.addView(action("+ NAND", () -> addWidget("FBD NAND", "NAND")), new LinearLayout.LayoutParams(0, dp(38), 1));
-        fbdLogicPalette.addView(action("+ NOR", () -> addWidget("FBD NOR", "NOR")), new LinearLayout.LayoutParams(0, dp(38), 1));
-        TextView fbdLogicHint = new TextView(this);
-        fbdLogicHint.setText("NAND = НЕ И • NOR = НЕ ИЛИ");
-        fbdLogicHint.setTextSize(12);
-        fbdLogicHint.setGravity(Gravity.CENTER_VERTICAL);
-        fbdLogicHint.setPadding(dp(8), 0, dp(8), 0);
-        fbdLogicPalette.addView(fbdLogicHint, new LinearLayout.LayoutParams(0, dp(38), 2));
-        root.addView(fbdLogicPalette);
+        // Keep the canvas tall on phones: component choices live in one compact list menu.
+        root.addView(action("+ Добавить элемент", this::showAddWidgetMenu),
+                new LinearLayout.LayoutParams(-1, dp(44)));
         root.addView(action("Связать FBD", () -> {
             fbdWireMode = !fbdWireMode;
             wireSource = -1;
@@ -732,6 +681,35 @@ public class MainActivity extends Activity {
                     if (!name.isEmpty()) screens.get(currentScreenIndex).name = name;
                     persistProject(); showEditor();
                 }).show();
+    }
+
+    private void showAddWidgetMenu() {
+        final String[] labels = {
+                "Текст / надпись", "Кнопка", "Индикатор", "Задатчик",
+                "FBD — Вход", "FBD — И", "FBD — ИЛИ", "FBD — НЕ",
+                "FBD — NAND", "FBD — NOR", "FBD — XOR",
+                "FBD — TON (задержка включения)", "FBD — TP (импульс)", "FBD — TOF (задержка выключения)",
+                "FBD — Сравнение", "FBD — RS", "FBD — SR", "FBD — CTU (счёт вверх)",
+                "FBD — CTD (счёт вниз)", "FBD — R_TRIG", "FBD — F_TRIG"
+        };
+        final String[] types = {
+                "Текст", "Кнопка", "Индикатор", "Задатчик",
+                "FBD Вход", "FBD И", "FBD ИЛИ", "FBD НЕ",
+                "FBD NAND", "FBD NOR", "FBD XOR",
+                "FBD Таймер", "FBD TP", "FBD TOF",
+                "FBD Сравнение", "FBD RS", "FBD SR", "FBD CTU",
+                "FBD CTD", "FBD R_TRIG", "FBD F_TRIG"
+        };
+        final String[] defaults = {
+                "Надпись", "Кнопка", "Индикатор", "Задатчик: 0",
+                "Вход", "И", "ИЛИ", "НЕ", "NAND", "NOR", "XOR",
+                "TON", "TP", "TOF", "A > B", "RS", "SR", "CTU", "CTD", "R_TRIG", "F_TRIG"
+        };
+        new AlertDialog.Builder(this)
+                .setTitle("Добавить элемент")
+                .setItems(labels, (dialog, which) -> addWidget(types[which], defaults[which]))
+                .setNegativeButton("Отмена", null)
+                .show();
     }
 
     private void addWidget(String type, String text) {
