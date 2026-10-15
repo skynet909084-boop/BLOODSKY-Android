@@ -117,6 +117,7 @@ jobs:
           python3 tools/catalogue_craft_resources.py app/src/main/assets/kascada_original build-reports/kascada-resource-catalogue.md
           python3 tools/map_craft_xml_references.py /tmp/kascada-decompiled/apktool/res build-reports/kascada-original-xml-map.md
           python3 tools/audit_craft_drawable_wiring.py /tmp/kascada-decompiled/apktool/res/drawable app/src/main/java build-reports/kascada-drawable-wiring.md
+          python3 tools/verify_craft_picker_coverage.py /tmp/kascada-decompiled/apktool/res/drawable app/src/main/java/com/bloodsky/hmi/MainActivity.java
       - name: Upload original image resource bundle
         uses: actions/upload-artifact@v4
         with:
