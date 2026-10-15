@@ -211,7 +211,10 @@ public class MainActivity extends Activity {
                 if (startAddress < 0 || startAddress > 65535 || startAddress + count > 65536) throw new IllegalArgumentException();
                 if (host.isEmpty()) throw new IllegalArgumentException();
             } catch (Exception ex) {
-                result.setText("Проверь IP, порт, Unit ID, адрес и количество регистров.");
+                String message = ex.getMessage();
+                result.setText(message == null || message.trim().isEmpty()
+                        ? "Проверь IP, порт, Unit ID, адрес и количество регистров."
+                        : "Параметры запроса: " + message);
                 return;
             }
             result.setText("Подключаюсь к " + host + ":" + port + "…");
