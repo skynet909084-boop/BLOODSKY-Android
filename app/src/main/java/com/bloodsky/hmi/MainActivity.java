@@ -49,6 +49,7 @@ import java.io.DataOutputStream;
 public class MainActivity extends Activity {
     private static final String PREFS = "bloodsky_projects";
     private static final String ACTIVE_PROJECT = "active_project";
+    private static final String BACKUP_PROJECT = "backup_project";
     private static final int REQUEST_EXPORT_PROJECT = 7101;
     private static final int REQUEST_IMPORT_PROJECT = 7102;
     private String projectName = "Мой проект";
@@ -1351,8 +1352,20 @@ public class MainActivity extends Activity {
             project.put("screens", screenArray);
             project.put("currentScreen", currentScreenIndex);
             project.put("projectName", projectName);
-            if (!getSharedPreferences(PREFS, MODE_PRIVATE).edit()
-                    .putString(ACTIVE_PROJECT, ProjectJsonCodec.serialize(
+            android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+            android.content.SharedPreferences.Editor changes = prefs.edit();
+            String previous = prefs.getString(ACTIVE_PROJECT, null);
+            // Only back up a valid previous project; never replace a good backup
+            // with damaged JSON during recovery.
+            if (previous != null) {
+                try {
+                    ProjectJsonCodec.parse(previous);
+                    changes.putString(BACKUP_PROJECT, previous);
+                } catch (Exception invalidPrevious) {
+                    // Preserve the existing last-known-good backup.
+                }
+            }
+            if (!changes.putString(ACTIVE_PROJECT, ProjectJsonCodec.serialize(
                             ProjectJsonCodec.mergePreservedFields(projectExtraFields, project)))
                     .putString("project_name", projectName).commit()) {
                 Toast.makeText(this, "Не удалось сохранить проект", Toast.LENGTH_SHORT).show();
@@ -1371,6 +1384,23 @@ public class MainActivity extends Activity {
         android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         projectName = prefs.getString("project_name", projectName);
         String json = prefs.getString(ACTIVE_PROJECT, "[]");
+        // A damaged primary must not silently discard a recoverable project.
+        try {
+            ProjectJsonCodec.parse(json);
+        } catch (Exception invalidPrimary) {
+            String backup = prefs.getString(BACKUP_PROJECT, null);
+            if (backup != null) {
+                try {
+                    ProjectJsonCodec.parse(backup);
+                    json = backup;
+                    Toast.makeText(this, "Проект восстановлен из резервной копии", Toast.LENGTH_LONG).show();
+                } catch (Exception invalidBackup) {
+                    Toast.makeText(this, "Проект повреждён, резервная копия недоступна", Toast.LENGTH_LONG).show();
+                }
+            } else {
+                Toast.makeText(this, "Проект повреждён, резервная копия недоступна", Toast.LENGTH_LONG).show();
+            }
+        }
         try {
             Object parsed = ProjectJsonCodec.parse(json);
             if (parsed instanceof JSONObject) {
