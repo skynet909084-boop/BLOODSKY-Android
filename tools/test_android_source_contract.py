@@ -60,7 +60,9 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn('form.addView(previewHeader', self.source)
 
     def test_xor_rs_original_internal_dividers(self):
-        self.assertIn('canvas.drawLine(body.left, headerY, body.right, headerY, paint);', self.source)
+        self.assertIn('body.right - dp(0.5f), headerY, paint);', self.source)
+        self.assertIn('float input1Y = w.y + w.h / 2f;', self.source)
+        self.assertIn('float input2Y = w.y + w.h * 5f / 6f;', self.source)
         self.assertIn('canvas.drawLine(centerX, headerY, centerX, body.bottom, paint);', self.source)
 
     def test_original_fbd_and_setter_artwork_is_drawn(self):
