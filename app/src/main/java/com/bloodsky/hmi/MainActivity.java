@@ -787,7 +787,7 @@ public class MainActivity extends Activity {
         connectionLabel.setPadding(0, dp(10), 0, 0);
         form.addView(connectionLabel);
         EditText connectionField = propertyField(w.connectionInfo == null ? "" : w.connectionInfo, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        connectionField.setHint("tcp://192.168.1.10:502/1/40001; для FC04 укажи 30001");
+        connectionField.setHint("tcp://192.168.1.10:502/1/40001 (FC03); для Input Registers: 30001 (FC04)");
         form.addView(connectionField);
 
         final EditText timerPresetField;
