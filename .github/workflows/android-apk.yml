@@ -115,6 +115,7 @@ jobs:
           print(f"Compiled {len(sounds)} original KaScada audio resources")
           PY
           python3 tools/catalogue_craft_resources.py app/src/main/assets/kascada_original build-reports/kascada-resource-catalogue.md
+          python3 tools/map_craft_xml_references.py /tmp/kascada-decompiled/apktool/res build-reports/kascada-original-xml-map.md
       - name: Upload original image resource bundle
         uses: actions/upload-artifact@v4
         with:
@@ -125,6 +126,7 @@ jobs:
             app/src/main/res/raw/kc_*
             app/src/main/assets/kascada_original/**
             build-reports/kascada-resource-catalogue.md
+            build-reports/kascada-original-xml-map.md
           if-no-files-found: error
           retention-days: 30
       - name: Run Android unit tests
