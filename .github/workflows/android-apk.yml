@@ -75,23 +75,17 @@ jobs:
           import shutil
           source = Path("/tmp/kascada-decompiled/apktool/res/drawable")
           target = Path("app/src/main/res/drawable-nodpi")
-          originals = [
-              "button", "button2", "button3", "lamp_off", "lamp_green",
-              "lamp_red", "lamp_blue", "lamp_yellow", "tab_text",
-              "tab_digital_setters", "logic_ico", "no_picture",
-              "switch1_off", "switch1_on", "switch2_off", "switch2_on",
-              "switch3_off", "switch3_on", "switch4_off", "switch4_on",
-              "tab_button", "tab_round_indicator", "tab_line_indicator",
-              "tab_line_setter", "tab_graph", "tab_register", "tab_gif",
-              "tab_dyn_pictures", "tab_alarm", "tab_sound", "tab_list",
-              "action_copy", "action_cut", "action_paste",
-          ]
-          for name in originals:
-              src = source / (name + ".png")
-              if not src.is_file():
-                  raise SystemExit(f"Missing original KaScada resource: {src}")
-              shutil.copyfile(src, target / ("kc_" + name + ".png"))
-          print(f"Bundled {len(originals)} original KaScada image resources")
+          # Import the complete original PNG drawable catalogue rather than
+          # maintaining a tiny hand-picked subset. The 9-patch asset needs
+          # separate compilation and is intentionally not renamed as a PNG.
+          originals = sorted(
+              p for p in source.glob("*.png") if not p.name.endswith(".9.png")
+          )
+          if len(originals) < 100:
+              raise SystemExit(f"Unexpectedly small original resource library: {len(originals)}")
+          for src in originals:
+              shutil.copyfile(src, target / ("kc_" + src.name))
+          print(f"Bundled {len(originals)} original KaScada drawable images")
           PY
       - name: Upload original image resource bundle
         uses: actions/upload-artifact@v4
