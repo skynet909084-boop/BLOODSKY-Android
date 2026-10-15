@@ -1254,13 +1254,7 @@ public class MainActivity extends Activity {
 
     private JSONObject widgetToJson(Widget w) throws Exception {
         JSONObject obj = new JSONObject();
-        if (w.extraFields != null) {
-            java.util.Iterator<String> keys = w.extraFields.keys();
-            while (keys.hasNext()) {
-                String key = keys.next();
-                obj.put(key, w.extraFields.get(key));
-            }
-        }
+        ProjectMetadata.copyFields(w.extraFields, obj);
         obj.put("type", w.type); obj.put("text", w.text);
         obj.put("connectionInfo", w.connectionInfo == null ? "" : w.connectionInfo);
         obj.put("inputValue", w.inputValue); obj.put("buttonState", w.buttonState); obj.put("rsState", w.rsState); obj.put("counterPreset", w.counterPreset); obj.put("counterValue", w.counterValue); obj.put("counterLastInput", w.counterLastInput);
@@ -1299,17 +1293,11 @@ public class MainActivity extends Activity {
         try {
             saveActiveScreen();
             JSONObject project = new JSONObject();
-            if (projectExtraFields != null) {
-                java.util.Iterator<String> projectKeys = projectExtraFields.keys();
-                while (projectKeys.hasNext()) { String key = projectKeys.next(); project.put(key, projectExtraFields.get(key)); }
-            }
+            ProjectMetadata.copyFields(projectExtraFields, project);
             JSONArray screenArray = new JSONArray();
             for (Screen screen : screens) {
                 JSONObject screenObj = new JSONObject();
-                if (screen.extraFields != null) {
-                    java.util.Iterator<String> keys = screen.extraFields.keys();
-                    while (keys.hasNext()) { String key = keys.next(); screenObj.put(key, screen.extraFields.get(key)); }
-                }
+                ProjectMetadata.copyFields(screen.extraFields, screenObj);
                 screenObj.put("name", screen.name);
                 screenObj.put("backgroundColor", screen.backgroundColor);
                 screenObj.put("widgets", widgetsToJson(screen.widgets));
