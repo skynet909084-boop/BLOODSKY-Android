@@ -1867,6 +1867,9 @@ public class MainActivity extends Activity {
                     paint.setColor(Color.WHITE);
                 }
                 boolean craftFbd = w.type != null && w.type.startsWith("FBD ");
+                boolean dividedFbd = "FBD XOR".equals(w.type) || "FBD RS".equals(w.type)
+                        || "FBD SR".equals(w.type) || "FBD Таймер".equals(w.type)
+                        || "FBD TP".equals(w.type) || "FBD TOF".equals(w.type);
                 if (craftFbd) {
                     float portInset = Math.min(dp(9), w.w / 7f);
                     RectF body = new RectF(w.x + portInset, w.y + dp(1),
@@ -1876,9 +1879,7 @@ public class MainActivity extends Activity {
                     paint.setColor(Color.BLACK);
                     paint.setStrokeWidth(dp(1));
                     canvas.drawRect(body, paint);
-                    boolean dividedFbd = "FBD XOR".equals(w.type) || "FBD RS".equals(w.type)
-                            || "FBD SR".equals(w.type) || "FBD Таймер".equals(w.type)
-                            || "FBD TP".equals(w.type) || "FBD TOF".equals(w.type);
+
                     if (dividedFbd) {
                         // FB_XOR / FB_RS: input pins at 1/2 of the lower
                         // two thirds, unlike FB_AND / FB_OR quarter pins.
