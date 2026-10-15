@@ -557,7 +557,7 @@ public class MainActivity extends Activity {
 
         // Original editor has a floating component-picker control at the lower left.
         ImageButton addComponent = legacyIconButton(R.drawable.bloodsky_icon_add, "Добавить элемент", this::showAddWidgetMenu);
-        FrameLayout.LayoutParams addParams = new FrameLayout.LayoutParams(dp(48), dp(48),
+        FrameLayout.LayoutParams addParams = new FrameLayout.LayoutParams(dp(40), dp(40),
                 Gravity.BOTTOM | Gravity.LEFT);
         addParams.leftMargin = dp(10);
         addParams.bottomMargin = dp(10);
@@ -571,7 +571,7 @@ public class MainActivity extends Activity {
         selectionActions.setBackgroundColor(Color.rgb(35, 35, 35));
         selectionActions.setElevation(dp(100));
         selectionActions.addView(legacyIconButton(R.drawable.bloodsky_icon_cut, "Вырезать", this::cutSelectedWidget),
-                new LinearLayout.LayoutParams(dp(44), dp(44)));
+                new LinearLayout.LayoutParams(dp(50), dp(40)));
         selectionActions.addView(legacyIconButton(R.drawable.bloodsky_icon_copy, "Копировать", this::copySelectedWidget),
                 new LinearLayout.LayoutParams(dp(44), dp(44)));
         selectionActions.addView(legacyIconButton(R.drawable.bloodsky_icon_paste, "Вставить", this::pasteWidget),
@@ -593,7 +593,7 @@ public class MainActivity extends Activity {
         ImageButton icon = new ImageButton(this);
         icon.setImageResource(iconResource);
         icon.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
-        icon.setPadding(dp(5), dp(5), dp(5), dp(5));
+        icon.setPadding(0, 0, 0, 0);
         icon.setBackgroundColor(Color.TRANSPARENT);
         icon.setContentDescription(description);
         icon.setClickable(true);
