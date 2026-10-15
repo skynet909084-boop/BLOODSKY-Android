@@ -41,6 +41,12 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("ProjectJsonCodec.mergePreservedFields(projectExtraFields, project)", self.source)
         self.assertIn("static JSONObject mergePreservedFields", self.codec_source)
 
+    def test_save_failure_does_not_report_success_or_export_stale_project(self):
+        self.assertIn("private boolean persistProject()", self.source)
+        self.assertIn('.putString("project_name", projectName).commit()', self.source)
+        self.assertIn('if (persistProject()) Toast.makeText(this, "Проект сохранён на устройстве"', self.source)
+        self.assertIn("if (editor != null && !persistProject()) return;", self.source)
+
     def test_project_load_supports_multiscreen_and_legacy_array(self):
         self.assertIn("private void loadProject()", self.source)
         self.assertIn('project.optJSONArray("screens")', self.source)
