@@ -21,6 +21,7 @@ import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.ScrollView;
@@ -521,13 +522,13 @@ public class MainActivity extends Activity {
         top.setGravity(Gravity.CENTER_VERTICAL);
         top.setPadding(dp(4), dp(2), dp(4), dp(2));
         top.setBackgroundColor(Color.rgb(35, 35, 35));
-        top.addView(legacyIconButton("☰", "Меню редактора", this::showEditorOptionsMenu),
+        top.addView(legacyIconButton(R.drawable.bloodsky_icon_menu, "Меню редактора", this::showEditorOptionsMenu),
                 new LinearLayout.LayoutParams(dp(40), dp(48)));
-        top.addView(legacyIconButton("▣", "Сохранить проект", () -> {
+        top.addView(legacyIconButton(R.drawable.bloodsky_icon_save, "Сохранить проект", () -> {
             persistProject();
             Toast.makeText(this, "Проект сохранён на устройстве", Toast.LENGTH_SHORT).show();
         }), new LinearLayout.LayoutParams(dp(40), dp(48)));
-        top.addView(legacyIconButton("‹", "Предыдущий экран", this::previousScreen),
+        top.addView(legacyIconButton(R.drawable.bloodsky_icon_arrow_left, "Предыдущий экран", this::previousScreen),
                 new LinearLayout.LayoutParams(dp(36), dp(48)));
 
         TextView screenName = new TextView(this);
@@ -544,9 +545,9 @@ public class MainActivity extends Activity {
         });
         top.addView(screenName, new LinearLayout.LayoutParams(0, dp(48), 1));
 
-        top.addView(legacyIconButton("›", "Следующий экран", this::nextScreen),
+        top.addView(legacyIconButton(R.drawable.bloodsky_icon_arrow_right, "Следующий экран", this::nextScreen),
                 new LinearLayout.LayoutParams(dp(36), dp(48)));
-        top.addView(legacyIconButton("⋮", "Дополнительные действия", this::showEditorOptionsMenu),
+        top.addView(legacyIconButton(R.drawable.bloodsky_icon_overflow, "Дополнительные действия", this::showEditorOptionsMenu),
                 new LinearLayout.LayoutParams(dp(40), dp(48)));
         root.addView(top, new LinearLayout.LayoutParams(-1, dp(56)));
 
@@ -555,7 +556,7 @@ public class MainActivity extends Activity {
         workspace.addView(editor, new FrameLayout.LayoutParams(-1, -1));
 
         // Original editor has a floating component-picker control at the lower left.
-        TextView addComponent = legacyIconButton("+", "Добавить элемент", this::showAddWidgetMenu);
+        TextView addComponent = legacyIconButton(R.drawable.bloodsky_icon_add, "Добавить элемент", this::showAddWidgetMenu);
         FrameLayout.LayoutParams addParams = new FrameLayout.LayoutParams(dp(48), dp(48),
                 Gravity.BOTTOM | Gravity.LEFT);
         addParams.leftMargin = dp(10);
@@ -569,13 +570,13 @@ public class MainActivity extends Activity {
         selectionActions.setPadding(dp(3), dp(2), dp(3), dp(2));
         selectionActions.setBackgroundColor(Color.rgb(35, 35, 35));
         selectionActions.setElevation(dp(100));
-        selectionActions.addView(legacyIconButton("✂", "Вырезать", this::cutSelectedWidget),
+        selectionActions.addView(legacyIconButton(R.drawable.bloodsky_icon_cut, "Вырезать", this::cutSelectedWidget),
                 new LinearLayout.LayoutParams(dp(44), dp(44)));
-        selectionActions.addView(legacyIconButton("▢", "Копировать", this::copySelectedWidget),
+        selectionActions.addView(legacyIconButton(R.drawable.bloodsky_icon_copy, "Копировать", this::copySelectedWidget),
                 new LinearLayout.LayoutParams(dp(44), dp(44)));
-        selectionActions.addView(legacyIconButton("▤", "Вставить", this::pasteWidget),
+        selectionActions.addView(legacyIconButton(R.drawable.bloodsky_icon_paste, "Вставить", this::pasteWidget),
                 new LinearLayout.LayoutParams(dp(44), dp(44)));
-        selectionActions.addView(legacyIconButton("↔", "Выравнивание", this::alignSelectedWidget),
+        selectionActions.addView(legacyIconButton(R.drawable.bloodsky_icon_align, "Выравнивание", this::alignSelectedWidget),
                 new LinearLayout.LayoutParams(dp(44), dp(44)));
         FrameLayout.LayoutParams actionsParams = new FrameLayout.LayoutParams(-2, -2,
                 Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
@@ -588,13 +589,11 @@ public class MainActivity extends Activity {
         startModbusPolling();
     }
 
-    private TextView legacyIconButton(String symbol, String description, Runnable task) {
-        TextView icon = new TextView(this);
-        icon.setText(symbol);
-        icon.setTextColor(Color.rgb(237, 176, 59));
-        icon.setTextSize(24);
-        icon.setGravity(Gravity.CENTER);
-        icon.setSingleLine(true);
+    private ImageButton legacyIconButton(int iconResource, String description, Runnable task) {
+        ImageButton icon = new ImageButton(this);
+        icon.setImageResource(iconResource);
+        icon.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+        icon.setPadding(dp(5), dp(5), dp(5), dp(5));
         icon.setBackgroundColor(Color.TRANSPARENT);
         icon.setContentDescription(description);
         icon.setClickable(true);
