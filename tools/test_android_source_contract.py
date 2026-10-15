@@ -59,6 +59,12 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn('previewHeader.addView(new WidgetPreview(w.type, w.text)', self.source)
         self.assertIn('form.addView(previewHeader', self.source)
 
+    def test_original_xor_rs_timer_port_labels(self):
+        self.assertIn('String input1 = "FBD XOR".equals(w.type) ? "I1"', self.source)
+        self.assertIn('String input2 = "FBD XOR".equals(w.type) ? "I2"', self.source)
+        self.assertIn('canvas.drawText("Q", w.x + w.w * 3f / 4f,', self.source)
+        self.assertIn('"FBD TP".equals(w.type) || "FBD TOF".equals(w.type)', self.source)
+
     def test_xor_rs_original_internal_dividers(self):
         self.assertIn('body.right - dp(0.5f), headerY, paint);', self.source)
         self.assertIn('float input1Y = w.y + w.h / 2f;', self.source)
