@@ -60,7 +60,7 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn('form.addView(previewHeader', self.source)
 
     def test_original_sound_resources_bundled_in_workflow(self):
-        workflow = (self.root / ".github/workflows/android-apk.yml").read_text(encoding="utf-8")
+        workflow = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn('Compiled {len(sounds)} original KaScada audio resources', workflow)
         self.assertIn('app/src/main/res/raw/kc_*', workflow)
         self.assertIn('p.suffix.lower() in {".wav", ".mp3", ".ogg"}', workflow)
