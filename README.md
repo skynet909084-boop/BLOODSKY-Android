@@ -21,4 +21,5 @@ GitHub Actions workflow **BLOODSKY Android APK** builds a debug APK from the And
 - `docs/BLOODSKY_IMPLEMENTATION_CONTRACT.md` — persistence and compatibility contract.
 - `docs/BLOODSKY_ANDROID_COMPONENT_INVENTORY.md` — decompiled component and FBD inventory.
 - `docs/BLOODSKY_EDITOR_PARITY_MATRIX.md` — editor parity checklist, Modbus acceptance tests and release gates.
+- `docs/BLOODSKY_VISUAL_FIDELITY_CONTRACT.md` — strict visual-fidelity target and side-by-side comparison/release checklist.
 - `tools/project_archive_inspector.py` and its tests — defensive, read-only project archive validation.
