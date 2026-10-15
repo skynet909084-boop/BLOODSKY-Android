@@ -52,6 +52,13 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("Trailing content after project JSON", self.codec_source)
         self.assertIn("Project file too large", self.source)
 
+    def test_import_uses_shared_strict_json_parser(self):
+        start = self.source.index("private void validateImportedProject")
+        end = self.source.index("private void validateWidgetArray", start)
+        import_validator = self.source[start:end]
+        self.assertIn("ProjectJsonCodec.parse(json)", import_validator)
+        self.assertNotIn("JSONTokener", import_validator)
+
     def test_import_uses_strict_integer_fields_for_screen_and_geometry(self):
         self.assertIn('ProjectJsonCodec.readIntField(project, "currentScreen", 0)', self.source)
         self.assertIn('ProjectJsonCodec.readIntField(widget, "x", 0)', self.source)
