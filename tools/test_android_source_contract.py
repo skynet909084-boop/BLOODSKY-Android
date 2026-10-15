@@ -31,6 +31,10 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn('project.put("screens", screenArray)', self.source)
         self.assertIn('screenObj.put("widgets", widgetsToJson(screen.widgets))', self.source)
         self.assertIn('project.put("currentScreen", currentScreenIndex)', self.source)
+        self.assertIn("ProjectJsonCodec.mergePreservedFields(w.extraFields, obj)", self.source)
+        self.assertIn("ProjectJsonCodec.mergePreservedFields(screen.extraFields, screenObj)", self.source)
+        self.assertIn("ProjectJsonCodec.mergePreservedFields(projectExtraFields, project)", self.source)
+        self.assertIn("static JSONObject mergePreservedFields", self.codec_source)
 
     def test_project_load_supports_multiscreen_and_legacy_array(self):
         self.assertIn("private void loadProject()", self.source)
