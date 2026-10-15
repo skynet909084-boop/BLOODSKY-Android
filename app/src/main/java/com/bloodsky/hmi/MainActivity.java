@@ -787,16 +787,80 @@ public class MainActivity extends Activity {
 
     private void showWidgetContextMenu() {
         if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) return;
-        final String[] actions = {"Свойства", "Копировать", "Удалить"};
-        new AlertDialog.Builder(this)
-                .setTitle(widgets.get(editor.selected).text)
-                .setItems(actions, (dialog, which) -> {
-                    if (which == 0) editSelectedWidget();
-                    else if (which == 1) copySelectedWidget();
-                    else if (which == 2) deleteSelectedWidget();
-                })
+
+        Widget selectedWidget = widgets.get(editor.selected);
+        String titleText = selectedWidget.text == null || selectedWidget.text.trim().isEmpty()
+                ? selectedWidget.type : selectedWidget.text;
+
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        list.setPadding(dp(8), dp(4), dp(8), dp(4));
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.addView(list);
+
+        final AlertDialog[] menu = new AlertDialog[1];
+        final String[] labels = {"Свойства", "Копировать", "Удалить"};
+        final String[] details = {
+                "Настроить элемент и привязку",
+                "Создать копию элемента",
+                "Удалить элемент с экрана"
+        };
+        final int[] symbols = {0x2699, 0x29C9, 0x2715};
+
+        for (int i = 0; i < labels.length; i++) {
+            final int index = i;
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(14), dp(10), dp(12), dp(10));
+            row.setMinimumHeight(dp(62));
+            row.setBackgroundColor(i % 2 == 0
+                    ? Color.rgb(248, 250, 252) : Color.WHITE);
+
+            TextView symbol = new TextView(this);
+            symbol.setText(new String(Character.toChars(symbols[i])));
+            symbol.setTextSize(21);
+            symbol.setGravity(Gravity.CENTER);
+            symbol.setTextColor(i == 2 ? Color.rgb(185, 28, 28) : Color.rgb(37, 99, 235));
+            row.addView(symbol, new LinearLayout.LayoutParams(dp(38), -2));
+
+            LinearLayout textColumn = new LinearLayout(this);
+            textColumn.setOrientation(LinearLayout.VERTICAL);
+            textColumn.setPadding(dp(8), 0, 0, 0);
+            TextView label = new TextView(this);
+            label.setText(labels[i]);
+            label.setTextSize(16);
+            label.setTypeface(null, android.graphics.Typeface.BOLD);
+            label.setTextColor(i == 2 ? Color.rgb(185, 28, 28) : Color.rgb(30, 41, 59));
+            textColumn.addView(label, new LinearLayout.LayoutParams(-1, -2));
+
+            TextView detail = new TextView(this);
+            detail.setText(details[i]);
+            detail.setTextSize(12);
+            detail.setTextColor(Color.rgb(100, 116, 139));
+            textColumn.addView(detail, new LinearLayout.LayoutParams(-1, -2));
+            row.addView(textColumn, new LinearLayout.LayoutParams(0, -2, 1));
+
+            row.setOnClickListener(v -> {
+                if (menu[0] != null) menu[0].dismiss();
+                if (index == 0) editSelectedWidget();
+                else if (index == 1) copySelectedWidget();
+                else deleteSelectedWidget();
+            });
+            list.addView(row, new LinearLayout.LayoutParams(-1, -2));
+
+            View separator = new View(this);
+            separator.setBackgroundColor(Color.rgb(226, 232, 240));
+            list.addView(separator, new LinearLayout.LayoutParams(-1, dp(1)));
+        }
+
+        menu[0] = new AlertDialog.Builder(this)
+                .setTitle(titleText)
+                .setView(scroll)
                 .setNegativeButton("Отмена", null)
-                .show();
+                .create();
+        menu[0].show();
     }
 
     private void showModbusDiagnostics() {
