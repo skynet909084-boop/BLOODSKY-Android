@@ -1,0 +1,212 @@
+{
+  "version": "1.0",
+  "target_application": "KaScada Craft 1.0.7",
+  "bloodsky_version": "1.0.0",
+  "categories": [
+    {
+      "name": "Editor Workflow",
+      "items": [
+        {
+          "id": "editor.add_component",
+          "name": "Add Component Menu",
+          "status": "implemented",
+          "criteria": "Component menu offers available widget/FBD types and creates default geometry."
+        },
+        {
+          "id": "editor.select_move",
+          "name": "Select & Drag Move",
+          "status": "implemented",
+          "criteria": "Selected widget shows highlight border and moves on drag with grid snapping."
+        },
+        {
+          "id": "editor.resize",
+          "name": "Resize Handle",
+          "status": "implemented",
+          "criteria": "Corner handle allows resizing widget dimensions within grid bounds."
+        },
+        {
+          "id": "editor.align",
+          "name": "Widget Alignment Tools",
+          "status": "implemented",
+          "criteria": "Align selected widgets to Left, Right, Top, Bottom, or Center."
+        },
+        {
+          "id": "editor.copy_paste",
+          "name": "Copy, Cut & Paste",
+          "status": "implemented",
+          "criteria": "Widget clone retains all properties and extra metadata with offset position."
+        },
+        {
+          "id": "editor.context_menu",
+          "name": "Long-press Context Menu",
+          "status": "implemented",
+          "criteria": "Long press opens context menu for properties, copy, and deletion."
+        },
+        {
+          "id": "editor.multiscreen",
+          "name": "Multiple Screen Navigation",
+          "status": "implemented",
+          "criteria": "Navigation across screens retains per-screen widget collections and background colors."
+        }
+      ]
+    },
+    {
+      "name": "Widgets & Visual Parity",
+      "items": [
+        {
+          "id": "widget.label",
+          "name": "Static Label / Text (CustomLabel)",
+          "status": "implemented",
+          "criteria": "Displays custom text with customizable color, background, and font size."
+        },
+        {
+          "id": "widget.button",
+          "name": "Button Control (CustomComponents)",
+          "status": "implemented",
+          "criteria": "Toggleable button state with visual ON/OFF indication."
+        },
+        {
+          "id": "widget.indicator",
+          "name": "Two-State Indicator / LED (CustomComponents.q)",
+          "status": "implemented",
+          "criteria": "Visual LED/indicator reflecting discrete state or live Modbus register value."
+        },
+        {
+          "id": "widget.setpoint",
+          "name": "Numeric Setpoint / Adjuster (CustomComponents.i)",
+          "status": "implemented",
+          "criteria": "Adjustable setpoint with +/- controls and numerical display."
+        },
+        {
+          "id": "widget.dyntext",
+          "name": "Dynamic Text (CustomDynText)",
+          "status": "implemented",
+          "criteria": "Text updating based on live tag value or status condition."
+        },
+        {
+          "id": "widget.gauge",
+          "name": "Analog Gauge / Scale (CustomComponents.m)",
+          "status": "implemented",
+          "criteria": "Visual scale/gauge rendering scaled process values."
+        },
+        {
+          "id": "widget.progressbar",
+          "name": "Progress Bar (CustomComponents.v)",
+          "status": "implemented",
+          "criteria": "Horizontal progress bar displaying percentage or scaled value."
+        },
+        {
+          "id": "widget.trend",
+          "name": "Trend / Chart View (CustomComponents.o)",
+          "status": "implemented",
+          "criteria": "Graph view displaying historical data points over time."
+        }
+      ]
+    },
+    {
+      "name": "FBD Logic Execution",
+      "items": [
+        {
+          "id": "fbd.boolean",
+          "name": "Boolean Logic (AND, OR, NOT, NAND, NOR, XOR)",
+          "status": "implemented",
+          "criteria": "Full logical evaluation of combined inputs."
+        },
+        {
+          "id": "fbd.latches",
+          "name": "Flip-Flops (RS, SR)",
+          "status": "implemented",
+          "criteria": "Bistable set/reset logic latches with state memory."
+        },
+        {
+          "id": "fbd.triggers",
+          "name": "Edge Triggers (R_TRIG, F_TRIG)",
+          "status": "implemented",
+          "criteria": "Detect rising or falling signal edges across evaluation scans."
+        },
+        {
+          "id": "fbd.timers",
+          "name": "Timers (TON, TOF, TP)",
+          "status": "implemented",
+          "criteria": "On-delay, off-delay, and pulse timing logic in milliseconds."
+        },
+        {
+          "id": "fbd.counters",
+          "name": "Counters (CTU, CTD)",
+          "status": "implemented",
+          "criteria": "Up and down counting with configurable preset limit and reset."
+        },
+        {
+          "id": "fbd.comparison",
+          "name": "Comparisons (<, <=, >, >=, ==, !=)",
+          "status": "implemented",
+          "criteria": "Numerical comparison of two input values or constants."
+        },
+        {
+          "id": "fbd.arithmetic",
+          "name": "Math & Selection (+, -, *, /, ABS, MIN, MAX, MOVE, SEL)",
+          "status": "implemented",
+          "criteria": "Basic arithmetic calculations and signal selection blocks."
+        },
+        {
+          "id": "fbd.wires",
+          "name": "Inter-block Wiring & Cycle Prevention",
+          "status": "implemented",
+          "criteria": "Visual wire rendering between blocks with cycle detection rejecting feedback loops."
+        }
+      ]
+    },
+    {
+      "name": "Persistence & Import/Export",
+      "items": [
+        {
+          "id": "persistence.json",
+          "name": "JSON Project Save/Load",
+          "status": "implemented",
+          "criteria": "Full serialization of screens, widgets, geometries, and FBD connections."
+        },
+        {
+          "id": "persistence.extraFields",
+          "name": "Metadata Preservation (deepCopy)",
+          "status": "implemented",
+          "criteria": "Unknown or extra JSON metadata preserved across round-trip edits."
+        },
+        {
+          "id": "persistence.zip_export",
+          "name": "ZIP Project Export/Import",
+          "status": "implemented",
+          "criteria": "ZIP archive packaging TableNameProject JSON and assets safely."
+        },
+        {
+          "id": "persistence.security",
+          "name": "Archive Security Validation",
+          "status": "implemented",
+          "criteria": "Rejection of traversal paths, duplicate file entries, and oversized files."
+        }
+      ]
+    },
+    {
+      "name": "Modbus Communications",
+      "items": [
+        {
+          "id": "modbus.tcp_fc03_fc04",
+          "name": "Modbus TCP FC03 & FC04",
+          "status": "implemented",
+          "criteria": "Polling of Holding (FC03) and Input (FC04) registers using 0-based protocol indexing."
+        },
+        {
+          "id": "modbus.rtu_crc",
+          "name": "Modbus RTU Framing & CRC16",
+          "status": "implemented",
+          "criteria": "Correct CRC16 calculations and frame validation for serial/RTU communication."
+        },
+        {
+          "id": "modbus.error_handling",
+          "name": "Exception & Timeout Reporting",
+          "status": "implemented",
+          "criteria": "Detailed diagnostic error strings for timeouts, socket failures, and Modbus exceptions."
+        }
+      ]
+    }
+  ]
+}
