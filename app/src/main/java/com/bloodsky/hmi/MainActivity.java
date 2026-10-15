@@ -1104,8 +1104,8 @@ public class MainActivity extends Activity {
         try {
             Widget copy = widgetFromJson(widgetToJson(clipboardWidget));
             int offset = dp(24);
-            int maxX = editor == null ? Math.max(0, copy.x + offset) : Math.max(0, editor.getWidth() - copy.w);
-            int maxY = editor == null ? Math.max(0, copy.y + offset) : Math.max(0, editor.getHeight() - copy.h);
+            float maxX = editor == null ? Math.max(0, copy.x + offset) : Math.max(0, editor.getWidth() - copy.w);
+            float maxY = editor == null ? Math.max(0, copy.y + offset) : Math.max(0, editor.getHeight() - copy.h);
             copy.x = Math.max(0, Math.min(maxX, copy.x + offset));
             copy.y = Math.max(0, Math.min(maxY, copy.y + offset));
             liveValues.clear();
@@ -1715,13 +1715,13 @@ public class MainActivity extends Activity {
                     Widget w = widgets.get(selected);
                     if (resizing) {
                         int minW = dp(60), minH = dp(40);
-                        int maxW = Math.max(minW, getWidth() - w.x);
-                        int maxH = Math.max(minH, getHeight() - w.y);
+                        float maxW = Math.max(minW, getWidth() - w.x);
+                        float maxH = Math.max(minH, getHeight() - w.y);
                         w.w = Math.max(minW, Math.min(maxW, snapToGrid(startW + dx)));
                         w.h = Math.max(minH, Math.min(maxH, snapToGrid(startH + dy)));
                     } else {
-                        int maxX = Math.max(0, getWidth() - w.w);
-                        int maxY = Math.max(0, getHeight() - w.h);
+                        float maxX = Math.max(0, getWidth() - w.w);
+                        float maxY = Math.max(0, getHeight() - w.h);
                         w.x = Math.max(0, Math.min(maxX, snapToGrid(startX + dx)));
                         w.y = Math.max(0, Math.min(maxY, snapToGrid(startY + dy)));
                     }
