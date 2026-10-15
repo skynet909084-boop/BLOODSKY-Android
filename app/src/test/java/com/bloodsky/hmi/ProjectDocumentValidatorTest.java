@@ -29,6 +29,9 @@ public class ProjectDocumentValidatorTest {
         assertRejected("{\"screens\":[{\"widgets\":null}]}");
         assertRejected("{\"screens\":[{\"widgets\":[null]}]}");
     }
+    @Test public void rejectsNonArrayConnectionsField() {
+        assertRejected("{\\\"screens\\\":[{\\\"widgets\\\":[],\\\"connections\\\":\\\"invalid\\\"}]}");
+    }
     @Test public void rejectsInvalidAndCyclicFbdConnections() {
         String twoBlocks = "{\"screens\":[{\"widgets\":[{\"type\":\"FBD AND\"},{\"type\":\"FBD OR\"}],\"connections\":[%s]}]}";
         assertRejected(String.format(twoBlocks, "{\"source\":0,\"target\":2}"));
