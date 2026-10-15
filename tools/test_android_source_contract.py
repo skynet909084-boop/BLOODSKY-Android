@@ -59,6 +59,12 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn('previewHeader.addView(new WidgetPreview(w.type, w.text)', self.source)
         self.assertIn('form.addView(previewHeader', self.source)
 
+    def test_original_sound_resources_bundled_in_workflow(self):
+        workflow = (self.root / ".github/workflows/android-apk.yml").read_text(encoding="utf-8")
+        self.assertIn('Compiled {len(sounds)} original KaScada audio resources', workflow)
+        self.assertIn('app/src/main/res/raw/kc_*', workflow)
+        self.assertIn('p.suffix.lower() in {".wav", ".mp3", ".ogg"}', workflow)
+
     def test_original_and_or_rendered_names(self):
         self.assertIn('"FBD И".equals(w.type) ? "AND"', self.source)
         self.assertIn('"FBD ИЛИ".equals(w.type) ? "OR"', self.source)
