@@ -314,43 +314,67 @@ public class MainActivity extends Activity {
             this.out = out;
         }
 
+        private void readFully(byte[] buffer, int offset, int length) throws IOException {
+            int totalRead = 0;
+            while (totalRead < length) {
+                int count = in.read(buffer, offset + totalRead, length - totalRead);
+                if (count < 0) {
+                    throw new IOException("Stream closed before reading expected " + length + " bytes (read " + totalRead + ")");
+                }
+                totalRead += count;
+            }
+        }
+
         public byte[] sendAndReceive(int unit, int functionCode, int startAddress, int count) throws IOException {
             byte[] frame = buildModbusRtuFrame(unit, functionCode, startAddress, count);
             out.write(frame);
             out.flush();
 
             byte[] header = new byte[3];
-            int read = 0;
-            while (read < 3) {
-                int r = in.read(header, read, 3 - read);
-                if (r < 0) throw new IOException("End of stream reading RTU response header");
-                read += r;
-            }
+            readFully(header, 0, 3);
+
             int respUnit = header[0] & 0xFF;
             int respFunc = header[1] & 0xFF;
+
             if (respFunc == (functionCode | 0x80)) {
                 int exceptionCode = header[2] & 0xFF;
                 byte[] crcBuf = new byte[2];
-                in.read(crcBuf);
-                throw new IOException("Modbus RTU exception code " + exceptionCode);
+                readFully(crcBuf, 0, 2);
+                int expectedCrc = ((crcBuf[1] & 0xFF) << 8) | (crcBuf[0] & 0xFF);
+                int calcCrc = calculateModbusRtuCrc(header, 3);
+                if (calcCrc != expectedCrc) {
+                    throw new IOException("CRC mismatch in Modbus RTU exception response (expected 0x"
+                            + String.format(java.util.Locale.ROOT, "%04X", calcCrc) + ", got 0x"
+                            + String.format(java.util.Locale.ROOT, "%04X", expectedCrc) + ")");
+                }
+                throw new IOException("Modbus RTU: " + describeModbusExceptionCodeStatic(exceptionCode) + " (код " + exceptionCode + ")");
             }
+
+            if (respFunc != functionCode) {
+                throw new IOException("Unexpected function code in Modbus RTU response: " + respFunc);
+            }
+
             int byteCount = header[2] & 0xFF;
-            byte[] payload = new byte[byteCount];
-            read = 0;
-            while (read < byteCount) {
-                int r = in.read(payload, read, byteCount - read);
-                if (r < 0) throw new IOException("End of stream reading RTU payload");
-                read += r;
+            if (byteCount < 0 || byteCount > 252) {
+                throw new IOException("Invalid byte count in Modbus RTU response: " + byteCount);
             }
+
+            byte[] payload = new byte[byteCount];
+            readFully(payload, 0, byteCount);
+
             byte[] crcBuf = new byte[2];
-            in.read(crcBuf);
+            readFully(crcBuf, 0, 2);
             int expectedCrc = ((crcBuf[1] & 0xFF) << 8) | (crcBuf[0] & 0xFF);
+
             byte[] fullPdu = new byte[3 + byteCount];
             System.arraycopy(header, 0, fullPdu, 0, 3);
             System.arraycopy(payload, 0, fullPdu, 3, byteCount);
+
             int calcCrc = calculateModbusRtuCrc(fullPdu, fullPdu.length);
             if (calcCrc != expectedCrc) {
-                throw new IOException("CRC mismatch in Modbus RTU response");
+                throw new IOException("CRC mismatch in Modbus RTU response (expected 0x"
+                        + String.format(java.util.Locale.ROOT, "%04X", calcCrc) + ", got 0x"
+                        + String.format(java.util.Locale.ROOT, "%04X", expectedCrc) + ")");
             }
             return payload;
         }
@@ -1497,10 +1521,20 @@ public class MainActivity extends Activity {
         BindingRequest request = parseBinding(-1, widget.connectionInfo);
         if (request != null && request.functionCode == 3) {
             final double valToWrite = newValue;
+            final String oldText = current;
             modbusExecutor.execute(() -> {
                 try {
-                    writeModbusRegisterStatic(request.host, request.port, request.unit, request.address, (int) valToWrite);
-                } catch (Exception ignored) {}
+                    boolean ok = writeModbusRegisterStatic(request.host, request.port, request.unit, request.address, (int) valToWrite);
+                    if (!ok) throw new IOException("Устройство отклонило запись регистра");
+                } catch (Exception ex) {
+                    android.util.Log.e("BLOODSKY", "Modbus write failed", ex);
+                    runOnUiThread(() -> {
+                        widget.text = oldText;
+                        persistProject();
+                        if (editor != null) editor.invalidate();
+                        Toast.makeText(MainActivity.this, "Ошибка записи Modbus: " + (ex.getMessage() != null ? ex.getMessage() : "ошибка связи"), Toast.LENGTH_LONG).show();
+                    });
+                }
             });
         }
         Toast.makeText(MainActivity.this, "Значение: " + widget.text, Toast.LENGTH_SHORT).show();
@@ -2516,8 +2550,17 @@ public class MainActivity extends Activity {
                             final boolean btnOn = picked.buttonState;
                             modbusExecutor.execute(() -> {
                                 try {
-                                    writeModbusRegisterStatic(request.host, request.port, request.unit, request.address, btnOn ? 1 : 0);
-                                } catch (Exception ignored) {}
+                                    boolean ok = writeModbusRegisterStatic(request.host, request.port, request.unit, request.address, btnOn ? 1 : 0);
+                                    if (!ok) throw new IOException("Устройство отклонило запись регистра");
+                                } catch (Exception ex) {
+                                    android.util.Log.e("BLOODSKY", "Modbus write failed", ex);
+                                    runOnUiThread(() -> {
+                                        picked.buttonState = !btnOn;
+                                        persistProject();
+                                        if (editor != null) editor.invalidate();
+                                        Toast.makeText(MainActivity.this, "Ошибка записи Modbus: " + (ex.getMessage() != null ? ex.getMessage() : "ошибка связи"), Toast.LENGTH_LONG).show();
+                                    });
+                                }
                             });
                         }
                         Toast.makeText(MainActivity.this, picked.text + (picked.buttonState ? ": ВКЛ" : ": ВЫКЛ"), Toast.LENGTH_SHORT).show();

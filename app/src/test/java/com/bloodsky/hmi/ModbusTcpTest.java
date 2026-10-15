@@ -64,10 +64,9 @@ public class ModbusTcpTest {
                     int addr = in.readUnsignedShort();
                     int count = in.readUnsignedShort();
                     if (addr < 0 || addr + count > registers.length) {
-                        // Exception 0x02: Illegal Data Address
                         out.writeShort(transaction);
                         out.writeShort(0);
-                        out.writeShort(3); // length: unit + fc|0x80 + exceptionCode
+                        out.writeShort(3);
                         out.writeByte(unit);
                         out.writeByte(fc | 0x80);
                         out.writeByte(2); // Illegal address
@@ -76,7 +75,7 @@ public class ModbusTcpTest {
                         int byteCount = count * 2;
                         out.writeShort(transaction);
                         out.writeShort(0);
-                        out.writeShort(3 + byteCount); // Unit(1) + FC(1) + ByteCount(1) + Data(byteCount)
+                        out.writeShort(3 + byteCount);
                         out.writeByte(unit);
                         out.writeByte(fc);
                         out.writeByte(byteCount);
@@ -194,5 +193,58 @@ public class ModbusTcpTest {
         assertEquals(4, payload.length);
         assertEquals(0x0A, payload[1]);
         assertEquals(0x14, payload[3]);
+    }
+
+    @Test
+    public void testModbusRtuTransportExceptionResponseWithValidCrc() throws Exception {
+        ByteArrayOutputStream outStream = new ByteArrayOutputStream();
+        byte[] rawResponse = new byte[] {0x01, (byte) 0x83, 0x02}; // Unit 1, Exception 0x83, Illegal Address (0x02)
+        int crc = MainActivity.calculateModbusRtuCrc(rawResponse, rawResponse.length);
+        ByteArrayOutputStream mockDeviceResp = new ByteArrayOutputStream();
+        mockDeviceResp.write(rawResponse);
+        mockDeviceResp.write((byte) (crc & 0xFF));
+        mockDeviceResp.write((byte) ((crc >> 8) & 0xFF));
+
+        ByteArrayInputStream inStream = new ByteArrayInputStream(mockDeviceResp.toByteArray());
+        MainActivity.ModbusRtuTransport transport = new MainActivity.ModbusRtuTransport(inStream, outStream);
+
+        try {
+            transport.sendAndReceive(1, 3, 100, 1);
+            fail("Expected exception for Modbus RTU error response");
+        } catch (IOException ex) {
+            assertTrue(ex.getMessage().contains("недопустимый адрес регистра"));
+        }
+    }
+
+    @Test
+    public void testModbusRtuTransportExceptionResponseWithInvalidCrc() throws Exception {
+        ByteArrayOutputStream outStream = new ByteArrayOutputStream();
+        byte[] rawResponse = new byte[] {0x01, (byte) 0x83, 0x02, (byte) 0xFF, (byte) 0xFF}; // Bad CRC
+
+        ByteArrayInputStream inStream = new ByteArrayInputStream(rawResponse);
+        MainActivity.ModbusRtuTransport transport = new MainActivity.ModbusRtuTransport(inStream, outStream);
+
+        try {
+            transport.sendAndReceive(1, 3, 100, 1);
+            fail("Expected CRC mismatch exception");
+        } catch (IOException ex) {
+            assertTrue(ex.getMessage().contains("CRC mismatch"));
+        }
+    }
+
+    @Test
+    public void testModbusRtuTransportTruncatedStream() throws Exception {
+        ByteArrayOutputStream outStream = new ByteArrayOutputStream();
+        byte[] truncatedResponse = new byte[] {0x01, 0x03}; // Truncated header
+
+        ByteArrayInputStream inStream = new ByteArrayInputStream(truncatedResponse);
+        MainActivity.ModbusRtuTransport transport = new MainActivity.ModbusRtuTransport(inStream, outStream);
+
+        try {
+            transport.sendAndReceive(1, 3, 0, 1);
+            fail("Expected truncated stream exception");
+        } catch (IOException ex) {
+            assertTrue(ex.getMessage().contains("Stream closed before reading expected"));
+        }
     }
 }
