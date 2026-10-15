@@ -44,3 +44,7 @@
 
 ## Границы автономности
 GitHub Actions может выполнять команды, тесты, сборки и проверки по расписанию. Он не должен самостоятельно менять архитектуру, принимать сомнительные решения о совместимости, публиковать релиз или обходить защиты. Для автономного написания кода нужен отдельный агент с ограниченными разрешениями, тестами, review-процессом и возможностью отката.
+
+## Issue-driven coding agent
+
+The implementation and security contract for progressing from automatic CI to bounded autonomous coding is documented in [BLOODSKY_SAFE_AUTONOMOUS_AGENT.md](BLOODSKY_SAFE_AUTONOMOUS_AGENT.md). Track provider/runtime configuration and the first pilot in [Issue #2](https://github.com/skynet909084-boop/BLOODSKY-Android/issues/2). Code-writing automation must remain disabled until its execution environment and narrowly scoped credentials are configured and reviewed.
