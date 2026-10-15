@@ -6,6 +6,9 @@ on:
     paths:
       - 'app/**'
       - 'tools/**'
+      - 'docs/**'
+      - 'AGENTS.md'
+      - 'README.md'
       - '*.gradle'
       - 'gradle.properties'
       - 'settings.gradle'
