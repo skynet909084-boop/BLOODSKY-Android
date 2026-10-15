@@ -58,6 +58,9 @@ public class MainActivity extends Activity {
     private Widget clipboardWidget;
     private boolean fbdWireMode = false;
     private int wireSource = -1;
+    // Cache stateful FBD outputs once per canvas scan so fan-out connections do not consume edge pulses repeatedly.
+    private boolean[] fbdCacheValid = new boolean[0];
+    private boolean[] fbdCacheValues = new boolean[0];
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService modbusExecutor = Executors.newSingleThreadExecutor();
     private final Map<Integer, String> liveValues = new HashMap<>();
@@ -1178,6 +1181,19 @@ public class MainActivity extends Activity {
     }
 
     private boolean evaluateFbd(int index, boolean[] visiting) {
+        if (index < 0 || index >= widgets.size()) return false;
+        if (fbdCacheValid.length != widgets.size() || fbdCacheValues.length != widgets.size()) {
+            fbdCacheValid = new boolean[widgets.size()];
+            fbdCacheValues = new boolean[widgets.size()];
+        }
+        if (fbdCacheValid[index]) return fbdCacheValues[index];
+        boolean result = evaluateFbdUncached(index, visiting);
+        fbdCacheValues[index] = result;
+        fbdCacheValid[index] = true;
+        return result;
+    }
+
+    private boolean evaluateFbdUncached(int index, boolean[] visiting) {
         if (index < 0 || index >= widgets.size() || visiting[index]) return false;
         Widget widget = widgets.get(index);
         if (!isFbd(widget)) return false;
@@ -1414,6 +1430,9 @@ public class MainActivity extends Activity {
                 }
                 paint.setStyle(Paint.Style.FILL);
             }
+            // Start a fresh FBD scan for this frame; recursive evaluations share this cache.
+            fbdCacheValid = new boolean[widgets.size()];
+            fbdCacheValues = new boolean[widgets.size()];
             for (int i = 0; i < widgets.size(); i++) {
                 Widget w = widgets.get(i);
                 if (!w.visible) continue;
