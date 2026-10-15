@@ -15,6 +15,13 @@ class SafeEntryNameTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertFalse(safe_entry_name(name))
 
+    def test_rejects_ambiguous_normalized_paths(self):
+        for name in (".", "./project.json", "folder/./project.json",
+                     "folder//project.json", "folder///project.json",
+                     "folder/../project.json", "folder//"):
+            with self.subTest(name=name):
+                self.assertFalse(safe_entry_name(name))
+
     def test_accepts_normal_relative_paths(self):
         self.assertTrue(safe_entry_name("project/data.json"))
         self.assertTrue(safe_entry_name("assets/layout.xml"))
