@@ -1392,6 +1392,12 @@ public class MainActivity extends Activity {
             if (backup != null) {
                 try {
                     validateImportedProject(backup);
+                    // Repair the primary copy immediately, before opening the editor.
+                    // Keep the backup intact in case the next session needs it.
+                    if (!prefs.edit().putString(ACTIVE_PROJECT, backup).commit()) {
+                        Toast.makeText(this, "Не удалось записать восстановленный проект", Toast.LENGTH_LONG).show();
+                        return;
+                    }
                     json = backup;
                     Toast.makeText(this, "Проект восстановлен из резервной копии", Toast.LENGTH_LONG).show();
                 } catch (Exception invalidBackup) {
