@@ -1147,6 +1147,22 @@ public class MainActivity extends Activity {
         int pad = dp(16);
         form.setPadding(pad, dp(4), pad, 0);
 
+        // Show the same original-library preview used by the add-element
+        // picker, so the property dialog retains the familiar visual cue.
+        LinearLayout previewHeader = new LinearLayout(this);
+        previewHeader.setGravity(Gravity.CENTER_VERTICAL);
+        previewHeader.setPadding(dp(6), dp(5), dp(6), dp(9));
+        previewHeader.setBackgroundColor(Color.rgb(241, 245, 249));
+        previewHeader.addView(new WidgetPreview(w.type, w.text),
+                new LinearLayout.LayoutParams(dp(74), dp(50)));
+        TextView previewName = new TextView(this);
+        previewName.setText(w.type);
+        previewName.setTextColor(Color.rgb(30, 41, 59));
+        previewName.setTextSize(16);
+        previewName.setPadding(dp(12), 0, 0, 0);
+        previewHeader.addView(previewName, new LinearLayout.LayoutParams(0, -2, 1));
+        form.addView(previewHeader, new LinearLayout.LayoutParams(-1, -2));
+
         TextView textLabel = new TextView(this);
         textLabel.setText("Подпись");
         form.addView(textLabel);
