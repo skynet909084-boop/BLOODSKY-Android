@@ -1877,7 +1877,8 @@ public class MainActivity extends Activity {
                     paint.setStrokeWidth(dp(1));
                     canvas.drawRect(body, paint);
                     boolean dividedFbd = "FBD XOR".equals(w.type) || "FBD RS".equals(w.type)
-                            || "FBD SR".equals(w.type);
+                            || "FBD SR".equals(w.type) || "FBD Таймер".equals(w.type)
+                            || "FBD TP".equals(w.type) || "FBD TOF".equals(w.type);
                     if (dividedFbd) {
                         // FB_XOR / FB_RS: input pins at 1/2 of the lower
                         // two thirds, unlike FB_AND / FB_OR quarter pins.
@@ -1893,7 +1894,8 @@ public class MainActivity extends Activity {
                     // Original FB_XOR/FB_RS split the block into a header and
                     // two lower cells; FB_AND/FB_OR have no internal dividers.
                     if ("FBD XOR".equals(w.type) || "FBD RS".equals(w.type)
-                            || "FBD SR".equals(w.type)) {
+                            || "FBD SR".equals(w.type) || "FBD Таймер".equals(w.type)
+                            || "FBD TP".equals(w.type) || "FBD TOF".equals(w.type)) {
                         float headerY = w.y + w.h / 3f;
                         float centerX = w.x + w.w / 2f;
                         // FB_XOR / FB_RS onDraw: header separator ends half
@@ -1929,12 +1931,38 @@ public class MainActivity extends Activity {
                     String blockTitle = "FBD Вход".equals(w.type) ? "Вход " + (w.inputValue ? "1" : "0")
                             : (("FBD CTU".equals(w.type) || "FBD CTD".equals(w.type)) ? ("FBD CTD".equals(w.type) ? "CTD " : "CTU ") + w.counterValue + "/" + w.counterPreset : w.text);
                     if (liveValues.containsKey(i) && !"FBD Вход".equals(w.type)) blockTitle += " [" + liveValues.get(i) + "]";
-                    // Craft's FB_AND/FB_OR draw the block name centred.
+                    // Craft FB_AND/FB_OR center the name in the whole body.
+                    // FB_XOR/FB_RS/FB_TIMER center their name in the top third
+                    // and draw the original input/output pin labels below.
                     paint.setTextAlign(Paint.Align.CENTER);
                     paint.setColor(Color.BLACK);
                     paint.setTextSize(Math.min(dp(14), Math.max(dp(9), w.h / 4f)));
-                    canvas.drawText(blockTitle, w.x + w.w / 2f,
-                            w.y + w.h / 2f - (paint.ascent() + paint.descent()) / 2f, paint);
+                    if (dividedFbd) {
+                        String craftName = "FBD XOR".equals(w.type) ? "XOR"
+                                : "FBD RS".equals(w.type) ? "RS"
+                                : "FBD SR".equals(w.type) ? "SR"
+                                : "FBD TP".equals(w.type) ? "TP"
+                                : "FBD TOF".equals(w.type) ? "TOF" : "TON";
+                        String input1 = "FBD XOR".equals(w.type) ? "I1"
+                                : "FBD RS".equals(w.type) ? "R"
+                                : "FBD SR".equals(w.type) ? "S" : "IN";
+                        String input2 = "FBD XOR".equals(w.type) ? "I2"
+                                : "FBD RS".equals(w.type) ? "S"
+                                : "FBD SR".equals(w.type) ? "R" : "MS";
+                        float textOffset = -(paint.ascent() + paint.descent()) / 2f;
+                        canvas.drawText(craftName, w.x + w.w / 2f,
+                                w.y + w.h / 6f + textOffset, paint);
+                        float inputCenterX = w.x + w.w / 4f;
+                        canvas.drawText(input1, inputCenterX,
+                                w.y + w.h / 2f + textOffset, paint);
+                        canvas.drawText(input2, inputCenterX,
+                                w.y + w.h * 5f / 6f + textOffset, paint);
+                        canvas.drawText("Q", w.x + w.w * 3f / 4f,
+                                w.y + w.h / 2f + textOffset, paint);
+                    } else {
+                        canvas.drawText(blockTitle, w.x + w.w / 2f,
+                                w.y + w.h / 2f - (paint.ascent() + paint.descent()) / 2f, paint);
+                    }
                     paint.setTextAlign(Paint.Align.LEFT);
                     boolean output = evaluateFbd(i, new boolean[widgets.size()]);
                     paint.setTextSize(dp(11));
