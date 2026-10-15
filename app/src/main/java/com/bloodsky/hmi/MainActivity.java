@@ -1072,7 +1072,7 @@ public class MainActivity extends Activity {
                     : "Текст".equals(type) ? "tab_text"
                     : "no_picture");
             int originalId = getResources().getIdentifier(resourceName, "drawable", getPackageName());
-            if (originalId != 0) {
+            if (originalId != 0 && !type.startsWith("FBD ")) {
                 Drawable original = getResources().getDrawable(originalId);
                 int inset = dp(3);
                 original.setBounds(inset, inset, getWidth() - inset, getHeight() - inset);
