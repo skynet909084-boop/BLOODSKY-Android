@@ -270,7 +270,9 @@ public class MainActivity extends Activity {
             in.readFully(pdu);
             int function = pdu[0] & 0xff;
             if (function == (functionCode | 0x80) && pdu.length >= 2) {
-                throw new IOException("Код исключения Modbus: " + (pdu[1] & 0xff));
+                int exceptionCode = pdu[1] & 0xff;
+                throw new IOException("Modbus: " + describeModbusExceptionCode(exceptionCode)
+                        + " (код " + exceptionCode + ")");
             }
             if (function != functionCode || pdu.length < 2) throw new IOException("Неожиданный код функции");
             int byteCount = pdu[1] & 0xff;
@@ -581,6 +583,21 @@ public class MainActivity extends Activity {
                 modbusPollInFlight = false;
             }
         });
+    }
+
+    private String describeModbusExceptionCode(int code) {
+        switch (code) {
+            case 1: return "устройство не поддерживает эту функцию";
+            case 2: return "недопустимый адрес регистра";
+            case 3: return "недопустимое значение в запросе";
+            case 4: return "внутренняя ошибка устройства";
+            case 5: return "запрос принят, обработка выполняется";
+            case 6: return "устройство занято, повторите позже";
+            case 8: return "ошибка чётности памяти";
+            case 10: return "шлюз не смог установить соединение";
+            case 11: return "шлюз не получил ответ от устройства";
+            default: return "неизвестное исключение протокола";
+        }
     }
 
     private String describeModbusError(Exception error) {
