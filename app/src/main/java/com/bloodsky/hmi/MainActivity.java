@@ -873,6 +873,7 @@ public class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         scroll.addView(list);
+        final AlertDialog[] picker = new AlertDialog[1];
 
         for (int i = 0; i < labels.length; i++) {
             if (i == 4) {
@@ -895,7 +896,7 @@ public class MainActivity extends Activity {
                     ? Color.rgb(248, 250, 252) : Color.WHITE);
             item.setMinHeight(dp(48));
             item.setOnClickListener(v -> {
-                // Close the picker before rebuilding the editor view.
+                if (picker[0] != null) picker[0].dismiss();
                 addWidget(types[index], defaults[index]);
             });
             list.addView(item, new LinearLayout.LayoutParams(-1, -2));
@@ -903,11 +904,12 @@ public class MainActivity extends Activity {
             separator.setBackgroundColor(Color.rgb(226, 232, 240));
             list.addView(separator, new LinearLayout.LayoutParams(-1, dp(1)));
         }
-        new AlertDialog.Builder(this)
+        picker[0] = new AlertDialog.Builder(this)
                 .setTitle("Добавить элемент")
                 .setView(scroll)
                 .setNegativeButton("Отмена", null)
-                .show();
+                .create();
+        picker[0].show();
     }
 
     private void addWidget(String type, String text) {
