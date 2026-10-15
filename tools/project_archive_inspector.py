@@ -40,7 +40,7 @@ class Report:
 
 def safe_entry_name(name: str) -> bool:
     # ZIP convention is '/', but also reject Windows separators and drive paths.
-    if not name or "\\" in name or name.startswith("/"):
+    if not name or "\\" in name or name.startswith("/") or "\x00" in name:
         return False
     path = PurePosixPath(name)
     if any(part in ("..", ".") for part in path.parts):
@@ -64,12 +64,19 @@ def inspect_archive(path: str) -> Report:
             report.issues.append(Issue("error", f"Entry count exceeds limit ({MAX_ENTRIES})"))
 
         json_candidates: list[str] = []
+        seen_names: set[str] = set()
+        duplicate_names: set[str] = set()
         for info in infos:
             if info.is_dir():
                 continue
             if not safe_entry_name(info.filename):
                 report.issues.append(Issue("error", "Unsafe ZIP entry path", info.filename))
                 continue
+            if info.filename in seen_names:
+                duplicate_names.add(info.filename)
+                report.issues.append(Issue("error", "Duplicate ZIP entry name", info.filename))
+                continue
+            seen_names.add(info.filename)
             if info.file_size > MAX_SINGLE_FILE:
                 report.issues.append(Issue("error", f"Entry exceeds per-file size limit ({MAX_SINGLE_FILE} bytes)", info.filename))
             report.total_uncompressed_bytes += info.file_size
@@ -80,6 +87,9 @@ def inspect_archive(path: str) -> Report:
             if info.filename.lower().endswith(".json"):
                 json_candidates.append(info.filename)
 
+        # ZipFile.getinfo(name) resolves duplicate names ambiguously. Do not parse
+        # any JSON path that appears more than once in the archive.
+        json_candidates = [name for name in json_candidates if name not in duplicate_names]
         if report.total_uncompressed_bytes > MAX_TOTAL_UNCOMPRESSED:
             report.issues.append(Issue("error", f"Total uncompressed size exceeds limit ({MAX_TOTAL_UNCOMPRESSED} bytes)"))
 
