@@ -143,7 +143,8 @@ public class MainActivity extends Activity {
     }
 
     private void showHome() {
-        if (editor != null) persistProject();
+        // Do not discard unsaved editor state if storage fails.
+        if (editor != null && !persistProject()) return;
         stopModbusPolling();
         editor = null;
         root = new LinearLayout(this);
