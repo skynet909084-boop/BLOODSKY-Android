@@ -69,10 +69,10 @@ def inspect_archive(path: str) -> Report:
         seen_names: set[str] = set()
         duplicate_names: set[str] = set()
         for info in infos:
-            if info.is_dir():
-                continue
             if not safe_entry_name(info.filename):
                 report.issues.append(Issue("error", "Unsafe ZIP entry path", info.filename))
+                continue
+            if info.is_dir():
                 continue
             if info.filename in seen_names:
                 duplicate_names.add(info.filename)
