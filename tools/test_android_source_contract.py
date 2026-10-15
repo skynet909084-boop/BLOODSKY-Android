@@ -60,6 +60,31 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("Такая связь уже существует", self.source)
         self.assertIn("screen.connections.add(new FbdConnection(source, target))", self.source)
 
+    def test_deleting_widget_removes_and_reindexes_fbd_edges(self):
+        delete_start = self.source.index("private void deleteSelectedWidget()")
+        delete_end = self.source.index("private JSONObject widgetToJson", delete_start)
+        delete_method = self.source[delete_start:delete_end]
+        self.assertIn("connection.source == removed || connection.target == removed", delete_method)
+        self.assertIn("if (connection.source > removed) connection.source--;", delete_method)
+        self.assertIn("if (connection.target > removed) connection.target--;", delete_method)
+        self.assertIn("screen.connections.addAll(kept)", delete_method)
+
+    def test_import_rejects_invalid_and_duplicate_fbd_edges_and_cycles(self):
+        self.assertIn('throw new IllegalArgumentException("Connection index out of range")', self.source)
+        self.assertIn('throw new IllegalArgumentException("Connections must link FBD blocks")', self.source)
+        self.assertIn('throw new IllegalArgumentException("Duplicate FBD connection")', self.source)
+        self.assertIn("Kahn's algorithm rejects imported graphs with cycles", self.source)
+        self.assertIn("if (visitedCount != nodeCount)", self.source)
+
+    def test_loading_only_restores_valid_fbd_connections(self):
+        load_start = self.source.index("private void loadProject()")
+        load_end = self.source.index("private boolean isFbd(", load_start)
+        load_method = self.source[load_start:load_end]
+        self.assertIn("source < screen.widgets.size()", load_method)
+        self.assertIn("target < screen.widgets.size()", load_method)
+        self.assertIn("isFbd(screen.widgets.get(source))", load_method)
+        self.assertIn("isFbd(screen.widgets.get(target))", load_method)
+
     def test_ci_runs_python_tests_android_tests_and_builds_apk(self):
         self.assertIn("python -m unittest discover -s tools -p 'test_*.py' -v", self.workflow)
         self.assertIn("gradle testDebugUnitTest --stacktrace", self.workflow)
