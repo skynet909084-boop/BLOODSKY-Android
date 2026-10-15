@@ -51,6 +51,12 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("if (previous != null && !previous.equals(next))", self.source)
         self.assertIn("changes.putString(ACTIVE_PROJECT, next)", self.source)
 
+    def test_original_fbd_and_setter_artwork_is_drawn(self):
+        self.assertIn('"kc_logic_ico", "drawable"', self.source)
+        self.assertIn('logicIcon.draw(canvas);', self.source)
+        self.assertIn('"kc_tab_digital_setters", "drawable"', self.source)
+        self.assertIn('setterImage.draw(canvas);', self.source)
+
     def test_original_button_states_are_drawn_on_canvas(self):
         self.assertIn('w.buttonState ? "kc_button2" : "kc_button"', self.source)
         self.assertIn('buttonImage.draw(canvas);', self.source)
