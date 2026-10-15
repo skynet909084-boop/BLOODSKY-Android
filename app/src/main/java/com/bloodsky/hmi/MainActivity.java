@@ -406,7 +406,7 @@ public class MainActivity extends Activity {
         if (screenArray == null || screenArray.length() == 0 || screenArray.length() > 100) {
             throw new IllegalArgumentException("Invalid screen list");
         }
-        int currentScreen = project.optInt("currentScreen", 0);
+        int currentScreen = ProjectJsonCodec.readIntField(project, "currentScreen", 0);
         if (currentScreen < 0 || currentScreen >= screenArray.length()) {
             throw new IllegalArgumentException("Current screen index out of range");
         }
@@ -431,7 +431,7 @@ public class MainActivity extends Activity {
             if (widget == null) throw new IllegalArgumentException("Widget must be an object");
             String type = widget.optString("type", "Текст"), label = widget.optString("text", "Надпись");
             if (type.length() > 100 || label.length() > 2000 || widget.optString("connectionInfo", "").length() > 2000) throw new IllegalArgumentException("Widget field too long");
-            int x = widget.optInt("x", 0), y = widget.optInt("y", 0), w = widget.optInt("w", 160), h = widget.optInt("h", 58);
+            int x = ProjectJsonCodec.readIntField(widget, "x", 0), y = ProjectJsonCodec.readIntField(widget, "y", 0), w = ProjectJsonCodec.readIntField(widget, "w", 160), h = ProjectJsonCodec.readIntField(widget, "h", 58);
             if (x < -100000 || x > 100000 || y < -100000 || y > 100000 || w < 1 || w > 100000 || h < 1 || h > 100000) throw new IllegalArgumentException("Widget geometry out of range");
         }
     }
