@@ -45,6 +45,10 @@ public class ProjectDocumentValidatorTest {
         assertTrue(target.getBoolean("legacyFlag"));
         assertEquals("retained", target.getJSONObject("vendor").getString("mode"));
         assertEquals(2, target.getJSONObject("vendor").getJSONArray("levels").length());
+        target.getJSONObject("vendor").put("mode", "changed-in-output");
+        target.getJSONObject("vendor").getJSONArray("levels").put(0, 99);
+        assertEquals("retained", extras.getJSONObject("vendor").getString("mode"));
+        assertEquals(1, extras.getJSONObject("vendor").getJSONArray("levels").getInt(0));
         assertTrue(target.has("widgets"));
     }
     private static void assertRejected(String json) {
