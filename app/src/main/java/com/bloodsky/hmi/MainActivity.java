@@ -1891,7 +1891,11 @@ public class MainActivity extends Activity {
                         canvas.drawLine(w.x, w.y + w.h / 4f, body.left, w.y + w.h / 4f, paint);
                         canvas.drawLine(w.x, w.y + w.h * 3f / 4f, body.left, w.y + w.h * 3f / 4f, paint);
                     }
-                    canvas.drawLine(body.right, w.y + w.h / 2f, w.x + w.w, w.y + w.h / 2f, paint);
+                    // Original FB_AND/FB_OR compute the output pin with
+                    // integer division: (height / 3) / 2 + height / 3.
+                    float outputY = w.y + ((int) (w.h / 3f)) / 2
+                            + (int) (w.h / 3f);
+                    canvas.drawLine(body.right, outputY, w.x + w.w, outputY, paint);
                     // Original FB_XOR/FB_RS split the block into a header and
                     // two lower cells; FB_AND/FB_OR have no internal dividers.
                     if ("FBD XOR".equals(w.type) || "FBD RS".equals(w.type)
