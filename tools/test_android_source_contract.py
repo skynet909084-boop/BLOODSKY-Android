@@ -55,7 +55,7 @@ class AndroidSourceContractTests(unittest.TestCase):
     def test_import_limits_screen_widget_and_connection_counts(self):
         self.assertIn("screenArray.length() > 100", self.source)
         self.assertIn("totalWidgets > 2000", self.source)
-        self.assertIn("connections.length() > 4000", self.source)
+        self.assertIn("connections.length() > 4000", self.validator_source)
 
     def test_modbus_supports_only_explicit_read_functions(self):
         self.assertIn("functionCode != 3 && functionCode != 4", self.source)
@@ -88,7 +88,7 @@ class AndroidSourceContractTests(unittest.TestCase):
 
     def test_import_rejects_invalid_and_duplicate_fbd_edges_and_cycles(self):
         self.assertIn("FbdGraphValidator.validateScreenConnections(screen, screenWidgets)", self.source)
-        self.assertIn("FbdGraphValidator.validate(widgets, connections)", self.validator_source)
+        self.assertIn("validate(widgets, connections)", self.validator_source)
         self.assertIn('throw new IllegalArgumentException("Connections must be an array")', self.validator_source)
         self.assertIn('throw new IllegalArgumentException("Connection index out of range")', self.validator_source)
         self.assertIn('throw new IllegalArgumentException("Connections must link FBD blocks")', self.validator_source)
