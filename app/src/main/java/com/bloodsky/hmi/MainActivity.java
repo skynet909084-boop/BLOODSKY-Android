@@ -1192,12 +1192,158 @@ public class MainActivity extends Activity {
     // Only pre-bundled, audited Craft artwork may be referenced by a project.
     // Reject paths and arbitrary Android resource identifiers from imported JSON.
     private static final String[] CRAFT_IMAGE_NAMES = {
-            "", "lamp_off", "lamp_green", "lamp_red", "lamp_blue", "lamp_yellow",
-            "green_light", "red_light", "button", "button2", "button3",
-            "normal_indicator", "normal_small_indicator", "kite_indicator",
-            "needle_indicator", "line_indicator", "half_line_indicator",
-            "quarter_line_indicator", "battery_empty_48", "battery_charging_48",
-            "fader", "progress", "dyn_picture", "frame", "frame2"
+            "",
+            "action_copy",
+            "action_cut",
+            "action_paste",
+            "add3",
+            "alarm",
+            "align_bottom",
+            "align_bottom_24dp",
+            "align_center_hor",
+            "align_center_vert",
+            "align_height_max",
+            "align_horizontal_24dp",
+            "align_left",
+            "align_left_24dp",
+            "align_open_menu",
+            "align_right",
+            "align_right_24dp",
+            "align_space_horizontal",
+            "align_space_vertical",
+            "align_top",
+            "align_top_24dp",
+            "align_vertical_24dp",
+            "align_width_max",
+            "animation",
+            "archive",
+            "arrow_down64",
+            "arrow_left",
+            "arrow_resize",
+            "arrow_right",
+            "arrow_up64",
+            "background_button",
+            "basket",
+            "battery_charging2_48",
+            "battery_charging_48",
+            "battery_empty_48",
+            "bg_text",
+            "bluetooth",
+            "bridge_sync_disable",
+            "bridge_sync_ok",
+            "bridge_sync_problem",
+            "button",
+            "button2",
+            "button3",
+            "calculator",
+            "caller",
+            "camera",
+            "cloud",
+            "cloud_rtu",
+            "copy_24dp",
+            "custom_sound",
+            "cut_24dp",
+            "disable",
+            "dyn_picture",
+            "fader",
+            "for_image_speedometer",
+            "frame",
+            "frame2",
+            "gateway",
+            "graph",
+            "green_light",
+            "half_line_indicator",
+            "ic_notification",
+            "info",
+            "kascada_ico",
+            "kite_indicator",
+            "lamp_blue",
+            "lamp_green",
+            "lamp_off",
+            "lamp_red",
+            "lamp_yellow",
+            "line_indicator",
+            "list",
+            "lock",
+            "logic_ico",
+            "main_background_small",
+            "main_ico",
+            "menu_app_bar",
+            "menu_appbar_right",
+            "menu_bar_component",
+            "menu_down",
+            "menu_middle",
+            "menu_up",
+            "minus",
+            "needle_indicator",
+            "no_picture",
+            "normal_indicator",
+            "normal_small_indicator",
+            "paste_24dp",
+            "progress",
+            "qr_code_export",
+            "quarter_line_indicator",
+            "red_light",
+            "resize_bottom_left",
+            "resize_bottom_right",
+            "resize_top_left",
+            "resize_top_right",
+            "spindle_indicator",
+            "spot_mask",
+            "start",
+            "stop",
+            "stop64",
+            "switch1_off",
+            "switch1_on",
+            "switch2_off",
+            "switch2_on",
+            "switch3_off",
+            "switch3_on",
+            "switch4_off",
+            "switch4_on",
+            "switch5_off",
+            "switch5_on",
+            "switch6_off",
+            "switch6_on",
+            "switch7_off",
+            "switch7_on",
+            "switch8_off",
+            "switch8_on",
+            "tab_alarm",
+            "tab_archive",
+            "tab_button",
+            "tab_digital_setters",
+            "tab_dyn_pictures",
+            "tab_edit_number",
+            "tab_email",
+            "tab_gateway",
+            "tab_gateway_bit",
+            "tab_gif",
+            "tab_graph",
+            "tab_line_indicator",
+            "tab_line_setter",
+            "tab_list",
+            "tab_page1",
+            "tab_page2",
+            "tab_page3",
+            "tab_phone",
+            "tab_push_notif",
+            "tab_register",
+            "tab_round_indicator",
+            "tab_sms_in",
+            "tab_sms_out",
+            "tab_sound",
+            "tab_text",
+            "tab_voice_recognition",
+            "tab_web_view",
+            "thumb",
+            "thumb_v",
+            "triangle_indicator",
+            "usb",
+            "warning_32",
+            "wifi",
+            "wifi_rtu",
+            "winrar"
     };
 
     private String validatedCraftImage(String value) {
@@ -1212,14 +1358,41 @@ public class MainActivity extends Activity {
         String[] labels = new String[CRAFT_IMAGE_NAMES.length];
         labels[0] = "Без изображения";
         for (int i = 1; i < labels.length; i++) labels[i] = CRAFT_IMAGE_NAMES[i];
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(
-                this, android.R.layout.simple_spinner_item, labels);
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(
+                this, android.R.layout.simple_spinner_item, labels) {
+            @Override public View getDropDownView(int position, View convertView, ViewGroup parent) {
+                return craftImagePickerRow(position);
+            }
+            @Override public View getView(int position, View convertView, ViewGroup parent) {
+                return craftImagePickerRow(position);
+            }
+        };
         spinner.setAdapter(adapter);
         for (int i = 0; i < CRAFT_IMAGE_NAMES.length; i++) {
             if (CRAFT_IMAGE_NAMES[i].equals(selected)) { spinner.setSelection(i); break; }
         }
         return spinner;
+    }
+
+    private View craftImagePickerRow(int position) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(8), dp(4), dp(8), dp(4));
+        android.widget.ImageView image = new android.widget.ImageView(this);
+        image.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+        String name = CRAFT_IMAGE_NAMES[position];
+        if (!name.isEmpty()) {
+            int resource = getResources().getIdentifier("kc_" + name, "drawable", getPackageName());
+            if (resource != 0) image.setImageResource(resource);
+        }
+        row.addView(image, new LinearLayout.LayoutParams(dp(44), dp(40)));
+        TextView caption = new TextView(this);
+        caption.setText(name.isEmpty() ? "Без изображения" : name);
+        caption.setTextSize(14);
+        caption.setTextColor(Color.BLACK);
+        caption.setPadding(dp(10), 0, 0, 0);
+        row.addView(caption, new LinearLayout.LayoutParams(-1, -2));
+        return row;
     }
 
     private boolean drawCraftStateImage(Canvas canvas, Widget w, int widgetIndex) {
