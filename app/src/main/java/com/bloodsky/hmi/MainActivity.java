@@ -1961,7 +1961,13 @@ public class MainActivity extends Activity {
                         canvas.drawText("Q", w.x + w.w * 3f / 4f,
                                 w.y + w.h / 2f + textOffset, paint);
                     } else {
-                        canvas.drawText(blockTitle, w.x + w.w / 2f,
+                        // FB_AND and FB_OR constructors set their original
+                        // visible names to AND and OR, irrespective of the
+                        // localized editor picker caption.
+                        String craftSimpleName = "FBD И".equals(w.type) ? "AND"
+                                : "FBD ИЛИ".equals(w.type) ? "OR"
+                                : blockTitle;
+                        canvas.drawText(craftSimpleName, w.x + w.w / 2f,
                                 w.y + w.h / 2f - (paint.ascent() + paint.descent()) / 2f, paint);
                     }
                     paint.setTextAlign(Paint.Align.LEFT);
