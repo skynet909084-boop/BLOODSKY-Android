@@ -38,6 +38,24 @@ public class ProjectJsonCodecTest {
     }
 
     @Test
+    public void currentFieldsOverridePreservedValuesWhileUnknownNestedMetadataSurvives() throws Exception {
+        JSONObject nested = new JSONObject().put("calibration", new JSONArray().put(11).put(22));
+        JSONObject preserved = new JSONObject()
+                .put("vendorField", nested)
+                .put("text", "old value")
+                .put("x", 3);
+        JSONObject current = new JSONObject()
+                .put("text", "edited value")
+                .put("x", 91);
+        JSONObject merged = ProjectJsonCodec.mergePreservedFields(preserved, current);
+        assertEquals("edited value", merged.getString("text"));
+        assertEquals(91, merged.getInt("x"));
+        assertEquals(22, merged.getJSONObject("vendorField").getJSONArray("calibration").getInt(1));
+        merged.getJSONObject("vendorField").getJSONArray("calibration").put(0, 999);
+        assertEquals(11, preserved.getJSONObject("vendorField").getJSONArray("calibration").getInt(0));
+    }
+
+    @Test
     public void acceptsLegacySingleScreenWidgetArrayWithoutChangingItsShape() throws Exception {
         JSONArray legacy = new JSONArray()
                 .put(new JSONObject().put("type", "Текст").put("text", "Старый проект").put("legacyFlag", true));
