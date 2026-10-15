@@ -70,7 +70,10 @@ class AndroidSourceContractTests(unittest.TestCase):
     def test_fbd_connections_reject_cycles_and_duplicates(self):
         self.assertIn("reachesFbd(target, source", self.source)
         self.assertIn("Такая связь уже существует", self.source)
-        self.assertIn("screen.connections.add(new FbdConnection(source, target))", self.source)
+        self.assertIn("connection.extraFields = JsonObjectCopy.deepCopy(connectionObj)", self.source)
+        self.assertIn("ProjectJsonCodec.mergePreservedFields(connection.extraFields, connectionObj)", self.source)
+        self.assertIn("JSONObject extraFields = new JSONObject()", self.source)
+        self.assertIn("screen.connections.add(connection)", self.source)
 
     def test_deleting_widget_removes_and_reindexes_fbd_edges(self):
         delete_start = self.source.index("private void deleteSelectedWidget()")
