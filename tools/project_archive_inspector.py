@@ -42,9 +42,11 @@ def safe_entry_name(name: str) -> bool:
     # ZIP convention is '/', but also reject Windows separators and drive paths.
     if not name or "\\" in name or name.startswith("/") or "\x00" in name:
         return False
-    path = PurePosixPath(name)
-    if any(part in ("..", ".") for part in path.parts):
+    # PurePosixPath normalizes away explicit "." and repeated separators.
+    # Validate raw segments before normalization to avoid ambiguous ZIP names.
+    if name.endswith("//") or any(part in ("", ".", "..") for part in name.removesuffix("/").split("/")):
         return False
+    path = PurePosixPath(name)
     if path.parts and ":" in path.parts[0]:
         return False
     return True
@@ -67,10 +69,10 @@ def inspect_archive(path: str) -> Report:
         seen_names: set[str] = set()
         duplicate_names: set[str] = set()
         for info in infos:
-            if info.is_dir():
-                continue
             if not safe_entry_name(info.filename):
                 report.issues.append(Issue("error", "Unsafe ZIP entry path", info.filename))
+                continue
+            if info.is_dir():
                 continue
             if info.filename in seen_names:
                 duplicate_names.add(info.filename)
@@ -101,7 +103,8 @@ def inspect_archive(path: str) -> Report:
             try:
                 parsed = json.loads(archive.read(name).decode("utf-8-sig"))
                 report.json_entries += 1
-            except (UnicodeDecodeError, json.JSONDecodeError, OSError, RuntimeError) as exc:
+            except (UnicodeDecodeError, json.JSONDecodeError, OSError, RuntimeError,
+                    EOFError, zipfile.BadZipFile) as exc:
                 report.issues.append(Issue("error", f"Invalid JSON: {exc}", name))
                 continue
             if isinstance(parsed, dict) and any(key in parsed for key in ("TableNameProject", "TableComponent", "TableConnections")):

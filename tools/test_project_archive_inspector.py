@@ -15,6 +15,13 @@ class SafeEntryNameTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertFalse(safe_entry_name(name))
 
+    def test_rejects_ambiguous_normalized_paths(self):
+        for name in (".", "./project.json", "folder/./project.json",
+                     "folder//project.json", "folder///project.json",
+                     "folder/../project.json", "folder//"):
+            with self.subTest(name=name):
+                self.assertFalse(safe_entry_name(name))
+
     def test_accepts_normal_relative_paths(self):
         self.assertTrue(safe_entry_name("project/data.json"))
         self.assertTrue(safe_entry_name("assets/layout.xml"))
@@ -62,6 +69,30 @@ class ArchiveInspectorTests(unittest.TestCase):
         report = inspect_archive(path)
         self.assertEqual(report.json_entries, 0)
         self.assertTrue(any(issue.severity == "error" and issue.message == "Duplicate ZIP entry name"
+                            for issue in report.issues))
+
+    def test_rejects_unsafe_directory_entries(self):
+        path = self.make_archive([("folder/../", ""), ("project.json", '{"TableComponent":[]}')])
+        report = inspect_archive(path)
+        self.assertTrue(any(issue.severity == "error" and issue.entry == "folder/../"
+                            for issue in report.issues))
+
+    def test_corrupted_json_member_returns_error_instead_of_crashing(self):
+        temp = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
+        temp.close()
+        self.addCleanup(lambda: os.path.exists(temp.name) and os.unlink(temp.name))
+        payload = b'{"TableComponent":[]}'
+        with zipfile.ZipFile(temp.name, "w", compression=zipfile.ZIP_STORED) as archive:
+            archive.writestr("project.json", payload)
+        with open(temp.name, "rb") as handle:
+            data = handle.read()
+        offset = data.index(payload)
+        corrupted = bytearray(data)
+        corrupted[offset] ^= 1
+        with open(temp.name, "wb") as handle:
+            handle.write(corrupted)
+        report = inspect_archive(temp.name)
+        self.assertTrue(any(issue.severity == "error" and "Invalid JSON" in issue.message
                             for issue in report.issues))
 
     def test_non_zip_file_returns_error_report(self):
