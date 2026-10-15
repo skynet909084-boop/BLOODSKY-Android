@@ -1379,10 +1379,8 @@ public class MainActivity extends Activity {
                 screenObj.put("widgets", widgetsToJson(screen.widgets));
                 JSONArray connectionArray = new JSONArray();
                 for (FbdConnection connection : screen.connections) {
-                    JSONObject connectionObj = new JSONObject();
-                    connectionObj.put("source", connection.source);
-                    connectionObj.put("target", connection.target);
-                    connectionArray.put(ProjectJsonCodec.mergePreservedFields(connection.extraFields, connectionObj));
+                    connectionArray.put(FbdConnectionJsonCodec.toJson(
+                            connection.source, connection.target, connection.extraFields));
                 }
                 screenObj.put("connections", connectionArray);
                 screenArray.put(ProjectJsonCodec.mergePreservedFields(screen.extraFields, screenObj));
@@ -1430,7 +1428,7 @@ public class MainActivity extends Activity {
                             if (source >= 0 && target >= 0 && source < screen.widgets.size() && target < screen.widgets.size()
                                     && source != target && isFbd(screen.widgets.get(source)) && isFbd(screen.widgets.get(target))) {
                                 FbdConnection connection = new FbdConnection(source, target);
-                                connection.extraFields = JsonObjectCopy.deepCopy(connectionObj);
+                                connection.extraFields = FbdConnectionJsonCodec.preserveLoadedFields(connectionObj);
                                 screen.connections.add(connection);
                             }
                         }
