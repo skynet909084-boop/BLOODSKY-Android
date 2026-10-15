@@ -560,7 +560,7 @@ public class MainActivity extends Activity {
                         if (columns.length < 2) throw new IOException("Не удалось разобрать регистр");
                         value = columns[1].trim();
                     } catch (Exception e) {
-                        value = "ERR";
+                        value = "ERR: " + describeModbusError(e);
                     }
                     for (int widgetIndex : request.widgetIndices) updates.put(widgetIndex, value);
                 }
@@ -583,10 +583,21 @@ public class MainActivity extends Activity {
         });
     }
 
+    private String describeModbusError(Exception error) {
+        if (error instanceof java.net.SocketTimeoutException) return "тайм-аут ответа (3 с)";
+        if (error instanceof java.net.ConnectException) return "не удалось подключиться к устройству";
+        if (error instanceof java.net.UnknownHostException) return "не удалось определить адрес хоста";
+        if (error instanceof java.net.NoRouteToHostException) return "нет маршрута до устройства";
+        if (error instanceof java.net.SocketException) return "ошибка сокета/соединение закрыто";
+        String message = error.getMessage();
+        if (message == null || message.trim().isEmpty()) return error.getClass().getSimpleName();
+        return message.length() > 90 ? message.substring(0, 90) : message;
+    }
+
     private boolean isActiveModbusValue(String value) {
         if (value == null) return false;
         String normalized = value.trim().toLowerCase(java.util.Locale.ROOT);
-        if (normalized.isEmpty() || "err".equals(normalized) || "cfg".equals(normalized)
+        if (normalized.isEmpty() || normalized.startsWith("err") || normalized.startsWith("cfg")
                 || "false".equals(normalized) || "off".equals(normalized)
                 || "no".equals(normalized)) return false;
         if ("true".equals(normalized) || "on".equals(normalized) || "yes".equals(normalized)) return true;
@@ -773,7 +784,7 @@ public class MainActivity extends Activity {
             String state = liveValues.get(i);
             if (binding.startsWith("tcp://") && parseBinding(i, binding) == null) state = "CFG — неверный адрес";
             else if (state == null) state = "Ожидание ответа";
-            if ("ERR".equals(state) || (state != null && state.startsWith("CFG"))) errorCount++;
+            if ((state != null && state.startsWith("ERR")) || (state != null && state.startsWith("CFG"))) errorCount++;
             else if ("Ожидание ответа".equals(state)) pendingCount++;
             else if (isActiveModbusValue(state)) activeCount++;
             else inactiveCount++;
@@ -1595,7 +1606,7 @@ public class MainActivity extends Activity {
                     String indicatorValue = liveValues.get(i);
                     int indicatorColor = Color.rgb(100, 116, 139);
                     if (indicatorValue != null) {
-                        if ("ERR".equals(indicatorValue) || "CFG".equals(indicatorValue)) {
+                        if (indicatorValue.startsWith("ERR") || indicatorValue.startsWith("CFG")) {
                             indicatorColor = Color.rgb(220, 38, 38);
                         } else {
                             try {
