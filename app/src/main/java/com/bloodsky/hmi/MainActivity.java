@@ -2389,6 +2389,12 @@ public class MainActivity extends Activity {
                 }
             }
             for (Widget widget : widgets) {
+                if (widget.visible && widget.blinkWhenOn) {
+                    postInvalidateDelayed(Math.max(100L, widget.blinkPeriodMs / 2L));
+                    break;
+                }
+            }
+            for (Widget widget : widgets) {
                 if (("FBD Таймер".equals(widget.type) || "FBD TP".equals(widget.type) || "FBD TOF".equals(widget.type)) && widget.timerStartedAt > 0L
                         && SystemClock.elapsedRealtime() - widget.timerStartedAt < widget.timerPresetMs) {
                     postInvalidateDelayed(100L);
