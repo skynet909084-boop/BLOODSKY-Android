@@ -26,6 +26,16 @@ final class FbdGraphValidator {
         return (int) value;
     }
 
+    static void validateScreenConnections(JSONObject screen, JSONArray widgets) {
+        if (screen == null) throw new IllegalArgumentException("Screen must be an object");
+        Object raw = screen.opt("connections");
+        if (raw != null && raw != JSONObject.NULL && !(raw instanceof JSONArray)) {
+            throw new IllegalArgumentException("Connections must be an array");
+        }
+        JSONArray connections = screen.optJSONArray("connections");
+        if (connections != null) validate(widgets, connections);
+    }
+
     static void validate(JSONArray widgets, JSONArray connections) {
         if (widgets == null) throw new IllegalArgumentException("Screen widgets must be an array");
         if (connections == null) return;
