@@ -42,9 +42,11 @@ def safe_entry_name(name: str) -> bool:
     # ZIP convention is '/', but also reject Windows separators and drive paths.
     if not name or "\\" in name or name.startswith("/") or "\x00" in name:
         return False
-    path = PurePosixPath(name)
-    if any(part in ("..", ".") for part in path.parts):
+    # PurePosixPath normalizes away explicit "." and repeated separators.
+    # Validate raw segments before normalization to avoid ambiguous ZIP names.
+    if any(part in ("", ".", "..") for part in name.rstrip("/").split("/")):
         return False
+    path = PurePosixPath(name)
     if path.parts and ":" in path.parts[0]:
         return False
     return True
