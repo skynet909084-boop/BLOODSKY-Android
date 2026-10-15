@@ -1855,10 +1855,8 @@ public class MainActivity extends Activity {
                 paint.setTextSize(dp(12));
                 canvas.drawText(wireSource < 0 ? "РЕЖИМ СВЯЗИ: выбери источник" : "РЕЖИМ СВЯЗИ: выбери цель", dp(10), dp(18), paint);
             }
-            paint.setStyle(Paint.Style.FILL);
-            paint.setTextSize(dp(11));
-            paint.setColor(Color.rgb(100, 116, 139));
-            canvas.drawText("Редактор BLOODSKY • перетаскивай элементы, касайся для выбора", dp(10), getHeight() - dp(10), paint);
+            // Keep the canvas free of BLOODSKY-only branding overlays. Visual parity
+            // must be driven by the original Kaskada editor chrome, not added captions.
         }
 
         @Override public boolean onTouchEvent(MotionEvent event) {
