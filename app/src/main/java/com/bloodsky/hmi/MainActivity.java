@@ -687,15 +687,15 @@ public class MainActivity extends Activity {
                 .setTitle("Выравнивание")
                 .setItems(options, (dialog, which) -> {
                     Widget widget = widgets.get(editor.selected);
-                    int maxX = Math.max(0, editor.getWidth() - widget.w);
-                    int maxY = Math.max(0, editor.getHeight() - widget.h);
+                    float maxX = Math.max(0f, editor.getWidth() - widget.w);
+                    float maxY = Math.max(0f, editor.getHeight() - widget.h);
                     if (which == 0) widget.x = 0;
                     else if (which == 1) widget.y = 0;
-                    else if (which == 2) widget.x = maxX / 2;
-                    else if (which == 3) widget.y = maxY / 2;
+                    else if (which == 2) widget.x = maxX / 2f;
+                    else if (which == 3) widget.y = maxY / 2f;
                     else {
-                        widget.x = maxX / 2;
-                        widget.y = maxY / 2;
+                        widget.x = maxX / 2f;
+                        widget.y = maxY / 2f;
                     }
                     persistProject();
                     editor.invalidate();
