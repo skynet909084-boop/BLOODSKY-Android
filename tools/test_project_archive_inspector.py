@@ -77,6 +77,24 @@ class ArchiveInspectorTests(unittest.TestCase):
         self.assertTrue(any(issue.severity == "error" and issue.entry == "folder/../"
                             for issue in report.issues))
 
+    def test_corrupted_json_member_returns_error_instead_of_crashing(self):
+        temp = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
+        temp.close()
+        self.addCleanup(lambda: os.path.exists(temp.name) and os.unlink(temp.name))
+        payload = b'{"TableComponent":[]}'
+        with zipfile.ZipFile(temp.name, "w", compression=zipfile.ZIP_STORED) as archive:
+            archive.writestr("project.json", payload)
+        with open(temp.name, "rb") as handle:
+            data = handle.read()
+        offset = data.index(payload)
+        corrupted = bytearray(data)
+        corrupted[offset] ^= 1
+        with open(temp.name, "wb") as handle:
+            handle.write(corrupted)
+        report = inspect_archive(temp.name)
+        self.assertTrue(any(issue.severity == "error" and "Invalid JSON" in issue.message
+                            for issue in report.issues))
+
     def test_non_zip_file_returns_error_report(self):
         temp = tempfile.NamedTemporaryFile(delete=False)
         temp.write(b"not a zip")
