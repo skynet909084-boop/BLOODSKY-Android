@@ -71,6 +71,12 @@ class ArchiveInspectorTests(unittest.TestCase):
         self.assertTrue(any(issue.severity == "error" and issue.message == "Duplicate ZIP entry name"
                             for issue in report.issues))
 
+    def test_rejects_unsafe_directory_entries(self):
+        path = self.make_archive([("folder/../", ""), ("project.json", '{"TableComponent":[]}')])
+        report = inspect_archive(path)
+        self.assertTrue(any(issue.severity == "error" and issue.entry == "folder/../"
+                            for issue in report.issues))
+
     def test_non_zip_file_returns_error_report(self):
         temp = tempfile.NamedTemporaryFile(delete=False)
         temp.write(b"not a zip")
