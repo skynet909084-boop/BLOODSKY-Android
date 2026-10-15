@@ -59,6 +59,19 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn('previewHeader.addView(new WidgetPreview(w.type, w.text)', self.source)
         self.assertIn('form.addView(previewHeader', self.source)
 
+    def test_original_state_artwork_is_selectable_and_persisted(self):
+        self.assertIn('private static final String[] CRAFT_IMAGE_NAMES', self.source)
+        self.assertIn('final Spinner imageOffField;', self.source)
+        self.assertIn('final Spinner imageOnField;', self.source)
+        self.assertIn('w.imageOff = CRAFT_IMAGE_NAMES[imageOffField.getSelectedItemPosition()]', self.source)
+        self.assertIn('w.imageOn = CRAFT_IMAGE_NAMES[imageOnField.getSelectedItemPosition()]', self.source)
+        self.assertIn('obj.put("imageOff", w.imageOff)', self.source)
+        self.assertIn('obj.put("imageOn", w.imageOn)', self.source)
+        self.assertIn('validatedCraftImage(obj.optString("imageOff", ""))', self.source)
+        self.assertIn('validatedCraftImage(obj.optString("imageOn", ""))', self.source)
+        self.assertIn('if (!craftFbd) drawCraftStateImage(canvas, w, i);', self.source)
+        self.assertIn('getIdentifier("kc_" + imageName, "drawable", getPackageName())', self.source)
+
     def test_fbd_preview_has_original_port_labels(self):
         self.assertIn('float port1 = split ? third / 2 + third : height / 4f;', self.source)
         self.assertIn('canvas.drawText(input1, width / 4f, port1 + textOffset, previewPaint);', self.source)
