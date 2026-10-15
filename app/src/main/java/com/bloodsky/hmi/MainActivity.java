@@ -1854,7 +1854,9 @@ public class MainActivity extends Activity {
                 if (w.backgroundColor != 0) {
                     paint.setColor(w.backgroundColor);
                 } else if (w.type != null && w.type.startsWith("FBD ")) {
-                    paint.setColor(Color.rgb(237, 233, 254));
+                    // Decompiled Craft FB_AND/FB_OR/FB_XOR/FB_RS/FB_TIMER:
+                    // filled #888888 rectangle with a black outline.
+                    paint.setColor(Color.rgb(136, 136, 136));
                 } else if ("Индикатор".equals(w.type)) {
                     paint.setColor(Color.rgb(220, 252, 231));
                 } else if ("Кнопка".equals(w.type)) {
@@ -1864,7 +1866,23 @@ public class MainActivity extends Activity {
                 } else {
                     paint.setColor(Color.WHITE);
                 }
-                canvas.drawRoundRect(rect, dp(6), dp(6), paint);
+                boolean craftFbd = w.type != null && w.type.startsWith("FBD ");
+                if (craftFbd) {
+                    float portInset = Math.min(dp(9), w.w / 7f);
+                    RectF body = new RectF(w.x + portInset, w.y + dp(1),
+                            w.x + w.w - portInset, w.y + w.h - dp(1));
+                    canvas.drawRect(body, paint);
+                    paint.setStyle(Paint.Style.STROKE);
+                    paint.setColor(Color.BLACK);
+                    paint.setStrokeWidth(dp(1));
+                    canvas.drawRect(body, paint);
+                    canvas.drawLine(w.x, w.y + w.h / 4f, body.left, w.y + w.h / 4f, paint);
+                    canvas.drawLine(w.x, w.y + w.h * 3f / 4f, body.left, w.y + w.h * 3f / 4f, paint);
+                    canvas.drawLine(body.right, w.y + w.h / 2f, w.x + w.w, w.y + w.h / 2f, paint);
+                    paint.setStyle(Paint.Style.FILL);
+                } else {
+                    canvas.drawRoundRect(rect, dp(6), dp(6), paint);
+                }
                 if (w.showFrame || i == selected) {
                     paint.setStyle(Paint.Style.STROKE);
                     paint.setStrokeWidth(dp(i == selected ? 2.5f : 1));
@@ -1888,30 +1906,17 @@ public class MainActivity extends Activity {
                     String blockTitle = "FBD Вход".equals(w.type) ? "Вход " + (w.inputValue ? "1" : "0")
                             : (("FBD CTU".equals(w.type) || "FBD CTD".equals(w.type)) ? ("FBD CTD".equals(w.type) ? "CTD " : "CTU ") + w.counterValue + "/" + w.counterPreset : w.text);
                     if (liveValues.containsKey(i) && !"FBD Вход".equals(w.type)) blockTitle += " [" + liveValues.get(i) + "]";
-                    // Show the original Craft logic icon in each FBD block.
-                    int logicIconId = getResources().getIdentifier(
-                            "kc_logic_ico", "drawable", getPackageName());
-                    if (logicIconId != 0 && w.w >= dp(72)) {
-                        Drawable logicIcon = getResources().getDrawable(logicIconId);
-                        int iconX = (int) (w.x + w.w - dp(26));
-                        int iconY = (int) (w.y + dp(5));
-                        logicIcon.setBounds(iconX, iconY, iconX + dp(19), iconY + dp(19));
-                        logicIcon.draw(canvas);
-                    }
-                    canvas.drawText(blockTitle, w.x + dp(12), w.y + dp(23), paint);
+                    // Craft's FB_AND/FB_OR draw the block name centred.
+                    paint.setTextAlign(Paint.Align.CENTER);
+                    paint.setColor(Color.BLACK);
+                    paint.setTextSize(Math.min(dp(14), Math.max(dp(9), w.h / 4f)));
+                    canvas.drawText(blockTitle, w.x + w.w / 2f,
+                            w.y + w.h / 2f - (paint.ascent() + paint.descent()) / 2f, paint);
+                    paint.setTextAlign(Paint.Align.LEFT);
                     boolean output = evaluateFbd(i, new boolean[widgets.size()]);
                     paint.setTextSize(dp(11));
                     paint.setColor(output ? Color.rgb(22, 163, 74) : Color.rgb(100, 116, 139));
                     canvas.drawText("OUT = " + (output ? "1" : "0"), w.x + dp(12), w.y + w.h - dp(8), paint);
-                    paint.setTextSize(dp(13));
-                    paint.setColor(Color.rgb(109, 40, 217));
-                    canvas.drawLine(w.x, w.y + w.h * 0.38f, w.x + dp(14), w.y + w.h * 0.38f, paint);
-                    canvas.drawLine(w.x, w.y + w.h * 0.68f, w.x + dp(14), w.y + w.h * 0.68f, paint);
-                    canvas.drawLine(w.x + w.w - dp(14), w.y + w.h / 2, w.x + w.w, w.y + w.h / 2, paint);
-                    paint.setStyle(Paint.Style.FILL);
-                    canvas.drawCircle(w.x + dp(4), w.y + w.h * 0.38f, dp(4), paint);
-                    canvas.drawCircle(w.x + dp(4), w.y + w.h * 0.68f, dp(4), paint);
-                    canvas.drawCircle(w.x + w.w - dp(4), w.y + w.h / 2, dp(4), paint);
                 } else if ("Индикатор".equals(w.type)) {
                     String indicatorValue = liveValues.get(i);
                     int indicatorColor = Color.rgb(100, 116, 139);
