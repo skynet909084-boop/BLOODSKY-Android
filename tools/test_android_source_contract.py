@@ -47,8 +47,12 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("functionCode != 3 && functionCode != 4", self.source)
         self.assertIn("socket.connect(new InetSocketAddress(host, port), 3000)", self.source)
         self.assertIn("socket.setSoTimeout(3000)", self.source)
-        self.assertIn("responseTransaction != transaction", self.source)
-        self.assertIn("function == (functionCode | 0x80)", self.source)
+        self.assertIn("ModbusTcpResponseValidator.validateHeader(header, transaction, unit, functionCode, count)", self.source)
+        self.assertIn("ModbusTcpResponseValidator.validateAndDecodePdu(pdu, functionCode, count)", self.source)
+        validator = (ROOT / "app/src/main/java/com/bloodsky/hmi/ModbusTcpResponseValidator.java").read_text(encoding="utf-8")
+        self.assertIn("transaction ID mismatch", validator)
+        self.assertIn("function == (expectedFunction | 0x80)", validator)
+        self.assertIn("byteCount != expectedQuantity * 2", validator)
 
     def test_widget_metadata_is_preserved_for_round_trip(self):
         self.assertIn("JSONObject extraFields = new JSONObject()", self.source)
