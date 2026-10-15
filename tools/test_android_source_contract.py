@@ -52,6 +52,11 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("Trailing content after project JSON", self.codec_source)
         self.assertIn("Project file too large", self.source)
 
+    def test_import_uses_strict_integer_fields_for_screen_and_geometry(self):
+        self.assertIn('ProjectJsonCodec.readIntField(project, "currentScreen", 0)', self.source)
+        self.assertIn('ProjectJsonCodec.readIntField(widget, "x", 0)', self.source)
+        self.assertIn("static int readIntField", self.codec_source)
+
     def test_import_limits_screen_widget_and_connection_counts(self):
         self.assertIn("screenArray.length() > 100", self.source)
         self.assertIn("totalWidgets > 2000", self.source)
