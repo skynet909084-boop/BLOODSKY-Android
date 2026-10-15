@@ -44,7 +44,7 @@ def safe_entry_name(name: str) -> bool:
         return False
     # PurePosixPath normalizes away explicit "." and repeated separators.
     # Validate raw segments before normalization to avoid ambiguous ZIP names.
-    if any(part in ("", ".", "..") for part in name.rstrip("/").split("/")):
+    if name.endswith("//") or any(part in ("", ".", "..") for part in name.removesuffix("/").split("/")):
         return False
     path = PurePosixPath(name)
     if path.parts and ":" in path.parts[0]:
