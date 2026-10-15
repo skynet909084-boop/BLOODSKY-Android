@@ -12,6 +12,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.graphics.drawable.GradientDrawable;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -116,43 +117,76 @@ public class MainActivity extends Activity {
         return button;
     }
 
+    private Button legacyMenuButton(String text, Runnable task) {
+        Button button = new Button(this);
+        button.setText(text);
+        button.setTextSize(20);
+        button.setTextColor(Color.BLACK);
+        button.setAllCaps(false);
+        button.setGravity(Gravity.CENTER);
+        GradientDrawable face = new GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[] { Color.rgb(190, 190, 190), Color.rgb(132, 132, 132), Color.rgb(190, 190, 190) });
+        face.setCornerRadius(dp(2));
+        face.setStroke(dp(1), Color.rgb(76, 76, 76));
+        button.setBackground(face);
+        button.setOnClickListener(v -> task.run());
+        return button;
+    }
+
     private void showHome() {
         stopModbusPolling();
         editor = null;
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.rgb(241, 245, 249));
-        root.addView(heading("BLOODSKY  •  HMI / SCADA"),
-                new LinearLayout.LayoutParams(-1, dp(64)));
+        root.setGravity(Gravity.CENTER_HORIZONTAL);
+        root.setPadding(dp(12), dp(4), dp(12), dp(8));
+        root.setBackgroundColor(Color.rgb(35, 35, 35));
 
-        TextView intro = new TextView(this);
-        intro.setText("Android-редактор экранов\nОснова собственного проекта на базе анализа Kaskada Craft 1.0.7");
-        intro.setTextSize(16);
-        intro.setTextColor(Color.rgb(31, 41, 55));
-        intro.setPadding(dp(20), dp(22), dp(20), dp(18));
-        root.addView(intro);
+        TextView title = new TextView(this);
+        title.setText("BLOODSKY");
+        title.setTextColor(Color.rgb(237, 176, 59));
+        title.setTextSize(25);
+        title.setGravity(Gravity.CENTER);
+        title.setPadding(dp(8), dp(5), dp(8), dp(7));
+        root.addView(title, new LinearLayout.LayoutParams(-1, dp(44)));
 
-        root.addView(action("Создать / открыть проект", () -> {
+        TextView subtitle = new TextView(this);
+        subtitle.setText("HMI / SCADA");
+        subtitle.setTextColor(Color.rgb(187, 187, 187));
+        subtitle.setTextSize(13);
+        subtitle.setGravity(Gravity.CENTER);
+        root.addView(subtitle, new LinearLayout.LayoutParams(-1, dp(24)));
+
+        int menuWidth = Math.max(dp(220), Math.min(dp(300),
+                getResources().getDisplayMetrics().widthPixels - dp(36)));
+        addLegacyMenuItem("Открыть / создать проект", () -> {
             loadProject();
             showEditor();
-        }), new LinearLayout.LayoutParams(-1, dp(58)));
+        }, menuWidth);
+        addLegacyMenuItem("Имя проекта", this::editProjectName, menuWidth);
+        addLegacyMenuItem("Экспорт проекта", this::exportProject, menuWidth);
+        addLegacyMenuItem("Импорт проекта", this::importProject, menuWidth);
+        addLegacyMenuItem("Устройства и Modbus", this::showModbusScanner, menuWidth);
 
-        root.addView(action("Имя проекта", () -> editProjectName()),
-                new LinearLayout.LayoutParams(-1, dp(54)));
-        root.addView(action("Экспорт проекта (JSON)", this::exportProject),
-                new LinearLayout.LayoutParams(-1, dp(54)));
-        root.addView(action("Импорт проекта (JSON)", this::importProject),
-                new LinearLayout.LayoutParams(-1, dp(54)));
-        root.addView(action("Modbus Scanner (TCP)", this::showModbusScanner),
-                new LinearLayout.LayoutParams(-1, dp(54)));
+        View spacer = new View(this);
+        root.addView(spacer, new LinearLayout.LayoutParams(1, 0, 1));
 
-        TextView status = new TextView(this);
-        status.setText("\nТекущий этап: базовый Android-каркас и редактор экранов.\nFBD, Modbus RTU/TCP и полный перенос оригинальных компонентов будут добавляться отдельными проверяемыми этапами.");
-        status.setTextColor(Color.rgb(71, 85, 105));
-        status.setTextSize(14);
-        status.setPadding(dp(20), dp(12), dp(20), dp(20));
-        root.addView(status);
+        TextView footer = new TextView(this);
+        footer.setText("BLOODSKY  •  интерфейс в стиле Kaskada Craft 1.0.7");
+        footer.setTextColor(Color.rgb(237, 176, 59));
+        footer.setTextSize(12);
+        footer.setGravity(Gravity.CENTER);
+        root.addView(footer, new LinearLayout.LayoutParams(-1, dp(26)));
         setContentView(root);
+    }
+
+    private void addLegacyMenuItem(String label, Runnable task, int width) {
+        Button button = legacyMenuButton(label, task);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(width, dp(48));
+        params.gravity = Gravity.CENTER_HORIZONTAL;
+        params.topMargin = dp(10);
+        root.addView(button, params);
     }
 
     private void showModbusScanner() {
