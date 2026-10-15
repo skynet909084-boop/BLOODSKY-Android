@@ -57,7 +57,7 @@ public class MainActivityPersistenceRobolectricTest {
             Object widget = widgets.get(0);
             set(widget, "text", "New");
             set(widget, "x", 90);
-            call(activity, "persistProject");
+            // No explicit save: lifecycle onPause must persist the edited canvas.
             controller.recreate();
             activity = controller.get();
             call(activity, "loadProject");
@@ -76,6 +76,24 @@ public class MainActivityPersistenceRobolectricTest {
             assertEquals("device/temperature", saved.getString("connectionInfo"));
             assertTrue(saved.getBoolean("buttonState"));
             assertEquals(10, saved.getJSONObject("vendorWidget").getInt("scale"));
+        } finally {
+            controller.pause().stop().destroy();
+        }
+    }
+
+    @Test public void corruptedStoredProjectFallsBackWithoutOverwritingPreferences() throws Exception {
+        Application app = RuntimeEnvironment.getApplication();
+        SharedPreferences prefs = app.getSharedPreferences("bloodsky_projects", Context.MODE_PRIVATE);
+        prefs.edit().clear().commit();
+        String invalid = "{invalid project JSON";
+        assertTrue(prefs.edit().putString("active_project", invalid).commit());
+        ActivityController<MainActivity> controller = Robolectric.buildActivity(MainActivity.class).setup();
+        try {
+            MainActivity activity = controller.get();
+            call(activity, "loadProject");
+            assertEquals(1, ((List<?>) field(activity, "screens")).size());
+            assertEquals(0, ((List<?>) field(activity, "widgets")).size());
+            assertEquals(invalid, prefs.getString("active_project", null));
         } finally {
             controller.pause().stop().destroy();
         }
