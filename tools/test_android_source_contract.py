@@ -47,6 +47,10 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn('if (persistProject()) Toast.makeText(this, "Проект сохранён на устройстве"', self.source)
         self.assertIn("if (editor != null && !persistProject()) return;", self.source)
 
+    def test_identical_autosave_does_not_overwrite_previous_revision(self):
+        self.assertIn("if (previous != null && !previous.equals(next))", self.source)
+        self.assertIn("changes.putString(ACTIVE_PROJECT, next)", self.source)
+
     def test_home_navigation_stays_in_editor_when_save_fails(self):
         self.assertIn("if (editor != null && !persistProject()) return;", self.source)
 
