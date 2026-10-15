@@ -29,6 +29,11 @@ public class ProjectDocumentValidatorTest {
         assertRejected("{\"screens\":[{\"widgets\":null}]}");
         assertRejected("{\"screens\":[{\"widgets\":[null]}]}");
     }
+    @Test public void rejectsNonIntegerIndicesAndGeometry() {
+        assertRejected("{\"currentScreen\":\"0\",\"screens\":[{\"widgets\":[]}]}" );
+        assertRejected("{\"screens\":[{\"widgets\":[{\"type\":\"FBD AND\"},{\"type\":\"FBD OR\"}],\"connections\":[{\"source\":\"0\",\"target\":1}]}]}" );
+        assertRejected("{\"screens\":[{\"widgets\":[{\"type\":\"Текст\",\"x\":1.5}]}]}" );
+    }
     @Test public void rejectsNonArrayConnectionsField() {
         assertRejected("{\"screens\":[{\"widgets\":[],\"connections\":\"invalid\"}]}");
     }
