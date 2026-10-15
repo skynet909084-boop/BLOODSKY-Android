@@ -1,0 +1,52 @@
+name: BLOODSKY build completion verification
+
+# Runs as soon as the APK workflow finishes; no hourly polling required.
+on:
+  workflow_run:
+    workflows: ["BLOODSKY Android APK"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: bloodsky-verify-${{ github.event.workflow_run.id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.event_name == 'workflow_run'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify upstream result and debug APK artifact
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const {owner, repo} = context.repo;
+            const result = run.conclusion;
+            core.summary.addHeading('BLOODSKY build completion');
+            core.summary.addRaw(`Source run: [#${run.run_number}](${run.html_url})\n\n`);
+            core.summary.addRaw(`Commit: \`${run.head_sha}\`\n\n`);
+            core.summary.addRaw(`Conclusion: \`${result}\`\n\n`);
+            if (result !== 'success') {
+              await core.summary.write();
+              core.setFailed(`Android workflow finished with conclusion: ${result}`);
+              return;
+            }
+            const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
+              owner, repo, run_id: run.id, per_page: 100
+            });
+            const apk = artifacts.find(a => a.name === 'BLOODSKY-Android-debug-APK' && !a.expired && a.size_in_bytes > 0);
+            if (!apk) {
+              core.summary.addRaw('APK artifact: missing or empty\n');
+              await core.summary.write();
+              core.setFailed('Successful build has no non-empty APK artifact');
+              return;
+            }
+            core.summary.addRaw(`APK artifact: **${apk.name}** (${apk.size_in_bytes} bytes)\n\n`);
+            core.summary.addRaw('Build verified; APK installation, UI parity and hardware behavior still require separate testing.\n');
+            await core.summary.write();
