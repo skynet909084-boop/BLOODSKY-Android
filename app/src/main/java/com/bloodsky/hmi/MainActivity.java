@@ -1403,7 +1403,9 @@ public class MainActivity extends Activity {
             try { active = Double.parseDouble(live.trim().replace(',', '.')) != 0d; }
             catch (NumberFormatException ignored) { active = "true".equalsIgnoreCase(live.trim()); }
         }
-        String imageName = active ? w.imageOn : w.imageOff;
+        boolean blinkOff = active && w.blinkWhenOn
+                && ((SystemClock.uptimeMillis() / Math.max(200, w.blinkPeriodMs)) % 2 == 1);
+        String imageName = active && !blinkOff ? w.imageOn : w.imageOff;
         if (imageName.isEmpty()) return false;
         int id = getResources().getIdentifier("kc_" + imageName, "drawable", getPackageName());
         if (id == 0) return false;
@@ -1500,6 +1502,8 @@ public class MainActivity extends Activity {
 
         final Spinner imageOffField;
         final Spinner imageOnField;
+        final android.widget.CheckBox blinkField;
+        final EditText blinkPeriodField;
         if ("Индикатор".equals(w.type) || "Кнопка".equals(w.type)
                 || "Задатчик".equals(w.type)) {
             TextView imagesLabel = new TextView(this);
@@ -1510,9 +1514,18 @@ public class MainActivity extends Activity {
             imageOnField = craftImageSpinner(w.imageOn);
             form.addView(imageOffField);
             form.addView(imageOnField);
+            blinkField = new android.widget.CheckBox(this);
+            blinkField.setText("Мигать при активном состоянии");
+            blinkField.setChecked(w.blinkWhenOn);
+            form.addView(blinkField);
+            blinkPeriodField = propertyField(Integer.toString(w.blinkPeriodMs), InputType.TYPE_CLASS_NUMBER);
+            blinkPeriodField.setHint("Период мигания (200–10000 мс)");
+            form.addView(blinkPeriodField);
         } else {
             imageOffField = null;
             imageOnField = null;
+            blinkField = null;
+            blinkPeriodField = null;
         }
 
         TextView geometryLabel = new TextView(this);
@@ -1569,6 +1582,9 @@ public class MainActivity extends Activity {
                     if (imageOffField != null) {
                         w.imageOff = CRAFT_IMAGE_NAMES[imageOffField.getSelectedItemPosition()];
                         w.imageOn = CRAFT_IMAGE_NAMES[imageOnField.getSelectedItemPosition()];
+                        w.blinkWhenOn = blinkField.isChecked();
+                        w.blinkPeriodMs = Math.max(200, Math.min(10000,
+                                readPositiveInt(blinkPeriodField, w.blinkPeriodMs, false)));
                     }
                     if (timerPresetField != null) {
                         int newPreset = readPositiveInt(timerPresetField, w.timerPresetMs, false);
@@ -1716,6 +1732,7 @@ public class MainActivity extends Activity {
         obj.put("type", w.type); obj.put("text", w.text);
         obj.put("connectionInfo", w.connectionInfo == null ? "" : w.connectionInfo);
         obj.put("imageOff", w.imageOff); obj.put("imageOn", w.imageOn);
+        obj.put("blinkWhenOn", w.blinkWhenOn); obj.put("blinkPeriodMs", w.blinkPeriodMs);
         obj.put("inputValue", w.inputValue); obj.put("buttonState", w.buttonState); obj.put("rsState", w.rsState); obj.put("counterPreset", w.counterPreset); obj.put("counterValue", w.counterValue); obj.put("counterLastInput", w.counterLastInput);
         obj.put("timerPresetMs", w.timerPresetMs);
         obj.put("compareA", w.compareA); obj.put("compareB", w.compareB); obj.put("compareOperator", w.compareOperator);
@@ -1738,6 +1755,8 @@ public class MainActivity extends Activity {
         w.connectionInfo = obj.optString("connectionInfo", "");
         w.imageOff = validatedCraftImage(obj.optString("imageOff", ""));
         w.imageOn = validatedCraftImage(obj.optString("imageOn", ""));
+        w.blinkWhenOn = obj.optBoolean("blinkWhenOn", false);
+        w.blinkPeriodMs = Math.max(200, Math.min(10000, obj.optInt("blinkPeriodMs", 700)));
         w.inputValue = obj.optBoolean("inputValue", false); w.buttonState = obj.optBoolean("buttonState", false); w.rsState = obj.optBoolean("rsState", false); w.counterPreset = Math.max(1, Math.min(1000000, obj.optInt("counterPreset", 1))); w.counterValue = Math.max(0, Math.min(1000000, obj.optInt("counterValue", 0))); w.counterLastInput = obj.optBoolean("counterLastInput", false);
         w.timerPresetMs = Math.max(1, Math.min(3600000, obj.optInt("timerPresetMs", 1000)));
         w.compareA = obj.optDouble("compareA", 0.0); w.compareB = obj.optDouble("compareB", 0.0);
@@ -2085,6 +2104,8 @@ public class MainActivity extends Activity {
         String connectionInfo = "";
         String imageOff = "";
         String imageOn = "";
+        boolean blinkWhenOn = false;
+        int blinkPeriodMs = 700;
         boolean inputValue = false;
         boolean buttonState = false;
         boolean rsState = false;
