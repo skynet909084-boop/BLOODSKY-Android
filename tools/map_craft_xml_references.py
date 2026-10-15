@@ -9,7 +9,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 import re
 
-REFERENCE = re.compile(r"(?<![A-Za-z0-9_])@(?:\\*|\\+)?(?P<kind>layout|menu|drawable|mipmap|anim|animator|raw|color|font|xml|string|style|dimen|array|id)/(?P<name>[A-Za-z0-9_]+)")
+REFERENCE = re.compile(r"(?<![A-Za-z0-9_])@(?:[+*])?(?P<kind>layout|menu|drawable|mipmap|anim|animator|raw|color|font|xml|string|style|dimen|array|id)/(?P<name>[A-Za-z0-9_]+)")
 FILE_TYPES = {"layout", "menu", "drawable", "mipmap", "anim", "animator", "raw", "color", "font", "xml"}
 
 
