@@ -566,7 +566,7 @@ public class MainActivity extends Activity {
                                 || widgets.get(index) != snapshotWidgets.get(index)) continue;
                         liveValues.put(index, entry.getValue());
                         if ("FBD Вход".equals(widgets.get(index).type)) {
-                            widgets.get(index).inputValue = !"0".equals(entry.getValue()) && !"ERR".equals(entry.getValue());
+                            widgets.get(index).inputValue = !"0".equals(entry.getValue()) && !"ERR".equals(entry.getValue()) && !"CFG".equals(entry.getValue());
                         }
                     }
                     editor.invalidate();
