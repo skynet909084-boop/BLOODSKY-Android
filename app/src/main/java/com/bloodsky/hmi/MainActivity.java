@@ -1333,13 +1333,6 @@ public class MainActivity extends Activity {
 
     private JSONObject widgetToJson(Widget w) throws Exception {
         JSONObject obj = new JSONObject();
-        if (w.extraFields != null) {
-            java.util.Iterator<String> keys = w.extraFields.keys();
-            while (keys.hasNext()) {
-                String key = keys.next();
-                obj.put(key, w.extraFields.get(key));
-            }
-        }
         obj.put("type", w.type); obj.put("text", w.text);
         obj.put("connectionInfo", w.connectionInfo == null ? "" : w.connectionInfo);
         obj.put("inputValue", w.inputValue); obj.put("buttonState", w.buttonState); obj.put("rsState", w.rsState); obj.put("counterPreset", w.counterPreset); obj.put("counterValue", w.counterValue); obj.put("counterLastInput", w.counterLastInput);
@@ -1348,7 +1341,7 @@ public class MainActivity extends Activity {
         obj.put("backgroundColor", w.backgroundColor); obj.put("textColor", w.textColor); obj.put("textSizeSp", w.textSizeSp);
         obj.put("visible", w.visible); obj.put("showFrame", w.showFrame); obj.put("autoResizeText", w.autoResizeText);
         obj.put("x", w.x); obj.put("y", w.y); obj.put("w", w.w); obj.put("h", w.h);
-        return obj;
+        return ProjectJsonCodec.mergePreservedFields(w.extraFields, obj);
     }
 
     private JSONArray widgetsToJson(List<Widget> list) throws Exception {
@@ -1359,7 +1352,7 @@ public class MainActivity extends Activity {
 
     private Widget widgetFromJson(JSONObject obj) {
         Widget w = new Widget();
-        try { w.extraFields = new JSONObject(obj.toString()); } catch (Exception ignored) { w.extraFields = new JSONObject(); }
+        w.extraFields = JsonObjectCopy.deepCopy(obj);
         w.type = obj.optString("type", "Текст"); w.text = obj.optString("text", "Надпись");
         w.connectionInfo = obj.optString("connectionInfo", "");
         w.inputValue = obj.optBoolean("inputValue", false); w.buttonState = obj.optBoolean("buttonState", false); w.rsState = obj.optBoolean("rsState", false); w.counterPreset = Math.max(1, Math.min(1000000, obj.optInt("counterPreset", 1))); w.counterValue = Math.max(0, Math.min(1000000, obj.optInt("counterValue", 0))); w.counterLastInput = obj.optBoolean("counterLastInput", false);
@@ -1378,17 +1371,9 @@ public class MainActivity extends Activity {
         try {
             saveActiveScreen();
             JSONObject project = new JSONObject();
-            if (projectExtraFields != null) {
-                java.util.Iterator<String> projectKeys = projectExtraFields.keys();
-                while (projectKeys.hasNext()) { String key = projectKeys.next(); project.put(key, projectExtraFields.get(key)); }
-            }
             JSONArray screenArray = new JSONArray();
             for (Screen screen : screens) {
                 JSONObject screenObj = new JSONObject();
-                if (screen.extraFields != null) {
-                    java.util.Iterator<String> keys = screen.extraFields.keys();
-                    while (keys.hasNext()) { String key = keys.next(); screenObj.put(key, screen.extraFields.get(key)); }
-                }
                 screenObj.put("name", screen.name);
                 screenObj.put("backgroundColor", screen.backgroundColor);
                 screenObj.put("widgets", widgetsToJson(screen.widgets));
@@ -1397,16 +1382,17 @@ public class MainActivity extends Activity {
                     JSONObject connectionObj = new JSONObject();
                     connectionObj.put("source", connection.source);
                     connectionObj.put("target", connection.target);
-                    connectionArray.put(connectionObj);
+                    connectionArray.put(ProjectJsonCodec.mergePreservedFields(connection.extraFields, connectionObj));
                 }
                 screenObj.put("connections", connectionArray);
-                screenArray.put(screenObj);
+                screenArray.put(ProjectJsonCodec.mergePreservedFields(screen.extraFields, screenObj));
             }
             project.put("screens", screenArray);
             project.put("currentScreen", currentScreenIndex);
             project.put("projectName", projectName);
             getSharedPreferences(PREFS, MODE_PRIVATE).edit()
-                    .putString(ACTIVE_PROJECT, project.toString())
+                    .putString(ACTIVE_PROJECT, ProjectJsonCodec.serialize(
+                            ProjectJsonCodec.mergePreservedFields(projectExtraFields, project)))
                     .putString("project_name", projectName).apply();
         } catch (Exception ignored) {
             Toast.makeText(this, "Не удалось сохранить проект", Toast.LENGTH_SHORT).show();
@@ -1420,19 +1406,19 @@ public class MainActivity extends Activity {
         projectName = prefs.getString("project_name", projectName);
         String json = prefs.getString(ACTIVE_PROJECT, "[]");
         try {
-            Object parsed = new org.json.JSONTokener(json).nextValue();
+            Object parsed = ProjectJsonCodec.parse(json);
             if (parsed instanceof JSONObject) {
                 JSONObject project = (JSONObject) parsed;
                 String importedProjectName = project.optString("projectName", projectName);
                 if (importedProjectName != null && !importedProjectName.trim().isEmpty()) projectName = importedProjectName.trim();
-                try { projectExtraFields = new JSONObject(project.toString()); } catch (Exception ignored) { projectExtraFields = new JSONObject(); }
+                projectExtraFields = JsonObjectCopy.deepCopy(project);
                 JSONArray screenArray = project.optJSONArray("screens");
                 if (screenArray != null) {
                     for (int i = 0; i < screenArray.length(); i++) {
                         JSONObject screenObj = screenArray.getJSONObject(i);
                         Screen screen = new Screen(screenObj.optString("name", "Экран " + (i + 1)));
                         screen.backgroundColor = screenObj.optInt("backgroundColor", Color.rgb(250, 252, 255));
-                        try { screen.extraFields = new JSONObject(screenObj.toString()); } catch (Exception ignored) { screen.extraFields = new JSONObject(); }
+                        screen.extraFields = JsonObjectCopy.deepCopy(screenObj);
                         JSONArray widgetArray = screenObj.optJSONArray("widgets");
                         if (widgetArray != null) for (int j = 0; j < widgetArray.length(); j++) screen.widgets.add(widgetFromJson(widgetArray.getJSONObject(j)));
                         JSONArray connectionArray = screenObj.optJSONArray("connections");
@@ -1443,7 +1429,9 @@ public class MainActivity extends Activity {
                             int target = connectionObj.optInt("target", -1);
                             if (source >= 0 && target >= 0 && source < screen.widgets.size() && target < screen.widgets.size()
                                     && source != target && isFbd(screen.widgets.get(source)) && isFbd(screen.widgets.get(target))) {
-                                screen.connections.add(new FbdConnection(source, target));
+                                FbdConnection conn = new FbdConnection(source, target);
+                                conn.extraFields = JsonObjectCopy.deepCopy(connectionObj);
+                                screen.connections.add(conn);
                             }
                         }
                         screens.add(screen);
@@ -1478,6 +1466,7 @@ public class MainActivity extends Activity {
     private static class FbdConnection {
         int source;
         int target;
+        JSONObject extraFields = new JSONObject();
         FbdConnection(int source, int target) { this.source = source; this.target = target; }
     }
 

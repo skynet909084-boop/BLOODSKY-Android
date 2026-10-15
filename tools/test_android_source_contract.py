@@ -10,6 +10,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "app/src/main/java/com/bloodsky/hmi/MainActivity.java"
+CODEC_SOURCE = ROOT / "app/src/main/java/com/bloodsky/hmi/ProjectJsonCodec.java"
 WORKFLOW = ROOT / ".github/workflows/android-apk.yml"
 
 
@@ -17,13 +18,25 @@ class AndroidSourceContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.source = SOURCE.read_text(encoding="utf-8")
+        cls.codec_source = CODEC_SOURCE.read_text(encoding="utf-8")
         cls.workflow = WORKFLOW.read_text(encoding="utf-8")
+
+    def test_json_metadata_copy_helper_is_used_for_project_screen_and_widget_load(self):
+        self.assertIn("JsonObjectCopy.deepCopy(obj)", self.source)
+        self.assertIn("JsonObjectCopy.deepCopy(project)", self.source)
+        self.assertIn("JsonObjectCopy.deepCopy(screenObj)", self.source)
+        self.assertIn("conn.extraFields = JsonObjectCopy.deepCopy(connectionObj)", self.source)
 
     def test_project_persistence_serializes_screens_and_widgets(self):
         self.assertIn("private void persistProject()", self.source)
         self.assertIn('project.put("screens", screenArray)', self.source)
         self.assertIn('screenObj.put("widgets", widgetsToJson(screen.widgets))', self.source)
         self.assertIn('project.put("currentScreen", currentScreenIndex)', self.source)
+        self.assertIn("ProjectJsonCodec.mergePreservedFields(w.extraFields, obj)", self.source)
+        self.assertIn("ProjectJsonCodec.mergePreservedFields(connection.extraFields, connectionObj)", self.source)
+        self.assertIn("ProjectJsonCodec.mergePreservedFields(screen.extraFields, screenObj)", self.source)
+        self.assertIn("ProjectJsonCodec.mergePreservedFields(projectExtraFields, project)", self.source)
+        self.assertIn("static JSONObject mergePreservedFields", self.codec_source)
 
     def test_project_load_supports_multiscreen_and_legacy_array(self):
         self.assertIn("private void loadProject()", self.source)
@@ -35,7 +48,8 @@ class AndroidSourceContractTests(unittest.TestCase):
         validate_at = self.source.index("validateImportedProject(json);")
         commit_at = self.source.index('.putString(ACTIVE_PROJECT, json).commit()', validate_at)
         self.assertLess(validate_at, commit_at)
-        self.assertIn("Trailing content after JSON", self.source)
+        self.assertIn("ProjectJsonCodec.parse(json)", self.source)
+        self.assertIn("Trailing content after project JSON", self.codec_source)
         self.assertIn("Project file too large", self.source)
 
     def test_import_limits_screen_widget_and_connection_counts(self):
