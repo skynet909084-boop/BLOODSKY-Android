@@ -59,6 +59,10 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn('previewHeader.addView(new WidgetPreview(w.type, w.text)', self.source)
         self.assertIn('form.addView(previewHeader', self.source)
 
+    def test_xor_rs_original_internal_dividers(self):
+        self.assertIn('canvas.drawLine(body.left, headerY, body.right, headerY, paint);', self.source)
+        self.assertIn('canvas.drawLine(centerX, headerY, centerX, body.bottom, paint);', self.source)
+
     def test_original_fbd_and_setter_artwork_is_drawn(self):
         self.assertIn('boolean craftFbd = w.type != null', self.source)
         self.assertIn('canvas.drawRect(body, paint);', self.source)
