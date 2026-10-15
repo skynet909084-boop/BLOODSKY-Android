@@ -61,7 +61,6 @@ public class MainActivity extends Activity {
     private Widget clipboardWidget;
     private boolean fbdWireMode = false;
     private int wireSource = -1;
-    // Cache stateful FBD outputs once per canvas scan so fan-out connections do not consume edge pulses repeatedly.
     private boolean[] fbdCacheValid = new boolean[0];
     private boolean[] fbdCacheValues = new boolean[0];
     private double[] fbdCacheNumeric = new double[0];
@@ -166,8 +165,8 @@ public class MainActivity extends Activity {
             showEditor();
         }, menuWidth);
         addLegacyMenuItem("Имя проекта", this::editProjectName, menuWidth);
-        addLegacyMenuItem("Экспорт проекта", this::exportProject, menuWidth);
-        addLegacyMenuItem("Импорт проекта", this::importProject, menuWidth);
+        addLegacyMenuItem("Экспорт проекта (ZIP / JSON)", this::exportProject, menuWidth);
+        addLegacyMenuItem("Импорт проекта (ZIP / JSON)", this::importProject, menuWidth);
         addLegacyMenuItem("Устройства и Modbus", this::showModbusScanner, menuWidth);
 
         View spacer = new View(this);
@@ -306,11 +305,62 @@ public class MainActivity extends Activity {
         return frame;
     }
 
+    public static class ModbusRtuTransport {
+        private final InputStream in;
+        private final OutputStream out;
+
+        public ModbusRtuTransport(InputStream in, OutputStream out) {
+            this.in = in;
+            this.out = out;
+        }
+
+        public byte[] sendAndReceive(int unit, int functionCode, int startAddress, int count) throws IOException {
+            byte[] frame = buildModbusRtuFrame(unit, functionCode, startAddress, count);
+            out.write(frame);
+            out.flush();
+
+            byte[] header = new byte[3];
+            int read = 0;
+            while (read < 3) {
+                int r = in.read(header, read, 3 - read);
+                if (r < 0) throw new IOException("End of stream reading RTU response header");
+                read += r;
+            }
+            int respUnit = header[0] & 0xFF;
+            int respFunc = header[1] & 0xFF;
+            if (respFunc == (functionCode | 0x80)) {
+                int exceptionCode = header[2] & 0xFF;
+                byte[] crcBuf = new byte[2];
+                in.read(crcBuf);
+                throw new IOException("Modbus RTU exception code " + exceptionCode);
+            }
+            int byteCount = header[2] & 0xFF;
+            byte[] payload = new byte[byteCount];
+            read = 0;
+            while (read < byteCount) {
+                int r = in.read(payload, read, byteCount - read);
+                if (r < 0) throw new IOException("End of stream reading RTU payload");
+                read += r;
+            }
+            byte[] crcBuf = new byte[2];
+            in.read(crcBuf);
+            int expectedCrc = ((crcBuf[1] & 0xFF) << 8) | (crcBuf[0] & 0xFF);
+            byte[] fullPdu = new byte[3 + byteCount];
+            System.arraycopy(header, 0, fullPdu, 0, 3);
+            System.arraycopy(payload, 0, fullPdu, 3, byteCount);
+            int calcCrc = calculateModbusRtuCrc(fullPdu, fullPdu.length);
+            if (calcCrc != expectedCrc) {
+                throw new IOException("CRC mismatch in Modbus RTU response");
+            }
+            return payload;
+        }
+    }
+
     private String readModbusHoldingRegisters(String host, int port, int unit, int startAddress, int count) throws Exception {
         return readModbusRegisters(host, port, unit, startAddress, count, 3);
     }
 
-    private String readModbusRegisters(String host, int port, int unit, int startAddress, int count, int functionCode) throws Exception {
+    public static String readModbusRegistersStatic(String host, int port, int unit, int startAddress, int count, int functionCode) throws Exception {
         if (functionCode != 3 && functionCode != 4) throw new IllegalArgumentException("Unsupported Modbus function");
         int transaction = (int) (SystemClock.elapsedRealtime() & 0xffff);
         try (Socket socket = new Socket()) {
@@ -319,10 +369,10 @@ public class MainActivity extends Activity {
             DataOutputStream out = new DataOutputStream(socket.getOutputStream());
             DataInputStream in = new DataInputStream(socket.getInputStream());
             out.writeShort(transaction);
-            out.writeShort(0); // Modbus protocol identifier
-            out.writeShort(6); // Unit ID + function + address + quantity
+            out.writeShort(0);
+            out.writeShort(6);
             out.writeByte(unit);
-            out.writeByte(functionCode); // Read holding or input registers
+            out.writeByte(functionCode);
             out.writeShort(startAddress);
             out.writeShort(count);
             out.flush();
@@ -342,7 +392,7 @@ public class MainActivity extends Activity {
             if (function == (functionCode | 0x80)) {
                 if (pdu.length != 2) throw new IOException("Некорректный ответ с исключением Modbus");
                 int exceptionCode = pdu[1] & 0xff;
-                throw new IOException("Modbus: " + describeModbusExceptionCode(exceptionCode)
+                throw new IOException("Modbus: " + describeModbusExceptionCodeStatic(exceptionCode)
                         + " (код " + exceptionCode + ")");
             }
             if (function != functionCode || pdu.length < 2) throw new IOException("Неожиданный код функции");
@@ -359,6 +409,244 @@ public class MainActivity extends Activity {
                         .append(String.format(java.util.Locale.ROOT, "%04X", value)).append('\n');
             }
             return report.toString();
+        }
+    }
+
+    public static boolean writeModbusRegisterStatic(String host, int port, int unit, int address, int value) throws Exception {
+        int transaction = (int) (SystemClock.elapsedRealtime() & 0xffff);
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(host, port), 3000);
+            socket.setSoTimeout(3000);
+            DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+            DataInputStream in = new DataInputStream(socket.getInputStream());
+            out.writeShort(transaction);
+            out.writeShort(0);
+            out.writeShort(6);
+            out.writeByte(unit);
+            out.writeByte(6);
+            out.writeShort(address);
+            out.writeShort(value);
+            out.flush();
+
+            byte[] header = new byte[7];
+            in.readFully(header);
+            int responseTransaction = ((header[0] & 0xff) << 8) | (header[1] & 0xff);
+            int protocol = ((header[2] & 0xff) << 8) | (header[3] & 0xff);
+            int length = ((header[4] & 0xff) << 8) | (header[5] & 0xff);
+            int responseUnit = header[6] & 0xff;
+            if (responseTransaction != transaction || protocol != 0 || responseUnit != unit || length < 2 || length > 254) {
+                throw new IOException("Некорректный заголовок ответа при записи");
+            }
+            byte[] pdu = new byte[length - 1];
+            in.readFully(pdu);
+            int function = pdu[0] & 0xff;
+            if (function == 0x86) {
+                int exceptionCode = pdu.length > 1 ? pdu[1] & 0xff : 0;
+                throw new IOException("Modbus: " + describeModbusExceptionCodeStatic(exceptionCode) + " (код " + exceptionCode + ")");
+            }
+            return function == 6;
+        }
+    }
+
+    public static boolean writeModbusMultipleRegistersStatic(String host, int port, int unit, int startAddress, int[] values) throws Exception {
+        int transaction = (int) (SystemClock.elapsedRealtime() & 0xffff);
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(host, port), 3000);
+            socket.setSoTimeout(3000);
+            DataOutputStream out = new DataOutputStream(socket.getOutputStream());
+            DataInputStream in = new DataInputStream(socket.getInputStream());
+            int byteCount = values.length * 2;
+            out.writeShort(transaction);
+            out.writeShort(0);
+            out.writeShort(7 + byteCount);
+            out.writeByte(unit);
+            out.writeByte(16);
+            out.writeShort(startAddress);
+            out.writeShort(values.length);
+            out.writeByte(byteCount);
+            for (int val : values) {
+                out.writeShort(val);
+            }
+            out.flush();
+
+            byte[] header = new byte[7];
+            in.readFully(header);
+            int responseTransaction = ((header[0] & 0xff) << 8) | (header[1] & 0xff);
+            int protocol = ((header[2] & 0xff) << 8) | (header[3] & 0xff);
+            int length = ((header[4] & 0xff) << 8) | (header[5] & 0xff);
+            int responseUnit = header[6] & 0xff;
+            if (responseTransaction != transaction || protocol != 0 || responseUnit != unit || length < 2 || length > 254) {
+                throw new IOException("Некорректный заголовок ответа при групповой записи");
+            }
+            byte[] pdu = new byte[length - 1];
+            in.readFully(pdu);
+            int function = pdu[0] & 0xff;
+            if (function == 0x90) {
+                int exceptionCode = pdu.length > 1 ? pdu[1] & 0xff : 0;
+                throw new IOException("Modbus: " + describeModbusExceptionCodeStatic(exceptionCode) + " (код " + exceptionCode + ")");
+            }
+            return function == 16;
+        }
+    }
+
+    private String readModbusRegisters(String host, int port, int unit, int startAddress, int count, int functionCode) throws Exception {
+        return readModbusRegistersStatic(host, port, unit, startAddress, count, functionCode);
+    }
+
+    public static String describeModbusExceptionCodeStatic(int code) {
+        switch (code) {
+            case 1: return "устройство не поддерживает эту функцию";
+            case 2: return "недопустимый адрес регистра";
+            case 3: return "недопустимое значение в запросе";
+            case 4: return "внутренняя ошибка устройства";
+            case 5: return "запрос принят, обработка выполняется";
+            case 6: return "устройство занято, повторите позже";
+            case 8: return "ошибка чётности памяти";
+            case 10: return "шлюз не смог установить соединение";
+            case 11: return "шлюз не получил ответ от устройства";
+            default: return "неизвестное исключение протокола";
+        }
+    }
+
+    private String describeModbusExceptionCode(int code) {
+        return describeModbusExceptionCodeStatic(code);
+    }
+
+    private String describeModbusError(Exception error) {
+        if (error instanceof java.net.SocketTimeoutException) return "тайм-аут ответа (3 с)";
+        if (error instanceof java.net.ConnectException) return "не удалось подключиться к устройству";
+        if (error instanceof java.net.UnknownHostException) return "не удалось определить адрес хоста";
+        if (error instanceof java.net.NoRouteToHostException) return "нет маршрута до устройства";
+        if (error instanceof java.net.SocketException) return "ошибка сокета/соединение закрыто";
+        String message = error.getMessage();
+        if (message == null || message.trim().isEmpty()) return error.getClass().getSimpleName();
+        return message.length() > 90 ? message.substring(0, 90) : message;
+    }
+
+    private boolean isActiveModbusValue(String value) {
+        if (value == null) return false;
+        String normalized = value.trim().toLowerCase(java.util.Locale.ROOT);
+        if (normalized.isEmpty() || normalized.startsWith("err") || normalized.startsWith("cfg")
+                || "false".equals(normalized) || "off".equals(normalized)
+                || "no".equals(normalized)) return false;
+        if ("true".equals(normalized) || "on".equals(normalized) || "yes".equals(normalized)) return true;
+        try {
+            return Double.parseDouble(normalized) != 0.0d;
+        } catch (NumberFormatException ignored) {
+            return false;
+        }
+    }
+
+    private BindingRequest parseBinding(int widgetIndex, String binding) {
+        if (binding == null || !binding.startsWith("tcp://")) return null;
+        try {
+            URI uri = URI.create(binding);
+            String[] path = uri.getPath().split("/", -1);
+            if (uri.getHost() == null || uri.getPort() < 1 || uri.getPort() > 65535
+                    || path.length != 3 || !path[0].isEmpty()
+                    || uri.getRawQuery() != null || uri.getRawFragment() != null) return null;
+            int unit = Integer.parseInt(path[1]);
+            int enteredAddress = Integer.parseInt(path[2]);
+            if (unit < 0 || unit > 255 || enteredAddress < 0 || enteredAddress > 65535) return null;
+            int functionCode = 3;
+            int address = enteredAddress;
+            if (enteredAddress >= 30001 && enteredAddress <= 39999) {
+                functionCode = 4;
+                address = enteredAddress - 30001;
+            } else if (enteredAddress >= 40001 && enteredAddress <= 49999) {
+                functionCode = 3;
+                address = enteredAddress - 40001;
+            }
+            return new BindingRequest(widgetIndex, uri.getHost(), uri.getPort(), unit, address, functionCode);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private void startModbusPolling() {
+        stopModbusPolling();
+        modbusPollingActive = true;
+        mainHandler.postDelayed(modbusPollRunnable, 1000L);
+    }
+
+    private void stopModbusPolling() {
+        modbusPollingActive = false;
+        mainHandler.removeCallbacks(modbusPollRunnable);
+    }
+
+    private void pollBoundWidgets() {
+        final List<Widget> snapshotWidgets = new ArrayList<>(widgets);
+        final Map<String, BindingRequest> groupedRequests = new LinkedHashMap<>();
+        for (int i = 0; i < snapshotWidgets.size(); i++) {
+            Widget widget = snapshotWidgets.get(i);
+            BindingRequest request = parseBinding(i, widget.connectionInfo);
+            if (request == null) continue;
+            String key = request.registerKey();
+            BindingRequest existing = groupedRequests.get(key);
+            if (existing == null) groupedRequests.put(key, request);
+            else existing.widgetIndices.add(i);
+        }
+        final List<BindingRequest> requests = new ArrayList<>(groupedRequests.values());
+        if (modbusPollInFlight) return;
+        final Map<Integer, String> invalidBindings = new HashMap<>();
+        for (int i = 0; i < snapshotWidgets.size(); i++) {
+            String binding = snapshotWidgets.get(i).connectionInfo;
+            if (binding != null && binding.startsWith("tcp://")
+                    && parseBinding(i, binding) == null) invalidBindings.put(i, "CFG");
+        }
+        if (requests.isEmpty() && invalidBindings.isEmpty()) return;
+        modbusPollInFlight = true;
+        try {
+            modbusExecutor.execute(() -> {
+            try {
+                final Map<Integer, String> updates = new HashMap<>(invalidBindings);
+                for (BindingRequest request : requests) {
+                    String value;
+                    try {
+                        String report = readModbusRegisters(request.host, request.port, request.unit, request.address, 1, request.functionCode);
+                        String[] lines = report.split("\n");
+                        if (lines.length < 2) throw new IOException("Пустой ответ регистра");
+                        String[] columns = lines[1].split("\\|");
+                        if (columns.length < 2) throw new IOException("Не удалось разобрать регистр");
+                        value = columns[1].trim();
+                    } catch (Exception e) {
+                        value = "ERR: " + describeModbusError(e);
+                    }
+                    for (int widgetIndex : request.widgetIndices) updates.put(widgetIndex, value);
+                }
+                runOnUiThread(() -> {
+                    if (editor == null) return;
+                    for (Map.Entry<Integer, String> entry : updates.entrySet()) {
+                        int index = entry.getKey();
+                        if (index < 0 || index >= widgets.size() || index >= snapshotWidgets.size()
+                                || widgets.get(index) != snapshotWidgets.get(index)) continue;
+                        liveValues.put(index, entry.getValue());
+                        if ("FBD Вход".equals(widgets.get(index).type)) {
+                            widgets.get(index).inputValue = isActiveModbusValue(entry.getValue());
+                        }
+                    }
+                    editor.invalidate();
+                });
+            } finally {
+                modbusPollInFlight = false;
+            }
+            });
+        } catch (java.util.concurrent.RejectedExecutionException ignored) {
+            modbusPollInFlight = false;
+        }
+    }
+
+    private static class BindingRequest {
+        final List<Integer> widgetIndices = new ArrayList<>();
+        final int port, unit, address, functionCode;
+        final String host;
+        BindingRequest(int widgetIndex, String host, int port, int unit, int address, int functionCode) {
+            this.widgetIndices.add(widgetIndex);
+            this.host = host; this.port = port; this.unit = unit;
+            this.address = address; this.functionCode = functionCode;
+        }
+        String registerKey() {
+            return host.toLowerCase(java.util.Locale.ROOT) + ":" + port + "/" + unit + "/" + address + "/FC" + functionCode;
         }
     }
 
@@ -411,7 +699,6 @@ public class MainActivity extends Activity {
                 }
                 String json = new String(buffer.toByteArray(), StandardCharsets.UTF_8);
                 validateImportedProject(json);
-                // Commit only after the complete document has passed validation.
                 if (!getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(ACTIVE_PROJECT, json).commit()) throw new IllegalStateException("Could not save imported project");
                 loadProject();
                 showEditor();
@@ -419,90 +706,6 @@ public class MainActivity extends Activity {
             } catch (Exception e) {
                 Toast.makeText(this, "Импорт не выполнен: файл не является допустимым JSON-проектом", Toast.LENGTH_LONG).show();
             }
-        }
-    }
-
-
-    private void validateImportedProject(String json) throws Exception {
-        org.json.JSONTokener tokener = new org.json.JSONTokener(json);
-        Object parsed = tokener.nextValue();
-        if (tokener.nextClean() != 0) throw new IllegalArgumentException("Trailing content after JSON");
-        if (parsed instanceof JSONArray) {
-            validateWidgetArray((JSONArray) parsed);
-            return;
-        }
-        if (!(parsed instanceof JSONObject)) throw new IllegalArgumentException("Project must be a JSON object or array");
-        JSONObject project = (JSONObject) parsed;
-        JSONArray screenArray = project.optJSONArray("screens");
-        if (screenArray == null || screenArray.length() == 0 || screenArray.length() > 100) {
-            throw new IllegalArgumentException("Invalid screen list");
-        }
-        int currentScreen = project.optInt("currentScreen", 0);
-        if (currentScreen < 0 || currentScreen >= screenArray.length()) {
-            throw new IllegalArgumentException("Current screen index out of range");
-        }
-        int totalWidgets = 0;
-        for (int i = 0; i < screenArray.length(); i++) {
-            JSONObject screen = screenArray.optJSONObject(i);
-            if (screen == null) throw new IllegalArgumentException("Screen must be an object");
-            JSONArray screenWidgets = screen.optJSONArray("widgets");
-            if (screenWidgets == null) throw new IllegalArgumentException("Screen widgets must be an array");
-            validateWidgetArray(screenWidgets);
-            totalWidgets += screenWidgets.length();
-            if (totalWidgets > 2000) throw new IllegalArgumentException("Too many widgets");
-
-            JSONArray connections = screen.optJSONArray("connections");
-            if (connections == null) continue;
-            if (connections.length() > 4000) throw new IllegalArgumentException("Too many connections");
-            int nodeCount = screenWidgets.length();
-            List<List<Integer>> adjacency = new ArrayList<>();
-            int[] indegree = new int[nodeCount];
-            for (int node = 0; node < nodeCount; node++) adjacency.add(new ArrayList<>());
-            java.util.HashSet<Long> uniqueEdges = new java.util.HashSet<>();
-            for (int j = 0; j < connections.length(); j++) {
-                JSONObject edge = connections.optJSONObject(j);
-                if (edge == null) throw new IllegalArgumentException("Connection must be an object");
-                int source = edge.optInt("source", -1);
-                int target = edge.optInt("target", -1);
-                if (source < 0 || target < 0 || source >= nodeCount || target >= nodeCount || source == target) {
-                    throw new IllegalArgumentException("Connection index out of range");
-                }
-                JSONObject sourceWidget = screenWidgets.optJSONObject(source);
-                JSONObject targetWidget = screenWidgets.optJSONObject(target);
-                if (sourceWidget == null || targetWidget == null
-                        || !sourceWidget.optString("type", "").startsWith("FBD ")
-                        || !targetWidget.optString("type", "").startsWith("FBD ")) {
-                    throw new IllegalArgumentException("Connections must link FBD blocks");
-                }
-                long edgeKey = (((long) source) << 32) | (target & 0xffffffffL);
-                if (!uniqueEdges.add(edgeKey)) throw new IllegalArgumentException("Duplicate FBD connection");
-                adjacency.get(source).add(target);
-                indegree[target]++;
-            }
-            // Kahn's algorithm rejects imported graphs with cycles before any project data is saved.
-            java.util.ArrayDeque<Integer> ready = new java.util.ArrayDeque<>();
-            for (int node = 0; node < nodeCount; node++) if (indegree[node] == 0) ready.add(node);
-            int visitedCount = 0;
-            while (!ready.isEmpty()) {
-                int node = ready.removeFirst();
-                visitedCount++;
-                for (int next : adjacency.get(node)) {
-                    if (--indegree[next] == 0) ready.addLast(next);
-                }
-            }
-            if (visitedCount != nodeCount) throw new IllegalArgumentException("Cyclic FBD connections");
-        }
-    }
-
-    private void validateWidgetArray(JSONArray array) {
-        if (array.length() > 2000) throw new IllegalArgumentException("Too many widgets");
-        for (int i = 0; i < array.length(); i++) {
-            JSONObject widget = array.optJSONObject(i);
-            if (widget == null) throw new IllegalArgumentException("Widget must be an object");
-            String type = widget.optString("type", "Текст"), label = widget.optString("text", "Надпись");
-            if (type.length() > 100 || label.length() > 2000 || widget.optString("connectionInfo", "").length() > 2000) throw new IllegalArgumentException("Widget field too long");
-            int x = widget.optInt("x", 0), y = widget.optInt("y", 0), w = widget.optInt("w", 160), h = widget.optInt("h", 58);
-            if (x < -100000 || x > 100000 || y < -100000 || y > 100000 || w < 1 || w > 100000 || h < 1 || h > 100000) throw new IllegalArgumentException("Widget geometry out of range");
         }
     }
 
@@ -519,26 +722,6 @@ public class MainActivity extends Activity {
                     if (!value.isEmpty()) projectName = value;
                     persistProject();
                 }).show();
-    }
-
-    private Button legacyToolbarButton(String text, Runnable task) {
-        Button button = new Button(this);
-        button.setText(text);
-        button.setTextSize(12);
-        button.setTextColor(Color.rgb(20, 20, 20));
-        button.setAllCaps(false);
-        button.setMinHeight(0);
-        button.setMinimumHeight(0);
-        button.setPadding(dp(5), 0, dp(5), 0);
-        button.setGravity(Gravity.CENTER);
-        GradientDrawable face = new GradientDrawable(
-                GradientDrawable.Orientation.LEFT_RIGHT,
-                new int[] { Color.rgb(190, 190, 190), Color.rgb(145, 145, 145), Color.rgb(190, 190, 190) });
-        face.setCornerRadius(dp(2));
-        face.setStroke(dp(1), Color.rgb(70, 70, 70));
-        button.setBackground(face);
-        button.setOnClickListener(v -> task.run());
-        return button;
     }
 
     private void alignSelectedWidget(String alignMode) {
@@ -576,12 +759,31 @@ public class MainActivity extends Activity {
                 .show();
     }
 
+    private Button legacyToolbarButton(String text, Runnable task) {
+        Button button = new Button(this);
+        button.setText(text);
+        button.setTextSize(12);
+        button.setTextColor(Color.rgb(20, 20, 20));
+        button.setAllCaps(false);
+        button.setMinHeight(0);
+        button.setMinimumHeight(0);
+        button.setPadding(dp(5), 0, dp(5), 0);
+        button.setGravity(Gravity.CENTER);
+        GradientDrawable face = new GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[] { Color.rgb(190, 190, 190), Color.rgb(145, 145, 145), Color.rgb(190, 190, 190) });
+        face.setCornerRadius(dp(2));
+        face.setStroke(dp(1), Color.rgb(70, 70, 70));
+        button.setBackground(face);
+        button.setOnClickListener(v -> task.run());
+        return button;
+    }
+
     private void showEditor() {
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.rgb(35, 35, 35));
 
-        // Compact charcoal toolbar inspired by Kaskada Craft's icon strip.
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
         top.setPadding(dp(3), dp(2), dp(3), dp(2));
@@ -653,166 +855,6 @@ public class MainActivity extends Activity {
         startModbusPolling();
     }
 
-    private void startModbusPolling() {
-        stopModbusPolling();
-        modbusPollingActive = true;
-        mainHandler.postDelayed(modbusPollRunnable, 1000L);
-    }
-
-    private void stopModbusPolling() {
-        modbusPollingActive = false;
-        mainHandler.removeCallbacks(modbusPollRunnable);
-    }
-
-    private void pollBoundWidgets() {
-        final List<Widget> snapshotWidgets = new ArrayList<>(widgets);
-        // Multiple widgets can display the same Modbus register. Read that register
-        // once per scan, then fan the value out to every widget using the binding.
-        final Map<String, BindingRequest> groupedRequests = new LinkedHashMap<>();
-        for (int i = 0; i < snapshotWidgets.size(); i++) {
-            Widget widget = snapshotWidgets.get(i);
-            BindingRequest request = parseBinding(i, widget.connectionInfo);
-            if (request == null) continue;
-            String key = request.registerKey();
-            BindingRequest existing = groupedRequests.get(key);
-            if (existing == null) groupedRequests.put(key, request);
-            else existing.widgetIndices.add(i);
-        }
-        final List<BindingRequest> requests = new ArrayList<>(groupedRequests.values());
-        if (modbusPollInFlight) return;
-        // Surface malformed tcp bindings as a configuration error rather than leaving
-        // an old live value on screen, which can look like valid but stale process data.
-        final Map<Integer, String> invalidBindings = new HashMap<>();
-        for (int i = 0; i < snapshotWidgets.size(); i++) {
-            String binding = snapshotWidgets.get(i).connectionInfo;
-            if (binding != null && binding.startsWith("tcp://")
-                    && parseBinding(i, binding) == null) invalidBindings.put(i, "CFG");
-        }
-        if (requests.isEmpty() && invalidBindings.isEmpty()) return;
-        modbusPollInFlight = true;
-        try {
-            modbusExecutor.execute(() -> {
-            try {
-                final Map<Integer, String> updates = new HashMap<>(invalidBindings);
-                for (BindingRequest request : requests) {
-                    String value;
-                    try {
-                        String report = readModbusRegisters(request.host, request.port, request.unit, request.address, 1, request.functionCode);
-                        String[] lines = report.split("\n");
-                        if (lines.length < 2) throw new IOException("Пустой ответ регистра");
-                        String[] columns = lines[1].split("\\|");
-                        if (columns.length < 2) throw new IOException("Не удалось разобрать регистр");
-                        value = columns[1].trim();
-                    } catch (Exception e) {
-                        value = "ERR: " + describeModbusError(e);
-                    }
-                    for (int widgetIndex : request.widgetIndices) updates.put(widgetIndex, value);
-                }
-                runOnUiThread(() -> {
-                    if (editor == null) return;
-                    for (Map.Entry<Integer, String> entry : updates.entrySet()) {
-                        int index = entry.getKey();
-                        if (index < 0 || index >= widgets.size() || index >= snapshotWidgets.size()
-                                || widgets.get(index) != snapshotWidgets.get(index)) continue;
-                        liveValues.put(index, entry.getValue());
-                        if ("FBD Вход".equals(widgets.get(index).type)) {
-                            widgets.get(index).inputValue = isActiveModbusValue(entry.getValue());
-                        }
-                    }
-                    editor.invalidate();
-                });
-            } finally {
-                modbusPollInFlight = false;
-            }
-            });
-        } catch (java.util.concurrent.RejectedExecutionException ignored) {
-            // The Activity may be shutting down; never leave the poll lock stuck.
-            modbusPollInFlight = false;
-        }
-    }
-
-    private String describeModbusExceptionCode(int code) {
-        switch (code) {
-            case 1: return "устройство не поддерживает эту функцию";
-            case 2: return "недопустимый адрес регистра";
-            case 3: return "недопустимое значение в запросе";
-            case 4: return "внутренняя ошибка устройства";
-            case 5: return "запрос принят, обработка выполняется";
-            case 6: return "устройство занято, повторите позже";
-            case 8: return "ошибка чётности памяти";
-            case 10: return "шлюз не смог установить соединение";
-            case 11: return "шлюз не получил ответ от устройства";
-            default: return "неизвестное исключение протокола";
-        }
-    }
-
-    private String describeModbusError(Exception error) {
-        if (error instanceof java.net.SocketTimeoutException) return "тайм-аут ответа (3 с)";
-        if (error instanceof java.net.ConnectException) return "не удалось подключиться к устройству";
-        if (error instanceof java.net.UnknownHostException) return "не удалось определить адрес хоста";
-        if (error instanceof java.net.NoRouteToHostException) return "нет маршрута до устройства";
-        if (error instanceof java.net.SocketException) return "ошибка сокета/соединение закрыто";
-        String message = error.getMessage();
-        if (message == null || message.trim().isEmpty()) return error.getClass().getSimpleName();
-        return message.length() > 90 ? message.substring(0, 90) : message;
-    }
-
-    private boolean isActiveModbusValue(String value) {
-        if (value == null) return false;
-        String normalized = value.trim().toLowerCase(java.util.Locale.ROOT);
-        if (normalized.isEmpty() || normalized.startsWith("err") || normalized.startsWith("cfg")
-                || "false".equals(normalized) || "off".equals(normalized)
-                || "no".equals(normalized)) return false;
-        if ("true".equals(normalized) || "on".equals(normalized) || "yes".equals(normalized)) return true;
-        try {
-            return Double.parseDouble(normalized) != 0.0d;
-        } catch (NumberFormatException ignored) {
-            return false;
-        }
-    }
-
-    private BindingRequest parseBinding(int widgetIndex, String binding) {
-        if (binding == null || !binding.startsWith("tcp://")) return null;
-        try {
-            URI uri = URI.create(binding);
-            String[] path = uri.getPath().split("/", -1);
-            // A binding must have exactly /unit/address; reject extra path segments,
-            // query strings and fragments instead of silently reading a different register.
-            if (uri.getHost() == null || uri.getPort() < 1 || uri.getPort() > 65535
-                    || path.length != 3 || !path[0].isEmpty()
-                    || uri.getRawQuery() != null || uri.getRawFragment() != null) return null;
-            int unit = Integer.parseInt(path[1]);
-            int enteredAddress = Integer.parseInt(path[2]);
-            if (unit < 0 || unit > 255 || enteredAddress < 0 || enteredAddress > 65535) return null;
-            int functionCode = 3;
-            int address = enteredAddress;
-            if (enteredAddress >= 30001 && enteredAddress <= 39999) {
-                functionCode = 4;
-                address = enteredAddress - 30001;
-            } else if (enteredAddress >= 40001 && enteredAddress <= 49999) {
-                functionCode = 3;
-                address = enteredAddress - 40001;
-            }
-            return new BindingRequest(widgetIndex, uri.getHost(), uri.getPort(), unit, address, functionCode);
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
-    private static class BindingRequest {
-        final List<Integer> widgetIndices = new ArrayList<>();
-        final int port, unit, address, functionCode;
-        final String host;
-        BindingRequest(int widgetIndex, String host, int port, int unit, int address, int functionCode) {
-            this.widgetIndices.add(widgetIndex);
-            this.host = host; this.port = port; this.unit = unit;
-            this.address = address; this.functionCode = functionCode;
-        }
-        String registerKey() {
-            return host.toLowerCase(java.util.Locale.ROOT) + ":" + port + "/" + unit + "/" + address + "/FC" + functionCode;
-        }
-    }
-
     private String currentScreenName() {
         if (screens.isEmpty()) return "Экран 1";
         currentScreenIndex = Math.max(0, Math.min(currentScreenIndex, screens.size() - 1));
@@ -832,6 +874,11 @@ public class MainActivity extends Activity {
         copy.minValue = source.minValue; copy.maxValue = source.maxValue;
         copy.backgroundColor = source.backgroundColor; copy.textColor = source.textColor; copy.textSizeSp = source.textSizeSp;
         copy.visible = source.visible; copy.showFrame = source.showFrame; copy.autoResizeText = source.autoResizeText;
+        for (int i = 0; i < 16; i++) {
+            copy.dynTextStates[i] = source.dynTextStates[i];
+            copy.dynTextColors[i] = source.dynTextColors[i];
+            copy.bitListLabels[i] = source.bitListLabels[i];
+        }
         try { copy.extraFields = new JSONObject(source.extraFields.toString()); } catch (Exception ignored) { copy.extraFields = new JSONObject(); }
         copy.x = source.x; copy.y = source.y; copy.w = source.w; copy.h = source.h;
         return copy;
@@ -1052,7 +1099,7 @@ public class MainActivity extends Activity {
     private void showAddWidgetMenu() {
         final String[] labels = {
                 "Текст / надпись", "Кнопка", "Индикатор", "Задатчик",
-                "Динамический текст", "Шкала / Стрелка", "Прогресс-бар", "График / Тренд", "Двухпозиционный индикатор",
+                "Динамический текст", "Битовый список", "Шкала / Стрелка", "Прогресс-бар", "График / Тренд", "Двухпозиционный индикатор",
                 "FBD — Вход", "FBD — И", "FBD — ИЛИ", "FBD — НЕ",
                 "FBD — NAND", "FBD — NOR", "FBD — XOR",
                 "FBD — TON (задержка включения)", "FBD — TP (импульс)", "FBD — TOF (задержка выключения)",
@@ -1063,7 +1110,7 @@ public class MainActivity extends Activity {
         };
         final String[] types = {
                 "Текст", "Кнопка", "Индикатор", "Задатчик",
-                "Динамический текст", "Шкала / Стрелка", "Прогресс-бар", "График / Тренд", "Двухпозиционный индикатор",
+                "Динамический текст", "Битовый список", "Шкала / Стрелка", "Прогресс-бар", "График / Тренд", "Двухпозиционный индикатор",
                 "FBD Вход", "FBD И", "FBD ИЛИ", "FBD НЕ",
                 "FBD NAND", "FBD NOR", "FBD XOR",
                 "FBD Таймер", "FBD TP", "FBD TOF",
@@ -1074,7 +1121,7 @@ public class MainActivity extends Activity {
         };
         final String[] defaults = {
                 "Надпись", "Кнопка", "Индикатор", "Задатчик: 0",
-                "Динамический текст", "Шкала", "Уровень", "Тренд", "Состояние",
+                "Динамический текст", "Битовый список", "Шкала", "Уровень", "Тренд", "Состояние",
                 "Вход", "И", "ИЛИ", "НЕ", "NAND", "NOR", "XOR",
                 "TON", "TP", "TOF", "A > B", "A + B", "A - B", "A * B", "A / B",
                 "MOVE", "SEL", "ABS", "MIN/MAX",
@@ -1089,7 +1136,7 @@ public class MainActivity extends Activity {
         final AlertDialog[] picker = new AlertDialog[1];
 
         for (int i = 0; i < labels.length; i++) {
-            if (i == 9) {
+            if (i == 10) {
                 TextView section = new TextView(this);
                 section.setText("ФУНКЦИОНАЛЬНЫЕ БЛОКИ (FBD)");
                 section.setTextColor(Color.rgb(37, 99, 235));
@@ -1136,7 +1183,7 @@ public class MainActivity extends Activity {
         liveValues.clear();
         if (type.equals("Задатчик")) { w.w = dp(190); w.h = dp(62); }
         if (type.equals("Шкала / Стрелка") || type.equals("График / Тренд")) { w.w = dp(200); w.h = dp(110); }
-        if (type.equals("Прогресс-бар")) { w.w = dp(180); w.h = dp(48); }
+        if (type.equals("Прогресс-бар") || type.equals("Битовый список")) { w.w = dp(180); w.h = dp(64); }
         if (type.startsWith("FBD ")) { w.w = dp(150); w.h = dp(76); }
         if ("FBD CTD".equals(type)) w.counterValue = w.counterPreset;
         widgets.add(w);
@@ -1177,6 +1224,32 @@ public class MainActivity extends Activity {
         EditText connectionField = propertyField(w.connectionInfo == null ? "" : w.connectionInfo, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         connectionField.setHint("tcp://192.168.1.10:502/1/40001 (FC03); для Input Registers: 30001 (FC04)");
         form.addView(connectionField);
+
+        final EditText[] dynStateFields = new EditText[4];
+        if ("Динамический текст".equals(w.type)) {
+            TextView dynLabel = new TextView(this);
+            dynLabel.setText("Тексты состояний (0–3)");
+            dynLabel.setPadding(0, dp(10), 0, 0);
+            form.addView(dynLabel);
+            for (int k = 0; k < 4; k++) {
+                dynStateFields[k] = propertyField(w.dynTextStates[k], InputType.TYPE_CLASS_TEXT);
+                dynStateFields[k].setHint("Текст состояния " + k);
+                form.addView(dynStateFields[k]);
+            }
+        }
+
+        final EditText[] bitLabelFields = new EditText[4];
+        if ("Битовый список".equals(w.type)) {
+            TextView bitLabelHeader = new TextView(this);
+            bitLabelHeader.setText("Названия битов (0–3)");
+            bitLabelHeader.setPadding(0, dp(10), 0, 0);
+            form.addView(bitLabelHeader);
+            for (int k = 0; k < 4; k++) {
+                bitLabelFields[k] = propertyField(w.bitListLabels[k], InputType.TYPE_CLASS_TEXT);
+                bitLabelFields[k].setHint("Подпись бита " + k);
+                form.addView(bitLabelFields[k]);
+            }
+        }
 
         final EditText timerPresetField;
         if ("FBD Таймер".equals(w.type) || "FBD TP".equals(w.type) || "FBD TOF".equals(w.type)) {
@@ -1277,7 +1350,6 @@ public class MainActivity extends Activity {
         android.widget.CheckBox autoResizeField = new android.widget.CheckBox(this);
         autoResizeField.setText("Автоподбор размера текста по ширине"); autoResizeField.setChecked(w.autoResizeText); form.addView(autoResizeField);
 
-        // The full property form can exceed a phone's viewport; keep every field reachable.
         android.widget.ScrollView propertyScroll = new android.widget.ScrollView(this);
         propertyScroll.setFillViewport(true);
         propertyScroll.setClipToPadding(false);
@@ -1290,6 +1362,20 @@ public class MainActivity extends Activity {
                 .setPositiveButton("Применить", (dialog, which) -> {
                     w.text = textField.getText().toString();
                     w.connectionInfo = connectionField.getText().toString().trim();
+                    if ("Динамический текст".equals(w.type)) {
+                        for (int k = 0; k < 4; k++) {
+                            if (dynStateFields[k] != null) {
+                                w.dynTextStates[k] = dynStateFields[k].getText().toString();
+                            }
+                        }
+                    }
+                    if ("Битовый список".equals(w.type)) {
+                        for (int k = 0; k < 4; k++) {
+                            if (bitLabelFields[k] != null) {
+                                w.bitListLabels[k] = bitLabelFields[k].getText().toString();
+                            }
+                        }
+                    }
                     if (timerPresetField != null) {
                         int newPreset = readPositiveInt(timerPresetField, w.timerPresetMs, false);
                         w.timerPresetMs = Math.max(1, Math.min(3600000, newPreset));
@@ -1363,7 +1449,6 @@ public class MainActivity extends Activity {
             return;
         }
         try {
-            // Clone through the project serializer so all current and future properties are preserved.
             clipboardWidget = widgetFromJson(widgetToJson(widgets.get(editor.selected)));
             Toast.makeText(this, "Элемент скопирован со всеми настройками", Toast.LENGTH_SHORT).show();
         } catch (Exception error) {
@@ -1400,13 +1485,24 @@ public class MainActivity extends Activity {
         int split = current.lastIndexOf(':');
         String prefix = split >= 0 ? current.substring(0, split + 1) + " " : "Задатчик: ";
         String valueText = split >= 0 ? current.substring(split + 1).trim() : current.trim();
+        double newValue = delta;
         try {
             double value = Double.parseDouble(valueText.replace(',', '.'));
-            widget.text = prefix + (value + delta);
+            newValue = value + delta;
+            widget.text = prefix + newValue;
         } catch (NumberFormatException ignored) {
             widget.text = prefix + delta;
         }
         persistProject();
+        BindingRequest request = parseBinding(-1, widget.connectionInfo);
+        if (request != null && request.functionCode == 3) {
+            final double valToWrite = newValue;
+            modbusExecutor.execute(() -> {
+                try {
+                    writeModbusRegisterStatic(request.host, request.port, request.unit, request.address, (int) valToWrite);
+                } catch (Exception ignored) {}
+            });
+        }
         Toast.makeText(MainActivity.this, "Значение: " + widget.text, Toast.LENGTH_SHORT).show();
     }
 
@@ -1435,7 +1531,7 @@ public class MainActivity extends Activity {
         editor.invalidate();
     }
 
-    private JSONObject widgetToJson(Widget w) throws Exception {
+    public static JSONObject widgetToJson(Widget w) throws Exception {
         JSONObject obj = new JSONObject();
         if (w.extraFields != null) {
             java.util.Iterator<String> keys = w.extraFields.keys();
@@ -1447,12 +1543,24 @@ public class MainActivity extends Activity {
         obj.put("type", w.type); obj.put("text", w.text);
         obj.put("connectionInfo", w.connectionInfo == null ? "" : w.connectionInfo);
         obj.put("inputValue", w.inputValue); obj.put("buttonState", w.buttonState); obj.put("rsState", w.rsState); obj.put("counterPreset", w.counterPreset); obj.put("counterValue", w.counterValue); obj.put("counterLastInput", w.counterLastInput);
-        obj.put("timerPresetMs", w.timerPresetMs);
+        obj.put("timerPresetMs", w.timerPresetMs); obj.put("timerStartedAt", w.timerStartedAt);
         obj.put("compareA", w.compareA); obj.put("compareB", w.compareB); obj.put("compareOperator", w.compareOperator);
         obj.put("minValue", w.minValue); obj.put("maxValue", w.maxValue);
         obj.put("backgroundColor", w.backgroundColor); obj.put("textColor", w.textColor); obj.put("textSizeSp", w.textSizeSp);
         obj.put("visible", w.visible); obj.put("showFrame", w.showFrame); obj.put("autoResizeText", w.autoResizeText);
         obj.put("x", w.x); obj.put("y", w.y); obj.put("w", w.w); obj.put("h", w.h);
+
+        JSONArray dynStatesArr = new JSONArray();
+        JSONArray dynColorsArr = new JSONArray();
+        JSONArray bitLabelsArr = new JSONArray();
+        for (int i = 0; i < 16; i++) {
+            dynStatesArr.put(w.dynTextStates[i] == null ? "Состояние " + i : w.dynTextStates[i]);
+            dynColorsArr.put(w.dynTextColors[i]);
+            bitLabelsArr.put(w.bitListLabels[i] == null ? "Бит " + i : w.bitListLabels[i]);
+        }
+        obj.put("dynTextStates", dynStatesArr);
+        obj.put("dynTextColors", dynColorsArr);
+        obj.put("bitListLabels", bitLabelsArr);
         return obj;
     }
 
@@ -1462,22 +1570,128 @@ public class MainActivity extends Activity {
         return array;
     }
 
-    private Widget widgetFromJson(JSONObject obj) {
+    public static Widget widgetFromJson(JSONObject obj) {
         Widget w = new Widget();
         try { w.extraFields = new JSONObject(obj.toString()); } catch (Exception ignored) { w.extraFields = new JSONObject(); }
         w.type = obj.optString("type", "Текст"); w.text = obj.optString("text", "Надпись");
         w.connectionInfo = obj.optString("connectionInfo", "");
         w.inputValue = obj.optBoolean("inputValue", false); w.buttonState = obj.optBoolean("buttonState", false); w.rsState = obj.optBoolean("rsState", false); w.counterPreset = Math.max(1, Math.min(1000000, obj.optInt("counterPreset", 1))); w.counterValue = Math.max(0, Math.min(1000000, obj.optInt("counterValue", 0))); w.counterLastInput = obj.optBoolean("counterLastInput", false);
         w.timerPresetMs = Math.max(1, Math.min(3600000, obj.optInt("timerPresetMs", 1000)));
+        w.timerStartedAt = obj.optLong("timerStartedAt", 0L);
         w.compareA = obj.optDouble("compareA", 0.0); w.compareB = obj.optDouble("compareB", 0.0);
-        w.compareOperator = normalizeComparisonOperator(obj.optString("compareOperator", ">"));
+        w.compareOperator = normalizeComparisonOperatorStatic(obj.optString("compareOperator", ">"));
         w.minValue = obj.optDouble("minValue", 0.0); w.maxValue = obj.optDouble("maxValue", 100.0);
         w.backgroundColor = obj.optInt("backgroundColor", 0); w.textColor = obj.optInt("textColor", Color.rgb(31, 41, 55));
         w.textSizeSp = Math.max(8, Math.min(48, obj.optInt("textSizeSp", 14)));
         w.visible = obj.optBoolean("visible", true); w.showFrame = obj.optBoolean("showFrame", true); w.autoResizeText = obj.optBoolean("autoResizeText", false);
-        w.x = obj.optInt("x", dp(40)); w.y = obj.optInt("y", dp(50));
-        w.w = obj.optInt("w", dp(160)); w.h = obj.optInt("h", dp(58));
+        w.x = obj.optInt("x", 40); w.y = obj.optInt("y", 50);
+        w.w = obj.optInt("w", 160); w.h = obj.optInt("h", 58);
+
+        JSONArray dynStatesArr = obj.optJSONArray("dynTextStates");
+        JSONArray dynColorsArr = obj.optJSONArray("dynTextColors");
+        JSONArray bitLabelsArr = obj.optJSONArray("bitListLabels");
+        for (int i = 0; i < 16; i++) {
+            w.dynTextStates[i] = (dynStatesArr != null && i < dynStatesArr.length()) ? dynStatesArr.optString(i, "Состояние " + i) : "Состояние " + i;
+            w.dynTextColors[i] = (dynColorsArr != null && i < dynColorsArr.length()) ? dynColorsArr.optInt(i, 0) : 0;
+            w.bitListLabels[i] = (bitLabelsArr != null && i < bitLabelsArr.length()) ? bitLabelsArr.optString(i, "Бит " + i) : "Бит " + i;
+        }
         return w;
+    }
+
+    private static String normalizeComparisonOperatorStatic(String value) {
+        String operator = value == null ? ">" : value.trim();
+        return operator.equals(">") || operator.equals("<") || operator.equals(">=")
+                || operator.equals("<=") || operator.equals("==") || operator.equals("!=") ? operator : ">";
+    }
+
+    public static void saveProjectAtomic(java.io.File targetFile, String json) throws java.io.IOException {
+        java.io.File parent = targetFile.getParentFile();
+        if (parent != null && !parent.exists()) parent.mkdirs();
+        java.io.File tempFile = new java.io.File(targetFile.getAbsolutePath() + ".tmp");
+        try (java.io.FileOutputStream out = new java.io.FileOutputStream(tempFile)) {
+            out.write(json.getBytes(StandardCharsets.UTF_8));
+            out.flush();
+            out.getFD().sync();
+        }
+        if (!tempFile.renameTo(targetFile)) {
+            if (targetFile.exists() && !targetFile.delete()) {
+                throw new java.io.IOException("Could not delete target file for atomic overwrite");
+            }
+            if (!tempFile.renameTo(targetFile)) {
+                throw new java.io.IOException("Could not rename temp project file to target");
+            }
+        }
+    }
+
+    public static String loadProjectAtomic(java.io.File targetFile) throws java.io.IOException {
+        if (!targetFile.exists()) {
+            java.io.File tempFile = new java.io.File(targetFile.getAbsolutePath() + ".tmp");
+            if (tempFile.exists()) targetFile = tempFile;
+            else throw new java.io.FileNotFoundException("Project file missing: " + targetFile);
+        }
+        try (java.io.FileInputStream in = new java.io.FileInputStream(targetFile);
+             ByteArrayOutputStream buffer = new ByteArrayOutputStream()) {
+            byte[] chunk = new byte[8192];
+            int count;
+            while ((count = in.read(chunk)) != -1) {
+                if (buffer.size() + count > 8 * 1024 * 1024) throw new IllegalArgumentException("Project file too large");
+                buffer.write(chunk, 0, count);
+            }
+            return new String(buffer.toByteArray(), StandardCharsets.UTF_8);
+        }
+    }
+
+    public static void exportProjectToZip(OutputStream outputStream, String projectJson) throws java.io.IOException {
+        try (java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(outputStream)) {
+            java.util.zip.ZipEntry entry = new java.util.zip.ZipEntry("TableNameProject.json");
+            zos.putNextEntry(entry);
+            byte[] bytes = projectJson.getBytes(StandardCharsets.UTF_8);
+            zos.write(bytes, 0, bytes.length);
+            zos.closeEntry();
+            zos.finish();
+        }
+    }
+
+    public static String importProjectFromZip(InputStream inputStream) throws Exception {
+        byte[] projectJsonBytes = null;
+        java.util.Set<String> entryNames = new java.util.HashSet<>();
+        long totalUncompressedBytes = 0;
+
+        try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(inputStream)) {
+            java.util.zip.ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                String name = entry.getName();
+                if (name == null || name.contains("..") || name.startsWith("/") || name.startsWith("\\")) {
+                    throw new IllegalArgumentException("Unsafe entry path in ZIP archive: " + name);
+                }
+                if (!entryNames.add(name.toLowerCase(java.util.Locale.ROOT))) {
+                    throw new IllegalArgumentException("Duplicate entry name in ZIP archive: " + name);
+                }
+                ByteArrayOutputStream entryBuffer = new ByteArrayOutputStream();
+                byte[] chunk = new byte[8192];
+                int count;
+                while ((count = zis.read(chunk)) != -1) {
+                    totalUncompressedBytes += count;
+                    if (totalUncompressedBytes > 10 * 1024 * 1024) {
+                        throw new IllegalArgumentException("ZIP uncompressed size exceeds limit");
+                    }
+                    entryBuffer.write(chunk, 0, count);
+                }
+                zis.closeEntry();
+                if ("TableNameProject.json".equalsIgnoreCase(name) || name.endsWith(".json")) {
+                    if (projectJsonBytes != null) {
+                        throw new IllegalArgumentException("Multiple JSON project files in archive");
+                    }
+                    projectJsonBytes = entryBuffer.toByteArray();
+                }
+            }
+        }
+        if (projectJsonBytes == null) {
+            throw new IllegalArgumentException("No project JSON found in ZIP archive");
+        }
+        String json = new String(projectJsonBytes, StandardCharsets.UTF_8);
+        validateImportedProjectStatic(json);
+        return json;
     }
 
     private void persistProject() {
@@ -1558,7 +1772,6 @@ public class MainActivity extends Activity {
                 }
             } else if (parsed instanceof JSONArray) {
                 projectExtraFields = new JSONObject();
-                // Backward compatibility with the earlier single-screen project format.
                 Screen legacy = new Screen("Экран 1");
                 JSONArray legacyWidgets = (JSONArray) parsed;
                 for (int i = 0; i < legacyWidgets.length(); i++) legacy.widgets.add(widgetFromJson(legacyWidgets.getJSONObject(i)));
@@ -1570,6 +1783,96 @@ public class MainActivity extends Activity {
         if (screens.isEmpty()) screens.add(new Screen("Экран 1"));
         currentScreenIndex = Math.max(0, Math.min(currentScreenIndex, screens.size() - 1));
         for (Widget w : screens.get(currentScreenIndex).widgets) widgets.add(copyWidget(w));
+    }
+
+    private void validateImportedProject(String json) throws Exception {
+        validateImportedProjectStatic(json);
+    }
+
+    private void validateWidgetArray(JSONArray array) {
+        validateWidgetArrayStatic(array);
+    }
+
+    public static void validateImportedProjectStatic(String json) throws Exception {
+        org.json.JSONTokener tokener = new org.json.JSONTokener(json);
+        Object parsed = tokener.nextValue();
+        if (tokener.nextClean() != 0) throw new IllegalArgumentException("Trailing content after JSON");
+        if (parsed instanceof JSONArray) {
+            validateWidgetArrayStatic((JSONArray) parsed);
+            return;
+        }
+        if (!(parsed instanceof JSONObject)) throw new IllegalArgumentException("Project must be a JSON object or array");
+        JSONObject project = (JSONObject) parsed;
+        JSONArray screenArray = project.optJSONArray("screens");
+        if (screenArray == null || screenArray.length() == 0 || screenArray.length() > 100) {
+            throw new IllegalArgumentException("Invalid screen list");
+        }
+        int currentScreen = project.optInt("currentScreen", 0);
+        if (currentScreen < 0 || currentScreen >= screenArray.length()) {
+            throw new IllegalArgumentException("Current screen index out of range");
+        }
+        int totalWidgets = 0;
+        for (int i = 0; i < screenArray.length(); i++) {
+            JSONObject screen = screenArray.optJSONObject(i);
+            if (screen == null) throw new IllegalArgumentException("Screen must be an object");
+            JSONArray screenWidgets = screen.optJSONArray("widgets");
+            if (screenWidgets == null) throw new IllegalArgumentException("Screen widgets must be an array");
+            validateWidgetArrayStatic(screenWidgets);
+            totalWidgets += screenWidgets.length();
+            if (totalWidgets > 2000) throw new IllegalArgumentException("Too many widgets");
+
+            JSONArray connections = screen.optJSONArray("connections");
+            if (connections == null) continue;
+            if (connections.length() > 4000) throw new IllegalArgumentException("Too many connections");
+            int nodeCount = screenWidgets.length();
+            List<List<Integer>> adjacency = new ArrayList<>();
+            int[] indegree = new int[nodeCount];
+            for (int node = 0; node < nodeCount; node++) adjacency.add(new ArrayList<>());
+            java.util.HashSet<Long> uniqueEdges = new java.util.HashSet<>();
+            for (int j = 0; j < connections.length(); j++) {
+                JSONObject edge = connections.optJSONObject(j);
+                if (edge == null) throw new IllegalArgumentException("Connection must be an object");
+                int source = edge.optInt("source", -1);
+                int target = edge.optInt("target", -1);
+                if (source < 0 || target < 0 || source >= nodeCount || target >= nodeCount || source == target) {
+                    throw new IllegalArgumentException("Connection index out of range");
+                }
+                JSONObject sourceWidget = screenWidgets.optJSONObject(source);
+                JSONObject targetWidget = screenWidgets.optJSONObject(target);
+                if (sourceWidget == null || targetWidget == null
+                        || !sourceWidget.optString("type", "").startsWith("FBD ")
+                        || !targetWidget.optString("type", "").startsWith("FBD ")) {
+                    throw new IllegalArgumentException("Connections must link FBD blocks");
+                }
+                long edgeKey = (((long) source) << 32) | (target & 0xffffffffL);
+                if (!uniqueEdges.add(edgeKey)) throw new IllegalArgumentException("Duplicate FBD connection");
+                adjacency.get(source).add(target);
+                indegree[target]++;
+            }
+            java.util.ArrayDeque<Integer> ready = new java.util.ArrayDeque<>();
+            for (int node = 0; node < nodeCount; node++) if (indegree[node] == 0) ready.add(node);
+            int visitedCount = 0;
+            while (!ready.isEmpty()) {
+                int node = ready.removeFirst();
+                visitedCount++;
+                for (int next : adjacency.get(node)) {
+                    if (--indegree[next] == 0) ready.addLast(next);
+                }
+            }
+            if (visitedCount != nodeCount) throw new IllegalArgumentException("Cyclic FBD connections");
+        }
+    }
+
+    public static void validateWidgetArrayStatic(JSONArray array) {
+        if (array.length() > 2000) throw new IllegalArgumentException("Too many widgets");
+        for (int i = 0; i < array.length(); i++) {
+            JSONObject widget = array.optJSONObject(i);
+            if (widget == null) throw new IllegalArgumentException("Widget must be an object");
+            String type = widget.optString("type", "Текст"), label = widget.optString("text", "Надпись");
+            if (type.length() > 100 || label.length() > 2000 || widget.optString("connectionInfo", "").length() > 2000) throw new IllegalArgumentException("Widget field too long");
+            int x = widget.optInt("x", 0), y = widget.optInt("y", 0), w = widget.optInt("w", 160), h = widget.optInt("h", 58);
+            if (x < -100000 || x > 100000 || y < -100000 || y > 100000 || w < 1 || w > 100000 || h < 1 || h > 100000) throw new IllegalArgumentException("Widget geometry out of range");
+        }
     }
 
     private static class Screen {
@@ -1587,46 +1890,45 @@ public class MainActivity extends Activity {
         FbdConnection(int source, int target) { this.source = source; this.target = target; }
     }
 
-    private boolean isFbd(Widget widget) {
+    public static boolean isFbdWidget(Widget widget) {
         return widget != null && widget.type != null && widget.type.startsWith("FBD ");
     }
 
-    private boolean evaluateFbd(int index, boolean[] visiting) {
-        if (index < 0 || index >= widgets.size()) return false;
-        if (fbdCacheValid.length != widgets.size() || fbdCacheValues.length != widgets.size()) {
-            fbdCacheValid = new boolean[widgets.size()];
-            fbdCacheValues = new boolean[widgets.size()];
-            fbdCacheNumeric = new double[widgets.size()];
-        }
-        if (fbdCacheValid[index]) return fbdCacheValues[index];
-        boolean result = evaluateFbdUncached(index, visiting);
-        fbdCacheValues[index] = result;
-        fbdCacheValid[index] = true;
+    private boolean isFbd(Widget widget) {
+        return isFbdWidget(widget);
+    }
+
+    public static boolean evaluateFbdBlock(List<Widget> widgetsList, List<FbdConnection> connectionsList, int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
+        if (index < 0 || index >= widgetsList.size()) return false;
+        if (cacheValid[index]) return cacheValues[index];
+        boolean result = evaluateFbdBlockUncached(widgetsList, connectionsList, index, visiting, cacheValid, cacheValues, cacheNumeric);
+        cacheValues[index] = result;
+        cacheValid[index] = true;
         return result;
     }
 
-    private double evaluateFbdNumeric(int index, boolean[] visiting) {
-        if (index < 0 || index >= widgets.size()) return 0.0;
-        evaluateFbd(index, visiting);
-        return fbdCacheNumeric[index];
+    public static double evaluateFbdBlockNumeric(List<Widget> widgetsList, List<FbdConnection> connectionsList, int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
+        if (index < 0 || index >= widgetsList.size()) return 0.0;
+        evaluateFbdBlock(widgetsList, connectionsList, index, visiting, cacheValid, cacheValues, cacheNumeric);
+        return cacheNumeric[index];
     }
 
-    private boolean evaluateFbdUncached(int index, boolean[] visiting) {
-        if (index < 0 || index >= widgets.size() || visiting[index]) return false;
-        Widget widget = widgets.get(index);
-        if (!isFbd(widget)) return false;
+    public static boolean evaluateFbdBlockUncached(List<Widget> widgetsList, List<FbdConnection> connectionsList, int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
+        if (index < 0 || index >= widgetsList.size() || visiting[index]) return false;
+        Widget widget = widgetsList.get(index);
+        if (!isFbdWidget(widget)) return false;
         if ("FBD Вход".equals(widget.type)) {
-            fbdCacheNumeric[index] = widget.inputValue ? 1.0 : 0.0;
+            cacheNumeric[index] = widget.inputValue ? 1.0 : 0.0;
             return widget.inputValue;
         }
         visiting[index] = true;
         List<Boolean> inputs = new ArrayList<>();
         List<Double> numInputs = new ArrayList<>();
-        if (!screens.isEmpty()) {
-            for (FbdConnection connection : screens.get(currentScreenIndex).connections) {
+        if (connectionsList != null) {
+            for (FbdConnection connection : connectionsList) {
                 if (connection.target == index) {
-                    inputs.add(evaluateFbd(connection.source, visiting));
-                    numInputs.add(evaluateFbdNumeric(connection.source, visiting));
+                    inputs.add(evaluateFbdBlock(widgetsList, connectionsList, connection.source, visiting, cacheValid, cacheValues, cacheNumeric));
+                    numInputs.add(evaluateFbdBlockNumeric(widgetsList, connectionsList, connection.source, visiting, cacheValid, cacheValues, cacheNumeric));
                 }
             }
         }
@@ -1635,44 +1937,51 @@ public class MainActivity extends Activity {
         if ("FBD Сложение".equals(widget.type)) {
             double sum = 0.0;
             for (Double v : numInputs) sum += v;
-            fbdCacheNumeric[index] = sum;
+            if (Double.isNaN(sum) || Double.isInfinite(sum)) sum = 0.0;
+            cacheNumeric[index] = sum;
             return sum != 0.0;
         }
         if ("FBD Вычитание".equals(widget.type)) {
             double diff = numInputs.isEmpty() ? 0.0 : numInputs.get(0);
             for (int i = 1; i < numInputs.size(); i++) diff -= numInputs.get(i);
-            fbdCacheNumeric[index] = diff;
+            if (Double.isNaN(diff) || Double.isInfinite(diff)) diff = 0.0;
+            cacheNumeric[index] = diff;
             return diff != 0.0;
         }
         if ("FBD Умножение".equals(widget.type)) {
             double prod = numInputs.isEmpty() ? 0.0 : 1.0;
             for (Double v : numInputs) prod *= v;
-            fbdCacheNumeric[index] = prod;
+            if (Double.isNaN(prod) || Double.isInfinite(prod)) prod = 0.0;
+            cacheNumeric[index] = prod;
             return prod != 0.0;
         }
         if ("FBD Деление".equals(widget.type)) {
             double div = numInputs.isEmpty() ? 0.0 : numInputs.get(0);
             for (int i = 1; i < numInputs.size(); i++) {
                 double denom = numInputs.get(i);
-                div = denom != 0.0 ? div / denom : 0.0;
+                div = (denom != 0.0) ? div / denom : 0.0;
             }
-            fbdCacheNumeric[index] = div;
+            if (Double.isNaN(div) || Double.isInfinite(div)) div = 0.0;
+            cacheNumeric[index] = div;
             return div != 0.0;
         }
         if ("FBD ABS".equals(widget.type)) {
             double val = numInputs.isEmpty() ? 0.0 : Math.abs(numInputs.get(0));
-            fbdCacheNumeric[index] = val;
+            if (Double.isNaN(val) || Double.isInfinite(val)) val = 0.0;
+            cacheNumeric[index] = val;
             return val != 0.0;
         }
         if ("FBD MIN_MAX".equals(widget.type)) {
             double minV = numInputs.isEmpty() ? 0.0 : numInputs.get(0);
             for (Double v : numInputs) minV = Math.min(minV, v);
-            fbdCacheNumeric[index] = minV;
+            if (Double.isNaN(minV) || Double.isInfinite(minV)) minV = 0.0;
+            cacheNumeric[index] = minV;
             return minV != 0.0;
         }
         if ("FBD MOVE".equals(widget.type) || "FBD SEL".equals(widget.type)) {
             double val = numInputs.isEmpty() ? 0.0 : numInputs.get(0);
-            fbdCacheNumeric[index] = val;
+            if (Double.isNaN(val) || Double.isInfinite(val)) val = 0.0;
+            cacheNumeric[index] = val;
             return val != 0.0;
         }
 
@@ -1750,7 +2059,7 @@ public class MainActivity extends Activity {
         }
         if ("FBD НЕ".equals(widget.type)) return inputs.isEmpty() || !inputs.get(0);
         if ("FBD Сравнение".equals(widget.type)) {
-            switch (normalizeComparisonOperator(widget.compareOperator)) {
+            switch (normalizeComparisonOperatorStatic(widget.compareOperator)) {
                 case "<": return widget.compareA < widget.compareB;
                 case ">=": return widget.compareA >= widget.compareB;
                 case "<=": return widget.compareA <= widget.compareB;
@@ -1801,6 +2110,26 @@ public class MainActivity extends Activity {
         return false;
     }
 
+    private boolean evaluateFbd(int index, boolean[] visiting) {
+        if (screens.isEmpty()) return false;
+        if (fbdCacheValid.length != widgets.size() || fbdCacheValues.length != widgets.size()) {
+            fbdCacheValid = new boolean[widgets.size()];
+            fbdCacheValues = new boolean[widgets.size()];
+            fbdCacheNumeric = new double[widgets.size()];
+        }
+        return evaluateFbdBlock(widgets, screens.get(currentScreenIndex).connections, index, visiting, fbdCacheValid, fbdCacheValues, fbdCacheNumeric);
+    }
+
+    private boolean evaluateFbdUncached(int index, boolean[] visiting) {
+        if (screens.isEmpty()) return false;
+        return evaluateFbdBlockUncached(widgets, screens.get(currentScreenIndex).connections, index, visiting, fbdCacheValid, fbdCacheValues, fbdCacheNumeric);
+    }
+
+    private double evaluateFbdNumeric(int index, boolean[] visiting) {
+        if (screens.isEmpty()) return 0.0;
+        return evaluateFbdBlockNumeric(widgets, screens.get(currentScreenIndex).connections, index, visiting, fbdCacheValid, fbdCacheValues, fbdCacheNumeric);
+    }
+
     private boolean reachesFbd(int current, int goal, boolean[] visited, List<FbdConnection> connections) {
         if (current == goal) return true;
         if (current < 0 || current >= visited.length || visited[current]) return false;
@@ -1836,29 +2165,40 @@ public class MainActivity extends Activity {
         Toast.makeText(this, "Связь FBD добавлена", Toast.LENGTH_SHORT).show();
     }
 
-    private static class Widget {
-        String type;
-        String text;
-        String connectionInfo = "";
-        boolean inputValue = false;
-        boolean buttonState = false;
-        boolean rsState = false;
-        int counterPreset = 1;
-        int counterValue = 0;
-        boolean counterLastInput = false;
-        int timerPresetMs = 1000;
-        long timerStartedAt = 0L;
-        double compareA = 0.0, compareB = 0.0;
-        String compareOperator = ">";
-        double minValue = 0.0, maxValue = 100.0;
-        int backgroundColor = 0; // 0 keeps the type-specific default
-        int textColor = Color.rgb(31, 41, 55);
-        int textSizeSp = 14;
-        boolean visible = true;
-        boolean showFrame = true;
-        boolean autoResizeText = false;
-        JSONObject extraFields = new JSONObject(); // preserve unknown imported widget metadata for round-trip
-        float x, y, w, h;
+    public static class Widget {
+        public String type;
+        public String text;
+        public String connectionInfo = "";
+        public boolean inputValue = false;
+        public boolean buttonState = false;
+        public boolean rsState = false;
+        public int counterPreset = 1;
+        public int counterValue = 0;
+        public boolean counterLastInput = false;
+        public int timerPresetMs = 1000;
+        public long timerStartedAt = 0L;
+        public double compareA = 0.0, compareB = 0.0;
+        public String compareOperator = ">";
+        public double minValue = 0.0, maxValue = 100.0;
+        public int backgroundColor = 0;
+        public int textColor = Color.rgb(31, 41, 55);
+        public int textSizeSp = 14;
+        public boolean visible = true;
+        public boolean showFrame = true;
+        public boolean autoResizeText = false;
+        public String[] dynTextStates = new String[16];
+        public int[] dynTextColors = new int[16];
+        public String[] bitListLabels = new String[16];
+        public JSONObject extraFields = new JSONObject();
+        public float x, y, w, h;
+
+        public Widget() {
+            for (int i = 0; i < 16; i++) {
+                dynTextStates[i] = "Состояние " + i;
+                dynTextColors[i] = 0;
+                bitListLabels[i] = "Бит " + i;
+            }
+        }
     }
 
     private class EditorCanvas extends View {
@@ -1903,7 +2243,6 @@ public class MainActivity extends Activity {
                 }
                 paint.setStyle(Paint.Style.FILL);
             }
-            // Start a fresh FBD scan for this frame; recursive evaluations share this cache.
             fbdCacheValid = new boolean[widgets.size()];
             fbdCacheValues = new boolean[widgets.size()];
             fbdCacheNumeric = new double[widgets.size()];
@@ -1922,7 +2261,7 @@ public class MainActivity extends Activity {
                     paint.setColor(w.buttonState ? Color.rgb(187, 247, 208) : Color.rgb(219, 234, 254));
                 } else if ("Задатчик".equals(w.type)) {
                     paint.setColor(Color.rgb(254, 243, 199));
-                } else if ("Шкала / Стрелка".equals(w.type) || "Прогресс-бар".equals(w.type)) {
+                } else if ("Шкала / Стрелка".equals(w.type) || "Прогресс-бар".equals(w.type) || "Битовый список".equals(w.type)) {
                     paint.setColor(Color.rgb(241, 245, 249));
                 } else if ("График / Тренд".equals(w.type)) {
                     paint.setColor(Color.rgb(15, 23, 42));
@@ -1937,7 +2276,6 @@ public class MainActivity extends Activity {
                     canvas.drawRoundRect(rect, dp(6), dp(6), paint);
                 }
                 if (i == selected) {
-                    // Desktop-style resize grip: drag the lower-right corner to change size.
                     paint.setStyle(Paint.Style.FILL);
                     paint.setColor(Color.rgb(21, 101, 192));
                     float grip = dp(9);
@@ -1967,6 +2305,40 @@ public class MainActivity extends Activity {
                     canvas.drawCircle(w.x + dp(4), w.y + w.h * 0.38f, dp(4), paint);
                     canvas.drawCircle(w.x + dp(4), w.y + w.h * 0.68f, dp(4), paint);
                     canvas.drawCircle(w.x + w.w - dp(4), w.y + w.h / 2, dp(4), paint);
+                } else if ("Динамический текст".equals(w.type)) {
+                    int stateIdx = 0;
+                    if (liveValues.containsKey(i)) {
+                        try { stateIdx = (int) Math.round(Double.parseDouble(liveValues.get(i))); } catch (Exception ignored) {}
+                    }
+                    if (stateIdx < 0 || stateIdx >= 16) stateIdx = 0;
+                    String stateText = w.dynTextStates[stateIdx];
+                    if (stateText == null || stateText.isEmpty()) stateText = w.text + " [" + stateIdx + "]";
+                    int bgColor = w.dynTextColors[stateIdx];
+                    if (bgColor != 0) {
+                        paint.setColor(bgColor);
+                        canvas.drawRoundRect(rect, dp(6), dp(6), paint);
+                    }
+                    paint.setColor(w.textColor);
+                    if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(20)) / Math.max(4f, stateText.length() * 0.58f))));
+                    canvas.drawText(stateText, w.x + dp(10), w.y + w.h / 2 + dp(5), paint);
+                } else if ("Битовый список".equals(w.type)) {
+                    int bitmask = 0;
+                    if (liveValues.containsKey(i)) {
+                        try { bitmask = Integer.parseInt(liveValues.get(i)); } catch (Exception ignored) {}
+                    }
+                    paint.setColor(w.textColor);
+                    paint.setTextSize(dp(11));
+                    float lineY = w.y + dp(16);
+                    canvas.drawText(w.text + ": 0x" + String.format(java.util.Locale.ROOT, "%04X", bitmask), w.x + dp(8), lineY, paint);
+                    lineY += dp(14);
+                    for (int b = 0; b < 3 && lineY < w.y + w.h - dp(4); b++) {
+                        boolean bitOn = (bitmask & (1 << b)) != 0;
+                        paint.setColor(bitOn ? Color.rgb(22, 163, 74) : Color.rgb(148, 163, 184));
+                        canvas.drawCircle(w.x + dp(12), lineY - dp(4), dp(4), paint);
+                        paint.setColor(w.textColor);
+                        canvas.drawText(w.bitListLabels[b] + ": " + (bitOn ? "1" : "0"), w.x + dp(22), lineY, paint);
+                        lineY += dp(14);
+                    }
                 } else if ("Прогресс-бар".equals(w.type)) {
                     double val = 0.0;
                     if (liveValues.containsKey(i)) {
@@ -2074,8 +2446,6 @@ public class MainActivity extends Activity {
                 paint.setTextSize(dp(12));
                 canvas.drawText(wireSource < 0 ? "РЕЖИМ СВЯЗИ: выбери источник" : "РЕЖИМ СВЯЗИ: выбери цель", dp(10), dp(18), paint);
             }
-            // Keep the canvas free of BLOODSKY-only branding overlays. Visual parity
-            // must be driven by the original Kaskada editor chrome, not added captions.
         }
 
         @Override public boolean onTouchEvent(MotionEvent event) {
@@ -2120,7 +2490,6 @@ public class MainActivity extends Activity {
                 if (dragging) {
                     persistProject();
                 } else if (selected >= 0 && SystemClock.elapsedRealtime() - downAt >= 550L) {
-                    // A long press acts like a right-click context menu on desktop HMI editors.
                     showWidgetContextMenu();
                 } else if (selected >= 0 && fbdWireMode) {
                     Widget picked = widgets.get(selected);
@@ -2142,6 +2511,15 @@ public class MainActivity extends Activity {
                     } else if ("Кнопка".equals(picked.type)) {
                         picked.buttonState = !picked.buttonState;
                         persistProject();
+                        BindingRequest request = parseBinding(-1, picked.connectionInfo);
+                        if (request != null && request.functionCode == 3) {
+                            final boolean btnOn = picked.buttonState;
+                            modbusExecutor.execute(() -> {
+                                try {
+                                    writeModbusRegisterStatic(request.host, request.port, request.unit, request.address, btnOn ? 1 : 0);
+                                } catch (Exception ignored) {}
+                            });
+                        }
                         Toast.makeText(MainActivity.this, picked.text + (picked.buttonState ? ": ВКЛ" : ": ВЫКЛ"), Toast.LENGTH_SHORT).show();
                     } else if ("FBD Вход".equals(picked.type)) {
                         picked.inputValue = !picked.inputValue;

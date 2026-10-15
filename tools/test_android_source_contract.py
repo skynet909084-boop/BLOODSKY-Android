@@ -31,6 +31,21 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("parsed instanceof JSONArray", self.source)
         self.assertIn("new Screen(\"Экран 1\")", self.source)
 
+    def test_atomic_save_and_load(self):
+        self.assertIn("saveProjectAtomic(", self.source)
+        self.assertIn("loadProjectAtomic(", self.source)
+
+    def test_zip_export_and_import(self):
+        self.assertIn("exportProjectToZip(", self.source)
+        self.assertIn("importProjectFromZip(", self.source)
+
+    def test_modbus_tcp_write_support(self):
+        self.assertIn("writeModbusRegisterStatic(", self.source)
+        self.assertIn("writeModbusMultipleRegistersStatic(", self.source)
+
+    def test_modbus_rtu_transport(self):
+        self.assertIn("ModbusRtuTransport", self.source)
+
     def test_import_is_validated_before_persisting(self):
         validate_at = self.source.index("validateImportedProject(json);")
         commit_at = self.source.index('.putString(ACTIVE_PROJECT, json).commit()', validate_at)
@@ -71,10 +86,10 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("Прогресс-бар", self.source)
         self.assertIn("График / Тренд", self.source)
         self.assertIn("Двухпозиционный индикатор", self.source)
+        self.assertIn("Битовый список", self.source)
 
     def test_widget_metadata_is_preserved_for_round_trip(self):
         self.assertIn("JSONObject extraFields = new JSONObject()", self.source)
-        self.assertIn("unknown imported widget metadata for round-trip", self.source)
         self.assertIn("projectExtraFields", self.source)
 
     def test_fbd_connections_reject_cycles_and_duplicates(self):
@@ -84,7 +99,7 @@ class AndroidSourceContractTests(unittest.TestCase):
 
     def test_deleting_widget_removes_and_reindexes_fbd_edges(self):
         delete_start = self.source.index("private void deleteSelectedWidget()")
-        delete_end = self.source.index("private JSONObject widgetToJson", delete_start)
+        delete_end = self.source.index("public static JSONObject widgetToJson", delete_start)
         delete_method = self.source[delete_start:delete_end]
         self.assertIn("connection.source == removed || connection.target == removed", delete_method)
         self.assertIn("if (connection.source > removed) connection.source--;", delete_method)
@@ -95,12 +110,11 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn('throw new IllegalArgumentException("Connection index out of range")', self.source)
         self.assertIn('throw new IllegalArgumentException("Connections must link FBD blocks")', self.source)
         self.assertIn('throw new IllegalArgumentException("Duplicate FBD connection")', self.source)
-        self.assertIn("Kahn's algorithm rejects imported graphs with cycles", self.source)
         self.assertIn("if (visitedCount != nodeCount)", self.source)
 
     def test_loading_only_restores_valid_fbd_connections(self):
         load_start = self.source.index("private void loadProject()")
-        load_end = self.source.index("private boolean isFbd(", load_start)
+        load_end = self.source.index("public static void validateImportedProjectStatic(", load_start)
         load_method = self.source[load_start:load_end]
         self.assertIn("source < screen.widgets.size()", load_method)
         self.assertIn("target < screen.widgets.size()", load_method)

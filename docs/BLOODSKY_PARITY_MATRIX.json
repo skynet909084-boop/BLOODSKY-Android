@@ -63,7 +63,7 @@
           "id": "widget.button",
           "name": "Button Control (CustomComponents)",
           "status": "implemented",
-          "criteria": "Toggleable button state with visual ON/OFF indication."
+          "criteria": "Toggleable button state with visual ON/OFF indication and register write-back."
         },
         {
           "id": "widget.indicator",
@@ -75,13 +75,13 @@
           "id": "widget.setpoint",
           "name": "Numeric Setpoint / Adjuster (CustomComponents.i)",
           "status": "implemented",
-          "criteria": "Adjustable setpoint with +/- controls and numerical display."
+          "criteria": "Adjustable setpoint with +/- controls, numerical display, and register write-back."
         },
         {
           "id": "widget.dyntext",
           "name": "Dynamic Text (CustomDynText)",
           "status": "implemented",
-          "criteria": "Text updating based on live tag value or status condition."
+          "criteria": "Multi-state text updating text and background color based on live register value."
         },
         {
           "id": "widget.gauge",
@@ -100,6 +100,12 @@
           "name": "Trend / Chart View (CustomComponents.o)",
           "status": "implemented",
           "criteria": "Graph view displaying historical data points over time."
+        },
+        {
+          "id": "widget.bitlist",
+          "name": "Bit List Widget (CustomList)",
+          "status": "implemented",
+          "criteria": "Displays bit state indicators driven by live Modbus register mask."
         }
       ]
     },
@@ -116,7 +122,7 @@
           "id": "fbd.latches",
           "name": "Flip-Flops (RS, SR)",
           "status": "implemented",
-          "criteria": "Bistable set/reset logic latches with state memory."
+          "criteria": "Bistable set/reset logic latches with state memory and state recovery."
         },
         {
           "id": "fbd.triggers",
@@ -128,13 +134,13 @@
           "id": "fbd.timers",
           "name": "Timers (TON, TOF, TP)",
           "status": "implemented",
-          "criteria": "On-delay, off-delay, and pulse timing logic in milliseconds."
+          "criteria": "On-delay, off-delay, and pulse timing logic in milliseconds with state recovery."
         },
         {
           "id": "fbd.counters",
           "name": "Counters (CTU, CTD)",
           "status": "implemented",
-          "criteria": "Up and down counting with configurable preset limit and reset."
+          "criteria": "Up and down counting with configurable preset limit, reset, and state recovery."
         },
         {
           "id": "fbd.comparison",
@@ -146,7 +152,7 @@
           "id": "fbd.arithmetic",
           "name": "Math & Selection (+, -, *, /, ABS, MIN, MAX, MOVE, SEL)",
           "status": "implemented",
-          "criteria": "Basic arithmetic calculations and signal selection blocks."
+          "criteria": "Basic arithmetic calculations, division-by-zero safety, and signal selection blocks."
         },
         {
           "id": "fbd.wires",
@@ -182,6 +188,12 @@
           "name": "Archive Security Validation",
           "status": "implemented",
           "criteria": "Rejection of traversal paths, duplicate file entries, and oversized files."
+        },
+        {
+          "id": "persistence.atomic",
+          "name": "Atomic Write Persistence",
+          "status": "implemented",
+          "criteria": "Atomic project file save preventing file corruption during unexpected termination."
         }
       ]
     },
@@ -195,10 +207,16 @@
           "criteria": "Polling of Holding (FC03) and Input (FC04) registers using 0-based protocol indexing."
         },
         {
-          "id": "modbus.rtu_crc",
-          "name": "Modbus RTU Framing & CRC16",
+          "id": "modbus.tcp_writes",
+          "name": "Modbus TCP FC06 & FC16 Writes",
           "status": "implemented",
-          "criteria": "Correct CRC16 calculations and frame validation for serial/RTU communication."
+          "criteria": "Writing single (FC06) and multiple (FC16) registers for bound controls and FBD outputs."
+        },
+        {
+          "id": "modbus.rtu_crc",
+          "name": "Modbus RTU Transport & CRC16",
+          "status": "implemented",
+          "criteria": "Correct CRC16 calculations and stream transport helper for serial/RTU communication."
         },
         {
           "id": "modbus.error_handling",
