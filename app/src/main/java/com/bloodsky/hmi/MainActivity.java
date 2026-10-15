@@ -92,6 +92,11 @@ public class MainActivity extends Activity {
         return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
     }
 
+    private int snapToGrid(float value) {
+        int step = Math.max(1, dp(20));
+        return Math.round(value / step) * step;
+    }
+
     private TextView heading(String text) {
         TextView view = new TextView(this);
         view.setText(text);
@@ -1723,11 +1728,16 @@ public class MainActivity extends Activity {
                 if (dragging) {
                     Widget w = widgets.get(selected);
                     if (resizing) {
-                        w.w = Math.max(dp(60), Math.min(Math.max(dp(60), getWidth() - w.x), startW + dx));
-                        w.h = Math.max(dp(40), Math.min(Math.max(dp(40), getHeight() - w.y), startH + dy));
+                        int minW = dp(60), minH = dp(40);
+                        int maxW = Math.max(minW, getWidth() - w.x);
+                        int maxH = Math.max(minH, getHeight() - w.y);
+                        w.w = Math.max(minW, Math.min(maxW, snapToGrid(startW + dx)));
+                        w.h = Math.max(minH, Math.min(maxH, snapToGrid(startH + dy)));
                     } else {
-                        w.x = Math.max(0, Math.min(Math.max(0, getWidth() - w.w), startX + dx));
-                        w.y = Math.max(0, Math.min(Math.max(0, getHeight() - w.h), startY + dy));
+                        int maxX = Math.max(0, getWidth() - w.w);
+                        int maxY = Math.max(0, getHeight() - w.h);
+                        w.x = Math.max(0, Math.min(maxX, snapToGrid(startX + dx)));
+                        w.y = Math.max(0, Math.min(maxY, snapToGrid(startY + dy)));
                     }
                     invalidate();
                 }
