@@ -1965,10 +1965,9 @@ public class MainActivity extends Activity {
                                 w.y + w.h / 2f - (paint.ascent() + paint.descent()) / 2f, paint);
                     }
                     paint.setTextAlign(Paint.Align.LEFT);
-                    boolean output = evaluateFbd(i, new boolean[widgets.size()]);
-                    paint.setTextSize(dp(11));
-                    paint.setColor(output ? Color.rgb(22, 163, 74) : Color.rgb(100, 116, 139));
-                    canvas.drawText("OUT = " + (output ? "1" : "0"), w.x + dp(12), w.y + w.h - dp(8), paint);
+                    // Original Craft FB_* onDraw does not overlay a live
+                    // "OUT = ..." footer on the block body. Runtime values
+                    // remain available to the operator via widget properties.
                 } else if ("Индикатор".equals(w.type)) {
                     String indicatorValue = liveValues.get(i);
                     int indicatorColor = Color.rgb(100, 116, 139);
