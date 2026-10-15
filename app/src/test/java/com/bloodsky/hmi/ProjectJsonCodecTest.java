@@ -87,4 +87,49 @@ public class ProjectJsonCodecTest {
             assertTrue(expected.getMessage().contains("object or legacy array"));
         }
     }
+
+    @Test
+    public void editedFbdConnectionRoundTripsWithPreservedMetadata() throws Exception {
+        // Model the production load/edit/save sequence: load the whole connection
+        // as preserved fields, edit its endpoints, then merge current values on save.
+        JSONObject importedConnection = new JSONObject()
+                .put("source", 0)
+                .put("target", 1)
+                .put("vendorConnectionOption", new JSONObject()
+                        .put("routingMode", "orthogonal")
+                        .put("vendorHints", new JSONArray().put("keep-labels").put("keep-bends")));
+        JSONObject loadedConnection = JsonObjectCopy.deepCopy(importedConnection);
+
+        JSONObject editedCurrentFields = new JSONObject()
+                .put("source", 2)
+                .put("target", 3);
+        JSONObject savedConnection = ProjectJsonCodec.mergePreservedFields(
+                loadedConnection, editedCurrentFields);
+        JSONObject savedProject = new JSONObject()
+                .put("projectName", "Round-trip")
+                .put("screens", new JSONArray().put(new JSONObject()
+                        .put("widgets", new JSONArray()
+                                .put(new JSONObject().put("type", "FBD Вход"))
+                                .put(new JSONObject().put("type", "FBD И"))
+                                .put(new JSONObject().put("type", "FBD ИЛИ"))
+                                .put(new JSONObject().put("type", "FBD Выход")))
+                        .put("connections", new JSONArray().put(savedConnection))));
+
+        JSONObject reopened = (JSONObject) ProjectJsonCodec.parse(
+                ProjectJsonCodec.serialize(savedProject));
+        JSONObject reopenedConnection = reopened.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("connections").getJSONObject(0);
+        assertEquals(2, reopenedConnection.getInt("source"));
+        assertEquals(3, reopenedConnection.getInt("target"));
+        assertEquals("orthogonal", reopenedConnection.getJSONObject("vendorConnectionOption")
+                .getString("routingMode"));
+        assertEquals("keep-bends", reopenedConnection.getJSONObject("vendorConnectionOption")
+                .getJSONArray("vendorHints").getString(1));
+
+        // Editing the saved copy must not mutate the imported project's metadata.
+        reopenedConnection.getJSONObject("vendorConnectionOption").getJSONArray("vendorHints")
+                .put(0, "changed");
+        assertEquals("keep-labels", importedConnection.getJSONObject("vendorConnectionOption")
+                .getJSONArray("vendorHints").getString(0));
+    }
 }
