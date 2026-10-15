@@ -103,7 +103,8 @@ def inspect_archive(path: str) -> Report:
             try:
                 parsed = json.loads(archive.read(name).decode("utf-8-sig"))
                 report.json_entries += 1
-            except (UnicodeDecodeError, json.JSONDecodeError, OSError, RuntimeError) as exc:
+            except (UnicodeDecodeError, json.JSONDecodeError, OSError, RuntimeError,
+                    EOFError, zipfile.BadZipFile) as exc:
                 report.issues.append(Issue("error", f"Invalid JSON: {exc}", name))
                 continue
             if isinstance(parsed, dict) and any(key in parsed for key in ("TableNameProject", "TableComponent", "TableConnections")):
