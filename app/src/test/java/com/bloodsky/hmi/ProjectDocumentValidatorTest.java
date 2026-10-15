@@ -32,6 +32,17 @@ public class ProjectDocumentValidatorTest {
     @Test public void rejectsNonArrayConnectionsField() {
         assertRejected("{\"screens\":[{\"widgets\":[],\"connections\":\"invalid\"}]}");
     }
+    @Test public void acceptsProjectsWithoutOptionalConnectionsForCompatibility() throws Exception {
+        ProjectDocumentValidator.validateImportedProject(
+            "{\"screens\":[{\"name\":\"Legacy screen\",\"widgets\":[{\"type\":\"Текст\"}]}]}");
+    }
+    @Test public void rejectsDuplicateAndSelfReferentialFbdConnections() {
+        String oneBlock = "{\"screens\":[{\"widgets\":[{\"type\":\"FBD AND\"}],\"connections\":[%s]}]}";
+        assertRejected(String.format(oneBlock, "{\"source\":0,\"target\":0}"));
+        String twoBlocks = "{\"screens\":[{\"widgets\":[{\"type\":\"FBD AND\"},{\"type\":\"FBD OR\"}],\"connections\":[%s]}]}";
+        assertRejected(String.format(twoBlocks, "{\"source\":0,\"target\":1},{\"source\":0,\"target\":1}"));
+        assertRejected(String.format(twoBlocks, "null"));
+    }
     @Test public void rejectsInvalidAndCyclicFbdConnections() {
         String twoBlocks = "{\"screens\":[{\"widgets\":[{\"type\":\"FBD AND\"},{\"type\":\"FBD OR\"}],\"connections\":[%s]}]}";
         assertRejected(String.format(twoBlocks, "{\"source\":0,\"target\":2}"));
