@@ -238,19 +238,10 @@ public class MainActivity extends Activity {
                 unit = Integer.parseInt(unitField.getText().toString().trim());
                 int enteredAddress = Integer.parseInt(addressField.getText().toString().trim());
                 count = Integer.parseInt(countField.getText().toString().trim());
-                if (port < 1 || port > 65535 || unit < 0 || unit > 255 || count < 1 || count > 125
-                        || enteredAddress < 0 || enteredAddress > 65535) throw new IllegalArgumentException();
-                if (functionCode == 4 && enteredAddress >= 30001 && enteredAddress <= 39999) {
-                    startAddress = enteredAddress - 30001;
-                } else if (functionCode == 3 && enteredAddress >= 40001 && enteredAddress <= 49999) {
-                    startAddress = enteredAddress - 40001;
-                } else if ((functionCode == 4 && enteredAddress >= 40001 && enteredAddress <= 49999)
-                        || (functionCode == 3 && enteredAddress >= 30001 && enteredAddress <= 39999)) {
-                    throw new IllegalArgumentException("Адрес не соответствует выбранному типу регистра");
-                } else {
-                    startAddress = enteredAddress;
+                if (port < 1 || port > 65535 || unit < 0 || unit > 255) {
+                    throw new IllegalArgumentException("Проверьте порт и Unit ID");
                 }
-                if (startAddress < 0 || startAddress > 65535 || startAddress + count > 65536) throw new IllegalArgumentException();
+                startAddress = ModbusRegisterAddress.normalizeForFunction(enteredAddress, functionCode, count);
                 if (host.isEmpty()) throw new IllegalArgumentException();
             } catch (Exception ex) {
                 String message = ex.getMessage();
@@ -715,17 +706,11 @@ public class MainActivity extends Activity {
                     || uri.getRawQuery() != null || uri.getRawFragment() != null) return null;
             int unit = Integer.parseInt(path[1]);
             int enteredAddress = Integer.parseInt(path[2]);
-            if (unit < 0 || unit > 255 || enteredAddress < 0 || enteredAddress > 65535) return null;
-            int functionCode = 3;
-            int address = enteredAddress;
-            if (enteredAddress >= 30001 && enteredAddress <= 39999) {
-                functionCode = 4;
-                address = enteredAddress - 30001;
-            } else if (enteredAddress >= 40001 && enteredAddress <= 49999) {
-                functionCode = 3;
-                address = enteredAddress - 40001;
-            }
-            return new BindingRequest(widgetIndex, uri.getHost(), uri.getPort(), unit, address, functionCode);
+            if (unit < 0 || unit > 255) return null;
+            ModbusRegisterAddress.BindingAddress normalized =
+                    ModbusRegisterAddress.normalizeBindingAddress(enteredAddress);
+            return new BindingRequest(widgetIndex, uri.getHost(), uri.getPort(), unit,
+                    normalized.address, normalized.functionCode);
         } catch (Exception ignored) {
             return null;
         }
