@@ -1108,7 +1108,6 @@ public class MainActivity extends Activity {
             float maxY = editor == null ? Math.max(0, copy.y + offset) : Math.max(0, editor.getHeight() - copy.h);
             copy.x = Math.max(0, Math.min(maxX, copy.x + offset));
             copy.y = Math.max(0, Math.min(maxY, copy.y + offset));
-            liveValues.clear();
             widgets.add(copy);
             if (editor != null) {
                 editor.selected = widgets.size() - 1;
