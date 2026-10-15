@@ -91,7 +91,7 @@ jobs:
           manifest = Path("app/src/main/res/original-kascada-assets.sha256")
           manifest.parent.mkdir(parents=True, exist_ok=True)
           manifest.write_text("".join(
-              f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\\n"
+              f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n"
               for p in sorted(target.glob("kc_*.png"))
           ), encoding="utf-8")
           PY
