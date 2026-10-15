@@ -424,7 +424,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void validateWidgetArray(JSONArray array) {
+    private void validateWidgetArray(JSONArray array) throws org.json.JSONException {
         if (array.length() > 2000) throw new IllegalArgumentException("Too many widgets");
         for (int i = 0; i < array.length(); i++) {
             JSONObject widget = array.optJSONObject(i);
