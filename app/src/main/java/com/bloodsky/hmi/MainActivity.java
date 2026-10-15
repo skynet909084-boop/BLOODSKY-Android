@@ -389,8 +389,20 @@ public class MainActivity extends Activity {
                 }
                 String json = new String(buffer.toByteArray(), StandardCharsets.UTF_8);
                 validateImportedProject(json);
-                // Commit only after the complete document has passed validation.
-                if (!getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(ACTIVE_PROJECT, json).commit()) throw new IllegalStateException("Could not save imported project");
+                // Preserve the previous valid project before replacing it on import.
+                android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+                android.content.SharedPreferences.Editor changes = prefs.edit();
+                String previous = prefs.getString(ACTIVE_PROJECT, null);
+                if (previous != null) {
+                    try {
+                        validateImportedProject(previous);
+                        changes.putString(BACKUP_PROJECT, previous);
+                    } catch (Exception invalidPrevious) {
+                        // Do not replace a valid backup with a damaged project.
+                    }
+                }
+                // Commit the imported document and its backup atomically.
+                if (!changes.putString(ACTIVE_PROJECT, json).commit()) throw new IllegalStateException("Could not save imported project");
                 loadProject();
                 showEditor();
                 Toast.makeText(this, "Проект JSON импортирован", Toast.LENGTH_LONG).show();
