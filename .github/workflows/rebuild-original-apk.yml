@@ -50,13 +50,20 @@ jobs:
           fi
           mkdir -p input output
           gh release download "$TAG" --repo "$GH_REPO" --pattern '*.apk' --dir input
-          APK="$(find input -maxdepth 1 -type f -iname '*.apk' | head -n 1)"
-          if [ -z "$APK" ]; then
-            echo "::error::В выбранном Release не найден APK."
+          mapfile -t APKS < <(find input -maxdepth 1 -type f -iname '*.apk' -print | sort)
+          if [ "${#APKS[@]}" -eq 0 ]; then
+            echo "::error::В Release '$TAG' не найден APK. Загрузи исходный APK как asset."
             exit 1
           fi
+          if [ "${#APKS[@]}" -ne 1 ]; then
+            printf 'Найдены APK-файлы:\n%s\n' "${APKS[@]}"
+            echo "::error::В Release должно быть ровно одно APK, чтобы исключить случайную сборку не того файла."
+            exit 1
+          fi
+          APK="${APKS[0]}"
           echo "SOURCE_APK=$APK" >> "$GITHUB_ENV"
-          echo "Source APK: $APK"
+          echo "Source release tag: $TAG" | tee output/source-info.txt
+          echo "Source APK: $APK" | tee -a output/source-info.txt
           sha256sum "$APK" | tee output/source-sha256.txt
 
       - name: Download Apktool
@@ -72,6 +79,12 @@ jobs:
 
       - name: Decode source APK
         run: java -jar /tmp/apktool.jar d -f "$SOURCE_APK" -o decoded
+
+      - name: Record original package metadata
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$SOURCE_APK" | tee output/source-package-info.txt
+          sha256sum "$SOURCE_APK" | tee output/source-sha256.txt
 
       - name: Rebuild without functional changes
         run: java -jar /tmp/apktool.jar b decoded -o output/BLOODSKY-baseline-unsigned.apk
@@ -93,7 +106,7 @@ jobs:
             --out output/BLOODSKY-baseline-test-signed.apk \
             output/BLOODSKY-baseline-aligned.apk
           "$BUILD_TOOLS/apksigner" verify --verbose output/BLOODSKY-baseline-test-signed.apk
-          "$BUILD_TOOLS/aapt" dump badging output/BLOODSKY-baseline-test-signed.apk | sed -n '1,5p' | tee output/package-info.txt
+          "$BUILD_TOOLS/aapt" dump badging output/BLOODSKY-baseline-test-signed.apk | tee output/rebuilt-package-info.txt
           sha256sum output/BLOODSKY-baseline-test-signed.apk | tee output/rebuilt-sha256.txt
 
       - name: Upload baseline rebuild and logs
