@@ -34,7 +34,8 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("widgetsToJson(screen.widgets)", self.source)
         self.assertIn('project.put("currentScreen", currentScreenIndex)', self.source)
         self.assertIn("ProjectJsonCodec.mergePreservedFields(w.extraFields, obj)", self.source)
-        self.assertIn("ProjectJsonCodec.mergePreservedFields(screen.extraFields, screenObj)", self.source)
+        self.assertIn("connectionArray, screen.extraFields)", self.source)
+        self.assertIn("ProjectJsonCodec.mergePreservedFields(preserved, current)", (ROOT / "app/src/main/java/com/bloodsky/hmi/ProjectScreenJsonCodec.java").read_text(encoding="utf-8"))
         self.assertIn("ProjectJsonCodec.mergePreservedFields(projectExtraFields, project)", self.source)
         self.assertIn("static JSONObject mergePreservedFields", self.codec_source)
 
