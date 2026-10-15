@@ -1876,8 +1876,19 @@ public class MainActivity extends Activity {
                     paint.setColor(Color.BLACK);
                     paint.setStrokeWidth(dp(1));
                     canvas.drawRect(body, paint);
-                    canvas.drawLine(w.x, w.y + w.h / 4f, body.left, w.y + w.h / 4f, paint);
-                    canvas.drawLine(w.x, w.y + w.h * 3f / 4f, body.left, w.y + w.h * 3f / 4f, paint);
+                    boolean dividedFbd = "FBD XOR".equals(w.type) || "FBD RS".equals(w.type)
+                            || "FBD SR".equals(w.type);
+                    if (dividedFbd) {
+                        // FB_XOR / FB_RS: input pins at 1/2 of the lower
+                        // two thirds, unlike FB_AND / FB_OR quarter pins.
+                        float input1Y = w.y + w.h / 2f;
+                        float input2Y = w.y + w.h * 5f / 6f;
+                        canvas.drawLine(w.x, input1Y, body.left, input1Y, paint);
+                        canvas.drawLine(w.x, input2Y, body.left, input2Y, paint);
+                    } else {
+                        canvas.drawLine(w.x, w.y + w.h / 4f, body.left, w.y + w.h / 4f, paint);
+                        canvas.drawLine(w.x, w.y + w.h * 3f / 4f, body.left, w.y + w.h * 3f / 4f, paint);
+                    }
                     canvas.drawLine(body.right, w.y + w.h / 2f, w.x + w.w, w.y + w.h / 2f, paint);
                     // Original FB_XOR/FB_RS split the block into a header and
                     // two lower cells; FB_AND/FB_OR have no internal dividers.
@@ -1885,7 +1896,10 @@ public class MainActivity extends Activity {
                             || "FBD SR".equals(w.type)) {
                         float headerY = w.y + w.h / 3f;
                         float centerX = w.x + w.w / 2f;
-                        canvas.drawLine(body.left, headerY, body.right, headerY, paint);
+                        // FB_XOR / FB_RS onDraw: header separator ends half
+                        // a stroke-width before the right body edge.
+                        canvas.drawLine(body.left, headerY,
+                                body.right - dp(0.5f), headerY, paint);
                         canvas.drawLine(centerX, headerY, centerX, body.bottom, paint);
                     }
                     paint.setStyle(Paint.Style.FILL);
