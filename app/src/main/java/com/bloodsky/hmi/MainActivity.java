@@ -1359,7 +1359,7 @@ public class MainActivity extends Activity {
 
     private Widget widgetFromJson(JSONObject obj) {
         Widget w = new Widget();
-        try { w.extraFields = new JSONObject(obj.toString()); } catch (Exception ignored) { w.extraFields = new JSONObject(); }
+        w.extraFields = JsonObjectCopy.deepCopy(obj);
         w.type = obj.optString("type", "Текст"); w.text = obj.optString("text", "Надпись");
         w.connectionInfo = obj.optString("connectionInfo", "");
         w.inputValue = obj.optBoolean("inputValue", false); w.buttonState = obj.optBoolean("buttonState", false); w.rsState = obj.optBoolean("rsState", false); w.counterPreset = Math.max(1, Math.min(1000000, obj.optInt("counterPreset", 1))); w.counterValue = Math.max(0, Math.min(1000000, obj.optInt("counterValue", 0))); w.counterLastInput = obj.optBoolean("counterLastInput", false);
@@ -1425,14 +1425,14 @@ public class MainActivity extends Activity {
                 JSONObject project = (JSONObject) parsed;
                 String importedProjectName = project.optString("projectName", projectName);
                 if (importedProjectName != null && !importedProjectName.trim().isEmpty()) projectName = importedProjectName.trim();
-                try { projectExtraFields = new JSONObject(project.toString()); } catch (Exception ignored) { projectExtraFields = new JSONObject(); }
+                projectExtraFields = JsonObjectCopy.deepCopy(project);
                 JSONArray screenArray = project.optJSONArray("screens");
                 if (screenArray != null) {
                     for (int i = 0; i < screenArray.length(); i++) {
                         JSONObject screenObj = screenArray.getJSONObject(i);
                         Screen screen = new Screen(screenObj.optString("name", "Экран " + (i + 1)));
                         screen.backgroundColor = screenObj.optInt("backgroundColor", Color.rgb(250, 252, 255));
-                        try { screen.extraFields = new JSONObject(screenObj.toString()); } catch (Exception ignored) { screen.extraFields = new JSONObject(); }
+                        screen.extraFields = JsonObjectCopy.deepCopy(screenObj);
                         JSONArray widgetArray = screenObj.optJSONArray("widgets");
                         if (widgetArray != null) for (int j = 0; j < widgetArray.length(); j++) screen.widgets.add(widgetFromJson(widgetArray.getJSONObject(j)));
                         JSONArray connectionArray = screenObj.optJSONArray("connections");
