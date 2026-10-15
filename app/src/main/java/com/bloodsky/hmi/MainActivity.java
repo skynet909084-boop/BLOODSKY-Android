@@ -1526,10 +1526,24 @@ public class MainActivity extends Activity {
                     canvas.drawCircle(w.x + dp(4), w.y + w.h * 0.68f, dp(4), paint);
                     canvas.drawCircle(w.x + w.w - dp(4), w.y + w.h / 2, dp(4), paint);
                 } else if ("Индикатор".equals(w.type)) {
-                    paint.setColor(Color.rgb(22, 163, 74));
+                    String indicatorValue = liveValues.get(i);
+                    int indicatorColor = Color.rgb(100, 116, 139);
+                    if (indicatorValue != null) {
+                        if ("ERR".equals(indicatorValue) || "CFG".equals(indicatorValue)) {
+                            indicatorColor = Color.rgb(220, 38, 38);
+                        } else {
+                            try {
+                                indicatorColor = Double.parseDouble(indicatorValue) == 0.0
+                                        ? Color.rgb(220, 38, 38) : Color.rgb(22, 163, 74);
+                            } catch (NumberFormatException ignored) {
+                                indicatorColor = Color.rgb(100, 116, 139);
+                            }
+                        }
+                    }
+                    paint.setColor(indicatorColor);
                     canvas.drawCircle(w.x + dp(16), w.y + w.h / 2, dp(6), paint);
                     paint.setColor(w.textColor);
-                    String indicatorText = w.text + (liveValues.containsKey(i) ? ": " + liveValues.get(i) : "");
+                    String indicatorText = w.text + (indicatorValue != null ? ": " + indicatorValue : "");
                     if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(36)) / Math.max(4f, indicatorText.length() * 0.58f))));
                     canvas.drawText(indicatorText, w.x + dp(29), w.y + w.h / 2 + dp(5), paint);
                 } else if ("Кнопка".equals(w.type)) {
