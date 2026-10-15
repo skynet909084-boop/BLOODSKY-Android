@@ -1901,8 +1901,24 @@ public class MainActivity extends Activity {
                             }
                         }
                     }
-                    paint.setColor(indicatorColor);
-                    canvas.drawCircle(w.x + dp(16), w.y + w.h / 2, dp(6), paint);
+                    // Use the actual KaScada lamp artwork on the canvas, not
+                    // only in the add-element catalogue. Preserve a vector
+                    // fallback if the original resource is unavailable.
+                    String lampName = indicatorColor == Color.rgb(22, 163, 74)
+                            ? "kc_lamp_green" : indicatorColor == Color.rgb(220, 38, 38)
+                            ? "kc_lamp_red" : "kc_lamp_off";
+                    int lampId = getResources().getIdentifier(lampName, "drawable", getPackageName());
+                    if (lampId != 0) {
+                        Drawable lamp = getResources().getDrawable(lampId);
+                        int radius = dp(13);
+                        int cx = (int) w.x + dp(16);
+                        int cy = (int) (w.y + w.h / 2);
+                        lamp.setBounds(cx - radius, cy - radius, cx + radius, cy + radius);
+                        lamp.draw(canvas);
+                    } else {
+                        paint.setColor(indicatorColor);
+                        canvas.drawCircle(w.x + dp(16), w.y + w.h / 2, dp(6), paint);
+                    }
                     paint.setColor(w.textColor);
                     String indicatorText = w.text + (indicatorValue != null ? ": " + indicatorValue : "");
                     if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(36)) / Math.max(4f, indicatorText.length() * 0.58f))));
