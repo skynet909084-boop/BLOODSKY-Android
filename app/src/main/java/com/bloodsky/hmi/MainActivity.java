@@ -1359,7 +1359,7 @@ public class MainActivity extends Activity {
             // with damaged JSON during recovery.
             if (previous != null) {
                 try {
-                    ProjectJsonCodec.parse(previous);
+                    validateImportedProject(previous);
                     changes.putString(BACKUP_PROJECT, previous);
                 } catch (Exception invalidPrevious) {
                     // Preserve the existing last-known-good backup.
@@ -1386,12 +1386,12 @@ public class MainActivity extends Activity {
         String json = prefs.getString(ACTIVE_PROJECT, "[]");
         // A damaged primary must not silently discard a recoverable project.
         try {
-            ProjectJsonCodec.parse(json);
+            validateImportedProject(json);
         } catch (Exception invalidPrimary) {
             String backup = prefs.getString(BACKUP_PROJECT, null);
             if (backup != null) {
                 try {
-                    ProjectJsonCodec.parse(backup);
+                    validateImportedProject(backup);
                     json = backup;
                     Toast.makeText(this, "Проект восстановлен из резервной копии", Toast.LENGTH_LONG).show();
                 } catch (Exception invalidBackup) {
