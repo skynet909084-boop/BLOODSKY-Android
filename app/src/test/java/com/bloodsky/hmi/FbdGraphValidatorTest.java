@@ -59,6 +59,17 @@ public class FbdGraphValidatorTest {
     }
 
     @Test
+    public void rejectsStringAndFractionalConnectionIndices() throws Exception {
+        JSONArray stringIndex = new JSONArray().put(new JSONObject()
+                .put("source", "0").put("target", 1));
+        assertInvalid(widgets(2), stringIndex, "Connection index out of range");
+
+        JSONArray fractionalIndex = new JSONArray().put(new JSONObject()
+                .put("source", 0).put("target", 1.5));
+        assertInvalid(widgets(2), fractionalIndex, "Connection index out of range");
+    }
+
+    @Test
     public void rejectsConnectionsToNonFbdWidgets() throws Exception {
         JSONArray widgets = new JSONArray()
                 .put(new JSONObject().put("type", "FBD Вход"))
