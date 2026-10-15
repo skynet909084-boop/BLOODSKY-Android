@@ -51,6 +51,12 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("if (previous != null && !previous.equals(next))", self.source)
         self.assertIn("changes.putString(ACTIVE_PROJECT, next)", self.source)
 
+    def test_original_indicator_lamps_are_drawn_on_canvas(self):
+        self.assertIn('"kc_lamp_green"', self.source)
+        self.assertIn('"kc_lamp_red"', self.source)
+        self.assertIn('"kc_lamp_off"', self.source)
+        self.assertIn('lamp.draw(canvas);', self.source)
+
     def test_original_craft_toolbar_artwork_is_used(self):
         self.assertIn('"action_copy"', self.source)
         self.assertIn('"action_paste"', self.source)
