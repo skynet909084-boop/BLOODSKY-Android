@@ -762,6 +762,9 @@ public class MainActivity extends Activity {
         StringBuilder report = new StringBuilder();
         int boundCount = 0;
         int errorCount = 0;
+        int pendingCount = 0;
+        int activeCount = 0;
+        int inactiveCount = 0;
         for (int i = 0; i < widgets.size(); i++) {
             Widget widget = widgets.get(i);
             String binding = widget.connectionInfo == null ? "" : widget.connectionInfo.trim();
@@ -771,9 +774,12 @@ public class MainActivity extends Activity {
             if (binding.startsWith("tcp://") && parseBinding(i, binding) == null) state = "CFG — неверный адрес";
             else if (state == null) state = "Ожидание ответа";
             if ("ERR".equals(state) || (state != null && state.startsWith("CFG"))) errorCount++;
+            else if ("Ожидание ответа".equals(state)) pendingCount++;
+            else if (isActiveModbusValue(state)) activeCount++;
+            else inactiveCount++;
             report.append(i + 1).append(". ").append(widget.text == null || widget.text.trim().isEmpty() ? widget.type : widget.text)
                     .append("\n  Привязка: ").append(binding)
-                    .append("\n  Состояние: ").append(state)
+                    .append("\n  Текущее значение: ").append(state)
                     .append("\n\n");
         }
         if (boundCount == 0) {
@@ -781,7 +787,7 @@ public class MainActivity extends Activity {
                     .append("Открой «Свойства» элемента и укажи адрес Modbus, например:\n")
                     .append("tcp://192.168.1.10:502/1/40001");
         } else {
-            report.insert(0, "Элементов с привязкой: " + boundCount + " · Ошибок/настроек: " + errorCount + "\n\n");
+            report.insert(0, "Привязок: " + boundCount + " · Ошибок: " + errorCount + " · Ожидание: " + pendingCount + " · Активных: " + activeCount + " · Неактивных: " + inactiveCount + "\n\n");
         }
         TextView content = new TextView(this);
         content.setText(report.toString());
