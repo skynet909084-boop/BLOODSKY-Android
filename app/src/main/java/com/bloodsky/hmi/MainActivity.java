@@ -57,6 +57,7 @@ public class MainActivity extends Activity {
     private JSONObject projectExtraFields = new JSONObject();
     private LinearLayout root;
     private EditorCanvas editor;
+    private boolean editorToolbarHidden = false;
     private final List<Widget> widgets = new ArrayList<>();
     private final List<Screen> screens = new ArrayList<>();
     private int currentScreenIndex = 0;
@@ -522,7 +523,10 @@ public class MainActivity extends Activity {
         top.setGravity(Gravity.CENTER_VERTICAL);
         top.setPadding(dp(4), dp(2), dp(4), dp(2));
         top.setBackgroundColor(Color.rgb(35, 35, 35));
-        top.addView(legacyIconButton(R.drawable.bloodsky_icon_menu, "Меню редактора", this::showEditorOptionsMenu),
+        top.addView(legacyIconButton(R.drawable.bloodsky_icon_menu, "Скрыть панель", () -> {
+            editorToolbarHidden = true;
+            showEditor();
+        }),
                 new LinearLayout.LayoutParams(dp(40), dp(48)));
         top.addView(legacyIconButton(R.drawable.bloodsky_icon_calculator, "Калькулятор", this::showCalculatorDialog),
                 new LinearLayout.LayoutParams(dp(40), dp(48)));
@@ -550,10 +554,22 @@ public class MainActivity extends Activity {
         top.addView(legacyIconButton(R.drawable.bloodsky_icon_overflow, "Дополнительные действия", this::showEditorOptionsMenu),
                 new LinearLayout.LayoutParams(dp(40), dp(48)));
         root.addView(top, new LinearLayout.LayoutParams(-1, dp(56)));
+        if (editorToolbarHidden) top.setVisibility(View.GONE);
 
         FrameLayout workspace = new FrameLayout(this);
         editor = new EditorCanvas();
         workspace.addView(editor, new FrameLayout.LayoutParams(-1, -1));
+        if (editorToolbarHidden) {
+            ImageButton showToolbar = legacyIconButton(R.drawable.bloodsky_icon_menu, "Показать панель", () -> {
+                editorToolbarHidden = false;
+                showEditor();
+            });
+            FrameLayout.LayoutParams showToolbarParams = new FrameLayout.LayoutParams(dp(40), dp(40),
+                    Gravity.TOP | Gravity.LEFT);
+            showToolbarParams.leftMargin = dp(10);
+            showToolbarParams.topMargin = dp(10);
+            workspace.addView(showToolbar, showToolbarParams);
+        }
 
         // Original editor has a floating component-picker control at the lower left.
         ImageButton addComponent = legacyIconButton(R.drawable.bloodsky_icon_add, "Добавить элемент", this::showAddWidgetMenu);
