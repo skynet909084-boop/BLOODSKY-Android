@@ -34,6 +34,19 @@ public class ProjectDocumentValidatorTest {
         assertRejected(String.format(twoBlocks, "{\"source\":0,\"target\":2}"));
         assertRejected(String.format(twoBlocks, "{\"source\":0,\"target\":1},{\"source\":1,\"target\":0}"));
     }
+    @Test public void metadataCopyPreservesUnknownNestedValuesAndKnownFieldsWin() throws Exception {
+        org.json.JSONObject extras = new org.json.JSONObject(
+            "{\"vendor\":{\"mode\":\"retained\",\"levels\":[1,2]},\"name\":\"old\",\"legacyFlag\":true}");
+        org.json.JSONObject target = new org.json.JSONObject();
+        ProjectMetadata.copyFields(extras, target);
+        target.put("name", "edited");
+        target.put("widgets", new org.json.JSONArray());
+        assertEquals("edited", target.getString("name"));
+        assertTrue(target.getBoolean("legacyFlag"));
+        assertEquals("retained", target.getJSONObject("vendor").getString("mode"));
+        assertEquals(2, target.getJSONObject("vendor").getJSONArray("levels").length());
+        assertTrue(target.has("widgets"));
+    }
     private static void assertRejected(String json) {
         try { ProjectDocumentValidator.validateImportedProject(json); fail("Expected rejection: " + json); }
         catch (Exception expected) { /* Invalid documents must not be accepted. */ }
