@@ -1,0 +1,8 @@
+.gradle/
+app/build/
+build/
+*.pyc
+__pycache__/
+gradlew
+gradlew.bat
+gradle/

@@ -50,6 +50,28 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("responseTransaction != transaction", self.source)
         self.assertIn("function == (functionCode | 0x80)", self.source)
 
+    def test_modbus_rtu_crc_helper(self):
+        self.assertIn("calculateModbusRtuCrc(", self.source)
+        self.assertIn("buildModbusRtuFrame(", self.source)
+
+    def test_editor_alignment_features(self):
+        self.assertIn("alignSelectedWidget(", self.source)
+        self.assertIn("showAlignDialog()", self.source)
+
+    def test_numeric_and_extended_fbd_blocks(self):
+        self.assertIn("FBD Сложение", self.source)
+        self.assertIn("FBD Вычитание", self.source)
+        self.assertIn("FBD Умножение", self.source)
+        self.assertIn("FBD Деление", self.source)
+        self.assertIn("FBD ABS", self.source)
+        self.assertIn("FBD MIN_MAX", self.source)
+
+    def test_kascada_craft_widgets(self):
+        self.assertIn("Шкала / Стрелка", self.source)
+        self.assertIn("Прогресс-бар", self.source)
+        self.assertIn("График / Тренд", self.source)
+        self.assertIn("Двухпозиционный индикатор", self.source)
+
     def test_widget_metadata_is_preserved_for_round_trip(self):
         self.assertIn("JSONObject extraFields = new JSONObject()", self.source)
         self.assertIn("unknown imported widget metadata for round-trip", self.source)

@@ -64,6 +64,7 @@ public class MainActivity extends Activity {
     // Cache stateful FBD outputs once per canvas scan so fan-out connections do not consume edge pulses repeatedly.
     private boolean[] fbdCacheValid = new boolean[0];
     private boolean[] fbdCacheValues = new boolean[0];
+    private double[] fbdCacheNumeric = new double[0];
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService modbusExecutor = Executors.newSingleThreadExecutor();
     private final Map<Integer, String> liveValues = new HashMap<>();
@@ -273,6 +274,36 @@ public class MainActivity extends Activity {
         }), new LinearLayout.LayoutParams(-1, dp(52)));
         root.addView(result, new LinearLayout.LayoutParams(-1, 0, 1));
         setContentView(root);
+    }
+
+    public static int calculateModbusRtuCrc(byte[] data, int length) {
+        int crc = 0xFFFF;
+        for (int pos = 0; pos < length; pos++) {
+            crc ^= (data[pos] & 0xFF);
+            for (int i = 8; i != 0; i--) {
+                if ((crc & 0x0001) != 0) {
+                    crc >>= 1;
+                    crc ^= 0xA001;
+                } else {
+                    crc >>= 1;
+                }
+            }
+        }
+        return crc & 0xFFFF;
+    }
+
+    public static byte[] buildModbusRtuFrame(int unit, int functionCode, int startAddress, int count) {
+        byte[] frame = new byte[8];
+        frame[0] = (byte) (unit & 0xFF);
+        frame[1] = (byte) (functionCode & 0xFF);
+        frame[2] = (byte) ((startAddress >> 8) & 0xFF);
+        frame[3] = (byte) (startAddress & 0xFF);
+        frame[4] = (byte) ((count >> 8) & 0xFF);
+        frame[5] = (byte) (count & 0xFF);
+        int crc = calculateModbusRtuCrc(frame, 6);
+        frame[6] = (byte) (crc & 0xFF);
+        frame[7] = (byte) ((crc >> 8) & 0xFF);
+        return frame;
     }
 
     private String readModbusHoldingRegisters(String host, int port, int unit, int startAddress, int count) throws Exception {
@@ -510,6 +541,41 @@ public class MainActivity extends Activity {
         return button;
     }
 
+    private void alignSelectedWidget(String alignMode) {
+        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
+            Toast.makeText(this, "Выбери элемент для выравнивания", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Widget w = widgets.get(editor.selected);
+        float canvasWidth = editor.getWidth() > 0 ? editor.getWidth() : dp(360);
+        float canvasHeight = editor.getHeight() > 0 ? editor.getHeight() : dp(640);
+        switch (alignMode) {
+            case "left": w.x = 0; break;
+            case "right": w.x = Math.max(0, canvasWidth - w.w); break;
+            case "top": w.y = 0; break;
+            case "bottom": w.y = Math.max(0, canvasHeight - w.h); break;
+            case "center_h": w.x = Math.max(0, snapToGrid((canvasWidth - w.w) / 2f)); break;
+            case "center_v": w.y = Math.max(0, snapToGrid((canvasHeight - w.h) / 2f)); break;
+        }
+        persistProject();
+        if (editor != null) editor.invalidate();
+        Toast.makeText(this, "Элемент выровнен", Toast.LENGTH_SHORT).show();
+    }
+
+    private void showAlignDialog() {
+        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
+            Toast.makeText(this, "Выбери элемент на экране", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String[] options = {"По левому краю", "По правому краю", "По верхнему краю", "По нижнему краю", "По центру (горизонт.)", "По центру (вертик.)"};
+        String[] modes = {"left", "right", "top", "bottom", "center_h", "center_v"};
+        new AlertDialog.Builder(this)
+                .setTitle("Выравнивание элемента")
+                .setItems(options, (dialog, which) -> alignSelectedWidget(modes[which]))
+                .setNegativeButton("Отмена", null)
+                .show();
+    }
+
     private void showEditor() {
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -560,8 +626,10 @@ public class MainActivity extends Activity {
             Toast.makeText(this, fbdWireMode ? "Режим связи: выбери исходный FBD-блок, затем целевой" : "Режим связи выключен", Toast.LENGTH_LONG).show();
             showEditor();
         }), new LinearLayout.LayoutParams(0, dp(36), 1));
+        toolsBar.addView(legacyToolbarButton("Выравн.", this::showAlignDialog),
+                new LinearLayout.LayoutParams(dp(68), dp(36)));
         toolsBar.addView(legacyToolbarButton("Modbus", this::showModbusDiagnostics),
-                new LinearLayout.LayoutParams(dp(78), dp(36)));
+                new LinearLayout.LayoutParams(dp(72), dp(36)));
         root.addView(toolsBar, new LinearLayout.LayoutParams(-1, dp(40)));
 
         editor = new EditorCanvas();
@@ -761,6 +829,7 @@ public class MainActivity extends Activity {
     private Widget copyWidget(Widget source) {
         Widget copy = new Widget();
         copy.type = source.type; copy.text = source.text; copy.connectionInfo = source.connectionInfo; copy.inputValue = source.inputValue; copy.buttonState = source.buttonState; copy.rsState = source.rsState; copy.counterPreset = source.counterPreset; copy.counterValue = source.counterValue; copy.counterLastInput = source.counterLastInput; copy.timerPresetMs = source.timerPresetMs; copy.timerStartedAt = source.timerStartedAt; copy.compareA = source.compareA; copy.compareB = source.compareB; copy.compareOperator = source.compareOperator;
+        copy.minValue = source.minValue; copy.maxValue = source.maxValue;
         copy.backgroundColor = source.backgroundColor; copy.textColor = source.textColor; copy.textSizeSp = source.textSizeSp;
         copy.visible = source.visible; copy.showFrame = source.showFrame; copy.autoResizeText = source.autoResizeText;
         try { copy.extraFields = new JSONObject(source.extraFields.toString()); } catch (Exception ignored) { copy.extraFields = new JSONObject(); }
@@ -866,13 +935,14 @@ public class MainActivity extends Activity {
         scroll.addView(list);
 
         final AlertDialog[] menu = new AlertDialog[1];
-        final String[] labels = {"Свойства", "Копировать", "Удалить"};
+        final String[] labels = {"Свойства", "Выравнивание", "Копировать", "Удалить"};
         final String[] details = {
                 "Настроить элемент и привязку",
+                "Выровнять на холсте",
                 "Создать копию элемента",
                 "Удалить элемент с экрана"
         };
-        final int[] symbols = {0x2699, 0x29C9, 0x2715};
+        final int[] symbols = {0x2699, 0x21D4, 0x29C9, 0x2715};
 
         for (int i = 0; i < labels.length; i++) {
             final int index = i;
@@ -888,7 +958,7 @@ public class MainActivity extends Activity {
             symbol.setText(new String(Character.toChars(symbols[i])));
             symbol.setTextSize(21);
             symbol.setGravity(Gravity.CENTER);
-            symbol.setTextColor(i == 2 ? Color.rgb(235, 105, 90) : Color.rgb(237, 176, 59));
+            symbol.setTextColor(i == 3 ? Color.rgb(235, 105, 90) : Color.rgb(237, 176, 59));
             row.addView(symbol, new LinearLayout.LayoutParams(dp(38), -2));
 
             LinearLayout textColumn = new LinearLayout(this);
@@ -898,7 +968,7 @@ public class MainActivity extends Activity {
             label.setText(labels[i]);
             label.setTextSize(16);
             label.setTypeface(null, android.graphics.Typeface.BOLD);
-            label.setTextColor(i == 2 ? Color.rgb(235, 105, 90) : Color.rgb(237, 176, 59));
+            label.setTextColor(i == 3 ? Color.rgb(235, 105, 90) : Color.rgb(237, 176, 59));
             textColumn.addView(label, new LinearLayout.LayoutParams(-1, -2));
 
             TextView detail = new TextView(this);
@@ -911,7 +981,8 @@ public class MainActivity extends Activity {
             row.setOnClickListener(v -> {
                 if (menu[0] != null) menu[0].dismiss();
                 if (index == 0) editSelectedWidget();
-                else if (index == 1) copySelectedWidget();
+                else if (index == 1) showAlignDialog();
+                else if (index == 2) copySelectedWidget();
                 else deleteSelectedWidget();
             });
             list.addView(row, new LinearLayout.LayoutParams(-1, -2));
@@ -981,24 +1052,33 @@ public class MainActivity extends Activity {
     private void showAddWidgetMenu() {
         final String[] labels = {
                 "Текст / надпись", "Кнопка", "Индикатор", "Задатчик",
+                "Динамический текст", "Шкала / Стрелка", "Прогресс-бар", "График / Тренд", "Двухпозиционный индикатор",
                 "FBD — Вход", "FBD — И", "FBD — ИЛИ", "FBD — НЕ",
                 "FBD — NAND", "FBD — NOR", "FBD — XOR",
                 "FBD — TON (задержка включения)", "FBD — TP (импульс)", "FBD — TOF (задержка выключения)",
-                "FBD — Сравнение", "FBD — RS", "FBD — SR", "FBD — CTU (счёт вверх)",
+                "FBD — Сравнение", "FBD — Сложение (+)", "FBD — Вычитание (-)", "FBD — Умножение (*)", "FBD — Деление (/)",
+                "FBD — MOVE", "FBD — SEL (селектор)", "FBD — ABS", "FBD — MIN / MAX",
+                "FBD — RS", "FBD — SR", "FBD — CTU (счёт вверх)",
                 "FBD — CTD (счёт вниз)", "FBD — R_TRIG", "FBD — F_TRIG"
         };
         final String[] types = {
                 "Текст", "Кнопка", "Индикатор", "Задатчик",
+                "Динамический текст", "Шкала / Стрелка", "Прогресс-бар", "График / Тренд", "Двухпозиционный индикатор",
                 "FBD Вход", "FBD И", "FBD ИЛИ", "FBD НЕ",
                 "FBD NAND", "FBD NOR", "FBD XOR",
                 "FBD Таймер", "FBD TP", "FBD TOF",
-                "FBD Сравнение", "FBD RS", "FBD SR", "FBD CTU",
+                "FBD Сравнение", "FBD Сложение", "FBD Вычитание", "FBD Умножение", "FBD Деление",
+                "FBD MOVE", "FBD SEL", "FBD ABS", "FBD MIN_MAX",
+                "FBD RS", "FBD SR", "FBD CTU",
                 "FBD CTD", "FBD R_TRIG", "FBD F_TRIG"
         };
         final String[] defaults = {
                 "Надпись", "Кнопка", "Индикатор", "Задатчик: 0",
+                "Динамический текст", "Шкала", "Уровень", "Тренд", "Состояние",
                 "Вход", "И", "ИЛИ", "НЕ", "NAND", "NOR", "XOR",
-                "TON", "TP", "TOF", "A > B", "RS", "SR", "CTU", "CTD", "R_TRIG", "F_TRIG"
+                "TON", "TP", "TOF", "A > B", "A + B", "A - B", "A * B", "A / B",
+                "MOVE", "SEL", "ABS", "MIN/MAX",
+                "RS", "SR", "CTU", "CTD", "R_TRIG", "F_TRIG"
         };
         LinearLayout list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
@@ -1009,7 +1089,7 @@ public class MainActivity extends Activity {
         final AlertDialog[] picker = new AlertDialog[1];
 
         for (int i = 0; i < labels.length; i++) {
-            if (i == 4) {
+            if (i == 9) {
                 TextView section = new TextView(this);
                 section.setText("ФУНКЦИОНАЛЬНЫЕ БЛОКИ (FBD)");
                 section.setTextColor(Color.rgb(37, 99, 235));
@@ -1055,6 +1135,8 @@ public class MainActivity extends Activity {
         w.h = type.equals("Индикатор") ? dp(54) : dp(58);
         liveValues.clear();
         if (type.equals("Задатчик")) { w.w = dp(190); w.h = dp(62); }
+        if (type.equals("Шкала / Стрелка") || type.equals("График / Тренд")) { w.w = dp(200); w.h = dp(110); }
+        if (type.equals("Прогресс-бар")) { w.w = dp(180); w.h = dp(48); }
         if (type.startsWith("FBD ")) { w.w = dp(150); w.h = dp(76); }
         if ("FBD CTD".equals(type)) w.counterValue = w.counterPreset;
         widgets.add(w);
@@ -1139,6 +1221,24 @@ public class MainActivity extends Activity {
             compareRightField = null;
         }
 
+        final EditText minValField;
+        final EditText maxValField;
+        if ("Шкала / Стрелка".equals(w.type) || "Прогресс-бар".equals(w.type) || "График / Тренд".equals(w.type)) {
+            TextView rangeLabel = new TextView(this);
+            rangeLabel.setText("Диапазон шкалы (минимум / максимум)");
+            rangeLabel.setPadding(0, dp(10), 0, 0);
+            form.addView(rangeLabel);
+            minValField = propertyField(Double.toString(w.minValue), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            minValField.setHint("Минимум (например 0)");
+            form.addView(minValField);
+            maxValField = propertyField(Double.toString(w.maxValue), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            maxValField.setHint("Максимум (например 100)");
+            form.addView(maxValField);
+        } else {
+            minValField = null;
+            maxValField = null;
+        }
+
         TextView geometryLabel = new TextView(this);
         geometryLabel.setText("Положение и размер (пиксели)");
         geometryLabel.setPadding(0, dp(10), 0, 0);
@@ -1204,6 +1304,10 @@ public class MainActivity extends Activity {
                         w.compareB = readDouble(compareRightField, w.compareB);
                         w.compareOperator = normalizeComparisonOperator(compareOperatorField.getText().toString());
                         w.text = Double.toString(w.compareA) + " " + w.compareOperator + " " + Double.toString(w.compareB);
+                    }
+                    if (minValField != null) {
+                        w.minValue = readDouble(minValField, w.minValue);
+                        w.maxValue = readDouble(maxValField, w.maxValue);
                     }
                     w.x = Math.max(0, readPositiveInt(xField, Math.round(w.x), true));
                     w.y = Math.max(0, readPositiveInt(yField, Math.round(w.y), true));
@@ -1345,6 +1449,7 @@ public class MainActivity extends Activity {
         obj.put("inputValue", w.inputValue); obj.put("buttonState", w.buttonState); obj.put("rsState", w.rsState); obj.put("counterPreset", w.counterPreset); obj.put("counterValue", w.counterValue); obj.put("counterLastInput", w.counterLastInput);
         obj.put("timerPresetMs", w.timerPresetMs);
         obj.put("compareA", w.compareA); obj.put("compareB", w.compareB); obj.put("compareOperator", w.compareOperator);
+        obj.put("minValue", w.minValue); obj.put("maxValue", w.maxValue);
         obj.put("backgroundColor", w.backgroundColor); obj.put("textColor", w.textColor); obj.put("textSizeSp", w.textSizeSp);
         obj.put("visible", w.visible); obj.put("showFrame", w.showFrame); obj.put("autoResizeText", w.autoResizeText);
         obj.put("x", w.x); obj.put("y", w.y); obj.put("w", w.w); obj.put("h", w.h);
@@ -1366,6 +1471,7 @@ public class MainActivity extends Activity {
         w.timerPresetMs = Math.max(1, Math.min(3600000, obj.optInt("timerPresetMs", 1000)));
         w.compareA = obj.optDouble("compareA", 0.0); w.compareB = obj.optDouble("compareB", 0.0);
         w.compareOperator = normalizeComparisonOperator(obj.optString("compareOperator", ">"));
+        w.minValue = obj.optDouble("minValue", 0.0); w.maxValue = obj.optDouble("maxValue", 100.0);
         w.backgroundColor = obj.optInt("backgroundColor", 0); w.textColor = obj.optInt("textColor", Color.rgb(31, 41, 55));
         w.textSizeSp = Math.max(8, Math.min(48, obj.optInt("textSizeSp", 14)));
         w.visible = obj.optBoolean("visible", true); w.showFrame = obj.optBoolean("showFrame", true); w.autoResizeText = obj.optBoolean("autoResizeText", false);
@@ -1490,6 +1596,7 @@ public class MainActivity extends Activity {
         if (fbdCacheValid.length != widgets.size() || fbdCacheValues.length != widgets.size()) {
             fbdCacheValid = new boolean[widgets.size()];
             fbdCacheValues = new boolean[widgets.size()];
+            fbdCacheNumeric = new double[widgets.size()];
         }
         if (fbdCacheValid[index]) return fbdCacheValues[index];
         boolean result = evaluateFbdUncached(index, visiting);
@@ -1498,19 +1605,77 @@ public class MainActivity extends Activity {
         return result;
     }
 
+    private double evaluateFbdNumeric(int index, boolean[] visiting) {
+        if (index < 0 || index >= widgets.size()) return 0.0;
+        evaluateFbd(index, visiting);
+        return fbdCacheNumeric[index];
+    }
+
     private boolean evaluateFbdUncached(int index, boolean[] visiting) {
         if (index < 0 || index >= widgets.size() || visiting[index]) return false;
         Widget widget = widgets.get(index);
         if (!isFbd(widget)) return false;
-        if ("FBD Вход".equals(widget.type)) return widget.inputValue;
+        if ("FBD Вход".equals(widget.type)) {
+            fbdCacheNumeric[index] = widget.inputValue ? 1.0 : 0.0;
+            return widget.inputValue;
+        }
         visiting[index] = true;
         List<Boolean> inputs = new ArrayList<>();
+        List<Double> numInputs = new ArrayList<>();
         if (!screens.isEmpty()) {
             for (FbdConnection connection : screens.get(currentScreenIndex).connections) {
-                if (connection.target == index) inputs.add(evaluateFbd(connection.source, visiting));
+                if (connection.target == index) {
+                    inputs.add(evaluateFbd(connection.source, visiting));
+                    numInputs.add(evaluateFbdNumeric(connection.source, visiting));
+                }
             }
         }
         visiting[index] = false;
+
+        if ("FBD Сложение".equals(widget.type)) {
+            double sum = 0.0;
+            for (Double v : numInputs) sum += v;
+            fbdCacheNumeric[index] = sum;
+            return sum != 0.0;
+        }
+        if ("FBD Вычитание".equals(widget.type)) {
+            double diff = numInputs.isEmpty() ? 0.0 : numInputs.get(0);
+            for (int i = 1; i < numInputs.size(); i++) diff -= numInputs.get(i);
+            fbdCacheNumeric[index] = diff;
+            return diff != 0.0;
+        }
+        if ("FBD Умножение".equals(widget.type)) {
+            double prod = numInputs.isEmpty() ? 0.0 : 1.0;
+            for (Double v : numInputs) prod *= v;
+            fbdCacheNumeric[index] = prod;
+            return prod != 0.0;
+        }
+        if ("FBD Деление".equals(widget.type)) {
+            double div = numInputs.isEmpty() ? 0.0 : numInputs.get(0);
+            for (int i = 1; i < numInputs.size(); i++) {
+                double denom = numInputs.get(i);
+                div = denom != 0.0 ? div / denom : 0.0;
+            }
+            fbdCacheNumeric[index] = div;
+            return div != 0.0;
+        }
+        if ("FBD ABS".equals(widget.type)) {
+            double val = numInputs.isEmpty() ? 0.0 : Math.abs(numInputs.get(0));
+            fbdCacheNumeric[index] = val;
+            return val != 0.0;
+        }
+        if ("FBD MIN_MAX".equals(widget.type)) {
+            double minV = numInputs.isEmpty() ? 0.0 : numInputs.get(0);
+            for (Double v : numInputs) minV = Math.min(minV, v);
+            fbdCacheNumeric[index] = minV;
+            return minV != 0.0;
+        }
+        if ("FBD MOVE".equals(widget.type) || "FBD SEL".equals(widget.type)) {
+            double val = numInputs.isEmpty() ? 0.0 : numInputs.get(0);
+            fbdCacheNumeric[index] = val;
+            return val != 0.0;
+        }
+
         if ("FBD И".equals(widget.type)) {
             if (inputs.isEmpty()) return false;
             for (Boolean value : inputs) if (!value) return false;
@@ -1685,6 +1850,7 @@ public class MainActivity extends Activity {
         long timerStartedAt = 0L;
         double compareA = 0.0, compareB = 0.0;
         String compareOperator = ">";
+        double minValue = 0.0, maxValue = 100.0;
         int backgroundColor = 0; // 0 keeps the type-specific default
         int textColor = Color.rgb(31, 41, 55);
         int textSizeSp = 14;
@@ -1740,6 +1906,7 @@ public class MainActivity extends Activity {
             // Start a fresh FBD scan for this frame; recursive evaluations share this cache.
             fbdCacheValid = new boolean[widgets.size()];
             fbdCacheValues = new boolean[widgets.size()];
+            fbdCacheNumeric = new double[widgets.size()];
             for (int i = 0; i < widgets.size(); i++) {
                 Widget w = widgets.get(i);
                 if (!w.visible) continue;
@@ -1749,12 +1916,16 @@ public class MainActivity extends Activity {
                     paint.setColor(w.backgroundColor);
                 } else if (w.type != null && w.type.startsWith("FBD ")) {
                     paint.setColor(Color.rgb(237, 233, 254));
-                } else if ("Индикатор".equals(w.type)) {
+                } else if ("Индикатор".equals(w.type) || "Двухпозиционный индикатор".equals(w.type)) {
                     paint.setColor(Color.rgb(220, 252, 231));
                 } else if ("Кнопка".equals(w.type)) {
                     paint.setColor(w.buttonState ? Color.rgb(187, 247, 208) : Color.rgb(219, 234, 254));
                 } else if ("Задатчик".equals(w.type)) {
                     paint.setColor(Color.rgb(254, 243, 199));
+                } else if ("Шкала / Стрелка".equals(w.type) || "Прогресс-бар".equals(w.type)) {
+                    paint.setColor(Color.rgb(241, 245, 249));
+                } else if ("График / Тренд".equals(w.type)) {
+                    paint.setColor(Color.rgb(15, 23, 42));
                 } else {
                     paint.setColor(Color.WHITE);
                 }
@@ -1796,7 +1967,55 @@ public class MainActivity extends Activity {
                     canvas.drawCircle(w.x + dp(4), w.y + w.h * 0.38f, dp(4), paint);
                     canvas.drawCircle(w.x + dp(4), w.y + w.h * 0.68f, dp(4), paint);
                     canvas.drawCircle(w.x + w.w - dp(4), w.y + w.h / 2, dp(4), paint);
-                } else if ("Индикатор".equals(w.type)) {
+                } else if ("Прогресс-бар".equals(w.type)) {
+                    double val = 0.0;
+                    if (liveValues.containsKey(i)) {
+                        try { val = Double.parseDouble(liveValues.get(i)); } catch (Exception ignored) {}
+                    }
+                    double ratio = Math.max(0.0, Math.min(1.0, (val - w.minValue) / Math.max(0.001, w.maxValue - w.minValue)));
+                    paint.setColor(Color.rgb(203, 213, 225));
+                    canvas.drawRoundRect(w.x + dp(8), w.y + dp(24), w.x + w.w - dp(8), w.y + w.h - dp(8), dp(4), dp(4), paint);
+                    paint.setColor(Color.rgb(37, 99, 235));
+                    canvas.drawRoundRect(w.x + dp(8), w.y + dp(24), w.x + dp(8) + (float) ((w.w - dp(16)) * ratio), w.y + w.h - dp(8), dp(4), dp(4), paint);
+                    paint.setColor(w.textColor);
+                    paint.setTextSize(dp(12));
+                    canvas.drawText(w.text + ": " + String.format(java.util.Locale.ROOT, "%.1f", val), w.x + dp(10), w.y + dp(18), paint);
+                } else if ("Шкала / Стрелка".equals(w.type)) {
+                    double val = 0.0;
+                    if (liveValues.containsKey(i)) {
+                        try { val = Double.parseDouble(liveValues.get(i)); } catch (Exception ignored) {}
+                    }
+                    double ratio = Math.max(0.0, Math.min(1.0, (val - w.minValue) / Math.max(0.001, w.maxValue - w.minValue)));
+                    float cx = w.x + w.w / 2f, cy = w.y + w.h - dp(15);
+                    float radius = Math.min(w.w, w.h * 1.6f) * 0.42f;
+                    paint.setStyle(Paint.Style.STROKE);
+                    paint.setStrokeWidth(dp(3));
+                    paint.setColor(Color.rgb(100, 116, 139));
+                    canvas.drawArc(cx - radius, cy - radius, cx + radius, cy + radius, 180, 180, false, paint);
+                    float angleRad = (float) Math.toRadians(180 + ratio * 180);
+                    float nx = cx + (float) Math.cos(angleRad) * (radius - dp(6));
+                    float ny = cy + (float) Math.sin(angleRad) * (radius - dp(6));
+                    paint.setStrokeWidth(dp(2));
+                    paint.setColor(Color.rgb(220, 38, 38));
+                    canvas.drawLine(cx, cy, nx, ny, paint);
+                    paint.setStyle(Paint.Style.FILL);
+                    canvas.drawCircle(cx, cy, dp(4), paint);
+                    paint.setColor(w.textColor);
+                    paint.setTextSize(dp(11));
+                    canvas.drawText(w.text + " " + String.format(java.util.Locale.ROOT, "%.1f", val), w.x + dp(8), w.y + dp(16), paint);
+                } else if ("График / Тренд".equals(w.type)) {
+                    paint.setColor(Color.rgb(51, 65, 85));
+                    paint.setStyle(Paint.Style.STROKE);
+                    paint.setStrokeWidth(dp(1));
+                    canvas.drawRect(w.x + dp(8), w.y + dp(20), w.x + w.w - dp(8), w.y + w.h - dp(8), paint);
+                    paint.setColor(Color.rgb(34, 197, 94));
+                    canvas.drawLine(w.x + dp(10), w.y + w.h - dp(12), w.x + w.w / 2f, w.y + dp(28), paint);
+                    canvas.drawLine(w.x + w.w / 2f, w.y + dp(28), w.x + w.w - dp(10), w.y + w.h - dp(22), paint);
+                    paint.setStyle(Paint.Style.FILL);
+                    paint.setColor(Color.rgb(248, 250, 252));
+                    paint.setTextSize(dp(10));
+                    canvas.drawText(w.text, w.x + dp(10), w.y + dp(15), paint);
+                } else if ("Индикатор".equals(w.type) || "Двухпозиционный индикатор".equals(w.type)) {
                     String indicatorValue = liveValues.get(i);
                     int indicatorColor = Color.rgb(100, 116, 139);
                     if (indicatorValue != null) {
