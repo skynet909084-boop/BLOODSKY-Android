@@ -1924,6 +1924,16 @@ public class MainActivity extends Activity {
                     if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(36)) / Math.max(4f, indicatorText.length() * 0.58f))));
                     canvas.drawText(indicatorText, w.x + dp(29), w.y + w.h / 2 + dp(5), paint);
                 } else if ("Кнопка".equals(w.type)) {
+                    // Draw the original Craft button image behind its live label.
+                    int buttonImageId = getResources().getIdentifier(
+                            w.buttonState ? "kc_button2" : "kc_button",
+                            "drawable", getPackageName());
+                    if (buttonImageId != 0) {
+                        Drawable buttonImage = getResources().getDrawable(buttonImageId);
+                        buttonImage.setBounds((int) w.x, (int) w.y,
+                                (int) (w.x + w.w), (int) (w.y + w.h));
+                        buttonImage.draw(canvas);
+                    }
                     String buttonText = w.text + (w.buttonState ? "  [ВКЛ]" : "  [ВЫКЛ]");
                     paint.setColor(w.textColor);
                     if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(20)) / Math.max(4f, buttonText.length() * 0.58f))));
