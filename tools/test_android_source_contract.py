@@ -51,6 +51,12 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("if (previous != null && !previous.equals(next))", self.source)
         self.assertIn("changes.putString(ACTIVE_PROJECT, next)", self.source)
 
+    def test_widget_picker_renders_visual_previews(self):
+        self.assertIn("private class WidgetPreview extends View", self.source)
+        self.assertIn("new WidgetPreview(types[i], defaults[i])", self.source)
+        self.assertIn('canvas.drawCircle(width / 2, height / 2, dp(10)', self.source)
+        self.assertIn('canvas.drawText(symbol, width / 2', self.source)
+
     def test_home_navigation_stays_in_editor_when_save_fails(self):
         self.assertIn("if (editor != null && !persistProject()) return;", self.source)
 
