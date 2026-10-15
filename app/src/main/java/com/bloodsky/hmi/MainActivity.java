@@ -31,6 +31,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -516,28 +517,37 @@ public class MainActivity extends Activity {
 
     private void pollBoundWidgets() {
         final List<Widget> snapshotWidgets = new ArrayList<>(widgets);
-        final List<BindingRequest> requests = new ArrayList<>();
+        // Multiple widgets can display the same Modbus register. Read that register
+        // once per scan, then fan the value out to every widget using the binding.
+        final Map<String, BindingRequest> groupedRequests = new LinkedHashMap<>();
         for (int i = 0; i < snapshotWidgets.size(); i++) {
             Widget widget = snapshotWidgets.get(i);
             BindingRequest request = parseBinding(i, widget.connectionInfo);
-            if (request != null) requests.add(request);
+            if (request == null) continue;
+            String key = request.registerKey();
+            BindingRequest existing = groupedRequests.get(key);
+            if (existing == null) groupedRequests.put(key, request);
+            else existing.widgetIndices.add(i);
         }
+        final List<BindingRequest> requests = new ArrayList<>(groupedRequests.values());
         if (requests.isEmpty() || modbusPollInFlight) return;
         modbusPollInFlight = true;
         modbusExecutor.execute(() -> {
             try {
                 final Map<Integer, String> updates = new HashMap<>();
                 for (BindingRequest request : requests) {
+                    String value;
                     try {
                         String report = readModbusRegisters(request.host, request.port, request.unit, request.address, 1, request.functionCode);
                         String[] lines = report.split("\\n");
                         if (lines.length < 2) throw new IOException("Пустой ответ регистра");
                         String[] columns = lines[1].split("\\|");
                         if (columns.length < 2) throw new IOException("Не удалось разобрать регистр");
-                        updates.put(request.widgetIndex, columns[1].trim());
+                        value = columns[1].trim();
                     } catch (Exception e) {
-                        updates.put(request.widgetIndex, "ERR");
+                        value = "ERR";
                     }
+                    for (int widgetIndex : request.widgetIndices) updates.put(widgetIndex, value);
                 }
                 runOnUiThread(() -> {
                     if (editor == null) return;
@@ -587,11 +597,16 @@ public class MainActivity extends Activity {
     }
 
     private static class BindingRequest {
-        final int widgetIndex, port, unit, address, functionCode;
+        final List<Integer> widgetIndices = new ArrayList<>();
+        final int port, unit, address, functionCode;
         final String host;
         BindingRequest(int widgetIndex, String host, int port, int unit, int address, int functionCode) {
-            this.widgetIndex = widgetIndex; this.host = host; this.port = port; this.unit = unit;
+            this.widgetIndices.add(widgetIndex);
+            this.host = host; this.port = port; this.unit = unit;
             this.address = address; this.functionCode = functionCode;
+        }
+        String registerKey() {
+            return host.toLowerCase(java.util.Locale.ROOT) + ":" + port + "/" + unit + "/" + address + "/FC" + functionCode;
         }
     }
 
