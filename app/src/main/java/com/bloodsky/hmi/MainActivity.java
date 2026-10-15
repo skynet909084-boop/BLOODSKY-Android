@@ -1266,20 +1266,31 @@ public class MainActivity extends Activity {
                 list.addView(section, new LinearLayout.LayoutParams(-1, -2));
             }
             final int index = i;
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(8), dp(4), dp(8), dp(4));
+            row.setBackgroundColor(i % 2 == 0
+                    ? Color.rgb(248, 250, 252) : Color.WHITE);
+            row.setMinimumHeight(dp(56));
+
+            android.widget.ImageView thumbnail = new android.widget.ImageView(this);
+            thumbnail.setImageResource(widgetPickerIcon(index));
+            thumbnail.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+            row.addView(thumbnail, new LinearLayout.LayoutParams(dp(44), dp(44)));
+
             TextView item = new TextView(this);
             item.setText(labels[i] + "    ›");
             item.setTextColor(Color.rgb(30, 41, 59));
             item.setTextSize(16);
             item.setGravity(Gravity.CENTER_VERTICAL);
-            item.setPadding(dp(14), dp(12), dp(12), dp(12));
-            item.setBackgroundColor(i % 2 == 0
-                    ? Color.rgb(248, 250, 252) : Color.WHITE);
-            item.setMinHeight(dp(48));
-            item.setOnClickListener(v -> {
+            item.setPadding(dp(12), 0, dp(8), 0);
+            row.addView(item, new LinearLayout.LayoutParams(0, -1, 1));
+            row.setOnClickListener(v -> {
                 if (picker[0] != null) picker[0].dismiss();
                 addWidget(types[index], defaults[index]);
             });
-            list.addView(item, new LinearLayout.LayoutParams(-1, -2));
+            list.addView(row, new LinearLayout.LayoutParams(-1, -2));
             View separator = new View(this);
             separator.setBackgroundColor(Color.rgb(226, 232, 240));
             list.addView(separator, new LinearLayout.LayoutParams(-1, dp(1)));
@@ -1290,6 +1301,14 @@ public class MainActivity extends Activity {
                 .setNegativeButton("Отмена", null)
                 .create();
         picker[0].show();
+    }
+
+    private int widgetPickerIcon(int index) {
+        if (index == 0) return R.drawable.bloodsky_widget_text;
+        if (index == 1) return R.drawable.bloodsky_widget_button;
+        if (index == 2) return R.drawable.bloodsky_widget_indicator;
+        if (index == 3) return R.drawable.bloodsky_widget_setpoint;
+        return R.drawable.bloodsky_widget_fbd;
     }
 
     private void addWidget(String type, String text) {
