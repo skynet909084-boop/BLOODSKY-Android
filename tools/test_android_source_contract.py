@@ -47,6 +47,14 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn('if (persistProject()) Toast.makeText(this, "Проект сохранён на устройстве"', self.source)
         self.assertIn("if (editor != null && !persistProject()) return;", self.source)
 
+    def test_project_backup_preserves_last_valid_json_and_recovers_bad_primary(self):
+        self.assertIn('private static final String BACKUP_PROJECT = "backup_project"', self.source)
+        self.assertIn("ProjectJsonCodec.parse(previous)", self.source)
+        self.assertIn("changes.putString(BACKUP_PROJECT, previous)", self.source)
+        self.assertIn("ProjectJsonCodec.parse(backup)", self.source)
+        self.assertIn("json = backup;", self.source)
+        self.assertIn("Проект восстановлен из резервной копии", self.source)
+
     def test_project_load_supports_multiscreen_and_legacy_array(self):
         self.assertIn("private void loadProject()", self.source)
         self.assertIn('project.optJSONArray("screens")', self.source)
