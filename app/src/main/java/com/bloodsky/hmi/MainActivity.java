@@ -562,8 +562,12 @@ public class MainActivity extends Activity {
         if (binding == null || !binding.startsWith("tcp://")) return null;
         try {
             URI uri = URI.create(binding);
-            String[] path = uri.getPath().split("/");
-            if (uri.getHost() == null || uri.getPort() < 1 || uri.getPort() > 65535 || path.length < 3) return null;
+            String[] path = uri.getPath().split("/", -1);
+            // A binding must have exactly /unit/address; reject extra path segments,
+            // query strings and fragments instead of silently reading a different register.
+            if (uri.getHost() == null || uri.getPort() < 1 || uri.getPort() > 65535
+                    || path.length != 3 || !path[0].isEmpty()
+                    || uri.getRawQuery() != null || uri.getRawFragment() != null) return null;
             int unit = Integer.parseInt(path[1]);
             int enteredAddress = Integer.parseInt(path[2]);
             if (unit < 0 || unit > 255 || enteredAddress < 0 || enteredAddress > 65535) return null;
