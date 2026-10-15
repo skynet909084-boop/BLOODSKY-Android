@@ -478,12 +478,17 @@ public class MainActivity extends Activity {
         // Keep the canvas tall on phones: component choices live in one compact list menu.
         root.addView(action("+ Добавить элемент", this::showAddWidgetMenu),
                 new LinearLayout.LayoutParams(-1, dp(44)));
-        root.addView(action("Связать FBD", () -> {
+        LinearLayout toolsBar = new LinearLayout(this);
+        toolsBar.setOrientation(LinearLayout.HORIZONTAL);
+        toolsBar.addView(action("Связать FBD", () -> {
             fbdWireMode = !fbdWireMode;
             wireSource = -1;
             Toast.makeText(this, fbdWireMode ? "Режим связи: выбери исходный FBD-блок, затем целевой" : "Режим связи выключен", Toast.LENGTH_LONG).show();
             if (editor != null) editor.invalidate();
-        }), new LinearLayout.LayoutParams(-1, dp(42)));
+        }), new LinearLayout.LayoutParams(0, dp(42), 1));
+        toolsBar.addView(action("Диагностика Modbus", this::showModbusDiagnostics),
+                new LinearLayout.LayoutParams(0, dp(42), 1));
+        root.addView(toolsBar);
 
         editor = new EditorCanvas();
         root.addView(editor, new LinearLayout.LayoutParams(-1, 0, 1));
@@ -749,6 +754,46 @@ public class MainActivity extends Activity {
                     else if (which == 2) deleteSelectedWidget();
                 })
                 .setNegativeButton("Отмена", null)
+                .show();
+    }
+
+    private void showModbusDiagnostics() {
+        StringBuilder report = new StringBuilder();
+        int boundCount = 0;
+        int errorCount = 0;
+        for (int i = 0; i < widgets.size(); i++) {
+            Widget widget = widgets.get(i);
+            String binding = widget.connectionInfo == null ? "" : widget.connectionInfo.trim();
+            if (binding.isEmpty()) continue;
+            boundCount++;
+            String state = liveValues.get(i);
+            if (binding.startsWith("tcp://") && parseBinding(i, binding) == null) state = "CFG — неверный адрес";
+            else if (state == null) state = "Ожидание ответа";
+            if ("ERR".equals(state) || (state != null && state.startsWith("CFG"))) errorCount++;
+            report.append(i + 1).append(". ").append(widget.text == null || widget.text.trim().isEmpty() ? widget.type : widget.text)
+                    .append("\\n  Привязка: ").append(binding)
+                    .append("\\n  Состояние: ").append(state)
+                    .append("\\n\\n");
+        }
+        if (boundCount == 0) {
+            report.append("На текущем экране нет элементов с указанной привязкой.\\n")
+                    .append("Открой «Свойства» элемента и укажи адрес Modbus, например:\\n")
+                    .append("tcp://192.168.1.10:502/1/40001");
+        } else {
+            report.insert(0, "Элементов с привязкой: " + boundCount + " · Ошибок/настроек: " + errorCount + "\\n\\n");
+        }
+        TextView content = new TextView(this);
+        content.setText(report.toString());
+        content.setTextSize(14);
+        content.setTextColor(Color.rgb(30, 41, 59));
+        content.setPadding(dp(16), dp(12), dp(16), dp(12));
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(content);
+        new AlertDialog.Builder(this)
+                .setTitle("Диагностика Modbus")
+                .setView(scroll)
+                .setPositiveButton("Обновить", (dialog, which) -> showModbusDiagnostics())
+                .setNegativeButton("Закрыть", null)
                 .show();
     }
 
