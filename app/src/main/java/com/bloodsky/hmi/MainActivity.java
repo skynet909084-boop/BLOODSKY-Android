@@ -566,7 +566,7 @@ public class MainActivity extends Activity {
                                 || widgets.get(index) != snapshotWidgets.get(index)) continue;
                         liveValues.put(index, entry.getValue());
                         if ("FBD Вход".equals(widgets.get(index).type)) {
-                            widgets.get(index).inputValue = !"0".equals(entry.getValue()) && !"ERR".equals(entry.getValue()) && !"CFG".equals(entry.getValue());
+                            widgets.get(index).inputValue = isActiveModbusValue(entry.getValue());
                         }
                     }
                     editor.invalidate();
@@ -575,6 +575,20 @@ public class MainActivity extends Activity {
                 modbusPollInFlight = false;
             }
         });
+    }
+
+    private boolean isActiveModbusValue(String value) {
+        if (value == null) return false;
+        String normalized = value.trim().toLowerCase(java.util.Locale.ROOT);
+        if (normalized.isEmpty() || "err".equals(normalized) || "cfg".equals(normalized)
+                || "false".equals(normalized) || "off".equals(normalized)
+                || "no".equals(normalized)) return false;
+        if ("true".equals(normalized) || "on".equals(normalized) || "yes".equals(normalized)) return true;
+        try {
+            return Double.parseDouble(normalized) != 0.0d;
+        } catch (NumberFormatException ignored) {
+            return false;
+        }
     }
 
     private BindingRequest parseBinding(int widgetIndex, String binding) {
