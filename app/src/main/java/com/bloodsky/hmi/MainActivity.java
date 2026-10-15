@@ -1096,11 +1096,13 @@ public class MainActivity extends Activity {
                 previewPaint.setStrokeWidth(dp(1));
                 previewPaint.setColor(Color.BLACK);
                 canvas.drawRect(left, top, right, bottom, previewPaint);
-                float port1 = split ? height / 2f : height / 4f;
-                float port2 = split ? height * 5f / 6f : height * 3f / 4f;
+                int third = (int) (height / 3f);
+                float port1 = split ? third / 2 + third : height / 4f;
+                float port2 = split ? third / 2 + third * 2 : height * 3f / 4f;
                 canvas.drawLine(0, port1, left, port1, previewPaint);
                 canvas.drawLine(0, port2, left, port2, previewPaint);
-                canvas.drawLine(right, height / 2f, width, height / 2f, previewPaint);
+                float outputPort = third / 2 + third;
+                canvas.drawLine(right, outputPort, width, outputPort, previewPaint);
                 if (split) {
                     canvas.drawLine(left, height / 3f, right, height / 3f, previewPaint);
                     canvas.drawLine(width / 2f, height / 3f,
@@ -1113,9 +1115,21 @@ public class MainActivity extends Activity {
                         : "FBD ИЛИ".equals(type) ? "OR"
                         : "FBD Таймер".equals(type) ? "TON" : label;
                 float baseline = split ? height / 6f : height / 2f;
-                canvas.drawText(title, width / 2f,
-                        baseline - (previewPaint.ascent() + previewPaint.descent()) / 2f,
-                        previewPaint);
+                float textOffset = -(previewPaint.ascent() + previewPaint.descent()) / 2f;
+                canvas.drawText(title, width / 2f, baseline + textOffset, previewPaint);
+                if (split) {
+                    String input1 = "FBD XOR".equals(type) ? "I1"
+                            : "FBD RS".equals(type) ? "R"
+                            : "FBD SR".equals(type) ? "S" : "IN";
+                    String input2 = "FBD XOR".equals(type) ? "I2"
+                            : "FBD RS".equals(type) ? "S"
+                            : "FBD SR".equals(type) ? "R" : "MS";
+                    previewPaint.setTextSize(dp(8));
+                    textOffset = -(previewPaint.ascent() + previewPaint.descent()) / 2f;
+                    canvas.drawText(input1, width / 4f, port1 + textOffset, previewPaint);
+                    canvas.drawText(input2, width / 4f, port2 + textOffset, previewPaint);
+                    canvas.drawText("Q", width * 3f / 4f, outputPort + textOffset, previewPaint);
+                }
                 return;
             }
             float width = getWidth(), height = getHeight();
