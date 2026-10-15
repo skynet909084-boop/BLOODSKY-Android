@@ -269,14 +269,17 @@ public class MainActivity extends Activity {
             byte[] pdu = new byte[length - 1];
             in.readFully(pdu);
             int function = pdu[0] & 0xff;
-            if (function == (functionCode | 0x80) && pdu.length >= 2) {
+            if (function == (functionCode | 0x80)) {
+                if (pdu.length != 2) throw new IOException("Некорректный ответ с исключением Modbus");
                 int exceptionCode = pdu[1] & 0xff;
                 throw new IOException("Modbus: " + describeModbusExceptionCode(exceptionCode)
                         + " (код " + exceptionCode + ")");
             }
             if (function != functionCode || pdu.length < 2) throw new IOException("Неожиданный код функции");
             int byteCount = pdu[1] & 0xff;
-            if (byteCount != count * 2 || pdu.length < 2 + byteCount) throw new IOException("Размер ответа не совпадает с запросом");
+            if (byteCount != count * 2 || pdu.length != 2 + byteCount) {
+                throw new IOException("Размер ответа не совпадает с запросом");
+            }
             StringBuilder report = new StringBuilder();
             report.append("Успешно: ").append(count).append(functionCode == 3 ? " holding registers (FC03)\n" : " input registers (FC04)\n");
             for (int i = 0; i < count; i++) {
