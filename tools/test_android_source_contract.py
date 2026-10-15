@@ -59,6 +59,18 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn('previewHeader.addView(new WidgetPreview(w.type, w.text)', self.source)
         self.assertIn('form.addView(previewHeader', self.source)
 
+    def test_original_artwork_picker_has_all_151_images_and_visual_rows(self):
+        import re
+        section = self.source.split("private static final String[] CRAFT_IMAGE_NAMES = {", 1)[1].split("};", 1)[0]
+        names = re.findall(r'"([a-z0-9_]+)"', section)
+        self.assertEqual(len(names), 151)
+        self.assertEqual(len(set(names)), 151)
+        for name in ("switch1_on", "switch8_off", "lamp_green",
+                     "tab_round_indicator", "normal_indicator", "spindle_indicator"):
+            self.assertIn(name, names)
+        self.assertIn("return craftImagePickerRow(position);", self.source)
+        self.assertIn("image.setImageResource(resource);", self.source)
+
     def test_original_state_artwork_is_selectable_and_persisted(self):
         self.assertIn('private static final String[] CRAFT_IMAGE_NAMES', self.source)
         self.assertIn('final Spinner imageOffField;', self.source)
