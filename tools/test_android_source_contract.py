@@ -59,6 +59,16 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn('previewHeader.addView(new WidgetPreview(w.type, w.text)', self.source)
         self.assertIn('form.addView(previewHeader', self.source)
 
+    def test_state_artwork_blinking_and_persistence(self):
+        self.assertIn('boolean blinkWhenOn = false;', self.source)
+        self.assertIn('int blinkPeriodMs = 700;', self.source)
+        self.assertIn('obj.put("blinkWhenOn", w.blinkWhenOn)', self.source)
+        self.assertIn('obj.put("blinkPeriodMs", w.blinkPeriodMs)', self.source)
+        self.assertIn('w.blinkWhenOn = obj.optBoolean("blinkWhenOn", false)', self.source)
+        self.assertIn('blinkField.setText("Мигать при активном состоянии")', self.source)
+        self.assertIn('SystemClock.uptimeMillis() / Math.max(200, w.blinkPeriodMs)', self.source)
+        self.assertIn('postInvalidateDelayed(Math.max(100L, widget.blinkPeriodMs / 2L))', self.source)
+
     def test_original_artwork_picker_has_all_151_images_and_visual_rows(self):
         import re
         section = self.source.split("private static final String[] CRAFT_IMAGE_NAMES = {", 1)[1].split("};", 1)[0]
