@@ -60,8 +60,9 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn('form.addView(previewHeader', self.source)
 
     def test_original_fbd_and_setter_artwork_is_drawn(self):
-        self.assertIn('"kc_logic_ico", "drawable"', self.source)
-        self.assertIn('logicIcon.draw(canvas);', self.source)
+        self.assertIn('boolean craftFbd = w.type != null', self.source)
+        self.assertIn('canvas.drawRect(body, paint);', self.source)
+        self.assertIn('paint.setColor(Color.rgb(136, 136, 136));', self.source)
         self.assertIn('"kc_tab_digital_setters", "drawable"', self.source)
         self.assertIn('setterImage.draw(canvas);', self.source)
 
