@@ -556,7 +556,7 @@ public class MainActivity extends Activity {
         workspace.addView(editor, new FrameLayout.LayoutParams(-1, -1));
 
         // Original editor has a floating component-picker control at the lower left.
-        TextView addComponent = legacyIconButton(R.drawable.bloodsky_icon_add, "Добавить элемент", this::showAddWidgetMenu);
+        ImageButton addComponent = legacyIconButton(R.drawable.bloodsky_icon_add, "Добавить элемент", this::showAddWidgetMenu);
         FrameLayout.LayoutParams addParams = new FrameLayout.LayoutParams(dp(48), dp(48),
                 Gravity.BOTTOM | Gravity.LEFT);
         addParams.leftMargin = dp(10);
