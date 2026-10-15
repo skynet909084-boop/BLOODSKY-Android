@@ -15,6 +15,10 @@ The current prototype includes:
 
 This is still a working prototype, not yet a complete Kaskada Craft replacement. The exact original UI has not been verified pixel-for-pixel against the decompiled APK and reference screenshots. Full component/property parity, Modbus RTU, broader protocol compatibility, robust runtime testing and a signed release build remain open work.
 
+## Regression guardrails
+
+`tools/test_android_source_contract.py` adds source-contract checks for project persistence, multi-screen and legacy loading, import validation limits, Modbus TCP response checks, unknown metadata preservation, FBD cycle prevention, and the CI build steps. These checks are fast regression guards; they do not replace device-level or instrumentation tests.
+
 ## Build and tests
 
 GitHub Actions workflow **BLOODSKY Android APK** runs the Python archive-inspector tests, Android unit tests, builds the debug APK and uploads the artifact as `BLOODSKY-Android-debug-APK` for 14 days. It runs on relevant code pushes/PRs, can be started manually, and performs a scheduled daily validation/build at 03:17 UTC.
