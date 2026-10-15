@@ -549,7 +549,8 @@ public class MainActivity extends Activity {
         }
         if (requests.isEmpty() && invalidBindings.isEmpty()) return;
         modbusPollInFlight = true;
-        modbusExecutor.execute(() -> {
+        try {
+            modbusExecutor.execute(() -> {
             try {
                 final Map<Integer, String> updates = new HashMap<>(invalidBindings);
                 for (BindingRequest request : requests) {
@@ -582,7 +583,11 @@ public class MainActivity extends Activity {
             } finally {
                 modbusPollInFlight = false;
             }
-        });
+            });
+        } catch (java.util.concurrent.RejectedExecutionException ignored) {
+            // The Activity may be shutting down; never leave the poll lock stuck.
+            modbusPollInFlight = false;
+        }
     }
 
     private String describeModbusExceptionCode(int code) {
