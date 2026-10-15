@@ -11,6 +11,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "app/src/main/java/com/bloodsky/hmi/MainActivity.java"
 CODEC_SOURCE = ROOT / "app/src/main/java/com/bloodsky/hmi/ProjectJsonCodec.java"
+FBD_VALIDATOR_SOURCE = ROOT / "app/src/main/java/com/bloodsky/hmi/FbdGraphValidator.java"
 WORKFLOW = ROOT / ".github/workflows/android-apk.yml"
 
 
@@ -19,6 +20,7 @@ class AndroidSourceContractTests(unittest.TestCase):
     def setUpClass(cls):
         cls.source = SOURCE.read_text(encoding="utf-8")
         cls.codec_source = CODEC_SOURCE.read_text(encoding="utf-8")
+        cls.validator_source = FBD_VALIDATOR_SOURCE.read_text(encoding="utf-8")
         cls.workflow = WORKFLOW.read_text(encoding="utf-8")
 
     def test_json_metadata_copy_helper_is_used_for_project_screen_and_widget_load(self):
@@ -85,11 +87,12 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("screen.connections.addAll(kept)", delete_method)
 
     def test_import_rejects_invalid_and_duplicate_fbd_edges_and_cycles(self):
-        self.assertIn('throw new IllegalArgumentException("Connection index out of range")', self.source)
-        self.assertIn('throw new IllegalArgumentException("Connections must link FBD blocks")', self.source)
-        self.assertIn('throw new IllegalArgumentException("Duplicate FBD connection")', self.source)
-        self.assertIn("Kahn's algorithm rejects imported graphs with cycles", self.source)
-        self.assertIn("if (visitedCount != nodeCount)", self.source)
+        self.assertIn("FbdGraphValidator.validate(screenWidgets, connections)", self.source)
+        self.assertIn('throw new IllegalArgumentException("Connection index out of range")', self.validator_source)
+        self.assertIn('throw new IllegalArgumentException("Connections must link FBD blocks")', self.validator_source)
+        self.assertIn('throw new IllegalArgumentException("Duplicate FBD connection")', self.validator_source)
+        self.assertIn("Kahn's algorithm rejects imported graphs with cycles", self.validator_source)
+        self.assertIn("if (visitedCount != nodeCount)", self.validator_source)
 
     def test_loading_only_restores_valid_fbd_connections(self):
         load_start = self.source.index("private void loadProject()")
