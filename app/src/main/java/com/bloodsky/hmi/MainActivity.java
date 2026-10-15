@@ -1872,6 +1872,16 @@ public class MainActivity extends Activity {
                     String blockTitle = "FBD Вход".equals(w.type) ? "Вход " + (w.inputValue ? "1" : "0")
                             : (("FBD CTU".equals(w.type) || "FBD CTD".equals(w.type)) ? ("FBD CTD".equals(w.type) ? "CTD " : "CTU ") + w.counterValue + "/" + w.counterPreset : w.text);
                     if (liveValues.containsKey(i) && !"FBD Вход".equals(w.type)) blockTitle += " [" + liveValues.get(i) + "]";
+                    // Show the original Craft logic icon in each FBD block.
+                    int logicIconId = getResources().getIdentifier(
+                            "kc_logic_ico", "drawable", getPackageName());
+                    if (logicIconId != 0 && w.w >= dp(72)) {
+                        Drawable logicIcon = getResources().getDrawable(logicIconId);
+                        int iconX = (int) (w.x + w.w - dp(26));
+                        int iconY = (int) (w.y + dp(5));
+                        logicIcon.setBounds(iconX, iconY, iconX + dp(19), iconY + dp(19));
+                        logicIcon.draw(canvas);
+                    }
                     canvas.drawText(blockTitle, w.x + dp(12), w.y + dp(23), paint);
                     boolean output = evaluateFbd(i, new boolean[widgets.size()]);
                     paint.setTextSize(dp(11));
@@ -1939,6 +1949,17 @@ public class MainActivity extends Activity {
                     if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(20)) / Math.max(4f, buttonText.length() * 0.58f))));
                     canvas.drawText(buttonText, w.x + dp(10), w.y + w.h / 2 + dp(5), paint);
                 } else if ("Задатчик".equals(w.type)) {
+                    // Original Craft setter artwork behind the adjustable value.
+                    int setterId = getResources().getIdentifier(
+                            "kc_tab_digital_setters", "drawable", getPackageName());
+                    if (setterId != 0) {
+                        Drawable setterImage = getResources().getDrawable(setterId);
+                        int imageLeft = (int) (w.x + w.w - dp(35));
+                        int imageTop = (int) (w.y + dp(3));
+                        setterImage.setBounds(imageLeft, imageTop,
+                                imageLeft + dp(28), imageTop + dp(23));
+                        setterImage.draw(canvas);
+                    }
                     paint.setColor(w.textColor);
                     if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(18)) / Math.max(4f, w.text.length() * 0.58f))));
                     canvas.drawText(w.text, w.x + dp(9), w.y + dp(21), paint);
