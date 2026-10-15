@@ -1406,7 +1406,7 @@ public class MainActivity extends Activity {
             project.put("currentScreen", currentScreenIndex);
             project.put("projectName", projectName);
             getSharedPreferences(PREFS, MODE_PRIVATE).edit()
-                    .putString(ACTIVE_PROJECT, project.toString())
+                    .putString(ACTIVE_PROJECT, ProjectJsonCodec.serialize(project))
                     .putString("project_name", projectName).apply();
         } catch (Exception ignored) {
             Toast.makeText(this, "Не удалось сохранить проект", Toast.LENGTH_SHORT).show();
@@ -1420,7 +1420,7 @@ public class MainActivity extends Activity {
         projectName = prefs.getString("project_name", projectName);
         String json = prefs.getString(ACTIVE_PROJECT, "[]");
         try {
-            Object parsed = new org.json.JSONTokener(json).nextValue();
+            Object parsed = ProjectJsonCodec.parse(json);
             if (parsed instanceof JSONObject) {
                 JSONObject project = (JSONObject) parsed;
                 String importedProjectName = project.optString("projectName", projectName);
