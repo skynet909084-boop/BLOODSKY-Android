@@ -58,6 +58,7 @@ public class MainActivity extends Activity {
     private LinearLayout root;
     private EditorCanvas editor;
     private boolean editorToolbarHidden = false;
+    private boolean runtimeMode = false;
     private final List<Widget> widgets = new ArrayList<>();
     private final List<Screen> screens = new ArrayList<>();
     private int currentScreenIndex = 0;
@@ -542,7 +543,7 @@ public class MainActivity extends Activity {
         screenName.setGravity(Gravity.CENTER);
         screenName.setSingleLine(true);
         screenName.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        screenName.setOnClickListener(v -> renameCurrentScreen());
+        screenName.setOnClickListener(v -> { if (!runtimeMode) renameCurrentScreen(); });
         screenName.setOnLongClickListener(v -> {
             showEditorOptionsMenu();
             return true;
@@ -550,6 +551,9 @@ public class MainActivity extends Activity {
         top.addView(screenName, new LinearLayout.LayoutParams(0, dp(48), 1));
 
         top.addView(legacyIconButton(R.drawable.bloodsky_icon_arrow_right, "Следующий экран", this::nextScreen),
+                new LinearLayout.LayoutParams(dp(40), dp(48)));
+        top.addView(legacyIconButton(runtimeMode ? R.drawable.bloodsky_icon_stop : R.drawable.bloodsky_icon_start,
+                runtimeMode ? "Выйти из рабочего режима" : "Рабочий режим", this::toggleRuntimeMode),
                 new LinearLayout.LayoutParams(dp(40), dp(48)));
         top.addView(legacyIconButton(R.drawable.bloodsky_icon_overflow, "Дополнительные действия", this::showEditorOptionsMenu),
                 new LinearLayout.LayoutParams(dp(40), dp(48)));
@@ -571,33 +575,35 @@ public class MainActivity extends Activity {
             workspace.addView(showToolbar, showToolbarParams);
         }
 
-        // Original editor has a floating component-picker control at the lower left.
-        ImageButton addComponent = legacyIconButton(R.drawable.bloodsky_icon_add, "Добавить элемент", this::showAddWidgetMenu);
-        FrameLayout.LayoutParams addParams = new FrameLayout.LayoutParams(dp(40), dp(40),
-                Gravity.BOTTOM | Gravity.LEFT);
-        addParams.leftMargin = dp(10);
-        addParams.bottomMargin = dp(10);
-        workspace.addView(addComponent, addParams);
-
-        // Keep the selection actions as a compact floating icon strip rather than a full-width text row.
-        LinearLayout selectionActions = new LinearLayout(this);
-        selectionActions.setOrientation(LinearLayout.HORIZONTAL);
-        selectionActions.setGravity(Gravity.CENTER);
-        selectionActions.setPadding(dp(3), dp(2), dp(3), dp(2));
-        selectionActions.setBackgroundColor(Color.rgb(35, 35, 35));
-        selectionActions.setElevation(dp(100));
-        selectionActions.addView(legacyIconButton(R.drawable.bloodsky_icon_cut, "Вырезать", this::cutSelectedWidget),
-                new LinearLayout.LayoutParams(dp(50), dp(40)));
-        selectionActions.addView(legacyIconButton(R.drawable.bloodsky_icon_copy, "Копировать", this::copySelectedWidget),
-                new LinearLayout.LayoutParams(dp(44), dp(44)));
-        selectionActions.addView(legacyIconButton(R.drawable.bloodsky_icon_paste, "Вставить", this::pasteWidget),
-                new LinearLayout.LayoutParams(dp(44), dp(44)));
-        selectionActions.addView(legacyIconButton(R.drawable.bloodsky_icon_align, "Выравнивание", this::alignSelectedWidget),
-                new LinearLayout.LayoutParams(dp(44), dp(44)));
-        FrameLayout.LayoutParams actionsParams = new FrameLayout.LayoutParams(-2, -2,
-                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-        actionsParams.bottomMargin = dp(4);
-        workspace.addView(selectionActions, actionsParams);
+        if (!runtimeMode) {
+            // Original editor has a floating component-picker control at the lower left.
+            ImageButton addComponent = legacyIconButton(R.drawable.bloodsky_icon_add, "Добавить элемент", this::showAddWidgetMenu);
+            FrameLayout.LayoutParams addParams = new FrameLayout.LayoutParams(dp(40), dp(40),
+                    Gravity.BOTTOM | Gravity.LEFT);
+            addParams.leftMargin = dp(10);
+            addParams.bottomMargin = dp(10);
+            workspace.addView(addComponent, addParams);
+    
+            // Keep the selection actions as a compact floating icon strip rather than a full-width text row.
+            LinearLayout selectionActions = new LinearLayout(this);
+            selectionActions.setOrientation(LinearLayout.HORIZONTAL);
+            selectionActions.setGravity(Gravity.CENTER);
+            selectionActions.setPadding(dp(3), dp(2), dp(3), dp(2));
+            selectionActions.setBackgroundColor(Color.rgb(35, 35, 35));
+            selectionActions.setElevation(dp(100));
+            selectionActions.addView(legacyIconButton(R.drawable.bloodsky_icon_cut, "Вырезать", this::cutSelectedWidget),
+                    new LinearLayout.LayoutParams(dp(50), dp(40)));
+            selectionActions.addView(legacyIconButton(R.drawable.bloodsky_icon_copy, "Копировать", this::copySelectedWidget),
+                    new LinearLayout.LayoutParams(dp(44), dp(44)));
+            selectionActions.addView(legacyIconButton(R.drawable.bloodsky_icon_paste, "Вставить", this::pasteWidget),
+                    new LinearLayout.LayoutParams(dp(44), dp(44)));
+            selectionActions.addView(legacyIconButton(R.drawable.bloodsky_icon_align, "Выравнивание", this::alignSelectedWidget),
+                    new LinearLayout.LayoutParams(dp(44), dp(44)));
+            FrameLayout.LayoutParams actionsParams = new FrameLayout.LayoutParams(-2, -2,
+                    Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+            actionsParams.bottomMargin = dp(4);
+            workspace.addView(selectionActions, actionsParams);
+        }
 
         root.addView(workspace, new LinearLayout.LayoutParams(-1, 0, 1));
         setContentView(root);
@@ -674,6 +680,26 @@ public class MainActivity extends Activity {
     }
 
     private void showEditorOptionsMenu() {
+        if (runtimeMode) {
+            final String[] runtimeActions = {
+                    "Выйти из рабочего режима",
+                    "Сохранить проект",
+                    "Диагностика Modbus",
+                    "На главный экран"
+            };
+            new AlertDialog.Builder(this)
+                    .setTitle(projectName + " · Работа")
+                    .setItems(runtimeActions, (dialog, which) -> {
+                        if (which == 0) toggleRuntimeMode();
+                        else if (which == 1) {
+                            persistProject();
+                            Toast.makeText(this, "Проект сохранён на устройстве", Toast.LENGTH_SHORT).show();
+                        } else if (which == 2) showModbusDiagnostics();
+                        else if (which == 3) showHome();
+                    }).show();
+            return;
+        }
+
         final String[] actions = {
                 "Сохранить проект",
                 "Имя проекта",
@@ -730,6 +756,36 @@ public class MainActivity extends Activity {
                             break;
                     }
                 }).show();
+    }
+
+    private void toggleRuntimeMode() {
+        runtimeMode = !runtimeMode;
+        fbdWireMode = false;
+        wireSource = -1;
+        if (editor != null) editor.selected = -1;
+        Toast.makeText(this, runtimeMode
+                ? "Рабочий режим включён: элементы нельзя перемещать или редактировать"
+                : "Режим редактирования включён", Toast.LENGTH_SHORT).show();
+        showEditor();
+    }
+
+    private void activateRuntimeWidget(int index, float x, float y) {
+        if (index < 0 || index >= widgets.size()) return;
+        Widget picked = widgets.get(index);
+        if (!picked.visible) return;
+        if ("Задатчик".equals(picked.type) && y >= picked.y + dp(29)) {
+            adjustSetpoint(picked, x < picked.x + picked.w / 2f ? -1 : 1);
+        } else if ("Кнопка".equals(picked.type)) {
+            picked.buttonState = !picked.buttonState;
+            persistProject();
+            if (editor != null) editor.invalidate();
+            Toast.makeText(this, picked.text + (picked.buttonState ? ": ВКЛ" : ": ВЫКЛ"), Toast.LENGTH_SHORT).show();
+        } else if ("FBD Вход".equals(picked.type)) {
+            picked.inputValue = !picked.inputValue;
+            persistProject();
+            if (editor != null) editor.invalidate();
+            Toast.makeText(this, "Вход FBD = " + (picked.inputValue ? "1" : "0"), Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void cutSelectedWidget() {
@@ -1889,6 +1945,7 @@ public class MainActivity extends Activity {
         long downAt;
         boolean dragging;
         boolean resizing;
+        int runtimeTarget = -1;
 
         EditorCanvas() {
             super(MainActivity.this);
@@ -2048,6 +2105,27 @@ public class MainActivity extends Activity {
 
         @Override public boolean onTouchEvent(MotionEvent event) {
             float x = event.getX(), y = event.getY();
+            if (runtimeMode) {
+                if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                    runtimeTarget = -1;
+                    for (int i = widgets.size() - 1; i >= 0; i--) {
+                        Widget w = widgets.get(i);
+                        if (w.visible && x >= w.x && x <= w.x + w.w && y >= w.y && y <= w.y + w.h) {
+                            runtimeTarget = i;
+                            break;
+                        }
+                    }
+                    return true;
+                }
+                if (event.getAction() == MotionEvent.ACTION_UP) {
+                    int target = runtimeTarget;
+                    runtimeTarget = -1;
+                    if (target >= 0) activateRuntimeWidget(target, x, y);
+                    return true;
+                }
+                if (event.getAction() == MotionEvent.ACTION_CANCEL) runtimeTarget = -1;
+                return true;
+            }
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
                 downX = x; downY = y; downAt = SystemClock.elapsedRealtime(); dragging = false; resizing = false; selected = -1;
                 for (int i = widgets.size() - 1; i >= 0; i--) {
