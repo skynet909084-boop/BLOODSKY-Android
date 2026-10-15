@@ -86,12 +86,22 @@ jobs:
           for src in originals:
               shutil.copyfile(src, target / ("kc_" + src.name))
           print(f"Bundled {len(originals)} original KaScada drawable images")
+          # Make every imported resource auditable and reproducible.
+          import hashlib
+          manifest = Path("app/src/main/res/original-kascada-assets.sha256")
+          manifest.parent.mkdir(parents=True, exist_ok=True)
+          manifest.write_text("".join(
+              f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\\n"
+              for p in sorted(target.glob("kc_*.png"))
+          ), encoding="utf-8")
           PY
       - name: Upload original image resource bundle
         uses: actions/upload-artifact@v4
         with:
           name: BLOODSKY-KaScada-original-drawables
-          path: app/src/main/res/drawable-nodpi/kc_*.png
+          path: |
+            app/src/main/res/drawable-nodpi/kc_*.png
+            app/src/main/res/original-kascada-assets.sha256
           if-no-files-found: error
           retention-days: 30
       - name: Run Android unit tests
