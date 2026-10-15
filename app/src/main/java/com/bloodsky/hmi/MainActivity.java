@@ -82,6 +82,13 @@ public class MainActivity extends Activity {
         showHome();
     }
 
+    @Override protected void onPause() {
+        // Preserve unsaved canvas edits when Android backgrounds or recreates us.
+        // Never persist from the home screen: no project has been loaded there yet.
+        if (editor != null) persistProject();
+        super.onPause();
+    }
+
     @Override protected void onDestroy() {
         stopModbusPolling();
         editor = null;
@@ -135,6 +142,7 @@ public class MainActivity extends Activity {
     }
 
     private void showHome() {
+        if (editor != null) persistProject();
         stopModbusPolling();
         editor = null;
         root = new LinearLayout(this);
