@@ -25,6 +25,22 @@ final class ProjectJsonCodec {
         return document;
     }
 
+    /**
+     * Builds a fresh object by copying preserved fields first, then applying current
+     * fields. Current values always win on key collisions; unknown nested metadata
+     * is deep-copied so editing the returned object cannot mutate the source.
+     */
+    static JSONObject mergePreservedFields(JSONObject preserved, JSONObject current) throws JSONException {
+        if (current == null) throw new IllegalArgumentException("Current project fields are null");
+        JSONObject merged = JsonObjectCopy.deepCopy(preserved);
+        java.util.Iterator<String> keys = current.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            merged.put(key, current.get(key));
+        }
+        return merged;
+    }
+
     static String serialize(JSONObject document) {
         if (document == null) throw new IllegalArgumentException("Project document is null");
         return document.toString();
