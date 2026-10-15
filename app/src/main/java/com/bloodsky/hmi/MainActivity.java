@@ -999,15 +999,20 @@ public class MainActivity extends Activity {
                 list.addView(section, new LinearLayout.LayoutParams(-1, -2));
             }
             final int index = i;
-            TextView item = new TextView(this);
-            item.setText(labels[i] + "    ›");
-            item.setTextColor(Color.rgb(30, 41, 59));
-            item.setTextSize(16);
+            LinearLayout item = new LinearLayout(this);
             item.setGravity(Gravity.CENTER_VERTICAL);
-            item.setPadding(dp(14), dp(12), dp(12), dp(12));
+            item.setPadding(dp(8), dp(4), dp(12), dp(4));
             item.setBackgroundColor(i % 2 == 0
                     ? Color.rgb(248, 250, 252) : Color.WHITE);
-            item.setMinHeight(dp(48));
+            item.addView(new WidgetPreview(types[i], defaults[i]),
+                    new LinearLayout.LayoutParams(dp(68), dp(46)));
+            TextView itemLabel = new TextView(this);
+            itemLabel.setText(labels[i] + "    ›");
+            itemLabel.setTextColor(Color.rgb(30, 41, 59));
+            itemLabel.setTextSize(15);
+            itemLabel.setGravity(Gravity.CENTER_VERTICAL);
+            itemLabel.setPadding(dp(10), 0, 0, 0);
+            item.addView(itemLabel, new LinearLayout.LayoutParams(0, dp(48), 1));
             item.setOnClickListener(v -> {
                 if (picker[0] != null) picker[0].dismiss();
                 addWidget(types[index], defaults[index]);
@@ -1023,6 +1028,51 @@ public class MainActivity extends Activity {
                 .setNegativeButton("Отмена", null)
                 .create();
         picker[0].show();
+    }
+
+    // Draw actual lightweight element thumbnails without external image dependencies.
+    private class WidgetPreview extends View {
+        private final String type;
+        private final String label;
+        private final Paint previewPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        WidgetPreview(String type, String label) {
+            super(MainActivity.this);
+            this.type = type;
+            this.label = label;
+        }
+
+        @Override protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            float width = getWidth(), height = getHeight();
+            float left = dp(3), top = dp(5), right = width - dp(3), bottom = height - dp(5);
+            previewPaint.setStrokeWidth(dp(1.5f));
+            previewPaint.setStyle(Paint.Style.FILL);
+            previewPaint.setColor(Color.rgb(241, 245, 249));
+            canvas.drawRoundRect(left, top, right, bottom, dp(5), dp(5), previewPaint);
+            previewPaint.setStyle(Paint.Style.STROKE);
+            previewPaint.setColor(Color.rgb(71, 85, 105));
+            canvas.drawRoundRect(left, top, right, bottom, dp(5), dp(5), previewPaint);
+            previewPaint.setStyle(Paint.Style.FILL);
+            if ("Индикатор".equals(type)) {
+                previewPaint.setColor(Color.rgb(34, 197, 94));
+                canvas.drawCircle(width / 2, height / 2, dp(10), previewPaint);
+                previewPaint.setStyle(Paint.Style.STROKE);
+                previewPaint.setColor(Color.rgb(21, 128, 61));
+                canvas.drawCircle(width / 2, height / 2, dp(10), previewPaint);
+            } else {
+                String symbol = type.startsWith("FBD ") ? label
+                        : "Кнопка".equals(type) ? "ПУСК"
+                        : "Задатчик".equals(type) ? "−  0  +"
+                        : "Текст".equals(type) ? "Текст" : label;
+                previewPaint.setStyle(Paint.Style.FILL);
+                previewPaint.setColor(Color.rgb(30, 41, 59));
+                previewPaint.setTextAlign(Paint.Align.CENTER);
+                previewPaint.setTextSize(dp(symbol.length() > 7 ? 9 : 12));
+                canvas.drawText(symbol, width / 2, height / 2
+                        - (previewPaint.ascent() + previewPaint.descent()) / 2, previewPaint);
+            }
+        }
     }
 
     private void addWidget(String type, String text) {
