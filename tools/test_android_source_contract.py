@@ -10,6 +10,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "app/src/main/java/com/bloodsky/hmi/MainActivity.java"
+CODEC_SOURCE = ROOT / "app/src/main/java/com/bloodsky/hmi/ProjectJsonCodec.java"
 WORKFLOW = ROOT / ".github/workflows/android-apk.yml"
 
 
@@ -17,6 +18,7 @@ class AndroidSourceContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.source = SOURCE.read_text(encoding="utf-8")
+        cls.codec_source = CODEC_SOURCE.read_text(encoding="utf-8")
         cls.workflow = WORKFLOW.read_text(encoding="utf-8")
 
     def test_json_metadata_copy_helper_is_used_for_project_screen_and_widget_load(self):
@@ -40,7 +42,8 @@ class AndroidSourceContractTests(unittest.TestCase):
         validate_at = self.source.index("validateImportedProject(json);")
         commit_at = self.source.index('.putString(ACTIVE_PROJECT, json).commit()', validate_at)
         self.assertLess(validate_at, commit_at)
-        self.assertIn("Trailing content after JSON", self.source)
+        self.assertIn("ProjectJsonCodec.parse(json)", self.source)
+        self.assertIn("Trailing content after project JSON", self.codec_source)
         self.assertIn("Project file too large", self.source)
 
     def test_import_limits_screen_widget_and_connection_counts(self):
