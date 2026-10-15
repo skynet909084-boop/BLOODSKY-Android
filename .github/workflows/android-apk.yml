@@ -116,6 +116,7 @@ jobs:
           PY
           python3 tools/catalogue_craft_resources.py app/src/main/assets/kascada_original build-reports/kascada-resource-catalogue.md
           python3 tools/map_craft_xml_references.py /tmp/kascada-decompiled/apktool/res build-reports/kascada-original-xml-map.md
+          python3 tools/audit_craft_drawable_wiring.py /tmp/kascada-decompiled/apktool/res/drawable app/src/main/java build-reports/kascada-drawable-wiring.md
       - name: Upload original image resource bundle
         uses: actions/upload-artifact@v4
         with:
@@ -127,6 +128,7 @@ jobs:
             app/src/main/assets/kascada_original/**
             build-reports/kascada-resource-catalogue.md
             build-reports/kascada-original-xml-map.md
+            build-reports/kascada-drawable-wiring.md
           if-no-files-found: error
           retention-days: 30
       - name: Run Android unit tests
