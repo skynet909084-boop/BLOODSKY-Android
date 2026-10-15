@@ -18,7 +18,13 @@ on:
       - 'gradle.properties'
       - 'settings.gradle'
       - '.github/workflows/android-apk.yml'
+  schedule:
+    - cron: '17 3 * * *'
   workflow_dispatch:
+
+concurrency:
+  group: bloodsky-android-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -26,6 +32,7 @@ permissions:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout BLOODSKY
         uses: actions/checkout@v4
