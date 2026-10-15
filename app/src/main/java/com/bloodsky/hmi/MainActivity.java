@@ -553,7 +553,7 @@ public class MainActivity extends Activity {
                     String value;
                     try {
                         String report = readModbusRegisters(request.host, request.port, request.unit, request.address, 1, request.functionCode);
-                        String[] lines = report.split("\\n");
+                        String[] lines = report.split("\n");
                         if (lines.length < 2) throw new IOException("Пустой ответ регистра");
                         String[] columns = lines[1].split("\\|");
                         if (columns.length < 2) throw new IOException("Не удалось разобрать регистр");
@@ -771,16 +771,16 @@ public class MainActivity extends Activity {
             else if (state == null) state = "Ожидание ответа";
             if ("ERR".equals(state) || (state != null && state.startsWith("CFG"))) errorCount++;
             report.append(i + 1).append(". ").append(widget.text == null || widget.text.trim().isEmpty() ? widget.type : widget.text)
-                    .append("\\n  Привязка: ").append(binding)
-                    .append("\\n  Состояние: ").append(state)
-                    .append("\\n\\n");
+                    .append("\n  Привязка: ").append(binding)
+                    .append("\n  Состояние: ").append(state)
+                    .append("\n\n");
         }
         if (boundCount == 0) {
-            report.append("На текущем экране нет элементов с указанной привязкой.\\n")
-                    .append("Открой «Свойства» элемента и укажи адрес Modbus, например:\\n")
+            report.append("На текущем экране нет элементов с указанной привязкой.\n")
+                    .append("Открой «Свойства» элемента и укажи адрес Modbus, например:\n")
                     .append("tcp://192.168.1.10:502/1/40001");
         } else {
-            report.insert(0, "Элементов с привязкой: " + boundCount + " · Ошибок/настроек: " + errorCount + "\\n\\n");
+            report.insert(0, "Элементов с привязкой: " + boundCount + " · Ошибок/настроек: " + errorCount + "\n\n");
         }
         TextView content = new TextView(this);
         content.setText(report.toString());
