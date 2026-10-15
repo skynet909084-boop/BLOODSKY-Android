@@ -8,11 +8,17 @@ import android.os.Bundle;
 import android.os.SystemClock;
 import android.os.Handler;
 import android.os.Looper;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.drawable.GradientDrawable;
+import android.media.AudioManager;
+import android.media.MediaPlayer;
+import android.media.ToneGenerator;
+import android.speech.tts.TextToSpeech;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -77,8 +83,38 @@ public class MainActivity extends Activity {
         }
     };
 
+    private MediaPlayer mediaPlayer;
+    private TextToSpeech textToSpeech;
+    private final java.util.Map<String, Bitmap> imageCache = new java.util.HashMap<>();
+
+    private Bitmap loadCachedBitmap(String pathOrUri) {
+        if (pathOrUri == null || pathOrUri.trim().isEmpty()) return null;
+        if (imageCache.containsKey(pathOrUri)) return imageCache.get(pathOrUri);
+        Bitmap bitmap = null;
+        try {
+            if (pathOrUri.startsWith("content://")) {
+                try (InputStream is = getContentResolver().openInputStream(Uri.parse(pathOrUri))) {
+                    bitmap = BitmapFactory.decodeStream(is);
+                }
+            } else if (new java.io.File(pathOrUri).exists()) {
+                bitmap = BitmapFactory.decodeFile(pathOrUri);
+            }
+        } catch (Exception ignored) {}
+        imageCache.put(pathOrUri, bitmap);
+        return bitmap;
+    }
+
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        try {
+            textToSpeech = new TextToSpeech(this, status -> {
+                if (status == TextToSpeech.SUCCESS && textToSpeech != null) {
+                    try { textToSpeech.setLanguage(new java.util.Locale("ru", "RU")); } catch (Exception ignored) {}
+                }
+            });
+        } catch (Exception ex) {
+            android.util.Log.e("BLOODSKY", "TTS init error", ex);
+        }
         showHome();
     }
 
@@ -86,7 +122,54 @@ public class MainActivity extends Activity {
         stopModbusPolling();
         editor = null;
         modbusExecutor.shutdownNow();
+        if (mediaPlayer != null) {
+            try { mediaPlayer.stop(); mediaPlayer.release(); } catch (Exception ignored) {}
+            mediaPlayer = null;
+        }
+        if (textToSpeech != null) {
+            try { textToSpeech.stop(); textToSpeech.shutdown(); } catch (Exception ignored) {}
+            textToSpeech = null;
+        }
         super.onDestroy();
+    }
+
+    private void playSoundAlert(String pathOrUri) {
+        try {
+            if (mediaPlayer != null) {
+                try { mediaPlayer.stop(); mediaPlayer.release(); } catch (Exception ignored) {}
+                mediaPlayer = null;
+            }
+            if (pathOrUri != null && pathOrUri.startsWith("content://")) {
+                mediaPlayer = new MediaPlayer();
+                mediaPlayer.setDataSource(this, Uri.parse(pathOrUri));
+                mediaPlayer.prepare();
+                mediaPlayer.start();
+            } else if (pathOrUri != null && new java.io.File(pathOrUri).exists()) {
+                mediaPlayer = new MediaPlayer();
+                mediaPlayer.setDataSource(pathOrUri);
+                mediaPlayer.prepare();
+                mediaPlayer.start();
+            } else {
+                ToneGenerator toneG = new ToneGenerator(AudioManager.STREAM_ALARM, 80);
+                toneG.startTone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 350);
+            }
+        } catch (Exception ex) {
+            android.util.Log.e("BLOODSKY", "Sound alert error", ex);
+            try {
+                ToneGenerator toneG = new ToneGenerator(AudioManager.STREAM_ALARM, 80);
+                toneG.startTone(ToneGenerator.TONE_PROP_BEEP, 250);
+            } catch (Exception ignored) {}
+        }
+    }
+
+    private void speakVoiceAnnouncement(String text) {
+        if (textToSpeech != null && text != null && !text.trim().isEmpty()) {
+            try {
+                textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, "bloodsky_tts_" + SystemClock.elapsedRealtime());
+            } catch (Exception ex) {
+                android.util.Log.e("BLOODSKY", "TTS speak error", ex);
+            }
+        }
     }
 
     private int dp(float value) {
@@ -654,9 +737,31 @@ public class MainActivity extends Activity {
                         int index = entry.getKey();
                         if (index < 0 || index >= widgets.size() || index >= snapshotWidgets.size()
                                 || widgets.get(index) != snapshotWidgets.get(index)) continue;
+                        Widget w = widgets.get(index);
                         liveValues.put(index, entry.getValue());
-                        if ("FBD Вход".equals(widgets.get(index).type)) {
-                            widgets.get(index).inputValue = isActiveModbusValue(entry.getValue());
+                        if ("FBD Вход".equals(w.type)) {
+                            w.inputValue = isActiveModbusValue(entry.getValue());
+                        } else if ("Звуковой сигнал".equals(w.type)) {
+                            boolean active = w.soundActive;
+                            if (entry.getValue() != null) {
+                                try { active = Double.parseDouble(entry.getValue()) >= w.soundThreshold; } catch (Exception ignored) {}
+                            }
+                            if (active && !w.lastSoundState) {
+                                w.lastSoundState = true;
+                                playSoundAlert(w.soundFilePath);
+                            } else if (!active) {
+                                w.lastSoundState = false;
+                            }
+                        } else if ("Голосовое сообщение".equals(w.type)) {
+                            int voiceIdx = 0;
+                            if (entry.getValue() != null) {
+                                try { voiceIdx = (int) Math.round(Double.parseDouble(entry.getValue())); } catch (Exception ignored) {}
+                            }
+                            if (voiceIdx < 0 || voiceIdx >= 16) voiceIdx = 0;
+                            if (voiceIdx != w.lastVoiceState) {
+                                w.lastVoiceState = voiceIdx;
+                                speakVoiceAnnouncement(w.voiceMessages[voiceIdx]);
+                            }
                         }
                     }
                     editor.invalidate();
@@ -819,6 +924,13 @@ public class MainActivity extends Activity {
         int pad = dp(16);
         form.setPadding(pad, dp(4), pad, 0);
 
+        TextView note = new TextView(this);
+        note.setText("Примечание: Настройки станции и Modbus Slave сохраняются в метаданных проекта. Они задают параметры конфигурации, но не запускают фоновый TCP-сервер Modbus Slave.");
+        note.setTextColor(Color.rgb(100, 116, 139));
+        note.setTextSize(12);
+        note.setPadding(0, 0, 0, dp(8));
+        form.addView(note);
+
         TextView stationLabel = new TextView(this);
         stationLabel.setText("Режим станции (0 = Мастер, 1 = Слейв)");
         form.addView(stationLabel);
@@ -850,9 +962,13 @@ public class MainActivity extends Activity {
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Сохранить", (dialog, which) -> {
                     try {
-                        projectExtraFields.put("stationMode", readPositiveInt(stationField, 0, true));
-                        projectExtraFields.put("modbusSlave", slaveIdField.getText().toString());
-                        projectExtraFields.put("systemRegisters", sysRegField.getText().toString());
+                        int mode = readPositiveInt(stationField, 0, true);
+                        if (mode != 0 && mode != 1) mode = 0;
+                        projectExtraFields.put("stationMode", mode);
+                        String slaveText = slaveIdField.getText().toString().trim();
+                        if (slaveText.isEmpty()) slaveText = "Slave ID: 1, Port: 502";
+                        projectExtraFields.put("modbusSlave", slaveText);
+                        projectExtraFields.put("systemRegisters", sysRegField.getText().toString().trim());
                         persistProject();
                         Toast.makeText(this, "Настройки проекта сохранены", Toast.LENGTH_SHORT).show();
                     } catch (Exception ex) {
@@ -1344,6 +1460,62 @@ public class MainActivity extends Activity {
             }
         }
 
+        final EditText soundThresholdField;
+        final EditText soundFilePathField;
+        if ("Звуковой сигнал".equals(w.type)) {
+            TextView soundHeader = new TextView(this);
+            soundHeader.setText("Параметры звука (порог срабатывания и имя файла)");
+            soundHeader.setPadding(0, dp(10), 0, 0);
+            form.addView(soundHeader);
+            soundThresholdField = propertyField(Double.toString(w.soundThreshold), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            soundThresholdField.setHint("Порог (например 1.0)");
+            form.addView(soundThresholdField);
+            soundFilePathField = propertyField(w.soundFilePath, InputType.TYPE_CLASS_TEXT);
+            soundFilePathField.setHint("Имя файла / URL или 'Аларм'");
+            form.addView(soundFilePathField);
+        } else { soundThresholdField = null; soundFilePathField = null; }
+
+        final EditText targetScreenIndexField;
+        final EditText targetUrlField;
+        if ("Переход на экран".equals(w.type)) {
+            TextView screenNavHeader = new TextView(this);
+            screenNavHeader.setText("Целевой экран (индекс 1..N) и URL");
+            screenNavHeader.setPadding(0, dp(10), 0, 0);
+            form.addView(screenNavHeader);
+            targetScreenIndexField = propertyField(Integer.toString(w.targetScreenIndex + 1), InputType.TYPE_CLASS_NUMBER);
+            targetScreenIndexField.setHint("Номер экрана (начиная с 1)");
+            form.addView(targetScreenIndexField);
+            targetUrlField = propertyField(w.targetUrl, InputType.TYPE_CLASS_TEXT);
+            targetUrlField.setHint("URL для перехода (необязательно)");
+            form.addView(targetUrlField);
+        } else { targetScreenIndexField = null; targetUrlField = null; }
+
+        final EditText[] imagePathFields = new EditText[4];
+        if ("Многопозиционное фото".equals(w.type)) {
+            TextView imgHeader = new TextView(this);
+            imgHeader.setText("Пути к изображениям состояний (0–3)");
+            imgHeader.setPadding(0, dp(10), 0, 0);
+            form.addView(imgHeader);
+            for (int k = 0; k < 4; k++) {
+                imagePathFields[k] = propertyField(w.imagePathStates[k], InputType.TYPE_CLASS_TEXT);
+                imagePathFields[k].setHint("Изображение " + k + " (файл / URI)");
+                form.addView(imagePathFields[k]);
+            }
+        }
+
+        final EditText[] voiceMsgFields = new EditText[4];
+        if ("Голосовое сообщение".equals(w.type)) {
+            TextView voiceHeader = new TextView(this);
+            voiceHeader.setText("Тексты голосовых оповещений (0–3)");
+            voiceHeader.setPadding(0, dp(10), 0, 0);
+            form.addView(voiceHeader);
+            for (int k = 0; k < 4; k++) {
+                voiceMsgFields[k] = propertyField(w.voiceMessages[k], InputType.TYPE_CLASS_TEXT);
+                voiceMsgFields[k].setHint("Голос " + k);
+                form.addView(voiceMsgFields[k]);
+            }
+        }
+
         final EditText timerPresetField;
         if ("FBD Таймер".equals(w.type) || "FBD TP".equals(w.type) || "FBD TOF".equals(w.type)) {
             TextView timerLabel = new TextView(this);
@@ -1466,6 +1638,29 @@ public class MainActivity extends Activity {
                         for (int k = 0; k < 4; k++) {
                             if (bitLabelFields[k] != null) {
                                 w.bitListLabels[k] = bitLabelFields[k].getText().toString();
+                            }
+                        }
+                    }
+                    if (soundThresholdField != null) {
+                        w.soundThreshold = readDouble(soundThresholdField, w.soundThreshold);
+                        w.soundFilePath = soundFilePathField.getText().toString();
+                    }
+                    if (targetScreenIndexField != null) {
+                        int idx = readPositiveInt(targetScreenIndexField, w.targetScreenIndex + 1, false) - 1;
+                        w.targetScreenIndex = Math.max(0, idx);
+                        w.targetUrl = targetUrlField.getText().toString();
+                    }
+                    if ("Многопозиционное фото".equals(w.type)) {
+                        for (int k = 0; k < 4; k++) {
+                            if (imagePathFields[k] != null) {
+                                w.imagePathStates[k] = imagePathFields[k].getText().toString();
+                            }
+                        }
+                    }
+                    if ("Голосовое сообщение".equals(w.type)) {
+                        for (int k = 0; k < 4; k++) {
+                            if (voiceMsgFields[k] != null) {
+                                w.voiceMessages[k] = voiceMsgFields[k].getText().toString();
                             }
                         }
                     }
@@ -1653,17 +1848,29 @@ public class MainActivity extends Activity {
         obj.put("visible", w.visible); obj.put("showFrame", w.showFrame); obj.put("autoResizeText", w.autoResizeText);
         obj.put("x", w.x); obj.put("y", w.y); obj.put("w", w.w); obj.put("h", w.h);
 
+        obj.put("soundThreshold", w.soundThreshold);
+        obj.put("soundActive", w.soundActive);
+        obj.put("soundFilePath", w.soundFilePath == null ? "Аларм" : w.soundFilePath);
+        obj.put("targetScreenIndex", w.targetScreenIndex);
+        obj.put("targetUrl", w.targetUrl == null ? "" : w.targetUrl);
+
         JSONArray dynStatesArr = new JSONArray();
         JSONArray dynColorsArr = new JSONArray();
         JSONArray bitLabelsArr = new JSONArray();
+        JSONArray voiceMessagesArr = new JSONArray();
+        JSONArray imagePathStatesArr = new JSONArray();
         for (int i = 0; i < 16; i++) {
             dynStatesArr.put(w.dynTextStates[i] == null ? "Состояние " + i : w.dynTextStates[i]);
             dynColorsArr.put(w.dynTextColors[i]);
             bitLabelsArr.put(w.bitListLabels[i] == null ? "Бит " + i : w.bitListLabels[i]);
+            voiceMessagesArr.put(w.voiceMessages[i] == null ? "Сообщение " + i : w.voiceMessages[i]);
+            imagePathStatesArr.put(w.imagePathStates[i] == null ? "Картинка " + i : w.imagePathStates[i]);
         }
         obj.put("dynTextStates", dynStatesArr);
         obj.put("dynTextColors", dynColorsArr);
         obj.put("bitListLabels", bitLabelsArr);
+        obj.put("voiceMessages", voiceMessagesArr);
+        obj.put("imagePathStates", imagePathStatesArr);
         return obj;
     }
 
@@ -1687,16 +1894,22 @@ public class MainActivity extends Activity {
         w.backgroundColor = obj.optInt("backgroundColor", 0); w.textColor = obj.optInt("textColor", Color.rgb(31, 41, 55));
         w.textSizeSp = Math.max(8, Math.min(48, obj.optInt("textSizeSp", 14)));
         w.visible = obj.optBoolean("visible", true); w.showFrame = obj.optBoolean("showFrame", true); w.autoResizeText = obj.optBoolean("autoResizeText", false);
+        w.soundThreshold = obj.optDouble("soundThreshold", 1.0); w.soundActive = obj.optBoolean("soundActive", false); w.soundFilePath = obj.optString("soundFilePath", "Аларм");
+        w.targetScreenIndex = obj.optInt("targetScreenIndex", 0); w.targetUrl = obj.optString("targetUrl", "");
         w.x = obj.optInt("x", 40); w.y = obj.optInt("y", 50);
         w.w = obj.optInt("w", 160); w.h = obj.optInt("h", 58);
 
         JSONArray dynStatesArr = obj.optJSONArray("dynTextStates");
         JSONArray dynColorsArr = obj.optJSONArray("dynTextColors");
         JSONArray bitLabelsArr = obj.optJSONArray("bitListLabels");
+        JSONArray voiceMessagesArr = obj.optJSONArray("voiceMessages");
+        JSONArray imagePathStatesArr = obj.optJSONArray("imagePathStates");
         for (int i = 0; i < 16; i++) {
             w.dynTextStates[i] = (dynStatesArr != null && i < dynStatesArr.length()) ? dynStatesArr.optString(i, "Состояние " + i) : "Состояние " + i;
             w.dynTextColors[i] = (dynColorsArr != null && i < dynColorsArr.length()) ? dynColorsArr.optInt(i, 0) : 0;
             w.bitListLabels[i] = (bitLabelsArr != null && i < bitLabelsArr.length()) ? bitLabelsArr.optString(i, "Бит " + i) : "Бит " + i;
+            w.voiceMessages[i] = (voiceMessagesArr != null && i < voiceMessagesArr.length()) ? voiceMessagesArr.optString(i, "Сообщение " + i) : "Сообщение " + i;
+            w.imagePathStates[i] = (imagePathStatesArr != null && i < imagePathStatesArr.length()) ? imagePathStatesArr.optString(i, "Картинка " + i) : "Картинка " + i;
         }
         return w;
     }
@@ -2339,6 +2552,15 @@ public class MainActivity extends Activity {
         public String[] dynTextStates = new String[16];
         public int[] dynTextColors = new int[16];
         public String[] bitListLabels = new String[16];
+        public String[] voiceMessages = new String[16];
+        public String[] imagePathStates = new String[16];
+        public double soundThreshold = 1.0;
+        public boolean soundActive = false;
+        public String soundFilePath = "Аларм";
+        public int targetScreenIndex = 0;
+        public String targetUrl = "";
+        public int lastVoiceState = -1;
+        public boolean lastSoundState = false;
         public JSONObject extraFields = new JSONObject();
         public float x, y, w, h;
 
@@ -2347,6 +2569,8 @@ public class MainActivity extends Activity {
                 dynTextStates[i] = "Состояние " + i;
                 dynTextColors[i] = 0;
                 bitListLabels[i] = "Бит " + i;
+                voiceMessages[i] = "Сообщение " + i;
+                imagePathStates[i] = "Картинка " + i;
             }
         }
     }
@@ -2575,6 +2799,48 @@ public class MainActivity extends Activity {
                     paint.setStyle(Paint.Style.FILL);
                     paint.setColor(Color.rgb(120, 80, 10));
                     canvas.drawText("−             +", w.x + dp(18), w.y + w.h - dp(16), paint);
+                } else if ("Звуковой сигнал".equals(w.type)) {
+                    boolean active = w.soundActive;
+                    if (liveValues.containsKey(i)) {
+                        try { active = Double.parseDouble(liveValues.get(i)) >= w.soundThreshold; } catch (Exception ignored) {}
+                    }
+                    paint.setColor(active ? Color.rgb(239, 68, 68) : Color.rgb(100, 116, 139));
+                    canvas.drawCircle(w.x + dp(16), w.y + w.h / 2, dp(6), paint);
+                    paint.setColor(w.textColor);
+                    String soundLabel = (active ? "🔊 " : "🔇 ") + w.text + (active ? " [АЛАРМ]" : " [ОК]");
+                    if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(32)) / Math.max(4f, soundLabel.length() * 0.58f))));
+                    canvas.drawText(soundLabel, w.x + dp(28), w.y + w.h / 2 + dp(5), paint);
+                } else if ("Переход на экран".equals(w.type)) {
+                    paint.setColor(w.textColor);
+                    String navLabel = "🔗 " + w.text + " (Экран " + (w.targetScreenIndex + 1) + ")";
+                    if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(16)) / Math.max(4f, navLabel.length() * 0.58f))));
+                    canvas.drawText(navLabel, w.x + dp(8), w.y + w.h / 2 + dp(5), paint);
+                } else if ("Многопозиционное фото".equals(w.type)) {
+                    int imgIdx = 0;
+                    if (liveValues.containsKey(i)) {
+                        try { imgIdx = (int) Math.round(Double.parseDouble(liveValues.get(i))); } catch (Exception ignored) {}
+                    }
+                    if (imgIdx < 0 || imgIdx >= 16) imgIdx = 0;
+                    String imgPath = w.imagePathStates[imgIdx];
+                    Bitmap bitmap = loadCachedBitmap(imgPath);
+                    if (bitmap != null) {
+                        canvas.drawBitmap(bitmap, null, rect, paint);
+                    } else {
+                        String imgLabel = "🖼 " + w.text + " [" + imgIdx + "]: " + (imgPath == null ? "" : imgPath);
+                        paint.setColor(w.textColor);
+                        if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(16)) / Math.max(4f, imgLabel.length() * 0.58f))));
+                        canvas.drawText(imgLabel, w.x + dp(8), w.y + w.h / 2 + dp(5), paint);
+                    }
+                } else if ("Голосовое сообщение".equals(w.type)) {
+                    int voiceIdx = 0;
+                    if (liveValues.containsKey(i)) {
+                        try { voiceIdx = (int) Math.round(Double.parseDouble(liveValues.get(i))); } catch (Exception ignored) {}
+                    }
+                    if (voiceIdx < 0 || voiceIdx >= 16) voiceIdx = 0;
+                    String voiceLabel = "🗣 " + w.text + " [" + voiceIdx + "]: " + w.voiceMessages[voiceIdx];
+                    paint.setColor(w.textColor);
+                    if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(16)) / Math.max(4f, voiceLabel.length() * 0.58f))));
+                    canvas.drawText(voiceLabel, w.x + dp(8), w.y + w.h / 2 + dp(5), paint);
                 } else {
                     float tx = w.x + dp(10);
                     float ty = w.y + w.h / 2 + dp(5);
@@ -2684,6 +2950,20 @@ public class MainActivity extends Activity {
                         picked.inputValue = !picked.inputValue;
                         persistProject();
                         Toast.makeText(MainActivity.this, "Вход FBD = " + (picked.inputValue ? "1" : "0"), Toast.LENGTH_SHORT).show();
+                    } else if ("Переход на экран".equals(picked.type)) {
+                        if (picked.targetScreenIndex >= 0 && picked.targetScreenIndex < screens.size()) {
+                            activateScreen(picked.targetScreenIndex);
+                            Toast.makeText(MainActivity.this, "Переход на Экран " + (picked.targetScreenIndex + 1), Toast.LENGTH_SHORT).show();
+                        } else if (picked.targetUrl != null && !picked.targetUrl.trim().isEmpty()) {
+                            try {
+                                Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(picked.targetUrl));
+                                startActivity(browserIntent);
+                            } catch (Exception ex) {
+                                Toast.makeText(MainActivity.this, "Не удалось открыть URL: " + picked.targetUrl, Toast.LENGTH_SHORT).show();
+                            }
+                        } else {
+                            editSelectedWidget();
+                        }
                     } else {
                         editSelectedWidget();
                     }

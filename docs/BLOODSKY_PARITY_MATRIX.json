@@ -110,8 +110,8 @@
         {
           "id": "widget.sound",
           "name": "Sound / Alarm Trigger (CustomSound)",
-          "status": "implemented",
-          "criteria": "Audio/alarm indicator triggering active alert state when register threshold is met."
+          "status": "partial",
+          "criteria": "Audio/alarm indicator with edge-triggered MediaPlayer tone and alert trigger."
         },
         {
           "id": "widget.screen_link",
@@ -122,14 +122,14 @@
         {
           "id": "widget.multistate_photo",
           "name": "Multi-State Image / Picture (CustomComponents.h)",
-          "status": "implemented",
-          "criteria": "Multi-state image view switching displayed image state based on live register value."
+          "status": "partial",
+          "criteria": "Multi-state image view decoding file/URI bitmaps with fallback status frame."
         },
         {
           "id": "widget.voice_announcement",
           "name": "Voice Announcement (CustomComponents.a0)",
-          "status": "implemented",
-          "criteria": "Voice/text-to-speech announcement trigger displaying status messages per state."
+          "status": "partial",
+          "criteria": "Voice announcement trigger with TextToSpeech synthesis and edge-triggering."
         }
       ]
     },
