@@ -32,6 +32,9 @@ public class ProjectJsonCodecTest {
         assertEquals(2, restored.getJSONArray("screens").length());
         assertEquals(1, restored.getJSONArray("screens").getJSONObject(0).getJSONArray("connections").length());
         assertEquals("keep-me", restored.getJSONArray("screens").getJSONObject(0).getString("vendorScreenOption"));
+        assertEquals(9, restored.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets")
+                .getJSONObject(0).getJSONObject("vendorWidgetOption").getJSONArray("calibration").getInt(1));
+        assertEquals(7, restored.getJSONObject("vendorProjectOption").getInt("revision"));
     }
 
     @Test
@@ -51,9 +54,6 @@ public class ProjectJsonCodecTest {
         assertEquals(2, merged.getInt("target"));
         assertEquals("#FF0000", merged.getString("wireColor"));
         assertEquals("digital", merged.getJSONObject("vendorConnectionOption").getString("signalType"));
-        assertEquals(9, restored.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets")
-                .getJSONObject(0).getJSONObject("vendorWidgetOption").getJSONArray("calibration").getInt(1));
-        assertEquals(7, restored.getJSONObject("vendorProjectOption").getInt("revision"));
     }
 
     @Test
