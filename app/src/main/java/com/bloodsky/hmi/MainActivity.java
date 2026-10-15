@@ -1537,9 +1537,10 @@ public class MainActivity extends Activity {
     private class EditorCanvas extends View {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         int selected = -1;
-        float downX, downY, startX, startY;
+        float downX, downY, startX, startY, startW, startH;
         long downAt;
         boolean dragging;
+        boolean resizing;
 
         EditorCanvas() {
             super(MainActivity.this);
@@ -1602,6 +1603,13 @@ public class MainActivity extends Activity {
                     paint.setStrokeWidth(dp(i == selected ? 2.5f : 1));
                     paint.setColor(i == selected ? Color.rgb(21, 101, 192) : Color.rgb(148, 163, 184));
                     canvas.drawRoundRect(rect, dp(6), dp(6), paint);
+                }
+                if (i == selected) {
+                    // Desktop-style resize grip: drag the lower-right corner to change size.
+                    paint.setStyle(Paint.Style.FILL);
+                    paint.setColor(Color.rgb(21, 101, 192));
+                    float grip = dp(9);
+                    canvas.drawRect(w.x + w.w - grip, w.y + w.h - grip, w.x + w.w, w.y + w.h, paint);
                 }
                 paint.setStyle(Paint.Style.FILL);
                 paint.setColor(w.textColor);
@@ -1695,12 +1703,15 @@ public class MainActivity extends Activity {
         @Override public boolean onTouchEvent(MotionEvent event) {
             float x = event.getX(), y = event.getY();
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                downX = x; downY = y; downAt = SystemClock.elapsedRealtime(); dragging = false; selected = -1;
+                downX = x; downY = y; downAt = SystemClock.elapsedRealtime(); dragging = false; resizing = false; selected = -1;
                 for (int i = widgets.size() - 1; i >= 0; i--) {
                     Widget w = widgets.get(i);
                     if (!w.visible) continue;
                     if (x >= w.x && x <= w.x + w.w && y >= w.y && y <= w.y + w.h) {
-                        selected = i; startX = w.x; startY = w.y; break;
+                        selected = i; startX = w.x; startY = w.y; startW = w.w; startH = w.h;
+                        float grip = dp(22);
+                        resizing = x >= w.x + w.w - grip && y >= w.y + w.h - grip;
+                        break;
                     }
                 }
                 invalidate();
@@ -1711,8 +1722,13 @@ public class MainActivity extends Activity {
                 if (Math.abs(dx) + Math.abs(dy) > dp(5)) dragging = true;
                 if (dragging) {
                     Widget w = widgets.get(selected);
-                    w.x = Math.max(0, Math.min(getWidth() - w.w, startX + dx));
-                    w.y = Math.max(0, Math.min(getHeight() - w.h, startY + dy));
+                    if (resizing) {
+                        w.w = Math.max(dp(60), Math.min(Math.max(dp(60), getWidth() - w.x), startW + dx));
+                        w.h = Math.max(dp(40), Math.min(Math.max(dp(40), getHeight() - w.y), startH + dy));
+                    } else {
+                        w.x = Math.max(0, Math.min(Math.max(0, getWidth() - w.w), startX + dx));
+                        w.y = Math.max(0, Math.min(Math.max(0, getHeight() - w.h), startY + dy));
+                    }
                     invalidate();
                 }
                 return true;
