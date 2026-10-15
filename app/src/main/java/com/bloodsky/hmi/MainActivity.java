@@ -13,6 +13,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.Drawable;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -1044,6 +1045,19 @@ public class MainActivity extends Activity {
 
         @Override protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
+            String resourceName = "kc_" + ("Индикатор".equals(type) ? "lamp_green"
+                    : "Кнопка".equals(type) ? "button"
+                    : "Задатчик".equals(type) ? "tab_digital_setters"
+                    : "Текст".equals(type) ? "tab_text"
+                    : type.startsWith("FBD ") ? "logic_ico" : "no_picture");
+            int originalId = getResources().getIdentifier(resourceName, "drawable", getPackageName());
+            if (originalId != 0) {
+                Drawable original = getResources().getDrawable(originalId);
+                int inset = dp(3);
+                original.setBounds(inset, inset, getWidth() - inset, getHeight() - inset);
+                original.draw(canvas);
+                return;
+            }
             float width = getWidth(), height = getHeight();
             float left = dp(3), top = dp(5), right = width - dp(3), bottom = height - dp(5);
             previewPaint.setStrokeWidth(dp(1.5f));
