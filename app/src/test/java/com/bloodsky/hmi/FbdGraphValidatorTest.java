@@ -78,6 +78,25 @@ public class FbdGraphValidatorTest {
     }
 
     @Test
+    public void rejectsNonArrayConnectionField() throws Exception {
+        JSONObject screen = new JSONObject()
+                .put("connections", new JSONObject().put("source", 0).put("target", 1));
+        try {
+            FbdGraphValidator.validateScreenConnections(screen, widgets(2));
+            fail("Expected non-array connections to be rejected");
+        } catch (IllegalArgumentException expected) {
+            assertEquals("Connections must be an array", expected.getMessage());
+        }
+    }
+
+    @Test
+    public void acceptsMissingOrNullLegacyConnectionField() throws Exception {
+        FbdGraphValidator.validateScreenConnections(new JSONObject(), widgets(2));
+        FbdGraphValidator.validateScreenConnections(
+                new JSONObject().put("connections", JSONObject.NULL), widgets(2));
+    }
+
+    @Test
     public void acceptsEmptyConnectionList() throws Exception {
         FbdGraphValidator.validate(widgets(2), new JSONArray());
     }
