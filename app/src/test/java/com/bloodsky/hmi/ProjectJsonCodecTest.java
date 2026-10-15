@@ -75,6 +75,28 @@ public class ProjectJsonCodecTest {
     }
 
     @Test
+    public void readsOnlyFiniteWholeNumberIntegerFields() throws Exception {
+        JSONObject valid = new JSONObject().put("x", -12).put("w", 160);
+        assertEquals(-12, ProjectJsonCodec.readIntField(valid, "x", 0));
+        assertEquals(160, ProjectJsonCodec.readIntField(valid, "w", 58));
+        assertEquals(58, ProjectJsonCodec.readIntField(valid, "missing", 58));
+
+        assertInvalidIntegerField(new JSONObject().put("x", "12"), "x");
+        assertInvalidIntegerField(new JSONObject().put("x", 12.5), "x");
+        assertInvalidIntegerField(new JSONObject().put("x", 2147483648L), "x");
+        assertInvalidIntegerField(new JSONObject().put("x", JSONObject.NULL), "x");
+    }
+
+    private void assertInvalidIntegerField(JSONObject object, String key) throws Exception {
+        try {
+            ProjectJsonCodec.readIntField(object, key, 0);
+            throw new AssertionError("Expected invalid integer field: " + key);
+        } catch (org.json.JSONException expected) {
+            assertTrue(expected.getMessage().contains("Field must be an integer"));
+        }
+    }
+
+    @Test
     public void acceptsLegacySingleScreenWidgetArrayWithoutChangingItsShape() throws Exception {
         JSONArray legacy = new JSONArray()
                 .put(new JSONObject().put("type", "Текст").put("text", "Старый проект").put("legacyFlag", true));
