@@ -14,10 +14,14 @@ public class ProjectJsonCodecTest {
                 .put("type", "FBD Вход")
                 .put("x", 23)
                 .put("vendorWidgetOption", new JSONObject().put("calibration", new JSONArray().put(3).put(9)));
+        JSONObject connection = new JSONObject()
+                .put("source", 0)
+                .put("target", 1)
+                .put("vendorConnectionOption", new JSONObject().put("routingMode", "orthogonal"));
         JSONObject screen = new JSONObject()
                 .put("name", "Станция 1")
                 .put("widgets", new JSONArray().put(widget).put(new JSONObject().put("type", "FBD И")))
-                .put("connections", new JSONArray().put(new JSONObject().put("source", 0).put("target", 1)))
+                .put("connections", new JSONArray().put(connection))
                 .put("vendorScreenOption", "keep-me");
         JSONObject original = new JSONObject()
                 .put("projectName", "Тестовый проект")
@@ -31,6 +35,9 @@ public class ProjectJsonCodecTest {
         assertEquals("Тестовый проект", restored.getString("projectName"));
         assertEquals(2, restored.getJSONArray("screens").length());
         assertEquals(1, restored.getJSONArray("screens").getJSONObject(0).getJSONArray("connections").length());
+        assertEquals("orthogonal", restored.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("connections").getJSONObject(0)
+                .getJSONObject("vendorConnectionOption").getString("routingMode"));
         assertEquals("keep-me", restored.getJSONArray("screens").getJSONObject(0).getString("vendorScreenOption"));
         assertEquals(9, restored.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets")
                 .getJSONObject(0).getJSONObject("vendorWidgetOption").getJSONArray("calibration").getInt(1));
