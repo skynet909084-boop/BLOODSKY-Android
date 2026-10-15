@@ -38,7 +38,10 @@ final class ProjectJsonCodec {
             String key = keys.next();
             merged.put(key, current.get(key));
         }
-        return merged;
+        // Detach values supplied by the current model as well as preserved metadata.
+        // JSONObject.put() otherwise retains references to nested JSONObject/JSONArray
+        // instances, allowing later edits to mutate the source model unexpectedly.
+        return JsonObjectCopy.deepCopy(merged);
     }
 
     static String serialize(JSONObject document) {
