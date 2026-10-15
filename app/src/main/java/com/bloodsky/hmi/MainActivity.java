@@ -1368,9 +1368,11 @@ public class MainActivity extends Activity {
             android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
             android.content.SharedPreferences.Editor changes = prefs.edit();
             String previous = prefs.getString(ACTIVE_PROJECT, null);
-            // Only back up a valid previous project; never replace a good backup
-            // with damaged JSON during recovery.
-            if (previous != null) {
+            String next = ProjectJsonCodec.serialize(
+                    ProjectJsonCodec.mergePreservedFields(projectExtraFields, project));
+            // A repeated autosave of identical data must not erase the useful
+            // previous revision kept as backup.
+            if (previous != null && !previous.equals(next)) {
                 try {
                     validateImportedProject(previous);
                     changes.putString(BACKUP_PROJECT, previous);
@@ -1378,8 +1380,7 @@ public class MainActivity extends Activity {
                     // Preserve the existing last-known-good backup.
                 }
             }
-            if (!changes.putString(ACTIVE_PROJECT, ProjectJsonCodec.serialize(
-                            ProjectJsonCodec.mergePreservedFields(projectExtraFields, project)))
+            if (!changes.putString(ACTIVE_PROJECT, next)
                     .putString("project_name", projectName).commit()) {
                 Toast.makeText(this, "Не удалось сохранить проект", Toast.LENGTH_SHORT).show();
                 return false;
