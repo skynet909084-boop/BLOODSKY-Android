@@ -12,6 +12,20 @@ import java.util.List;
 final class FbdGraphValidator {
     private FbdGraphValidator() {}
 
+    private static int readIndex(JSONObject edge, String key) {
+        Object raw = edge.opt(key);
+        if (!(raw instanceof Number)) {
+            throw new IllegalArgumentException("Connection index out of range");
+        }
+        double value = ((Number) raw).doubleValue();
+        if (Double.isNaN(value) || Double.isInfinite(value)
+                || value < 0 || value >= Integer.MAX_VALUE + 1.0
+                || value != Math.rint(value)) {
+            throw new IllegalArgumentException("Connection index out of range");
+        }
+        return (int) value;
+    }
+
     static void validate(JSONArray widgets, JSONArray connections) {
         if (widgets == null) throw new IllegalArgumentException("Screen widgets must be an array");
         if (connections == null) return;
@@ -26,8 +40,8 @@ final class FbdGraphValidator {
         for (int i = 0; i < connections.length(); i++) {
             JSONObject edge = connections.optJSONObject(i);
             if (edge == null) throw new IllegalArgumentException("Connection must be an object");
-            int source = edge.optInt("source", -1);
-            int target = edge.optInt("target", -1);
+            int source = readIndex(edge, "source");
+            int target = readIndex(edge, "target");
             if (source < 0 || target < 0 || source >= nodeCount || target >= nodeCount || source == target) {
                 throw new IllegalArgumentException("Connection index out of range");
             }
