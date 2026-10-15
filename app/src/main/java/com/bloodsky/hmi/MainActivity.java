@@ -1087,22 +1087,13 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "Сначала выбери элемент на экране", Toast.LENGTH_SHORT).show();
             return;
         }
-        Widget source = widgets.get(editor.selected);
-        clipboardWidget = new Widget();
-        clipboardWidget.type = source.type;
-        clipboardWidget.text = source.text;
-        clipboardWidget.connectionInfo = source.connectionInfo;
-        clipboardWidget.inputValue = source.inputValue;
-        clipboardWidget.timerPresetMs = source.timerPresetMs;
-        clipboardWidget.compareA = source.compareA;
-        clipboardWidget.compareB = source.compareB;
-        clipboardWidget.compareOperator = source.compareOperator;
-        clipboardWidget.backgroundColor = source.backgroundColor; clipboardWidget.textColor = source.textColor; clipboardWidget.textSizeSp = source.textSizeSp;
-        clipboardWidget.x = source.x;
-        clipboardWidget.y = source.y;
-        clipboardWidget.w = source.w;
-        clipboardWidget.h = source.h;
-        Toast.makeText(this, "Элемент скопирован", Toast.LENGTH_SHORT).show();
+        try {
+            // Clone through the project serializer so all current and future properties are preserved.
+            clipboardWidget = widgetFromJson(widgetToJson(widgets.get(editor.selected)));
+            Toast.makeText(this, "Элемент скопирован со всеми настройками", Toast.LENGTH_SHORT).show();
+        } catch (Exception error) {
+            Toast.makeText(this, "Не удалось скопировать элемент", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void pasteWidget() {
@@ -1110,29 +1101,24 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "Сначала скопируй элемент", Toast.LENGTH_SHORT).show();
             return;
         }
-        Widget copy = new Widget();
-        copy.type = clipboardWidget.type;
-        copy.text = clipboardWidget.text;
-        copy.connectionInfo = clipboardWidget.connectionInfo;
-        copy.inputValue = clipboardWidget.inputValue;
-        copy.timerPresetMs = clipboardWidget.timerPresetMs;
-        copy.compareA = clipboardWidget.compareA;
-        copy.compareB = clipboardWidget.compareB;
-        copy.compareOperator = clipboardWidget.compareOperator;
-        copy.backgroundColor = clipboardWidget.backgroundColor; copy.textColor = clipboardWidget.textColor; copy.textSizeSp = clipboardWidget.textSizeSp;
-        copy.x = Math.min(Math.max(0, editor == null ? clipboardWidget.x + dp(24) : editor.getWidth() - clipboardWidget.w),
-                clipboardWidget.x + dp(24));
-        copy.y = clipboardWidget.y + dp(24);
-        copy.w = clipboardWidget.w;
-        copy.h = clipboardWidget.h;
-        liveValues.clear();
-        widgets.add(copy);
-        if (editor != null) {
-            editor.selected = widgets.size() - 1;
-            editor.invalidate();
+        try {
+            Widget copy = widgetFromJson(widgetToJson(clipboardWidget));
+            int offset = dp(24);
+            int maxX = editor == null ? Math.max(0, copy.x + offset) : Math.max(0, editor.getWidth() - copy.w);
+            int maxY = editor == null ? Math.max(0, copy.y + offset) : Math.max(0, editor.getHeight() - copy.h);
+            copy.x = Math.max(0, Math.min(maxX, copy.x + offset));
+            copy.y = Math.max(0, Math.min(maxY, copy.y + offset));
+            liveValues.clear();
+            widgets.add(copy);
+            if (editor != null) {
+                editor.selected = widgets.size() - 1;
+                editor.invalidate();
+            }
+            persistProject();
+            Toast.makeText(this, "Копия добавлена на экран", Toast.LENGTH_SHORT).show();
+        } catch (Exception error) {
+            Toast.makeText(this, "Не удалось вставить элемент", Toast.LENGTH_SHORT).show();
         }
-        persistProject();
-        Toast.makeText(this, "Копия добавлена на экран", Toast.LENGTH_SHORT).show();
     }
 
     private void adjustSetpoint(Widget widget, int delta) {
