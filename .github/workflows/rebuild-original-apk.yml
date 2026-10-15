@@ -1,0 +1,98 @@
+name: BLOODSKY — verify original APK rebuild
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Тег приватного Release с исходным Kaskada Craft APK (пусто = последний Release)"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  rebuild-baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout BLOODSKY
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android build tools
+        run: sdkmanager "platform-tools" "build-tools;35.0.0"
+
+      - name: Download source APK from private GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.release_tag }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ -n "$INPUT_TAG" ]; then
+            TAG="$INPUT_TAG"
+          else
+            TAG="$(gh release list --repo "$GH_REPO" --limit 1 --json tagName --jq '.[0].tagName')"
+          fi
+          if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
+            echo "::error::Release не найден. Создай приватный Release и загрузи исходный APK."
+            exit 1
+          fi
+          mkdir -p input output
+          gh release download "$TAG" --repo "$GH_REPO" --pattern '*.apk' --dir input
+          APK="$(find input -maxdepth 1 -type f -iname '*.apk' | head -n 1)"
+          if [ -z "$APK" ]; then
+            echo "::error::В выбранном Release не найден APK."
+            exit 1
+          fi
+          echo "SOURCE_APK=$APK" >> "$GITHUB_ENV"
+          echo "Source APK: $APK"
+          sha256sum "$APK" | tee output/source-sha256.txt
+
+      - name: Download Apktool
+        run: |
+          set -euo pipefail
+          URL="$(curl -fsSL https://api.github.com/repos/iBotPeaches/Apktool/releases/latest | jq -r '[.assets[] | select(.name | test("apktool.*[.]jar$"; "i"))][0].browser_download_url // empty')"
+          if [ -z "$URL" ]; then
+            echo "::error::Не удалось найти JAR Apktool."
+            exit 1
+          fi
+          curl -fL "$URL" -o /tmp/apktool.jar
+          java -jar /tmp/apktool.jar --version
+
+      - name: Decode source APK
+        run: java -jar /tmp/apktool.jar d -f "$SOURCE_APK" -o decoded
+
+      - name: Rebuild without functional changes
+        run: java -jar /tmp/apktool.jar b decoded -o output/BLOODSKY-baseline-unsigned.apk
+
+      - name: Align and sign test APK
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/35.0.0"
+          "$BUILD_TOOLS/zipalign" -f -p 4 output/BLOODSKY-baseline-unsigned.apk output/BLOODSKY-baseline-aligned.apk
+          keytool -genkeypair -v             -keystore /tmp/bloodsky-test.keystore             -storepass changeit -keypass changeit             -alias bloodsky-test -keyalg RSA -keysize 2048 -validity 10000             -dname "CN=BLOODSKY Test, OU=Development, O=BLOODSKY, L=Unknown, ST=Unknown, C=DE"
+          "$BUILD_TOOLS/apksigner" sign             --ks /tmp/bloodsky-test.keystore             --ks-key-alias bloodsky-test             --ks-pass pass:changeit --key-pass pass:changeit             --out output/BLOODSKY-baseline-test-signed.apk             output/BLOODSKY-baseline-aligned.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose output/BLOODSKY-baseline-test-signed.apk
+          "$BUILD_TOOLS/aapt" dump badging output/BLOODSKY-baseline-test-signed.apk | head -n 5 | tee output/package-info.txt
+          sha256sum output/BLOODSKY-baseline-test-signed.apk | tee output/rebuilt-sha256.txt
+
+      - name: Upload baseline rebuild and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BLOODSKY-original-apk-rebuild-test
+          path: |
+            output/
+          retention-days: 7
+          if-no-files-found: error
