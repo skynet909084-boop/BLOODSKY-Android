@@ -1103,6 +1103,7 @@ public class MainActivity extends Activity {
             }
             project.put("screens", screenArray);
             project.put("currentScreen", currentScreenIndex);
+            project.put("projectName", projectName);
             getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                     .putString(ACTIVE_PROJECT, project.toString())
                     .putString("project_name", projectName).apply();
@@ -1121,6 +1122,8 @@ public class MainActivity extends Activity {
             Object parsed = new org.json.JSONTokener(json).nextValue();
             if (parsed instanceof JSONObject) {
                 JSONObject project = (JSONObject) parsed;
+                String importedProjectName = project.optString("projectName", projectName);
+                if (importedProjectName != null && !importedProjectName.trim().isEmpty()) projectName = importedProjectName.trim();
                 try { projectExtraFields = new JSONObject(project.toString()); } catch (Exception ignored) { projectExtraFields = new JSONObject(); }
                 JSONArray screenArray = project.optJSONArray("screens");
                 if (screenArray != null) {
