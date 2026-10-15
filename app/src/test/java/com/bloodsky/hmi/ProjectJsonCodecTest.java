@@ -98,13 +98,10 @@ public class ProjectJsonCodecTest {
                 .put("vendorConnectionOption", new JSONObject()
                         .put("routingMode", "orthogonal")
                         .put("vendorHints", new JSONArray().put("keep-labels").put("keep-bends")));
-        JSONObject loadedConnection = JsonObjectCopy.deepCopy(importedConnection);
+        JSONObject loadedConnection = FbdConnectionJsonCodec.preserveLoadedFields(importedConnection);
 
-        JSONObject editedCurrentFields = new JSONObject()
-                .put("source", 2)
-                .put("target", 3);
-        JSONObject savedConnection = ProjectJsonCodec.mergePreservedFields(
-                loadedConnection, editedCurrentFields);
+        // Exercise the same connection serializer used by MainActivity after editing.
+        JSONObject savedConnection = FbdConnectionJsonCodec.toJson(2, 3, loadedConnection);
         JSONObject savedProject = new JSONObject()
                 .put("projectName", "Round-trip")
                 .put("screens", new JSONArray().put(new JSONObject()
