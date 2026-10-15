@@ -79,6 +79,12 @@ public class MainActivity extends Activity {
         showHome();
     }
 
+    @Override protected void onDestroy() {
+        stopModbusPolling();
+        modbusExecutor.shutdownNow();
+        super.onDestroy();
+    }
+
     private int dp(float value) {
         return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
     }
