@@ -44,6 +44,22 @@ final class ProjectJsonCodec {
         return JsonObjectCopy.deepCopy(merged);
     }
 
+    static int readIntField(JSONObject object, String key, int defaultValue) throws JSONException {
+        if (object == null) throw new IllegalArgumentException("JSON object is null");
+        if (!object.has(key)) return defaultValue;
+        Object raw = object.get(key);
+        if (!(raw instanceof Number)) {
+            throw new JSONException("Field must be an integer: " + key);
+        }
+        double value = ((Number) raw).doubleValue();
+        if (Double.isNaN(value) || Double.isInfinite(value)
+                || value < Integer.MIN_VALUE || value > Integer.MAX_VALUE
+                || value != Math.rint(value)) {
+            throw new JSONException("Field must be an integer: " + key);
+        }
+        return (int) value;
+    }
+
     static String serialize(JSONObject document) {
         if (document == null) throw new IllegalArgumentException("Project document is null");
         return document.toString();
