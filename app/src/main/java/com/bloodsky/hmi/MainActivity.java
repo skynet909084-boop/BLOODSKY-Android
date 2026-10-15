@@ -1854,9 +1854,7 @@ public class MainActivity extends Activity {
                 if (w.backgroundColor != 0) {
                     paint.setColor(w.backgroundColor);
                 } else if (w.type != null && w.type.startsWith("FBD ")) {
-                    // IEC-style functional blocks use a neutral rectangular body,
-                    // not the rounded purple placeholder card.
-                    paint.setColor(Color.rgb(245, 246, 248));
+                    paint.setColor(Color.rgb(237, 233, 254));
                 } else if ("Индикатор".equals(w.type)) {
                     paint.setColor(Color.rgb(220, 252, 231));
                 } else if ("Кнопка".equals(w.type)) {
@@ -1866,15 +1864,12 @@ public class MainActivity extends Activity {
                 } else {
                     paint.setColor(Color.WHITE);
                 }
-                boolean fbdBlock = w.type != null && w.type.startsWith("FBD ");
-                if (fbdBlock) canvas.drawRect(rect, paint);
-                else canvas.drawRoundRect(rect, dp(6), dp(6), paint);
+                canvas.drawRoundRect(rect, dp(6), dp(6), paint);
                 if (w.showFrame || i == selected) {
                     paint.setStyle(Paint.Style.STROKE);
                     paint.setStrokeWidth(dp(i == selected ? 2.5f : 1));
                     paint.setColor(i == selected ? Color.rgb(21, 101, 192) : Color.rgb(148, 163, 184));
-                    if (fbdBlock) canvas.drawRect(rect, paint);
-                    else canvas.drawRoundRect(rect, dp(6), dp(6), paint);
+                    canvas.drawRoundRect(rect, dp(6), dp(6), paint);
                 }
                 if (i == selected) {
                     // Desktop-style resize grip: drag the lower-right corner to change size.
@@ -1909,7 +1904,7 @@ public class MainActivity extends Activity {
                     paint.setColor(output ? Color.rgb(22, 163, 74) : Color.rgb(100, 116, 139));
                     canvas.drawText("OUT = " + (output ? "1" : "0"), w.x + dp(12), w.y + w.h - dp(8), paint);
                     paint.setTextSize(dp(13));
-                    paint.setColor(Color.rgb(71, 85, 105));
+                    paint.setColor(Color.rgb(109, 40, 217));
                     canvas.drawLine(w.x, w.y + w.h * 0.38f, w.x + dp(14), w.y + w.h * 0.38f, paint);
                     canvas.drawLine(w.x, w.y + w.h * 0.68f, w.x + dp(14), w.y + w.h * 0.68f, paint);
                     canvas.drawLine(w.x + w.w - dp(14), w.y + w.h / 2, w.x + w.w, w.y + w.h / 2, paint);
