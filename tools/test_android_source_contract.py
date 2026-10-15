@@ -59,6 +59,12 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn('previewHeader.addView(new WidgetPreview(w.type, w.text)', self.source)
         self.assertIn('form.addView(previewHeader', self.source)
 
+    def test_fbd_library_uses_canvas_schematic_instead_of_generic_bitmap(self):
+        self.assertIn('if (originalId != 0 && !type.startsWith("FBD "))', self.source)
+        self.assertIn('if (type.startsWith("FBD ")) {', self.source)
+        self.assertIn('canvas.drawRect(left, top, right, bottom, previewPaint);', self.source)
+        self.assertIn('String title = "FBD И".equals(type) ? "AND"', self.source)
+
     def test_original_sound_resources_bundled_in_workflow(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         self.assertIn('Compiled {len(sounds)} original KaScada audio resources', workflow)
