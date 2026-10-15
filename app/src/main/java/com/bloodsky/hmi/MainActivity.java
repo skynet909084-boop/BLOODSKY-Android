@@ -1382,7 +1382,7 @@ public class MainActivity extends Activity {
                     JSONObject connectionObj = new JSONObject();
                     connectionObj.put("source", connection.source);
                     connectionObj.put("target", connection.target);
-                    connectionArray.put(connectionObj);
+                    connectionArray.put(ProjectJsonCodec.mergePreservedFields(connection.extraFields, connectionObj));
                 }
                 screenObj.put("connections", connectionArray);
                 screenArray.put(ProjectJsonCodec.mergePreservedFields(screen.extraFields, screenObj));
@@ -1429,7 +1429,9 @@ public class MainActivity extends Activity {
                             int target = connectionObj.optInt("target", -1);
                             if (source >= 0 && target >= 0 && source < screen.widgets.size() && target < screen.widgets.size()
                                     && source != target && isFbd(screen.widgets.get(source)) && isFbd(screen.widgets.get(target))) {
-                                screen.connections.add(new FbdConnection(source, target));
+                                FbdConnection connection = new FbdConnection(source, target);
+                                connection.extraFields = JsonObjectCopy.deepCopy(connectionObj);
+                                screen.connections.add(connection);
                             }
                         }
                         screens.add(screen);
@@ -1464,6 +1466,7 @@ public class MainActivity extends Activity {
     private static class FbdConnection {
         int source;
         int target;
+        JSONObject extraFields = new JSONObject();
         FbdConnection(int source, int target) { this.source = source; this.target = target; }
     }
 
