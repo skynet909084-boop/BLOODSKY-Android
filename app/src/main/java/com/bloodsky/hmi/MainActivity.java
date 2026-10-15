@@ -859,7 +859,8 @@ public class MainActivity extends Activity {
 
         LinearLayout list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
-        list.setPadding(dp(8), dp(4), dp(8), dp(4));
+        list.setPadding(dp(4), dp(4), dp(4), dp(4));
+        list.setBackgroundColor(Color.rgb(35, 35, 35));
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         scroll.addView(list);
@@ -878,16 +879,16 @@ public class MainActivity extends Activity {
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(dp(14), dp(10), dp(12), dp(10));
-            row.setMinimumHeight(dp(62));
+            row.setPadding(dp(10), dp(8), dp(10), dp(8));
+            row.setMinimumHeight(dp(54));
             row.setBackgroundColor(i % 2 == 0
-                    ? Color.rgb(248, 250, 252) : Color.WHITE);
+                    ? Color.rgb(48, 48, 48) : Color.rgb(40, 40, 40));
 
             TextView symbol = new TextView(this);
             symbol.setText(new String(Character.toChars(symbols[i])));
             symbol.setTextSize(21);
             symbol.setGravity(Gravity.CENTER);
-            symbol.setTextColor(i == 2 ? Color.rgb(185, 28, 28) : Color.rgb(37, 99, 235));
+            symbol.setTextColor(i == 2 ? Color.rgb(235, 105, 90) : Color.rgb(237, 176, 59));
             row.addView(symbol, new LinearLayout.LayoutParams(dp(38), -2));
 
             LinearLayout textColumn = new LinearLayout(this);
@@ -897,13 +898,13 @@ public class MainActivity extends Activity {
             label.setText(labels[i]);
             label.setTextSize(16);
             label.setTypeface(null, android.graphics.Typeface.BOLD);
-            label.setTextColor(i == 2 ? Color.rgb(185, 28, 28) : Color.rgb(30, 41, 59));
+            label.setTextColor(i == 2 ? Color.rgb(235, 105, 90) : Color.rgb(237, 176, 59));
             textColumn.addView(label, new LinearLayout.LayoutParams(-1, -2));
 
             TextView detail = new TextView(this);
             detail.setText(details[i]);
             detail.setTextSize(12);
-            detail.setTextColor(Color.rgb(100, 116, 139));
+            detail.setTextColor(Color.rgb(187, 187, 187));
             textColumn.addView(detail, new LinearLayout.LayoutParams(-1, -2));
             row.addView(textColumn, new LinearLayout.LayoutParams(0, -2, 1));
 
@@ -916,7 +917,7 @@ public class MainActivity extends Activity {
             list.addView(row, new LinearLayout.LayoutParams(-1, -2));
 
             View separator = new View(this);
-            separator.setBackgroundColor(Color.rgb(226, 232, 240));
+            separator.setBackgroundColor(Color.rgb(75, 75, 75));
             list.addView(separator, new LinearLayout.LayoutParams(-1, dp(1)));
         }
 
@@ -926,6 +927,9 @@ public class MainActivity extends Activity {
                 .setNegativeButton("Отмена", null)
                 .create();
         menu[0].show();
+        int titleId = getResources().getIdentifier("alertTitle", "id", "android");
+        TextView dialogTitle = menu[0].findViewById(titleId);
+        if (dialogTitle != null) dialogTitle.setTextColor(Color.rgb(237, 176, 59));
     }
 
     private void showModbusDiagnostics() {
