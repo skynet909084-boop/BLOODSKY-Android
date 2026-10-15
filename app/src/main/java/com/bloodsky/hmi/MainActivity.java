@@ -683,6 +683,20 @@ public class MainActivity extends Activity {
                 }).show();
     }
 
+    private void showWidgetContextMenu() {
+        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) return;
+        final String[] actions = {"Свойства", "Копировать", "Удалить"};
+        new AlertDialog.Builder(this)
+                .setTitle(widgets.get(editor.selected).text)
+                .setItems(actions, (dialog, which) -> {
+                    if (which == 0) editSelectedWidget();
+                    else if (which == 1) copySelectedWidget();
+                    else if (which == 2) deleteSelectedWidget();
+                })
+                .setNegativeButton("Отмена", null)
+                .show();
+    }
+
     private void showAddWidgetMenu() {
         final String[] labels = {
                 "Текст / надпись", "Кнопка", "Индикатор", "Задатчик",
@@ -1378,6 +1392,7 @@ public class MainActivity extends Activity {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         int selected = -1;
         float downX, downY, startX, startY;
+        long downAt;
         boolean dragging;
 
         EditorCanvas() {
@@ -1520,7 +1535,7 @@ public class MainActivity extends Activity {
         @Override public boolean onTouchEvent(MotionEvent event) {
             float x = event.getX(), y = event.getY();
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                downX = x; downY = y; dragging = false; selected = -1;
+                downX = x; downY = y; downAt = SystemClock.elapsedRealtime(); dragging = false; selected = -1;
                 for (int i = widgets.size() - 1; i >= 0; i--) {
                     Widget w = widgets.get(i);
                     if (!w.visible) continue;
@@ -1545,6 +1560,9 @@ public class MainActivity extends Activity {
             if (event.getAction() == MotionEvent.ACTION_UP) {
                 if (dragging) {
                     persistProject();
+                } else if (selected >= 0 && SystemClock.elapsedRealtime() - downAt >= 550L) {
+                    // A long press acts like a right-click context menu on desktop HMI editors.
+                    showWidgetContextMenu();
                 } else if (selected >= 0 && fbdWireMode) {
                     Widget picked = widgets.get(selected);
                     if (!isFbd(picked)) {
