@@ -38,7 +38,10 @@ public final class ProjectDocumentValidator {
             if (totalWidgets > 2000) throw new IllegalArgumentException("Too many widgets");
 
             JSONArray connections = screen.optJSONArray("connections");
-            if (connections == null) continue;
+            if (connections == null) {
+                if (screen.has("connections")) throw new IllegalArgumentException("Screen connections must be an array");
+                continue;
+            }
             if (connections.length() > 4000) throw new IllegalArgumentException("Too many connections");
             int nodeCount = screenWidgets.length();
             List<List<Integer>> adjacency = new ArrayList<>();
