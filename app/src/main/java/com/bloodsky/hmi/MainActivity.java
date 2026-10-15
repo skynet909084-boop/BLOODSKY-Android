@@ -1189,6 +1189,55 @@ public class MainActivity extends Activity {
         return field;
     }
 
+    // Only pre-bundled, audited Craft artwork may be referenced by a project.
+    // Reject paths and arbitrary Android resource identifiers from imported JSON.
+    private static final String[] CRAFT_IMAGE_NAMES = {
+            "", "lamp_off", "lamp_green", "lamp_red", "lamp_blue", "lamp_yellow",
+            "green_light", "red_light", "button", "button2", "button3",
+            "normal_indicator", "normal_small_indicator", "kite_indicator",
+            "needle_indicator", "line_indicator", "half_line_indicator",
+            "quarter_line_indicator", "battery_empty_48", "battery_charging_48",
+            "fader", "progress", "dyn_picture", "frame", "frame2"
+    };
+
+    private String validatedCraftImage(String value) {
+        if (value != null) for (String name : CRAFT_IMAGE_NAMES) {
+            if (name.equals(value)) return name;
+        }
+        return "";
+    }
+
+    private Spinner craftImageSpinner(String selected) {
+        Spinner spinner = new Spinner(this);
+        String[] labels = new String[CRAFT_IMAGE_NAMES.length];
+        labels[0] = "Без изображения";
+        for (int i = 1; i < labels.length; i++) labels[i] = CRAFT_IMAGE_NAMES[i];
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(
+                this, android.R.layout.simple_spinner_item, labels);
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        spinner.setAdapter(adapter);
+        for (int i = 0; i < CRAFT_IMAGE_NAMES.length; i++) {
+            if (CRAFT_IMAGE_NAMES[i].equals(selected)) { spinner.setSelection(i); break; }
+        }
+        return spinner;
+    }
+
+    private boolean drawCraftStateImage(Canvas canvas, Widget w, int widgetIndex) {
+        if (w.imageOff.isEmpty() && w.imageOn.isEmpty()) return false;
+        boolean active = "Кнопка".equals(w.type) ? w.buttonState : w.inputValue;
+        Double live = liveValues.get(widgetIndex);
+        if (live != null) active = live != 0d;
+        String imageName = active ? w.imageOn : w.imageOff;
+        if (imageName.isEmpty()) return false;
+        int id = getResources().getIdentifier("kc_" + imageName, "drawable", getPackageName());
+        if (id == 0) return false;
+        Drawable drawable = getResources().getDrawable(id);
+        drawable.setBounds(Math.round(w.x), Math.round(w.y),
+                Math.round(w.x + w.w), Math.round(w.y + w.h));
+        drawable.draw(canvas);
+        return true;
+    }
+
     private void editSelectedWidget() {
         if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
             Toast.makeText(this, "Сначала выбери элемент на экране", Toast.LENGTH_SHORT).show();
@@ -1273,6 +1322,23 @@ public class MainActivity extends Activity {
             compareRightField = null;
         }
 
+        final Spinner imageOffField;
+        final Spinner imageOnField;
+        if ("Индикатор".equals(w.type) || "Кнопка".equals(w.type)
+                || "Задатчик".equals(w.type)) {
+            TextView imagesLabel = new TextView(this);
+            imagesLabel.setText("Изображения KaScada Craft — выключено / включено");
+            imagesLabel.setPadding(0, dp(10), 0, 0);
+            form.addView(imagesLabel);
+            imageOffField = craftImageSpinner(w.imageOff);
+            imageOnField = craftImageSpinner(w.imageOn);
+            form.addView(imageOffField);
+            form.addView(imageOnField);
+        } else {
+            imageOffField = null;
+            imageOnField = null;
+        }
+
         TextView geometryLabel = new TextView(this);
         geometryLabel.setText("Положение и размер (пиксели)");
         geometryLabel.setPadding(0, dp(10), 0, 0);
@@ -1324,6 +1390,10 @@ public class MainActivity extends Activity {
                 .setPositiveButton("Применить", (dialog, which) -> {
                     w.text = textField.getText().toString();
                     w.connectionInfo = connectionField.getText().toString().trim();
+                    if (imageOffField != null) {
+                        w.imageOff = CRAFT_IMAGE_NAMES[imageOffField.getSelectedItemPosition()];
+                        w.imageOn = CRAFT_IMAGE_NAMES[imageOnField.getSelectedItemPosition()];
+                    }
                     if (timerPresetField != null) {
                         int newPreset = readPositiveInt(timerPresetField, w.timerPresetMs, false);
                         w.timerPresetMs = Math.max(1, Math.min(3600000, newPreset));
@@ -1469,6 +1539,7 @@ public class MainActivity extends Activity {
         JSONObject obj = new JSONObject();
         obj.put("type", w.type); obj.put("text", w.text);
         obj.put("connectionInfo", w.connectionInfo == null ? "" : w.connectionInfo);
+        obj.put("imageOff", w.imageOff); obj.put("imageOn", w.imageOn);
         obj.put("inputValue", w.inputValue); obj.put("buttonState", w.buttonState); obj.put("rsState", w.rsState); obj.put("counterPreset", w.counterPreset); obj.put("counterValue", w.counterValue); obj.put("counterLastInput", w.counterLastInput);
         obj.put("timerPresetMs", w.timerPresetMs);
         obj.put("compareA", w.compareA); obj.put("compareB", w.compareB); obj.put("compareOperator", w.compareOperator);
@@ -1489,6 +1560,8 @@ public class MainActivity extends Activity {
         w.extraFields = JsonObjectCopy.deepCopy(obj);
         w.type = obj.optString("type", "Текст"); w.text = obj.optString("text", "Надпись");
         w.connectionInfo = obj.optString("connectionInfo", "");
+        w.imageOff = validatedCraftImage(obj.optString("imageOff", ""));
+        w.imageOn = validatedCraftImage(obj.optString("imageOn", ""));
         w.inputValue = obj.optBoolean("inputValue", false); w.buttonState = obj.optBoolean("buttonState", false); w.rsState = obj.optBoolean("rsState", false); w.counterPreset = Math.max(1, Math.min(1000000, obj.optInt("counterPreset", 1))); w.counterValue = Math.max(0, Math.min(1000000, obj.optInt("counterValue", 0))); w.counterLastInput = obj.optBoolean("counterLastInput", false);
         w.timerPresetMs = Math.max(1, Math.min(3600000, obj.optInt("timerPresetMs", 1000)));
         w.compareA = obj.optDouble("compareA", 0.0); w.compareB = obj.optDouble("compareB", 0.0);
@@ -1834,6 +1907,8 @@ public class MainActivity extends Activity {
         String type;
         String text;
         String connectionInfo = "";
+        String imageOff = "";
+        String imageOn = "";
         boolean inputValue = false;
         boolean buttonState = false;
         boolean rsState = false;
@@ -1967,6 +2042,7 @@ public class MainActivity extends Activity {
                 } else {
                     canvas.drawRoundRect(rect, dp(6), dp(6), paint);
                 }
+                if (!craftFbd) drawCraftStateImage(canvas, w, i);
                 if (w.showFrame || i == selected) {
                     paint.setStyle(Paint.Style.STROKE);
                     paint.setStrokeWidth(dp(i == selected ? 2.5f : 1));
