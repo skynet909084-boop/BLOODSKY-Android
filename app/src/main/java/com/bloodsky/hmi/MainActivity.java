@@ -867,9 +867,45 @@ public class MainActivity extends Activity {
                 "Вход", "И", "ИЛИ", "НЕ", "NAND", "NOR", "XOR",
                 "TON", "TP", "TOF", "A > B", "RS", "SR", "CTU", "CTD", "R_TRIG", "F_TRIG"
         };
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        list.setPadding(dp(8), dp(4), dp(8), dp(4));
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.addView(list);
+
+        for (int i = 0; i < labels.length; i++) {
+            if (i == 4) {
+                TextView section = new TextView(this);
+                section.setText("ФУНКЦИОНАЛЬНЫЕ БЛОКИ (FBD)");
+                section.setTextColor(Color.rgb(37, 99, 235));
+                section.setTextSize(12);
+                section.setTypeface(null, android.graphics.Typeface.BOLD);
+                section.setPadding(dp(12), dp(14), dp(12), dp(8));
+                list.addView(section, new LinearLayout.LayoutParams(-1, -2));
+            }
+            final int index = i;
+            TextView item = new TextView(this);
+            item.setText(labels[i] + "    ›");
+            item.setTextColor(Color.rgb(30, 41, 59));
+            item.setTextSize(16);
+            item.setGravity(Gravity.CENTER_VERTICAL);
+            item.setPadding(dp(14), dp(12), dp(12), dp(12));
+            item.setBackgroundColor(i % 2 == 0
+                    ? Color.rgb(248, 250, 252) : Color.WHITE);
+            item.setMinHeight(dp(48));
+            item.setOnClickListener(v -> {
+                // Close the picker before rebuilding the editor view.
+                addWidget(types[index], defaults[index]);
+            });
+            list.addView(item, new LinearLayout.LayoutParams(-1, -2));
+            View separator = new View(this);
+            separator.setBackgroundColor(Color.rgb(226, 232, 240));
+            list.addView(separator, new LinearLayout.LayoutParams(-1, dp(1)));
+        }
         new AlertDialog.Builder(this)
                 .setTitle("Добавить элемент")
-                .setItems(labels, (dialog, which) -> addWidget(types[which], defaults[which]))
+                .setView(scroll)
                 .setNegativeButton("Отмена", null)
                 .show();
     }
