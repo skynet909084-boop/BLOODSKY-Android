@@ -385,7 +385,9 @@ public class MainActivity extends Activity {
     }
 
     public static String readModbusRegistersStatic(String host, int port, int unit, int startAddress, int count, int functionCode) throws Exception {
-        if (functionCode != 3 && functionCode != 4) throw new IllegalArgumentException("Unsupported Modbus function");
+        if (functionCode != 1 && functionCode != 2 && functionCode != 3 && functionCode != 4) {
+            throw new IllegalArgumentException("Unsupported Modbus function");
+        }
         int transaction = (int) (SystemClock.elapsedRealtime() & 0xffff);
         try (Socket socket = new Socket()) {
             socket.connect(new InetSocketAddress(host, port), 3000);
@@ -421,14 +423,22 @@ public class MainActivity extends Activity {
             }
             if (function != functionCode || pdu.length < 2) throw new IOException("Неожиданный код функции");
             int byteCount = pdu[1] & 0xff;
-            if (byteCount != count * 2 || pdu.length != 2 + byteCount) {
+            int expectedByteCount = (functionCode == 1 || functionCode == 2) ? (count + 7) / 8 : count * 2;
+            if (byteCount != expectedByteCount || pdu.length != 2 + byteCount) {
                 throw new IOException("Размер ответа не совпадает с запросом");
             }
             StringBuilder report = new StringBuilder();
-            report.append("Успешно: ").append(count).append(functionCode == 3 ? " holding registers (FC03)\n" : " input registers (FC04)\n");
+            String funcName = functionCode == 1 ? "coils (FC01)\n" : (functionCode == 2 ? "discrete inputs (FC02)\n" : (functionCode == 3 ? "holding registers (FC03)\n" : "input registers (FC04)\n"));
+            report.append("Успешно: ").append(count).append(" ").append(funcName);
+            int baseAddr = functionCode == 1 ? 1 : (functionCode == 2 ? 10001 : (functionCode == 3 ? 40001 : 30001));
             for (int i = 0; i < count; i++) {
-                int value = ((pdu[2 + i * 2] & 0xff) << 8) | (pdu[3 + i * 2] & 0xff);
-                report.append((functionCode == 3 ? 40001 : 30001) + startAddress + i).append("  |  ")
+                int value;
+                if (functionCode == 1 || functionCode == 2) {
+                    value = ((pdu[2 + (i / 8)] & 0xff) >> (i % 8)) & 1;
+                } else {
+                    value = ((pdu[2 + i * 2] & 0xff) << 8) | (pdu[3 + i * 2] & 0xff);
+                }
+                report.append(baseAddr + startAddress + i).append("  |  ")
                         .append(value).append("  |  0x")
                         .append(String.format(java.util.Locale.ROOT, "%04X", value)).append('\n');
             }
@@ -803,6 +813,54 @@ public class MainActivity extends Activity {
         return button;
     }
 
+    private void showProjectSettingsDialog() {
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        int pad = dp(16);
+        form.setPadding(pad, dp(4), pad, 0);
+
+        TextView stationLabel = new TextView(this);
+        stationLabel.setText("Режим станции (0 = Мастер, 1 = Слейв)");
+        form.addView(stationLabel);
+        EditText stationField = propertyField(Integer.toString(projectExtraFields.optInt("stationMode", 0)), InputType.TYPE_CLASS_NUMBER);
+        form.addView(stationField);
+
+        TextView slaveLabel = new TextView(this);
+        slaveLabel.setText("Настройки Modbus Slave (ID / Порт)");
+        slaveLabel.setPadding(0, dp(10), 0, 0);
+        form.addView(slaveLabel);
+        EditText slaveIdField = propertyField(projectExtraFields.optString("modbusSlave", "Slave ID: 1, Port: 502"), InputType.TYPE_CLASS_TEXT);
+        slaveIdField.setHint("Например: Slave ID: 1, Port: 502");
+        form.addView(slaveIdField);
+
+        TextView sysRegLabel = new TextView(this);
+        sysRegLabel.setText("Системные регистры");
+        sysRegLabel.setPadding(0, dp(10), 0, 0);
+        form.addView(sysRegLabel);
+        EditText sysRegField = propertyField(projectExtraFields.optString("systemRegisters", "SYS_STATUS=0, SYS_TIME=100"), InputType.TYPE_CLASS_TEXT);
+        sysRegField.setHint("Системные регистры");
+        form.addView(sysRegField);
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(form);
+
+        new AlertDialog.Builder(this)
+                .setTitle("Настройки проекта")
+                .setView(scroll)
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Сохранить", (dialog, which) -> {
+                    try {
+                        projectExtraFields.put("stationMode", readPositiveInt(stationField, 0, true));
+                        projectExtraFields.put("modbusSlave", slaveIdField.getText().toString());
+                        projectExtraFields.put("systemRegisters", sysRegField.getText().toString());
+                        persistProject();
+                        Toast.makeText(this, "Настройки проекта сохранены", Toast.LENGTH_SHORT).show();
+                    } catch (Exception ex) {
+                        Toast.makeText(this, "Ошибка сохранения настроек", Toast.LENGTH_SHORT).show();
+                    }
+                }).show();
+    }
+
     private void showEditor() {
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -853,9 +911,11 @@ public class MainActivity extends Activity {
             showEditor();
         }), new LinearLayout.LayoutParams(0, dp(36), 1));
         toolsBar.addView(legacyToolbarButton("Выравн.", this::showAlignDialog),
-                new LinearLayout.LayoutParams(dp(68), dp(36)));
+                new LinearLayout.LayoutParams(dp(60), dp(36)));
         toolsBar.addView(legacyToolbarButton("Modbus", this::showModbusDiagnostics),
-                new LinearLayout.LayoutParams(dp(72), dp(36)));
+                new LinearLayout.LayoutParams(dp(64), dp(36)));
+        toolsBar.addView(legacyToolbarButton("Настр.", this::showProjectSettingsDialog),
+                new LinearLayout.LayoutParams(dp(60), dp(36)));
         root.addView(toolsBar, new LinearLayout.LayoutParams(-1, dp(40)));
 
         editor = new EditorCanvas();
@@ -1124,10 +1184,13 @@ public class MainActivity extends Activity {
         final String[] labels = {
                 "Текст / надпись", "Кнопка", "Индикатор", "Задатчик",
                 "Динамический текст", "Битовый список", "Шкала / Стрелка", "Прогресс-бар", "График / Тренд", "Двухпозиционный индикатор",
+                "Звуковой сигнал / Аларм", "Переход на экран / Ссылка", "Многопозиционное фото", "Голосовое сообщение",
                 "FBD — Вход", "FBD — И", "FBD — ИЛИ", "FBD — НЕ",
                 "FBD — NAND", "FBD — NOR", "FBD — XOR",
                 "FBD — TON (задержка включения)", "FBD — TP (импульс)", "FBD — TOF (задержка выключения)",
                 "FBD — Сравнение", "FBD — Сложение (+)", "FBD — Вычитание (-)", "FBD — Умножение (*)", "FBD — Деление (/)",
+                "FBD — POW (степень)", "FBD — SQRT (корень)", "FBD — SIN", "FBD — COS", "FBD — TAN",
+                "FBD — FloatToInt", "FBD — IntToFloat",
                 "FBD — MOVE", "FBD — SEL (селектор)", "FBD — ABS", "FBD — MIN / MAX",
                 "FBD — RS", "FBD — SR", "FBD — CTU (счёт вверх)",
                 "FBD — CTD (счёт вниз)", "FBD — R_TRIG", "FBD — F_TRIG"
@@ -1135,10 +1198,13 @@ public class MainActivity extends Activity {
         final String[] types = {
                 "Текст", "Кнопка", "Индикатор", "Задатчик",
                 "Динамический текст", "Битовый список", "Шкала / Стрелка", "Прогресс-бар", "График / Тренд", "Двухпозиционный индикатор",
+                "Звуковой сигнал", "Переход на экран", "Многопозиционное фото", "Голосовое сообщение",
                 "FBD Вход", "FBD И", "FBD ИЛИ", "FBD НЕ",
                 "FBD NAND", "FBD NOR", "FBD XOR",
                 "FBD Таймер", "FBD TP", "FBD TOF",
                 "FBD Сравнение", "FBD Сложение", "FBD Вычитание", "FBD Умножение", "FBD Деление",
+                "FBD POW", "FBD SQRT", "FBD SIN", "FBD COS", "FBD TAN",
+                "FBD FloatToInt", "FBD IntToFloat",
                 "FBD MOVE", "FBD SEL", "FBD ABS", "FBD MIN_MAX",
                 "FBD RS", "FBD SR", "FBD CTU",
                 "FBD CTD", "FBD R_TRIG", "FBD F_TRIG"
@@ -1146,8 +1212,11 @@ public class MainActivity extends Activity {
         final String[] defaults = {
                 "Надпись", "Кнопка", "Индикатор", "Задатчик: 0",
                 "Динамический текст", "Битовый список", "Шкала", "Уровень", "Тренд", "Состояние",
+                "Аларм", "Переход -> Экран 1", "Фото", "Голос",
                 "Вход", "И", "ИЛИ", "НЕ", "NAND", "NOR", "XOR",
                 "TON", "TP", "TOF", "A > B", "A + B", "A - B", "A * B", "A / B",
+                "POW", "SQRT", "SIN", "COS", "TAN",
+                "Float->Int", "Int->Float",
                 "MOVE", "SEL", "ABS", "MIN/MAX",
                 "RS", "SR", "CTU", "CTD", "R_TRIG", "F_TRIG"
         };
@@ -1160,7 +1229,7 @@ public class MainActivity extends Activity {
         final AlertDialog[] picker = new AlertDialog[1];
 
         for (int i = 0; i < labels.length; i++) {
-            if (i == 10) {
+            if (i == 14) {
                 TextView section = new TextView(this);
                 section.setText("ФУНКЦИОНАЛЬНЫЕ БЛОКИ (FBD)");
                 section.setTextColor(Color.rgb(37, 99, 235));
@@ -1918,10 +1987,10 @@ public class MainActivity extends Activity {
         Screen(String name) { this.name = name; }
     }
 
-    private static class FbdConnection {
-        int source;
-        int target;
-        FbdConnection(int source, int target) { this.source = source; this.target = target; }
+    public static class FbdConnection {
+        public int source;
+        public int target;
+        public FbdConnection(int source, int target) { this.source = source; this.target = target; }
     }
 
     public static boolean isFbdWidget(Widget widget) {
@@ -2005,6 +2074,53 @@ public class MainActivity extends Activity {
             cacheNumeric[index] = val;
             return val != 0.0;
         }
+        if ("FBD POW".equals(widget.type)) {
+            double base = numInputs.isEmpty() ? widget.compareA : numInputs.get(0);
+            double exp = numInputs.size() > 1 ? numInputs.get(1) : 1.0;
+            double res = Math.pow(base, exp);
+            if (Double.isNaN(res) || Double.isInfinite(res)) res = 0.0;
+            cacheNumeric[index] = res;
+            return res != 0.0;
+        }
+        if ("FBD SQRT".equals(widget.type)) {
+            double val = numInputs.isEmpty() ? widget.compareA : Math.max(0.0, numInputs.get(0));
+            double res = Math.sqrt(Math.max(0.0, val));
+            if (Double.isNaN(res) || Double.isInfinite(res)) res = 0.0;
+            cacheNumeric[index] = res;
+            return res != 0.0;
+        }
+        if ("FBD SIN".equals(widget.type)) {
+            double val = numInputs.isEmpty() ? widget.compareA : numInputs.get(0);
+            double res = Math.sin(val);
+            if (Double.isNaN(res) || Double.isInfinite(res)) res = 0.0;
+            cacheNumeric[index] = res;
+            return res != 0.0;
+        }
+        if ("FBD COS".equals(widget.type)) {
+            double val = numInputs.isEmpty() ? widget.compareA : numInputs.get(0);
+            double res = Math.cos(val);
+            if (Double.isNaN(res) || Double.isInfinite(res)) res = 0.0;
+            cacheNumeric[index] = res;
+            return res != 0.0;
+        }
+        if ("FBD TAN".equals(widget.type)) {
+            double val = numInputs.isEmpty() ? widget.compareA : numInputs.get(0);
+            double res = Math.tan(val);
+            if (Double.isNaN(res) || Double.isInfinite(res)) res = 0.0;
+            cacheNumeric[index] = res;
+            return res != 0.0;
+        }
+        if ("FBD FloatToInt".equals(widget.type)) {
+            double val = numInputs.isEmpty() ? widget.compareA : numInputs.get(0);
+            double res = (double) ((long) val);
+            cacheNumeric[index] = res;
+            return res != 0.0;
+        }
+        if ("FBD IntToFloat".equals(widget.type)) {
+            double val = numInputs.isEmpty() ? widget.compareA : numInputs.get(0);
+            cacheNumeric[index] = val;
+            return val != 0.0;
+        }
         if ("FBD MIN_MAX".equals(widget.type)) {
             double minV = numInputs.isEmpty() ? 0.0 : numInputs.get(0);
             for (Double v : numInputs) minV = Math.min(minV, v);
@@ -2013,7 +2129,7 @@ public class MainActivity extends Activity {
             return minV != 0.0;
         }
         if ("FBD MOVE".equals(widget.type) || "FBD SEL".equals(widget.type)) {
-            double val = numInputs.isEmpty() ? 0.0 : numInputs.get(0);
+            double val = numInputs.isEmpty() ? widget.compareA : numInputs.get(0);
             if (Double.isNaN(val) || Double.isInfinite(val)) val = 0.0;
             cacheNumeric[index] = val;
             return val != 0.0;
