@@ -28,6 +28,57 @@ public class ProjectScreenJsonCodecTest {
     }
 
     @Test
+    public void editingOneScreenPreservesOtherScreensAndNestedMetadataAfterReopen() throws Exception {
+        JSONObject oldWidget = new JSONObject()
+                .put("type", "Индикатор")
+                .put("x", 10).put("y", 20)
+                .put("vendorWidget", new JSONObject().put("register", 40123));
+        JSONObject untouchedScreen = new JSONObject()
+                .put("name", "Экран 2")
+                .put("widgets", new JSONArray().put(new JSONObject().put("type", "Кнопка")))
+                .put("connections", new JSONArray())
+                .put("vendorScreen", new JSONObject().put("zoom", 2));
+        JSONObject originalScreen = new JSONObject()
+                .put("name", "Экран 1")
+                .put("backgroundColor", 5)
+                .put("widgets", new JSONArray().put(oldWidget))
+                .put("connections", new JSONArray())
+                .put("vendorScreen", new JSONObject().put("gridMode", "snap-20"));
+        JSONObject original = new JSONObject()
+                .put("projectName", "Пульт")
+                .put("screens", new JSONArray().put(originalScreen).put(untouchedScreen))
+                .put("vendorProject", new JSONObject().put("revision", 9));
+
+        JSONObject editedWidget = ProjectJsonCodec.mergePreservedFields(
+                oldWidget, new JSONObject().put("type", "Индикатор").put("x", 80).put("y", 90));
+        JSONObject editedScreen = ProjectScreenJsonCodec.toJson(
+                "Экран 1", 0xff445566, new JSONArray().put(editedWidget),
+                new JSONArray(), originalScreen);
+        JSONObject editedProject = ProjectJsonCodec.mergePreservedFields(
+                original, new JSONObject().put("screens",
+                        new JSONArray().put(editedScreen).put(untouchedScreen)));
+        JSONObject reopened = (JSONObject) ProjectJsonCodec.parse(
+                ProjectJsonCodec.serialize(editedProject));
+
+        assertEquals(2, reopened.getJSONArray("screens").length());
+        assertEquals(9, reopened.getJSONObject("vendorProject").getInt("revision"));
+        JSONObject first = reopened.getJSONArray("screens").getJSONObject(0);
+        assertEquals("snap-20", first.getJSONObject("vendorScreen").getString("gridMode"));
+        assertEquals(0xff445566, first.getInt("backgroundColor"));
+        JSONObject widget = first.getJSONArray("widgets").getJSONObject(0);
+        assertEquals(80, widget.getInt("x"));
+        assertEquals(90, widget.getInt("y"));
+        assertEquals(40123, widget.getJSONObject("vendorWidget").getInt("register"));
+        JSONObject second = reopened.getJSONArray("screens").getJSONObject(1);
+        assertEquals("Экран 2", second.getString("name"));
+        assertEquals(2, second.getJSONObject("vendorScreen").getInt("zoom"));
+
+        // Neither a saved screen nor its nested fields may alias the loaded project.
+        widget.getJSONObject("vendorWidget").put("register", 999);
+        assertEquals(40123, oldWidget.getJSONObject("vendorWidget").getInt("register"));
+    }
+
+    @Test
     public void rejectsMissingScreenArrays() throws Exception {
         try {
             ProjectScreenJsonCodec.toJson("Экран", 0, null, new JSONArray(), new JSONObject());
