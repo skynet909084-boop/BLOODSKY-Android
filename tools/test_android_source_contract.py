@@ -59,6 +59,10 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn('previewHeader.addView(new WidgetPreview(w.type, w.text)', self.source)
         self.assertIn('form.addView(previewHeader', self.source)
 
+    def test_original_and_or_rendered_names(self):
+        self.assertIn('"FBD И".equals(w.type) ? "AND"', self.source)
+        self.assertIn('"FBD ИЛИ".equals(w.type) ? "OR"', self.source)
+
     def test_original_xor_rs_timer_port_labels(self):
         self.assertIn('String input1 = "FBD XOR".equals(w.type) ? "I1"', self.source)
         self.assertIn('String input2 = "FBD XOR".equals(w.type) ? "I2"', self.source)
