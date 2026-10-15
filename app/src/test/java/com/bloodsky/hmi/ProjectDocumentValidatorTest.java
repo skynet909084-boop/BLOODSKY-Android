@@ -30,7 +30,7 @@ public class ProjectDocumentValidatorTest {
         assertRejected("{\"screens\":[{\"widgets\":[null]}]}");
     }
     @Test public void rejectsNonArrayConnectionsField() {
-        assertRejected("{\\\"screens\\\":[{\\\"widgets\\\":[],\\\"connections\\\":\\\"invalid\\\"}]}");
+        assertRejected("{\"screens\":[{\"widgets\":[],\"connections\":\"invalid\"}]}");
     }
     @Test public void rejectsInvalidAndCyclicFbdConnections() {
         String twoBlocks = "{\"screens\":[{\"widgets\":[{\"type\":\"FBD AND\"},{\"type\":\"FBD OR\"}],\"connections\":[%s]}]}";
