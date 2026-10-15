@@ -1,0 +1,65 @@
+package com.bloodsky.hmi;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+import org.junit.Test;
+
+public class ProjectJsonCodecTest {
+    @Test
+    public void roundTripsMultipleScreensConnectionsAndUnknownMetadata() throws Exception {
+        JSONObject widget = new JSONObject()
+                .put("type", "FBD Вход")
+                .put("x", 23)
+                .put("vendorWidgetOption", new JSONObject().put("calibration", new JSONArray().put(3).put(9)));
+        JSONObject screen = new JSONObject()
+                .put("name", "Станция 1")
+                .put("widgets", new JSONArray().put(widget).put(new JSONObject().put("type", "FBD И")))
+                .put("connections", new JSONArray().put(new JSONObject().put("source", 0).put("target", 1)))
+                .put("vendorScreenOption", "keep-me");
+        JSONObject original = new JSONObject()
+                .put("projectName", "Тестовый проект")
+                .put("currentScreen", 1)
+                .put("screens", new JSONArray().put(screen).put(new JSONObject().put("name", "Станция 2")))
+                .put("vendorProjectOption", new JSONObject().put("revision", 7));
+
+        Object parsed = ProjectJsonCodec.parse(ProjectJsonCodec.serialize(original));
+        assertTrue(parsed instanceof JSONObject);
+        JSONObject restored = (JSONObject) parsed;
+        assertEquals("Тестовый проект", restored.getString("projectName"));
+        assertEquals(2, restored.getJSONArray("screens").length());
+        assertEquals(1, restored.getJSONArray("screens").getJSONObject(0).getJSONArray("connections").length());
+        assertEquals("keep-me", restored.getJSONArray("screens").getJSONObject(0).getString("vendorScreenOption"));
+        assertEquals(9, restored.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets")
+                .getJSONObject(0).getJSONObject("vendorWidgetOption").getJSONArray("calibration").getInt(1));
+        assertEquals(7, restored.getJSONObject("vendorProjectOption").getInt("revision"));
+    }
+
+    @Test
+    public void acceptsLegacySingleScreenWidgetArrayWithoutChangingItsShape() throws Exception {
+        JSONArray legacy = new JSONArray()
+                .put(new JSONObject().put("type", "Текст").put("text", "Старый проект").put("legacyFlag", true));
+        Object parsed = ProjectJsonCodec.parse(legacy.toString());
+        assertTrue(parsed instanceof JSONArray);
+        assertEquals("Старый проект", ((JSONArray) parsed).getJSONObject(0).getString("text"));
+        assertTrue(((JSONArray) parsed).getJSONObject(0).getBoolean("legacyFlag"));
+    }
+
+    @Test
+    public void rejectsTrailingGarbageAndUnsupportedTopLevelValues() throws Exception {
+        try {
+            ProjectJsonCodec.parse("{\"screens\":[]} trailing");
+            throw new AssertionError("Expected trailing content to be rejected");
+        } catch (org.json.JSONException expected) {
+            assertTrue(expected.getMessage().contains("Trailing content"));
+        }
+        try {
+            ProjectJsonCodec.parse("\"not-a-project\"");
+            throw new AssertionError("Expected a string root to be rejected");
+        } catch (org.json.JSONException expected) {
+            assertTrue(expected.getMessage().contains("object or legacy array"));
+        }
+    }
+}
