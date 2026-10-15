@@ -54,6 +54,8 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("validateImportedProject(backup)", self.source)
         self.assertIn("validateImportedProject(json);\n        } catch (Exception invalidPrimary)", self.source)
         self.assertIn("json = backup;", self.source)
+        self.assertIn("prefs.edit().putString(ACTIVE_PROJECT, backup).commit()", self.source)
+        self.assertIn("Не удалось записать восстановленный проект", self.source)
         self.assertIn("Проект восстановлен из резервной копии", self.source)
 
     def test_project_load_supports_multiscreen_and_legacy_array(self):
