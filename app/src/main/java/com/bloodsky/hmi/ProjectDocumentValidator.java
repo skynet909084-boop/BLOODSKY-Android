@@ -23,7 +23,7 @@ public final class ProjectDocumentValidator {
         if (screenArray == null || screenArray.length() == 0 || screenArray.length() > 100) {
             throw new IllegalArgumentException("Invalid screen list");
         }
-        int currentScreen = project.optInt("currentScreen", 0);
+        int currentScreen = readInteger(project, "currentScreen", 0);
         if (currentScreen < 0 || currentScreen >= screenArray.length()) {
             throw new IllegalArgumentException("Current screen index out of range");
         }
@@ -51,8 +51,8 @@ public final class ProjectDocumentValidator {
             for (int j = 0; j < connections.length(); j++) {
                 JSONObject edge = connections.optJSONObject(j);
                 if (edge == null) throw new IllegalArgumentException("Connection must be an object");
-                int source = edge.optInt("source", -1);
-                int target = edge.optInt("target", -1);
+                int source = readInteger(edge, "source", -1);
+                int target = readInteger(edge, "target", -1);
                 if (source < 0 || target < 0 || source >= nodeCount || target >= nodeCount || source == target) {
                     throw new IllegalArgumentException("Connection index out of range");
                 }
@@ -83,6 +83,19 @@ public final class ProjectDocumentValidator {
         }
     }
 
+
+    private static int readInteger(JSONObject object, String key, int defaultValue) {
+        if (!object.has(key)) return defaultValue;
+        Object raw = object.opt(key);
+        if (!(raw instanceof Number)) throw new IllegalArgumentException(key + " must be an integer");
+        double value = ((Number) raw).doubleValue();
+        if (!Double.isFinite(value) || value != Math.rint(value)
+                || value < Integer.MIN_VALUE || value > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException(key + " must be an integer");
+        }
+        return (int) value;
+    }
+
     private static void validateWidgetArray(JSONArray array) {
         if (array.length() > 2000) throw new IllegalArgumentException("Too many widgets");
         for (int i = 0; i < array.length(); i++) {
@@ -90,7 +103,7 @@ public final class ProjectDocumentValidator {
             if (widget == null) throw new IllegalArgumentException("Widget must be an object");
             String type = widget.optString("type", "Текст"), label = widget.optString("text", "Надпись");
             if (type.length() > 100 || label.length() > 2000 || widget.optString("connectionInfo", "").length() > 2000) throw new IllegalArgumentException("Widget field too long");
-            int x = widget.optInt("x", 0), y = widget.optInt("y", 0), w = widget.optInt("w", 160), h = widget.optInt("h", 58);
+            int x = readInteger(widget, "x", 0), y = readInteger(widget, "y", 0), w = readInteger(widget, "w", 160), h = readInteger(widget, "h", 58);
             if (x < -100000 || x > 100000 || y < -100000 || y > 100000 || w < 1 || w > 100000 || h < 1 || h > 100000) throw new IllegalArgumentException("Widget geometry out of range");
         }
     }
