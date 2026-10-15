@@ -51,6 +51,10 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("if (previous != null && !previous.equals(next))", self.source)
         self.assertIn("changes.putString(ACTIVE_PROJECT, next)", self.source)
 
+    def test_original_button_states_are_drawn_on_canvas(self):
+        self.assertIn('w.buttonState ? "kc_button2" : "kc_button"', self.source)
+        self.assertIn('buttonImage.draw(canvas);', self.source)
+
     def test_original_indicator_lamps_are_drawn_on_canvas(self):
         self.assertIn('"kc_lamp_green"', self.source)
         self.assertIn('"kc_lamp_red"', self.source)
