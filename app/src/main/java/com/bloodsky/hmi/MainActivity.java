@@ -194,8 +194,11 @@ public class MainActivity extends Activity {
                         || enteredAddress < 0 || enteredAddress > 65535) throw new IllegalArgumentException();
                 if (functionCode == 4 && enteredAddress >= 30001 && enteredAddress <= 39999) {
                     startAddress = enteredAddress - 30001;
-                } else if (enteredAddress >= 40001 && enteredAddress <= 49999) {
+                } else if (functionCode == 3 && enteredAddress >= 40001 && enteredAddress <= 49999) {
                     startAddress = enteredAddress - 40001;
+                } else if ((functionCode == 4 && enteredAddress >= 40001 && enteredAddress <= 49999)
+                        || (functionCode == 3 && enteredAddress >= 30001 && enteredAddress <= 39999)) {
+                    throw new IllegalArgumentException("Адрес не соответствует выбранному типу регистра");
                 } else {
                     startAddress = enteredAddress;
                 }
