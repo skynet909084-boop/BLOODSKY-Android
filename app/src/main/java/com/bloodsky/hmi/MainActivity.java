@@ -81,6 +81,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         stopModbusPolling();
+        editor = null;
         modbusExecutor.shutdownNow();
         super.onDestroy();
     }
