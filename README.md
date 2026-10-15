@@ -17,7 +17,7 @@ This is still a working prototype, not yet a complete Kaskada Craft replacement.
 
 ## Build and tests
 
-GitHub Actions workflow **BLOODSKY Android APK** runs the Python archive-inspector tests, Android unit tests, builds the debug APK and uploads the artifact as `BLOODSKY-Android-debug-APK` for 14 days. Changes under `app/**`, `tools/**`, or the build workflow trigger CI.
+GitHub Actions workflow **BLOODSKY Android APK** runs the Python archive-inspector tests, Android unit tests, builds the debug APK and uploads the artifact as `BLOODSKY-Android-debug-APK` for 14 days. It runs on relevant code pushes/PRs, can be started manually, and performs a scheduled daily validation/build at 03:17 UTC.
 
 Debug APKs are for development/testing, not public release. A release build must use a properly managed signing key and pass installation and runtime checks.
 
@@ -29,6 +29,7 @@ python -m unittest discover -s tools -p 'test_*.py' -v
 
 ## Reverse-engineering notes
 
+- `docs/BLOODSKY_AUTONOMY_PLAN.md` — autonomous CI behaviour, product milestones, and clear boundaries of automation.
 - `docs/BLOODSKY_IMPLEMENTATION_CONTRACT.md` — persistence and compatibility contract.
 - `docs/BLOODSKY_ANDROID_COMPONENT_INVENTORY.md` — decompiled component and FBD inventory.
 - `docs/BLOODSKY_EDITOR_PARITY_MATRIX.md` — editor parity checklist, Modbus acceptance tests and release gates.
