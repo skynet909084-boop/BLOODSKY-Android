@@ -530,11 +530,20 @@ public class MainActivity extends Activity {
             else existing.widgetIndices.add(i);
         }
         final List<BindingRequest> requests = new ArrayList<>(groupedRequests.values());
-        if (requests.isEmpty() || modbusPollInFlight) return;
+        if (modbusPollInFlight) return;
+        // Surface malformed tcp bindings as a configuration error rather than leaving
+        // an old live value on screen, which can look like valid but stale process data.
+        final Map<Integer, String> invalidBindings = new HashMap<>();
+        for (int i = 0; i < snapshotWidgets.size(); i++) {
+            String binding = snapshotWidgets.get(i).connectionInfo;
+            if (binding != null && binding.startsWith("tcp://")
+                    && parseBinding(i, binding) == null) invalidBindings.put(i, "CFG");
+        }
+        if (requests.isEmpty() && invalidBindings.isEmpty()) return;
         modbusPollInFlight = true;
         modbusExecutor.execute(() -> {
             try {
-                final Map<Integer, String> updates = new HashMap<>();
+                final Map<Integer, String> updates = new HashMap<>(invalidBindings);
                 for (BindingRequest request : requests) {
                     String value;
                     try {
