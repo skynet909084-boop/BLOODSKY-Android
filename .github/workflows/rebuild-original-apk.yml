@@ -81,10 +81,19 @@ jobs:
           set -euo pipefail
           BUILD_TOOLS="$ANDROID_HOME/build-tools/35.0.0"
           "$BUILD_TOOLS/zipalign" -f -p 4 output/BLOODSKY-baseline-unsigned.apk output/BLOODSKY-baseline-aligned.apk
-          keytool -genkeypair -v             -keystore /tmp/bloodsky-test.keystore             -storepass changeit -keypass changeit             -alias bloodsky-test -keyalg RSA -keysize 2048 -validity 10000             -dname "CN=BLOODSKY Test, OU=Development, O=BLOODSKY, L=Unknown, ST=Unknown, C=DE"
-          "$BUILD_TOOLS/apksigner" sign             --ks /tmp/bloodsky-test.keystore             --ks-key-alias bloodsky-test             --ks-pass pass:changeit --key-pass pass:changeit             --out output/BLOODSKY-baseline-test-signed.apk             output/BLOODSKY-baseline-aligned.apk
+          keytool -genkeypair -v \
+            -keystore /tmp/bloodsky-test.keystore \
+            -storepass changeit -keypass changeit \
+            -alias bloodsky-test -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=BLOODSKY Test, OU=Development, O=BLOODSKY, L=Unknown, ST=Unknown, C=DE"
+          "$BUILD_TOOLS/apksigner" sign \
+            --ks /tmp/bloodsky-test.keystore \
+            --ks-key-alias bloodsky-test \
+            --ks-pass pass:changeit --key-pass pass:changeit \
+            --out output/BLOODSKY-baseline-test-signed.apk \
+            output/BLOODSKY-baseline-aligned.apk
           "$BUILD_TOOLS/apksigner" verify --verbose output/BLOODSKY-baseline-test-signed.apk
-          "$BUILD_TOOLS/aapt" dump badging output/BLOODSKY-baseline-test-signed.apk | head -n 5 | tee output/package-info.txt
+          "$BUILD_TOOLS/aapt" dump badging output/BLOODSKY-baseline-test-signed.apk | sed -n '1,5p' | tee output/package-info.txt
           sha256sum output/BLOODSKY-baseline-test-signed.apk | tee output/rebuilt-sha256.txt
 
       - name: Upload baseline rebuild and logs
