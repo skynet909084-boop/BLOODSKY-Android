@@ -515,74 +515,190 @@ public class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.rgb(35, 35, 35));
 
-        // Compact charcoal toolbar inspired by Kaskada Craft's icon strip.
+        // Match Kaskada's compact charcoal top bar and screen-navigation controls.
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
-        top.setPadding(dp(3), dp(2), dp(3), dp(2));
+        top.setPadding(dp(4), dp(2), dp(4), dp(2));
         top.setBackgroundColor(Color.rgb(35, 35, 35));
-        top.addView(legacyToolbarButton("☰", this::showHome),
-                new LinearLayout.LayoutParams(dp(42), dp(38)));
-        Button rename = legacyToolbarButton(projectName, this::editProjectName);
-        top.addView(rename, new LinearLayout.LayoutParams(0, dp(38), 1));
-        top.addView(legacyToolbarButton("💾", () -> {
+        top.addView(legacyIconButton("☰", "Меню редактора", this::showEditorOptionsMenu),
+                new LinearLayout.LayoutParams(dp(40), dp(48)));
+        top.addView(legacyIconButton("▣", "Сохранить проект", () -> {
             persistProject();
             Toast.makeText(this, "Проект сохранён на устройстве", Toast.LENGTH_SHORT).show();
-        }), new LinearLayout.LayoutParams(dp(48), dp(38)));
-        root.addView(top, new LinearLayout.LayoutParams(-1, dp(42)));
+        }), new LinearLayout.LayoutParams(dp(40), dp(48)));
+        top.addView(legacyIconButton("‹", "Предыдущий экран", this::previousScreen),
+                new LinearLayout.LayoutParams(dp(36), dp(48)));
 
-        LinearLayout screenBar = new LinearLayout(this);
-        screenBar.setGravity(Gravity.CENTER_VERTICAL);
-        screenBar.setPadding(dp(3), dp(1), dp(3), dp(1));
-        screenBar.setBackgroundColor(Color.rgb(48, 48, 48));
-        screenBar.addView(legacyToolbarButton("◀", this::previousScreen),
-                new LinearLayout.LayoutParams(dp(38), dp(34)));
-        screenBar.addView(legacyToolbarButton(currentScreenName(), this::renameCurrentScreen),
-                new LinearLayout.LayoutParams(0, dp(34), 1));
-        screenBar.addView(legacyToolbarButton("Фон", this::editScreenBackground),
-                new LinearLayout.LayoutParams(dp(54), dp(34)));
-        screenBar.addView(legacyToolbarButton("▶", this::nextScreen),
-                new LinearLayout.LayoutParams(dp(38), dp(34)));
-        screenBar.addView(legacyToolbarButton("+", this::addScreen),
-                new LinearLayout.LayoutParams(dp(38), dp(34)));
-        screenBar.addView(legacyToolbarButton("−", this::removeCurrentScreen),
-                new LinearLayout.LayoutParams(dp(38), dp(34)));
-        root.addView(screenBar, new LinearLayout.LayoutParams(-1, dp(36)));
+        TextView screenName = new TextView(this);
+        screenName.setText(currentScreenName());
+        screenName.setTextColor(Color.rgb(187, 187, 187));
+        screenName.setTextSize(16);
+        screenName.setGravity(Gravity.CENTER);
+        screenName.setSingleLine(true);
+        screenName.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        screenName.setOnClickListener(v -> renameCurrentScreen());
+        screenName.setOnLongClickListener(v -> {
+            showEditorOptionsMenu();
+            return true;
+        });
+        top.addView(screenName, new LinearLayout.LayoutParams(0, dp(48), 1));
 
-        LinearLayout toolsBar = new LinearLayout(this);
-        toolsBar.setGravity(Gravity.CENTER_VERTICAL);
-        toolsBar.setPadding(dp(3), dp(2), dp(3), dp(2));
-        toolsBar.setBackgroundColor(Color.rgb(35, 35, 35));
-        toolsBar.addView(legacyToolbarButton("+ Элемент", this::showAddWidgetMenu),
-                new LinearLayout.LayoutParams(0, dp(36), 1));
-        toolsBar.addView(legacyToolbarButton(fbdWireMode ? "Связь: ВКЛ" : "Связать FBD", () -> {
-            fbdWireMode = !fbdWireMode;
-            wireSource = -1;
-            Toast.makeText(this, fbdWireMode ? "Режим связи: выбери исходный FBD-блок, затем целевой" : "Режим связи выключен", Toast.LENGTH_LONG).show();
-            showEditor();
-        }), new LinearLayout.LayoutParams(0, dp(36), 1));
-        toolsBar.addView(legacyToolbarButton("Modbus", this::showModbusDiagnostics),
-                new LinearLayout.LayoutParams(dp(78), dp(36)));
-        root.addView(toolsBar, new LinearLayout.LayoutParams(-1, dp(40)));
+        top.addView(legacyIconButton("›", "Следующий экран", this::nextScreen),
+                new LinearLayout.LayoutParams(dp(36), dp(48)));
+        top.addView(legacyIconButton("⋮", "Дополнительные действия", this::showEditorOptionsMenu),
+                new LinearLayout.LayoutParams(dp(40), dp(48)));
+        root.addView(top, new LinearLayout.LayoutParams(-1, dp(56)));
 
+        FrameLayout workspace = new FrameLayout(this);
         editor = new EditorCanvas();
-        root.addView(editor, new LinearLayout.LayoutParams(-1, 0, 1));
+        workspace.addView(editor, new FrameLayout.LayoutParams(-1, -1));
 
-        LinearLayout bottom = new LinearLayout(this);
-        bottom.setGravity(Gravity.CENTER_VERTICAL);
-        bottom.setPadding(dp(3), dp(2), dp(3), dp(2));
-        bottom.setBackgroundColor(Color.rgb(35, 35, 35));
-        bottom.addView(legacyToolbarButton("Свойства", this::editSelectedWidget),
-                new LinearLayout.LayoutParams(0, dp(40), 1));
-        bottom.addView(legacyToolbarButton("Копировать", this::copySelectedWidget),
-                new LinearLayout.LayoutParams(0, dp(40), 1));
-        bottom.addView(legacyToolbarButton("Вставить", this::pasteWidget),
-                new LinearLayout.LayoutParams(0, dp(40), 1));
-        bottom.addView(legacyToolbarButton("Удалить", this::deleteSelectedWidget),
-                new LinearLayout.LayoutParams(0, dp(40), 1));
-        root.addView(bottom, new LinearLayout.LayoutParams(-1, dp(44)));
+        // Original editor has a floating component-picker control at the lower left.
+        TextView addComponent = legacyIconButton("+", "Добавить элемент", this::showAddWidgetMenu);
+        FrameLayout.LayoutParams addParams = new FrameLayout.LayoutParams(dp(48), dp(48),
+                Gravity.BOTTOM | Gravity.LEFT);
+        addParams.leftMargin = dp(10);
+        addParams.bottomMargin = dp(10);
+        workspace.addView(addComponent, addParams);
+
+        // Keep the selection actions as a compact floating icon strip rather than a full-width text row.
+        LinearLayout selectionActions = new LinearLayout(this);
+        selectionActions.setOrientation(LinearLayout.HORIZONTAL);
+        selectionActions.setGravity(Gravity.CENTER);
+        selectionActions.setPadding(dp(3), dp(2), dp(3), dp(2));
+        selectionActions.setBackgroundColor(Color.rgb(35, 35, 35));
+        selectionActions.setElevation(dp(100));
+        selectionActions.addView(legacyIconButton("✂", "Вырезать", this::cutSelectedWidget),
+                new LinearLayout.LayoutParams(dp(44), dp(44)));
+        selectionActions.addView(legacyIconButton("▢", "Копировать", this::copySelectedWidget),
+                new LinearLayout.LayoutParams(dp(44), dp(44)));
+        selectionActions.addView(legacyIconButton("▤", "Вставить", this::pasteWidget),
+                new LinearLayout.LayoutParams(dp(44), dp(44)));
+        selectionActions.addView(legacyIconButton("↔", "Выравнивание", this::alignSelectedWidget),
+                new LinearLayout.LayoutParams(dp(44), dp(44)));
+        FrameLayout.LayoutParams actionsParams = new FrameLayout.LayoutParams(-2, -2,
+                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        actionsParams.bottomMargin = dp(4);
+        workspace.addView(selectionActions, actionsParams);
+
+        root.addView(workspace, new LinearLayout.LayoutParams(-1, 0, 1));
         setContentView(root);
         editor.invalidate();
         startModbusPolling();
+    }
+
+    private TextView legacyIconButton(String symbol, String description, Runnable task) {
+        TextView icon = new TextView(this);
+        icon.setText(symbol);
+        icon.setTextColor(Color.rgb(237, 176, 59));
+        icon.setTextSize(24);
+        icon.setGravity(Gravity.CENTER);
+        icon.setSingleLine(true);
+        icon.setBackgroundColor(Color.TRANSPARENT);
+        icon.setContentDescription(description);
+        icon.setClickable(true);
+        icon.setFocusable(true);
+        icon.setOnClickListener(v -> task.run());
+        return icon;
+    }
+
+    private void showEditorOptionsMenu() {
+        final String[] actions = {
+                "Сохранить проект",
+                "Имя проекта",
+                "Фон экрана",
+                "Добавить экран",
+                "Удалить экран",
+                fbdWireMode ? "Выключить связь FBD" : "Связать FBD-блоки",
+                "Диагностика Modbus",
+                "Свойства выбранного элемента",
+                "Удалить выбранный элемент",
+                "На главный экран"
+        };
+        new AlertDialog.Builder(this)
+                .setTitle(projectName)
+                .setItems(actions, (dialog, which) -> {
+                    switch (which) {
+                        case 0:
+                            persistProject();
+                            Toast.makeText(this, "Проект сохранён на устройстве", Toast.LENGTH_SHORT).show();
+                            break;
+                        case 1:
+                            editProjectName();
+                            break;
+                        case 2:
+                            editScreenBackground();
+                            break;
+                        case 3:
+                            addScreen();
+                            break;
+                        case 4:
+                            removeCurrentScreen();
+                            break;
+                        case 5:
+                            fbdWireMode = !fbdWireMode;
+                            wireSource = -1;
+                            Toast.makeText(this, fbdWireMode
+                                    ? "Выбери исходный, затем целевой FBD-блок"
+                                    : "Режим связи FBD выключен", Toast.LENGTH_LONG).show();
+                            showEditor();
+                            break;
+                        case 6:
+                            showModbusDiagnostics();
+                            break;
+                        case 7:
+                            editSelectedWidget();
+                            break;
+                        case 8:
+                            deleteSelectedWidget();
+                            break;
+                        case 9:
+                            showHome();
+                            break;
+                        default:
+                            break;
+                    }
+                }).show();
+    }
+
+    private void cutSelectedWidget() {
+        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
+            Toast.makeText(this, "Сначала выбери элемент на экране", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        copySelectedWidget();
+        deleteSelectedWidget();
+    }
+
+    private void alignSelectedWidget() {
+        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
+            Toast.makeText(this, "Сначала выбери элемент на экране", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final String[] options = {
+                "По левому краю",
+                "По верхнему краю",
+                "По центру по горизонтали",
+                "По центру по вертикали",
+                "По центру экрана"
+        };
+        new AlertDialog.Builder(this)
+                .setTitle("Выравнивание")
+                .setItems(options, (dialog, which) -> {
+                    Widget widget = widgets.get(editor.selected);
+                    int maxX = Math.max(0, editor.getWidth() - widget.w);
+                    int maxY = Math.max(0, editor.getHeight() - widget.h);
+                    if (which == 0) widget.x = 0;
+                    else if (which == 1) widget.y = 0;
+                    else if (which == 2) widget.x = maxX / 2;
+                    else if (which == 3) widget.y = maxY / 2;
+                    else {
+                        widget.x = maxX / 2;
+                        widget.y = maxY / 2;
+                    }
+                    persistProject();
+                    editor.invalidate();
+                }).show();
     }
 
     private void startModbusPolling() {
