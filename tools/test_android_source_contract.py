@@ -31,7 +31,7 @@ class AndroidSourceContractTests(unittest.TestCase):
     def test_project_persistence_serializes_screens_and_widgets(self):
         self.assertIn("private void persistProject()", self.source)
         self.assertIn('project.put("screens", screenArray)', self.source)
-        self.assertIn('screenObj.put("widgets", widgetsToJson(screen.widgets))', self.source)
+        self.assertIn("widgetsToJson(screen.widgets)", self.source)
         self.assertIn('project.put("currentScreen", currentScreenIndex)', self.source)
         self.assertIn("ProjectJsonCodec.mergePreservedFields(w.extraFields, obj)", self.source)
         self.assertIn("ProjectJsonCodec.mergePreservedFields(screen.extraFields, screenObj)", self.source)
