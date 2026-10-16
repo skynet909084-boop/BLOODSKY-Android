@@ -1564,6 +1564,7 @@ public class MainActivity extends Activity {
                 previewRow.addView(preview, previewSize);
                 previewRow.addView(item, new LinearLayout.LayoutParams(0, -2, 1f));
                 previewRow.setOnClickListener(v -> item.performClick());
+                previewRow.setMinimumHeight(dp(48));
                 list.addView(previewRow, new LinearLayout.LayoutParams(-1, -2));
             } else {
                 list.addView(item, new LinearLayout.LayoutParams(-1, -2));
