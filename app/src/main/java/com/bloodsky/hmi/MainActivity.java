@@ -58,6 +58,7 @@ public class MainActivity extends Activity {
     private static final int REQUEST_EXPORT_PROJECT = 7101;
     private static final int REQUEST_IMPORT_PROJECT = 7102;
     private static final int REQUEST_PICK_MEDIA = 7103;
+    private static final int REQUEST_EXPORT_PROJECT_ZIP = 7104;
     private EditText pendingMediaField;
     private String projectName = "Мой проект";
     private JSONObject projectExtraFields = new JSONObject();
@@ -98,8 +99,10 @@ public class MainActivity extends Activity {
                 try (InputStream is = getContentResolver().openInputStream(Uri.parse(pathOrUri))) {
                     bitmap = BitmapFactory.decodeStream(is);
                 }
-            } else if (new java.io.File(pathOrUri).exists()) {
-                bitmap = BitmapFactory.decodeFile(pathOrUri);
+            } else {
+                String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
+                java.io.File file = ProjectMediaService.resolveMediaFile(getFilesDir(), json, pathOrUri);
+                bitmap = BitmapFactory.decodeFile(file.getAbsolutePath());
             }
         } catch (Exception ignored) {}
         imageCache.put(pathOrUri, bitmap);
@@ -146,9 +149,11 @@ public class MainActivity extends Activity {
                 mediaPlayer.setDataSource(this, Uri.parse(pathOrUri));
                 mediaPlayer.prepare();
                 mediaPlayer.start();
-            } else if (pathOrUri != null && new java.io.File(pathOrUri).exists()) {
+            } else if (pathOrUri != null && !pathOrUri.trim().isEmpty() && !"Аларм".equals(pathOrUri)) {
+                String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
+                java.io.File file = ProjectMediaService.resolveMediaFile(getFilesDir(), json, pathOrUri);
                 mediaPlayer = new MediaPlayer();
-                mediaPlayer.setDataSource(pathOrUri);
+                mediaPlayer.setDataSource(file.getAbsolutePath());
                 mediaPlayer.prepare();
                 mediaPlayer.start();
             } else {
@@ -696,15 +701,53 @@ public class MainActivity extends Activity {
 
     private void exportProject() {
         persistProject();
-        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("application/json");
-        intent.putExtra(Intent.EXTRA_TITLE, projectName.replaceAll("[^A-Za-zА-Яа-я0-9._-]", "_") + ".bloodsky.json");
-        try {
-            startActivityForResult(intent, REQUEST_EXPORT_PROJECT);
-        } catch (Exception e) {
-            Toast.makeText(this, "Не удалось открыть выбор файла", Toast.LENGTH_LONG).show();
+        new AlertDialog.Builder(this).setTitle("Экспорт проекта")
+                .setItems(new String[]{"ZIP — проект и медиа", "JSON — только настройки"}, (dialog, which) -> {
+                    Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    intent.setType(which == 0 ? "application/zip" : "application/json");
+                    intent.putExtra(Intent.EXTRA_TITLE, projectName.replaceAll("[^A-Za-zА-Яа-я0-9._-]", "_")
+                            + (which == 0 ? ".bloodsky.zip" : ".bloodsky.json"));
+                    try { startActivityForResult(intent, which == 0 ? REQUEST_EXPORT_PROJECT_ZIP : REQUEST_EXPORT_PROJECT); }
+                    catch (Exception e) { Toast.makeText(this, "Не удалось открыть выбор файла", Toast.LENGTH_LONG).show(); }
+                }).show();
+    }
+
+    public byte[] readProjectMediaData(String pathOrUri) throws IOException {
+        return readProjectMediaData(pathOrUri, getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}"));
+    }
+
+    private byte[] readProjectMediaData(String pathOrUri, String json) throws IOException {
+        if (pathOrUri != null && pathOrUri.trim().startsWith("content://")) {
+            try (InputStream in = getContentResolver().openInputStream(Uri.parse(pathOrUri.trim()))) {
+                return ProjectMediaService.readBoundedMedia(in);
+            }
         }
+        try (InputStream in = new java.io.FileInputStream(ProjectMediaService.resolveMediaFile(getFilesDir(), json, pathOrUri))) {
+            return ProjectMediaService.readBoundedMedia(in);
+        }
+    }
+
+    private void importProjectBundle(Uri uri) {
+        modbusExecutor.execute(() -> {
+            try (InputStream in = getContentResolver().openInputStream(uri)) {
+                if (in == null) throw new IOException("Input stream unavailable");
+                ProjectMediaService.importProjectBundle(getFilesDir(), in, json -> {
+                    try { validateImportedProject(json); }
+                    catch (Exception invalid) { throw new IllegalArgumentException("Invalid imported project", invalid); }
+                    return getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(ACTIVE_PROJECT, json).commit();
+                });
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    imageCache.clear(); loadProject(); showEditor();
+                    Toast.makeText(this, "Проект импортирован", Toast.LENGTH_LONG).show();
+                });
+            } catch (Exception error) {
+                android.util.Log.e("BLOODSKY", "Project import failed", error);
+                runOnUiThread(() -> { if (!isFinishing() && !isDestroyed())
+                    Toast.makeText(this, "Импорт не выполнен: " + error.getMessage(), Toast.LENGTH_LONG).show(); });
+            }
+        });
     }
 
     private void importProject() {
@@ -763,36 +806,27 @@ public class MainActivity extends Activity {
         }
         if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
         Uri uri = data.getData();
-        if (requestCode == REQUEST_EXPORT_PROJECT) {
-            try (OutputStream out = getContentResolver().openOutputStream(uri)) {
-                if (out == null) throw new IllegalStateException("Output stream unavailable");
-                String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
-                out.write(json.getBytes(StandardCharsets.UTF_8));
-                Toast.makeText(this, "JSON проекта экспортирован", Toast.LENGTH_LONG).show();
-            } catch (Exception e) {
-                Toast.makeText(this, "Ошибка экспорта проекта", Toast.LENGTH_LONG).show();
-            }
-        } else if (requestCode == REQUEST_IMPORT_PROJECT) {
-            try (InputStream in = getContentResolver().openInputStream(uri);
-                 ByteArrayOutputStream buffer = new ByteArrayOutputStream()) {
-                if (in == null) throw new IllegalStateException("Input stream unavailable");
-                byte[] chunk = new byte[8192];
-                int count;
-                while ((count = in.read(chunk)) != -1) {
-                    if (buffer.size() + count > 8 * 1024 * 1024) throw new IllegalArgumentException("Project file too large");
-                    buffer.write(chunk, 0, count);
+        if (requestCode == REQUEST_EXPORT_PROJECT || requestCode == REQUEST_EXPORT_PROJECT_ZIP) {
+            final String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
+            modbusExecutor.execute(() -> {
+                try (OutputStream out = getContentResolver().openOutputStream(uri)) {
+                    if (out == null) throw new IOException("Output stream unavailable");
+                    if (requestCode == REQUEST_EXPORT_PROJECT_ZIP) {
+                        ProjectMediaService.exportProjectZipBundle(out, json, source -> readProjectMediaData(source, json));
+                    } else out.write(json.getBytes(StandardCharsets.UTF_8));
+                    runOnUiThread(() -> { if (!isFinishing() && !isDestroyed())
+                        Toast.makeText(this, "Проект экспортирован", Toast.LENGTH_LONG).show(); });
+                } catch (Exception error) {
+                    android.util.Log.e("BLOODSKY", "Project export failed", error);
+                    runOnUiThread(() -> { if (!isFinishing() && !isDestroyed())
+                        Toast.makeText(this, "Ошибка экспорта: " + error.getMessage(), Toast.LENGTH_LONG).show(); });
                 }
-                String json = new String(buffer.toByteArray(), StandardCharsets.UTF_8);
-                validateImportedProject(json);
-                if (!getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(ACTIVE_PROJECT, json).commit()) throw new IllegalStateException("Could not save imported project");
-                loadProject();
-                showEditor();
-                Toast.makeText(this, "Проект JSON импортирован", Toast.LENGTH_LONG).show();
-            } catch (Exception e) {
-                Toast.makeText(this, "Импорт не выполнен: файл не является допустимым JSON-проектом", Toast.LENGTH_LONG).show();
-            }
+            });
+        } else if (requestCode == REQUEST_IMPORT_PROJECT) {
+            importProjectBundle(uri);
         }
     }
+
 
     private void editProjectName() {
         EditText input = new EditText(this);
@@ -1964,6 +1998,10 @@ public class MainActivity extends Activity {
     }
 
     public static String importProjectFromZip(InputStream inputStream) throws Exception {
+        return importProjectFromZip(inputStream, null);
+    }
+
+    public static String importProjectFromZip(InputStream inputStream, Map<String, byte[]> extractedMedia) throws Exception {
         byte[] projectJsonBytes = null;
         java.util.Set<String> entryNames = new java.util.HashSet<>();
         long totalUncompressedBytes = 0;
@@ -1989,11 +2027,13 @@ public class MainActivity extends Activity {
                     entryBuffer.write(chunk, 0, count);
                 }
                 zis.closeEntry();
-                if ("TableNameProject.json".equalsIgnoreCase(name) || name.endsWith(".json")) {
+                if ("TableNameProject.json".equalsIgnoreCase(name) || (!name.startsWith("media/") && name.endsWith(".json"))) {
                     if (projectJsonBytes != null) {
                         throw new IllegalArgumentException("Multiple JSON project files in archive");
                     }
                     projectJsonBytes = entryBuffer.toByteArray();
+                } else if (name.startsWith("media/") && extractedMedia != null && !entry.isDirectory()) {
+                    extractedMedia.put(name.substring("media/".length()), entryBuffer.toByteArray());
                 }
             }
         }
@@ -2033,6 +2073,8 @@ public class MainActivity extends Activity {
             project.put("screens", screenArray);
             project.put("currentScreen", currentScreenIndex);
             project.put("projectName", projectName);
+            project = new JSONObject(ProjectMediaService.ensureProjectHasId(project.toString()));
+            projectExtraFields = new JSONObject(project.toString());
             getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                     .putString(ACTIVE_PROJECT, project.toString())
                     .putString("project_name", projectName).apply();
@@ -2042,6 +2084,7 @@ public class MainActivity extends Activity {
     }
 
     private void loadProject() {
+        imageCache.clear();
         widgets.clear(); screens.clear(); currentScreenIndex = 0;
         projectExtraFields = new JSONObject();
         android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
@@ -2984,4 +3027,5 @@ public class MainActivity extends Activity {
         }
     }
 }
+
 
