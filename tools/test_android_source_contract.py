@@ -106,7 +106,7 @@ class AndroidSourceContractTests(unittest.TestCase):
         picker = self.source[start:end]
         self.assertIn("OriginalIndicator.supports(types[i])", picker)
         self.assertIn("R.drawable.kc_background_button : R.drawable.kc_lamp_off", picker)
-        self.assertIn('preview.setContentDescription("Индикатор: выключен")', picker)
+        self.assertIn('"Кнопка: оригинальный фон" : "Индикатор: выключен"', picker)
         self.assertIn("previewRow.setOnClickListener(v -> item.performClick())", picker)
         self.assertIn("addWidget(types[index], defaults[index])", picker)
 
