@@ -987,8 +987,8 @@ public class MainActivity extends Activity {
         String legacy = result.optString("modbusSlave", "");
         if (legacy.matches("(?is).*slave id\\s*:\\s*[0-9]+.*")
                 && legacy.matches("(?is).*port\\s*:\\s*[0-9]+.*")) {
-            legacy = legacy.replaceFirst("(?i)(slave id\\s*:\\s*)[0-9]+", "${1}" + id)
-                    .replaceFirst("(?i)(port\\s*:\\s*)[0-9]+", "${1}" + port);
+            legacy = legacy.replaceFirst("(?i)(slave id\\s*:\\s*)[0-9]+", "Slave ID: " + id)
+                    .replaceFirst("(?i)(port\\s*:\\s*)[0-9]+", "Port: " + port);
         } else {
             legacy = "Slave ID: " + id + ", Port: " + port;
         }
