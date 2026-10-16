@@ -118,7 +118,19 @@ class Smoke:
         self.tap('Выход', class_name='android.widget.Button')
         self.wait_node(PROJECT)
         self.tap('+ Элемент')
-        self.tap('Индикатор    ›')
+        self.wait_node(description='Добавить: Индикатор')
+        self.capture('02c-original-palette')
+        self.tap(description='Добавить: Индикатор')
+        for kind in ['Кнопка', 'Текст', 'Прогресс-бар']:
+            self.wait_node(PROJECT)
+            self.tap('+ Элемент')
+            self.tap(description='Добавить: ' + kind)
+        self.wait_node(PROJECT)
+        self.tap('+ Элемент')
+        self.tap(description='Функциональные блоки и другие элементы')
+        self.wait_node('Добавить элемент')
+        self.capture('02d-extended-components')
+        self.tap('Отмена')
         self.wait_node(PROJECT)
         self.capture('02-created-editor')
         # Force a real activity/process restart instead of only reusing in-memory data.
@@ -135,8 +147,8 @@ class Smoke:
         values = {node.get('name'): node.text for node in ET.fromstring(prefs)}
         active = json.loads(values['active_project'])
         widgets = active['screens'][0]['widgets']
-        if active['projectName'] != PROJECT or len(widgets) != 1 or widgets[0]['type'] != 'Индикатор':
-            raise AssertionError('Created indicator/project did not survive process restart')
+        if active['projectName'] != PROJECT or [w['type'] for w in widgets] != ['Индикатор', 'Кнопка', 'Текст', 'Прогресс-бар']:
+            raise AssertionError('Palette-created components/project did not survive process restart')
         if widgets[0]['w'] != widgets[0]['h'] or widgets[0]['w'] <= 0:
             raise AssertionError('Original indicator default geometry was lost')
         self.tap('☰')
@@ -160,7 +172,7 @@ class Smoke:
         if PACKAGE in crashes:
             raise AssertionError('Application crash recorded')
         (self.output / 'result.json').write_text(json.dumps({'result': 'passed', 'package': PACKAGE,
-                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'add original indicator', 'process restart', 'reload with indicator', 'confirmed deletion'],
+                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'original five-category palette', 'palette add indicator/button/text/progress', 'extended component/FBD access', 'process restart', 'reload four palette-created components', 'confirmed deletion'],
                 'api_level': adb('shell', 'getprop', 'ro.build.version.sdk').strip(),
                 'display_size': adb('shell', 'wm', 'size').strip(),
                 'display_density': adb('shell', 'wm', 'density').strip()}, indent=2))
