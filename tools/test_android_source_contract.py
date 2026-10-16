@@ -105,10 +105,17 @@ class AndroidSourceContractTests(unittest.TestCase):
         end = self.source.index("private void addWidget(", start)
         picker = self.source[start:end]
         self.assertIn("OriginalIndicator.supports(types[i])", picker)
-        self.assertIn("preview.setImageResource(R.drawable.kc_lamp_off)", picker)
-        self.assertIn('preview.setContentDescription("Индикатор: выключен")', picker)
+        self.assertIn("R.drawable.kc_background_button : R.drawable.kc_lamp_off", picker)
+        self.assertIn('"Кнопка: оригинальный фон" : "Индикатор: выключен"', picker)
         self.assertIn("previewRow.setOnClickListener(v -> item.performClick())", picker)
         self.assertIn("addWidget(types[index], defaults[index])", picker)
+
+    def test_picker_uses_original_button_artwork(self):
+        picker = self.source.split("private void showAddWidgetMenu()", 1)[1].split("private void addWidget(", 1)[0]
+        self.assertIn('OriginalIndicator.supports(types[i]) || "Кнопка".equals(types[i])', picker)
+        self.assertIn("R.drawable.kc_background_button : R.drawable.kc_lamp_off", picker)
+        self.assertIn('buttonPreview = "Кнопка".equals(types[i])', picker)
+        self.assertIn("previewRow.setOnClickListener(v -> item.performClick())", picker)
 
     def test_kascada_craft_widgets(self):
         self.assertIn("Шкала / Стрелка", self.source)
