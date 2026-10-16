@@ -57,6 +57,8 @@ public class MainActivity extends Activity {
     private static final String ACTIVE_PROJECT = "active_project";
     private static final int REQUEST_EXPORT_PROJECT = 7101;
     private static final int REQUEST_IMPORT_PROJECT = 7102;
+    private static final int REQUEST_PICK_MEDIA = 7103;
+    private EditText pendingMediaField;
     private String projectName = "Мой проект";
     private JSONObject projectExtraFields = new JSONObject();
     private LinearLayout root;
@@ -813,8 +815,49 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void chooseMediaFile(EditText field, String mimeType) {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType(mimeType);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        pendingMediaField = field;
+        try {
+            startActivityForResult(intent, REQUEST_PICK_MEDIA);
+        } catch (Exception ex) {
+            pendingMediaField = null;
+            Toast.makeText(this, "Не удалось открыть выбор файла", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void addMediaPicker(LinearLayout form, EditText field, String mimeType) {
+        Button choose = new Button(this);
+        choose.setText("Выбрать файл…");
+        choose.setAllCaps(false);
+        choose.setOnClickListener(v -> chooseMediaFile(field, mimeType));
+        form.addView(choose);
+    }
+
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_PICK_MEDIA) {
+            EditText target = pendingMediaField;
+            pendingMediaField = null;
+            if (resultCode != RESULT_OK || data == null || data.getData() == null || target == null) return;
+            Uri selected = data.getData();
+            try {
+                int readGrant = data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION;
+                if (readGrant == 0) throw new SecurityException("Read access not granted");
+                getContentResolver().takePersistableUriPermission(selected, readGrant);
+                try (InputStream in = getContentResolver().openInputStream(selected)) {
+                    if (in == null) throw new IOException("File unavailable");
+                }
+                target.setText(selected.toString());
+                imageCache.remove(selected.toString());
+            } catch (Exception ex) {
+                Toast.makeText(this, "Нет постоянного доступа к файлу. Выберите другой файл.", Toast.LENGTH_LONG).show();
+            }
+            return;
+        }
         if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
         Uri uri = data.getData();
         if (requestCode == REQUEST_EXPORT_PROJECT) {
@@ -918,6 +961,45 @@ public class MainActivity extends Activity {
         return button;
     }
 
+    public static int requireSettingInt(String text, int min, int max, String label) {
+        try {
+            if (text == null || !text.trim().matches("[0-9]+")) throw new NumberFormatException();
+            int value = Integer.parseInt(text.trim());
+            if (value < min || value > max) throw new NumberFormatException();
+            return value;
+        } catch (NumberFormatException ex) {
+            throw new IllegalArgumentException(label + ": допустимо " + min + "–" + max);
+        }
+    }
+
+    private static String legacySlaveValue(String legacy, String label, String fallback) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                "(?i)" + label + "\\s*:\\s*([0-9]+)").matcher(legacy);
+        return m.find() ? m.group(1) : fallback;
+    }
+
+    public static JSONObject validatedProjectSettings(JSONObject current, String modeText,
+            String idText, String portText, String registers) throws Exception {
+        int mode = requireSettingInt(modeText, 0, 1, "Режим");
+        int id = requireSettingInt(idText, 1, 247, "Slave ID");
+        int port = requireSettingInt(portText, 1, 65535, "Порт");
+        JSONObject result = new JSONObject(current.toString());
+        String legacy = result.optString("modbusSlave", "");
+        if (legacy.matches("(?is).*slave id\\s*:\\s*[0-9]+.*")
+                && legacy.matches("(?is).*port\\s*:\\s*[0-9]+.*")) {
+            legacy = legacy.replaceFirst("(?i)(slave id\\s*:\\s*)[0-9]+", "${1}" + id)
+                    .replaceFirst("(?i)(port\\s*:\\s*)[0-9]+", "${1}" + port);
+        } else {
+            legacy = "Slave ID: " + id + ", Port: " + port;
+        }
+        result.put("stationMode", mode);
+        result.put("modbusSlaveId", id);
+        result.put("modbusSlavePort", port);
+        result.put("modbusSlave", legacy);
+        result.put("systemRegisters", registers);
+        return result;
+    }
+
     private void showProjectSettingsDialog() {
         LinearLayout form = new LinearLayout(this);
         form.setOrientation(LinearLayout.VERTICAL);
@@ -941,9 +1023,15 @@ public class MainActivity extends Activity {
         slaveLabel.setText("Настройки Modbus Slave (ID / Порт)");
         slaveLabel.setPadding(0, dp(10), 0, 0);
         form.addView(slaveLabel);
-        EditText slaveIdField = propertyField(projectExtraFields.optString("modbusSlave", "Slave ID: 1, Port: 502"), InputType.TYPE_CLASS_TEXT);
-        slaveIdField.setHint("Например: Slave ID: 1, Port: 502");
+        String legacySlave = projectExtraFields.optString("modbusSlave", "");
+        EditText slaveIdField = propertyField(projectExtraFields.optString("modbusSlaveId",
+                legacySlaveValue(legacySlave, "Slave ID", "1")), InputType.TYPE_CLASS_NUMBER);
+        slaveIdField.setHint("Slave ID: 1–247");
         form.addView(slaveIdField);
+        EditText slavePortField = propertyField(projectExtraFields.optString("modbusSlavePort",
+                legacySlaveValue(legacySlave, "Port", "502")), InputType.TYPE_CLASS_NUMBER);
+        slavePortField.setHint("Порт: 1–65535");
+        form.addView(slavePortField);
 
         TextView sysRegLabel = new TextView(this);
         sysRegLabel.setText("Системные регистры");
@@ -956,25 +1044,27 @@ public class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.addView(form);
 
-        new AlertDialog.Builder(this)
+        AlertDialog settings = new AlertDialog.Builder(this)
                 .setTitle("Настройки проекта")
                 .setView(scroll)
                 .setNegativeButton("Отмена", null)
-                .setPositiveButton("Сохранить", (dialog, which) -> {
-                    try {
-                        int mode = readPositiveInt(stationField, 0, true);
-                        if (mode != 0 && mode != 1) mode = 0;
-                        projectExtraFields.put("stationMode", mode);
-                        String slaveText = slaveIdField.getText().toString().trim();
-                        if (slaveText.isEmpty()) slaveText = "Slave ID: 1, Port: 502";
-                        projectExtraFields.put("modbusSlave", slaveText);
-                        projectExtraFields.put("systemRegisters", sysRegField.getText().toString().trim());
-                        persistProject();
-                        Toast.makeText(this, "Настройки проекта сохранены", Toast.LENGTH_SHORT).show();
-                    } catch (Exception ex) {
-                        Toast.makeText(this, "Ошибка сохранения настроек", Toast.LENGTH_SHORT).show();
-                    }
-                }).show();
+                .setPositiveButton("Сохранить", null).create();
+        settings.setOnShowListener(ignored -> settings.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            try {
+                JSONObject updated = validatedProjectSettings(projectExtraFields,
+                        stationField.getText().toString(), slaveIdField.getText().toString(),
+                        slavePortField.getText().toString(), sysRegField.getText().toString().trim());
+                projectExtraFields = updated;
+                persistProject();
+                settings.dismiss();
+                Toast.makeText(this, "Настройки проекта сохранены", Toast.LENGTH_SHORT).show();
+            } catch (IllegalArgumentException ex) {
+                Toast.makeText(this, ex.getMessage(), Toast.LENGTH_LONG).show();
+            } catch (Exception ex) {
+                Toast.makeText(this, "Ошибка сохранения настроек", Toast.LENGTH_LONG).show();
+            }
+        }));
+        settings.show();
     }
 
     private void showEditor() {
@@ -1471,8 +1561,9 @@ public class MainActivity extends Activity {
             soundThresholdField.setHint("Порог (например 1.0)");
             form.addView(soundThresholdField);
             soundFilePathField = propertyField(w.soundFilePath, InputType.TYPE_CLASS_TEXT);
-            soundFilePathField.setHint("Имя файла / URL или 'Аларм'");
+            soundFilePathField.setHint("Файл / content URI или 'Аларм'");
             form.addView(soundFilePathField);
+            addMediaPicker(form, soundFilePathField, "audio/*");
         } else { soundThresholdField = null; soundFilePathField = null; }
 
         final EditText targetScreenIndexField;
@@ -1490,26 +1581,27 @@ public class MainActivity extends Activity {
             form.addView(targetUrlField);
         } else { targetScreenIndexField = null; targetUrlField = null; }
 
-        final EditText[] imagePathFields = new EditText[4];
+        final EditText[] imagePathFields = new EditText[w.imagePathStates.length];
         if ("Многопозиционное фото".equals(w.type)) {
             TextView imgHeader = new TextView(this);
-            imgHeader.setText("Пути к изображениям состояний (0–3)");
+            imgHeader.setText("Пути к изображениям состояний (0–15)");
             imgHeader.setPadding(0, dp(10), 0, 0);
             form.addView(imgHeader);
-            for (int k = 0; k < 4; k++) {
+            for (int k = 0; k < imagePathFields.length; k++) {
                 imagePathFields[k] = propertyField(w.imagePathStates[k], InputType.TYPE_CLASS_TEXT);
                 imagePathFields[k].setHint("Изображение " + k + " (файл / URI)");
                 form.addView(imagePathFields[k]);
+                addMediaPicker(form, imagePathFields[k], "image/*");
             }
         }
 
-        final EditText[] voiceMsgFields = new EditText[4];
+        final EditText[] voiceMsgFields = new EditText[w.voiceMessages.length];
         if ("Голосовое сообщение".equals(w.type)) {
             TextView voiceHeader = new TextView(this);
-            voiceHeader.setText("Тексты голосовых оповещений (0–3)");
+            voiceHeader.setText("Тексты голосовых оповещений (0–15)");
             voiceHeader.setPadding(0, dp(10), 0, 0);
             form.addView(voiceHeader);
-            for (int k = 0; k < 4; k++) {
+            for (int k = 0; k < voiceMsgFields.length; k++) {
                 voiceMsgFields[k] = propertyField(w.voiceMessages[k], InputType.TYPE_CLASS_TEXT);
                 voiceMsgFields[k].setHint("Голос " + k);
                 form.addView(voiceMsgFields[k]);
@@ -1651,14 +1743,14 @@ public class MainActivity extends Activity {
                         w.targetUrl = targetUrlField.getText().toString();
                     }
                     if ("Многопозиционное фото".equals(w.type)) {
-                        for (int k = 0; k < 4; k++) {
+                        for (int k = 0; k < imagePathFields.length; k++) {
                             if (imagePathFields[k] != null) {
                                 w.imagePathStates[k] = imagePathFields[k].getText().toString();
                             }
                         }
                     }
                     if ("Голосовое сообщение".equals(w.type)) {
-                        for (int k = 0; k < 4; k++) {
+                        for (int k = 0; k < voiceMsgFields.length; k++) {
                             if (voiceMsgFields[k] != null) {
                                 w.voiceMessages[k] = voiceMsgFields[k].getText().toString();
                             }
@@ -2975,3 +3067,4 @@ public class MainActivity extends Activity {
         }
     }
 }
+
