@@ -73,11 +73,13 @@ public class ProjectMediaService {
         }
     }
 
-    public static File getProjectMediaDir(File filesDir, String projectJson) {
+    private static File resolveProjectMediaDir(File filesDir, String projectJson) {
         String projectId = getOrGenerateProjectId(projectJson);
-        File projectsDir = new File(filesDir, "projects");
-        File pDir = new File(projectsDir, projectId);
-        File mediaDir = new File(pDir, "media");
+        return new File(new File(new File(filesDir, "projects"), projectId), "media");
+    }
+
+    public static File getProjectMediaDir(File filesDir, String projectJson) {
+        File mediaDir = resolveProjectMediaDir(filesDir, projectJson);
         if (!mediaDir.exists()) mediaDir.mkdirs();
         return mediaDir;
     }
@@ -270,7 +272,12 @@ public class ProjectMediaService {
                     }
                 }
 
-                projectMediaDir = getProjectMediaDir(filesDir, importedJson);
+                // Resolve without creating: a first import has no prior media to back up.
+                projectMediaDir = resolveProjectMediaDir(filesDir, importedJson);
+                File projectDir = projectMediaDir.getParentFile();
+                if (!projectDir.isDirectory() && !projectDir.mkdirs()) {
+                    throw new IOException("Failed to create project directory");
+                }
                 // Never replace a media directory without a recoverable backup.
                 // Keep the backup on the same filesystem as the original.
                 backupDir = new File(projectMediaDir.getParentFile(), "backup_media_" + UUID.randomUUID().toString());
