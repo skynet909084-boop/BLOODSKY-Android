@@ -1491,6 +1491,11 @@ public class MainActivity extends Activity {
     }
 
     private void showAddWidgetMenu() {
+        OriginalComponentPalette.show(this, this::addWidget,
+                this::showExtendedWidgetMenu, this::editScreenBackground);
+    }
+
+    private void showExtendedWidgetMenu() {
         final String[] labels = {
                 "Текст / надпись", "Кнопка", "Индикатор", "Задатчик",
                 "Динамический текст", "Битовый список", "Шкала / Стрелка", "Прогресс-бар", "График / Тренд", "Двухпозиционный индикатор",

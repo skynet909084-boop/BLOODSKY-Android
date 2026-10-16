@@ -1,0 +1,62 @@
+<?xml version='1.0' encoding='utf-8'?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="horizontal" android:id="@+id/kc_picker_layout_tab_component" android:background="#ff232323" android:layout_width="match_parent" android:layout_height="match_parent">
+  <LinearLayout android:orientation="vertical" android:background="#ff232323" android:layout_width="wrap_content" android:layout_height="match_parent">
+    <LinearLayout android:gravity="center" android:orientation="horizontal" android:background="#ff232323" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_weight="1.0">
+      <TextView android:textColor="#edb03b" android:gravity="center" android:layout_width="wrap_content" android:layout_height="match_parent" android:layout_marginLeft="8.0dp" android:text="Задатчики" android:layout_marginStart="8.0dp" />
+    </LinearLayout>
+    <LinearLayout android:gravity="center" android:orientation="horizontal" android:background="#ff232323" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_weight="1.0">
+      <TextView android:textColor="#edb03b" android:gravity="center" android:layout_width="wrap_content" android:layout_height="match_parent" android:layout_marginLeft="8.0dp" android:text="Текст" android:layout_marginStart="8.0dp" />
+    </LinearLayout>
+    <LinearLayout android:gravity="center" android:orientation="horizontal" android:background="#232323" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_weight="1.0">
+      <TextView android:textColor="#edb03b" android:gravity="center" android:layout_width="wrap_content" android:layout_height="match_parent" android:layout_marginLeft="8.0dp" android:text="Индикаторы" android:layout_marginStart="8.0dp" />
+    </LinearLayout>
+    <LinearLayout android:gravity="center" android:orientation="horizontal" android:background="#232323" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_weight="1.0">
+      <TextView android:textColor="#edb03b" android:gravity="center" android:layout_width="wrap_content" android:layout_height="match_parent" android:layout_marginLeft="8.0dp" android:text="Графика" android:layout_marginStart="8.0dp" />
+    </LinearLayout>
+    <LinearLayout android:gravity="center" android:orientation="horizontal" android:background="#232323" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_weight="1.0">
+      <TextView android:textColor="#edb03b" android:gravity="center" android:layout_width="wrap_content" android:layout_height="match_parent" android:layout_marginLeft="8.0dp" android:text="Прочее" android:layout_marginStart="8.0dp" />
+    </LinearLayout>
+  </LinearLayout>
+  <LinearLayout android:orientation="vertical" android:id="@+id/kc_picker_rootLayout" android:background="#232323" android:layout_width="match_parent" android:layout_height="match_parent">
+    <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:background="#ff232323" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_weight="1.0">
+      <ImageView android:id="@+id/kc_picker_tab_switch" android:background="@drawable/kc_switch8_on" android:layout_width="80.0dp" android:layout_height="40.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" />
+      <TextView android:textColor="#ff000000" android:gravity="center" android:id="@+id/kc_picker_tab_button" android:background="@drawable/kc_tab_button" android:layout_width="80.0dp" android:layout_height="40.0dp" android:layout_marginLeft="4.0dp" android:text="Кнопка" android:layout_marginStart="4.0dp" />
+      <ImageView android:id="@+id/kc_picker_tab_digital_setters" android:background="@drawable/kc_tab_edit_number" android:layout_width="80.0dp" android:layout_height="40.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" />
+      <TextView android:textColor="@android:color/black" android:gravity="start|center" android:id="@+id/kc_picker_tab_list" android:background="@drawable/kc_tab_list" android:paddingLeft="8.0dp" android:layout_width="90.0dp" android:layout_height="40.0dp" android:layout_marginLeft="4.0dp" android:scaleType="fitXY" android:text="Список" android:paddingStart="8.0dp" android:paddingEnd="8.0dp" android:layout_marginStart="4.0dp" />
+      <ImageView android:id="@+id/kc_picker_tab_line_setter" android:background="@drawable/kc_tab_line_setter" android:layout_width="80.0dp" android:layout_height="40.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" />
+      <ImageView android:id="@+id/kc_picker_tab_voice_recognition" android:background="@drawable/kc_tab_voice_recognition" android:layout_width="40.0dp" android:layout_height="40.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" />
+    </LinearLayout>
+    <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_weight="1.0">
+      <TextView android:textColor="#ff000000" android:gravity="center" android:id="@+id/kc_picker_tab_text" android:background="@drawable/kc_bg_text" android:layout_width="80.0dp" android:layout_height="40.0dp" android:layout_marginLeft="8.0dp" android:text="Текст" android:layout_marginStart="8.0dp" />
+      <TextView android:textColor="#ff000000" android:gravity="center" android:id="@+id/kc_picker_tab_dyn_text" android:background="@drawable/kc_bg_text" android:layout_width="80.0dp" android:layout_height="40.0dp" android:layout_marginLeft="8.0dp" android:text="Дин.текст" android:layout_marginStart="8.0dp" />
+    </LinearLayout>
+    <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_weight="1.0">
+      <ImageView android:id="@+id/kc_picker_tab_digital_indicator" android:background="@drawable/kc_tab_register" android:layout_width="80.0dp" android:layout_height="40.0dp" android:layout_marginLeft="8.0dp" android:layout_marginStart="8.0dp" />
+      <ImageView android:id="@+id/kc_picker_tab_lamp" android:background="@drawable/kc_lamp_green" android:layout_width="40.0dp" android:layout_height="40.0dp" android:layout_marginLeft="8.0dp" android:layout_marginStart="8.0dp" />
+      <ImageView android:id="@+id/kc_picker_tab_alarm" android:background="@drawable/kc_tab_alarm" android:layout_width="40.0dp" android:layout_height="40.0dp" android:layout_marginLeft="8.0dp" android:layout_marginStart="8.0dp" />
+      <ImageView android:id="@+id/kc_picker_tab_line_level" android:background="@drawable/kc_tab_line_indicator" android:layout_width="40.0dp" android:layout_height="40.0dp" android:layout_marginLeft="8.0dp" android:layout_marginStart="8.0dp" />
+      <ImageView android:id="@+id/kc_picker_tab_round_indicator" android:background="@drawable/kc_tab_round_indicator" android:layout_width="40.0dp" android:layout_height="40.0dp" android:layout_marginLeft="8.0dp" android:layout_marginStart="8.0dp" />
+      <ImageView android:id="@+id/kc_picker_tab_sound" android:background="@drawable/kc_tab_sound" android:padding="5.0dp" android:layout_width="40.0dp" android:layout_height="40.0dp" android:layout_marginLeft="8.0dp" android:scaleType="fitXY" android:layout_marginStart="8.0dp" />
+    </LinearLayout>
+    <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_weight="1.0">
+      <ImageView android:id="@+id/kc_picker_tab_graph" android:background="@drawable/kc_tab_graph" android:layout_width="40.0dp" android:layout_height="40.0dp" android:layout_marginLeft="8.0dp" android:layout_marginStart="8.0dp" />
+      <TextView android:textColor="#ff000000" android:gravity="center" android:id="@+id/kc_picker_tab_gif" android:background="@drawable/kc_bg_text" android:layout_width="40.0dp" android:layout_height="40.0dp" android:layout_marginLeft="8.0dp" android:text="GIF" android:layout_marginStart="8.0dp" />
+      <ImageView android:id="@+id/kc_picker_tab_dyn_pictures" android:background="@drawable/kc_tab_dyn_pictures" android:layout_width="40.0dp" android:layout_height="40.0dp" android:layout_marginLeft="8.0dp" android:layout_marginStart="8.0dp" />
+      <ImageView android:id="@+id/kc_picker_tab_archive" android:background="@drawable/kc_tab_archive" android:layout_width="40.0dp" android:layout_height="40.0dp" android:layout_marginLeft="8.0dp" android:layout_marginStart="8.0dp" />
+      <TextView android:textColor="#ff000000" android:gravity="center" android:id="@+id/kc_picker_tab_background" android:background="@drawable/kc_bg_text" android:layout_width="40.0dp" android:layout_height="40.0dp" android:layout_marginLeft="8.0dp" android:text="Фон" android:layout_marginStart="8.0dp" />
+    </LinearLayout>
+    <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_weight="1.0">
+      <ImageView android:id="@+id/kc_picker_tab_gateway" android:background="@drawable/kc_tab_gateway" android:layout_width="40.0dp" android:layout_height="40.0dp" android:layout_marginLeft="8.0dp" android:layout_marginStart="8.0dp" />
+      <ImageView android:id="@+id/kc_picker_tab_gateway_bit" android:background="@drawable/kc_tab_gateway_bit" android:layout_width="40.0dp" android:layout_height="40.0dp" android:layout_marginLeft="8.0dp" android:layout_marginStart="8.0dp" />
+      <ImageView android:id="@+id/kc_picker_tab_sms_in" android:background="@drawable/kc_tab_sms_in" android:visibility="visible" android:layout_width="40.0dp" android:layout_height="40.0dp" android:layout_marginLeft="8.0dp" android:layout_marginStart="8.0dp" />
+      <ImageView android:id="@+id/kc_picker_tab_sms_out" android:background="@drawable/kc_tab_sms_out" android:visibility="visible" android:layout_width="40.0dp" android:layout_height="40.0dp" android:layout_marginLeft="8.0dp" android:layout_marginStart="8.0dp" />
+      <ImageView android:id="@+id/kc_picker_tab_camera" android:background="@drawable/kc_camera" android:layout_width="40.0dp" android:layout_height="40.0dp" android:layout_marginLeft="8.0dp" android:layout_marginStart="8.0dp" />
+      <ImageView android:id="@+id/kc_picker_tab_push_notif" android:background="@drawable/kc_tab_push_notif" android:layout_width="40.0dp" android:layout_height="40.0dp" android:layout_marginLeft="8.0dp" android:layout_marginStart="8.0dp" />
+      <ImageView android:id="@+id/kc_picker_tab_web_view" android:background="@drawable/kc_tab_web_view" android:layout_width="40.0dp" android:layout_height="40.0dp" android:layout_marginLeft="8.0dp" android:layout_marginStart="8.0dp" />
+      <ImageView android:id="@+id/kc_picker_tab_email" android:background="@drawable/kc_tab_email" android:visibility="gone" android:layout_width="40.0dp" android:layout_height="40.0dp" android:layout_marginLeft="8.0dp" android:layout_marginStart="8.0dp" />
+      <RelativeLayout android:layout_width="match_parent" android:layout_height="match_parent">
+        <ImageView android:id="@+id/kc_picker_switch_layout" android:background="@drawable/kc_tab_page2" android:layout_width="60.0dp" android:layout_height="60.0dp" android:layout_alignParentRight="true" android:layout_alignParentBottom="true" android:layout_alignParentEnd="true" />
+      </RelativeLayout>
+    </LinearLayout>
+  </LinearLayout>
+</LinearLayout>

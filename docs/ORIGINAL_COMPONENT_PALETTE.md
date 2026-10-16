@@ -1,0 +1,13 @@
+# Source-backed component palette
+
+The add-element action opens the five-category palette transferred from Craft 1.0.7 `apktool/res/layout/fragment_component_bar.xml`, rather than a newly designed list. The pinned reference archive checksum is `316da0335dc4ea0c8f2d8c14550118ba33bd0e95d7c926f67ed848429c554cdd`.
+
+All original hierarchy, row weights, icon order, margins, dimensions, text, backgrounds and visibility attributes are retained. Resource identifiers are prefixed, Russian strings/colors/dimensions are resolved from the original values, and static thumbnail custom views become native TextView/ImageView. These catalogue substitutions do not implement original runtime components. The transfer utility regenerates the layout; tests compare every node/attribute and every compiled bitmap byte against the pinned source.
+
+Ten thumbnails connect to existing BLOODSKY implementations: button, numeric setter, label, dynamic text, lamp, progress/level, gauge, sound, chart and multi-state image. Their runtime rendering/semantics remain the existing implementations and are not claimed as full original parity. Background opens the existing screen-background editor. The original page-corner artwork opens the existing extended list so all previous FBD/navigation/voice/bit-list functionality remains reachable until its original pages are transferred.
+
+Unimplemented original types stay visible with reduced opacity, disabled and labelled as not yet transferred: switch, list, linear setter, speech recognition, numeric indicator, alarm indicator, GIF, archive, gateways, SMS, camera, push and web view. No misleading substitutions or nonfunctional active buttons are introduced. Hidden email retains source visibility.
+
+The palette uses a fullscreen native dark dialog; Back dismisses it to the same editor. The original default 40/80dp thumbnails are retained. Matching original/BLOODSKY screenshots on equal devices/density and all original runtime component behaviors remain outstanding. Smaller landscape viewports, unusual font scales and accessibility navigation need additional device checks.
+
+Regression coverage: full source layout and bitmap equality, every visible entry explicitly bound or unavailable, API-23-safe selection callback, calculator regression, actual emulator palette screenshot/selection, four-component persistence after process death, extended-list access and confirmed project deletion. No project schema/media/Modbus transport changes are made.
