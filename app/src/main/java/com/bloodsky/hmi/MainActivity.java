@@ -65,6 +65,7 @@ public class MainActivity extends Activity {
     private static final int REQUEST_EXPORT_PROJECT = 7101;
     private static final int REQUEST_IMPORT_PROJECT = 7102;
     private static final int REQUEST_PICK_MEDIA = 7103;
+    private static final int REQUEST_EXPORT_PROJECT_JSON = 7104;
     private EditText pendingMediaField;
     private String projectName = "Мой проект";
     private JSONObject projectExtraFields = new JSONObject();
@@ -93,6 +94,24 @@ public class MainActivity extends Activity {
         }
     };
 
+    private boolean fbdExecutionActive = false;
+    private final Runnable fbdScanRunnable = new Runnable() {
+        @Override public void run() {
+            if (!fbdExecutionActive || editor == null) return;
+            if (fbdCacheValid.length != widgets.size() || fbdCacheValues.length != widgets.size()) {
+                fbdCacheValid = new boolean[widgets.size()];
+                fbdCacheValues = new boolean[widgets.size()];
+                fbdCacheNumeric = new double[widgets.size()];
+            }
+            if (!screens.isEmpty()) {
+                Screen screen = screens.get(currentScreenIndex);
+                runFbdScanCycle(widgets, screen.connections, fbdCacheValid, fbdCacheValues, fbdCacheNumeric);
+            }
+            if (editor != null) editor.invalidate();
+            mainHandler.postDelayed(this, 100L);
+        }
+    };
+
     private MediaPlayer mediaPlayer;
     private TextToSpeech textToSpeech;
     private final java.util.Map<String, Bitmap> imageCache = new java.util.HashMap<>();
@@ -110,6 +129,9 @@ public class MainActivity extends Activity {
                 bitmap = BitmapFactory.decodeFile(pathOrUri);
             } else {
                 java.io.File localMedia = new java.io.File(getFilesDir(), pathOrUri);
+                if (!localMedia.exists()) {
+                    localMedia = new java.io.File(getFilesDir(), "media/" + pathOrUri);
+                }
                 if (localMedia.exists()) {
                     bitmap = BitmapFactory.decodeFile(localMedia.getAbsolutePath());
                 }
@@ -182,12 +204,6 @@ public class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
-        if (state != null) {
-            projectName = state.getString("projectName", projectName);
-            currentScreenIndex = state.getInt("currentScreenIndex", currentScreenIndex);
-            isOperatorMode = state.getBoolean("isOperatorMode", isOperatorMode);
-            fbdWireMode = state.getBoolean("fbdWireMode", fbdWireMode);
-        }
         try {
             textToSpeech = new TextToSpeech(this, status -> {
                 if (status == TextToSpeech.SUCCESS && textToSpeech != null) {
@@ -198,11 +214,26 @@ public class MainActivity extends Activity {
             android.util.Log.e("BLOODSKY", "TTS init error", ex);
         }
         registerUsbReceiver();
-        showHome();
+        if (state != null && state.getBoolean("isShowingEditor", false)) {
+            projectName = state.getString("projectName", projectName);
+            loadProject();
+            currentScreenIndex = state.getInt("currentScreenIndex", currentScreenIndex);
+            isOperatorMode = state.getBoolean("isOperatorMode", isOperatorMode);
+            fbdWireMode = state.getBoolean("fbdWireMode", fbdWireMode);
+            if (!screens.isEmpty()) {
+                currentScreenIndex = Math.max(0, Math.min(currentScreenIndex, screens.size() - 1));
+                widgets.clear();
+                for (Widget source : screens.get(currentScreenIndex).widgets) widgets.add(copyWidget(source));
+            }
+            showEditor();
+        } else {
+            showHome();
+        }
     }
 
     @Override protected void onPause() {
         stopModbusPolling();
+        stopFbdExecution();
         if (mediaPlayer != null) {
             try { mediaPlayer.pause(); } catch (Exception ignored) {}
         }
@@ -216,20 +247,24 @@ public class MainActivity extends Activity {
         super.onResume();
         if (editor != null) {
             startModbusPolling();
+            startFbdExecution();
         }
     }
 
     @Override protected void onSaveInstanceState(Bundle outState) {
+        persistProject();
         super.onSaveInstanceState(outState);
         outState.putString("projectName", projectName);
         outState.putInt("currentScreenIndex", currentScreenIndex);
         outState.putBoolean("isOperatorMode", isOperatorMode);
         outState.putBoolean("fbdWireMode", fbdWireMode);
+        outState.putBoolean("isShowingEditor", editor != null);
     }
 
     @Override protected void onDestroy() {
         unregisterUsbReceiver();
         stopModbusPolling();
+        stopFbdExecution();
         editor = null;
         modbusExecutor.shutdownNow();
         if (mediaPlayer != null) {
@@ -329,6 +364,7 @@ public class MainActivity extends Activity {
 
     private void showHome() {
         stopModbusPolling();
+        stopFbdExecution();
         editor = null;
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -384,6 +420,7 @@ public class MainActivity extends Activity {
 
     private void showModbusScanner() {
         stopModbusPolling();
+        stopFbdExecution();
         editor = null;
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -739,6 +776,62 @@ public class MainActivity extends Activity {
         return describeModbusExceptionCodeStatic(code);
     }
 
+    private String pollUsbRtuDevice(BindingRequest request) {
+        UsbManager usbManager = (UsbManager) getSystemService(Context.USB_SERVICE);
+        if (usbManager == null) return "ERR: USB-служба недоступна";
+        HashMap<String, UsbDevice> deviceList = usbManager.getDeviceList();
+        if (deviceList == null || deviceList.isEmpty()) return "ERR: USB-адаптер не найден";
+        UsbDevice usbDevice = deviceList.values().iterator().next();
+        if (!usbManager.hasPermission(usbDevice)) return "ERR: Нет разрешения на доступ к USB";
+
+        android.hardware.usb.UsbDeviceConnection connection = usbManager.openDevice(usbDevice);
+        if (connection == null) return "ERR: Не удалось открыть USB-соединение";
+        try {
+            if (usbDevice.getInterfaceCount() == 0) return "ERR: Нет доступных USB-интерфейсов";
+            android.hardware.usb.UsbInterface usbIf = usbDevice.getInterface(0);
+            if (!connection.claimInterface(usbIf, true)) return "ERR: Не удалось захватить USB-интерфейс";
+
+            android.hardware.usb.UsbEndpoint epIn = null, epOut = null;
+            for (int i = 0; i < usbIf.getEndpointCount(); i++) {
+                android.hardware.usb.UsbEndpoint ep = usbIf.getEndpoint(i);
+                if (ep.getType() == android.hardware.usb.UsbConstants.USB_ENDPOINT_XFER_BULK) {
+                    if (ep.getDirection() == android.hardware.usb.UsbConstants.USB_DIR_IN) epIn = ep;
+                    else if (ep.getDirection() == android.hardware.usb.UsbConstants.USB_DIR_OUT) epOut = ep;
+                }
+            }
+            if (epIn == null || epOut == null) return "ERR: Не найдены USB endpoints для передачи";
+
+            byte[] frame = buildModbusRtuFrame(request.unit, request.functionCode, request.address, 1);
+            int sent = connection.bulkTransfer(epOut, frame, frame.length, 1000);
+            if (sent < frame.length) return "ERR: Ошибка передачи Modbus RTU по USB";
+
+            byte[] respBuf = new byte[256];
+            int readCount = connection.bulkTransfer(epIn, respBuf, respBuf.length, 1000);
+            if (readCount < 5) return "ERR: Тайм-аут или неполный ответ Modbus RTU";
+
+            int respFunc = respBuf[1] & 0xFF;
+            if (respFunc == (request.functionCode | 0x80)) {
+                int exceptionCode = respBuf[2] & 0xFF;
+                return "ERR: Modbus RTU " + describeModbusExceptionCodeStatic(exceptionCode);
+            }
+            if (respFunc != request.functionCode) return "ERR: Неожиданный код функции Modbus RTU (" + respFunc + ")";
+
+            int calcCrc = calculateModbusRtuCrc(respBuf, readCount - 2);
+            int frameCrc = ((respBuf[readCount - 1] & 0xFF) << 8) | (respBuf[readCount - 2] & 0xFF);
+            if (calcCrc != frameCrc) return "ERR: Ошибка CRC Modbus RTU";
+
+            int byteCount = respBuf[2] & 0xFF;
+            if (byteCount < 2 || readCount < 3 + byteCount + 2) return "ERR: Некорректный размер кадра Modbus RTU";
+
+            int regValue = ((respBuf[3] & 0xFF) << 8) | (respBuf[4] & 0xFF);
+            return Integer.toString(regValue);
+        } catch (Exception ex) {
+            return "ERR: " + describeModbusError(ex);
+        } finally {
+            try { connection.close(); } catch (Exception ignored) {}
+        }
+    }
+
     private String describeModbusError(Exception error) {
         if (error instanceof java.net.SocketTimeoutException) return "тайм-аут ответа (3 с)";
         if (error instanceof java.net.ConnectException) return "не удалось подключиться к устройству";
@@ -765,7 +858,32 @@ public class MainActivity extends Activity {
     }
 
     private BindingRequest parseBinding(int widgetIndex, String binding) {
-        if (binding == null || !binding.startsWith("tcp://")) return null;
+        if (binding == null) return null;
+        if (binding.startsWith("rtu://") || binding.startsWith("com://")) {
+            try {
+                String raw = binding.substring(binding.indexOf("://") + 3);
+                String[] path = raw.split("/", -1);
+                if (path.length < 2) return null;
+                int unit = Integer.parseInt(path[0]);
+                int enteredAddress = Integer.parseInt(path[1]);
+                if (unit < 0 || unit > 255 || enteredAddress < 0 || enteredAddress > 65535) return null;
+                int functionCode = 3;
+                int address = enteredAddress;
+                if (enteredAddress >= 30001 && enteredAddress <= 39999) {
+                    functionCode = 4;
+                    address = enteredAddress - 30001;
+                } else if (enteredAddress >= 40001 && enteredAddress <= 49999) {
+                    functionCode = 3;
+                    address = enteredAddress - 40001;
+                }
+                BindingRequest req = new BindingRequest(widgetIndex, "usb_rtu", 0, unit, address, functionCode);
+                req.isRtu = true;
+                return req;
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+        if (!binding.startsWith("tcp://")) return null;
         try {
             URI uri = URI.create(binding);
             String[] path = uri.getPath().split("/", -1);
@@ -801,6 +919,17 @@ public class MainActivity extends Activity {
         mainHandler.removeCallbacks(modbusPollRunnable);
     }
 
+    private void startFbdExecution() {
+        stopFbdExecution();
+        fbdExecutionActive = true;
+        mainHandler.postDelayed(fbdScanRunnable, 100L);
+    }
+
+    private void stopFbdExecution() {
+        fbdExecutionActive = false;
+        mainHandler.removeCallbacks(fbdScanRunnable);
+    }
+
     private void pollBoundWidgets() {
         final List<Widget> snapshotWidgets = new ArrayList<>(widgets);
         final Map<String, BindingRequest> groupedRequests = new LinkedHashMap<>();
@@ -829,15 +958,24 @@ public class MainActivity extends Activity {
                 final Map<Integer, String> updates = new HashMap<>(invalidBindings);
                 for (BindingRequest request : requests) {
                     String value;
-                    try {
-                        String report = readModbusRegisters(request.host, request.port, request.unit, request.address, 1, request.functionCode);
-                        String[] lines = report.split("\n");
-                        if (lines.length < 2) throw new IOException("Пустой ответ регистра");
-                        String[] columns = lines[1].split("\\|");
-                        if (columns.length < 2) throw new IOException("Не удалось разобрать регистр");
-                        value = columns[1].trim();
-                    } catch (Exception e) {
-                        value = "ERR: " + describeModbusError(e);
+                    if (request.isRtu) {
+                        UsbHardwareStatus usbStatus = checkUsbHardwareStatus();
+                        if (usbStatus != UsbHardwareStatus.USB_READY) {
+                            value = "ERR: " + usbStatus.getDescription();
+                        } else {
+                            value = pollUsbRtuDevice(request);
+                        }
+                    } else {
+                        try {
+                            String report = readModbusRegisters(request.host, request.port, request.unit, request.address, 1, request.functionCode);
+                            String[] lines = report.split("\n");
+                            if (lines.length < 2) throw new IOException("Пустой ответ регистра");
+                            String[] columns = lines[1].split("\\|");
+                            if (columns.length < 2) throw new IOException("Не удалось разобрать регистр");
+                            value = columns[1].trim();
+                        } catch (Exception e) {
+                            value = "ERR: " + describeModbusError(e);
+                        }
                     }
                     for (int widgetIndex : request.widgetIndices) updates.put(widgetIndex, value);
                 }
@@ -889,6 +1027,7 @@ public class MainActivity extends Activity {
         final List<Integer> widgetIndices = new ArrayList<>();
         final int port, unit, address, functionCode;
         final String host;
+        boolean isRtu = false;
         BindingRequest(int widgetIndex, String host, int port, int unit, int address, int functionCode) {
             this.widgetIndices.add(widgetIndex);
             this.host = host; this.port = port; this.unit = unit;
@@ -901,14 +1040,88 @@ public class MainActivity extends Activity {
 
     private void exportProject() {
         persistProject();
-        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("application/json");
-        intent.putExtra(Intent.EXTRA_TITLE, projectName.replaceAll("[^A-Za-zА-Яа-я0-9._-]", "_") + ".bloodsky.json");
+        String[] options = {"Архив ZIP (.zip) с медиафайлами", "Файл JSON (.json)"};
+        new AlertDialog.Builder(this)
+                .setTitle("Экспорт проекта")
+                .setItems(options, (dialog, which) -> {
+                    if (which == 0) {
+                        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                        intent.addCategory(Intent.CATEGORY_OPENABLE);
+                        intent.setType("application/zip");
+                        intent.putExtra(Intent.EXTRA_TITLE, projectName.replaceAll("[^A-Za-zА-Яа-я0-9._-]", "_") + ".bloodsky.zip");
+                        try {
+                            startActivityForResult(intent, REQUEST_EXPORT_PROJECT);
+                        } catch (Exception e) {
+                            Toast.makeText(this, "Не удалось открыть выбор файла", Toast.LENGTH_LONG).show();
+                        }
+                    } else {
+                        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                        intent.addCategory(Intent.CATEGORY_OPENABLE);
+                        intent.setType("application/json");
+                        intent.putExtra(Intent.EXTRA_TITLE, projectName.replaceAll("[^A-Za-zА-Яа-я0-9._-]", "_") + ".bloodsky.json");
+                        try {
+                            startActivityForResult(intent, REQUEST_EXPORT_PROJECT_JSON);
+                        } catch (Exception e) {
+                            Toast.makeText(this, "Не удалось открыть выбор файла", Toast.LENGTH_LONG).show();
+                        }
+                    }
+                })
+                .setNegativeButton("Отмена", null)
+                .show();
+    }
+
+    private Map<String, byte[]> collectProjectMediaFiles() {
+        Map<String, byte[]> mediaFiles = new HashMap<>();
+        for (Screen screen : screens) {
+            for (Widget w : screen.widgets) {
+                addMediaToMap(mediaFiles, w.soundFilePath);
+                if (w.imagePathStates != null) {
+                    for (String path : w.imagePathStates) {
+                        addMediaToMap(mediaFiles, path);
+                    }
+                }
+            }
+        }
+        return mediaFiles;
+    }
+
+    private void addMediaToMap(Map<String, byte[]> map, String pathOrUri) {
+        if (pathOrUri == null || pathOrUri.trim().isEmpty() || "Аларм".equals(pathOrUri)) return;
+        String cleanPath = pathOrUri.trim();
+        String keyName = cleanPath;
+        if (keyName.contains("/")) keyName = keyName.substring(keyName.lastIndexOf('/') + 1);
+        if (keyName.isEmpty() || map.containsKey(keyName) || map.containsKey("media/" + keyName)) return;
+
+        byte[] data = null;
         try {
-            startActivityForResult(intent, REQUEST_EXPORT_PROJECT);
-        } catch (Exception e) {
-            Toast.makeText(this, "Не удалось открыть выбор файла", Toast.LENGTH_LONG).show();
+            if (cleanPath.startsWith("content://")) {
+                try (InputStream is = getContentResolver().openInputStream(Uri.parse(cleanPath));
+                     ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+                    if (is != null) {
+                        byte[] buf = new byte[8192];
+                        int len;
+                        while ((len = is.read(buf)) != -1) baos.write(buf, 0, len);
+                        data = baos.toByteArray();
+                    }
+                }
+            } else {
+                java.io.File f = new java.io.File(cleanPath);
+                if (!f.exists()) f = new java.io.File(getFilesDir(), cleanPath);
+                if (!f.exists()) f = new java.io.File(getFilesDir(), "media/" + cleanPath);
+                if (f.exists() && f.isFile()) {
+                    try (InputStream is = new java.io.FileInputStream(f);
+                         ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+                        byte[] buf = new byte[8192];
+                        int len;
+                        while ((len = is.read(buf)) != -1) baos.write(buf, 0, len);
+                        data = baos.toByteArray();
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+
+        if (data != null && data.length > 0) {
+            map.put("media/" + keyName, data);
         }
     }
 
@@ -972,10 +1185,20 @@ public class MainActivity extends Activity {
             try (OutputStream out = getContentResolver().openOutputStream(uri)) {
                 if (out == null) throw new IllegalStateException("Output stream unavailable");
                 String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
+                Map<String, byte[]> mediaFiles = collectProjectMediaFiles();
+                exportProjectToZip(out, json, mediaFiles);
+                Toast.makeText(this, "ZIP-архив проекта экспортирован", Toast.LENGTH_LONG).show();
+            } catch (Exception e) {
+                Toast.makeText(this, "Ошибка экспорта ZIP-архива", Toast.LENGTH_LONG).show();
+            }
+        } else if (requestCode == REQUEST_EXPORT_PROJECT_JSON) {
+            try (OutputStream out = getContentResolver().openOutputStream(uri)) {
+                if (out == null) throw new IllegalStateException("Output stream unavailable");
+                String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
                 out.write(json.getBytes(StandardCharsets.UTF_8));
                 Toast.makeText(this, "JSON проекта экспортирован", Toast.LENGTH_LONG).show();
             } catch (Exception e) {
-                Toast.makeText(this, "Ошибка экспорта проекта", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "Ошибка экспорта JSON проекта", Toast.LENGTH_LONG).show();
             }
         } else if (requestCode == REQUEST_IMPORT_PROJECT) {
             try (InputStream in = getContentResolver().openInputStream(uri);
@@ -984,17 +1207,48 @@ public class MainActivity extends Activity {
                 byte[] chunk = new byte[8192];
                 int count;
                 while ((count = in.read(chunk)) != -1) {
-                    if (buffer.size() + count > 8 * 1024 * 1024) throw new IllegalArgumentException("Project file too large");
+                    if (buffer.size() + count > 10 * 1024 * 1024) throw new IllegalArgumentException("Project file too large");
                     buffer.write(chunk, 0, count);
                 }
-                String json = new String(buffer.toByteArray(), StandardCharsets.UTF_8);
-                validateImportedProject(json);
-                if (!getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(ACTIVE_PROJECT, json).commit()) throw new IllegalStateException("Could not save imported project");
+                byte[] inputData = buffer.toByteArray();
+                String importedJson = null;
+                boolean importedFromZip = false;
+
+                Map<String, byte[]> extractedMedia = new HashMap<>();
+                try {
+                    importedJson = importProjectFromZip(new java.io.ByteArrayInputStream(inputData), extractedMedia);
+                    importedFromZip = true;
+                } catch (Exception zipEx) {
+                    importedJson = new String(inputData, StandardCharsets.UTF_8);
+                    validateImportedProject(importedJson);
+                }
+
+                if (importedFromZip && !extractedMedia.isEmpty()) {
+                    java.io.File mediaDir = new java.io.File(getFilesDir(), "media");
+                    if (!mediaDir.exists()) mediaDir.mkdirs();
+                    String mediaCanonical = mediaDir.getCanonicalPath();
+                    for (Map.Entry<String, byte[]> mediaEntry : extractedMedia.entrySet()) {
+                        String relPath = mediaEntry.getKey();
+                        if (relPath == null || relPath.trim().isEmpty() || relPath.contains("..") || relPath.startsWith("/") || relPath.startsWith("\\")) continue;
+                        java.io.File mediaFile = new java.io.File(mediaDir, relPath);
+                        if (!mediaFile.getCanonicalPath().startsWith(mediaCanonical)) {
+                            continue;
+                        }
+                        mediaFile.getParentFile().mkdirs();
+                        try (java.io.FileOutputStream fos = new java.io.FileOutputStream(mediaFile)) {
+                            fos.write(mediaEntry.getValue());
+                        }
+                    }
+                }
+
+                if (!getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(ACTIVE_PROJECT, importedJson).commit()) {
+                    throw new IllegalStateException("Could not save imported project");
+                }
                 loadProject();
                 showEditor();
-                Toast.makeText(this, "Проект JSON импортирован", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, importedFromZip ? "Проект ZIP и медиафайлы импортированы" : "Проект JSON импортирован", Toast.LENGTH_LONG).show();
             } catch (Exception e) {
-                Toast.makeText(this, "Импорт не выполнен: файл не является допустимым JSON-проектом", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "Импорт не выполнен: файл не является допустимым ZIP или JSON-проектом", Toast.LENGTH_LONG).show();
             }
         }
     }
@@ -1269,6 +1523,7 @@ public class MainActivity extends Activity {
         setContentView(root);
         editor.invalidate();
         startModbusPolling();
+        startFbdExecution();
     }
 
     private String currentScreenName() {
@@ -1466,8 +1721,84 @@ public class MainActivity extends Activity {
         if (dialogTitle != null) dialogTitle.setTextColor(Color.rgb(237, 176, 59));
     }
 
+    private void showUsbRtuSettingsDialog() {
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        int pad = dp(16);
+        form.setPadding(pad, dp(4), pad, 0);
+
+        TextView statusLabel = new TextView(this);
+        statusLabel.setText("Статус USB: " + checkUsbHardwareStatus().getDescription());
+        statusLabel.setTextColor(Color.rgb(37, 99, 235));
+        statusLabel.setTypeface(null, android.graphics.Typeface.BOLD);
+        form.addView(statusLabel);
+
+        TextView baudLabel = new TextView(this);
+        baudLabel.setText("Baud Rate (Скорость)");
+        baudLabel.setPadding(0, dp(10), 0, 0);
+        form.addView(baudLabel);
+        Spinner baudSpinner = new Spinner(this);
+        ArrayAdapter<String> baudAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item,
+                new String[]{"9600", "19200", "38400", "57600", "115200"});
+        baudAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        baudSpinner.setAdapter(baudAdapter);
+        form.addView(baudSpinner);
+
+        TextView parityLabel = new TextView(this);
+        parityLabel.setText("Parity (Чётность)");
+        parityLabel.setPadding(0, dp(10), 0, 0);
+        form.addView(parityLabel);
+        Spinner paritySpinner = new Spinner(this);
+        ArrayAdapter<String> parityAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item,
+                new String[]{"None (8N1)", "Odd (8O1)", "Even (8E1)"});
+        parityAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        paritySpinner.setAdapter(parityAdapter);
+        form.addView(paritySpinner);
+
+        TextView stopLabel = new TextView(this);
+        stopLabel.setText("Stop Bits (Стоп-биты)");
+        stopLabel.setPadding(0, dp(10), 0, 0);
+        form.addView(stopLabel);
+        Spinner stopSpinner = new Spinner(this);
+        ArrayAdapter<String> stopAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item,
+                new String[]{"1 Stop Bit", "2 Stop Bits"});
+        stopAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        stopSpinner.setAdapter(stopAdapter);
+        form.addView(stopSpinner);
+
+        TextView timeoutLabel = new TextView(this);
+        timeoutLabel.setText("Тайм-аут (мс)");
+        timeoutLabel.setPadding(0, dp(10), 0, 0);
+        form.addView(timeoutLabel);
+        EditText timeoutField = propertyField("1000", InputType.TYPE_CLASS_NUMBER);
+        form.addView(timeoutField);
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(form);
+
+        new AlertDialog.Builder(this)
+                .setTitle("Настройки USB-RS485 RTU")
+                .setView(scroll)
+                .setNegativeButton("Закрыть", null)
+                .setPositiveButton("Сохранить", (dialog, which) -> {
+                    try {
+                        JSONObject rtuJson = new JSONObject();
+                        rtuJson.put("baudRate", Integer.parseInt(baudSpinner.getSelectedItem().toString()));
+                        rtuJson.put("parity", paritySpinner.getSelectedItemPosition());
+                        rtuJson.put("stopBits", stopSpinner.getSelectedItemPosition() + 1);
+                        rtuJson.put("timeoutMs", Integer.parseInt(timeoutField.getText().toString().trim()));
+                        projectExtraFields.put("usbRtuConfig", rtuJson);
+                        persistProject();
+                        Toast.makeText(this, "Параметры USB RTU сохранены", Toast.LENGTH_SHORT).show();
+                    } catch (Exception ex) {
+                        Toast.makeText(this, "Ошибка сохранения параметров USB RTU", Toast.LENGTH_SHORT).show();
+                    }
+                }).show();
+    }
+
     private void showModbusDiagnostics() {
         StringBuilder report = new StringBuilder();
+        report.append("USB-RS485 Статус: ").append(checkUsbHardwareStatus().getDescription()).append("\n\n");
         int boundCount = 0;
         int errorCount = 0;
         int pendingCount = 0;
@@ -1493,7 +1824,7 @@ public class MainActivity extends Activity {
         if (boundCount == 0) {
             report.append("На текущем экране нет элементов с указанной привязкой.\n")
                     .append("Открой «Свойства» элемента и укажи адрес Modbus, например:\n")
-                    .append("tcp://192.168.1.10:502/1/40001");
+                    .append("tcp://192.168.1.10:502/1/40001 или rtu://1/40001");
         } else {
             report.insert(0, "Привязок: " + boundCount + " · Ошибок: " + errorCount + " · Ожидание: " + pendingCount + " · Активных: " + activeCount + " · Неактивных: " + inactiveCount + "\n\n");
         }
@@ -1505,8 +1836,9 @@ public class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.addView(content);
         new AlertDialog.Builder(this)
-                .setTitle("Диагностика Modbus")
+                .setTitle("Диагностика Modbus & USB RTU")
                 .setView(scroll)
+                .setNeutralButton("Настройки USB RTU", (dialog, which) -> showUsbRtuSettingsDialog())
                 .setPositiveButton("Обновить", (dialog, which) -> showModbusDiagnostics())
                 .setNegativeButton("Закрыть", null)
                 .show();

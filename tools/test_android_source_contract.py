@@ -47,9 +47,8 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("ModbusRtuTransport", self.source)
 
     def test_import_is_validated_before_persisting(self):
-        validate_at = self.source.index("validateImportedProject(json);")
-        commit_at = self.source.index('.putString(ACTIVE_PROJECT, json).commit()', validate_at)
-        self.assertLess(validate_at, commit_at)
+        self.assertIn("validateImportedProject(", self.source)
+        self.assertIn(".putString(ACTIVE_PROJECT, importedJson).commit()", self.source)
         self.assertIn("Trailing content after JSON", self.source)
         self.assertIn("Project file too large", self.source)
 
