@@ -27,6 +27,8 @@ Current accepted milestones, implementation gaps and device/release gates: [exec
 
 GitHub Actions workflow **BLOODSKY Android APK** runs the Python archive-inspector tests, Android unit tests, builds the debug APK and uploads the artifact as `BLOODSKY-Android-debug-APK` for 14 days. It runs on relevant code pushes/PRs, can be started manually, and performs a scheduled daily validation/build at 03:17 UTC.
 
+A separate [Android UI smoke workflow](docs/ANDROID_UI_SMOKE.md) installs the debug APK on a disposable API30 emulator, tests create/restart/reopen/delete and saves screenshots/UI XML. Passing this gate does not establish original visual parity or physical-device compatibility.
+
 Debug APKs are for development/testing, not public release. A release build must use a properly managed signing key and pass installation and runtime checks.
 
 To run the archive-inspector tests locally:
