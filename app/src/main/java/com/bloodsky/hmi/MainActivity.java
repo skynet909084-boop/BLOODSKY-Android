@@ -142,6 +142,8 @@ public class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        getWindow().setFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN);
         try {
             textToSpeech = new TextToSpeech(this, status -> {
                 if (status == TextToSpeech.SUCCESS && textToSpeech != null) {
@@ -263,7 +265,7 @@ public class MainActivity extends Activity {
         button.setText(text);
         button.setTextSize(20);
         button.setTextColor(Color.BLACK);
-        button.setAllCaps(false);
+        button.setAllCaps(true);
         button.setGravity(Gravity.CENTER);
         button.setBackgroundResource(R.drawable.kc_background_button);
         button.setOnClickListener(v -> task.run());
@@ -271,6 +273,7 @@ public class MainActivity extends Activity {
     }
 
     private void showHome() {
+        setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
         stopModbusPolling();
         editor = null;
         try { readProjectCatalog(); }
@@ -279,6 +282,7 @@ public class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
         root.setBackgroundResource(R.drawable.kc_main_background_small);
+        root.setWeightSum(1.0f);
         TextView title = new TextView(this);
         title.setText("BLOODSKY");
         title.setTextColor(Color.rgb(237, 176, 59));
@@ -1146,6 +1150,7 @@ public class MainActivity extends Activity {
     }
 
     private void showEditor() {
+        setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.rgb(35, 35, 35));
