@@ -1,5 +1,5 @@
 import unittest
-from android_ui_smoke import center, matching_nodes, preferences_are_empty, properties_scroll_node
+from android_ui_smoke import center, matching_nodes, preferences_are_empty, properties_scroll_node, property_input_matches
 
 class AndroidSmokeHelpersTests(unittest.TestCase):
     def test_observed_enabled_ui_targets_and_uppercase_russian(self):
@@ -19,6 +19,17 @@ class AndroidSmokeHelpersTests(unittest.TestCase):
         self.assertEqual('form', properties_scroll_node(xml).get('resource-id'))
         with self.assertRaises(AssertionError):
             properties_scroll_node('<hierarchy/>')
+
+    def test_empty_numeric_field_accessibility_hint_is_not_treated_as_entered_value(self):
+        import xml.etree.ElementTree as ET
+        node = ET.fromstring('<node text="Ширина" content-desc="Ширина элемента"/>')
+        self.assertTrue(property_input_matches(node, ''))
+        self.assertFalse(property_input_matches(node, '160.375'))
+        node.set('text', '160.375')
+        self.assertTrue(property_input_matches(node, '160.375'))
+        self.assertFalse(property_input_matches(node, ''))
+        node.set('text', 'unexpected')
+        self.assertFalse(property_input_matches(node, ''))
 
     def test_invalid_bounds_are_rejected(self):
         for bounds in ['bad', '[1,2][1,2]', '[100,20][10,30]']:

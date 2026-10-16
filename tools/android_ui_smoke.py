@@ -41,6 +41,14 @@ def preferences_are_empty(xml):
     return 'active_project' not in values and json.loads(values.get('project_catalog_v1', '{}')) == {}
 
 
+def property_input_matches(node, value):
+    # API 30 accessibility exposes the hint as text for an empty EditText.
+    hints = {'Положение X': 'X', 'Положение Y': 'Y',
+             'Ширина элемента': 'Ширина', 'Высота элемента': 'Высота'}
+    observed = node.get('text', '')
+    return observed == value or (value == '' and observed == hints.get(node.get('content-desc')))
+
+
 def center_height(bounds):
     center(bounds)  # Validate before calculating the visible height.
     _, top, _, bottom = map(int, re.findall(r'\d+', bounds))
@@ -118,7 +126,7 @@ class Smoke:
             adb('shell', 'input', 'text', value)
         xml = self.dump()
         changed = matching_nodes(xml, description=description, class_name='android.widget.EditText')
-        if len(changed) != 1 or changed[0].get('text', '') != value:
+        if len(changed) != 1 or not property_input_matches(changed[0], value):
             raise AssertionError('Property input did not match requested value: ' + description)
         if any(n.get('package') == 'com.android.inputmethod.latin' for n in ET.fromstring(xml).iter('node')):
             adb('shell', 'input', 'keyevent', '4')
