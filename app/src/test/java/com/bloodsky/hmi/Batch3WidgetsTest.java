@@ -92,4 +92,55 @@ public class Batch3WidgetsTest {
         assertEquals("Внимание, запуск системы", restored.voiceMessages[0]);
         assertEquals("Внимание, аварийный останов", restored.voiceMessages[1]);
     }
+
+    @Test
+    public void allSixteenMediaStatesSurviveRoundTrip() throws Exception {
+        MainActivity.Widget original = new MainActivity.Widget();
+        original.type = "Многопозиционное фото";
+        for (int i = 0; i < 16; i++) {
+            original.imagePathStates[i] = "content://media/image/" + i;
+            original.voiceMessages[i] = "Сообщение " + i;
+        }
+        MainActivity.Widget restored = MainActivity.widgetFromJson(MainActivity.widgetToJson(original));
+        for (int i = 0; i < 16; i++) {
+            assertEquals(original.imagePathStates[i], restored.imagePathStates[i]);
+            assertEquals(original.voiceMessages[i], restored.voiceMessages[i]);
+        }
+    }
+
+    @Test
+    public void settingsValidationPreservesLegacyAndUnknownMetadata() throws Exception {
+        JSONObject old = new JSONObject();
+        old.put("modbusSlave", "Slave ID: 5, Port: 502, Baud: 9600");
+        old.put("vendor", new JSONObject().put("future", 7));
+        JSONObject updated = MainActivity.validatedProjectSettings(old, "1", "247", "65535", "SYS=1");
+        assertEquals(1, updated.getInt("stationMode"));
+        assertEquals(247, updated.getInt("modbusSlaveId"));
+        assertEquals(65535, updated.getInt("modbusSlavePort"));
+        assertEquals("Slave ID: 247, Port: 65535, Baud: 9600", updated.getString("modbusSlave"));
+        assertEquals(7, updated.getJSONObject("vendor").getInt("future"));
+        assertEquals("Slave ID: 5, Port: 502, Baud: 9600", old.getString("modbusSlave"));
+        JSONObject min = MainActivity.validatedProjectSettings(new JSONObject(), "0", "1", "1", "");
+        assertEquals("Slave ID: 1, Port: 1", min.getString("modbusSlave"));
+    }
+
+    @Test
+    public void invalidSettingsDoNotChangeOriginal() throws Exception {
+        JSONObject old = new JSONObject().put("modbusSlave", "legacy").put("stationMode", 0);
+        String[][] invalid = {
+            {"2","1","502"}, {"-1","1","502"}, {"word","1","502"},
+            {"1","0","502"}, {"1","248","502"}, {"1","1","0"},
+            {"1","1","65536"}, {"1","1","2147483648"}, {"1","","502"},
+            {"1","1.5","502"}
+        };
+        for (String[] input : invalid) {
+            try {
+                MainActivity.validatedProjectSettings(old, input[0], input[1], input[2], "");
+                org.junit.Assert.fail("Invalid settings accepted");
+            } catch (IllegalArgumentException expected) {
+                assertEquals("legacy", old.getString("modbusSlave"));
+                assertEquals(0, old.getInt("stationMode"));
+            }
+        }
+    }
 }
