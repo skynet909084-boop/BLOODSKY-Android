@@ -26,12 +26,19 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.ArrayAdapter;
 import android.widget.Toast;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.IntentFilter;
+import android.content.pm.PackageManager;
+import android.hardware.usb.UsbDevice;
+import android.hardware.usb.UsbManager;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.ByteArrayOutputStream;
@@ -69,6 +76,7 @@ public class MainActivity extends Activity {
     private Widget clipboardWidget;
     private boolean fbdWireMode = false;
     private int wireSource = -1;
+    private boolean isOperatorMode = false;
     private boolean[] fbdCacheValid = new boolean[0];
     private boolean[] fbdCacheValues = new boolean[0];
     private double[] fbdCacheNumeric = new double[0];
@@ -100,14 +108,86 @@ public class MainActivity extends Activity {
                 }
             } else if (new java.io.File(pathOrUri).exists()) {
                 bitmap = BitmapFactory.decodeFile(pathOrUri);
+            } else {
+                java.io.File localMedia = new java.io.File(getFilesDir(), pathOrUri);
+                if (localMedia.exists()) {
+                    bitmap = BitmapFactory.decodeFile(localMedia.getAbsolutePath());
+                }
             }
         } catch (Exception ignored) {}
         imageCache.put(pathOrUri, bitmap);
         return bitmap;
     }
 
+    public enum UsbHardwareStatus {
+        NO_USB_HOST_FEATURE("Устройство Android не поддерживает USB Host (OTG)"),
+        NO_USB_DEVICE_ATTACHED("USB-RS485 адаптер не подключён"),
+        USB_PERMISSION_DENIED("Разрешение на доступ к USB-адаптеру не предоставлено"),
+        USB_READY("USB-RS485 адаптер подключён и готов к работе");
+
+        private final String description;
+        UsbHardwareStatus(String description) { this.description = description; }
+        public String getDescription() { return description; }
+    }
+
+    private BroadcastReceiver usbReceiver;
+
+    public UsbHardwareStatus checkUsbHardwareStatus() {
+        return checkUsbHardwareStatusStatic(this);
+    }
+
+    public static UsbHardwareStatus checkUsbHardwareStatusStatic(Context context) {
+        if (context == null) return UsbHardwareStatus.NO_USB_HOST_FEATURE;
+        if (!context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_USB_HOST)) {
+            return UsbHardwareStatus.NO_USB_HOST_FEATURE;
+        }
+        UsbManager usbManager = (UsbManager) context.getSystemService(Context.USB_SERVICE);
+        if (usbManager == null) return UsbHardwareStatus.NO_USB_HOST_FEATURE;
+        HashMap<String, UsbDevice> deviceList = usbManager.getDeviceList();
+        if (deviceList == null || deviceList.isEmpty()) {
+            return UsbHardwareStatus.NO_USB_DEVICE_ATTACHED;
+        }
+        for (UsbDevice device : deviceList.values()) {
+            if (!usbManager.hasPermission(device)) {
+                return UsbHardwareStatus.USB_PERMISSION_DENIED;
+            }
+        }
+        return UsbHardwareStatus.USB_READY;
+    }
+
+    private void registerUsbReceiver() {
+        if (usbReceiver != null) return;
+        usbReceiver = new BroadcastReceiver() {
+            @Override public void onReceive(Context context, Intent intent) {
+                String action = intent.getAction();
+                if (UsbManager.ACTION_USB_DEVICE_DETACHED.equals(action)) {
+                    Toast.makeText(MainActivity.this, "USB-устройство отключено", Toast.LENGTH_SHORT).show();
+                } else if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)) {
+                    Toast.makeText(MainActivity.this, "USB-устройство подключено", Toast.LENGTH_SHORT).show();
+                }
+            }
+        };
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
+        filter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
+        registerReceiver(usbReceiver, filter);
+    }
+
+    private void unregisterUsbReceiver() {
+        if (usbReceiver != null) {
+            try { unregisterReceiver(usbReceiver); } catch (Exception ignored) {}
+            usbReceiver = null;
+        }
+    }
+
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        if (state != null) {
+            projectName = state.getString("projectName", projectName);
+            currentScreenIndex = state.getInt("currentScreenIndex", currentScreenIndex);
+            isOperatorMode = state.getBoolean("isOperatorMode", isOperatorMode);
+            fbdWireMode = state.getBoolean("fbdWireMode", fbdWireMode);
+        }
         try {
             textToSpeech = new TextToSpeech(this, status -> {
                 if (status == TextToSpeech.SUCCESS && textToSpeech != null) {
@@ -117,10 +197,38 @@ public class MainActivity extends Activity {
         } catch (Exception ex) {
             android.util.Log.e("BLOODSKY", "TTS init error", ex);
         }
+        registerUsbReceiver();
         showHome();
     }
 
+    @Override protected void onPause() {
+        stopModbusPolling();
+        if (mediaPlayer != null) {
+            try { mediaPlayer.pause(); } catch (Exception ignored) {}
+        }
+        if (textToSpeech != null) {
+            try { textToSpeech.stop(); } catch (Exception ignored) {}
+        }
+        super.onPause();
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        if (editor != null) {
+            startModbusPolling();
+        }
+    }
+
+    @Override protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putString("projectName", projectName);
+        outState.putInt("currentScreenIndex", currentScreenIndex);
+        outState.putBoolean("isOperatorMode", isOperatorMode);
+        outState.putBoolean("fbdWireMode", fbdWireMode);
+    }
+
     @Override protected void onDestroy() {
+        unregisterUsbReceiver();
         stopModbusPolling();
         editor = null;
         modbusExecutor.shutdownNow();
@@ -734,7 +842,7 @@ public class MainActivity extends Activity {
                     for (int widgetIndex : request.widgetIndices) updates.put(widgetIndex, value);
                 }
                 runOnUiThread(() -> {
-                    if (editor == null) return;
+                    if (isFinishing() || isDestroyed() || editor == null) return;
                     for (Map.Entry<Integer, String> entry : updates.entrySet()) {
                         int index = entry.getKey();
                         if (index < 0 || index >= widgets.size() || index >= snapshotWidgets.size()
@@ -1067,6 +1175,14 @@ public class MainActivity extends Activity {
         settings.show();
     }
 
+    private void toggleOperatorMode() {
+        isOperatorMode = !isOperatorMode;
+        fbdWireMode = false;
+        wireSource = -1;
+        Toast.makeText(this, isOperatorMode ? "Режим Оператора (Работа)" : "Режим Редактора", Toast.LENGTH_SHORT).show();
+        showEditor();
+    }
+
     private void showEditor() {
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -1080,6 +1196,8 @@ public class MainActivity extends Activity {
                 new LinearLayout.LayoutParams(dp(42), dp(38)));
         Button rename = legacyToolbarButton(projectName, this::editProjectName);
         top.addView(rename, new LinearLayout.LayoutParams(0, dp(38), 1));
+        top.addView(legacyToolbarButton(isOperatorMode ? "▶ Работа" : "✏️ Редакт.", this::toggleOperatorMode),
+                new LinearLayout.LayoutParams(dp(80), dp(38)));
         top.addView(legacyToolbarButton("💾", () -> {
             persistProject();
             Toast.makeText(this, "Проект сохранён на устройстве", Toast.LENGTH_SHORT).show();
@@ -1094,52 +1212,60 @@ public class MainActivity extends Activity {
                 new LinearLayout.LayoutParams(dp(38), dp(34)));
         screenBar.addView(legacyToolbarButton(currentScreenName(), this::renameCurrentScreen),
                 new LinearLayout.LayoutParams(0, dp(34), 1));
-        screenBar.addView(legacyToolbarButton("Фон", this::editScreenBackground),
-                new LinearLayout.LayoutParams(dp(54), dp(34)));
+        if (!isOperatorMode) {
+            screenBar.addView(legacyToolbarButton("Фон", this::editScreenBackground),
+                    new LinearLayout.LayoutParams(dp(54), dp(34)));
+        }
         screenBar.addView(legacyToolbarButton("▶", this::nextScreen),
                 new LinearLayout.LayoutParams(dp(38), dp(34)));
-        screenBar.addView(legacyToolbarButton("+", this::addScreen),
-                new LinearLayout.LayoutParams(dp(38), dp(34)));
-        screenBar.addView(legacyToolbarButton("−", this::removeCurrentScreen),
-                new LinearLayout.LayoutParams(dp(38), dp(34)));
+        if (!isOperatorMode) {
+            screenBar.addView(legacyToolbarButton("+", this::addScreen),
+                    new LinearLayout.LayoutParams(dp(38), dp(34)));
+            screenBar.addView(legacyToolbarButton("−", this::removeCurrentScreen),
+                    new LinearLayout.LayoutParams(dp(38), dp(34)));
+        }
         root.addView(screenBar, new LinearLayout.LayoutParams(-1, dp(36)));
 
-        LinearLayout toolsBar = new LinearLayout(this);
-        toolsBar.setGravity(Gravity.CENTER_VERTICAL);
-        toolsBar.setPadding(dp(3), dp(2), dp(3), dp(2));
-        toolsBar.setBackgroundColor(Color.rgb(35, 35, 35));
-        toolsBar.addView(legacyToolbarButton("+ Элемент", this::showAddWidgetMenu),
-                new LinearLayout.LayoutParams(0, dp(36), 1));
-        toolsBar.addView(legacyToolbarButton(fbdWireMode ? "Связь: ВКЛ" : "Связать FBD", () -> {
-            fbdWireMode = !fbdWireMode;
-            wireSource = -1;
-            Toast.makeText(this, fbdWireMode ? "Режим связи: выбери исходный FBD-блок, затем целевой" : "Режим связи выключен", Toast.LENGTH_LONG).show();
-            showEditor();
-        }), new LinearLayout.LayoutParams(0, dp(36), 1));
-        toolsBar.addView(legacyToolbarButton("Выравн.", this::showAlignDialog),
-                new LinearLayout.LayoutParams(dp(60), dp(36)));
-        toolsBar.addView(legacyToolbarButton("Modbus", this::showModbusDiagnostics),
-                new LinearLayout.LayoutParams(dp(64), dp(36)));
-        toolsBar.addView(legacyToolbarButton("Настр.", this::showProjectSettingsDialog),
-                new LinearLayout.LayoutParams(dp(60), dp(36)));
-        root.addView(toolsBar, new LinearLayout.LayoutParams(-1, dp(40)));
+        if (!isOperatorMode) {
+            LinearLayout toolsBar = new LinearLayout(this);
+            toolsBar.setGravity(Gravity.CENTER_VERTICAL);
+            toolsBar.setPadding(dp(3), dp(2), dp(3), dp(2));
+            toolsBar.setBackgroundColor(Color.rgb(35, 35, 35));
+            toolsBar.addView(legacyToolbarButton("+ Элемент", this::showAddWidgetMenu),
+                    new LinearLayout.LayoutParams(0, dp(36), 1));
+            toolsBar.addView(legacyToolbarButton(fbdWireMode ? "Связь: ВКЛ" : "Связать FBD", () -> {
+                fbdWireMode = !fbdWireMode;
+                wireSource = -1;
+                Toast.makeText(this, fbdWireMode ? "Режим связи: выбери исходный FBD-блок, затем целевой" : "Режим связи выключен", Toast.LENGTH_LONG).show();
+                showEditor();
+            }), new LinearLayout.LayoutParams(0, dp(36), 1));
+            toolsBar.addView(legacyToolbarButton("Выравн.", this::showAlignDialog),
+                    new LinearLayout.LayoutParams(dp(60), dp(36)));
+            toolsBar.addView(legacyToolbarButton("Modbus", this::showModbusDiagnostics),
+                    new LinearLayout.LayoutParams(dp(64), dp(36)));
+            toolsBar.addView(legacyToolbarButton("Настр.", this::showProjectSettingsDialog),
+                    new LinearLayout.LayoutParams(dp(60), dp(36)));
+            root.addView(toolsBar, new LinearLayout.LayoutParams(-1, dp(40)));
+        }
 
         editor = new EditorCanvas();
         root.addView(editor, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        LinearLayout bottom = new LinearLayout(this);
-        bottom.setGravity(Gravity.CENTER_VERTICAL);
-        bottom.setPadding(dp(3), dp(2), dp(3), dp(2));
-        bottom.setBackgroundColor(Color.rgb(35, 35, 35));
-        bottom.addView(legacyToolbarButton("Свойства", this::editSelectedWidget),
-                new LinearLayout.LayoutParams(0, dp(40), 1));
-        bottom.addView(legacyToolbarButton("Копировать", this::copySelectedWidget),
-                new LinearLayout.LayoutParams(0, dp(40), 1));
-        bottom.addView(legacyToolbarButton("Вставить", this::pasteWidget),
-                new LinearLayout.LayoutParams(0, dp(40), 1));
-        bottom.addView(legacyToolbarButton("Удалить", this::deleteSelectedWidget),
-                new LinearLayout.LayoutParams(0, dp(40), 1));
-        root.addView(bottom, new LinearLayout.LayoutParams(-1, dp(44)));
+        if (!isOperatorMode) {
+            LinearLayout bottom = new LinearLayout(this);
+            bottom.setGravity(Gravity.CENTER_VERTICAL);
+            bottom.setPadding(dp(3), dp(2), dp(3), dp(2));
+            bottom.setBackgroundColor(Color.rgb(35, 35, 35));
+            bottom.addView(legacyToolbarButton("Свойства", this::editSelectedWidget),
+                    new LinearLayout.LayoutParams(0, dp(40), 1));
+            bottom.addView(legacyToolbarButton("Копировать", this::copySelectedWidget),
+                    new LinearLayout.LayoutParams(0, dp(40), 1));
+            bottom.addView(legacyToolbarButton("Вставить", this::pasteWidget),
+                    new LinearLayout.LayoutParams(0, dp(40), 1));
+            bottom.addView(legacyToolbarButton("Удалить", this::deleteSelectedWidget),
+                    new LinearLayout.LayoutParams(0, dp(40), 1));
+            root.addView(bottom, new LinearLayout.LayoutParams(-1, dp(44)));
+        }
         setContentView(root);
         editor.invalidate();
         startModbusPolling();
@@ -1435,30 +1561,48 @@ public class MainActivity extends Activity {
         final AlertDialog[] picker = new AlertDialog[1];
 
         for (int i = 0; i < labels.length; i++) {
-            if (i == 14) {
+            if (i == 0) {
+                TextView section = new TextView(this);
+                section.setText("КОМПОНЕНТЫ И ИНДИКАТОРЫ");
+                section.setTextColor(Color.rgb(37, 99, 235));
+                section.setTextSize(12);
+                section.setTypeface(null, android.graphics.Typeface.BOLD);
+                section.setPadding(dp(12), dp(8), dp(12), dp(6));
+                list.addView(section, new LinearLayout.LayoutParams(-1, -2));
+            } else if (i == 14) {
                 TextView section = new TextView(this);
                 section.setText("ФУНКЦИОНАЛЬНЫЕ БЛОКИ (FBD)");
                 section.setTextColor(Color.rgb(37, 99, 235));
                 section.setTextSize(12);
                 section.setTypeface(null, android.graphics.Typeface.BOLD);
-                section.setPadding(dp(12), dp(14), dp(12), dp(8));
+                section.setPadding(dp(12), dp(14), dp(12), dp(6));
                 list.addView(section, new LinearLayout.LayoutParams(-1, -2));
             }
             final int index = i;
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(10), dp(8), dp(10), dp(8));
+            row.setBackgroundColor(i % 2 == 0 ? Color.rgb(248, 250, 252) : Color.WHITE);
+            row.setMinimumHeight(dp(52));
+
+            ImageView thumbView = new ImageView(this);
+            Bitmap thumbBmp = createWidgetThumbnail(types[i], defaults[i]);
+            thumbView.setImageBitmap(thumbBmp);
+            row.addView(thumbView, new LinearLayout.LayoutParams(dp(44), dp(44)));
+
             TextView item = new TextView(this);
-            item.setText(labels[i] + "    ›");
+            item.setText("  " + labels[i]);
             item.setTextColor(Color.rgb(30, 41, 59));
-            item.setTextSize(16);
-            item.setGravity(Gravity.CENTER_VERTICAL);
-            item.setPadding(dp(14), dp(12), dp(12), dp(12));
-            item.setBackgroundColor(i % 2 == 0
-                    ? Color.rgb(248, 250, 252) : Color.WHITE);
-            item.setMinHeight(dp(48));
-            item.setOnClickListener(v -> {
+            item.setTextSize(15);
+            item.setTypeface(null, android.graphics.Typeface.BOLD);
+            row.addView(item, new LinearLayout.LayoutParams(0, -2, 1));
+
+            row.setOnClickListener(v -> {
                 if (picker[0] != null) picker[0].dismiss();
                 addWidget(types[index], defaults[index]);
             });
-            list.addView(item, new LinearLayout.LayoutParams(-1, -2));
+            list.addView(row, new LinearLayout.LayoutParams(-1, -2));
             View separator = new View(this);
             separator.setBackgroundColor(Color.rgb(226, 232, 240));
             list.addView(separator, new LinearLayout.LayoutParams(-1, dp(1)));
@@ -1469,6 +1613,95 @@ public class MainActivity extends Activity {
                 .setNegativeButton("Отмена", null)
                 .create();
         picker[0].show();
+    }
+
+    private Bitmap createWidgetThumbnail(String type, String defaultText) {
+        int w = dp(44), h = dp(44);
+        Bitmap bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        paint.setColor(Color.rgb(241, 245, 249));
+        canvas.drawRoundRect(new RectF(2, 2, w - 2, h - 2), dp(4), dp(4), paint);
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(dp(1));
+        paint.setColor(Color.rgb(203, 213, 225));
+        canvas.drawRoundRect(new RectF(2, 2, w - 2, h - 2), dp(4), dp(4), paint);
+
+        paint.setStyle(Paint.Style.FILL);
+        if (type.startsWith("FBD ")) {
+            paint.setColor(Color.rgb(136, 136, 136));
+            canvas.drawRoundRect(new RectF(4, 4, w - 4, h - 4), dp(3), dp(3), paint);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(dp(1.5f));
+            paint.setColor(Color.BLACK);
+            canvas.drawRoundRect(new RectF(4, 4, w - 4, h - 4), dp(3), dp(3), paint);
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(Color.BLACK);
+            paint.setTextSize(dp(10));
+            paint.setTextAlign(Paint.Align.CENTER);
+            String label = type.replace("FBD ", "").replace(" (селектор)", "");
+            if (label.length() > 6) label = label.substring(0, 5);
+            canvas.drawText(label, w / 2f, h / 2f + dp(3.5f), paint);
+        } else if ("Индикатор".equals(type) || "Двухпозиционный индикатор".equals(type)) {
+            paint.setColor(Color.rgb(22, 163, 74));
+            canvas.drawCircle(w / 2f, h / 2f, dp(10), paint);
+            paint.setColor(Color.rgb(187, 247, 208));
+            canvas.drawCircle(w / 2f - dp(3), h / 2f - dp(3), dp(3), paint);
+        } else if ("Кнопка".equals(type)) {
+            paint.setColor(Color.rgb(37, 99, 235));
+            canvas.drawRoundRect(new RectF(6, 12, w - 6, h - 12), dp(4), dp(4), paint);
+            paint.setColor(Color.WHITE);
+            paint.setTextSize(dp(10));
+            paint.setTextAlign(Paint.Align.CENTER);
+            canvas.drawText("BTN", w / 2f, h / 2f + dp(3.5f), paint);
+        } else if ("Задатчик".equals(type)) {
+            paint.setColor(Color.rgb(217, 119, 6));
+            canvas.drawRoundRect(new RectF(6, 14, w - 6, h - 14), dp(3), dp(3), paint);
+            paint.setColor(Color.WHITE);
+            paint.setTextSize(dp(10));
+            paint.setTextAlign(Paint.Align.CENTER);
+            canvas.drawText("−  +", w / 2f, h / 2f + dp(3.5f), paint);
+        } else if ("Шкала / Стрелка".equals(type)) {
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(dp(2));
+            paint.setColor(Color.rgb(71, 85, 105));
+            canvas.drawArc(new RectF(8, 10, w - 8, h - 6), 180, 180, false, paint);
+            paint.setColor(Color.rgb(220, 38, 38));
+            canvas.drawLine(w / 2f, h - 10, w / 2f + dp(8), 14, paint);
+        } else if ("Прогресс-бар".equals(type)) {
+            paint.setColor(Color.rgb(226, 232, 240));
+            canvas.drawRect(8, 16, w - 8, h - 16, paint);
+            paint.setColor(Color.rgb(34, 197, 94));
+            canvas.drawRect(8, 16, w - 16, h - 16, paint);
+        } else if ("График / Тренд".equals(type)) {
+            paint.setColor(Color.rgb(34, 197, 94));
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(dp(2));
+            canvas.drawLine(8, h - 12, 18, 14, paint);
+            canvas.drawLine(18, 14, 28, 26, paint);
+            canvas.drawLine(28, 26, w - 8, 12, paint);
+        } else if ("Звуковой сигнал".equals(type)) {
+            paint.setColor(Color.rgb(239, 68, 68));
+            canvas.drawCircle(w / 2f, h / 2f, dp(11), paint);
+            paint.setColor(Color.WHITE);
+            paint.setTextSize(dp(12));
+            paint.setTextAlign(Paint.Align.CENTER);
+            canvas.drawText("🔔", w / 2f, h / 2f + dp(4), paint);
+        } else if ("Многопозиционное фото".equals(type)) {
+            paint.setColor(Color.rgb(147, 51, 234));
+            canvas.drawRoundRect(new RectF(8, 10, w - 8, h - 10), dp(3), dp(3), paint);
+            paint.setColor(Color.WHITE);
+            paint.setTextSize(dp(12));
+            paint.setTextAlign(Paint.Align.CENTER);
+            canvas.drawText("🖼", w / 2f, h / 2f + dp(4), paint);
+        } else {
+            paint.setColor(Color.rgb(71, 85, 105));
+            paint.setTextSize(dp(11));
+            paint.setTextAlign(Paint.Align.CENTER);
+            canvas.drawText(defaultText.length() > 5 ? defaultText.substring(0, 5) : defaultText, w / 2f, h / 2f + dp(4), paint);
+        }
+        return bitmap;
     }
 
     private void addWidget(String type, String text) {
@@ -2050,17 +2283,44 @@ public class MainActivity extends Activity {
     }
 
     public static void exportProjectToZip(OutputStream outputStream, String projectJson) throws java.io.IOException {
+        exportProjectToZip(outputStream, projectJson, null);
+    }
+
+    public static void exportProjectToZip(OutputStream outputStream, String projectJson, Map<String, byte[]> mediaFiles) throws java.io.IOException {
         try (java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(outputStream)) {
             java.util.zip.ZipEntry entry = new java.util.zip.ZipEntry("TableNameProject.json");
             zos.putNextEntry(entry);
             byte[] bytes = projectJson.getBytes(StandardCharsets.UTF_8);
             zos.write(bytes, 0, bytes.length);
             zos.closeEntry();
+
+            if (mediaFiles != null && !mediaFiles.isEmpty()) {
+                for (Map.Entry<String, byte[]> media : mediaFiles.entrySet()) {
+                    String fileName = media.getKey();
+                    if (fileName == null || fileName.trim().isEmpty()) continue;
+                    fileName = fileName.replace('\\', '/');
+                    if (fileName.contains("..") || fileName.startsWith("/")) {
+                        throw new IllegalArgumentException("Unsafe media entry path: " + fileName);
+                    }
+                    String entryPath = fileName.startsWith("media/") ? fileName : "media/" + fileName;
+                    java.util.zip.ZipEntry mediaEntry = new java.util.zip.ZipEntry(entryPath);
+                    zos.putNextEntry(mediaEntry);
+                    byte[] mediaBytes = media.getValue();
+                    if (mediaBytes != null && mediaBytes.length > 0) {
+                        zos.write(mediaBytes, 0, mediaBytes.length);
+                    }
+                    zos.closeEntry();
+                }
+            }
             zos.finish();
         }
     }
 
     public static String importProjectFromZip(InputStream inputStream) throws Exception {
+        return importProjectFromZip(inputStream, null);
+    }
+
+    public static String importProjectFromZip(InputStream inputStream, Map<String, byte[]> extractedMedia) throws Exception {
         byte[] projectJsonBytes = null;
         java.util.Set<String> entryNames = new java.util.HashSet<>();
         long totalUncompressedBytes = 0;
@@ -2091,6 +2351,9 @@ public class MainActivity extends Activity {
                         throw new IllegalArgumentException("Multiple JSON project files in archive");
                     }
                     projectJsonBytes = entryBuffer.toByteArray();
+                } else if (name.toLowerCase(java.util.Locale.ROOT).startsWith("media/") && extractedMedia != null) {
+                    String relativeMediaName = name.substring("media/".length());
+                    extractedMedia.put(relativeMediaName, entryBuffer.toByteArray());
                 }
             }
         }
@@ -2304,6 +2567,16 @@ public class MainActivity extends Activity {
 
     private boolean isFbd(Widget widget) {
         return isFbdWidget(widget);
+    }
+
+    public static void runFbdScanCycle(List<Widget> widgetsList, List<FbdConnection> connectionsList, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
+        if (widgetsList == null || cacheValid == null || cacheValues == null || cacheNumeric == null) return;
+        java.util.Arrays.fill(cacheValid, false);
+        for (int i = 0; i < widgetsList.size(); i++) {
+            if (isFbdWidget(widgetsList.get(i))) {
+                evaluateFbdBlock(widgetsList, connectionsList, i, new boolean[widgetsList.size()], cacheValid, cacheValues, cacheNumeric);
+            }
+        }
     }
 
     public static boolean evaluateFbdBlock(List<Widget> widgetsList, List<FbdConnection> connectionsList, int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
@@ -2684,11 +2957,13 @@ public class MainActivity extends Activity {
         @Override protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
             canvas.drawColor(screens.isEmpty() ? Color.rgb(250, 252, 255) : screens.get(currentScreenIndex).backgroundColor);
-            paint.setColor(Color.rgb(228, 234, 241));
-            paint.setStrokeWidth(1);
-            int grid = dp(20);
-            for (int x = 0; x < getWidth(); x += grid) canvas.drawLine(x, 0, x, getHeight(), paint);
-            for (int y = 0; y < getHeight(); y += grid) canvas.drawLine(0, y, getWidth(), y, paint);
+            if (!isOperatorMode) {
+                paint.setColor(Color.rgb(228, 234, 241));
+                paint.setStrokeWidth(1);
+                int grid = dp(20);
+                for (int x = 0; x < getWidth(); x += grid) canvas.drawLine(x, 0, x, getHeight(), paint);
+                for (int y = 0; y < getHeight(); y += grid) canvas.drawLine(0, y, getWidth(), y, paint);
+            }
 
             if (!screens.isEmpty()) {
                 Screen screen = screens.get(currentScreenIndex);
@@ -2735,13 +3010,14 @@ public class MainActivity extends Activity {
                     paint.setColor(Color.WHITE);
                 }
                 canvas.drawRoundRect(rect, dp(6), dp(6), paint);
-                if (w.showFrame || i == selected) {
+                boolean isSel = !isOperatorMode && i == selected;
+                if (w.showFrame || isSel) {
                     paint.setStyle(Paint.Style.STROKE);
-                    paint.setStrokeWidth(dp(i == selected ? 2.5f : 1));
-                    paint.setColor(i == selected ? Color.rgb(21, 101, 192) : Color.rgb(148, 163, 184));
+                    paint.setStrokeWidth(dp(isSel ? 2.5f : 1));
+                    paint.setColor(isSel ? Color.rgb(21, 101, 192) : Color.rgb(148, 163, 184));
                     canvas.drawRoundRect(rect, dp(6), dp(6), paint);
                 }
-                if (i == selected) {
+                if (isSel) {
                     paint.setStyle(Paint.Style.FILL);
                     paint.setColor(Color.rgb(21, 101, 192));
                     float grip = dp(9);
@@ -2966,14 +3242,16 @@ public class MainActivity extends Activity {
                     if (x >= w.x && x <= w.x + w.w && y >= w.y && y <= w.y + w.h) {
                         selected = i; startX = w.x; startY = w.y; startW = w.w; startH = w.h;
                         float grip = dp(22);
-                        resizing = x >= w.x + w.w - grip && y >= w.y + w.h - grip;
+                        if (!isOperatorMode) {
+                            resizing = x >= w.x + w.w - grip && y >= w.y + w.h - grip;
+                        }
                         break;
                     }
                 }
                 invalidate();
                 return true;
             }
-            if (event.getAction() == MotionEvent.ACTION_MOVE && selected >= 0) {
+            if (!isOperatorMode && event.getAction() == MotionEvent.ACTION_MOVE && selected >= 0) {
                 float dx = x - downX, dy = y - downY;
                 if (Math.abs(dx) + Math.abs(dy) > dp(5)) dragging = true;
                 if (dragging) {
@@ -2995,11 +3273,11 @@ public class MainActivity extends Activity {
                 return true;
             }
             if (event.getAction() == MotionEvent.ACTION_UP) {
-                if (dragging) {
+                if (!isOperatorMode && dragging) {
                     persistProject();
-                } else if (selected >= 0 && SystemClock.elapsedRealtime() - downAt >= 550L) {
+                } else if (!isOperatorMode && selected >= 0 && SystemClock.elapsedRealtime() - downAt >= 550L) {
                     showWidgetContextMenu();
-                } else if (selected >= 0 && fbdWireMode) {
+                } else if (!isOperatorMode && selected >= 0 && fbdWireMode) {
                     Widget picked = widgets.get(selected);
                     if (!isFbd(picked)) {
                         Toast.makeText(MainActivity.this, "В режиме связи выбери FBD-блок", Toast.LENGTH_SHORT).show();

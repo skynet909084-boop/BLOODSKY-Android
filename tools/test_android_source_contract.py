@@ -105,6 +105,22 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("modbusSlave", self.source)
         self.assertIn("systemRegisters", self.source)
 
+    def test_batch4_operator_mode_and_thumbnails(self):
+        self.assertIn("isOperatorMode", self.source)
+        self.assertIn("toggleOperatorMode()", self.source)
+        self.assertIn("createWidgetThumbnail(", self.source)
+
+    def test_batch4_usb_hardware_status_and_receiver(self):
+        self.assertIn("checkUsbHardwareStatusStatic(", self.source)
+        self.assertIn("UsbHardwareStatus", self.source)
+        self.assertIn("registerUsbReceiver()", self.source)
+
+    def test_batch4_lifecycle_hooks(self):
+        self.assertIn("onPause()", self.source)
+        self.assertIn("onResume()", self.source)
+        self.assertIn("onSaveInstanceState(", self.source)
+        self.assertIn("isFinishing() || isDestroyed()", self.source)
+
     def test_widget_metadata_is_preserved_for_round_trip(self):
         self.assertIn("JSONObject extraFields = new JSONObject()", self.source)
         self.assertIn("projectExtraFields", self.source)
