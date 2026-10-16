@@ -93,6 +93,9 @@ class Smoke:
         adb('shell', 'input', 'text', PROJECT)
         self.tap('Создать')
         self.wait_node(PROJECT)
+        self.tap('+ Элемент')
+        self.tap('Индикатор    ›')
+        self.wait_node(PROJECT)
         self.capture('02-created-editor')
         # Force a real activity/process restart instead of only reusing in-memory data.
         self.tap('☰')
@@ -104,6 +107,14 @@ class Smoke:
         self.tap(PROJECT)
         self.wait_node(PROJECT)
         self.capture('04-reopened-editor')
+        prefs = adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml')
+        values = {node.get('name'): node.text for node in ET.fromstring(prefs)}
+        active = json.loads(values['active_project'])
+        widgets = active['screens'][0]['widgets']
+        if active['projectName'] != PROJECT or len(widgets) != 1 or widgets[0]['type'] != 'Индикатор':
+            raise AssertionError('Created indicator/project did not survive process restart')
+        if widgets[0]['w'] != widgets[0]['h'] or widgets[0]['w'] <= 0:
+            raise AssertionError('Original indicator default geometry was lost')
         self.tap('☰')
         self.tap('Удалить проект')
         self.tap(PROJECT)
@@ -125,7 +136,7 @@ class Smoke:
         if PACKAGE in crashes:
             raise AssertionError('Application crash recorded')
         (self.output / 'result.json').write_text(json.dumps({'result': 'passed', 'package': PACKAGE,
-                'checks': ['home actions', 'create', 'process restart', 'reload', 'confirmed deletion'],
+                'checks': ['home actions', 'create', 'add original indicator', 'process restart', 'reload with indicator', 'confirmed deletion'],
                 'api_level': adb('shell', 'getprop', 'ro.build.version.sdk').strip(),
                 'display_size': adb('shell', 'wm', 'size').strip(),
                 'display_density': adb('shell', 'wm', 'density').strip()}, indent=2))
