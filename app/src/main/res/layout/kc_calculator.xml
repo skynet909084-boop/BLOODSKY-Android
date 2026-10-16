@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="match_parent"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <TableLayout android:layout_width="wrap_content" android:layout_height="wrap_content">
+        <TableRow android:layout_width="match_parent" android:layout_height="match_parent">
+            <TextView android:textAppearance="?android:textAppearanceLarge" android:gravity="right" android:id="@+id/kc_calc_textOut" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginRight="10.0dp" android:layout_column="0" android:layout_span="4" />
+        </TableRow>
+        <TableRow android:layout_width="match_parent" android:layout_height="match_parent">
+            <Button android:id="@+id/kc_calc_b1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="1" />
+            <Button android:id="@+id/kc_calc_b2" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="2" />
+            <Button android:id="@+id/kc_calc_b3" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="3" />
+            <Button android:id="@+id/kc_calc_bDelete" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_column="3" android:text="&lt;-" />
+        </TableRow>
+        <TableRow android:layout_width="match_parent" android:layout_height="match_parent">
+            <Button android:id="@+id/kc_calc_b4" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="4" />
+            <Button android:id="@+id/kc_calc_b5" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="5" />
+            <Button android:id="@+id/kc_calc_b6" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="6" />
+            <Button android:layout_gravity="right" android:id="@+id/kc_calc_bDiv" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_column="3" android:text="/" android:nestedScrollingEnabled="false" />
+        </TableRow>
+        <TableRow android:layout_width="match_parent" android:layout_height="match_parent">
+            <Button android:id="@+id/kc_calc_b7" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="7" />
+            <Button android:id="@+id/kc_calc_b8" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="8" />
+            <Button android:id="@+id/kc_calc_b9" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="9" />
+            <Button android:layout_gravity="right" android:id="@+id/kc_calc_bMul" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_column="3" android:text="*" />
+        </TableRow>
+        <TableRow android:layout_width="match_parent" android:layout_height="match_parent">
+            <Button android:id="@+id/kc_calc_bClear" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_column="0" android:text="С" />
+            <Button android:id="@+id/kc_calc_b0" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_column="1" android:text="0" />
+            <Button android:id="@+id/kc_calc_bPoint" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_column="2" android:text="." />
+            <Button android:layout_gravity="center_horizontal" android:id="@+id/kc_calc_bPlus" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_column="3" android:text="+" />
+        </TableRow>
+        <TableRow android:layout_width="match_parent" android:layout_height="match_parent" />
+        <TableRow android:layout_width="match_parent" android:layout_height="match_parent">
+            <Button android:id="@+id/kc_calc_bExit" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Выход" />
+            <Button android:id="@+id/kc_calc_bEq" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_column="1" android:layout_span="2" android:text="=" />
+            <Button android:id="@+id/kc_calc_bMinus" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_column="3" android:text="-" />
+        </TableRow>
+    </TableLayout>
+</LinearLayout>

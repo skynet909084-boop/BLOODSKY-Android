@@ -17,10 +17,11 @@ def adb(*args, binary=False):
     return result.stdout if binary else result.stdout.decode('utf-8', errors='replace')
 
 
-def matching_nodes(xml, text=None, class_name=None):
+def matching_nodes(xml, text=None, class_name=None, description=None):
     nodes = ET.fromstring(xml).iter('node')
     return [n for n in nodes if (text is None or n.get('text', '').casefold() == text.casefold())
             and (class_name is None or n.get('class') == class_name)
+            and (description is None or n.get('content-desc') == description)
             and n.get('enabled') == 'true' and n.get('bounds') != '[0,0][0,0]']
 
 
@@ -49,13 +50,13 @@ class Smoke:
         adb('shell', 'uiautomator', 'dump', '/sdcard/bloodsky-ui.xml')
         return adb('shell', 'cat', '/sdcard/bloodsky-ui.xml')
 
-    def wait_node(self, text=None, class_name=None, timeout=30):
+    def wait_node(self, text=None, class_name=None, timeout=30, description=None):
         deadline = time.monotonic() + timeout
         last = ''
         while time.monotonic() < deadline:
             try:
                 last = self.dump()
-                nodes = matching_nodes(last, text, class_name)
+                nodes = matching_nodes(last, text, class_name, description)
                 if len(nodes) == 1:
                     return nodes[0]
                 if len(nodes) > 1:
@@ -66,8 +67,8 @@ class Smoke:
         (self.output / 'last-ui.xml').write_text(last)
         raise AssertionError('UI target not found: ' + str(text or class_name))
 
-    def tap(self, text=None, class_name=None):
-        node = self.wait_node(text, class_name)
+    def tap(self, text=None, class_name=None, description=None):
+        node = self.wait_node(text, class_name, description=description)
         x, y = center(node.get('bounds'))
         adb('shell', 'input', 'tap', str(x), str(y))
 
@@ -92,6 +93,29 @@ class Smoke:
         self.tap(class_name='android.widget.EditText')
         adb('shell', 'input', 'text', PROJECT)
         self.tap('Создать')
+        self.wait_node(PROJECT)
+        self.tap(description='Калькулятор')
+        for key in ['1', '2', '+', '3', '=']:
+            self.tap(key, class_name='android.widget.Button')
+        self.wait_node('15.0', class_name='android.widget.TextView')
+        self.capture('02a-calculator-addition')
+        for key in ['С', '9', '/', '3', '=']:
+            self.tap(key, class_name='android.widget.Button')
+        self.wait_node('3.0', class_name='android.widget.TextView')
+        for key in ['С', '2', '.', '5', '*', '4', '=']:
+            self.tap(key, class_name='android.widget.Button')
+        self.wait_node('10.0', class_name='android.widget.TextView')
+        for key in ['С', '8', '-', '5', '=']:
+            self.tap(key, class_name='android.widget.Button')
+        self.wait_node('3.0', class_name='android.widget.TextView')
+        self.tap('Выход', class_name='android.widget.Button')
+        self.wait_node(PROJECT)
+        self.tap(description='Калькулятор')
+        for key in ['4', '2', '<-']:
+            self.tap(key, class_name='android.widget.Button')
+        self.wait_node('4', class_name='android.widget.TextView')
+        self.capture('02b-calculator-reopened')
+        self.tap('Выход', class_name='android.widget.Button')
         self.wait_node(PROJECT)
         self.tap('+ Элемент')
         self.tap('Индикатор    ›')
@@ -136,7 +160,7 @@ class Smoke:
         if PACKAGE in crashes:
             raise AssertionError('Application crash recorded')
         (self.output / 'result.json').write_text(json.dumps({'result': 'passed', 'package': PACKAGE,
-                'checks': ['home actions', 'create', 'add original indicator', 'process restart', 'reload with indicator', 'confirmed deletion'],
+                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'add original indicator', 'process restart', 'reload with indicator', 'confirmed deletion'],
                 'api_level': adb('shell', 'getprop', 'ro.build.version.sdk').strip(),
                 'display_size': adb('shell', 'wm', 'size').strip(),
                 'display_density': adb('shell', 'wm', 'density').strip()}, indent=2))

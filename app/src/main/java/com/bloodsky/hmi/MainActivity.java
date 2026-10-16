@@ -1205,6 +1205,18 @@ public class MainActivity extends Activity {
                 new LinearLayout.LayoutParams(dp(64), dp(36)));
         toolsBar.addView(legacyToolbarButton("Настр.", this::showProjectSettingsDialog),
                 new LinearLayout.LayoutParams(dp(60), dp(36)));
+        android.widget.ImageButton calculator = new android.widget.ImageButton(this);
+        calculator.setImageResource(R.drawable.kc_calculator);
+        calculator.setContentDescription("Калькулятор");
+        calculator.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+        calculator.setBackgroundColor(Color.TRANSPARENT);
+        calculator.setPadding(0, 0, 0, 0);
+        calculator.setOnClickListener(v -> {
+            if (getFragmentManager().findFragmentByTag("original-calculator") == null) {
+                new OriginalCalculatorDialog().show(getFragmentManager(), "original-calculator");
+            }
+        });
+        toolsBar.addView(calculator, new LinearLayout.LayoutParams(dp(40), dp(36)));
         root.addView(toolsBar, new LinearLayout.LayoutParams(-1, dp(40)));
 
         editor = new EditorCanvas();
