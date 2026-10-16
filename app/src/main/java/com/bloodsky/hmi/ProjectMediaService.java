@@ -266,7 +266,9 @@ public class ProjectMediaService {
                 }
 
                 projectMediaDir = getProjectMediaDir(filesDir, importedJson);
-                backupDir = new File(filesDir, "backup_media_" + UUID.randomUUID().toString());
+                // Never replace a media directory without a recoverable backup.
+                // Keep the backup on the same filesystem as the original.
+                backupDir = new File(projectMediaDir.getParentFile(), "backup_media_" + UUID.randomUUID().toString());
 
                 if (projectMediaDir.exists()) {
                     if (!projectMediaDir.renameTo(backupDir)) {
@@ -307,7 +309,11 @@ public class ProjectMediaService {
         } catch (Exception e) {
             if (!success && backupDir != null && backupDir.exists() && projectMediaDir != null) {
                 deleteDirectoryRecursively(projectMediaDir);
-                backupDir.renameTo(projectMediaDir);
+                if (!backupDir.renameTo(projectMediaDir)) {
+                    IOException rollbackFailure = new IOException(
+                            "Media rollback failed; original files preserved at " + backupDir.getAbsolutePath());
+                    e.addSuppressed(rollbackFailure);
+                }
             }
             throw e;
         } finally {
