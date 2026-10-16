@@ -146,19 +146,30 @@ public class PortableZipMediaTest {
         JSONObject projB = createTestProjectJson(null, "Проект 2", null, null, null);
         JSONObject projTraversal = createTestProjectJson("..", "../Traversal", null, null, null);
 
-        String idA = ProjectMediaService.getOrGenerateProjectId(projA.toString());
-        String idB = ProjectMediaService.getOrGenerateProjectId(projB.toString());
-        String idTraversal = ProjectMediaService.getOrGenerateProjectId(projTraversal.toString());
+        String stableA = ProjectMediaService.ensureProjectHasId(projA.toString());
+        String stableB = ProjectMediaService.ensureProjectHasId(projB.toString());
+        String stableTraversal = ProjectMediaService.ensureProjectHasId(projTraversal.toString());
+        String idA = ProjectMediaService.getOrGenerateProjectId(stableA);
+        String idB = ProjectMediaService.getOrGenerateProjectId(stableB);
+        String idTraversal = ProjectMediaService.getOrGenerateProjectId(stableTraversal);
 
         assertNotNull(idA);
         assertNotNull(idB);
         assertNotEquals(idA, idB);
         assertFalse(idTraversal.contains(".."));
 
-        File mediaDirA = ProjectMediaService.getProjectMediaDir(rootDir, projA.toString());
-        File mediaDirB = ProjectMediaService.getProjectMediaDir(rootDir, projB.toString());
+        File mediaDirA = ProjectMediaService.getProjectMediaDir(rootDir, stableA);
+        File mediaDirB = ProjectMediaService.getProjectMediaDir(rootDir, stableB);
 
         assertNotEquals(mediaDirA.getAbsolutePath(), mediaDirB.getAbsolutePath());
+        assertEquals(idA, ProjectMediaService.getOrGenerateProjectId(stableA));
+        assertEquals(idB, ProjectMediaService.getOrGenerateProjectId(stableB));
+        try {
+            ProjectMediaService.getOrGenerateProjectId(projA.toString());
+            fail("Missing stable identity must not reuse shared media");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage().contains("stable id"));
+        }
     }
 
     @Test
