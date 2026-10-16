@@ -1103,7 +1103,7 @@ public class MainActivity extends Activity {
         for (Widget source : widgets) screen.widgets.add(copyWidget(source));
     }
 
-    private Widget copyWidget(Widget source) {
+    public static Widget copyWidget(Widget source) {
         Widget copy = new Widget();
         copy.type = source.type; copy.text = source.text; copy.connectionInfo = source.connectionInfo; copy.inputValue = source.inputValue; copy.buttonState = source.buttonState; copy.rsState = source.rsState; copy.counterPreset = source.counterPreset; copy.counterValue = source.counterValue; copy.counterLastInput = source.counterLastInput; copy.timerPresetMs = source.timerPresetMs; copy.timerStartedAt = source.timerStartedAt; copy.compareA = source.compareA; copy.compareB = source.compareB; copy.compareOperator = source.compareOperator;
         copy.minValue = source.minValue; copy.maxValue = source.maxValue;
@@ -1113,7 +1113,16 @@ public class MainActivity extends Activity {
             copy.dynTextStates[i] = source.dynTextStates[i];
             copy.dynTextColors[i] = source.dynTextColors[i];
             copy.bitListLabels[i] = source.bitListLabels[i];
+            copy.voiceMessages[i] = source.voiceMessages[i];
+            copy.imagePathStates[i] = source.imagePathStates[i];
         }
+        copy.soundThreshold = source.soundThreshold;
+        copy.soundActive = source.soundActive;
+        copy.soundFilePath = source.soundFilePath;
+        copy.targetScreenIndex = source.targetScreenIndex;
+        copy.targetUrl = source.targetUrl;
+        copy.lastVoiceState = source.lastVoiceState;
+        copy.lastSoundState = source.lastSoundState;
         try { copy.extraFields = new JSONObject(source.extraFields.toString()); } catch (Exception ignored) { copy.extraFields = new JSONObject(); }
         copy.x = source.x; copy.y = source.y; copy.w = source.w; copy.h = source.h;
         return copy;
