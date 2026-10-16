@@ -1557,6 +1557,7 @@ public class MainActivity extends Activity {
                 previewRow.setGravity(Gravity.CENTER_VERTICAL);
                 android.widget.ImageView preview = new android.widget.ImageView(this);
                 preview.setImageResource(R.drawable.kc_lamp_off);
+                preview.setContentDescription("Индикатор: выключен");
                 preview.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
                 LinearLayout.LayoutParams previewSize = new LinearLayout.LayoutParams(dp(40), dp(40));
                 previewSize.setMargins(dp(12), dp(4), dp(8), dp(4));
