@@ -184,7 +184,6 @@ public class ProjectMediaService {
 
         byte[] data = resolver != null ? resolver.readMedia(clean) : null;
         if (data == null) {
-            if (resolver == null) return origPath;
             throw new java.io.FileNotFoundException("Referenced media file is missing or unreadable: " + clean);
         }
         if (data.length == 0) {
@@ -233,10 +232,17 @@ public class ProjectMediaService {
             boolean importedFromZip = false;
 
             Map<String, byte[]> extractedMedia = new HashMap<>();
-            try {
-                importedJson = MainActivity.importProjectFromZip(new ByteArrayInputStream(inputData), extractedMedia);
+            // A damaged ZIP must never be reinterpreted as plain project JSON.
+            boolean looksLikeZip = inputData.length >= 4
+                    && inputData[0] == 'P' && inputData[1] == 'K'
+                    && ((inputData[2] == 3 && inputData[3] == 4)
+                        || (inputData[2] == 5 && inputData[3] == 6)
+                        || (inputData[2] == 7 && inputData[3] == 8));
+            if (looksLikeZip) {
+                importedJson = MainActivity.importProjectFromZip(
+                        new ByteArrayInputStream(inputData), extractedMedia);
                 importedFromZip = true;
-            } catch (Exception zipEx) {
+            } else {
                 importedJson = new String(inputData, StandardCharsets.UTF_8);
                 MainActivity.validateImportedProjectStatic(importedJson);
             }
