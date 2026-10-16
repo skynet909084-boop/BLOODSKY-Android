@@ -41,6 +41,38 @@ def preferences_are_empty(xml):
     return 'active_project' not in values and json.loads(values.get('project_catalog_v1', '{}')) == {}
 
 
+def property_scroll_up(target, previous=None):
+    order = ['Положение X', 'Положение Y', 'Ширина элемента', 'Высота элемента']
+    return previous is None or order.index(target) >= order.index(previous)
+
+
+def keyboard_is_shown(diagnostics):
+    return re.search(r'\bmInputShown=true\b', diagnostics) is not None
+
+
+def property_input_matches(node, value):
+    # API 30 accessibility exposes the hint as text for an empty EditText.
+    hints = {'Положение X': 'X', 'Положение Y': 'Y',
+             'Ширина элемента': 'Ширина', 'Высота элемента': 'Высота'}
+    observed = node.get('text', '')
+    return observed == value or (value == '' and observed == hints.get(node.get('content-desc')))
+
+
+def center_height(bounds):
+    center(bounds)  # Validate before calculating the visible height.
+    _, top, _, bottom = map(int, re.findall(r'\d+', bounds))
+    return bottom - top
+
+
+def properties_scroll_node(xml):
+    nodes = [n for n in ET.fromstring(xml).iter('node')
+             if n.get('class') == 'android.widget.ScrollView'
+             and any(c.get('class') == 'android.widget.EditText' for c in n.iter('node'))]
+    if len(nodes) != 1:
+        raise AssertionError('Expected one properties form scroll view')
+    return nodes[0]
+
+
 class Smoke:
     def __init__(self, output):
         self.output = output
@@ -71,6 +103,43 @@ class Smoke:
         node = self.wait_node(text, class_name, description=description)
         x, y = center(node.get('bounds'))
         adb('shell', 'input', 'tap', str(x), str(y))
+
+    def scroll_to_description(self, description):
+        for attempt in range(16):
+            xml = self.dump()
+            nodes = matching_nodes(xml, description=description)
+            scroll = properties_scroll_node(xml)
+            all_fields = [n for n in scroll.iter('node') if n.get('class') == 'android.widget.EditText']
+            full_height = max((center_height(n.get('bounds')) for n in all_fields), default=1)
+            if len(nodes) == 1 and center_height(nodes[0].get('bounds')) >= full_height:
+                self.last_property_description = description
+                return nodes[0]
+            left, top, right, bottom = map(int, re.findall(r'\d+', scroll.get('bounds')))
+            x = (left + right) // 2
+            upward = property_scroll_up(description, getattr(self, "last_property_description", None))
+            if nodes:
+                _, node_top, _, _ = map(int, re.findall(r'\d+', nodes[0].get('bounds')))
+                upward = node_top > top
+            start, end = (bottom - 25, top + 25) if upward else (top + 25, bottom - 25)
+            adb('shell', 'input', 'swipe', str(x), str(start), str(x), str(end), '300')
+        raise AssertionError('Property field not reachable: ' + description)
+
+    def replace_property_input(self, description, value):
+        node = self.scroll_to_description(description)
+        x, y = center(node.get('bounds'))
+        adb('shell', 'input', 'tap', str(x), str(y))
+        focused = self.wait_node(description=description, class_name='android.widget.EditText')
+        if focused.get('focused') != 'true':
+            raise AssertionError('Property field did not receive focus: ' + description)
+        adb('shell', 'input', 'keyevent', '123', *(['67'] * (len(focused.get('text', '')) + 1)))
+        if value:
+            adb('shell', 'input', 'text', value)
+        xml = self.dump()
+        changed = matching_nodes(xml, description=description, class_name='android.widget.EditText')
+        if len(changed) != 1 or not property_input_matches(changed[0], value):
+            raise AssertionError('Property input did not match requested value: ' + description)
+        if keyboard_is_shown(adb('shell', 'dumpsys', 'input_method')):
+            adb('shell', 'input', 'keyevent', '4')
 
     def capture(self, name):
         (self.output / (name + '.png')).write_bytes(adb('exec-out', 'screencap', '-p', binary=True))
@@ -151,6 +220,38 @@ class Smoke:
             raise AssertionError('Palette-created components/project did not survive process restart')
         if widgets[0]['w'] != widgets[0]['h'] or widgets[0]['w'] <= 0:
             raise AssertionError('Original indicator default geometry was lost')
+        canvas = self.wait_node(description='Редактор экрана')
+        left, top, _, _ = map(int, re.findall(r'\d+', canvas.get('bounds')))
+        first = widgets[0]
+        adb('shell', 'input', 'tap', str(round(left + first['x'] + first['w'] / 2)),
+            str(round(top + first['y'] + first['h'] / 2)))
+        self.wait_node('Свойства: Индикатор')
+        self.replace_property_input('Положение X', '40.125')
+        self.replace_property_input('Положение Y', '50.875')
+        self.replace_property_input('Ширина элемента', '')
+        self.replace_property_input('Высота элемента', '140.625')
+        self.tap('Применить')
+        self.wait_node('Свойства: Индикатор')
+        persisted = adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml')
+        before = json.loads({n.get('name'): n.text for n in ET.fromstring(persisted)}['active_project'])['screens'][0]['widgets'][0]
+        if any(before[key] != first[key] for key in ['x', 'y', 'w', 'h']):
+            raise AssertionError('Invalid properties edit partially mutated geometry')
+        self.replace_property_input('Ширина элемента', '160.375')
+        self.capture('04a-fractional-properties')
+        self.tap('Применить')
+        self.wait_node(PROJECT)
+        self.tap('☰')
+        adb('shell', 'am', 'force-stop', PACKAGE)
+        adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
+        self.tap('Загрузить проект')
+        self.tap(PROJECT)
+        self.wait_node(PROJECT)
+        persisted = adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml')
+        after = json.loads({n.get('name'): n.text for n in ET.fromstring(persisted)}['active_project'])['screens'][0]['widgets'][0]
+        expected = dict(x=40.125, y=50.875, w=160.375, h=140.625)
+        if any(after[key] != value for key, value in expected.items()):
+            raise AssertionError('Fractional property edit did not survive process restart')
+        self.capture('04b-fractional-reopened')
         self.tap('☰')
         self.tap('Удалить проект')
         self.tap(PROJECT)
@@ -172,7 +273,7 @@ class Smoke:
         if PACKAGE in crashes:
             raise AssertionError('Application crash recorded')
         (self.output / 'result.json').write_text(json.dumps({'result': 'passed', 'package': PACKAGE,
-                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'original five-category palette', 'palette add indicator/button/text/progress', 'extended component/FBD access', 'process restart', 'reload four palette-created components', 'confirmed deletion'],
+                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'original five-category palette', 'palette add indicator/button/text/progress', 'extended component/FBD access', 'process restart', 'reload four palette-created components', 'invalid geometry leaves dialog/project unchanged', 'fractional properties survive second process restart', 'confirmed deletion'],
                 'api_level': adb('shell', 'getprop', 'ro.build.version.sdk').strip(),
                 'display_size': adb('shell', 'wm', 'size').strip(),
                 'display_density': adb('shell', 'wm', 'density').strip()}, indent=2))
