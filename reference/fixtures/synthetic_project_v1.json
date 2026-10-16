@@ -1,0 +1,31 @@
+{
+  "_comment": "SYNTHETIC FIXTURE - CLEARLY LABELLED FOR TESTING ONLY",
+  "name": "Synthetic Test Project",
+  "stationMode": 0,
+  "countScreen": 2,
+  "countDevice": 4,
+  "screenBackground": "#111111",
+  "systemRegisters": [
+    {"reg_4": 1, "reg_5": 200}
+  ],
+  "extra_field_unknown_meta": "preserved_value_for_testing_roundtrip",
+  "screens": [
+    {
+      "screenIndex": 1,
+      "title": "Main Screen",
+      "widgets": [
+        {
+          "id": "synthetic_w1",
+          "type": "text",
+          "text": "Hello World",
+          "device": 0,
+          "register": 2,
+          "x": 10,
+          "y": 10,
+          "width": 100,
+          "height": 40
+        }
+      ]
+    }
+  ]
+}
