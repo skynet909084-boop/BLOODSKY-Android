@@ -1,5 +1,5 @@
 import unittest
-from android_ui_smoke import center, matching_nodes, preferences_are_empty, properties_scroll_node, property_input_matches
+from android_ui_smoke import center, matching_nodes, preferences_are_empty, properties_scroll_node, property_input_matches, property_scroll_up, keyboard_is_shown
 
 class AndroidSmokeHelpersTests(unittest.TestCase):
     def test_observed_enabled_ui_targets_and_uppercase_russian(self):
@@ -30,6 +30,16 @@ class AndroidSmokeHelpersTests(unittest.TestCase):
         self.assertFalse(property_input_matches(node, ''))
         node.set('text', 'unexpected')
         self.assertFalse(property_input_matches(node, ''))
+
+    def test_property_scroll_direction_can_return_to_previous_field(self):
+        self.assertTrue(property_scroll_up('Положение X'))
+        self.assertTrue(property_scroll_up('Высота элемента', 'Ширина элемента'))
+        self.assertFalse(property_scroll_up('Ширина элемента', 'Высота элемента'))
+
+    def test_keyboard_visibility_uses_observed_input_method_state(self):
+        self.assertTrue(keyboard_is_shown('mInputShown=true mShowRequested=true'))
+        self.assertFalse(keyboard_is_shown('mInputShown=false'))
+        self.assertFalse(keyboard_is_shown('unknown'))
 
     def test_invalid_bounds_are_rejected(self):
         for bounds in ['bad', '[1,2][1,2]', '[100,20][10,30]']:

@@ -9,3 +9,5 @@ Unit coverage checks repeated unchanged edits, exact boundary and fractional val
 The first emulator attempt exposed fullscreen landscape IME extraction and ambiguous dialog scroll containers. Property fields now request non-extracting input. The smoke helper identifies the form by its editable descendants, requires fully visible fields, checks actual focus and entered text, and dismisses the observed emulator keyboard before moving to another field. No geometry assertions were removed.
 
 A second emulator attempt confirmed non-extracting input but exposed API 30 accessibility reporting a cleared numeric field as its hint ("Ширина"). The input helper recognizes only the known hint for an empty field; nonempty values still require exact text. The subsequent invalid-apply/no-partial-mutation assertion remains mandatory.
+
+The failure XML contains only the application window, so keyboard visibility uses observed `dumpsys input_method` state instead of assuming IME nodes appear in UIAutomator. Scroll direction follows the requested field order, including returning from Height to Width after validation. Helpers have dedicated regression tests.

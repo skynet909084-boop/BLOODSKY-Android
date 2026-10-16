@@ -41,6 +41,15 @@ def preferences_are_empty(xml):
     return 'active_project' not in values and json.loads(values.get('project_catalog_v1', '{}')) == {}
 
 
+def property_scroll_up(target, previous=None):
+    order = ['Положение X', 'Положение Y', 'Ширина элемента', 'Высота элемента']
+    return previous is None or order.index(target) >= order.index(previous)
+
+
+def keyboard_is_shown(diagnostics):
+    return re.search(r'\bmInputShown=true\b', diagnostics) is not None
+
+
 def property_input_matches(node, value):
     # API 30 accessibility exposes the hint as text for an empty EditText.
     hints = {'Положение X': 'X', 'Положение Y': 'Y',
@@ -103,10 +112,11 @@ class Smoke:
             all_fields = [n for n in scroll.iter('node') if n.get('class') == 'android.widget.EditText']
             full_height = max((center_height(n.get('bounds')) for n in all_fields), default=1)
             if len(nodes) == 1 and center_height(nodes[0].get('bounds')) >= full_height:
+                self.last_property_description = description
                 return nodes[0]
             left, top, right, bottom = map(int, re.findall(r'\d+', scroll.get('bounds')))
             x = (left + right) // 2
-            upward = attempt < 8
+            upward = property_scroll_up(description, getattr(self, "last_property_description", None))
             if nodes:
                 _, node_top, _, _ = map(int, re.findall(r'\d+', nodes[0].get('bounds')))
                 upward = node_top > top
@@ -128,7 +138,7 @@ class Smoke:
         changed = matching_nodes(xml, description=description, class_name='android.widget.EditText')
         if len(changed) != 1 or not property_input_matches(changed[0], value):
             raise AssertionError('Property input did not match requested value: ' + description)
-        if any(n.get('package') == 'com.android.inputmethod.latin' for n in ET.fromstring(xml).iter('node')):
+        if keyboard_is_shown(adb('shell', 'dumpsys', 'input_method')):
             adb('shell', 'input', 'keyevent', '4')
 
     def capture(self, name):
