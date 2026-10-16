@@ -59,7 +59,7 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("connections.length() > 4000", self.source)
 
     def test_modbus_supports_only_explicit_read_functions(self):
-        self.assertIn("functionCode != 3 && functionCode != 4", self.source)
+        self.assertIn("functionCode != 1 && functionCode != 2 && functionCode != 3 && functionCode != 4", self.source)
         self.assertIn("socket.connect(new InetSocketAddress(host, port), 3000)", self.source)
         self.assertIn("socket.setSoTimeout(3000)", self.source)
         self.assertIn("responseTransaction != transaction", self.source)
@@ -80,6 +80,13 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("FBD Деление", self.source)
         self.assertIn("FBD ABS", self.source)
         self.assertIn("FBD MIN_MAX", self.source)
+        self.assertIn("FBD POW", self.source)
+        self.assertIn("FBD SQRT", self.source)
+        self.assertIn("FBD SIN", self.source)
+        self.assertIn("FBD COS", self.source)
+        self.assertIn("FBD TAN", self.source)
+        self.assertIn("FBD FloatToInt", self.source)
+        self.assertIn("FBD IntToFloat", self.source)
 
     def test_kascada_craft_widgets(self):
         self.assertIn("Шкала / Стрелка", self.source)
@@ -87,6 +94,16 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("График / Тренд", self.source)
         self.assertIn("Двухпозиционный индикатор", self.source)
         self.assertIn("Битовый список", self.source)
+        self.assertIn("Звуковой сигнал", self.source)
+        self.assertIn("Переход на экран", self.source)
+        self.assertIn("Многопозиционное фото", self.source)
+        self.assertIn("Голосовое сообщение", self.source)
+
+    def test_batch3_project_settings_persistence(self):
+        self.assertIn("showProjectSettingsDialog()", self.source)
+        self.assertIn("stationMode", self.source)
+        self.assertIn("modbusSlave", self.source)
+        self.assertIn("systemRegisters", self.source)
 
     def test_widget_metadata_is_preserved_for_round_trip(self):
         self.assertIn("JSONObject extraFields = new JSONObject()", self.source)

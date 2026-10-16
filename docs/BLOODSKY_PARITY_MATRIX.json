@@ -106,6 +106,30 @@
           "name": "Bit List Widget (CustomList)",
           "status": "implemented",
           "criteria": "Displays bit state indicators driven by live Modbus register mask."
+        },
+        {
+          "id": "widget.sound",
+          "name": "Sound / Alarm Trigger (CustomSound)",
+          "status": "partial",
+          "criteria": "Audio/alarm indicator with edge-triggered MediaPlayer tone and alert trigger."
+        },
+        {
+          "id": "widget.screen_link",
+          "name": "Screen Link / Navigation Button (b0)",
+          "status": "implemented",
+          "criteria": "Screen jump button allowing direct navigation to target screen or external URL."
+        },
+        {
+          "id": "widget.multistate_photo",
+          "name": "Multi-State Image / Picture (CustomComponents.h)",
+          "status": "partial",
+          "criteria": "Multi-state image view decoding file/URI bitmaps with fallback status frame."
+        },
+        {
+          "id": "widget.voice_announcement",
+          "name": "Voice Announcement (CustomComponents.a0)",
+          "status": "partial",
+          "criteria": "Voice announcement trigger with TextToSpeech synthesis and edge-triggering."
         }
       ]
     },
@@ -155,6 +179,12 @@
           "criteria": "Basic arithmetic calculations, division-by-zero safety, and signal selection blocks."
         },
         {
+          "id": "fbd.advanced_math",
+          "name": "Advanced Math & Conversions (POW, SQRT, SIN, COS, TAN, FloatToInt, IntToFloat)",
+          "status": "implemented",
+          "criteria": "Exponentiation, square root with domain clamping, trigonometric math, and type conversion blocks."
+        },
+        {
           "id": "fbd.wires",
           "name": "Inter-block Wiring & Cycle Prevention",
           "status": "implemented",
@@ -200,6 +230,12 @@
     {
       "name": "Modbus Communications",
       "items": [
+        {
+          "id": "modbus.coils_discrete",
+          "name": "Modbus FC01 & FC02 Coils and Discrete Inputs",
+          "status": "implemented",
+          "criteria": "Polling of Coils (FC01) and Discrete Inputs (FC02) using 0-based protocol indexing."
+        },
         {
           "id": "modbus.tcp_fc03_fc04",
           "name": "Modbus TCP FC03 & FC04",
