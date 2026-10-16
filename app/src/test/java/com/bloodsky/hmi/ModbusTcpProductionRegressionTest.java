@@ -24,6 +24,10 @@ public class ModbusTcpProductionRegressionTest {
     }
 
     private static String read(int function, int address, int quantity, Response response) throws Exception {
+        return read(function, address, quantity, response, false);
+    }
+
+    private static String read(int function, int address, int quantity, Response response, boolean splitWrites) throws Exception {
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try (ServerSocket listener = new ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))) {
             listener.setSoTimeout(4000);
@@ -41,9 +45,15 @@ public class ModbusTcpProductionRegressionTest {
                     assertEquals("request quantity", quantity, in.readUnsignedShort());
                     byte[] bytes = response.frame(transaction, unit, function);
                     OutputStream out = peer.getOutputStream();
-                    // Separate writes across header and PDU boundaries; reader must use full framing.
-                    for (byte value : bytes) {
-                        out.write(value & 255);
+                    if (splitWrites) {
+                        // Exercise repeated writes; TCP may still coalesce them.
+                        for (byte value : bytes) {
+                            out.write(value & 255);
+                            out.flush();
+                        }
+                    } else {
+                        // Malformed headers can make the client close immediately.
+                        out.write(bytes);
                         out.flush();
                     }
                 }
@@ -83,7 +93,7 @@ public class ModbusTcpProductionRegressionTest {
     @Test(timeout = 12000) public void readsFragmentedFc04UnsignedRegisters() throws Exception {
         String report = read(4, 12, 2,
                 (tx, unit, fn) -> frame(tx, 0, unit, (byte) fn, (byte) 4,
-                        (byte) 0x80, (byte) 0, (byte) 0xff, (byte) 0xff));
+                        (byte) 0x80, (byte) 0, (byte) 0xff, (byte) 0xff), true);
         assertTrue(report.contains("input registers (FC04)"));
         assertTrue(report.contains("30013  |  32768"));
         assertTrue(report.contains("30014  |  65535"));
