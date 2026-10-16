@@ -270,12 +270,18 @@ public class PortableZipMediaTest {
                 source -> "STATE_BYTES".getBytes(StandardCharsets.UTF_8));
         File mediaDir = ProjectMediaService.getProjectMediaDir(rootDir, project.toString());
         assertTrue(mediaDir.delete());
+        final String[] rejected = {null};
         try {
             ProjectMediaService.importProjectBundle(rootDir,
-                    new ByteArrayInputStream(archive.toByteArray()), json -> false);
+                    new ByteArrayInputStream(archive.toByteArray()), json -> {rejected[0]=json;return false;});
             fail("Preference failure must abort import");
         } catch (IllegalStateException expected) {
             assertFalse("Failed initial import must not leave partial media", mediaDir.exists());
+            JSONObject candidate = new JSONObject(rejected[0]);
+            File rejectedGeneration = new File(new File(new File(rootDir, "projects"),
+                    ProjectMediaService.getOrGenerateProjectId(rejected[0])),
+                    "media_" + candidate.getString("mediaGeneration"));
+            assertFalse("Failed save must remove the unpublished generation", rejectedGeneration.exists());
         }
     }
 
