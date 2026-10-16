@@ -470,159 +470,45 @@ public class MainActivity extends Activity {
     }
 
     public static String readModbusRegistersStatic(String host, int port, int unit, int startAddress, int count, int functionCode) throws Exception {
-        if (functionCode != 1 && functionCode != 2 && functionCode != 3 && functionCode != 4) {
-            throw new IllegalArgumentException("Unsupported Modbus function");
+        final int[] values;
+        try {
+            values = new ModbusTcpClient(host, port).read(unit, startAddress, count, functionCode);
+        } catch (ModbusTcpClient.ModbusException ex) {
+            throw describeTcpException(ex);
         }
-        int transaction = (int) (SystemClock.elapsedRealtime() & 0xffff);
-        try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(host, port), 3000);
-            socket.setSoTimeout(3000);
-            DataOutputStream out = new DataOutputStream(socket.getOutputStream());
-            DataInputStream in = new DataInputStream(socket.getInputStream());
-            out.writeShort(transaction);
-            out.writeShort(0);
-            out.writeShort(6);
-            out.writeByte(unit);
-            out.writeByte(functionCode);
-            out.writeShort(startAddress);
-            out.writeShort(count);
-            out.flush();
-
-            byte[] header = new byte[7];
-            in.readFully(header);
-            int responseTransaction = ((header[0] & 0xff) << 8) | (header[1] & 0xff);
-            int protocol = ((header[2] & 0xff) << 8) | (header[3] & 0xff);
-            int length = ((header[4] & 0xff) << 8) | (header[5] & 0xff);
-            int responseUnit = header[6] & 0xff;
-            if (responseTransaction != transaction || protocol != 0 || responseUnit != unit || length < 2 || length > 254) {
-                throw new IOException("Некорректный заголовок ответа");
-            }
-            byte[] pdu = new byte[length - 1];
-            in.readFully(pdu);
-            int function = pdu[0] & 0xff;
-            if (function == (functionCode | 0x80)) {
-                if (pdu.length != 2) throw new IOException("Некорректный ответ с исключением Modbus");
-                int exceptionCode = pdu[1] & 0xff;
-                throw new IOException("Modbus: " + describeModbusExceptionCodeStatic(exceptionCode)
-                        + " (код " + exceptionCode + ")");
-            }
-            if (function != functionCode || pdu.length < 2) throw new IOException("Неожиданный код функции");
-            int byteCount = pdu[1] & 0xff;
-            int expectedByteCount = (functionCode == 1 || functionCode == 2) ? (count + 7) / 8 : count * 2;
-            if (byteCount != expectedByteCount || pdu.length != 2 + byteCount) {
-                throw new IOException("Размер ответа не совпадает с запросом");
-            }
-            StringBuilder report = new StringBuilder();
-            String funcName = functionCode == 1 ? "coils (FC01)\n" : (functionCode == 2 ? "discrete inputs (FC02)\n" : (functionCode == 3 ? "holding registers (FC03)\n" : "input registers (FC04)\n"));
-            report.append("Успешно: ").append(count).append(" ").append(funcName);
-            int baseAddr = functionCode == 1 ? 1 : (functionCode == 2 ? 10001 : (functionCode == 3 ? 40001 : 30001));
-            for (int i = 0; i < count; i++) {
-                int value;
-                if (functionCode == 1 || functionCode == 2) {
-                    value = ((pdu[2 + (i / 8)] & 0xff) >> (i % 8)) & 1;
-                } else {
-                    value = ((pdu[2 + i * 2] & 0xff) << 8) | (pdu[3 + i * 2] & 0xff);
-                }
-                report.append(baseAddr + startAddress + i).append("  |  ")
-                        .append(value).append("  |  0x")
-                        .append(String.format(java.util.Locale.ROOT, "%04X", value)).append('\n');
-            }
-            return report.toString();
+        StringBuilder report = new StringBuilder();
+        String funcName = functionCode == 1 ? "coils (FC01)\n" : (functionCode == 2 ? "discrete inputs (FC02)\n" : (functionCode == 3 ? "holding registers (FC03)\n" : "input registers (FC04)\n"));
+        report.append("Успешно: ").append(count).append(" ").append(funcName);
+        int baseAddr = functionCode == 1 ? 1 : (functionCode == 2 ? 10001 : (functionCode == 3 ? 40001 : 30001));
+        for (int i = 0; i < count; i++) {
+            report.append(baseAddr + startAddress + i).append("  |  ")
+                    .append(values[i]).append("  |  0x")
+                    .append(String.format(java.util.Locale.ROOT, "%04X", values[i])).append('\n');
         }
+        return report.toString();
     }
 
     public static boolean writeModbusRegisterStatic(String host, int port, int unit, int address, int value) throws Exception {
-        int transaction = (int) (SystemClock.elapsedRealtime() & 0xffff);
-        try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(host, port), 3000);
-            socket.setSoTimeout(3000);
-            DataOutputStream out = new DataOutputStream(socket.getOutputStream());
-            DataInputStream in = new DataInputStream(socket.getInputStream());
-            out.writeShort(transaction);
-            out.writeShort(0);
-            out.writeShort(6);
-            out.writeByte(unit);
-            out.writeByte(6);
-            out.writeShort(address);
-            out.writeShort(value);
-            out.flush();
-
-            byte[] header = new byte[7];
-            in.readFully(header);
-            int responseTransaction = ((header[0] & 0xff) << 8) | (header[1] & 0xff);
-            int protocol = ((header[2] & 0xff) << 8) | (header[3] & 0xff);
-            int length = ((header[4] & 0xff) << 8) | (header[5] & 0xff);
-            int responseUnit = header[6] & 0xff;
-            if (responseTransaction != transaction || protocol != 0 || responseUnit != unit || length < 2 || length > 254) {
-                throw new IOException("Некорректный заголовок ответа при записи");
-            }
-            byte[] pdu = new byte[length - 1];
-            in.readFully(pdu);
-            int function = pdu[0] & 0xff;
-            if (function == 0x86) {
-                if (pdu.length != 2) throw new IOException("Некорректный ответ с исключением Modbus при записи");
-                int exceptionCode = pdu[1] & 0xff;
-                throw new IOException("Modbus: " + describeModbusExceptionCodeStatic(exceptionCode) + " (код " + exceptionCode + ")");
-            }
-            validateModbusWriteEcho(pdu, 6, address, value);
+        try {
+            new ModbusTcpClient(host, port).writeSingle(unit, address, value);
             return true;
+        } catch (ModbusTcpClient.ModbusException ex) {
+            throw describeTcpException(ex);
         }
     }
 
     public static boolean writeModbusMultipleRegistersStatic(String host, int port, int unit, int startAddress, int[] values) throws Exception {
-        int transaction = (int) (SystemClock.elapsedRealtime() & 0xffff);
-        try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(host, port), 3000);
-            socket.setSoTimeout(3000);
-            DataOutputStream out = new DataOutputStream(socket.getOutputStream());
-            DataInputStream in = new DataInputStream(socket.getInputStream());
-            int byteCount = values.length * 2;
-            out.writeShort(transaction);
-            out.writeShort(0);
-            out.writeShort(7 + byteCount);
-            out.writeByte(unit);
-            out.writeByte(16);
-            out.writeShort(startAddress);
-            out.writeShort(values.length);
-            out.writeByte(byteCount);
-            for (int val : values) {
-                out.writeShort(val);
-            }
-            out.flush();
-
-            byte[] header = new byte[7];
-            in.readFully(header);
-            int responseTransaction = ((header[0] & 0xff) << 8) | (header[1] & 0xff);
-            int protocol = ((header[2] & 0xff) << 8) | (header[3] & 0xff);
-            int length = ((header[4] & 0xff) << 8) | (header[5] & 0xff);
-            int responseUnit = header[6] & 0xff;
-            if (responseTransaction != transaction || protocol != 0 || responseUnit != unit || length < 2 || length > 254) {
-                throw new IOException("Некорректный заголовок ответа при групповой записи");
-            }
-            byte[] pdu = new byte[length - 1];
-            in.readFully(pdu);
-            int function = pdu[0] & 0xff;
-            if (function == 0x90) {
-                if (pdu.length != 2) throw new IOException("Некорректный ответ с исключением Modbus при групповой записи");
-                int exceptionCode = pdu[1] & 0xff;
-                throw new IOException("Modbus: " + describeModbusExceptionCodeStatic(exceptionCode) + " (код " + exceptionCode + ")");
-            }
-            validateModbusWriteEcho(pdu, 16, startAddress, values.length);
+        try {
+            new ModbusTcpClient(host, port).writeMultiple(unit, startAddress, values);
             return true;
+        } catch (ModbusTcpClient.ModbusException ex) {
+            throw describeTcpException(ex);
         }
     }
 
-    // MODBUS Application Protocol V1.1b3 sections 6.6 and 6.12:
-    // FC06 echoes address/value; FC16 echoes starting address/register quantity.
-    private static void validateModbusWriteEcho(byte[] pdu, int function, int address, int valueOrCount) throws IOException {
-        if (pdu.length != 5 || (pdu[0] & 0xff) != function) {
-            throw new IOException("Некорректное подтверждение записи Modbus");
-        }
-        int echoedAddress = ((pdu[1] & 0xff) << 8) | (pdu[2] & 0xff);
-        int echoedValueOrCount = ((pdu[3] & 0xff) << 8) | (pdu[4] & 0xff);
-        if (echoedAddress != (address & 0xffff) || echoedValueOrCount != (valueOrCount & 0xffff)) {
-            throw new IOException("Подтверждение записи Modbus не совпадает с запросом");
-        }
+    private static IOException describeTcpException(ModbusTcpClient.ModbusException ex) {
+        return new IOException("Modbus: " + describeModbusExceptionCodeStatic(ex.exceptionCode)
+                + " (код " + ex.exceptionCode + ")", ex);
     }
 
     private String readModbusRegisters(String host, int port, int unit, int startAddress, int count, int functionCode) throws Exception {

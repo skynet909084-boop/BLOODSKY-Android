@@ -11,6 +11,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "app/src/main/java/com/bloodsky/hmi/MainActivity.java"
 WORKFLOW = ROOT / ".github/workflows/android-apk.yml"
+TCP_CLIENT = ROOT / "app/src/main/java/com/bloodsky/hmi/ModbusTcpClient.java"
 
 
 class AndroidSourceContractTests(unittest.TestCase):
@@ -18,6 +19,7 @@ class AndroidSourceContractTests(unittest.TestCase):
     def setUpClass(cls):
         cls.source = SOURCE.read_text(encoding="utf-8")
         cls.workflow = WORKFLOW.read_text(encoding="utf-8")
+        cls.tcp_client = TCP_CLIENT.read_text(encoding="utf-8")
 
     def test_project_persistence_serializes_screens_and_widgets(self):
         self.assertIn("private void persistProject()", self.source)
@@ -59,11 +61,17 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("connections.length() > 4000", self.source)
 
     def test_modbus_supports_only_explicit_read_functions(self):
-        self.assertIn("functionCode != 1 && functionCode != 2 && functionCode != 3 && functionCode != 4", self.source)
-        self.assertIn("socket.connect(new InetSocketAddress(host, port), 3000)", self.source)
-        self.assertIn("socket.setSoTimeout(3000)", self.source)
-        self.assertIn("responseTransaction != transaction", self.source)
-        self.assertIn("function == (functionCode | 0x80)", self.source)
+        # Wire-level checks now live in the Android-independent production transport.
+        self.assertIn("functionCode != 1 && functionCode != 2 && functionCode != 3 && functionCode != 4", self.tcp_client)
+        self.assertIn("socket.connect(new InetSocketAddress(host, port), timeoutMs)", self.tcp_client)
+        self.assertIn("responseTransaction != transaction", self.tcp_client)
+        self.assertIn("function == (functionCode | 0x80)", self.tcp_client)
+        self.assertIn("new ModbusTcpClient(host, port).read(", self.source)
+        self.assertIn("new ModbusTcpClient(host, port).writeSingle(", self.source)
+        self.assertIn("new ModbusTcpClient(host, port).writeMultiple(", self.source)
+        self.assertIn("validateWriteEcho(pdu, 6, address, value)", self.tcp_client)
+        self.assertIn("validateWriteEcho(pdu, 16, address, snapshot.length)", self.tcp_client)
+        self.assertIn("deadline - System.nanoTime()", self.tcp_client)
 
     def test_modbus_rtu_crc_helper(self):
         self.assertIn("calculateModbusRtuCrc(", self.source)
