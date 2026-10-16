@@ -32,32 +32,30 @@ public class ProjectMediaService {
         if (projectJson != null && !projectJson.trim().isEmpty()) {
             try {
                 JSONObject obj = new JSONObject(projectJson);
-                String rawId = obj.optString("id", "").trim();
-                if (!rawId.isEmpty() && !"..".equals(rawId) && !".".equals(rawId)) {
-                    return hashString("id_" + rawId);
-                }
                 String storageId = obj.optString("storageId", "").trim();
                 if (!storageId.isEmpty() && !"..".equals(storageId) && !".".equals(storageId)) {
                     return hashString("sid_" + storageId);
                 }
-                String rawName = obj.optString("name", "").trim();
-                if (!rawName.isEmpty()) {
-                    return hashString("name_" + rawName + "_" + projectJson.length());
+                String rawId = obj.optString("id", "").trim();
+                if (!rawId.isEmpty() && !"..".equals(rawId) && !".".equals(rawId)) {
+                    return hashString("id_" + rawId);
                 }
             } catch (Exception ignored) {}
         }
-        return "default_project";
+        // Never share a fallback media directory across unrelated projects.
+        throw new IllegalArgumentException("Project must have a stable id or storageId");
     }
 
     public static String ensureProjectHasId(String projectJson) {
         if (projectJson == null || projectJson.trim().isEmpty()) return projectJson;
         try {
             JSONObject obj = new JSONObject(projectJson);
-            if (!obj.has("id") || obj.optString("id", "").trim().isEmpty()) {
-                if (!obj.has("storageId") || obj.optString("storageId", "").trim().isEmpty()) {
-                    obj.put("storageId", UUID.randomUUID().toString());
-                    return obj.toString();
-                }
+            String id = obj.optString("id", "").trim();
+            String storageId = obj.optString("storageId", "").trim();
+            if ((id.isEmpty() || ".".equals(id) || "..".equals(id))
+                    && (storageId.isEmpty() || ".".equals(storageId) || "..".equals(storageId))) {
+                obj.put("storageId", UUID.randomUUID().toString());
+                return obj.toString();
             }
         } catch (Exception ignored) {}
         return projectJson;
