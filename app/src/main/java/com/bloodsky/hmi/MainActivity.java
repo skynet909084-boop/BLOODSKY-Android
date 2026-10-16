@@ -1942,8 +1942,8 @@ public class MainActivity extends Activity {
         w.visible = obj.optBoolean("visible", true); w.showFrame = obj.optBoolean("showFrame", true); w.autoResizeText = obj.optBoolean("autoResizeText", false);
         w.soundThreshold = obj.optDouble("soundThreshold", 1.0); w.soundActive = obj.optBoolean("soundActive", false); w.soundFilePath = obj.optString("soundFilePath", "Аларм");
         w.targetScreenIndex = obj.optInt("targetScreenIndex", 0); w.targetUrl = obj.optString("targetUrl", "");
-        w.x = obj.optInt("x", 40); w.y = obj.optInt("y", 50);
-        w.w = obj.optInt("w", 160); w.h = obj.optInt("h", 58);
+        w.x = (float) obj.optDouble("x", 40); w.y = (float) obj.optDouble("y", 50);
+        w.w = (float) obj.optDouble("w", 160); w.h = (float) obj.optDouble("h", 58);
 
         JSONArray dynStatesArr = obj.optJSONArray("dynTextStates");
         JSONArray dynColorsArr = obj.optJSONArray("dynTextColors");
