@@ -50,8 +50,12 @@ class AndroidSourceContractTests(unittest.TestCase):
 
     def test_import_is_validated_before_persisting(self):
         validate_at = self.source.index("validateImportedProject(json);")
-        commit_at = self.source.index('.putString(ACTIVE_PROJECT, json).commit()', validate_at)
-        self.assertLess(validate_at, commit_at)
+        store_at = self.source.index('storeActiveProject(json, true)', validate_at)
+        self.assertLess(validate_at, store_at)
+        storage = self.source.split('private boolean storeActiveProject(', 1)[1].split('private String readProjectCatalog()', 1)[0]
+        self.assertLess(storage.index('ProjectCatalog.normalize(json)'), storage.index('.putString(ACTIVE_PROJECT, normalized)'))
+        self.assertLess(storage.index('ProjectCatalog.upsert(oldCatalog, normalized)'), storage.index('edit.commit()'))
+        self.assertIn('.putString(PROJECT_CATALOG, catalog)', storage)
         self.assertIn("Trailing content after JSON", self.source)
         self.assertIn("Project file too large", self.source)
 
@@ -155,3 +159,4 @@ class AndroidSourceContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

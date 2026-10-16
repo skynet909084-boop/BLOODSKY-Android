@@ -1,0 +1,11 @@
+# Original home menu and named projects
+
+Source: KaScada Craft 1.0.7 `apktool/res/layout/main_menu.xml`, its drawable references, Russian strings and `MainActivity.onCreate`. Exact source hashes are in `original-home-provenance.json` and checked against the pinned archive after preparation.
+
+The production home screen now uses the byte-preserved original `background_button.png` and `main_background_small.png` via generated `kc_` resource aliases. It preserves the six action labels/order, 300dp button width (clamped only for narrower displays), 10dp top margins, 0.14 button weights, 0.1 bottom spacer and 20dp button text specified by the original layout. The title remains BLOODSKY. License/activation and another application's privacy link are omitted. This is **wired-unverified**, not screenshot-matched: the footer, app theme/system bars and device-density rendering still require on-device comparison.
+
+Create, load and delete use a named-project catalog. Existing active projects migrate into the catalog before another project is selected or created. Each project retains a stable ID independent of its name; equal names do not overwrite one another. Autosave writes the active project, display name and catalog in one preferences edit. Import/open/create use a synchronous edit and restore prior in-memory values on failure. Deleting a saved project requires confirmation and removes only that identity; deleting an inactive project does not clear the active one. Old media generations are retained because other saved snapshots may reference them.
+
+The catalog is a BLOODSKY persistence layer, not support for the original Rovki.db project tables. Original database/archive compatibility, original project-list layouts, file-provider behavior and process-death preferences recovery require further work. On-device create/open/delete, original/BLOODSKY screenshots at equal density and installation have not been verified. No public release or full-clone claim is made.
+
+Regression coverage: catalog creation/identity collisions, rename/update with unknown metadata and media generation, isolated deletion, legacy-array migration, returned snapshot isolation/corruption rejection and invalid input. Source/resource checks verify original bytes and actual home resource bindings. These do not substitute for touch/screenshot checks.

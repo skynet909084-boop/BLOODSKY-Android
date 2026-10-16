@@ -55,6 +55,7 @@ import java.io.DataOutputStream;
 public class MainActivity extends Activity {
     private static final String PREFS = "bloodsky_projects";
     private static final String ACTIVE_PROJECT = "active_project";
+    private static final String PROJECT_CATALOG = "project_catalog_v1";
     private static final int REQUEST_EXPORT_PROJECT = 7101;
     private static final int REQUEST_IMPORT_PROJECT = 7102;
     private static final int REQUEST_PICK_MEDIA = 7103;
@@ -214,12 +215,7 @@ public class MainActivity extends Activity {
         button.setTextColor(Color.BLACK);
         button.setAllCaps(false);
         button.setGravity(Gravity.CENTER);
-        GradientDrawable face = new GradientDrawable(
-                GradientDrawable.Orientation.LEFT_RIGHT,
-                new int[] { Color.rgb(190, 190, 190), Color.rgb(132, 132, 132), Color.rgb(190, 190, 190) });
-        face.setCornerRadius(dp(2));
-        face.setStroke(dp(1), Color.rgb(76, 76, 76));
-        button.setBackground(face);
+        button.setBackgroundResource(R.drawable.kc_background_button);
         button.setOnClickListener(v -> task.run());
         return button;
     }
@@ -227,56 +223,139 @@ public class MainActivity extends Activity {
     private void showHome() {
         stopModbusPolling();
         editor = null;
+        try { readProjectCatalog(); }
+        catch (Exception error) { Toast.makeText(this, "Сохранение проекта: " + error.getMessage(), Toast.LENGTH_LONG).show(); }
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setPadding(dp(12), dp(4), dp(12), dp(8));
-        root.setBackgroundColor(Color.rgb(35, 35, 35));
-
+        root.setBackgroundResource(R.drawable.kc_main_background_small);
         TextView title = new TextView(this);
         title.setText("BLOODSKY");
         title.setTextColor(Color.rgb(237, 176, 59));
-        title.setTextSize(25);
+        title.setTextSize(22);
         title.setGravity(Gravity.CENTER);
-        title.setPadding(dp(8), dp(5), dp(8), dp(7));
-        root.addView(title, new LinearLayout.LayoutParams(-1, dp(44)));
-
-        TextView subtitle = new TextView(this);
-        subtitle.setText("HMI / SCADA");
-        subtitle.setTextColor(Color.rgb(187, 187, 187));
-        subtitle.setTextSize(13);
-        subtitle.setGravity(Gravity.CENTER);
-        root.addView(subtitle, new LinearLayout.LayoutParams(-1, dp(24)));
-
-        int menuWidth = Math.max(dp(220), Math.min(dp(300),
-                getResources().getDisplayMetrics().widthPixels - dp(36)));
-        addLegacyMenuItem("Открыть / создать проект", () -> {
-            loadProject();
-            showEditor();
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(-2, -2);
+        titleParams.topMargin = dp(8);
+        root.addView(title, titleParams);
+        // Original main_menu.xml order, 300dp width and 0.14 weights.
+        int menuWidth = Math.min(dp(300), getResources().getDisplayMetrics().widthPixels);
+        addLegacyMenuItem("Создать новый проект", this::createNamedProject, menuWidth);
+        addLegacyMenuItem("Загрузить проект", () -> chooseSavedProject(false), menuWidth);
+        addLegacyMenuItem("Удалить проект", () -> chooseSavedProject(true), menuWidth);
+        addLegacyMenuItem("Экспорт проекта", () -> {
+            if (getSharedPreferences(PREFS, MODE_PRIVATE).contains(ACTIVE_PROJECT)) {
+                loadProject(); exportProject();
+            } else Toast.makeText(this, "Сначала создай или загрузи проект", Toast.LENGTH_SHORT).show();
         }, menuWidth);
-        addLegacyMenuItem("Имя проекта", this::editProjectName, menuWidth);
-        addLegacyMenuItem("Экспорт проекта (ZIP / JSON)", this::exportProject, menuWidth);
-        addLegacyMenuItem("Импорт проекта (ZIP / JSON)", this::importProject, menuWidth);
-        addLegacyMenuItem("Устройства и Modbus", this::showModbusScanner, menuWidth);
-
-        View spacer = new View(this);
-        root.addView(spacer, new LinearLayout.LayoutParams(1, 0, 1));
-
+        addLegacyMenuItem("Импорт проекта", this::importProject, menuWidth);
+        addLegacyMenuItem("Выход", this::finish, menuWidth);
+        root.addView(new View(this), new LinearLayout.LayoutParams(1, 0, 0.1f));
         TextView footer = new TextView(this);
-        footer.setText("BLOODSKY  •  интерфейс в стиле Kaskada Craft 1.0.7");
-        footer.setTextColor(Color.rgb(237, 176, 59));
-        footer.setTextSize(12);
+        footer.setText("BLOODSKY 0.1.0");
+        footer.setTextColor(Color.rgb(255, 248, 243));
+        footer.setTextSize(18);
         footer.setGravity(Gravity.CENTER);
-        root.addView(footer, new LinearLayout.LayoutParams(-1, dp(26)));
+        root.addView(footer, new LinearLayout.LayoutParams(-2, -2));
         setContentView(root);
     }
 
     private void addLegacyMenuItem(String label, Runnable task, int width) {
         Button button = legacyMenuButton(label, task);
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(width, dp(48));
+        // The source specifies dp for text rather than sp.
+        button.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 20);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(width, 0, 0.14f);
         params.gravity = Gravity.CENTER_HORIZONTAL;
         params.topMargin = dp(10);
         root.addView(button, params);
+    }
+
+    private boolean storeActiveProject(String json, boolean synchronous) throws Exception {
+        String normalized = ProjectCatalog.normalize(json);
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        String oldActive = prefs.getString(ACTIVE_PROJECT, null);
+        String oldCatalog = prefs.getString(PROJECT_CATALOG, null);
+        String oldName = prefs.getString("project_name", null);
+        String catalog = ProjectCatalog.upsert(oldCatalog, normalized);
+        android.content.SharedPreferences.Editor edit = prefs.edit()
+                .putString(ACTIVE_PROJECT, normalized).putString(PROJECT_CATALOG, catalog)
+                .putString("project_name", new JSONObject(normalized).optString("projectName", "Мой проект"));
+        if (!synchronous) { edit.apply(); return true; }
+        if (edit.commit()) return true;
+        android.content.SharedPreferences.Editor restore = prefs.edit();
+        if (oldActive == null) restore.remove(ACTIVE_PROJECT); else restore.putString(ACTIVE_PROJECT, oldActive);
+        if (oldCatalog == null) restore.remove(PROJECT_CATALOG); else restore.putString(PROJECT_CATALOG, oldCatalog);
+        if (oldName == null) restore.remove("project_name"); else restore.putString("project_name", oldName);
+        if (!restore.commit()) android.util.Log.e("BLOODSKY", "Could not persist restored project preferences");
+        return false;
+    }
+
+    private String readProjectCatalog() throws Exception {
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        String active = prefs.getString(ACTIVE_PROJECT, null);
+        if (active != null && !storeActiveProject(active, true)) throw new IOException("Не удалось сохранить текущий проект");
+        return prefs.getString(PROJECT_CATALOG, "{}");
+    }
+
+    private void createNamedProject() {
+        EditText name = propertyField("", InputType.TYPE_CLASS_TEXT);
+        name.setHint("Имя проекта");
+        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Создать новый проект")
+                .setView(name).setNegativeButton("Отмена", null).setPositiveButton("Создать", null).create();
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            try {
+                readProjectCatalog(); // Migrate/preserve the previous active project first.
+                String json = ProjectCatalog.create(name.getText().toString());
+                if (!storeActiveProject(json, true)) throw new IOException("Не удалось сохранить проект");
+                dialog.dismiss(); loadProject(); showEditor();
+            } catch (Exception error) { name.setError(error.getMessage()); }
+        }));
+        dialog.show();
+    }
+
+    private void chooseSavedProject(boolean deleting) {
+        try {
+            List<JSONObject> projects = ProjectCatalog.list(readProjectCatalog());
+            if (projects.isEmpty()) {
+                Toast.makeText(this, "Нет сохранённых проектов", Toast.LENGTH_SHORT).show(); return;
+            }
+            String[] labels = new String[projects.size()];
+            for (int i = 0; i < labels.length; i++) labels[i] = projects.get(i).optString("projectName", "Мой проект");
+            new AlertDialog.Builder(this).setTitle(deleting ? "Удалить проект" : "Загрузить проект")
+                    .setItems(labels, (dialog, which) -> {
+                        JSONObject selected = projects.get(which);
+                        if (deleting) {
+                            new AlertDialog.Builder(this).setTitle("Удалить проект?")
+                                    .setMessage(selected.optString("projectName", "Мой проект"))
+                                    .setNegativeButton("Отмена", null).setPositiveButton("Удалить", (confirm, choice) -> deleteSavedProject(selected)).show();
+                        } else try {
+                            if (!storeActiveProject(selected.toString(), true)) throw new IOException("Не удалось открыть проект");
+                            loadProject(); showEditor();
+                        } catch (Exception error) { Toast.makeText(this, error.getMessage(), Toast.LENGTH_LONG).show(); }
+                    }).setNegativeButton("Отмена", null).show();
+        } catch (Exception error) { Toast.makeText(this, "Список проектов: " + error.getMessage(), Toast.LENGTH_LONG).show(); }
+    }
+
+    private void deleteSavedProject(JSONObject selected) {
+        try {
+            android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+            String key = ProjectMediaService.getOrGenerateProjectId(selected.toString());
+            String oldCatalog = prefs.getString(PROJECT_CATALOG, "{}");
+            String active = prefs.getString(ACTIVE_PROJECT, null);
+            String oldName = prefs.getString("project_name", null);
+            boolean deletingActive = active != null && key.equals(ProjectMediaService.getOrGenerateProjectId(active));
+            android.content.SharedPreferences.Editor edit = prefs.edit()
+                    .putString(PROJECT_CATALOG, ProjectCatalog.remove(oldCatalog, key));
+            if (deletingActive) edit.remove(ACTIVE_PROJECT).remove("project_name");
+            if (!edit.commit()) {
+                android.content.SharedPreferences.Editor restore = prefs.edit().putString(PROJECT_CATALOG, oldCatalog);
+                if (active != null) restore.putString(ACTIVE_PROJECT, active);
+                if (oldName != null) restore.putString("project_name", oldName);
+                if (!restore.commit()) android.util.Log.e("BLOODSKY", "Could not persist restored catalog");
+                throw new IOException("Не удалось удалить проект");
+            }
+            if (deletingActive) { widgets.clear(); screens.clear(); projectExtraFields = new JSONObject(); clipboardWidget = null; imageCache.clear(); }
+            showHome();
+        } catch (Exception error) { Toast.makeText(this, error.getMessage(), Toast.LENGTH_LONG).show(); }
     }
 
     private void showModbusScanner() {
@@ -735,15 +814,8 @@ public class MainActivity extends Activity {
                 ProjectMediaService.importProjectBundle(getFilesDir(), in, json -> {
                     try { validateImportedProject(json); }
                     catch (Exception invalid) { throw new IllegalArgumentException("Invalid imported project", invalid); }
-                    android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-                    String previous = prefs.getString(ACTIVE_PROJECT, null);
-                    if (prefs.edit().putString(ACTIVE_PROJECT, json).commit()) return true;
-                    // commit(false) has already changed the in-memory preferences.
-                    android.content.SharedPreferences.Editor restore = prefs.edit();
-                    if (previous == null) restore.remove(ACTIVE_PROJECT);
-                    else restore.putString(ACTIVE_PROJECT, previous);
-                    if (!restore.commit()) android.util.Log.e("BLOODSKY", "Could not persist restored project preferences");
-                    return false;
+                    try { return storeActiveProject(json, true); }
+                    catch (Exception error) { throw new IllegalArgumentException("Could not save project catalog", error); }
                 });
                 runOnUiThread(() -> {
                     if (isFinishing() || isDestroyed()) return;
@@ -2092,9 +2164,7 @@ public class MainActivity extends Activity {
             project.put("projectName", projectName);
             project = new JSONObject(ProjectMediaService.ensureProjectHasId(project.toString()));
             projectExtraFields = new JSONObject(project.toString());
-            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
-                    .putString(ACTIVE_PROJECT, project.toString())
-                    .putString("project_name", projectName).apply();
+            storeActiveProject(project.toString(), false);
         } catch (Exception ignored) {
             Toast.makeText(this, "Не удалось сохранить проект", Toast.LENGTH_SHORT).show();
         }
