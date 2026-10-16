@@ -238,8 +238,11 @@ public class PortableZipMediaTest {
             ProjectMediaService.exportProjectZipBundle(
                     new ByteArrayOutputStream(), project.toString(), null);
             fail("Export must not claim portability without media bytes");
-        } catch (java.io.FileNotFoundException expected) {
-            assertTrue(expected.getMessage().contains("Referenced media"));
+        } catch (IOException expected) {
+            // Export wraps media resolution failures with project context.
+            assertNotNull(expected.getCause());
+            assertTrue(expected.getCause() instanceof java.io.FileNotFoundException);
+            assertTrue(expected.getCause().getMessage().contains("Referenced media"));
         }
     }
 
