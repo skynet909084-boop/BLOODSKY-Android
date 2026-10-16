@@ -78,6 +78,8 @@ public class MainActivity extends Activity {
     private final ExecutorService modbusExecutor = Executors.newSingleThreadExecutor();
     private final Map<Integer, String> liveValues = new HashMap<>();
     private boolean modbusPollingActive = false;
+    private boolean activityResumed = false;
+    private final PollSessionGuard pollSession = new PollSessionGuard();
     private volatile boolean modbusPollInFlight = false;
     private final Runnable modbusPollRunnable = new Runnable() {
         @Override public void run() {
@@ -152,12 +154,31 @@ public class MainActivity extends Activity {
         showHome();
     }
 
+    @Override protected void onResume() {
+        super.onResume();
+        activityResumed = true;
+        if (editor != null) startModbusPolling();
+    }
+
+    @Override protected void onPause() {
+        activityResumed = false;
+        stopModbusPolling();
+        if (mediaPlayer != null) {
+            try { mediaPlayer.stop(); } catch (Exception ignored) {}
+            try { mediaPlayer.release(); } catch (Exception ignored) {}
+            mediaPlayer = null;
+        }
+        if (textToSpeech != null) try { textToSpeech.stop(); } catch (Exception ignored) {}
+        super.onPause();
+    }
+
     @Override protected void onDestroy() {
         stopModbusPolling();
         editor = null;
         modbusExecutor.shutdownNow();
         if (mediaPlayer != null) {
-            try { mediaPlayer.stop(); mediaPlayer.release(); } catch (Exception ignored) {}
+            try { mediaPlayer.stop(); } catch (Exception ignored) {}
+            try { mediaPlayer.release(); } catch (Exception ignored) {}
             mediaPlayer = null;
         }
         if (textToSpeech != null) {
@@ -170,7 +191,8 @@ public class MainActivity extends Activity {
     private void playSoundAlert(String pathOrUri) {
         try {
             if (mediaPlayer != null) {
-                try { mediaPlayer.stop(); mediaPlayer.release(); } catch (Exception ignored) {}
+                try { mediaPlayer.stop(); } catch (Exception ignored) {}
+            try { mediaPlayer.release(); } catch (Exception ignored) {}
                 mediaPlayer = null;
             }
             if (pathOrUri != null && pathOrUri.startsWith("content://")) {
@@ -699,17 +721,25 @@ public class MainActivity extends Activity {
 
     private void startModbusPolling() {
         stopModbusPolling();
+        if (!activityResumed || editor == null) return;
+        pollSession.start();
         modbusPollingActive = true;
         mainHandler.postDelayed(modbusPollRunnable, 1000L);
     }
 
     private void stopModbusPolling() {
+        pollSession.stop();
         modbusPollingActive = false;
         mainHandler.removeCallbacks(modbusPollRunnable);
     }
 
     private void pollBoundWidgets() {
+        final long sessionToken = pollSession.token();
+        final EditorCanvas sessionEditor = editor;
+        if (!pollSession.accepts(sessionToken) || sessionEditor == null) return;
         final List<Widget> snapshotWidgets = new ArrayList<>(widgets);
+        final List<String> snapshotBindings = new ArrayList<>();
+        for (Widget widget : snapshotWidgets) snapshotBindings.add(widget.connectionInfo);
         final Map<String, BindingRequest> groupedRequests = new LinkedHashMap<>();
         for (int i = 0; i < snapshotWidgets.size(); i++) {
             Widget widget = snapshotWidgets.get(i);
@@ -735,6 +765,7 @@ public class MainActivity extends Activity {
             try {
                 final Map<Integer, String> updates = new HashMap<>(invalidBindings);
                 for (BindingRequest request : requests) {
+                    if (!pollSession.accepts(sessionToken)) return;
                     String value;
                     try {
                         String report = readModbusRegisters(request.host, request.port, request.unit, request.address, 1, request.functionCode);
@@ -749,11 +780,13 @@ public class MainActivity extends Activity {
                     for (int widgetIndex : request.widgetIndices) updates.put(widgetIndex, value);
                 }
                 runOnUiThread(() -> {
-                    if (editor == null) return;
+                    if (!pollSession.accepts(sessionToken) || !activityResumed
+                            || editor != sessionEditor || isFinishing() || isDestroyed()) return;
                     for (Map.Entry<Integer, String> entry : updates.entrySet()) {
                         int index = entry.getKey();
                         if (index < 0 || index >= widgets.size() || index >= snapshotWidgets.size()
-                                || widgets.get(index) != snapshotWidgets.get(index)) continue;
+                                || widgets.get(index) != snapshotWidgets.get(index)
+                                || !java.util.Objects.equals(widgets.get(index).connectionInfo, snapshotBindings.get(index))) continue;
                         Widget w = widgets.get(index);
                         liveValues.put(index, entry.getValue());
                         if ("FBD Вход".equals(w.type)) {
