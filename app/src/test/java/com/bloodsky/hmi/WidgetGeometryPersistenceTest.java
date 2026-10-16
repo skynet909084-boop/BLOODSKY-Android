@@ -53,4 +53,27 @@ public class WidgetGeometryPersistenceTest {
         assertEquals(160f, missing.w, 0f);
         assertEquals(58f, missing.h, 0f);
     }
+    @Test public void importValidationUsesUnroundedFiniteGeometry() throws Exception {
+        MainActivity.validateWidgetArrayStatic(new org.json.JSONArray().put(new JSONObject(
+                "{\"x\":-99999.75,\"y\":99999.75,\"w\":1.125,\"h\":99999.875}")));
+        for (String field : new String[]{"x", "y", "w", "h"}) {
+            for (Object value : new Object[]{100000.25, -100000.25, "NaN", "Infinity", 1e200}) {
+                JSONObject invalid = new JSONObject().put(field, value);
+                try {
+                    MainActivity.validateWidgetArrayStatic(new org.json.JSONArray().put(invalid));
+                    fail("Invalid geometry accepted: " + field + "=" + value);
+                } catch (IllegalArgumentException expected) {
+                    assertTrue(expected.getMessage().contains("geometry"));
+                }
+            }
+        }
+        for (String field : new String[]{"w", "h"}) {
+            try {
+                MainActivity.validateWidgetArrayStatic(new org.json.JSONArray().put(new JSONObject().put(field, 0.999)));
+                fail("Sub-minimum size accepted");
+            } catch (IllegalArgumentException expected) {
+                assertTrue(expected.getMessage().contains("geometry"));
+            }
+        }
+    }
 }
