@@ -260,4 +260,23 @@ public class PortableZipMediaTest {
         }
     }
 
+    @Test
+    public void testFailedFirstImportLeavesNoPartialMedia() throws Exception {
+        JSONObject project = createTestProjectJson(
+                "new_project_failure", "First Import", "/tmp/state.png", null, null);
+        ByteArrayOutputStream archive = new ByteArrayOutputStream();
+        ProjectMediaService.exportProjectZipBundle(
+                archive, project.toString(),
+                source -> "STATE_BYTES".getBytes(StandardCharsets.UTF_8));
+        File mediaDir = ProjectMediaService.getProjectMediaDir(rootDir, project.toString());
+        assertTrue(mediaDir.delete());
+        try {
+            ProjectMediaService.importProjectBundle(rootDir,
+                    new ByteArrayInputStream(archive.toByteArray()), json -> false);
+            fail("Preference failure must abort import");
+        } catch (IllegalStateException expected) {
+            assertFalse("Failed initial import must not leave partial media", mediaDir.exists());
+        }
+    }
+
 }
