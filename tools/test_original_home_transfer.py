@@ -22,9 +22,15 @@ class OriginalHomeTransferTests(unittest.TestCase):
         self.assertEqual(sorted(positions), positions)
         self.assertEqual(6, home.count('addLegacyMenuItem('))
         self.assertIn('R.drawable.kc_main_background_small', home)
+        self.assertIn('root.setWeightSum(1.0f)', home)
+        self.assertIn('SCREEN_ORIENTATION_UNSPECIFIED', home)
         button = source.split('private Button legacyMenuButton(', 1)[1].split('private void showHome()', 1)[0]
         self.assertIn('R.drawable.kc_background_button', button)
         self.assertNotIn('new GradientDrawable', button)
+        self.assertIn('button.setAllCaps(true)', button)
+        editor = source.split('private void showEditor()', 1)[1].split('private String currentScreenName()', 1)[0]
+        self.assertIn('SCREEN_ORIENTATION_LANDSCAPE', editor)
+        self.assertIn('WindowManager.LayoutParams.FLAG_FULLSCREEN', source)
         for name in ['background_button.png', 'main_background_small.png']:
             original = ROOT / 'build/craft-reference/apktool/res/drawable' / name
             compiled = ROOT / 'app/src/main/res/drawable-nodpi' / ('kc_'+name)
