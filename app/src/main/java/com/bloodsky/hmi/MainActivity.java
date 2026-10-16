@@ -1550,14 +1550,18 @@ public class MainActivity extends Activity {
                 if (picker[0] != null) picker[0].dismiss();
                 addWidget(types[index], defaults[index]);
             });
-            if (OriginalIndicator.supports(types[i])) {
-                // Show actual original APK state artwork in the component picker.
+            if (OriginalIndicator.supports(types[i]) || "Кнопка".equals(types[i])) {
+                // Preview with verified original APK drawable resources.
+                // Button artwork is the same original background used by legacyMenuButton.
                 LinearLayout previewRow = new LinearLayout(this);
                 previewRow.setOrientation(LinearLayout.HORIZONTAL);
                 previewRow.setGravity(Gravity.CENTER_VERTICAL);
                 android.widget.ImageView preview = new android.widget.ImageView(this);
-                preview.setImageResource(R.drawable.kc_lamp_off);
-                preview.setContentDescription("Индикатор: выключен");
+                boolean buttonPreview = "Кнопка".equals(types[i]);
+                preview.setImageResource(buttonPreview
+                        ? R.drawable.kc_background_button : R.drawable.kc_lamp_off);
+                preview.setContentDescription(buttonPreview
+                        ? "Кнопка: оригинальный фон" : "Индикатор: выключен");
                 preview.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
                 LinearLayout.LayoutParams previewSize = new LinearLayout.LayoutParams(dp(40), dp(40));
                 previewSize.setMargins(dp(12), dp(4), dp(8), dp(4));
