@@ -2139,10 +2139,7 @@ public class MainActivity extends Activity {
                 screenObj.put("widgets", widgetsToJson(screen.widgets));
                 JSONArray connectionArray = new JSONArray();
                 for (FbdConnection connection : screen.connections) {
-                    JSONObject connectionObj = new JSONObject();
-                    connectionObj.put("source", connection.source);
-                    connectionObj.put("target", connection.target);
-                    connectionArray.put(connectionObj);
+                    connectionArray.put(connectionToJson(connection));
                 }
                 screenObj.put("connections", connectionArray);
                 screenArray.put(screenObj);
@@ -2188,7 +2185,7 @@ public class MainActivity extends Activity {
                             int target = connectionObj.optInt("target", -1);
                             if (source >= 0 && target >= 0 && source < screen.widgets.size() && target < screen.widgets.size()
                                     && source != target && isFbd(screen.widgets.get(source)) && isFbd(screen.widgets.get(target))) {
-                                screen.connections.add(new FbdConnection(source, target));
+                                screen.connections.add(connectionFromJson(connectionObj));
                             }
                         }
                         screens.add(screen);
@@ -2312,7 +2309,24 @@ public class MainActivity extends Activity {
     public static class FbdConnection {
         public int source;
         public int target;
+        private JSONObject extraFields = new JSONObject();
         public FbdConnection(int source, int target) { this.source = source; this.target = target; }
+    }
+
+    /** Shared by the actual project loader and the round-trip regression tests. */
+    public static FbdConnection connectionFromJson(JSONObject json) throws Exception {
+        FbdConnection connection = new FbdConnection(json.optInt("source", -1), json.optInt("target", -1));
+        connection.extraFields = new JSONObject(json.toString());
+        return connection;
+    }
+
+    /** Keep unknown edge fields, but always serialize the current edited/reindexed endpoints. */
+    public static JSONObject connectionToJson(FbdConnection connection) throws Exception {
+        JSONObject json = connection.extraFields == null
+                ? new JSONObject() : new JSONObject(connection.extraFields.toString());
+        json.put("source", connection.source);
+        json.put("target", connection.target);
+        return json;
     }
 
     public static boolean isFbdWidget(Widget widget) {
