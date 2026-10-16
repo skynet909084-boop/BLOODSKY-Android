@@ -560,10 +560,12 @@ public class MainActivity extends Activity {
             in.readFully(pdu);
             int function = pdu[0] & 0xff;
             if (function == 0x86) {
-                int exceptionCode = pdu.length > 1 ? pdu[1] & 0xff : 0;
+                if (pdu.length != 2) throw new IOException("Некорректный ответ с исключением Modbus при записи");
+                int exceptionCode = pdu[1] & 0xff;
                 throw new IOException("Modbus: " + describeModbusExceptionCodeStatic(exceptionCode) + " (код " + exceptionCode + ")");
             }
-            return function == 6;
+            validateModbusWriteEcho(pdu, 6, address, value);
+            return true;
         }
     }
 
@@ -601,10 +603,25 @@ public class MainActivity extends Activity {
             in.readFully(pdu);
             int function = pdu[0] & 0xff;
             if (function == 0x90) {
-                int exceptionCode = pdu.length > 1 ? pdu[1] & 0xff : 0;
+                if (pdu.length != 2) throw new IOException("Некорректный ответ с исключением Modbus при групповой записи");
+                int exceptionCode = pdu[1] & 0xff;
                 throw new IOException("Modbus: " + describeModbusExceptionCodeStatic(exceptionCode) + " (код " + exceptionCode + ")");
             }
-            return function == 16;
+            validateModbusWriteEcho(pdu, 16, startAddress, values.length);
+            return true;
+        }
+    }
+
+    // MODBUS Application Protocol V1.1b3 sections 6.6 and 6.12:
+    // FC06 echoes address/value; FC16 echoes starting address/register quantity.
+    private static void validateModbusWriteEcho(byte[] pdu, int function, int address, int valueOrCount) throws IOException {
+        if (pdu.length != 5 || (pdu[0] & 0xff) != function) {
+            throw new IOException("Некорректное подтверждение записи Modbus");
+        }
+        int echoedAddress = ((pdu[1] & 0xff) << 8) | (pdu[2] & 0xff);
+        int echoedValueOrCount = ((pdu[3] & 0xff) << 8) | (pdu[4] & 0xff);
+        if (echoedAddress != (address & 0xffff) || echoedValueOrCount != (valueOrCount & 0xffff)) {
+            throw new IOException("Подтверждение записи Modbus не совпадает с запросом");
         }
     }
 
