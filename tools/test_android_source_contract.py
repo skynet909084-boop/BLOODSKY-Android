@@ -100,6 +100,16 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("FBD FloatToInt", self.source)
         self.assertIn("FBD IntToFloat", self.source)
 
+    def test_original_indicator_picker_has_real_preview_and_click_target(self):
+        start = self.source.index("private void showAddWidgetMenu()")
+        end = self.source.index("private void addWidget(", start)
+        picker = self.source[start:end]
+        self.assertIn("OriginalIndicator.supports(types[i])", picker)
+        self.assertIn("preview.setImageResource(R.drawable.kc_lamp_off)", picker)
+        self.assertIn('preview.setContentDescription("Индикатор: выключен")', picker)
+        self.assertIn("previewRow.setOnClickListener(v -> item.performClick())", picker)
+        self.assertIn("addWidget(types[index], defaults[index])", picker)
+
     def test_kascada_craft_widgets(self):
         self.assertIn("Шкала / Стрелка", self.source)
         self.assertIn("Прогресс-бар", self.source)

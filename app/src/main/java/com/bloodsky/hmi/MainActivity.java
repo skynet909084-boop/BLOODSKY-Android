@@ -1550,7 +1550,24 @@ public class MainActivity extends Activity {
                 if (picker[0] != null) picker[0].dismiss();
                 addWidget(types[index], defaults[index]);
             });
-            list.addView(item, new LinearLayout.LayoutParams(-1, -2));
+            if (OriginalIndicator.supports(types[i])) {
+                // Show actual original APK state artwork in the component picker.
+                LinearLayout previewRow = new LinearLayout(this);
+                previewRow.setOrientation(LinearLayout.HORIZONTAL);
+                previewRow.setGravity(Gravity.CENTER_VERTICAL);
+                android.widget.ImageView preview = new android.widget.ImageView(this);
+                preview.setImageResource(R.drawable.kc_lamp_off);
+                preview.setContentDescription("Индикатор: выключен");
+                preview.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+                LinearLayout.LayoutParams previewSize = new LinearLayout.LayoutParams(dp(40), dp(40));
+                previewSize.setMargins(dp(12), dp(4), dp(8), dp(4));
+                previewRow.addView(preview, previewSize);
+                previewRow.addView(item, new LinearLayout.LayoutParams(0, -2, 1f));
+                previewRow.setOnClickListener(v -> item.performClick());
+                list.addView(previewRow, new LinearLayout.LayoutParams(-1, -2));
+            } else {
+                list.addView(item, new LinearLayout.LayoutParams(-1, -2));
+            }
             View separator = new View(this);
             separator.setBackgroundColor(Color.rgb(226, 232, 240));
             list.addView(separator, new LinearLayout.LayoutParams(-1, dp(1)));
