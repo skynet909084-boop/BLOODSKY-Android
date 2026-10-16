@@ -218,6 +218,7 @@ public class ProjectMediaService {
         File backupDir = null;
         File projectMediaDir = null;
         boolean success = false;
+        boolean mediaReplacementStarted = false;
 
         try {
             ByteArrayOutputStream buffer = new ByteArrayOutputStream();
@@ -279,6 +280,7 @@ public class ProjectMediaService {
                         throw new IOException("Failed to backup existing project media directory");
                     }
                 }
+                mediaReplacementStarted = true;
                 if (!projectMediaDir.mkdirs()) throw new IOException("Failed to create project media directory");
 
                 String mediaCanonical = projectMediaDir.getCanonicalPath();
@@ -311,9 +313,9 @@ public class ProjectMediaService {
                 deleteDirectoryRecursively(backupDir);
             }
         } catch (Exception e) {
-            if (!success && backupDir != null && backupDir.exists() && projectMediaDir != null) {
+            if (!success && mediaReplacementStarted && projectMediaDir != null) {
                 deleteDirectoryRecursively(projectMediaDir);
-                if (!backupDir.renameTo(projectMediaDir)) {
+                if (backupDir != null && backupDir.exists() && !backupDir.renameTo(projectMediaDir)) {
                     IOException rollbackFailure = new IOException(
                             "Media rollback failed; original files preserved at " + backupDir.getAbsolutePath());
                     e.addSuppressed(rollbackFailure);
