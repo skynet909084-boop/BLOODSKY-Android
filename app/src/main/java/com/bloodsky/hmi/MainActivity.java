@@ -735,7 +735,15 @@ public class MainActivity extends Activity {
                 ProjectMediaService.importProjectBundle(getFilesDir(), in, json -> {
                     try { validateImportedProject(json); }
                     catch (Exception invalid) { throw new IllegalArgumentException("Invalid imported project", invalid); }
-                    return getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(ACTIVE_PROJECT, json).commit();
+                    android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+                    String previous = prefs.getString(ACTIVE_PROJECT, null);
+                    if (prefs.edit().putString(ACTIVE_PROJECT, json).commit()) return true;
+                    // commit(false) has already changed the in-memory preferences.
+                    android.content.SharedPreferences.Editor restore = prefs.edit();
+                    if (previous == null) restore.remove(ACTIVE_PROJECT);
+                    else restore.putString(ACTIVE_PROJECT, previous);
+                    if (!restore.commit()) android.util.Log.e("BLOODSKY", "Could not persist restored project preferences");
+                    return false;
                 });
                 runOnUiThread(() -> {
                     if (isFinishing() || isDestroyed()) return;

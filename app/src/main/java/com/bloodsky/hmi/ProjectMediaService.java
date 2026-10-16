@@ -76,7 +76,20 @@ public class ProjectMediaService {
 
     private static File resolveProjectMediaDir(File filesDir, String projectJson) {
         String projectId = getOrGenerateProjectId(projectJson);
-        return new File(new File(new File(filesDir, "projects"), projectId), "media");
+        String directory = "media";
+        try {
+            JSONObject project = new JSONObject(projectJson);
+            if (project.has("mediaGeneration")) {
+                String generation = project.getString("mediaGeneration");
+                if (!generation.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
+                    throw new IllegalStateException("Invalid media generation");
+                }
+                directory = "media_" + generation;
+            }
+        } catch (org.json.JSONException invalid) {
+            throw new IllegalStateException("Invalid project media metadata", invalid);
+        }
+        return new File(new File(new File(filesDir, "projects"), projectId), directory);
     }
 
     public static File getProjectMediaDir(File filesDir, String projectJson) {
@@ -266,10 +279,9 @@ public class ProjectMediaService {
 
     public static void importProjectBundle(File filesDir, InputStream inputStream, ProjectSaveHandler saveHandler) throws Exception {
         File stagingDir = new File(filesDir, "staging_import_" + UUID.randomUUID().toString());
-        File backupDir = null;
         File projectMediaDir = null;
         boolean success = false;
-        boolean mediaReplacementStarted = false;
+        boolean generationPublished = false;
 
         try {
             ByteArrayOutputStream buffer = new ByteArrayOutputStream();
@@ -321,43 +333,20 @@ public class ProjectMediaService {
                     }
                 }
 
-                // Resolve without creating: a first import has no prior media to back up.
+                // Publish complete files under a fresh generation. Existing project files
+                // remain readable even if the process stops before preferences are saved.
+                JSONObject importedProject = new JSONObject(importedJson);
+                importedProject.put("mediaGeneration", UUID.randomUUID().toString());
+                importedJson = importedProject.toString();
                 projectMediaDir = resolveProjectMediaDir(filesDir, importedJson);
                 File projectDir = projectMediaDir.getParentFile();
                 if (!projectDir.isDirectory() && !projectDir.mkdirs()) {
                     throw new IOException("Failed to create project directory");
                 }
-                // Never replace a media directory without a recoverable backup.
-                // Keep the backup on the same filesystem as the original.
-                backupDir = new File(projectMediaDir.getParentFile(), "backup_media_" + UUID.randomUUID().toString());
-
-                if (projectMediaDir.exists()) {
-                    if (!projectMediaDir.renameTo(backupDir)) {
-                        throw new IOException("Failed to backup existing project media directory");
-                    }
+                if (projectMediaDir.exists() || !stagingDir.renameTo(projectMediaDir)) {
+                    throw new IOException("Failed to publish imported media generation");
                 }
-                mediaReplacementStarted = true;
-                if (!projectMediaDir.mkdirs()) throw new IOException("Failed to create project media directory");
-
-                String mediaCanonical = projectMediaDir.getCanonicalPath();
-                for (Map.Entry<String, byte[]> mediaEntry : extractedMedia.entrySet()) {
-                    String relPath = mediaEntry.getKey();
-                    File destFile = new File(projectMediaDir, relPath);
-                    String destCanonical = destFile.getCanonicalPath();
-                    if (!destCanonical.equals(mediaCanonical) && !destCanonical.startsWith(mediaCanonical + File.separator)) {
-                        throw new SecurityException("Path traversal blocked during media commit: " + relPath);
-                    }
-                    File srcFile = new File(stagingDir, relPath);
-                    destFile.getParentFile().mkdirs();
-                    if (!srcFile.renameTo(destFile)) {
-                        try (InputStream fis = new FileInputStream(srcFile);
-                             FileOutputStream fos = new FileOutputStream(destFile)) {
-                            byte[] buf = new byte[8192];
-                            int len;
-                            while ((len = fis.read(buf)) != -1) fos.write(buf, 0, len);
-                        }
-                    }
-                }
+                generationPublished = true;
             }
 
             if (saveHandler == null || !saveHandler.saveActiveProject(importedJson)) {
@@ -365,17 +354,10 @@ public class ProjectMediaService {
             }
 
             success = true;
-            if (backupDir != null && backupDir.exists()) {
-                deleteDirectoryRecursively(backupDir);
-            }
+            // Retain older generations: saved projects may still reference them.
         } catch (Exception e) {
-            if (!success && mediaReplacementStarted && projectMediaDir != null) {
+            if (!success && generationPublished && projectMediaDir != null) {
                 deleteDirectoryRecursively(projectMediaDir);
-                if (backupDir != null && backupDir.exists() && !backupDir.renameTo(projectMediaDir)) {
-                    IOException rollbackFailure = new IOException(
-                            "Media rollback failed; original files preserved at " + backupDir.getAbsolutePath());
-                    e.addSuppressed(rollbackFailure);
-                }
             }
             throw e;
         } finally {

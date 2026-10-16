@@ -332,5 +332,23 @@ public class PortableZipMediaTest {
         ProjectMediaService.exportProjectZipBundle(new ByteArrayOutputStream(),project.toString(),path->{called[0]=true;return new byte[]{1};});
         assertTrue(called[0]);
     }
+    @Test
+    public void testReplacementKeepsPreviousGenerationReadableBeforeAndAfterSave() throws Exception {
+        JSONObject project = createTestProjectJson("same-id", "Generation", "/tmp/state.png", null, null);
+        ByteArrayOutputStream zip = new ByteArrayOutputStream();
+        ProjectMediaService.exportProjectZipBundle(zip, project.toString(), path -> new byte[]{9,8,7});
+        final String[] first = {null};
+        ProjectMediaService.importProjectBundle(rootDir, new ByteArrayInputStream(zip.toByteArray()), json -> {first[0]=json;return true;});
+        File prior = ProjectMediaService.resolveMediaFile(rootDir, first[0], "media/state.png");
+        final String[] second = {null};
+        ProjectMediaService.importProjectBundle(rootDir, new ByteArrayInputStream(zip.toByteArray()), json -> {
+            assertTrue("Prior generation must remain available during publication", prior.isFile());
+            second[0]=json; return true;
+        });
+        assertNotEquals(new JSONObject(first[0]).getString("mediaGeneration"), new JSONObject(second[0]).getString("mediaGeneration"));
+        assertArrayEquals(new byte[]{9,8,7}, java.nio.file.Files.readAllBytes(prior.toPath()));
+        assertNotEquals(prior, ProjectMediaService.resolveMediaFile(rootDir, second[0], "media/state.png"));
+    }
+
 }
 
