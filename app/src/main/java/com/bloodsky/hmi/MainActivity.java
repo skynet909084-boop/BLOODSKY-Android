@@ -110,6 +110,34 @@ public class MainActivity extends Activity {
         return bitmap;
     }
 
+    private Bitmap originalIndicatorBitmap(Widget widget, boolean active) {
+        try {
+            JSONObject settings = OriginalIndicator.settings(widget.extraFields);
+            String value = OriginalIndicator.imageValue(settings, active);
+            if (OriginalIndicator.isUserImage(settings, active)) return loadCachedBitmap(value);
+            int resource;
+            switch (OriginalIndicator.builtinName(value)) {
+                case "lamp_green": resource = R.drawable.kc_lamp_green; break;
+                case "lamp_red": resource = R.drawable.kc_lamp_red; break;
+                case "lamp_yellow": resource = R.drawable.kc_lamp_yellow; break;
+                case "lamp_blue": resource = R.drawable.kc_lamp_blue; break;
+                case "lamp_off": resource = R.drawable.kc_lamp_off; break;
+                default: resource = R.drawable.kc_warning_32;
+            }
+            return originalBitmap(resource);
+        } catch (Exception invalid) { return null; }
+    }
+
+    private Bitmap originalBitmap(int resource) {
+        String key = "original-resource:" + resource;
+        Bitmap cached = imageCache.get(key);
+        if (cached == null) {
+            cached = BitmapFactory.decodeResource(getResources(), resource);
+            imageCache.put(key, cached);
+        }
+        return cached;
+    }
+
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         try {
@@ -1503,8 +1531,8 @@ public class MainActivity extends Activity {
         w.text = text;
         w.x = dp(40) + (widgets.size() % 4) * dp(24);
         w.y = dp(50) + (widgets.size() % 6) * dp(22);
-        w.w = type.equals("Индикатор") ? dp(140) : dp(160);
-        w.h = type.equals("Индикатор") ? dp(54) : dp(58);
+        w.w = OriginalIndicator.supports(type) ? dp(40) : dp(160);
+        w.h = OriginalIndicator.supports(type) ? dp(40) : dp(58);
         liveValues.clear();
         if (type.equals("Задатчик")) { w.w = dp(190); w.h = dp(62); }
         if (type.equals("Шкала / Стрелка") || type.equals("График / Тренд")) { w.w = dp(200); w.h = dp(110); }
@@ -2782,8 +2810,8 @@ public class MainActivity extends Activity {
                 } else {
                     paint.setColor(Color.WHITE);
                 }
-                canvas.drawRoundRect(rect, dp(6), dp(6), paint);
-                if (w.showFrame || i == selected) {
+                if (!OriginalIndicator.supports(w.type)) canvas.drawRoundRect(rect, dp(6), dp(6), paint);
+                if ((!OriginalIndicator.supports(w.type) && w.showFrame) || i == selected) {
                     paint.setStyle(Paint.Style.STROKE);
                     paint.setStrokeWidth(dp(i == selected ? 2.5f : 1));
                     paint.setColor(i == selected ? Color.rgb(21, 101, 192) : Color.rgb(148, 163, 184));
@@ -2903,25 +2931,20 @@ public class MainActivity extends Activity {
                     canvas.drawText(w.text, w.x + dp(10), w.y + dp(15), paint);
                 } else if ("Индикатор".equals(w.type) || "Двухпозиционный индикатор".equals(w.type)) {
                     String indicatorValue = liveValues.get(i);
-                    int indicatorColor = Color.rgb(100, 116, 139);
-                    if (indicatorValue != null) {
-                        if (indicatorValue.startsWith("ERR") || indicatorValue.startsWith("CFG")) {
-                            indicatorColor = Color.rgb(220, 38, 38);
-                        } else {
-                            try {
-                                indicatorColor = Double.parseDouble(indicatorValue) == 0.0
-                                        ? Color.rgb(220, 38, 38) : Color.rgb(22, 163, 74);
-                            } catch (NumberFormatException ignored) {
-                                indicatorColor = Color.rgb(100, 116, 139);
-                            }
-                        }
+                    Bitmap lamp = originalIndicatorBitmap(w, isActiveModbusValue(indicatorValue));
+                    paint.setAlpha(255);
+                    // Original ImageView uses FIT_XY and ten raw pixels of padding.
+                    if (lamp != null && rect.width() > 20 && rect.height() > 20) {
+                        canvas.drawBitmap(lamp, null, new RectF(rect.left + 10, rect.top + 10,
+                                rect.right - 10, rect.bottom - 10), paint);
                     }
-                    paint.setColor(indicatorColor);
-                    canvas.drawCircle(w.x + dp(16), w.y + w.h / 2, dp(6), paint);
-                    paint.setColor(w.textColor);
-                    String indicatorText = w.text + (indicatorValue != null ? ": " + indicatorValue : "");
-                    if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(36)) / Math.max(4f, indicatorText.length() * 0.58f))));
-                    canvas.drawText(indicatorText, w.x + dp(29), w.y + w.h / 2 + dp(5), paint);
+                    boolean failed = lamp == null || (indicatorValue != null
+                            && (indicatorValue.startsWith("ERR") || indicatorValue.startsWith("CFG")));
+                    if (failed) {
+                        Bitmap warning = originalBitmap(R.drawable.kc_warning_32);
+                        if (warning != null) canvas.drawBitmap(warning, rect.right - warning.getWidth(),
+                                rect.bottom - warning.getHeight(), paint);
+                    }
                 } else if ("Кнопка".equals(w.type)) {
                     String buttonText = w.text + (w.buttonState ? "  [ВКЛ]" : "  [ВЫКЛ]");
                     paint.setColor(w.textColor);

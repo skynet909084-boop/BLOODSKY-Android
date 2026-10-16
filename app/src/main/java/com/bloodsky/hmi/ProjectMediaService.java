@@ -144,6 +144,21 @@ public class ProjectMediaService {
                             if (rewrittenSound != null) widgetObj.put("soundFilePath", rewrittenSound);
                         }
 
+                        if (OriginalIndicator.supports(widgetObj.optString("type", ""))) {
+                            JSONObject settings = OriginalIndicator.settings(widgetObj);
+                            for (boolean active : new boolean[]{false, true}) {
+                                if (!OriginalIndicator.isUserImage(settings, active)) continue;
+                                String path = OriginalIndicator.imageValue(settings, active);
+                                if (path == null || path.trim().isEmpty()) throw new IOException("Missing custom indicator image");
+                                String rewritten = processMediaReference(path, resolver, archiveMedia, mediaPathMap);
+                                if (rewritten == null || rewritten.equals(path) && !archiveMedia.containsKey(rewritten)) {
+                                    throw new IOException("Missing custom indicator image bytes");
+                                }
+                                settings.put(active ? "pathOrNameOn" : "pathOrNameOff", rewritten);
+                            }
+                            OriginalIndicator.storeSettings(widgetObj, settings);
+                        }
+
                         JSONArray imgArr = widgetObj.optJSONArray("imagePathStates");
                         if (imgArr != null) {
                             for (int i = 0; i < imgArr.length(); i++) {

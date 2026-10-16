@@ -1,0 +1,10 @@
+{
+  "apktool/res/drawable/lamp_green.png": "0828dbefd6b4b0a0faa52437a1ff42ed71366853185a33405e159ae6c22c9836",
+  "apktool/res/drawable/lamp_off.png": "5c6a74d8d72a5ef2154fdb48ad2070539eb1a73d3f40cb2c567f4d7a131703f1",
+  "apktool/res/drawable/lamp_red.png": "fbd146419d8d1d6cd582955c1ded38a9c0f98c395b151cedd4c2f84ac5409700",
+  "apktool/res/drawable/lamp_blue.png": "2ca7e945cf865972c527f6244607c836e3986d3b2b0df02cc8971039b2f09976",
+  "apktool/res/drawable/lamp_yellow.png": "f421c50e7af486c105cd02b76dd7b185aa21e40ef39cef9385aa0d0684e08507",
+  "apktool/res/drawable/warning_32.png": "efa6ccc0040e5451c613ca97cff705c34edc40a66d296ef92cecfbd68f78d92e",
+  "apktool/res/values/dimens.xml": "0902d1ab6ca9aec74e2b05ed7a06a9b8847b42a20db0808a284a86665319143e",
+  "jadx/sources/ru/himik/nightscream/kascada/CustomComponents/q.java": "6aa0b322f4b94a41fd1a010ceab4ae2f184bf6944a40ff9149fe2dbdd28bccaf"
+}
