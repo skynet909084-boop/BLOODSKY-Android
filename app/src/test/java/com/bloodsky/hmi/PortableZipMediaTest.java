@@ -230,4 +230,31 @@ public class PortableZipMediaTest {
             assertNotNull(expected.getMessage());
         }
     }
+    @Test
+    public void testMissingResolverRejectsReferencedMedia() throws Exception {
+        JSONObject project = createTestProjectJson(
+                "missing_resolver", "Missing Resolver", "/tmp/unavailable.png", null, null);
+        try {
+            ProjectMediaService.exportProjectZipBundle(
+                    new ByteArrayOutputStream(), project.toString(), null);
+            fail("Export must not claim portability without media bytes");
+        } catch (java.io.FileNotFoundException expected) {
+            assertTrue(expected.getMessage().contains("Referenced media"));
+        }
+    }
+
+    @Test
+    public void testDamagedZipNeverReachesPreferenceSave() throws Exception {
+        byte[] damagedZip = new byte[] {'P', 'K', 3, 4, 0, 0, 0, 0};
+        final boolean[] saved = {false};
+        try {
+            ProjectMediaService.importProjectBundle(
+                    rootDir, new ByteArrayInputStream(damagedZip),
+                    json -> { saved[0] = true; return true; });
+            fail("Corrupt ZIP should be rejected");
+        } catch (Exception expected) {
+            assertFalse("Corrupt ZIP must not be saved", saved[0]);
+        }
+    }
+
 }
