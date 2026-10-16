@@ -1220,6 +1220,7 @@ public class MainActivity extends Activity {
         root.addView(toolsBar, new LinearLayout.LayoutParams(-1, dp(40)));
 
         editor = new EditorCanvas();
+        editor.setContentDescription("Редактор экрана");
         root.addView(editor, new LinearLayout.LayoutParams(-1, 0, 1));
 
         LinearLayout bottom = new LinearLayout(this);
@@ -1805,17 +1806,21 @@ public class MainActivity extends Activity {
         geometryLabel.setPadding(0, dp(10), 0, 0);
         form.addView(geometryLabel);
 
-        EditText xField = propertyField(Integer.toString(Math.round(w.x)), InputType.TYPE_CLASS_NUMBER);
+        EditText xField = propertyField(Float.toString(w.x), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
         xField.setHint("X");
+        xField.setContentDescription("Положение X");
         form.addView(xField);
-        EditText yField = propertyField(Integer.toString(Math.round(w.y)), InputType.TYPE_CLASS_NUMBER);
+        EditText yField = propertyField(Float.toString(w.y), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
         yField.setHint("Y");
+        yField.setContentDescription("Положение Y");
         form.addView(yField);
-        EditText widthField = propertyField(Integer.toString(Math.round(w.w)), InputType.TYPE_CLASS_NUMBER);
+        EditText widthField = propertyField(Float.toString(w.w), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
         widthField.setHint("Ширина");
+        widthField.setContentDescription("Ширина элемента");
         form.addView(widthField);
-        EditText heightField = propertyField(Integer.toString(Math.round(w.h)), InputType.TYPE_CLASS_NUMBER);
+        EditText heightField = propertyField(Float.toString(w.h), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
         heightField.setHint("Высота");
+        heightField.setContentDescription("Высота элемента");
         form.addView(heightField);
 
         TextView styleLabel = new TextView(this);
@@ -1843,11 +1848,20 @@ public class MainActivity extends Activity {
         propertyScroll.setClipToPadding(false);
         propertyScroll.addView(form);
 
-        new AlertDialog.Builder(this)
+        AlertDialog properties = new AlertDialog.Builder(this)
                 .setTitle("Свойства: " + w.type)
                 .setView(propertyScroll)
                 .setNegativeButton("Отмена", null)
-                .setPositiveButton("Применить", (dialog, which) -> {
+                .setPositiveButton("Применить", null).create();
+        properties.setOnShowListener(shown -> properties.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(clicked -> {
+                    final WidgetGeometryEdits geometry;
+                    try {
+                        geometry = WidgetGeometryEdits.parse(xField.getText().toString(), yField.getText().toString(),
+                                widthField.getText().toString(), heightField.getText().toString());
+                    } catch (IllegalArgumentException invalid) {
+                        Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show();
+                        return;
+                    }
                     w.text = textField.getText().toString();
                     w.connectionInfo = connectionField.getText().toString().trim();
                     if ("Динамический текст".equals(w.type)) {
@@ -1906,17 +1920,17 @@ public class MainActivity extends Activity {
                         w.minValue = readDouble(minValField, w.minValue);
                         w.maxValue = readDouble(maxValField, w.maxValue);
                     }
-                    w.x = Math.max(0, readPositiveInt(xField, Math.round(w.x), true));
-                    w.y = Math.max(0, readPositiveInt(yField, Math.round(w.y), true));
-                    w.w = Math.max(dp(32), readPositiveInt(widthField, Math.round(w.w), false));
-                    w.h = Math.max(dp(24), readPositiveInt(heightField, Math.round(w.h), false));
+                    w.x = geometry.x; w.y = geometry.y;
+                    w.w = geometry.width; w.h = geometry.height;
                     w.backgroundColor = parseOptionalColor(backgroundColorField.getText().toString(), 0);
                     w.textColor = parseOptionalColor(textColorField.getText().toString(), w.textColor);
                     w.textSizeSp = Math.max(8, Math.min(48, readPositiveInt(textSizeField, w.textSizeSp, false)));
                     w.visible = visibleField.isChecked(); w.showFrame = frameField.isChecked(); w.autoResizeText = autoResizeField.isChecked();
                     persistProject();
                     editor.invalidate();
-                }).show();
+                    properties.dismiss();
+                }));
+        properties.show();
     }
 
     private int parseOptionalColor(String text, int fallback) {

@@ -72,6 +72,29 @@ class Smoke:
         x, y = center(node.get('bounds'))
         adb('shell', 'input', 'tap', str(x), str(y))
 
+    def scroll_to_description(self, description):
+        for attempt in range(16):
+            xml = self.dump()
+            nodes = matching_nodes(xml, description=description)
+            if len(nodes) == 1:
+                return nodes[0]
+            scrolls = matching_nodes(xml, class_name='android.widget.ScrollView')
+            if len(scrolls) != 1:
+                raise AssertionError('Expected one properties scroll view')
+            left, top, right, bottom = map(int, re.findall(r'\d+', scrolls[0].get('bounds')))
+            x = (left + right) // 2
+            start, end = (bottom - 25, top + 25) if attempt < 8 else (top + 25, bottom - 25)
+            adb('shell', 'input', 'swipe', str(x), str(start), str(x), str(end), '300')
+        raise AssertionError('Property field not reachable: ' + description)
+
+    def replace_property_input(self, description, value):
+        node = self.scroll_to_description(description)
+        x, y = center(node.get('bounds'))
+        adb('shell', 'input', 'tap', str(x), str(y))
+        adb('shell', 'input', 'keyevent', '123', *(['67'] * (len(node.get('text', '')) + 1)))
+        if value:
+            adb('shell', 'input', 'text', value)
+
     def capture(self, name):
         (self.output / (name + '.png')).write_bytes(adb('exec-out', 'screencap', '-p', binary=True))
         (self.output / (name + '.xml')).write_text(self.dump())
@@ -151,6 +174,38 @@ class Smoke:
             raise AssertionError('Palette-created components/project did not survive process restart')
         if widgets[0]['w'] != widgets[0]['h'] or widgets[0]['w'] <= 0:
             raise AssertionError('Original indicator default geometry was lost')
+        canvas = self.wait_node(description='Редактор экрана')
+        left, top, _, _ = map(int, re.findall(r'\d+', canvas.get('bounds')))
+        first = widgets[0]
+        adb('shell', 'input', 'tap', str(round(left + first['x'] + first['w'] / 2)),
+            str(round(top + first['y'] + first['h'] / 2)))
+        self.wait_node('Свойства: Индикатор')
+        self.replace_property_input('Положение X', '40.125')
+        self.replace_property_input('Положение Y', '50.875')
+        self.replace_property_input('Ширина элемента', '')
+        self.replace_property_input('Высота элемента', '140.625')
+        self.tap('Применить')
+        self.wait_node('Свойства: Индикатор')
+        persisted = adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml')
+        before = json.loads({n.get('name'): n.text for n in ET.fromstring(persisted)}['active_project'])['screens'][0]['widgets'][0]
+        if any(before[key] != first[key] for key in ['x', 'y', 'w', 'h']):
+            raise AssertionError('Invalid properties edit partially mutated geometry')
+        self.replace_property_input('Ширина элемента', '160.375')
+        self.capture('04a-fractional-properties')
+        self.tap('Применить')
+        self.wait_node(PROJECT)
+        self.tap('☰')
+        adb('shell', 'am', 'force-stop', PACKAGE)
+        adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
+        self.tap('Загрузить проект')
+        self.tap(PROJECT)
+        self.wait_node(PROJECT)
+        persisted = adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml')
+        after = json.loads({n.get('name'): n.text for n in ET.fromstring(persisted)}['active_project'])['screens'][0]['widgets'][0]
+        expected = dict(x=40.125, y=50.875, w=160.375, h=140.625)
+        if any(after[key] != value for key, value in expected.items()):
+            raise AssertionError('Fractional property edit did not survive process restart')
+        self.capture('04b-fractional-reopened')
         self.tap('☰')
         self.tap('Удалить проект')
         self.tap(PROJECT)
@@ -172,7 +227,7 @@ class Smoke:
         if PACKAGE in crashes:
             raise AssertionError('Application crash recorded')
         (self.output / 'result.json').write_text(json.dumps({'result': 'passed', 'package': PACKAGE,
-                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'original five-category palette', 'palette add indicator/button/text/progress', 'extended component/FBD access', 'process restart', 'reload four palette-created components', 'confirmed deletion'],
+                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'original five-category palette', 'palette add indicator/button/text/progress', 'extended component/FBD access', 'process restart', 'reload four palette-created components', 'invalid geometry leaves dialog/project unchanged', 'fractional properties survive second process restart', 'confirmed deletion'],
                 'api_level': adb('shell', 'getprop', 'ro.build.version.sdk').strip(),
                 'display_size': adb('shell', 'wm', 'size').strip(),
                 'display_density': adb('shell', 'wm', 'density').strip()}, indent=2))
