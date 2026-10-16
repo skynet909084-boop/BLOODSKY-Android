@@ -116,6 +116,36 @@ public class MainActivity extends Activity {
     private TextToSpeech textToSpeech;
     private final java.util.Map<String, Bitmap> imageCache = new java.util.HashMap<>();
 
+    public interface MediaResolver {
+        byte[] readMedia(String pathOrUri) throws java.io.IOException;
+    }
+
+    public static String getActiveProjectId(String projectJson) {
+        if (projectJson != null && !projectJson.trim().isEmpty()) {
+            try {
+                org.json.JSONObject obj = new org.json.JSONObject(projectJson);
+                if (obj.has("id")) {
+                    String id = obj.optString("id", "").trim();
+                    if (!id.isEmpty()) return id.replaceAll("[^A-Za-z0-9._-]", "_");
+                }
+                if (obj.has("name")) {
+                    String name = obj.optString("name", "").trim();
+                    if (!name.isEmpty()) return name.replaceAll("[^A-Za-z0-9._-]", "_");
+                }
+            } catch (Exception ignored) {}
+        }
+        return "default_project";
+    }
+
+    public static java.io.File getProjectMediaDir(Context context, String projectJson) {
+        String projectId = getActiveProjectId(projectJson);
+        java.io.File projectsDir = new java.io.File(context.getFilesDir(), "projects");
+        java.io.File pDir = new java.io.File(projectsDir, projectId);
+        java.io.File mediaDir = new java.io.File(pDir, "media");
+        if (!mediaDir.exists()) mediaDir.mkdirs();
+        return mediaDir;
+    }
+
     private Bitmap loadCachedBitmap(String pathOrUri) {
         if (pathOrUri == null || pathOrUri.trim().isEmpty()) return null;
         if (imageCache.containsKey(pathOrUri)) return imageCache.get(pathOrUri);
@@ -128,7 +158,14 @@ public class MainActivity extends Activity {
             } else if (new java.io.File(pathOrUri).exists()) {
                 bitmap = BitmapFactory.decodeFile(pathOrUri);
             } else {
-                java.io.File localMedia = new java.io.File(getFilesDir(), pathOrUri);
+                String activeJson = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
+                java.io.File mediaDir = getProjectMediaDir(this, activeJson);
+                String cleanPath = pathOrUri.trim();
+                if (cleanPath.startsWith("media/")) cleanPath = cleanPath.substring("media/".length());
+                java.io.File localMedia = new java.io.File(mediaDir, cleanPath);
+                if (!localMedia.exists()) {
+                    localMedia = new java.io.File(getFilesDir(), pathOrUri);
+                }
                 if (!localMedia.exists()) {
                     localMedia = new java.io.File(getFilesDir(), "media/" + pathOrUri);
                 }
@@ -284,14 +321,29 @@ public class MainActivity extends Activity {
                 try { mediaPlayer.stop(); mediaPlayer.release(); } catch (Exception ignored) {}
                 mediaPlayer = null;
             }
+            java.io.File targetFile = null;
+            if (pathOrUri != null && !pathOrUri.startsWith("content://")) {
+                if (new java.io.File(pathOrUri).exists()) {
+                    targetFile = new java.io.File(pathOrUri);
+                } else {
+                    String activeJson = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
+                    java.io.File mediaDir = getProjectMediaDir(this, activeJson);
+                    String cleanPath = pathOrUri.trim();
+                    if (cleanPath.startsWith("media/")) cleanPath = cleanPath.substring("media/".length());
+                    java.io.File localMedia = new java.io.File(mediaDir, cleanPath);
+                    if (!localMedia.exists()) localMedia = new java.io.File(getFilesDir(), pathOrUri);
+                    if (!localMedia.exists()) localMedia = new java.io.File(getFilesDir(), "media/" + pathOrUri);
+                    if (localMedia.exists()) targetFile = localMedia;
+                }
+            }
             if (pathOrUri != null && pathOrUri.startsWith("content://")) {
                 mediaPlayer = new MediaPlayer();
                 mediaPlayer.setDataSource(this, Uri.parse(pathOrUri));
                 mediaPlayer.prepare();
                 mediaPlayer.start();
-            } else if (pathOrUri != null && new java.io.File(pathOrUri).exists()) {
+            } else if (targetFile != null) {
                 mediaPlayer = new MediaPlayer();
-                mediaPlayer.setDataSource(pathOrUri);
+                mediaPlayer.setDataSource(targetFile.getAbsolutePath());
                 mediaPlayer.prepare();
                 mediaPlayer.start();
             } else {
@@ -705,10 +757,12 @@ public class MainActivity extends Activity {
             in.readFully(pdu);
             int function = pdu[0] & 0xff;
             if (function == 0x86) {
-                int exceptionCode = pdu.length > 1 ? pdu[1] & 0xff : 0;
+                if (pdu.length != 2) throw new IOException("Некорректный ответ с исключением Modbus при записи");
+                int exceptionCode = pdu[1] & 0xff;
                 throw new IOException("Modbus: " + describeModbusExceptionCodeStatic(exceptionCode) + " (код " + exceptionCode + ")");
             }
-            return function == 6;
+            validateModbusWriteEcho(pdu, 6, address, value);
+            return true;
         }
     }
 
@@ -746,15 +800,28 @@ public class MainActivity extends Activity {
             in.readFully(pdu);
             int function = pdu[0] & 0xff;
             if (function == 0x90) {
-                int exceptionCode = pdu.length > 1 ? pdu[1] & 0xff : 0;
+                if (pdu.length != 2) throw new IOException("Некорректный ответ с исключением Modbus при записи");
+                int exceptionCode = pdu[1] & 0xff;
                 throw new IOException("Modbus: " + describeModbusExceptionCodeStatic(exceptionCode) + " (код " + exceptionCode + ")");
             }
-            return function == 16;
+            validateModbusWriteEcho(pdu, 16, startAddress, values.length);
+            return true;
         }
     }
 
     private String readModbusRegisters(String host, int port, int unit, int startAddress, int count, int functionCode) throws Exception {
         return readModbusRegistersStatic(host, port, unit, startAddress, count, functionCode);
+    }
+
+    private static void validateModbusWriteEcho(byte[] pdu, int function, int address, int valueOrCount) throws IOException {
+        if (pdu.length != 5 || (pdu[0] & 0xff) != function) {
+            throw new IOException("Некорректное подтверждение записи Modbus");
+        }
+        int echoedAddress = ((pdu[1] & 0xff) << 8) | (pdu[2] & 0xff);
+        int echoedValueOrCount = ((pdu[3] & 0xff) << 8) | (pdu[4] & 0xff);
+        if (echoedAddress != (address & 0xffff) || echoedValueOrCount != (valueOrCount & 0xffff)) {
+            throw new IOException("Подтверждение записи Modbus не совпадает с запросом");
+        }
     }
 
     public static String describeModbusExceptionCodeStatic(int code) {
@@ -1070,6 +1137,50 @@ public class MainActivity extends Activity {
                 .show();
     }
 
+    public byte[] readProjectMediaData(String pathOrUri) throws java.io.IOException {
+        if (pathOrUri == null || pathOrUri.trim().isEmpty() || "Аларм".equals(pathOrUri)) return null;
+        String cleanPath = pathOrUri.trim();
+        if (cleanPath.startsWith("content://")) {
+            try (InputStream is = getContentResolver().openInputStream(Uri.parse(cleanPath));
+                 ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+                if (is == null) throw new java.io.FileNotFoundException("Content URI unavailable: " + cleanPath);
+                byte[] buf = new byte[8192];
+                int len;
+                long total = 0;
+                while ((len = is.read(buf)) != -1) {
+                    total += len;
+                    if (total > 10 * 1024 * 1024) throw new IllegalArgumentException("Media file exceeds 10MB limit: " + cleanPath);
+                    baos.write(buf, 0, len);
+                }
+                return baos.toByteArray();
+            }
+        } else {
+            java.io.File f = new java.io.File(cleanPath);
+            if (!f.exists()) {
+                String activeJson = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
+                java.io.File mediaDir = getProjectMediaDir(this, activeJson);
+                String relPath = cleanPath.startsWith("media/") ? cleanPath.substring("media/".length()) : cleanPath;
+                f = new java.io.File(mediaDir, relPath);
+            }
+            if (!f.exists()) f = new java.io.File(getFilesDir(), cleanPath);
+            if (!f.exists()) f = new java.io.File(getFilesDir(), "media/" + cleanPath);
+
+            if (!f.exists() || !f.isFile()) {
+                throw new java.io.FileNotFoundException("Media file not found: " + cleanPath);
+            }
+            if (f.length() > 10 * 1024 * 1024) {
+                throw new IllegalArgumentException("Media file exceeds 10MB limit: " + cleanPath);
+            }
+            try (InputStream is = new java.io.FileInputStream(f);
+                 ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+                byte[] buf = new byte[8192];
+                int len;
+                while ((len = is.read(buf)) != -1) baos.write(buf, 0, len);
+                return baos.toByteArray();
+            }
+        }
+    }
+
     private Map<String, byte[]> collectProjectMediaFiles() {
         Map<String, byte[]> mediaFiles = new HashMap<>();
         for (Screen screen : screens) {
@@ -1158,6 +1269,102 @@ public class MainActivity extends Activity {
         form.addView(choose);
     }
 
+    private static void deleteDirectoryRecursively(java.io.File dir) {
+        if (dir == null || !dir.exists()) return;
+        java.io.File[] files = dir.listFiles();
+        if (files != null) {
+            for (java.io.File f : files) {
+                if (f.isDirectory()) deleteDirectoryRecursively(f);
+                else f.delete();
+            }
+        }
+        dir.delete();
+    }
+
+    private void importProjectBundle(Uri uri) {
+        java.io.File stagingDir = new java.io.File(getFilesDir(), "staging_import_" + java.util.UUID.randomUUID().toString());
+        try (InputStream in = getContentResolver().openInputStream(uri);
+             ByteArrayOutputStream buffer = new ByteArrayOutputStream()) {
+            if (in == null) throw new IllegalStateException("Input stream unavailable");
+            byte[] chunk = new byte[8192];
+            int count;
+            while ((count = in.read(chunk)) != -1) {
+                if (buffer.size() + count > 10 * 1024 * 1024) throw new IllegalArgumentException("Project file too large");
+                buffer.write(chunk, 0, count);
+            }
+            byte[] inputData = buffer.toByteArray();
+            String importedJson = null;
+            boolean importedFromZip = false;
+
+            Map<String, byte[]> extractedMedia = new HashMap<>();
+            try {
+                importedJson = importProjectFromZip(new java.io.ByteArrayInputStream(inputData), extractedMedia);
+                importedFromZip = true;
+            } catch (Exception zipEx) {
+                importedJson = new String(inputData, StandardCharsets.UTF_8);
+                validateImportedProject(importedJson);
+            }
+
+            if (importedFromZip && !extractedMedia.isEmpty()) {
+                if (!stagingDir.mkdirs()) throw new IOException("Failed to create staging directory");
+                String stagingCanonical = stagingDir.getCanonicalPath();
+
+                for (Map.Entry<String, byte[]> mediaEntry : extractedMedia.entrySet()) {
+                    String relPath = mediaEntry.getKey();
+                    if (relPath == null || relPath.trim().isEmpty() || relPath.contains("..") || relPath.startsWith("/") || relPath.startsWith("\\")) {
+                        throw new IllegalArgumentException("Unsafe media relative path: " + relPath);
+                    }
+                    java.io.File mediaFile = new java.io.File(stagingDir, relPath);
+                    String fileCanonical = mediaFile.getCanonicalPath();
+                    if (!fileCanonical.equals(stagingCanonical) && !fileCanonical.startsWith(stagingCanonical + java.io.File.separator)) {
+                        throw new SecurityException("Path traversal blocked during media import: " + relPath);
+                    }
+                    mediaFile.getParentFile().mkdirs();
+                    try (java.io.FileOutputStream fos = new java.io.FileOutputStream(mediaFile)) {
+                        fos.write(mediaEntry.getValue());
+                    }
+                }
+
+                java.io.File projectMediaDir = getProjectMediaDir(this, importedJson);
+                deleteDirectoryRecursively(projectMediaDir);
+                if (!projectMediaDir.mkdirs()) throw new IOException("Failed to create project media directory");
+
+                String mediaCanonical = projectMediaDir.getCanonicalPath();
+                for (Map.Entry<String, byte[]> mediaEntry : extractedMedia.entrySet()) {
+                    String relPath = mediaEntry.getKey();
+                    java.io.File destFile = new java.io.File(projectMediaDir, relPath);
+                    String destCanonical = destFile.getCanonicalPath();
+                    if (!destCanonical.equals(mediaCanonical) && !destCanonical.startsWith(mediaCanonical + java.io.File.separator)) {
+                        throw new SecurityException("Path traversal blocked during media commit: " + relPath);
+                    }
+                    java.io.File srcFile = new java.io.File(stagingDir, relPath);
+                    destFile.getParentFile().mkdirs();
+                    if (!srcFile.renameTo(destFile)) {
+                        try (InputStream fis = new java.io.FileInputStream(srcFile);
+                             java.io.FileOutputStream fos = new java.io.FileOutputStream(destFile)) {
+                            byte[] buf = new byte[8192];
+                            int len;
+                            while ((len = fis.read(buf)) != -1) fos.write(buf, 0, len);
+                        }
+                    }
+                }
+            }
+
+            if (!getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(ACTIVE_PROJECT, importedJson).commit()) {
+                throw new IllegalStateException("Could not save imported project");
+            }
+            imageCache.clear();
+            loadProject();
+            showEditor();
+            Toast.makeText(this, "Проект успешно импортирован", Toast.LENGTH_LONG).show();
+        } catch (Exception e) {
+            android.util.Log.e("BLOODSKY", "Import failed", e);
+            Toast.makeText(this, "Ошибка импорта проекта: " + (e.getMessage() != null ? e.getMessage() : "неизвестная ошибка"), Toast.LENGTH_LONG).show();
+        } finally {
+            deleteDirectoryRecursively(stagingDir);
+        }
+    }
+
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQUEST_PICK_MEDIA) {
@@ -1185,11 +1392,12 @@ public class MainActivity extends Activity {
             try (OutputStream out = getContentResolver().openOutputStream(uri)) {
                 if (out == null) throw new IllegalStateException("Output stream unavailable");
                 String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
-                Map<String, byte[]> mediaFiles = collectProjectMediaFiles();
-                exportProjectToZip(out, json, mediaFiles);
+                MediaResolver resolver = this::readProjectMediaData;
+                exportProjectZipBundle(out, json, resolver);
                 Toast.makeText(this, "ZIP-архив проекта экспортирован", Toast.LENGTH_LONG).show();
             } catch (Exception e) {
-                Toast.makeText(this, "Ошибка экспорта ZIP-архива", Toast.LENGTH_LONG).show();
+                android.util.Log.e("BLOODSKY", "ZIP Export failed", e);
+                Toast.makeText(this, "Ошибка экспорта ZIP-архива: " + (e.getMessage() != null ? e.getMessage() : "неизвестная ошибка"), Toast.LENGTH_LONG).show();
             }
         } else if (requestCode == REQUEST_EXPORT_PROJECT_JSON) {
             try (OutputStream out = getContentResolver().openOutputStream(uri)) {
@@ -1201,55 +1409,7 @@ public class MainActivity extends Activity {
                 Toast.makeText(this, "Ошибка экспорта JSON проекта", Toast.LENGTH_LONG).show();
             }
         } else if (requestCode == REQUEST_IMPORT_PROJECT) {
-            try (InputStream in = getContentResolver().openInputStream(uri);
-                 ByteArrayOutputStream buffer = new ByteArrayOutputStream()) {
-                if (in == null) throw new IllegalStateException("Input stream unavailable");
-                byte[] chunk = new byte[8192];
-                int count;
-                while ((count = in.read(chunk)) != -1) {
-                    if (buffer.size() + count > 10 * 1024 * 1024) throw new IllegalArgumentException("Project file too large");
-                    buffer.write(chunk, 0, count);
-                }
-                byte[] inputData = buffer.toByteArray();
-                String importedJson = null;
-                boolean importedFromZip = false;
-
-                Map<String, byte[]> extractedMedia = new HashMap<>();
-                try {
-                    importedJson = importProjectFromZip(new java.io.ByteArrayInputStream(inputData), extractedMedia);
-                    importedFromZip = true;
-                } catch (Exception zipEx) {
-                    importedJson = new String(inputData, StandardCharsets.UTF_8);
-                    validateImportedProject(importedJson);
-                }
-
-                if (importedFromZip && !extractedMedia.isEmpty()) {
-                    java.io.File mediaDir = new java.io.File(getFilesDir(), "media");
-                    if (!mediaDir.exists()) mediaDir.mkdirs();
-                    String mediaCanonical = mediaDir.getCanonicalPath();
-                    for (Map.Entry<String, byte[]> mediaEntry : extractedMedia.entrySet()) {
-                        String relPath = mediaEntry.getKey();
-                        if (relPath == null || relPath.trim().isEmpty() || relPath.contains("..") || relPath.startsWith("/") || relPath.startsWith("\\")) continue;
-                        java.io.File mediaFile = new java.io.File(mediaDir, relPath);
-                        if (!mediaFile.getCanonicalPath().startsWith(mediaCanonical)) {
-                            continue;
-                        }
-                        mediaFile.getParentFile().mkdirs();
-                        try (java.io.FileOutputStream fos = new java.io.FileOutputStream(mediaFile)) {
-                            fos.write(mediaEntry.getValue());
-                        }
-                    }
-                }
-
-                if (!getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(ACTIVE_PROJECT, importedJson).commit()) {
-                    throw new IllegalStateException("Could not save imported project");
-                }
-                loadProject();
-                showEditor();
-                Toast.makeText(this, importedFromZip ? "Проект ZIP и медиафайлы импортированы" : "Проект JSON импортирован", Toast.LENGTH_LONG).show();
-            } catch (Exception e) {
-                Toast.makeText(this, "Импорт не выполнен: файл не является допустимым ZIP или JSON-проектом", Toast.LENGTH_LONG).show();
-            }
+            importProjectBundle(uri);
         }
     }
 
@@ -2619,33 +2779,122 @@ public class MainActivity extends Activity {
     }
 
     public static void exportProjectToZip(OutputStream outputStream, String projectJson, Map<String, byte[]> mediaFiles) throws java.io.IOException {
+        MediaResolver resolver = pathOrUri -> {
+            if (mediaFiles == null) return null;
+            if (mediaFiles.containsKey(pathOrUri)) return mediaFiles.get(pathOrUri);
+            String clean = pathOrUri;
+            if (clean.startsWith("media/")) clean = clean.substring("media/".length());
+            for (Map.Entry<String, byte[]> e : mediaFiles.entrySet()) {
+                String k = e.getKey();
+                if (k.equals(pathOrUri) || k.equals(clean) || k.equals("media/" + clean)) return e.getValue();
+            }
+            return null;
+        };
+        exportProjectZipBundle(outputStream, projectJson, resolver);
+    }
+
+    public static void exportProjectZipBundle(OutputStream outputStream, String projectJson, MediaResolver resolver) throws java.io.IOException {
+        Map<String, byte[]> archiveMedia = new HashMap<>();
+        Map<String, String> mediaPathMap = new HashMap<>();
+
+        org.json.JSONObject rootCopy;
+        try {
+            rootCopy = new org.json.JSONObject(projectJson == null ? "{}" : projectJson);
+            org.json.JSONArray screens = rootCopy.optJSONArray("screens");
+            if (screens != null) {
+                for (int s = 0; s < screens.length(); s++) {
+                    org.json.JSONObject screenObj = screens.optJSONObject(s);
+                    if (screenObj == null) continue;
+                    org.json.JSONArray widgets = screenObj.optJSONArray("widgets");
+                    if (widgets == null) continue;
+                    for (int w = 0; w < widgets.length(); w++) {
+                        org.json.JSONObject widgetObj = widgets.optJSONObject(w);
+                        if (widgetObj == null) continue;
+
+                        if (widgetObj.has("soundFilePath")) {
+                            String soundPath = widgetObj.optString("soundFilePath", "");
+                            String rewrittenSound = processMediaReference(soundPath, resolver, archiveMedia, mediaPathMap);
+                            if (rewrittenSound != null) widgetObj.put("soundFilePath", rewrittenSound);
+                        }
+
+                        org.json.JSONArray imgArr = widgetObj.optJSONArray("imagePathStates");
+                        if (imgArr != null) {
+                            for (int i = 0; i < imgArr.length(); i++) {
+                                String imgPath = imgArr.optString(i, null);
+                                String rewrittenImg = processMediaReference(imgPath, resolver, archiveMedia, mediaPathMap);
+                                if (rewrittenImg != null) {
+                                    imgArr.put(i, rewrittenImg);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            throw new java.io.IOException("Malformed project JSON during export", ex);
+        }
+
+        String rewrittenJson = rootCopy.toString();
         try (java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(outputStream)) {
             java.util.zip.ZipEntry entry = new java.util.zip.ZipEntry("TableNameProject.json");
             zos.putNextEntry(entry);
-            byte[] bytes = projectJson.getBytes(StandardCharsets.UTF_8);
+            byte[] bytes = rewrittenJson.getBytes(StandardCharsets.UTF_8);
             zos.write(bytes, 0, bytes.length);
             zos.closeEntry();
 
-            if (mediaFiles != null && !mediaFiles.isEmpty()) {
-                for (Map.Entry<String, byte[]> media : mediaFiles.entrySet()) {
-                    String fileName = media.getKey();
-                    if (fileName == null || fileName.trim().isEmpty()) continue;
-                    fileName = fileName.replace('\\', '/');
-                    if (fileName.contains("..") || fileName.startsWith("/")) {
-                        throw new IllegalArgumentException("Unsafe media entry path: " + fileName);
-                    }
-                    String entryPath = fileName.startsWith("media/") ? fileName : "media/" + fileName;
-                    java.util.zip.ZipEntry mediaEntry = new java.util.zip.ZipEntry(entryPath);
-                    zos.putNextEntry(mediaEntry);
-                    byte[] mediaBytes = media.getValue();
-                    if (mediaBytes != null && mediaBytes.length > 0) {
-                        zos.write(mediaBytes, 0, mediaBytes.length);
-                    }
-                    zos.closeEntry();
+            for (Map.Entry<String, byte[]> media : archiveMedia.entrySet()) {
+                String entryPath = media.getKey();
+                if (entryPath == null || entryPath.trim().isEmpty()) continue;
+                entryPath = entryPath.replace('\\', '/');
+                if (entryPath.contains("..") || entryPath.startsWith("/")) {
+                    throw new IllegalArgumentException("Unsafe media entry path: " + entryPath);
                 }
+                java.util.zip.ZipEntry mediaEntry = new java.util.zip.ZipEntry(entryPath);
+                zos.putNextEntry(mediaEntry);
+                byte[] mediaBytes = media.getValue();
+                if (mediaBytes != null && mediaBytes.length > 0) {
+                    zos.write(mediaBytes, 0, mediaBytes.length);
+                }
+                zos.closeEntry();
             }
             zos.finish();
         }
+    }
+
+    private static String processMediaReference(String origPath, MediaResolver resolver, Map<String, byte[]> archiveMedia, Map<String, String> mediaPathMap) throws java.io.IOException {
+        if (origPath == null || origPath.trim().isEmpty() || "Аларм".equals(origPath.trim()) || origPath.trim().startsWith("Картинка")) return origPath;
+        String clean = origPath.trim();
+        if (mediaPathMap.containsKey(clean)) return mediaPathMap.get(clean);
+
+        byte[] data = resolver != null ? resolver.readMedia(clean) : null;
+        if (data == null) {
+            throw new java.io.FileNotFoundException("Referenced media file is missing or unreadable: " + clean);
+        }
+        if (data.length == 0) {
+            throw new java.io.IOException("Referenced media file is empty: " + clean);
+        }
+
+        String baseName = clean;
+        if (baseName.contains("/")) baseName = baseName.substring(baseName.lastIndexOf('/') + 1);
+        if (baseName.contains("\\")) baseName = baseName.substring(baseName.lastIndexOf('\\') + 1);
+        baseName = baseName.replaceAll("[^A-Za-z0-9._-]", "_");
+        if (baseName.isEmpty()) baseName = "media_item";
+
+        String archivePath = "media/" + baseName;
+        int counter = 1;
+        while (archiveMedia.containsKey(archivePath)) {
+            int dot = baseName.lastIndexOf('.');
+            if (dot > 0) {
+                archivePath = "media/" + baseName.substring(0, dot) + "_" + counter + baseName.substring(dot);
+            } else {
+                archivePath = "media/" + baseName + "_" + counter;
+            }
+            counter++;
+        }
+
+        archiveMedia.put(archivePath, data);
+        mediaPathMap.put(clean, archivePath);
+        return archivePath;
     }
 
     public static String importProjectFromZip(InputStream inputStream) throws Exception {
