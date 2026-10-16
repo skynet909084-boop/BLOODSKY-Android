@@ -2238,7 +2238,7 @@ public class MainActivity extends Activity {
             if (widget == null) throw new IllegalArgumentException("Widget must be an object");
             String type = widget.optString("type", "Текст"), label = widget.optString("text", "Надпись");
             if (type.length() > 100 || label.length() > 2000 || widget.optString("connectionInfo", "").length() > 2000) throw new IllegalArgumentException("Widget field too long");
-            double x = widget.optDouble("x", 0), y = widget.optDouble("y", 0), w = widget.optDouble("w", 160), h = widget.optDouble("h", 58);
+            double x = widget.optDouble("x", widget.has("x") ? Double.NaN : 0), y = widget.optDouble("y", widget.has("y") ? Double.NaN : 0), w = widget.optDouble("w", widget.has("w") ? Double.NaN : 160), h = widget.optDouble("h", widget.has("h") ? Double.NaN : 58);
             if (Double.isNaN(x) || Double.isNaN(y) || Double.isNaN(w) || Double.isNaN(h)
                     || x < -100000 || x > 100000 || y < -100000 || y > 100000 || w < 1 || w > 100000 || h < 1 || h > 100000) throw new IllegalArgumentException("Widget geometry out of range");
         }
