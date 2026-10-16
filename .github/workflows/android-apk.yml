@@ -43,6 +43,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Prepare pinned original Craft resources
+        run: |
+          python tools/prepare_craft_resources.py
+          python tools/catalogue_craft_resources.py app/src/main/assets/kascada_original build-reports/kascada-resource-catalogue.md
+          python tools/map_craft_xml_references.py build/craft-reference/apktool/res build-reports/kascada-original-xml-map.md
+          python tools/audit_craft_drawable_wiring.py build/craft-reference/apktool/res/drawable app/src/main/java build-reports/kascada-drawable-wiring.md
       - name: Run archive inspector tests
         run: python -m unittest discover -s tools -p 'test_*.py' -v
       - name: Set up Java 17
@@ -72,6 +78,7 @@ jobs:
           path: |
             **/build/test-results/**/*.xml
             **/build/reports/tests/**
+            build-reports/*.md
           if-no-files-found: warn
           retention-days: 14
       - name: Write run summary
