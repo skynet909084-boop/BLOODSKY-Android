@@ -1,5 +1,5 @@
 import unittest
-from android_ui_smoke import center, matching_nodes, preferences_are_empty
+from android_ui_smoke import center, matching_nodes, preferences_are_empty, properties_scroll_node
 
 class AndroidSmokeHelpersTests(unittest.TestCase):
     def test_observed_enabled_ui_targets_and_uppercase_russian(self):
@@ -13,6 +13,12 @@ class AndroidSmokeHelpersTests(unittest.TestCase):
         xml = '<hierarchy><node text="" content-desc="Калькулятор" class="android.widget.ImageButton" enabled="true" bounds="[10,20][110,80]"/></hierarchy>'
         self.assertEqual(1, len(matching_nodes(xml, description='Калькулятор')))
         self.assertEqual([], matching_nodes(xml, description='Unknown'))
+
+    def test_properties_scroll_ignores_scrollable_button_bar(self):
+        xml = '<hierarchy><node class="android.widget.ScrollView" resource-id="form"><node class="android.widget.EditText"/></node><node class="android.widget.ScrollView" resource-id="buttons"><node class="android.widget.Button"/></node></hierarchy>'
+        self.assertEqual('form', properties_scroll_node(xml).get('resource-id'))
+        with self.assertRaises(AssertionError):
+            properties_scroll_node('<hierarchy/>')
 
     def test_invalid_bounds_are_rejected(self):
         for bounds in ['bad', '[1,2][1,2]', '[100,20][10,30]']:

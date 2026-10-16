@@ -41,6 +41,21 @@ def preferences_are_empty(xml):
     return 'active_project' not in values and json.loads(values.get('project_catalog_v1', '{}')) == {}
 
 
+def center_height(bounds):
+    center(bounds)  # Validate before calculating the visible height.
+    _, top, _, bottom = map(int, re.findall(r'\d+', bounds))
+    return bottom - top
+
+
+def properties_scroll_node(xml):
+    nodes = [n for n in ET.fromstring(xml).iter('node')
+             if n.get('class') == 'android.widget.ScrollView'
+             and any(c.get('class') == 'android.widget.EditText' for c in n.iter('node'))]
+    if len(nodes) != 1:
+        raise AssertionError('Expected one properties form scroll view')
+    return nodes[0]
+
+
 class Smoke:
     def __init__(self, output):
         self.output = output
@@ -76,14 +91,18 @@ class Smoke:
         for attempt in range(16):
             xml = self.dump()
             nodes = matching_nodes(xml, description=description)
-            if len(nodes) == 1:
+            scroll = properties_scroll_node(xml)
+            all_fields = [n for n in scroll.iter('node') if n.get('class') == 'android.widget.EditText']
+            full_height = max((center_height(n.get('bounds')) for n in all_fields), default=1)
+            if len(nodes) == 1 and center_height(nodes[0].get('bounds')) >= full_height:
                 return nodes[0]
-            scrolls = matching_nodes(xml, class_name='android.widget.ScrollView')
-            if len(scrolls) != 1:
-                raise AssertionError('Expected one properties scroll view')
-            left, top, right, bottom = map(int, re.findall(r'\d+', scrolls[0].get('bounds')))
+            left, top, right, bottom = map(int, re.findall(r'\d+', scroll.get('bounds')))
             x = (left + right) // 2
-            start, end = (bottom - 25, top + 25) if attempt < 8 else (top + 25, bottom - 25)
+            upward = attempt < 8
+            if nodes:
+                _, node_top, _, _ = map(int, re.findall(r'\d+', nodes[0].get('bounds')))
+                upward = node_top > top
+            start, end = (bottom - 25, top + 25) if upward else (top + 25, bottom - 25)
             adb('shell', 'input', 'swipe', str(x), str(start), str(x), str(end), '300')
         raise AssertionError('Property field not reachable: ' + description)
 
@@ -91,9 +110,18 @@ class Smoke:
         node = self.scroll_to_description(description)
         x, y = center(node.get('bounds'))
         adb('shell', 'input', 'tap', str(x), str(y))
-        adb('shell', 'input', 'keyevent', '123', *(['67'] * (len(node.get('text', '')) + 1)))
+        focused = self.wait_node(description=description, class_name='android.widget.EditText')
+        if focused.get('focused') != 'true':
+            raise AssertionError('Property field did not receive focus: ' + description)
+        adb('shell', 'input', 'keyevent', '123', *(['67'] * (len(focused.get('text', '')) + 1)))
         if value:
             adb('shell', 'input', 'text', value)
+        xml = self.dump()
+        changed = matching_nodes(xml, description=description, class_name='android.widget.EditText')
+        if len(changed) != 1 or changed[0].get('text', '') != value:
+            raise AssertionError('Property input did not match requested value: ' + description)
+        if any(n.get('package') == 'com.android.inputmethod.latin' for n in ET.fromstring(xml).iter('node')):
+            adb('shell', 'input', 'keyevent', '4')
 
     def capture(self, name):
         (self.output / (name + '.png')).write_bytes(adb('exec-out', 'screencap', '-p', binary=True))

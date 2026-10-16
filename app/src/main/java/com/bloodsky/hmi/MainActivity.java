@@ -1628,6 +1628,7 @@ public class MainActivity extends Activity {
         field.setInputType(inputType);
         field.setText(value);
         field.setSelectAllOnFocus(true);
+        field.setImeOptions(android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI);
         return field;
     }
 
