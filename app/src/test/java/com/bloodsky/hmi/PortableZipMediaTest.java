@@ -34,8 +34,8 @@ public class PortableZipMediaTest {
 
     private JSONObject createTestProjectJson(String id, String name, String image0Path, String image1Path, String soundPath) throws Exception {
         JSONObject project = new JSONObject();
-        project.put("id", id);
-        project.put("name", name);
+        if (id != null) project.put("id", id);
+        if (name != null) project.put("name", name);
         project.put("customRootMetadata", "root_value_123");
 
         JSONArray screens = new JSONArray();
@@ -55,7 +55,7 @@ public class PortableZipMediaTest {
         for (int i = 0; i < 16; i++) {
             if (i == 0 && image0Path != null) imgStates.put(image0Path);
             else if (i == 1 && image1Path != null) imgStates.put(image1Path);
-            else imgStates.put("");
+            else imgStates.put("Картинка " + i);
         }
         photoWidget.put("imagePathStates", imgStates);
         widgets.put(photoWidget);
@@ -93,7 +93,7 @@ public class PortableZipMediaTest {
 
         JSONObject origJson = createTestProjectJson("proj_collision", "Collision Test", file1.getAbsolutePath(), file2.getAbsolutePath(), null);
 
-        MainActivity.MediaResolver resolver = pathOrUri -> {
+        ProjectMediaService.MediaResolver resolver = pathOrUri -> {
             File f = new File(pathOrUri);
             if (!f.exists()) return null;
             try (InputStream is = new FileInputStream(f); ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
@@ -105,7 +105,7 @@ public class PortableZipMediaTest {
         };
 
         ByteArrayOutputStream zipBaos = new ByteArrayOutputStream();
-        MainActivity.exportProjectZipBundle(zipBaos, origJson.toString(), resolver);
+        ProjectMediaService.exportProjectZipBundle(zipBaos, origJson.toString(), resolver);
 
         byte[] zipBytes = zipBaos.toByteArray();
         assertTrue(zipBytes.length > 0);
@@ -141,49 +141,67 @@ public class PortableZipMediaTest {
     }
 
     @Test
-    public void testTwoProjectsIsolated() throws Exception {
-        File mediaFileA = tempFolder.newFile("photoA.png");
-        File mediaFileB = tempFolder.newFile("photoB.png");
+    public void testTwoCyrillicOrUnnamedProjectsIsolated() throws Exception {
+        JSONObject projA = createTestProjectJson(null, "Проект 1", null, null, null);
+        JSONObject projB = createTestProjectJson(null, "Проект 2", null, null, null);
+        JSONObject projTraversal = createTestProjectJson("..", "../Traversal", null, null, null);
 
-        byte[] dataA = "PROJECT_A_PHOTO".getBytes(StandardCharsets.UTF_8);
-        byte[] dataB = "PROJECT_B_PHOTO".getBytes(StandardCharsets.UTF_8);
+        String idA = ProjectMediaService.getOrGenerateProjectId(projA.toString());
+        String idB = ProjectMediaService.getOrGenerateProjectId(projB.toString());
+        String idTraversal = ProjectMediaService.getOrGenerateProjectId(projTraversal.toString());
 
-        try (FileOutputStream fosA = new FileOutputStream(mediaFileA); FileOutputStream fosB = new FileOutputStream(mediaFileB)) {
-            fosA.write(dataA);
-            fosB.write(dataB);
+        assertNotNull(idA);
+        assertNotNull(idB);
+        assertNotEquals(idA, idB);
+        assertFalse(idTraversal.contains(".."));
+
+        File mediaDirA = ProjectMediaService.getProjectMediaDir(rootDir, projA.toString());
+        File mediaDirB = ProjectMediaService.getProjectMediaDir(rootDir, projB.toString());
+
+        assertNotEquals(mediaDirA.getAbsolutePath(), mediaDirB.getAbsolutePath());
+    }
+
+    @Test
+    public void testImportRollbackOnCommitOrMediaFailure() throws Exception {
+        File file1 = tempFolder.newFile("sample.png");
+        byte[] content1 = "SAMPLE_PNG_DATA".getBytes(StandardCharsets.UTF_8);
+        try (FileOutputStream fos = new FileOutputStream(file1)) { fos.write(content1); }
+
+        JSONObject origJson = createTestProjectJson("proj_rollback", "Rollback Test", file1.getAbsolutePath(), null, null);
+
+        ByteArrayOutputStream zipBaos = new ByteArrayOutputStream();
+        ProjectMediaService.exportProjectZipBundle(zipBaos, origJson.toString(), pathOrUri -> content1);
+        byte[] zipBytes = zipBaos.toByteArray();
+
+        // Establish initial project state
+        File activeMediaDir = ProjectMediaService.getProjectMediaDir(rootDir, origJson.toString());
+        File existingMediaFile = new File(activeMediaDir, "old_image.png");
+        try (FileOutputStream fos = new FileOutputStream(existingMediaFile)) {
+            fos.write("OLD_IMAGE_DATA".getBytes(StandardCharsets.UTF_8));
         }
 
-        JSONObject projA = createTestProjectJson("proj_A", "Project A", mediaFileA.getAbsolutePath(), null, null);
-        JSONObject projB = createTestProjectJson("proj_B", "Project B", mediaFileB.getAbsolutePath(), null, null);
-
-        File projectMediaDirA = new File(rootDir, "projects/proj_A/media");
-        File projectMediaDirB = new File(rootDir, "projects/proj_B/media");
-
-        projectMediaDirA.mkdirs();
-        projectMediaDirB.mkdirs();
-
-        File fileInA = new File(projectMediaDirA, "item.png");
-        File fileInB = new File(projectMediaDirB, "item.png");
-
-        try (FileOutputStream fosA = new FileOutputStream(fileInA); FileOutputStream fosB = new FileOutputStream(fileInB)) {
-            fosA.write(dataA);
-            fosB.write(dataB);
+        // Attempt import with injected preference save failure
+        try {
+            ProjectMediaService.importProjectBundle(rootDir, new ByteArrayInputStream(zipBytes), importedJson -> false);
+            fail("Expected exception when saveHandler returns false");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage().contains("Could not save imported project"));
         }
 
-        assertEquals(dataA.length, fileInA.length());
-        assertEquals(dataB.length, fileInB.length());
-        assertNotEquals(fileInA.getAbsolutePath(), fileInB.getAbsolutePath());
+        // Verify rollback preserved existing media file
+        assertTrue(existingMediaFile.exists());
+        assertEquals("OLD_IMAGE_DATA", new String(java.nio.file.Files.readAllBytes(existingMediaFile.toPath()), StandardCharsets.UTF_8));
     }
 
     @Test
     public void testUnreadableMediaCausesExportFailure() throws Exception {
         JSONObject origJson = createTestProjectJson("proj_missing", "Missing Test", "/non/existent/file.png", null, null);
 
-        MainActivity.MediaResolver resolver = pathOrUri -> { throw new IOException("Referenced media file is missing or unreadable: " + pathOrUri); };
+        ProjectMediaService.MediaResolver resolver = pathOrUri -> { throw new IOException("Referenced media file is missing or unreadable: " + pathOrUri); };
 
         ByteArrayOutputStream zipBaos = new ByteArrayOutputStream();
         try {
-            MainActivity.exportProjectZipBundle(zipBaos, origJson.toString(), resolver);
+            ProjectMediaService.exportProjectZipBundle(zipBaos, origJson.toString(), resolver);
             fail("Expected IOException when exporting missing media");
         } catch (IOException expected) {
             assertNotNull(expected.getMessage());
@@ -195,7 +213,7 @@ public class PortableZipMediaTest {
         byte[] malformedZip = "THIS_IS_NOT_A_VALID_ZIP_STREAM".getBytes(StandardCharsets.UTF_8);
 
         try {
-            MainActivity.importProjectFromZip(new ByteArrayInputStream(malformedZip), new HashMap<>());
+            ProjectMediaService.importProjectBundle(rootDir, new ByteArrayInputStream(malformedZip), importedJson -> true);
             fail("Expected exception for malformed ZIP stream");
         } catch (Exception expected) {
             assertNotNull(expected.getMessage());
