@@ -2239,7 +2239,7 @@ public class MainActivity extends Activity {
             String type = widget.optString("type", "Текст"), label = widget.optString("text", "Надпись");
             if (type.length() > 100 || label.length() > 2000 || widget.optString("connectionInfo", "").length() > 2000) throw new IllegalArgumentException("Widget field too long");
             double x = widget.optDouble("x", 0), y = widget.optDouble("y", 0), w = widget.optDouble("w", 160), h = widget.optDouble("h", 58);
-            if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(w) || !Double.isFinite(h)
+            if (Double.isNaN(x) || Double.isNaN(y) || Double.isNaN(w) || Double.isNaN(h)
                     || x < -100000 || x > 100000 || y < -100000 || y > 100000 || w < 1 || w > 100000 || h < 1 || h > 100000) throw new IllegalArgumentException("Widget geometry out of range");
         }
     }
