@@ -493,6 +493,80 @@ public class FbdDisconnectTest {
                 .put("currentScreen", 0).toString());
     }
 
+    @Test public void canonicalBooleanAliasesExecuteWithNamedAndReorderedPins() throws Exception {
+        MainActivity.Widget high = new MainActivity.Widget();
+        high.type = "FBD Вход";
+        high.inputValue = true;
+        MainActivity.Widget low = new MainActivity.Widget();
+        low.type = "FBD Вход";
+        low.inputValue = false;
+        MainActivity.Widget gate = new MainActivity.Widget();
+        gate.type = "FBD AND";
+        List<MainActivity.Widget> blocks = java.util.Arrays.asList(high, low, gate);
+        List<MainActivity.FbdConnection> wires = java.util.Arrays.asList(
+                MainActivity.pinnedFbdConnection(1, "Q", 2, "IN2"),
+                MainActivity.pinnedFbdConnection(0, "Q", 2, "IN1"));
+        assertFalse(runFbd(blocks, wires, 2));
+        low.inputValue = true;
+        assertTrue(runFbd(blocks, wires, 2));
+        gate.type = "FBD И";
+        assertTrue(runFbd(blocks, wires, 2));
+        low.inputValue = false;
+        gate.type = "FBD OR";
+        assertTrue(runFbd(blocks, wires, 2));
+        gate.type = "FBD ИЛИ";
+        assertTrue(runFbd(blocks, wires, 2));
+    }
+
+    @Test public void booleanNegationAndNandNorHaveWorkingTypedTerminals() throws Exception {
+        MainActivity.Widget high = new MainActivity.Widget();
+        high.type = "FBD Вход";
+        high.inputValue = true;
+        MainActivity.Widget low = new MainActivity.Widget();
+        low.type = "FBD Вход";
+        low.inputValue = false;
+        MainActivity.Widget gate = new MainActivity.Widget();
+        List<MainActivity.Widget> blocks = java.util.Arrays.asList(high, low, gate);
+        assertArrayEquals(new String[]{"Q"}, MainActivity.knownFbdPins("FBD НЕ", true));
+        assertArrayEquals(new String[]{"IN"}, MainActivity.knownFbdPins("FBD НЕ", false));
+        assertEquals("BOOL", MainActivity.knownFbdPinType("FBD НЕ", "IN", false));
+        assertNull(MainActivity.knownFbdPinType("FBD НЕ", "Q", false));
+        List<MainActivity.FbdConnection> unary = java.util.Arrays.asList(
+                MainActivity.pinnedFbdConnection(0, "Q", 2, "IN"));
+        gate.type = "FBD НЕ";
+        assertFalse(runFbd(blocks, unary, 2));
+        high.inputValue = false;
+        assertTrue(runFbd(blocks, unary, 2));
+        high.inputValue = true;
+        List<MainActivity.FbdConnection> binary = java.util.Arrays.asList(
+                MainActivity.pinnedFbdConnection(0, "Q", 2, "IN1"),
+                MainActivity.pinnedFbdConnection(1, "Q", 2, "IN2"));
+        gate.type = "FBD NAND";
+        assertEquals("BOOL", MainActivity.knownFbdPinType("FBD NAND", "IN2", false));
+        assertTrue(runFbd(blocks, binary, 2));
+        low.inputValue = true;
+        assertFalse(runFbd(blocks, binary, 2));
+        gate.type = "FBD NOR";
+        assertFalse(runFbd(blocks, binary, 2));
+        high.inputValue = false;
+        low.inputValue = false;
+        assertTrue(runFbd(blocks, binary, 2));
+    }
+
+    @Test public void canonicalTonAliasUsesNamedInForReset() throws Exception {
+        MainActivity.Widget low = new MainActivity.Widget();
+        low.type = "FBD Вход";
+        low.inputValue = false;
+        MainActivity.Widget timer = new MainActivity.Widget();
+        timer.type = "FBD TON";
+        timer.timerStartedAt = 500L;
+        MainActivity.FbdConnection wire = MainActivity.pinnedFbdConnection(0, "Q", 1, "IN");
+        assertTrue(MainActivity.hasCompatibleKnownFbdPins(
+                MainActivity.connectionToJson(wire), "FBD Вход", "FBD TON"));
+        assertFalse(runFbd(java.util.Arrays.asList(low, timer), java.util.Arrays.asList(wire), 1));
+        assertEquals(0L, timer.timerStartedAt);
+    }
+
     @Test public void invalidEndpointsDoNotMutateGraph() {
         List<MainActivity.FbdConnection> edges = new ArrayList<>();
         edges.add(new MainActivity.FbdConnection(0, 1));
