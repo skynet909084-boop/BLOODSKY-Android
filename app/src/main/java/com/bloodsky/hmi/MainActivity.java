@@ -2746,6 +2746,25 @@ public class MainActivity extends Activity {
             }
             if (!output && "PV".equals(name)) return "NUMBER";
         }
+        if (kind.equals("FBD СЛОЖЕНИЕ") || kind.equals("FBD ВЫЧИТАНИЕ")
+                || kind.equals("FBD УМНОЖЕНИЕ") || kind.equals("FBD ДЕЛЕНИЕ")
+                || kind.equals("FBD MIN_MAX")) {
+            if (output && "OUT".equals(name)) return "NUMBER";
+            if (!output && ("IN1".equals(name) || "IN2".equals(name))) return "NUMBER";
+        }
+        if (kind.equals("FBD СРАВНЕНИЕ")) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && ("A".equals(name) || "B".equals(name))) return "NUMBER";
+        }
+        if (kind.equals("FBD MOVE")) {
+            if (output && "OUT".equals(name)) return "NUMBER";
+            if (!output && "IN".equals(name)) return "NUMBER";
+        }
+        if (kind.equals("FBD SEL")) {
+            if (output && "OUT".equals(name)) return "NUMBER";
+            if (!output && "G".equals(name)) return "BOOL";
+            if (!output && ("IN0".equals(name) || "IN1".equals(name))) return "NUMBER";
+        }
         if (kind.equals("FBD POW")) {
             if (output && "OUT".equals(name)) return "NUMBER";
             if (!output && ("BASE".equals(name) || "EXP".equals(name))) return "NUMBER";
@@ -2892,6 +2911,13 @@ public class MainActivity extends Activity {
                 && Boolean.TRUE.equals(values.get(legacyIndex));
     }
 
+    /** Imported unnamed graphs retain positional math; new named ones use terminals. */
+    public static boolean hasNamedFbdInput(List<String> pins) {
+        if (pins == null) return false;
+        for (String pin : pins) if (!canonicalFbdPinName(pin).isEmpty()) return true;
+        return false;
+    }
+
     /** Numeric terminal lookup; unnamed legacy connections retain their positional index. */
     public static double fbdNumericPinValue(List<Double> values, List<String> pins,
                                             String targetPin, int legacyIndex, double defaultValue) {
@@ -2978,30 +3004,52 @@ public class MainActivity extends Activity {
 
         if ("FBD Сложение".equals(widget.type)) {
             double sum = 0.0;
-            for (Double v : numInputs) sum += v;
+            if (hasNamedFbdInput(inputPins)) {
+                sum = fbdNumericPinValue(numInputs, inputPins, "IN1", 0, 0.0)
+                        + fbdNumericPinValue(numInputs, inputPins, "IN2", 1, 0.0);
+            } else for (Double v : numInputs) sum += v;
             if (Double.isNaN(sum) || Double.isInfinite(sum)) sum = 0.0;
             cacheNumeric[index] = sum;
             return sum != 0.0;
         }
         if ("FBD Вычитание".equals(widget.type)) {
-            double diff = numInputs.isEmpty() ? 0.0 : numInputs.get(0);
-            for (int i = 1; i < numInputs.size(); i++) diff -= numInputs.get(i);
+            double diff;
+            if (hasNamedFbdInput(inputPins)) {
+                diff = fbdNumericPinValue(numInputs, inputPins, "IN1", 0, 0.0)
+                        - fbdNumericPinValue(numInputs, inputPins, "IN2", 1, 0.0);
+            } else {
+                diff = numInputs.isEmpty() ? 0.0 : numInputs.get(0);
+                for (int i = 1; i < numInputs.size(); i++) diff -= numInputs.get(i);
+            }
             if (Double.isNaN(diff) || Double.isInfinite(diff)) diff = 0.0;
             cacheNumeric[index] = diff;
             return diff != 0.0;
         }
         if ("FBD Умножение".equals(widget.type)) {
-            double prod = numInputs.isEmpty() ? 0.0 : 1.0;
-            for (Double v : numInputs) prod *= v;
+            double prod;
+            if (hasNamedFbdInput(inputPins)) {
+                prod = fbdNumericPinValue(numInputs, inputPins, "IN1", 0, 0.0)
+                        * fbdNumericPinValue(numInputs, inputPins, "IN2", 1, 0.0);
+            } else {
+                prod = numInputs.isEmpty() ? 0.0 : 1.0;
+                for (Double v : numInputs) prod *= v;
+            }
             if (Double.isNaN(prod) || Double.isInfinite(prod)) prod = 0.0;
             cacheNumeric[index] = prod;
             return prod != 0.0;
         }
         if ("FBD Деление".equals(widget.type)) {
-            double div = numInputs.isEmpty() ? 0.0 : numInputs.get(0);
-            for (int i = 1; i < numInputs.size(); i++) {
-                double denom = numInputs.get(i);
-                div = (denom != 0.0) ? div / denom : 0.0;
+            double div;
+            if (hasNamedFbdInput(inputPins)) {
+                double numerator = fbdNumericPinValue(numInputs, inputPins, "IN1", 0, 0.0);
+                double denominator = fbdNumericPinValue(numInputs, inputPins, "IN2", 1, 0.0);
+                div = denominator != 0.0 ? numerator / denominator : 0.0;
+            } else {
+                div = numInputs.isEmpty() ? 0.0 : numInputs.get(0);
+                for (int i = 1; i < numInputs.size(); i++) {
+                    double denom = numInputs.get(i);
+                    div = denom != 0.0 ? div / denom : 0.0;
+                }
             }
             if (Double.isNaN(div) || Double.isInfinite(div)) div = 0.0;
             cacheNumeric[index] = div;
@@ -3061,14 +3109,27 @@ public class MainActivity extends Activity {
             return val != 0.0;
         }
         if ("FBD MIN_MAX".equals(widget.type)) {
-            double minV = numInputs.isEmpty() ? 0.0 : numInputs.get(0);
-            for (Double v : numInputs) minV = Math.min(minV, v);
+            double minV;
+            if (hasNamedFbdInput(inputPins)) {
+                minV = Math.min(fbdNumericPinValue(numInputs, inputPins, "IN1", 0, 0.0),
+                        fbdNumericPinValue(numInputs, inputPins, "IN2", 1, 0.0));
+            } else {
+                minV = numInputs.isEmpty() ? 0.0 : numInputs.get(0);
+                for (Double v : numInputs) minV = Math.min(minV, v);
+            }
             if (Double.isNaN(minV) || Double.isInfinite(minV)) minV = 0.0;
             cacheNumeric[index] = minV;
             return minV != 0.0;
         }
         if ("FBD MOVE".equals(widget.type) || "FBD SEL".equals(widget.type)) {
-            double val = numInputs.isEmpty() ? widget.compareA : numInputs.get(0);
+            double val;
+            if (hasNamedFbdInput(inputPins)) {
+                if ("FBD SEL".equals(widget.type)) {
+                    boolean selector = fbdBooleanPinValue(inputs, inputPins, "G", -1);
+                    val = selector ? fbdNumericPinValue(numInputs, inputPins, "IN1", -1, widget.compareA)
+                            : fbdNumericPinValue(numInputs, inputPins, "IN0", -1, widget.compareA);
+                } else val = fbdNumericPinValue(numInputs, inputPins, "IN", 0, widget.compareA);
+            } else val = numInputs.isEmpty() ? widget.compareA : numInputs.get(0);
             if (Double.isNaN(val) || Double.isInfinite(val)) val = 0.0;
             cacheNumeric[index] = val;
             return val != 0.0;
@@ -3144,13 +3205,15 @@ public class MainActivity extends Activity {
         if ("FBD НЕ".equals(canonicalType))
             return !fbdBooleanPinValue(inputs, inputPins, "IN", 0);
         if ("FBD Сравнение".equals(widget.type)) {
+            double a = fbdNumericPinValue(numInputs, inputPins, "A", 0, widget.compareA);
+            double b = fbdNumericPinValue(numInputs, inputPins, "B", 1, widget.compareB);
             switch (normalizeComparisonOperatorStatic(widget.compareOperator)) {
-                case "<": return widget.compareA < widget.compareB;
-                case ">=": return widget.compareA >= widget.compareB;
-                case "<=": return widget.compareA <= widget.compareB;
-                case "==": return Double.compare(widget.compareA, widget.compareB) == 0;
-                case "!=": return Double.compare(widget.compareA, widget.compareB) != 0;
-                default: return widget.compareA > widget.compareB;
+                case "<": return a < b;
+                case ">=": return a >= b;
+                case "<=": return a <= b;
+                case "==": return Double.compare(a, b) == 0;
+                case "!=": return Double.compare(a, b) != 0;
+                default: return a > b;
             }
         }
         if ("FBD TON".equals(canonicalType)) {
@@ -3491,6 +3554,16 @@ public class MainActivity extends Activity {
             return output ? new String[]{"Q"} : new String[]{"IN"};
         if ("FBD CTU".equals(kind)) return output ? new String[]{"Q"} : new String[]{"CU", "R", "PV"};
         if ("FBD CTD".equals(kind)) return output ? new String[]{"Q"} : new String[]{"CD", "LD", "PV"};
+        if ("FBD СЛОЖЕНИЕ".equals(kind) || "FBD ВЫЧИТАНИЕ".equals(kind)
+                || "FBD УМНОЖЕНИЕ".equals(kind) || "FBD ДЕЛЕНИЕ".equals(kind)
+                || "FBD MIN_MAX".equals(kind))
+            return output ? new String[]{"OUT"} : new String[]{"IN1", "IN2"};
+        if ("FBD СРАВНЕНИЕ".equals(kind))
+            return output ? new String[]{"Q"} : new String[]{"A", "B"};
+        if ("FBD MOVE".equals(kind))
+            return output ? new String[]{"OUT"} : new String[]{"IN"};
+        if ("FBD SEL".equals(kind))
+            return output ? new String[]{"OUT"} : new String[]{"G", "IN0", "IN1"};
         if ("FBD POW".equals(kind)) return output ? new String[]{"OUT"} : new String[]{"BASE", "EXP"};
         if ("FBD SIN".equals(kind) || "FBD ABS".equals(kind)
                 || "FBD COS".equals(kind) || "FBD TAN".equals(kind) || "FBD SQRT".equals(kind)
