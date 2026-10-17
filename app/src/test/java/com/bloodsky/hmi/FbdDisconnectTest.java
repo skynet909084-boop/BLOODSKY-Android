@@ -235,6 +235,53 @@ public class FbdDisconnectTest {
                         .put("widgets", widgets).put("connections", edges))).toString());
     }
 
+    private static boolean runFbd(List<MainActivity.Widget> nodes,
+                                  List<MainActivity.FbdConnection> edges, int target) {
+        int count = nodes.size();
+        return MainActivity.evaluateFbdBlock(nodes, edges, target, new boolean[count],
+                new boolean[count], new boolean[count], new double[count]);
+    }
+
+    @Test public void rsExecutionRespectsNamedPinsEvenWhenResetWireComesFirst() throws Exception {
+        MainActivity.Widget reset = new MainActivity.Widget();
+        reset.type = "FBD Вход";
+        reset.inputValue = true;
+        MainActivity.Widget set = new MainActivity.Widget();
+        set.type = "FBD Вход";
+        set.inputValue = true;
+        MainActivity.Widget latch = new MainActivity.Widget();
+        latch.type = "FBD RS";
+        List<MainActivity.Widget> nodes = java.util.Arrays.asList(reset, set, latch);
+        List<MainActivity.FbdConnection> edges = new ArrayList<>();
+        edges.add(MainActivity.pinnedFbdConnection(0, "Q", 2, "R"));
+        edges.add(MainActivity.pinnedFbdConnection(1, "Q", 2, "S"));
+        assertFalse("Reset has priority even when S is also high", runFbd(nodes, edges, 2));
+        reset.inputValue = false;
+        assertTrue("Set input must set the latch", runFbd(nodes, edges, 2));
+        set.inputValue = false;
+        assertTrue("Latch must retain its state", runFbd(nodes, edges, 2));
+        reset.inputValue = true;
+        assertFalse("Reset must clear the latch", runFbd(nodes, edges, 2));
+    }
+
+    @Test public void tonExecutionUsesNamedInNotFirstIncomingWire() throws Exception {
+        MainActivity.Widget first = new MainActivity.Widget();
+        first.type = "FBD Вход";
+        first.inputValue = true;
+        MainActivity.Widget enable = new MainActivity.Widget();
+        enable.type = "FBD Вход";
+        enable.inputValue = false;
+        MainActivity.Widget timer = new MainActivity.Widget();
+        timer.type = "FBD Таймер";
+        timer.timerStartedAt = 123L;
+        List<MainActivity.Widget> nodes = java.util.Arrays.asList(first, enable, timer);
+        List<MainActivity.FbdConnection> edges = new ArrayList<>();
+        edges.add(MainActivity.pinnedFbdConnection(0, "Q", 2, "PT"));
+        edges.add(MainActivity.pinnedFbdConnection(1, "Q", 2, "IN"));
+        assertFalse(runFbd(nodes, edges, 2));
+        assertEquals("Disabled TON resets its timer", 0L, timer.timerStartedAt);
+    }
+
     @Test public void invalidEndpointsDoNotMutateGraph() {
         List<MainActivity.FbdConnection> edges = new ArrayList<>();
         edges.add(new MainActivity.FbdConnection(0, 1));
