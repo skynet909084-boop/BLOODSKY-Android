@@ -2739,9 +2739,10 @@ public class MainActivity extends Activity {
 
     /** PT values use milliseconds; reject invalid durations rather than overflow timer arithmetic. */
     public static long fbdTonPresetMs(List<Double> values, List<String> pins, int configuredMs) {
-        double raw = fbdNumericPinValue(values, pins, "PT", -1, configuredMs);
+        long fallback = Math.max(1L, Math.min(3600000L, (long) configuredMs));
+        double raw = fbdNumericPinValue(values, pins, "PT", -1, fallback);
         if (raw < 1.0 || raw > 3600000.0 || Double.isNaN(raw) || Double.isInfinite(raw))
-            return configuredMs;
+            return fallback;
         return Math.round(raw);
     }
 
