@@ -3101,6 +3101,12 @@ public class MainActivity extends Activity {
             return;
         }
         for (FbdConnection existing : screen.connections) {
+            String newTargetPin = edge.extraFields.optString("targetPin", "");
+            if (!newTargetPin.isEmpty() && existing.target == target
+                    && newTargetPin.equalsIgnoreCase(existing.extraFields.optString("targetPin", ""))) {
+                Toast.makeText(this, "Вход FBD уже занят другим проводом", Toast.LENGTH_SHORT).show();
+                return;
+            }
             if (existing.source == source && existing.target == target) {
                 Toast.makeText(this, "Такая связь уже существует", Toast.LENGTH_SHORT).show();
                 return;
