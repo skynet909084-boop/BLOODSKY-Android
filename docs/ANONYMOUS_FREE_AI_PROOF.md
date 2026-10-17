@@ -12,6 +12,16 @@ The owner-triggered PR/manual workflow makes one client request with a 1024-toke
 
 The pinned router bundles the OVH adapter but not its model rows. Startup therefore declares the officially documented model through FreeLLMAPI's supported `models` configuration, with a two-request-per-minute local limit. It does not require a Premium catalog feed or enable automatic catalog changes.
 
-The response must pass the same test-only allowlist. A fresh runner then executes the full Python suite, Android JUnit tests, verifies each proposed class actually ran passing tests, and builds an APK. The resulting patch remains an artifact for review; this proof has no branch/PR write token and does not publish or merge changes. Existing deterministic router CI remains independent.
+The response must pass the same test-only allowlist. A fresh runner then executes the full Python suite, Android JUnit tests, verifies each proposed class actually ran passing tests, and builds an APK. Generation and validation have no branch/PR write token. Existing deterministic router CI remains independent. The per-run class name prevents a later task from colliding with an already accepted generated test.
+
+## Automatic draft publication without a PAT
+
+After the publisher workflow is accepted on `main`, a successful inference workflow can trigger `.github/workflows/cloud-ai-publish.yml`. The publisher always checks out trusted `main`, never executes proposed Java, and uses only its short-lived repository `GITHUB_TOKEN`. It accepts source commits already in main's history and refuses publication if application, tools, Gradle or agent rules changed since validation. Unaccepted PR sources remain artifacts until accepted and revalidated.
+
+The publisher downloads only the specific successful run's proposal, checks its mode/pinned-router evidence/patch digest, and reapplies the test-only allowlist. It creates at most one `automation/cloud-agent-RUN_ID` branch and one draft PR. No force push, approval, merge or signing is performed. APK/unit, API30 emulator and preflight workflows are explicitly dispatched on that branch, since token-created PR events may otherwise wait for approval. Independent CI and human review remain required.
+
+GitHub must permit Actions to create PRs: **Settings → Actions → General → Allow GitHub Actions to create and approve pull requests**. This is a repository policy setting, not a provider account or payment method; the workflow never approves PRs. If GitHub blocks creation, the job fails and retains the concrete validated branch. No personal access token, provider secret, paid account or billing change is needed for this anonymous path.
+
+Owner operation: run **BLOODSKY anonymous free AI proof** on `main` with one bounded task. After inference and independent validation succeed, the publisher creates the draft and starts its checks. No scheduled self-selected product work or automatic merge is enabled by this pilot.
 
 Until a successful `BLOODSKY anonymous free AI proof` run and its artifacts have been inspected, real inference is **not verified**. A successful fixture run alone is insufficient. This workflow is experimental development tooling and is not an inference service bundled in the Android application.
