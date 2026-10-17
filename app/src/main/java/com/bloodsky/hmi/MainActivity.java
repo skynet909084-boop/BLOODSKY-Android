@@ -2578,9 +2578,19 @@ public class MainActivity extends Activity {
     }
 
     /** Minimal built-in FBD pin contract; unknown blocks stay untyped until sourced. */
+    /** Normalize internal Russian widget identifiers to their public FBD terminal contracts. */
+    public static String canonicalFbdBlockType(String blockType) {
+        if (blockType == null) return "";
+        String kind = blockType.trim().toUpperCase(java.util.Locale.ROOT);
+        if ("FBD И".equals(kind)) return "FBD AND";
+        if ("FBD ИЛИ".equals(kind)) return "FBD OR";
+        if ("FBD ТАЙМЕР".equals(kind)) return "FBD TON";
+        return kind;
+    }
+
     public static String knownFbdPinType(String blockType, String pin, boolean output) {
         if (blockType == null || pin == null) return null;
-        String kind = blockType.trim().toUpperCase(java.util.Locale.ROOT);
+        String kind = canonicalFbdBlockType(blockType);
         String name = pin.trim().toUpperCase(java.util.Locale.ROOT);
         if (kind.equals("FBD AND") || kind.equals("FBD OR") || kind.equals("FBD XOR")) {
             if (output && "Q".equals(name)) return "BOOL";
@@ -2606,12 +2616,12 @@ public class MainActivity extends Activity {
         String targetPin = edge.optString("targetPin", "");
         String sourceKnown = knownFbdPinType(sourceType, sourcePin, true);
         String targetKnown = knownFbdPinType(targetType, targetPin, false);
-        boolean sourceBlockKnown = "FBD AND".equalsIgnoreCase(sourceType) || "FBD OR".equalsIgnoreCase(sourceType)
-                || "FBD XOR".equalsIgnoreCase(sourceType) || "FBD RS".equalsIgnoreCase(sourceType)
-                || "FBD TON".equalsIgnoreCase(sourceType);
-        boolean targetBlockKnown = "FBD AND".equalsIgnoreCase(targetType) || "FBD OR".equalsIgnoreCase(targetType)
-                || "FBD XOR".equalsIgnoreCase(targetType) || "FBD RS".equalsIgnoreCase(targetType)
-                || "FBD TON".equalsIgnoreCase(targetType);
+        boolean sourceBlockKnown = "FBD AND".equalsIgnoreCase(canonicalFbdBlockType(sourceType)) || "FBD OR".equalsIgnoreCase(canonicalFbdBlockType(sourceType))
+                || "FBD XOR".equalsIgnoreCase(canonicalFbdBlockType(sourceType)) || "FBD RS".equalsIgnoreCase(canonicalFbdBlockType(sourceType))
+                || "FBD TON".equalsIgnoreCase(canonicalFbdBlockType(sourceType));
+        boolean targetBlockKnown = "FBD AND".equalsIgnoreCase(canonicalFbdBlockType(targetType)) || "FBD OR".equalsIgnoreCase(canonicalFbdBlockType(targetType))
+                || "FBD XOR".equalsIgnoreCase(canonicalFbdBlockType(targetType)) || "FBD RS".equalsIgnoreCase(canonicalFbdBlockType(targetType))
+                || "FBD TON".equalsIgnoreCase(canonicalFbdBlockType(targetType));
         if ((sourceBlockKnown && sourceKnown == null) || (targetBlockKnown && targetKnown == null)) return false;
         if (sourceKnown != null && targetKnown != null && !sourceKnown.equals(targetKnown)) return false;
         if (sourceKnown != null && edge.has("sourceSignalType")
@@ -3107,7 +3117,7 @@ public class MainActivity extends Activity {
 
     public static String[] knownFbdPins(String blockType, boolean output) {
         if (blockType == null) return new String[0];
-        String kind = blockType.trim().toUpperCase(java.util.Locale.ROOT);
+        String kind = canonicalFbdBlockType(blockType);
         if ("FBD AND".equals(kind) || "FBD OR".equals(kind) || "FBD XOR".equals(kind))
             return output ? new String[]{"Q"} : new String[]{"IN1", "IN2"};
         if ("FBD RS".equals(kind)) return output ? new String[]{"Q"} : new String[]{"R", "S"};
