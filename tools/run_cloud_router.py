@@ -47,6 +47,8 @@ def docker(*args, **kwargs):
     result = subprocess.run(["docker", *args], capture_output=True, text=True,
                             timeout=kwargs.pop("timeout", 60), **kwargs)
     if result.returncode:
+        if "Selected pilot model is absent" in result.stderr:
+            raise RuntimeError("Selected pilot model has not been provisioned in the ephemeral catalog")
         raise RuntimeError("Docker operation failed: " + args[0])
     return result.stdout.strip()
 
@@ -96,6 +98,13 @@ def main():
         else:
             # Official anonymous OVH endpoint: no account, key or billing data.
             config["keys"] = [{"platform": "ovh"}]
+            # OVH rows are distributed by the optional catalog feed rather
+            # than bundled migrations. Declare the documented model directly;
+            # no Premium feed or auto-updating catalog is needed.
+            config["models"] = [{"platform": "ovh", "modelId": model,
+                                  "displayName": "GPT-OSS 120B anonymous proof",
+                                  "enabled": True, "fallbackEnabled": True,
+                                  "rpmLimit": 2, "contextWindow": 131072}]
             config["fallback"] = [{"platform": "ovh", "modelId": model, "priority": 1}]
         env_file = work / "router.env"
         env_file.write_text("ENCRYPTION_KEY=" + secrets.token_hex(32)

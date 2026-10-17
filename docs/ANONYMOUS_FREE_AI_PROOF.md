@@ -10,6 +10,8 @@ Official references checked 2026-10-17:
 
 The owner-triggered PR/manual workflow makes one client request with a 1024-token output budget and low reasoning effort. It sends only the selected BLOODSKY helper and repository coding rules, never an archive, key or complete source tree. No retries, account creation or paid fallback is configured. Provider availability and anonymous quotas can change: an error blocks the proof instead of purchasing capacity or switching services.
 
+The pinned router bundles the OVH adapter but not its model rows. Startup therefore declares the officially documented model through FreeLLMAPI's supported `models` configuration, with a two-request-per-minute local limit. It does not require a Premium catalog feed or enable automatic catalog changes.
+
 The response must pass the same test-only allowlist. A fresh runner then executes the full Python suite, Android JUnit tests, verifies each proposed class actually ran passing tests, and builds an APK. The resulting patch remains an artifact for review; this proof has no branch/PR write token and does not publish or merge changes. Existing deterministic router CI remains independent.
 
 Until a successful `BLOODSKY anonymous free AI proof` run and its artifacts have been inspected, real inference is **not verified**. A successful fixture run alone is insufficient. This workflow is experimental development tooling and is not an inference service bundled in the Android application.
