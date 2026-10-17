@@ -57,7 +57,7 @@ public final class LegacyProjectMediaMigrator {
         String updated = ProjectCatalog.normalize(legacyJson);
         String storageKey = ProjectMediaService.getOrGenerateProjectId(updated);
         File parent = new File(new File(filesDir, "projects"), storageKey);
-        File destination = new File(parent, "media");
+        File destination = ProjectMediaService.resolveProjectMediaDir(filesDir, updated);
         File stage = null;
         boolean published = false;
 
