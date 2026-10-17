@@ -4,7 +4,8 @@ import tempfile
 import unittest
 import zipfile
 
-from original_fbd_source_probe import report_from_zip, contract_fingerprint, SOURCE_PREFIX
+from original_fbd_source_probe import (report_from_zip, contract_fingerprint,
+                                       assert_pinned_original_labels, SOURCE_PREFIX)
 
 
 class OriginalFbdSourceProbeTests(unittest.TestCase):
@@ -80,6 +81,32 @@ class OriginalFbdSourceProbeTests(unittest.TestCase):
         self.assertEqual(["CTU", "+", "-", "R"],
                          [x["value"] for x in by_name["FB_CTU.java"]["literal_labels"]])
         self.assertIn("not validated direction", by_name["FB_TIMER.java"]["interpretation"])
+
+    def test_pin_claims_require_exact_class_and_original_label_sequence(self):
+        def row(filename, labels):
+            return {"archive_path": SOURCE_PREFIX + filename,
+                    "sha256": "a" * 64,
+                    "literal_labels": [{"line": n+1, "value": v}
+                                       for n, v in enumerate(labels)]}
+        correct = [
+            row("FB_CTU.java", ["CTU", "+", "-", "R", "Q", "CTU"]),
+            row("FB_RS.java", ["RS", "R", "S", "Q"]),
+            row("FB_TIMER.java", ["TON", "IN", "Q", "TOF", "TP"]),
+        ]
+        claims = assert_pinned_original_labels(correct)
+        self.assertEqual(3, len(claims))
+        self.assertEqual(["CTU", "+", "-", "R", "Q"], claims[0]["labels"])
+        self.assertIn("unverified", claims[0]["claim"])
+        with self.assertRaisesRegex(ValueError, "missing"):
+            assert_pinned_original_labels(correct[:2])
+        wrong = list(correct)
+        wrong[0] = row("FB_CTU.java", ["CTU", "CU", "R", "PV", "Q"])
+        with self.assertRaisesRegex(ValueError, "mismatch"):
+            assert_pinned_original_labels(wrong)
+        wrong[0] = correct[0]
+        wrong[2] = row("FB_TIMER.java", ["TON", "IN", "PT", "Q", "TOF", "TP"])
+        with self.assertRaisesRegex(ValueError, "mismatch"):
+            assert_pinned_original_labels(wrong)
 
     def test_no_marker_does_not_invent_timer_semantics(self):
         path, digest = self.archive({SOURCE_PREFIX + "Unknown.java": "class Unknown { int a; }"})
