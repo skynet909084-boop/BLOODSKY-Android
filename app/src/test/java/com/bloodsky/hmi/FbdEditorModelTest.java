@@ -77,6 +77,14 @@ public class FbdEditorModelTest {
         assertEquals(.25f,FbdEditorModel.inputY("FBD И",0),0);assertEquals(.75f,FbdEditorModel.inputY("FBD И",1),0);
         assertEquals(.5f,FbdEditorModel.inputY("FBD Таймер",0),0);assertEquals("S",FbdEditorModel.inputName("FBD RS",0));
     }
+    @Test public void customStylesKeepWiresAttachedToTheirLegacyRendererPins() {
+        MainActivity.Widget w=block("FBD И");w.textColor=0xff1f2937;
+        assertTrue(FbdEditorModel.originalShape(w));assertEquals(.25f,FbdEditorModel.wireInputY(w,0),0);
+        w.backgroundColor=0xff123456;
+        assertFalse(FbdEditorModel.originalShape(w));assertEquals(.38f,FbdEditorModel.wireInputY(w,0),0);
+        w.backgroundColor=0;w.textSizeSp=20;
+        assertEquals(.68f,FbdEditorModel.wireInputY(w,1),0);
+    }
     @Test public void failedPublicationRestoresFieldsGeometryAndIndependentUnknownEdgeMetadata() throws Exception {
         List<MainActivity.Widget> widgets=new ArrayList<>(Arrays.asList(block("FBD И")));
         List<MainActivity.FbdConnection> edges=new ArrayList<>(Arrays.asList(MainActivity.connectionFromJson(new JSONObject("{\"source\":0,\"target\":1,\"future\":{\"bend\":7}}"))));

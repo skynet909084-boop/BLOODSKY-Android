@@ -3036,7 +3036,7 @@ public class MainActivity extends Activity {
                     Widget to = widgets.get(connection.target);
                     if (!from.visible || !to.visible || !isFbd(from) || !isFbd(to)) continue;
                     float x1 = from.x + from.w, y1 = from.y + from.h / 2;
-                    float x2 = to.x, y2 = to.y + to.h * FbdEditorModel.inputY(to.type,FbdEditorModel.ordinal(connection,screen.connections));
+                    float x2 = to.x, y2 = to.y + to.h * FbdEditorModel.wireInputY(to,FbdEditorModel.ordinal(connection,screen.connections));
                     float mid = (x1 + x2) / 2f;
                     canvas.drawLine(x1, y1, mid, y1, paint);
                     canvas.drawLine(mid, y1, mid, y2, paint);
@@ -3054,8 +3054,7 @@ public class MainActivity extends Activity {
                 if (!w.visible || (operatorMode && isFbd(w))) continue;
                 RectF rect = new RectF(w.x, w.y, w.x + w.w, w.y + w.h);
                 String sourceDrawing=FbdEditorModel.drawing(w.type);
-                if(sourceDrawing!=null && w.backgroundColor==0 && w.textColor==Color.rgb(31,41,55)
-                        && w.textSizeSp==14 && w.showFrame && !w.autoResizeText) {
+                if(FbdEditorModel.originalShape(w)) {
                     evaluateFbd(i,new boolean[widgets.size()]);
                     OriginalFbdDrawing drawing=fbdDrawings.get(sourceDrawing);
                     if(drawing==null) { drawing=new OriginalFbdDrawing(MainActivity.this,sourceDrawing); fbdDrawings.put(sourceDrawing,drawing); }

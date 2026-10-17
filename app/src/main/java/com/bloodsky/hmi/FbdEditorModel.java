@@ -41,6 +41,13 @@ public final class FbdEditorModel {
             default:return type.substring(4);
         }
     }
+    public static boolean originalShape(MainActivity.Widget w) {
+        return drawing(w.type)!=null && w.backgroundColor==0 && w.textColor==0xff1f2937
+                && w.textSizeSp==14 && w.showFrame && !w.autoResizeText;
+    }
+    public static float wireInputY(MainActivity.Widget w,int ordinal) {
+        return inputY(originalShape(w)?w.type:null,ordinal);
+    }
     public static String caption(String type,String text) {
         String standard="FBD И".equals(type)?"И":"FBD ИЛИ".equals(type)?"ИЛИ":
                 "FBD IntToFloat".equals(type)?"Int->Float":"FBD FloatToInt".equals(type)?"Float->Int":title(type);
