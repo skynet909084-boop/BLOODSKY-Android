@@ -1225,19 +1225,11 @@ public class MainActivity extends Activity {
         editor.setContentDescription("Редактор экрана");
         root.addView(editor, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        LinearLayout bottom = new LinearLayout(this);
-        bottom.setGravity(Gravity.CENTER_VERTICAL);
-        bottom.setPadding(dp(3), dp(2), dp(3), dp(2));
-        bottom.setBackgroundColor(Color.rgb(35, 35, 35));
-        bottom.addView(legacyToolbarButton("Свойства", this::editSelectedWidget),
-                new LinearLayout.LayoutParams(0, dp(40), 1));
-        bottom.addView(legacyToolbarButton("Копировать", this::copySelectedWidget),
-                new LinearLayout.LayoutParams(0, dp(40), 1));
-        bottom.addView(legacyToolbarButton("Вставить", this::pasteWidget),
-                new LinearLayout.LayoutParams(0, dp(40), 1));
-        bottom.addView(legacyToolbarButton("Удалить", this::deleteSelectedWidget),
-                new LinearLayout.LayoutParams(0, dp(40), 1));
-        root.addView(bottom, new LinearLayout.LayoutParams(-1, dp(44)));
+        View actions = OriginalSelectionActions.create(root, this::cutSelectedWidget,
+                this::copySelectedWidget, this::pasteWidget, this::showAlignDialog);
+        LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(-2, -2);
+        actionParams.gravity = Gravity.CENTER_HORIZONTAL;
+        root.addView(actions, actionParams);
         setContentView(root);
         editor.invalidate();
         startModbusPolling();
@@ -2022,16 +2014,27 @@ public class MainActivity extends Activity {
     }
 
     private void copySelectedWidget() {
+        if (copySelectedWidgetToClipboard())
+            Toast.makeText(this, "Элемент скопирован со всеми настройками", Toast.LENGTH_SHORT).show();
+    }
+
+    private boolean copySelectedWidgetToClipboard() {
         if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
             Toast.makeText(this, "Сначала выбери элемент на экране", Toast.LENGTH_SHORT).show();
-            return;
+            return false;
         }
         try {
             clipboardWidget = widgetFromJson(widgetToJson(widgets.get(editor.selected)));
-            Toast.makeText(this, "Элемент скопирован со всеми настройками", Toast.LENGTH_SHORT).show();
+            return true;
         } catch (Exception error) {
             Toast.makeText(this, "Не удалось скопировать элемент", Toast.LENGTH_SHORT).show();
+            return false;
         }
+    }
+
+    private void cutSelectedWidget() {
+        // Never remove the source if serializing its complete clipboard copy failed.
+        if (copySelectedWidgetToClipboard()) deleteSelectedWidget();
     }
 
     private void pasteWidget() {
