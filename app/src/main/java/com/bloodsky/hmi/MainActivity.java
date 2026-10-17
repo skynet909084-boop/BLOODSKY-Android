@@ -3048,6 +3048,7 @@ public class MainActivity extends Activity {
 
     private void addFbdConnection(int source, int target, FbdConnection edge) {
         Screen screen = screens.get(currentScreenIndex);
+        if (edge == null || edge.source != source || edge.target != target) return;
         for (FbdConnection existing : screen.connections) {
             if (existing.source == source && existing.target == target) {
                 Toast.makeText(this, "Такая связь уже существует", Toast.LENGTH_SHORT).show();
