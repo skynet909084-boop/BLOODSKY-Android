@@ -193,6 +193,17 @@ class FastFbdSmoke(Smoke):
         if current_widgets() != native or self.saved_connections() != edge:
             raise AssertionError('Native CTU/T project changed after app restart')
 
+        # Create a fresh test project for the actual source palette so that
+        # the canvas has free space. A crowded viewport must never be used to
+        # validate placement: overlap was previously possible on fallback.
+        adb('shell', 'pm', 'clear', PACKAGE)
+        adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
+        self.tap('Создать новый проект')
+        self.tap(class_name='android.widget.EditText')
+        adb('shell', 'input', 'text', PROJECT)
+        self.tap('Создать')
+        self.wait_node(description='Редактор экрана')
+
         # The original 1.0.7 Craft FBD palette already contains source previews
         # for RS, T and CTU. These preview actions are now backed by verified
         # runtimes instead of sending users to the new generic extra menu.
@@ -206,12 +217,22 @@ class FastFbdSmoke(Smoke):
         add_from_original_preview('FBD CRAFT T')
         add_from_original_preview('FBD CRAFT CTU')
         original = current_widgets()
-        if [w['type'] for w in original[5:]] != [
+        if [w['type'] for w in original] != [
                 'FBD RS', 'FBD CRAFT T', 'FBD CRAFT CTU']:
             raise AssertionError('Original Craft source previews mapped incorrectly: '
                                  + repr(original))
-        if original[7].get('counterValue') != 0:
+        if original[2].get('counterValue') != 0:
             raise AssertionError('Original CTU preview created incorrect starting count')
+        # Every pair must have non-intersecting screen geometry after insertion.
+        for i, first in enumerate(original):
+            for second in original[i + 1:]:
+                intersects = (first['x'] < second['x'] + second['w']
+                              and first['x'] + first['w'] > second['x']
+                              and first['y'] < second['y'] + second['h']
+                              and first['y'] + first['h'] > second['y'])
+                if intersects:
+                    raise AssertionError('Native original FBD blocks overlapped: '
+                                         + repr((first, second)))
         self.capture('fast-fbd-original-craft-rs-t-ctu-palette')
 
         adb('shell', 'am', 'force-stop', PACKAGE)
@@ -219,7 +240,7 @@ class FastFbdSmoke(Smoke):
         self.tap('Загрузить проект')
         self.tap(PROJECT)
         self.wait_node(description='Редактор экрана')
-        if current_widgets() != original or self.saved_connections() != edge:
+        if current_widgets() != original or self.saved_connections():
             raise AssertionError('Original Craft palette native types were not persisted')
         crashes = adb('logcat', '-d', '-b', 'crash')
         (self.output / 'crash-log.txt').write_text(crashes)
