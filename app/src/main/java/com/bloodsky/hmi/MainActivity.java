@@ -2769,6 +2769,20 @@ public class MainActivity extends Activity {
 
     /** PT values use milliseconds; reject invalid durations rather than overflow timer arithmetic. */
     /** Counter preset is a nonnegative integer; preserve saved preset for invalid PV. */
+    /** A counter must see a fresh low-to-high edge after reset/load is released. */
+    public static int fbdCountUpStep(int current, boolean count, boolean previousCount,
+                                      boolean reset) {
+        if (reset) return 0;
+        return count && !previousCount ? Math.min(1000000, Math.max(0, current) + 1)
+                : Math.max(0, current);
+    }
+
+    public static int fbdCountDownStep(int current, boolean count, boolean previousCount,
+                                        boolean load, int preset) {
+        if (load) return preset;
+        return count && !previousCount ? Math.max(0, current - 1) : Math.max(0, current);
+    }
+
     public static int fbdCounterPreset(List<Double> values, List<String> pins, int configured) {
         int fallback = Math.max(0, Math.min(1000000, configured));
         double value = fbdNumericPinValue(values, pins, "PV", -1, fallback);
@@ -2959,22 +2973,17 @@ public class MainActivity extends Activity {
         if ("FBD CTU".equals(widget.type)) {
             boolean countInput = fbdBooleanPinValue(inputs, inputPins, "CU", 0);
             boolean resetInput = fbdBooleanPinValue(inputs, inputPins, "R", 1);
-            if (resetInput) {
-                widget.counterValue = 0;
-            } else if (countInput && !widget.counterLastInput) {
-                widget.counterValue = Math.min(1000000, widget.counterValue + 1);
-            }
+            widget.counterValue = fbdCountUpStep(widget.counterValue, countInput,
+                    widget.counterLastInput, resetInput);
             widget.counterLastInput = countInput;
             return widget.counterValue >= fbdCounterPreset(numInputs, inputPins, widget.counterPreset);
         }
         if ("FBD CTD".equals(widget.type)) {
             boolean countInput = fbdBooleanPinValue(inputs, inputPins, "CD", 0);
             boolean loadInput = fbdBooleanPinValue(inputs, inputPins, "LD", 1);
-            if (loadInput) {
-                widget.counterValue = fbdCounterPreset(numInputs, inputPins, widget.counterPreset);
-            } else if (countInput && !widget.counterLastInput) {
-                widget.counterValue = Math.max(0, widget.counterValue - 1);
-            }
+            widget.counterValue = fbdCountDownStep(widget.counterValue, countInput,
+                    widget.counterLastInput, loadInput,
+                    fbdCounterPreset(numInputs, inputPins, widget.counterPreset));
             widget.counterLastInput = countInput;
             return widget.counterValue <= 0;
         }
