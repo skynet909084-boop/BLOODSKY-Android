@@ -116,8 +116,11 @@ public class FbdCraftNativeTimerTest {
         } catch (IllegalArgumentException expected) {}
         try {
             FbdCraftNativeTimer.durationMillis(Integer.MAX_VALUE, 3, Long.MAX_VALUE);
-            fail("Overflow accepted");
-        } catch (ArithmeticException expected) {}
+            fail("Unverified original minute multiplier was accepted");
+        } catch (IllegalArgumentException expected) {}
+        // With the pinned unit factor 60000 and int MAX, a long cannot overflow.
+        assertEquals(128849018820000L,
+                FbdCraftNativeTimer.durationMillis(Integer.MAX_VALUE, 3));
     }
 
     @Test public void invertedOutputAndClockRollbackAreDeterministic() {
