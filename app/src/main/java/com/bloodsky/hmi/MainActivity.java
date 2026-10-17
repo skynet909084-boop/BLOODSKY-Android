@@ -302,7 +302,7 @@ public class MainActivity extends Activity {
         addLegacyMenuItem("Удалить проект", () -> chooseSavedProject(true), menuWidth);
         addLegacyMenuItem("Экспорт проекта", () -> {
             if (getSharedPreferences(PREFS, MODE_PRIVATE).contains(ACTIVE_PROJECT)) {
-                loadProject(); exportProject();
+                if (loadProject()) exportProject();
             } else Toast.makeText(this, "Сначала создай или загрузи проект", Toast.LENGTH_SHORT).show();
         }, menuWidth);
         addLegacyMenuItem("Импорт проекта", this::importProject, menuWidth);
@@ -347,10 +347,31 @@ public class MainActivity extends Activity {
         return false;
     }
 
+    /**
+     * Upgrade an old active project before its media is read or a new catalog entry
+     * is created. The save callback performs a checked synchronous ACTIVE_PROJECT
+     * and PROJECT_CATALOG commit; the migrator owns staging/rollback of media bytes.
+     */
+    private String migrateLegacyActiveProject(String stored) throws Exception {
+        return LegacyProjectMediaMigrator.migrate(getFilesDir(), stored, newJson -> {
+            try { return storeActiveProject(newJson, true); }
+            catch (Exception failure) {
+                android.util.Log.e("BLOODSKY", "Legacy project ID commit failed", failure);
+                return false;
+            }
+        });
+    }
+
     private String readProjectCatalog() throws Exception {
         android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         String active = prefs.getString(ACTIVE_PROJECT, null);
-        if (active != null && !storeActiveProject(active, true)) throw new IOException("Не удалось сохранить текущий проект");
+        if (active != null) {
+            if (LegacyProjectMediaMigrator.needsMigration(active)) {
+                migrateLegacyActiveProject(active);
+            } else if (!storeActiveProject(active, true)) {
+                throw new IOException("Не удалось сохранить текущий проект");
+            }
+        }
         return prefs.getString(PROJECT_CATALOG, "{}");
     }
 
@@ -364,7 +385,8 @@ public class MainActivity extends Activity {
                 readProjectCatalog(); // Migrate/preserve the previous active project first.
                 String json = ProjectCatalog.create(name.getText().toString());
                 if (!storeActiveProject(json, true)) throw new IOException("Не удалось сохранить проект");
-                dialog.dismiss(); loadProject(); showEditor();
+                if (!loadProject()) throw new IOException("Не удалось открыть новый проект");
+                dialog.dismiss(); showEditor();
             } catch (Exception error) { name.setError(error.getMessage()); }
         }));
         dialog.show();
@@ -387,7 +409,8 @@ public class MainActivity extends Activity {
                                     .setNegativeButton("Отмена", null).setPositiveButton("Удалить", (confirm, choice) -> deleteSavedProject(selected)).show();
                         } else try {
                             if (!storeActiveProject(selected.toString(), true)) throw new IOException("Не удалось открыть проект");
-                            loadProject(); showEditor();
+                            if (!loadProject()) throw new IOException("Не удалось открыть проект");
+                            showEditor();
                         } catch (Exception error) { Toast.makeText(this, error.getMessage(), Toast.LENGTH_LONG).show(); }
                     }).setNegativeButton("Отмена", null).show();
         } catch (Exception error) { Toast.makeText(this, "Список проектов: " + error.getMessage(), Toast.LENGTH_LONG).show(); }
@@ -888,8 +911,13 @@ public class MainActivity extends Activity {
                 });
                 runOnUiThread(() -> {
                     if (isFinishing() || isDestroyed()) return;
-                    imageCache.clear(); loadProject(); showEditor();
-                    Toast.makeText(this, "Проект импортирован", Toast.LENGTH_LONG).show();
+                    imageCache.clear();
+                    if (loadProject()) {
+                        showEditor();
+                        Toast.makeText(this, "Проект импортирован", Toast.LENGTH_LONG).show();
+                    } else {
+                        Toast.makeText(this, "Импорт выполнен, но открытие проекта не удалось", Toast.LENGTH_LONG).show();
+                    }
                 });
             } catch (Exception error) {
                 android.util.Log.e("BLOODSKY", "Project import failed", error);
@@ -2368,13 +2396,22 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void loadProject() {
+    private boolean loadProject() {
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        String json = prefs.getString(ACTIVE_PROJECT, "[]");
+        try {
+            if (LegacyProjectMediaMigrator.needsMigration(json))
+                json = migrateLegacyActiveProject(json);
+        } catch (Exception failure) {
+            android.util.Log.e("BLOODSKY", "Legacy project migration failed", failure);
+            Toast.makeText(this, "Не удалось перенести старые файлы проекта. Проект не изменён.",
+                    Toast.LENGTH_LONG).show();
+            return false;
+        }
         imageCache.clear();
         widgets.clear(); screens.clear(); currentScreenIndex = 0;
         projectExtraFields = new JSONObject();
-        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         projectName = prefs.getString("project_name", projectName);
-        String json = prefs.getString(ACTIVE_PROJECT, "[]");
         try {
             Object parsed = new org.json.JSONTokener(json).nextValue();
             if (parsed instanceof JSONObject) {
@@ -2419,6 +2456,7 @@ public class MainActivity extends Activity {
         if (screens.isEmpty()) screens.add(new Screen("Экран 1"));
         currentScreenIndex = Math.max(0, Math.min(currentScreenIndex, screens.size() - 1));
         for (Widget w : screens.get(currentScreenIndex).widgets) widgets.add(copyWidget(w));
+        return true;
     }
 
     private void validateImportedProject(String json) throws Exception {
