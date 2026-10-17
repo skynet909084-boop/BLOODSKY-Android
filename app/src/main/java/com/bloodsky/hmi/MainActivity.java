@@ -3008,6 +3008,7 @@ public class MainActivity extends Activity {
 
     /** Offer pin-specific wiring for blocks whose pin names are confirmed in this build. */
     private void chooseFbdPins(int source, int target) {
+        final int screenAtSelection = currentScreenIndex;
         String sourceType = widgets.get(source).type;
         String targetType = widgets.get(target).type;
         String[] sourcePins = knownFbdPins(sourceType, true);
@@ -3021,6 +3022,13 @@ public class MainActivity extends Activity {
                         new AlertDialog.Builder(this).setTitle("Вход FBD")
                                 .setItems(targetPins, (targetDialog, targetChoice) -> {
                                     try {
+                                        if (screenAtSelection != currentScreenIndex || source >= widgets.size()
+                                                || target >= widgets.size()
+                                                || !sourceType.equals(widgets.get(source).type)
+                                                || !targetType.equals(widgets.get(target).type)) {
+                                            Toast.makeText(this, "FBD-блоки изменились: выбери их заново", Toast.LENGTH_LONG).show();
+                                            return;
+                                        }
                                         FbdConnection edge = pinnedFbdConnection(source, sourcePins[sourceChoice],
                                                 target, targetPins[targetChoice]);
                                         JSONObject json = connectionToJson(edge);
@@ -3052,6 +3060,16 @@ public class MainActivity extends Activity {
                 || source < 0 || target < 0 || source >= widgets.size() || target >= widgets.size()
                 || source == target || !isFbd(widgets.get(source)) || !isFbd(widgets.get(target))) return;
         Screen screen = screens.get(currentScreenIndex);
+        try {
+            if (!hasCompatibleKnownFbdPins(connectionToJson(edge), widgets.get(source).type,
+                    widgets.get(target).type)) {
+                Toast.makeText(this, "Несовместимые контакты FBD", Toast.LENGTH_SHORT).show();
+                return;
+            }
+        } catch (Exception invalid) {
+            Toast.makeText(this, "Некорректная связь FBD", Toast.LENGTH_SHORT).show();
+            return;
+        }
         if (reachesFbd(target, source, new boolean[widgets.size()], screen.connections)) {
             Toast.makeText(this, "Связь отменена: она создаёт цикл в FBD", Toast.LENGTH_LONG).show();
             return;
