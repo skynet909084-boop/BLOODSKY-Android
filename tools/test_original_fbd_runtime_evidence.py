@@ -42,6 +42,19 @@ class RuntimeEvidenceTest(unittest.TestCase):
             self.assertTrue(all(len(row["evidence"]) <= 96 for row in output["classes"]))
             self.assertRaises(ValueError, generate_report, archive, "0" * 64)
 
+    def test_bounded_execution_body_and_qualified_parent(self):
+        raw = (b"import ru.himik.nightscream.kascada.Logic.c.d;\n"
+               b"public class FB_CTU extends ru.himik.nightscream.kascada.Logic.c.d {\n"
+               b" public void f() { if (reset) { value = 0; } else if (inc) { value++; } }\n"
+               b" public Object getOut() { return Integer.valueOf(value); }\n"
+               b"}\n")
+        doc = inspect_class(SOURCE_PREFIX + "FB_CTU.java", raw)
+        self.assertEqual("ru.himik.nightscream.kascada.Logic.c.d", doc["extends"])
+        self.assertIn("ru.himik.nightscream.kascada.Logic.c.d", doc["imports"])
+        self.assertEqual(1, len(doc["execution"]))
+        self.assertIn("else if (inc)", doc["execution"][0]["code"])
+        self.assertEqual(3, doc["execution"][0]["line"])
+
     def test_bad_zip_path_rejected(self):
         with TemporaryDirectory() as tmp:
             path = Path(tmp) / "malicious.zip"
