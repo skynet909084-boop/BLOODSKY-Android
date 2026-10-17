@@ -2547,6 +2547,24 @@ public class MainActivity extends Activity {
         return json;
     }
 
+    /** Create an explicitly pinned connection; reject malformed metadata before graph mutation. */
+    public static FbdConnection pinnedFbdConnection(int source, String sourcePin,
+                                                     int target, String targetPin) throws Exception {
+        if (source < 0 || target < 0 || source == target) {
+            throw new IllegalArgumentException("Invalid FBD endpoints");
+        }
+        JSONObject metadata = new JSONObject();
+        metadata.put("source", source);
+        metadata.put("target", target);
+        metadata.put("sourcePin", sourcePin);
+        metadata.put("targetPin", targetPin);
+        FbdConnection edge = connectionFromJson(metadata);
+        if (!hasValidFbdPinMetadata(edge)) {
+            throw new IllegalArgumentException("Invalid FBD pin metadata");
+        }
+        return edge;
+    }
+
     /** Check whether an edge's explicit pin metadata is well-formed; legacy edges have no pins. */
     public static boolean hasValidFbdPinMetadata(FbdConnection edge) {
         if (edge == null || edge.extraFields == null) return false;
