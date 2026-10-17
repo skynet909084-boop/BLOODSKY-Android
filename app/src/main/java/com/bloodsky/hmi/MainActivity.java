@@ -3284,6 +3284,19 @@ public class MainActivity extends Activity {
             return minV != 0.0;
         }
         if ("FBD CRAFT SEL".equals(widget.type)) {
+            // Original getOut() returns null until all three terminals are
+            // driven. This graph stores a safe numeric 0 for missing signals.
+            boolean inPresent = false, i1Present = false, i2Present = false;
+            for (String pin : inputPins) {
+                String terminal = canonicalFbdPinName(pin);
+                if ("IN".equals(terminal)) inPresent = true;
+                if ("I1".equals(terminal)) i1Present = true;
+                if ("I2".equals(terminal)) i2Present = true;
+            }
+            if (!inPresent || !i1Present || !i2Present) {
+                cacheNumeric[index] = 0.0;
+                return false;
+            }
             // Pinned original FB_SEL: IN ? I2 : I1, signed Integer output.
             // Never reinterpret legacy SEL G/IN0/IN1/OUT or auto-round FLOAT.
             boolean selector = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
