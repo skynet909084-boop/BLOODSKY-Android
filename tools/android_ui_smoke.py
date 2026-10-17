@@ -137,7 +137,8 @@ class Smoke:
             if bounds and bounds == previous:
                 x, y = center(bounds)
                 print('Opening document', filename, 'at', x, y, flush=True)
-                adb('shell', 'input', 'tap', str(x), str(y))
+                adb('shell', 'CLASSPATH=/data/local/tmp/bloodsky-ui-input.jar',
+                    'app_process', '/system/bin', 'BloodskyFingerTap', str(x), str(y))
                 attempts += 1
                 for _ in range(3):
                     xml = self.dump()
@@ -196,6 +197,7 @@ class Smoke:
         if not serial.startswith('emulator-') or adb('shell', 'getprop', 'ro.kernel.qemu').strip() != '1':
             raise RuntimeError('UI smoke requires a disposable emulator; refusing to clear device data')
         adb('install', '-r', str(apk))
+        adb('push', 'build/ui-input/bloodsky-ui-input.jar', '/data/local/tmp/bloodsky-ui-input.jar')
         adb('shell', 'pm', 'clear', PACKAGE)
         adb('logcat', '-c')
         adb('shell', 'settings', 'put', 'system', 'accelerometer_rotation', '0')
