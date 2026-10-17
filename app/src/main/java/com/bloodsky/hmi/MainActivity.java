@@ -1622,7 +1622,8 @@ public class MainActivity extends Activity {
                 "FBD — Craft CTU 16 бит (+, −, R)",
                 "FBD — Craft T (переключатель по фронту)",
                 "FBD — Craft BLINK (мигание)",
-                "FBD — Craft SEL (целочисленный)"
+                "FBD — Craft SEL (целочисленный)",
+                "FBD — Craft COMPARE (INT32)"
         };
         final String[] types = {
                 "Текст", "Кнопка", "Индикатор", "Задатчик",
@@ -1638,7 +1639,7 @@ public class MainActivity extends Activity {
                 "FBD RS", "FBD SR", "FBD CTU",
                 "FBD CTD", "FBD R_TRIG", "FBD F_TRIG",
                 "FBD CRAFT CTU", "FBD CRAFT T", "FBD CRAFT BLINK",
-                "FBD CRAFT SEL"
+                "FBD CRAFT SEL", "FBD CRAFT COMPARE"
         };
         final String[] defaults = {
                 "Надпись", "Кнопка", "Индикатор", "Задатчик: 0",
@@ -1650,7 +1651,7 @@ public class MainActivity extends Activity {
                 "Float->Int", "Int->Float",
                 "MOVE", "SEL", "ABS", "MIN/MAX",
                 "RS", "SR", "CTU", "CTD", "R_TRIG", "F_TRIG",
-                "CTU 16 bit", "T", "BLINK", "SEL"
+                "CTU 16 bit", "T", "BLINK", "SEL", ">"
         };
         LinearLayout list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
@@ -2049,9 +2050,12 @@ public class MainActivity extends Activity {
         final EditText compareLeftField;
         final EditText compareOperatorField;
         final EditText compareRightField;
-        if ("FBD Сравнение".equals(w.type)) {
+        if ("FBD Сравнение".equals(w.type)
+                || "FBD CRAFT COMPARE".equals(w.type)) {
             TextView compareLabel = new TextView(this);
-            compareLabel.setText("Числовое сравнение A / оператор / B");
+            compareLabel.setText("FBD CRAFT COMPARE".equals(w.type)
+                    ? "Craft INT32: оператор >, <, <=, >=, ==, !=; входы IN1/IN2"
+                    : "Числовое сравнение A / оператор / B");
             compareLabel.setPadding(0, dp(10), 0, 0);
             form.addView(compareLabel);
             compareLeftField = propertyField(Double.toString(w.compareA), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
@@ -2227,7 +2231,10 @@ public class MainActivity extends Activity {
                         w.compareA = fbd.left;
                         w.compareB = fbd.right;
                         w.compareOperator = fbd.operator;
-                        w.text = Double.toString(w.compareA) + " " + w.compareOperator + " " + Double.toString(w.compareB);
+                        w.text = "FBD CRAFT COMPARE".equals(w.type)
+                                ? w.compareOperator
+                                : Double.toString(w.compareA) + " " + w.compareOperator
+                                        + " " + Double.toString(w.compareB);
                     }
                     if (minValField != null) {
                         w.minValue = readDouble(minValField, w.minValue);
@@ -2924,6 +2931,10 @@ public class MainActivity extends Activity {
             if (output && "OUT".equals(name)) return "NUMBER";
             if (!output && "IN".equals(name)) return "NUMBER";
         }
+        if (kind.equals("FBD CRAFT COMPARE")) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && ("IN1".equals(name) || "IN2".equals(name))) return "NUMBER";
+        }
         if (kind.equals("FBD CRAFT SEL")) {
             if (output && "Q".equals(name)) return "NUMBER";
             if (!output && "IN".equals(name)) return "BOOL";
@@ -3427,6 +3438,23 @@ public class MainActivity extends Activity {
         }
         if ("FBD НЕ".equals(canonicalType))
             return !fbdBooleanPinValue(inputs, inputPins, "IN", 0);
+        if ("FBD CRAFT COMPARE".equals(widget.type)) {
+            // Source FB_COMPARE uses signed Integer operands, never float.
+            // Invalid, disconnected or fractional operands safely return false.
+            boolean i1Connected = false, i2Connected = false;
+            for (String name : inputPins) {
+                if ("IN1".equals(canonicalFbdPinName(name))) i1Connected = true;
+                if ("IN2".equals(canonicalFbdPinName(name))) i2Connected = true;
+            }
+            if (!i1Connected || !i2Connected) return false;
+            Integer left = FbdCraftIntegerSelector.exactInteger(
+                    fbdNumericPinValue(numInputs, inputPins, "IN1", 0, Double.NaN));
+            Integer right = FbdCraftIntegerSelector.exactInteger(
+                    fbdNumericPinValue(numInputs, inputPins, "IN2", 1, Double.NaN));
+            return left != null && right != null
+                    && FbdCraftIntegerCompare.compare(
+                            left, right, normalizeComparisonOperatorStatic(widget.compareOperator));
+        }
         if ("FBD Сравнение".equals(widget.type)) {
             double a = fbdNumericPinValue(numInputs, inputPins, "A", 0, widget.compareA);
             double b = fbdNumericPinValue(numInputs, inputPins, "B", 1, widget.compareB);
@@ -3806,6 +3834,8 @@ public class MainActivity extends Activity {
                 || "FBD УМНОЖЕНИЕ".equals(kind) || "FBD ДЕЛЕНИЕ".equals(kind)
                 || "FBD MIN_MAX".equals(kind))
             return output ? new String[]{"OUT"} : new String[]{"IN1", "IN2"};
+        if ("FBD CRAFT COMPARE".equals(kind))
+            return output ? new String[]{"Q"} : new String[]{"IN1", "IN2"};
         if ("FBD СРАВНЕНИЕ".equals(kind))
             return output ? new String[]{"Q"} : new String[]{"A", "B"};
         if ("FBD MOVE".equals(kind))
