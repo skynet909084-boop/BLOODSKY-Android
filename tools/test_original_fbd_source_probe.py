@@ -108,6 +108,40 @@ class OriginalFbdSourceProbeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "mismatch"):
             assert_pinned_original_labels(wrong)
 
+    def test_comments_and_quoted_method_names_are_not_original_pin_evidence(self):
+        source = (
+            'class FB_CTU {\n'
+            '  // drawText("PV"); getValue();\n'
+            '  /* drawText("CU"); setValue();\n'
+            '     drawText("PT"); getInput(); */\n'
+            '  String note = "getValue("; // setName("TOF");\n'
+            '  String url = "http://host"; // drawText("TP");\n'
+            '  void body() { drawText("CTU"); drawText("+"); drawText("-");'
+            ' drawText("R"); drawText("Q"); setName("CTU"); }\n'
+            '}\n'
+        )
+        row = contract_fingerprint(SOURCE_PREFIX + "FB_CTU.java", source.encode())
+        self.assertEqual(["CTU", "+", "-", "R", "Q", "CTU"],
+                         [label["value"] for label in row["literal_labels"]])
+        self.assertEqual([7] * 6, [label["line"] for label in row["literal_labels"]])
+        self.assertEqual(["drawText"] * 5 + ["setName"],
+                         [call["name"] for call in row["method_calls"]])
+        self.assertEqual([7] * 6, [call["line"] for call in row["method_calls"]])
+
+    def test_block_comments_do_not_hide_following_real_code(self):
+        source = ('/* "CTU" and getValue() */ drawText("R");\n'
+                  '/* ignored drawText("PV")\n'
+                  '   ignored setValue() */ drawText("S");\n'
+                  'String quoted = "getInput("; char c = \'/\';\n'
+                  'setValue(42);\n'
+                  'get/* comment separating method tokens */Value();\n')
+        row = contract_fingerprint(SOURCE_PREFIX + "FB_RS.java", source.encode())
+        self.assertEqual(["R", "S"], [label["value"] for label in row["literal_labels"]])
+        self.assertEqual([1, 3], [label["line"] for label in row["literal_labels"]])
+        self.assertEqual(["drawText", "drawText", "setValue"],
+                         [call["name"] for call in row["method_calls"]])
+        self.assertEqual([1, 3, 5], [call["line"] for call in row["method_calls"]])
+
     def test_no_marker_does_not_invent_timer_semantics(self):
         path, digest = self.archive({SOURCE_PREFIX + "Unknown.java": "class Unknown { int a; }"})
         result = report_from_zip(path, digest)
