@@ -2468,7 +2468,7 @@ public class MainActivity extends Activity {
             List<List<Integer>> adjacency = new ArrayList<>();
             int[] indegree = new int[nodeCount];
             for (int node = 0; node < nodeCount; node++) adjacency.add(new ArrayList<>());
-            java.util.HashSet<Long> uniqueEdges = new java.util.HashSet<>();
+            java.util.HashMap<Long, java.util.HashSet<String>> pinsByPair = new java.util.HashMap<>();
             java.util.HashSet<String> occupiedTargetPins = new java.util.HashSet<>();
             for (int j = 0; j < connections.length(); j++) {
                 JSONObject edge = connections.optJSONObject(j);
@@ -2496,7 +2496,16 @@ public class MainActivity extends Activity {
                     throw new IllegalArgumentException("Multiple FBD wires drive the same target pin");
                 }
                 long edgeKey = (((long) source) << 32) | (target & 0xffffffffL);
-                if (!uniqueEdges.add(edgeKey)) throw new IllegalArgumentException("Duplicate FBD connection");
+                java.util.HashSet<String> pairPins = pinsByPair.get(edgeKey);
+                if (pairPins == null) {
+                    pairPins = new java.util.HashSet<>();
+                    pinsByPair.put(edgeKey, pairPins);
+                }
+                String normalizedPin = targetPin.toUpperCase(java.util.Locale.ROOT);
+                if (pairPins.contains("") || (normalizedPin.isEmpty() && !pairPins.isEmpty())
+                        || !pairPins.add(normalizedPin)) {
+                    throw new IllegalArgumentException("Duplicate FBD connection");
+                }
                 adjacency.get(source).add(target);
                 indegree[target]++;
             }
@@ -2614,6 +2623,15 @@ public class MainActivity extends Activity {
             }
             if (!output && "PV".equals(name)) return "NUMBER";
         }
+        if (kind.equals("FBD POW")) {
+            if (output && "OUT".equals(name)) return "NUMBER";
+            if (!output && ("BASE".equals(name) || "EXP".equals(name))) return "NUMBER";
+        }
+        if (kind.equals("FBD SIN") || kind.equals("FBD ABS")
+                || kind.equals("FBD FLOATTOINT") || kind.equals("FBD INTTOFLOAT")) {
+            if (output && "OUT".equals(name)) return "NUMBER";
+            if (!output && "IN".equals(name)) return "NUMBER";
+        }
         if (kind.equals("FBD TON")) {
             if (output && "Q".equals(name)) return "BOOL";
             if (!output && "IN".equals(name)) return "BOOL";
@@ -2630,18 +2648,10 @@ public class MainActivity extends Activity {
         String targetPin = edge.optString("targetPin", "");
         String sourceKnown = knownFbdPinType(sourceType, sourcePin, true);
         String targetKnown = knownFbdPinType(targetType, targetPin, false);
-        boolean sourceBlockKnown = "FBD ВХОД".equalsIgnoreCase(canonicalFbdBlockType(sourceType)) || "FBD AND".equalsIgnoreCase(canonicalFbdBlockType(sourceType)) || "FBD OR".equalsIgnoreCase(canonicalFbdBlockType(sourceType))
-                || "FBD XOR".equalsIgnoreCase(canonicalFbdBlockType(sourceType)) || "FBD RS".equalsIgnoreCase(canonicalFbdBlockType(sourceType)) || "FBD SR".equalsIgnoreCase(canonicalFbdBlockType(sourceType))
-                || "FBD R_TRIG".equalsIgnoreCase(canonicalFbdBlockType(sourceType))
-                || "FBD F_TRIG".equalsIgnoreCase(canonicalFbdBlockType(sourceType))
-                || "FBD TON".equalsIgnoreCase(canonicalFbdBlockType(sourceType)) || "FBD CTU".equalsIgnoreCase(canonicalFbdBlockType(sourceType))
-                || "FBD CTD".equalsIgnoreCase(canonicalFbdBlockType(sourceType));
-        boolean targetBlockKnown = "FBD ВХОД".equalsIgnoreCase(canonicalFbdBlockType(targetType)) || "FBD AND".equalsIgnoreCase(canonicalFbdBlockType(targetType)) || "FBD OR".equalsIgnoreCase(canonicalFbdBlockType(targetType))
-                || "FBD XOR".equalsIgnoreCase(canonicalFbdBlockType(targetType)) || "FBD RS".equalsIgnoreCase(canonicalFbdBlockType(targetType)) || "FBD SR".equalsIgnoreCase(canonicalFbdBlockType(targetType))
-                || "FBD R_TRIG".equalsIgnoreCase(canonicalFbdBlockType(targetType))
-                || "FBD F_TRIG".equalsIgnoreCase(canonicalFbdBlockType(targetType))
-                || "FBD TON".equalsIgnoreCase(canonicalFbdBlockType(targetType)) || "FBD CTU".equalsIgnoreCase(canonicalFbdBlockType(targetType))
-                || "FBD CTD".equalsIgnoreCase(canonicalFbdBlockType(targetType));
+        boolean sourceBlockKnown = knownFbdPins(sourceType, true).length > 0
+                || knownFbdPins(sourceType, false).length > 0;
+        boolean targetBlockKnown = knownFbdPins(targetType, true).length > 0
+                || knownFbdPins(targetType, false).length > 0;
         if ((sourceBlockKnown && sourceKnown == null) || (targetBlockKnown && targetKnown == null)) return false;
         if (sourceKnown != null && targetKnown != null && !sourceKnown.equals(targetKnown)) return false;
         if (sourceKnown != null && edge.has("sourceSignalType")
@@ -2690,6 +2700,15 @@ public class MainActivity extends Activity {
         return sourcePin instanceof String && targetPin instanceof String
                 && !((String) sourcePin).trim().isEmpty()
                 && !((String) targetPin).trim().isEmpty();
+    }
+
+    /** A single source may drive distinct named pins on one target, but never twice the same pin. */
+    public static boolean duplicateFbdEndpoint(FbdConnection oldEdge, FbdConnection newEdge) {
+        if (oldEdge == null || newEdge == null || oldEdge.source != newEdge.source
+                || oldEdge.target != newEdge.target) return false;
+        String oldPin = oldEdge.extraFields.optString("targetPin", "");
+        String newPin = newEdge.extraFields.optString("targetPin", "");
+        return oldPin.isEmpty() || newPin.isEmpty() || oldPin.equalsIgnoreCase(newPin);
     }
 
     /** Remove a selected edge by identity, even if a legacy project contains duplicates. */
@@ -2771,14 +2790,15 @@ public class MainActivity extends Activity {
     public static int fbdCountUpStep(int current, boolean count, boolean previousCount,
                                       boolean reset) {
         if (reset) return 0;
-        return count && !previousCount ? Math.min(1000000, Math.max(0, current) + 1)
-                : Math.max(0, current);
+        int bounded = Math.max(0, Math.min(1000000, current));
+        return count && !previousCount && bounded < 1000000 ? bounded + 1 : bounded;
     }
 
     public static int fbdCountDownStep(int current, boolean count, boolean previousCount,
                                         boolean load, int preset) {
-        if (load) return preset;
-        return count && !previousCount ? Math.max(0, current - 1) : Math.max(0, current);
+        if (load) return Math.max(0, Math.min(1000000, preset));
+        int bounded = Math.max(0, Math.min(1000000, current));
+        return count && !previousCount && bounded > 0 ? bounded - 1 : bounded;
     }
 
     /** Counter preset is a nonnegative integer; preserve saved preset for invalid PV. */
@@ -2854,14 +2874,14 @@ public class MainActivity extends Activity {
             return div != 0.0;
         }
         if ("FBD ABS".equals(widget.type)) {
-            double val = numInputs.isEmpty() ? 0.0 : Math.abs(numInputs.get(0));
+            double val = Math.abs(fbdNumericPinValue(numInputs, inputPins, "IN", 0, 0.0));
             if (Double.isNaN(val) || Double.isInfinite(val)) val = 0.0;
             cacheNumeric[index] = val;
             return val != 0.0;
         }
         if ("FBD POW".equals(widget.type)) {
-            double base = numInputs.isEmpty() ? widget.compareA : numInputs.get(0);
-            double exp = numInputs.size() > 1 ? numInputs.get(1) : 1.0;
+            double base = fbdNumericPinValue(numInputs, inputPins, "BASE", 0, widget.compareA);
+            double exp = fbdNumericPinValue(numInputs, inputPins, "EXP", 1, 1.0);
             double res = Math.pow(base, exp);
             if (Double.isNaN(res) || Double.isInfinite(res)) res = 0.0;
             cacheNumeric[index] = res;
@@ -2875,7 +2895,7 @@ public class MainActivity extends Activity {
             return res != 0.0;
         }
         if ("FBD SIN".equals(widget.type)) {
-            double val = numInputs.isEmpty() ? widget.compareA : numInputs.get(0);
+            double val = fbdNumericPinValue(numInputs, inputPins, "IN", 0, widget.compareA);
             double res = Math.sin(val);
             if (Double.isNaN(res) || Double.isInfinite(res)) res = 0.0;
             cacheNumeric[index] = res;
@@ -2896,13 +2916,13 @@ public class MainActivity extends Activity {
             return res != 0.0;
         }
         if ("FBD FloatToInt".equals(widget.type)) {
-            double val = numInputs.isEmpty() ? widget.compareA : numInputs.get(0);
+            double val = fbdNumericPinValue(numInputs, inputPins, "IN", 0, widget.compareA);
             double res = (double) ((long) val);
             cacheNumeric[index] = res;
             return res != 0.0;
         }
         if ("FBD IntToFloat".equals(widget.type)) {
-            double val = numInputs.isEmpty() ? widget.compareA : numInputs.get(0);
+            double val = fbdNumericPinValue(numInputs, inputPins, "IN", 0, widget.compareA);
             cacheNumeric[index] = val;
             return val != 0.0;
         }
@@ -3169,6 +3189,10 @@ public class MainActivity extends Activity {
             return output ? new String[]{"Q"} : new String[]{"IN"};
         if ("FBD CTU".equals(kind)) return output ? new String[]{"Q"} : new String[]{"CU", "R", "PV"};
         if ("FBD CTD".equals(kind)) return output ? new String[]{"Q"} : new String[]{"CD", "LD", "PV"};
+        if ("FBD POW".equals(kind)) return output ? new String[]{"OUT"} : new String[]{"BASE", "EXP"};
+        if ("FBD SIN".equals(kind) || "FBD ABS".equals(kind)
+                || "FBD FLOATTOINT".equals(kind) || "FBD INTTOFLOAT".equals(kind))
+            return output ? new String[]{"OUT"} : new String[]{"IN"};
         if ("FBD TON".equals(kind)) return output ? new String[]{"Q"} : new String[]{"IN", "PT"};
         return new String[0];
     }
@@ -3200,7 +3224,7 @@ public class MainActivity extends Activity {
                 Toast.makeText(this, "Вход FBD уже занят другим проводом", Toast.LENGTH_SHORT).show();
                 return;
             }
-            if (existing.source == source && existing.target == target) {
+            if (duplicateFbdEndpoint(existing, edge)) {
                 Toast.makeText(this, "Такая связь уже существует", Toast.LENGTH_SHORT).show();
                 return;
             }
