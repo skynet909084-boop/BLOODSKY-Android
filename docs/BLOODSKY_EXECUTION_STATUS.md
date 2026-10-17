@@ -23,9 +23,11 @@ Target: original KaScada Craft 1.0.7 functionality and appearance with BLOODSKY 
 
 - PR65: source 40dp upper toolbar with clock/hide/reveal/palette, original run/stop controls and separate operator gestures. Accepted at `26b79714ff73525968d2c30fdb918ac96324e4b8`; [APK/unit run 366](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/38994541962) and [UI run 37](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/38994542013) passed. Merged to main. Editor taps edit properties; runtime taps operate controls. Runtime drag/long-press, state persistence after restart and stop/Back restoration are verified.
 
+- PR67: original 40-preview FBD catalogue, nine existing-engine actions, explicit disabled source entries and strict atomic timer/counter/comparison property validation. Accepted at `bd9ec2725fefa598bf0038e98b48491619388721`; [APK/unit run 374](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39001572333) and [UI run 43](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39001572328) passed. 83 Python checks, 133 Android tests; AND/TON add, timer0 rejection, exact2345ms retention after process death plus the complete prior smoke verified. Merged to main. See [provenance, adaptations and limits](ORIGINAL_FBD_PALETTE.md).
+
 ## Remaining implementation work
 
-- Complete original toolbar overlay/settings/menu behavior, FBD picker, unsupported palette components, all property/context dialogs, fonts/drawables and every supported state; corresponding equal-density screenshots. Original home, calculator, supported palette and indicator wiring cover only part of this phase.
+- Complete original toolbar overlay/settings/menu behavior, FBD picker semantics, unsupported palette components, all property/context dialogs, fonts/drawables and every supported state; corresponding equal-density screenshots. Original home, calculator, supported palette and indicator wiring cover only part of this phase.
 - Original SQLite `Rovki.db`/table and project-archive compatibility, including real-project fixture round trips. The named catalog/JSON ZIP format is BLOODSKY's own layer, not original database compatibility.
 - Complete original component registry/property semantics, macros, pin-specific FBD layout and source-confirmed execution order/timing. Existing generic FBD/math tests do not prove original semantic parity.
 - Source-confirmed system registers/device configuration. Do not accept PR45's unsupported register/timing claims as implementation specifications.
