@@ -2547,6 +2547,11 @@ public class MainActivity extends Activity {
         return json;
     }
 
+    /** Remove a selected edge by identity, even if a legacy project contains duplicates. */
+    public static boolean disconnectFbdEdge(List<FbdConnection> connections, FbdConnection selected) {
+        return connections != null && selected != null && connections.remove(selected);
+    }
+
     /** Remove only the selected directed edge; keep other edges and their metadata intact. */
     public static boolean disconnectFbdEdge(List<FbdConnection> connections, int source, int target) {
         if (connections == null || source < 0 || target < 0) return false;
@@ -2881,7 +2886,7 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle("Удалить связь FBD")
                 .setItems(labels.toArray(new String[0]), (dialog, selected) -> {
                     FbdConnection edge = candidates.get(selected);
-                    if (screen.connections.remove(edge)) {
+                    if (disconnectFbdEdge(screen.connections, edge)) {
                         persistProject();
                         if (editor != null) editor.invalidate();
                         Toast.makeText(this, "Связь FBD удалена", Toast.LENGTH_SHORT).show();
