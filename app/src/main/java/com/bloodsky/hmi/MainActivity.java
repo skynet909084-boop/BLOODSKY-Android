@@ -1415,6 +1415,58 @@ public class MainActivity extends Activity {
 
     private void showWidgetContextMenu() {
         if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) return;
+        if (isFbd(widgets.get(editor.selected))) {
+            showFbdBlockContextMenu(editor.selected);
+            return;
+        }
+        showStandardWidgetContextMenu();
+    }
+
+    /** Source-ordered FBD actions with existing typed graph guards. */
+    private void showFbdBlockContextMenu(final int blockIndex) {
+        if (operatorMode || blockIndex < 0 || blockIndex >= widgets.size()) return;
+        final Widget widget = widgets.get(blockIndex);
+        final boolean timer = "FBD Таймер".equals(widget.type)
+                || "FBD TOF".equals(widget.type) || "FBD TP".equals(widget.type);
+        final boolean invertible = knownFbdPins(widget.type, true).length == 1
+                && "BOOL".equals(knownFbdPinType(widget.type,
+                        knownFbdPins(widget.type, true)[0], true));
+        final java.util.List<String> labels = new ArrayList<>();
+        labels.add("Соединить с…");
+        if (invertible) labels.add("Инвертировать связь BOOL…");
+        labels.add("Отсоединить выход");
+        if (timer) labels.add("Режим / единицы времени");
+        labels.add("Свойства");
+        labels.add("Другие действия");
+        new AlertDialog.Builder(this).setTitle(widget.text == null ? widget.type : widget.text)
+                .setItems(labels.toArray(new String[0]), (dialog, choice) -> {
+                    if (blockIndex >= widgets.size() || widgets.get(blockIndex) != widget) {
+                        Toast.makeText(this, "FBD изменён: выбери блок заново", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    String label = labels.get(choice);
+                    if ("Соединить с…".equals(label)) {
+                        fbdWireMode = true;
+                        wireSource = blockIndex;
+                        Toast.makeText(this, "Выбери целевой блок FBD", Toast.LENGTH_LONG).show();
+                    } else if ("Инвертировать связь BOOL…".equals(label)) {
+                        showFbdInversionDialog(blockIndex);
+                    } else if ("Отсоединить выход".equals(label)) {
+                        showFbdDisconnectDialog(blockIndex);
+                    } else if ("Режим / единицы времени".equals(label)
+                            || "Свойства".equals(label)) {
+                        editor.selected = blockIndex;
+                        editSelectedWidget();
+                    } else {
+                        editor.selected = blockIndex;
+                        showStandardWidgetContextMenu();
+                    }
+                    if (editor != null) editor.invalidate();
+                }).setNegativeButton("Отмена", null).show();
+    }
+
+    private void showStandardWidgetContextMenu() {
+        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) return;
 
         Widget selectedWidget = widgets.get(editor.selected);
         String titleText = selectedWidget.text == null || selectedWidget.text.trim().isEmpty()
@@ -3368,13 +3420,16 @@ public class MainActivity extends Activity {
     }
 
     /** Named BOOL-only wire inversion, with undo/redo and immediate persistence. */
-    private void showFbdInversionDialog() {
+    private void showFbdInversionDialog() { showFbdInversionDialog(-1); }
+
+    private void showFbdInversionDialog(int sourceFilter) {
         if (operatorMode || screens.isEmpty() || currentScreenIndex < 0
                 || currentScreenIndex >= screens.size()) return;
         Screen screen = screens.get(currentScreenIndex);
         final List<FbdConnection> choices = new ArrayList<>();
         final List<String> labels = new ArrayList<>();
         for (FbdConnection edge : screen.connections) {
+            if (edge == null || (sourceFilter >= 0 && edge.source != sourceFilter)) continue;
             if (edge.source < 0 || edge.target < 0
                     || edge.source >= widgets.size() || edge.target >= widgets.size()) continue;
             Widget from = widgets.get(edge.source);
@@ -3419,7 +3474,9 @@ public class MainActivity extends Activity {
                 }).setNegativeButton("Отмена", null).show();
     }
 
-    private void showFbdDisconnectDialog() {
+    private void showFbdDisconnectDialog() { showFbdDisconnectDialog(-1); }
+
+    private void showFbdDisconnectDialog(int sourceFilter) {
         if (screens.isEmpty() || currentScreenIndex < 0 || currentScreenIndex >= screens.size()) return;
         Screen screen = screens.get(currentScreenIndex);
         if (screen.connections.isEmpty()) {
@@ -3429,7 +3486,8 @@ public class MainActivity extends Activity {
         final List<FbdConnection> candidates = new ArrayList<>();
         final List<String> labels = new ArrayList<>();
         for (FbdConnection edge : screen.connections) {
-            if (edge == null || edge.source < 0 || edge.target < 0
+            if (edge == null || (sourceFilter >= 0 && edge.source != sourceFilter)
+                    || edge.source < 0 || edge.target < 0
                     || edge.source >= widgets.size() || edge.target >= widgets.size()) continue;
             candidates.add(edge);
             JSONObject metadata = edge.extraFields;
