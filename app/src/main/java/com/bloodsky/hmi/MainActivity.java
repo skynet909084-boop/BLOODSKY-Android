@@ -3055,7 +3055,7 @@ public class MainActivity extends Activity {
         String kind = blockType.trim().toUpperCase(java.util.Locale.ROOT);
         if ("FBD AND".equals(kind) || "FBD OR".equals(kind) || "FBD XOR".equals(kind))
             return output ? new String[]{"Q"} : new String[]{"IN1", "IN2"};
-        if ("FBD RS".equals(kind)) return output ? new String[]{"Q"} : new String[]{"S", "R"};
+        if ("FBD RS".equals(kind)) return output ? new String[]{"Q"} : new String[]{"R", "S"};
         if ("FBD TON".equals(kind)) return output ? new String[]{"Q"} : new String[]{"IN", "PT"};
         return new String[0];
     }
