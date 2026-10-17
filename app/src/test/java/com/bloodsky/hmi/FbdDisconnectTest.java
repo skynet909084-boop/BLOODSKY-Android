@@ -343,6 +343,19 @@ public class FbdDisconnectTest {
         assertFalse(MainActivity.hasCompatibleKnownFbdPins(edge, "FBD Вход", "FBD Таймер"));
     }
 
+    @Test public void srAndEdgeTriggerContactsHaveTypedContracts() throws Exception {
+        assertArrayEquals(new String[]{"R", "S"}, MainActivity.knownFbdPins("FBD SR", false));
+        assertArrayEquals(new String[]{"IN"}, MainActivity.knownFbdPins("FBD R_TRIG", false));
+        assertArrayEquals(new String[]{"Q"}, MainActivity.knownFbdPins("FBD F_TRIG", true));
+        JSONObject edge = new JSONObject().put("source", 0).put("target", 1)
+                .put("sourcePin", "Q").put("targetPin", "IN");
+        assertTrue(MainActivity.hasCompatibleKnownFbdPins(edge, "FBD Вход", "FBD R_TRIG"));
+        edge.put("targetPin", "R");
+        assertTrue(MainActivity.hasCompatibleKnownFbdPins(edge, "FBD Вход", "FBD SR"));
+        edge.put("targetPin", "PT");
+        assertFalse(MainActivity.hasCompatibleKnownFbdPins(edge, "FBD Вход", "FBD SR"));
+    }
+
     @Test public void invalidEndpointsDoNotMutateGraph() {
         List<MainActivity.FbdConnection> edges = new ArrayList<>();
         edges.add(new MainActivity.FbdConnection(0, 1));
