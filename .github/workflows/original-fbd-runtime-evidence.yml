@@ -1,0 +1,37 @@
+name: BLOODSKY FBD original runtime evidence
+
+on:
+  pull_request:
+    paths:
+      - 'tools/original_fbd_runtime_evidence.py'
+      - 'tools/test_original_fbd_runtime_evidence.py'
+      - '.github/workflows/original-fbd-runtime-evidence.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: original-fbd-runtime-evidence-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-runtime-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Unit test bounded read-only extraction
+        run: python -m unittest discover -s tools -p 'test_original_fbd_runtime_evidence.py' -v
+      - name: Extract pinned original FBD runtime and superclasses
+        run: python tools/original_fbd_runtime_evidence.py
+      - name: Upload runtime evidence JSON (not original Java archive)
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-fbd-runtime-evidence
+          path: build-reports/original-fbd-runtime-evidence.json
+          if-no-files-found: error
+          retention-days: 7
