@@ -18,11 +18,11 @@
 ```powershell
 git clone https://github.com/skynet909084-boop/BLOODSKY-Android.git
 cd BLOODSKY-Android
-git switch feat/fbd-75-pin-semantics
+git switch ci/offline-windows-selfhosted-20261018
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_bloodsky_windows.ps1 -UiProfile None
 ```
 
-**Пока скрипт находится только в изолированной ветке этой заявки, сначала переключись на `ci/offline-windows-selfhosted-20261018`** или дождись проверки/слияния этой заявки в FBD-ветку.
+Эта ветка создана на основе рабочей FBD-ветки #76 и содержит её код плюс новый Windows-скрипт. После проверки и слияния в #76 можно использовать уже основную рабочую FBD-ветку.
 
 После успешной сборки APK будет в `app\build\outputs\apk\debug\app-debug.apk`. Локальный запуск не использует лимит hosted-minutes. Эмулятор необязателен для JUnit и APK. Для полного UI установи Android Emulator и создай/запусти одноразовый Android 11 (API 30) x86_64 AVD, затем повтори с `-UiProfile Full`. Скрипт откажется запускать очищающие UI-проверки на настоящем телефоне. Режим Quick допускается только после принятия и слияния проверенного кода PR #108.
 
