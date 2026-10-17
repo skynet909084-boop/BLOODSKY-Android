@@ -77,6 +77,20 @@ A second standalone source-compatible block `FBD CRAFT T` is now available in BL
 - **Scope:** only BLINK, not original Craft TP whose constructor defaults Q=false and mode body has no Q=true assignment. No claim of pixel-perfect original timer or real-hardware test. Source unit-code 3 multiplier 60000 is verified from archived original. Keep original FBD preview catalogue disabled unless source behavior and visuals are documented individually.
 - **Gate:** standalone PR JUnit/APK and Android API30 test must pass, then merge to #76 feature branch only; never publish `main` without a fully reviewed combined head.
 
+## Original Craft 1.0.7 FBD preview activation — source-backed only
+
+The original fullscreen logic palette already contains imported preview widgets tagged `FB_RS`, `FB_TRIGGER` and `FB_CTU` in both `res/layout` and `res/layout-land`, but those had been greyed out with the unsupported catalogue. They now have proven BLOODSKY actions **without changing the visual positions or replacing the original preview drawings**:
+
+| Original source preview | New action | Verified runtime contract |
+| --- | --- | --- |
+| `FB_RS` | `FBD RS` | BOOL R/S → BOOL Q; reset dominant, matching original source and existing BLOODSKY RS |
+| `FB_TRIGGER` | `FBD CRAFT T` | BOOL IN → BOOL Q, original retained toggle per rising edge, not one-shot R_TRIG |
+| `FB_CTU` | `FBD CRAFT CTU` | BOOL +/−/R → NUMBER Q, independent edges and unsigned 16-bit wrap, NOT the existing threshold BOOL counter |
+
+`OriginalFbdPalette.nativeTypeForOriginalTag` is an explicit allowlist. Unverified source preview tags (`FB_MOVE`, `FB_SEL`, `FB_ARRAY`, `FB_TIMER` alternative modes, MQTT etc.) continue to be disabled; similar names do not establish semantic equivalence. Existing independently verified AND/OR/TON/POW/etc. bindings remain unchanged. The `OriginalFbdDrawing` class and original XML palette geometry are untouched; only click actions for these source-backed rows have been enabled.
+
+`OriginalFbdNativePaletteMappingTest` asserts both native IDs, counter numeric vs legacy bool Q, source RS R/S priority, and unmapped tags. `tools/android_ui_fbd_quick.py` now also tests opening **actual original FBD palette**, tapping RS/T/CTU (not the generic extended picker), verifying new project node types and a cold reload. No original bitmap/source graphics are fabricated or enabled without evidence. This is a **candidate until exact-head Android JUnit, source audits and API30 UI pass**, and does not signify all original FBD previews have been ported.
+
 ## Non-negotiable gates
 
 The runtime feature branch is not automatically promoted into `main`. Keep existing BLOODSKY CTU `CU,R,PV,Q` graph semantics intact. Original source CTU labels `+,-,R,Q`, RS priority and timer units are *open* until verified from original actual superclass implementation. Add separate native-compatible blocks, UI and source test only if the evidence supports actual operation; old project fields/anonymous wires must round-trip unchanged.
