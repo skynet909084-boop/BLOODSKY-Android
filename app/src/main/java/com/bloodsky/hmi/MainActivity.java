@@ -2703,11 +2703,12 @@ public class MainActivity extends Activity {
             if (!output && ("BASE".equals(name) || "EXP".equals(name))) return "NUMBER";
         }
         if (kind.equals("FBD SIN") || kind.equals("FBD ABS")
+                || kind.equals("FBD COS") || kind.equals("FBD TAN") || kind.equals("FBD SQRT")
                 || kind.equals("FBD FLOATTOINT") || kind.equals("FBD INTTOFLOAT")) {
             if (output && "OUT".equals(name)) return "NUMBER";
             if (!output && "IN".equals(name)) return "NUMBER";
         }
-        if (kind.equals("FBD TON")) {
+        if (kind.equals("FBD TON") || kind.equals("FBD TOF") || kind.equals("FBD TP")) {
             if (output && "Q".equals(name)) return "BOOL";
             if (!output && "IN".equals(name)) return "BOOL";
             if (!output && "PT".equals(name)) return "NUMBER";
@@ -2968,7 +2969,7 @@ public class MainActivity extends Activity {
             return res != 0.0;
         }
         if ("FBD SQRT".equals(widget.type)) {
-            double val = numInputs.isEmpty() ? widget.compareA : Math.max(0.0, numInputs.get(0));
+            double val = fbdNumericPinValue(numInputs, inputPins, "IN", 0, widget.compareA);
             double res = Math.sqrt(Math.max(0.0, val));
             if (Double.isNaN(res) || Double.isInfinite(res)) res = 0.0;
             cacheNumeric[index] = res;
@@ -2982,14 +2983,14 @@ public class MainActivity extends Activity {
             return res != 0.0;
         }
         if ("FBD COS".equals(widget.type)) {
-            double val = numInputs.isEmpty() ? widget.compareA : numInputs.get(0);
+            double val = fbdNumericPinValue(numInputs, inputPins, "IN", 0, widget.compareA);
             double res = Math.cos(val);
             if (Double.isNaN(res) || Double.isInfinite(res)) res = 0.0;
             cacheNumeric[index] = res;
             return res != 0.0;
         }
         if ("FBD TAN".equals(widget.type)) {
-            double val = numInputs.isEmpty() ? widget.compareA : numInputs.get(0);
+            double val = fbdNumericPinValue(numInputs, inputPins, "IN", 0, widget.compareA);
             double res = Math.tan(val);
             if (Double.isNaN(res) || Double.isInfinite(res)) res = 0.0;
             cacheNumeric[index] = res;
@@ -3110,17 +3111,18 @@ public class MainActivity extends Activity {
             return now - widget.timerStartedAt >= fbdTonPresetMs(numInputs, inputPins, widget.timerPresetMs);
         }
         if ("FBD TP".equals(widget.type)) {
-            boolean input = !inputs.isEmpty() && inputs.get(0);
+            boolean input = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
             long now = SystemClock.elapsedRealtime();
             if (input && !widget.counterLastInput) widget.timerStartedAt = now;
             widget.counterLastInput = input;
             if (widget.timerStartedAt == 0L) return false;
-            boolean pulseActive = now - widget.timerStartedAt < widget.timerPresetMs;
+            boolean pulseActive = now - widget.timerStartedAt
+                    < fbdTonPresetMs(numInputs, inputPins, widget.timerPresetMs);
             if (!pulseActive) widget.timerStartedAt = 0L;
             return pulseActive;
         }
         if ("FBD TOF".equals(widget.type)) {
-            boolean input = !inputs.isEmpty() && inputs.get(0);
+            boolean input = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
             long now = SystemClock.elapsedRealtime();
             if (input) {
                 widget.counterLastInput = true;
@@ -3132,7 +3134,7 @@ public class MainActivity extends Activity {
                 widget.timerStartedAt = now;
             }
             if (widget.timerStartedAt == 0L) return false;
-            if (now - widget.timerStartedAt >= widget.timerPresetMs) {
+            if (now - widget.timerStartedAt >= fbdTonPresetMs(numInputs, inputPins, widget.timerPresetMs)) {
                 widget.timerStartedAt = 0L;
                 return false;
             }
@@ -3242,8 +3244,8 @@ public class MainActivity extends Activity {
         String[] sourcePins = knownFbdPins(sourceType, true);
         String[] targetPins = knownFbdPins(targetType, false);
         if (sourcePins.length == 0 || targetPins.length == 0) {
-            // Known typed terminals must never be silently downgraded to untyped wires.
-            if (sourcePins.length != targetPins.length) {
+            // A known input-only or output-only block must not fall back to an untyped wire.
+            if (!canUseUnpinnedFbdFallback(sourceType, targetType)) {
                 Toast.makeText(this, "Для этого FBD-блока не определены контакты", Toast.LENGTH_LONG).show();
                 return;
             }
@@ -3294,6 +3296,17 @@ public class MainActivity extends Activity {
                 .setNegativeButton("Отмена", null).show();
     }
 
+    /** Only unsupported legacy block pairs may use anonymous positional connections. */
+    public static boolean canUseUnpinnedFbdFallback(String sourceType, String targetType) {
+        if (sourceType == null || targetType == null
+                || !sourceType.trim().toUpperCase(java.util.Locale.ROOT).startsWith("FBD ")
+                || !targetType.trim().toUpperCase(java.util.Locale.ROOT).startsWith("FBD ")) return false;
+        return knownFbdPins(sourceType, true).length == 0
+                && knownFbdPins(sourceType, false).length == 0
+                && knownFbdPins(targetType, true).length == 0
+                && knownFbdPins(targetType, false).length == 0;
+    }
+
     /** Show only type-compatible target terminals after choosing a source pin. */
     public static String[] compatibleFbdTargetPins(String sourceType, String sourcePin, String targetType) {
         String[] targetPins = knownFbdPins(targetType, false);
@@ -3324,9 +3337,11 @@ public class MainActivity extends Activity {
         if ("FBD CTD".equals(kind)) return output ? new String[]{"Q"} : new String[]{"CD", "LD", "PV"};
         if ("FBD POW".equals(kind)) return output ? new String[]{"OUT"} : new String[]{"BASE", "EXP"};
         if ("FBD SIN".equals(kind) || "FBD ABS".equals(kind)
+                || "FBD COS".equals(kind) || "FBD TAN".equals(kind) || "FBD SQRT".equals(kind)
                 || "FBD FLOATTOINT".equals(kind) || "FBD INTTOFLOAT".equals(kind))
             return output ? new String[]{"OUT"} : new String[]{"IN"};
-        if ("FBD TON".equals(kind)) return output ? new String[]{"Q"} : new String[]{"IN", "PT"};
+        if ("FBD TON".equals(kind) || "FBD TOF".equals(kind) || "FBD TP".equals(kind))
+            return output ? new String[]{"Q"} : new String[]{"IN", "PT"};
         return new String[0];
     }
 
