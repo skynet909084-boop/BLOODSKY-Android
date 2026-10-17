@@ -122,6 +122,50 @@ class FastFbdSmoke(Smoke):
         self.wait_node(description='Редактор экрана')
         if current_widgets() != expected or self.saved_connections() != edge:
             raise AssertionError('FBD graph changed after cold restart')
+        # Check the two new source-compatible FBD operators in the REAL
+        # editor palette and ensure their distinct IDs survive process death.
+        def add_native_from_extended(label):
+            self.tap(description='Добавить элемент')
+            self.tap(description='Функциональные блоки и другие элементы')
+            self.tap(description='Другие элементы BLOODSKY')
+            item_text = label + '    ›'
+            for attempt in range(24):
+                xml = self.dump()
+                nodes = matching_nodes(xml, text=item_text)
+                scrolls = [n for n in ET.fromstring(xml).iter('node')
+                           if n.get('class') == 'android.widget.ScrollView']
+                if len(scrolls) != 1:
+                    raise AssertionError('Native FBD extended palette scroll missing')
+                left_s, top_s, right_s, bottom_s = map(
+                    int, re.findall(r'\\d+', scrolls[0].get('bounds')))
+                if nodes:
+                    l, t, r, b = map(int, re.findall(r'\\d+', nodes[0].get('bounds')))
+                    if t >= top_s and b <= bottom_s and b > t:
+                        self.tap(text=item_text)
+                        self.wait_node(description='Редактор экрана')
+                        return
+                adb('shell', 'input', 'swipe', str((left_s + right_s)//2),
+                    str(bottom_s - 110), str((left_s + right_s)//2),
+                    str(top_s + 60), '240')
+            raise AssertionError('New Craft FBD block not reachable: ' + label)
+
+        add_native_from_extended('FBD — Craft CTU 16 бит (+, −, R)')
+        add_native_from_extended('FBD — Craft T (переключатель по фронту)')
+        native = current_widgets()
+        if len(native) != 4 or [x['type'] for x in native[2:]] != [
+                'FBD CRAFT CTU', 'FBD CRAFT T']:
+            raise AssertionError('Original-native CTU/T palette block mismatch: ' + repr(native))
+        if native[2].get('counterValue') != 0:
+            raise AssertionError('Craft CTU did not start at original zero count')
+        self.capture('fast-fbd-craft-ctu16-and-toggle')
+
+        adb('shell', 'am', 'force-stop', PACKAGE)
+        adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
+        self.tap('Загрузить проект')
+        self.tap(PROJECT)
+        self.wait_node(description='Редактор экрана')
+        if current_widgets() != native or self.saved_connections() != edge:
+            raise AssertionError('Native CTU/T project changed after app restart')
         crashes = adb('logcat', '-d', '-b', 'crash')
         (self.output / 'crash-log.txt').write_text(crashes)
         if PACKAGE in crashes:
@@ -133,7 +177,9 @@ class FastFbdSmoke(Smoke):
             'elapsed_seconds': elapsed, 'checks': [
                 'source FBD palette', 'long-press context', 'cancel without mutation',
                 'exact timer ms persistence', 'source canvas', 'typed BOOL Q-IN edge',
-                'BOOL invert and undo', 'project cold restart', 'no app crash']
+                'BOOL invert and undo', 'project cold restart',
+                'native Craft CTU16 + T extended palette', 'native block cold restart',
+                'no app crash']
         }, indent=2))
         print(f'FAST_FBD_SMOKE_OK elapsed_seconds={elapsed}', flush=True)
 
