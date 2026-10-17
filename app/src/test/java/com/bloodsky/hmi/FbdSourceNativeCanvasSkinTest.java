@@ -24,7 +24,7 @@ public class FbdSourceNativeCanvasSkinTest {
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT T", "T")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT BLINK", "BLINK")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD RS", "RS")));
-        assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT SEL", "SEL"));
+        assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT SEL", "SEL")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT COMPARE", ">")));
     }
 
