@@ -2580,6 +2580,15 @@ public class MainActivity extends Activity {
             if (output && "Q".equals(name)) return "BOOL";
             if (!output && ("IN1".equals(name) || "IN2".equals(name))) return "BOOL";
         }
+        if (kind.equals("FBD RS")) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && ("S".equals(name) || "R".equals(name))) return "BOOL";
+        }
+        if (kind.equals("FBD TON")) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && "IN".equals(name)) return "BOOL";
+            if (!output && "PT".equals(name)) return "NUMBER";
+        }
         return null;
     }
 
@@ -2592,9 +2601,11 @@ public class MainActivity extends Activity {
         String sourceKnown = knownFbdPinType(sourceType, sourcePin, true);
         String targetKnown = knownFbdPinType(targetType, targetPin, false);
         boolean sourceBlockKnown = "FBD AND".equalsIgnoreCase(sourceType) || "FBD OR".equalsIgnoreCase(sourceType)
-                || "FBD XOR".equalsIgnoreCase(sourceType);
+                || "FBD XOR".equalsIgnoreCase(sourceType) || "FBD RS".equalsIgnoreCase(sourceType)
+                || "FBD TON".equalsIgnoreCase(sourceType);
         boolean targetBlockKnown = "FBD AND".equalsIgnoreCase(targetType) || "FBD OR".equalsIgnoreCase(targetType)
-                || "FBD XOR".equalsIgnoreCase(targetType);
+                || "FBD XOR".equalsIgnoreCase(targetType) || "FBD RS".equalsIgnoreCase(targetType)
+                || "FBD TON".equalsIgnoreCase(targetType);
         if ((sourceBlockKnown && sourceKnown == null) || (targetBlockKnown && targetKnown == null)) return false;
         if (sourceKnown != null && targetKnown != null && !sourceKnown.equals(targetKnown)) return false;
         if (sourceKnown != null && edge.has("sourceSignalType")
