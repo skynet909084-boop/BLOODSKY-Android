@@ -1,0 +1,15 @@
+<?xml version='1.0' encoding='utf-8'?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="vertical" android:layout_width="match_parent" android:layout_height="match_parent">
+  <LinearLayout android:gravity="center" android:layout_gravity="center_horizontal" android:orientation="vertical" android:id="@+id/kc_fbd_timerActionTON" android:paddingBottom="5.0dp" android:layout_width="match_parent" android:layout_height="wrap_content">
+    <TextView android:textAppearance="?android:textAppearanceLarge" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="TON" />
+  </LinearLayout>
+  <LinearLayout android:gravity="center" android:layout_gravity="center_horizontal" android:orientation="vertical" android:id="@+id/kc_fbd_timerActionTOF" android:layout_width="match_parent" android:layout_height="wrap_content">
+    <TextView android:textAppearance="?android:textAppearanceLarge" android:paddingBottom="5.0dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="TOF" />
+  </LinearLayout>
+  <LinearLayout android:gravity="center" android:layout_gravity="center_horizontal" android:orientation="vertical" android:id="@+id/kc_fbd_timerActionTP" android:layout_width="match_parent" android:layout_height="wrap_content">
+    <TextView android:textAppearance="?android:textAppearanceLarge" android:paddingBottom="5.0dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="TP" />
+  </LinearLayout>
+  <LinearLayout android:gravity="center" android:layout_gravity="center_horizontal" android:orientation="vertical" android:id="@+id/kc_fbd_timerActionBLINK" android:layout_width="match_parent" android:layout_height="wrap_content">
+    <TextView android:textAppearance="?android:textAppearanceLarge" android:paddingBottom="5.0dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="BLINK" />
+  </LinearLayout>
+</LinearLayout>

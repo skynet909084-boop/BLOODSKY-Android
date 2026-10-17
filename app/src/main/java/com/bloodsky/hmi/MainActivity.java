@@ -1257,6 +1257,7 @@ public class MainActivity extends Activity {
     public static Widget copyWidget(Widget source) {
         Widget copy = new Widget();
         copy.type = source.type; copy.text = source.text; copy.connectionInfo = source.connectionInfo; copy.inputValue = source.inputValue; copy.buttonState = source.buttonState; copy.rsState = source.rsState; copy.counterPreset = source.counterPreset; copy.counterValue = source.counterValue; copy.counterLastInput = source.counterLastInput; copy.timerPresetMs = source.timerPresetMs; copy.timerStartedAt = source.timerStartedAt; copy.compareA = source.compareA; copy.compareB = source.compareB; copy.compareOperator = source.compareOperator;
+        copy.fbdInvertOutput=source.fbdInvertOutput; copy.fbdTimeUnit=source.fbdTimeUnit;
         copy.minValue = source.minValue; copy.maxValue = source.maxValue;
         copy.backgroundColor = source.backgroundColor; copy.textColor = source.textColor; copy.textSizeSp = source.textSizeSp;
         copy.visible = source.visible; copy.showFrame = source.showFrame; copy.autoResizeText = source.autoResizeText;
@@ -1361,10 +1362,13 @@ public class MainActivity extends Activity {
                 }).show();
     }
 
-    private void showWidgetContextMenu() {
+    private void showWidgetContextMenu() { showWidgetContextMenu(true); }
+
+    private void showWidgetContextMenu(boolean originalFbd) {
         if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) return;
 
         Widget selectedWidget = widgets.get(editor.selected);
+        if(originalFbd && isFbd(selectedWidget)) { showFbdContextMenu(editor.selected); return; }
         String titleText = selectedWidget.text == null || selectedWidget.text.trim().isEmpty()
                 ? selectedWidget.type : selectedWidget.text;
 
@@ -2154,6 +2158,8 @@ public class MainActivity extends Activity {
         obj.put("type", w.type); obj.put("text", w.text);
         obj.put("connectionInfo", w.connectionInfo == null ? "" : w.connectionInfo);
         obj.put("inputValue", w.inputValue); obj.put("buttonState", w.buttonState); obj.put("rsState", w.rsState); obj.put("counterPreset", w.counterPreset); obj.put("counterValue", w.counterValue); obj.put("counterLastInput", w.counterLastInput);
+        if(w.fbdInvertOutput || obj.has("bloodskyFbdInvertOut")) obj.put("bloodskyFbdInvertOut",w.fbdInvertOutput);
+        if(!"MS".equals(w.fbdTimeUnit) || obj.has("bloodskyFbdTimeUnit")) obj.put("bloodskyFbdTimeUnit",w.fbdTimeUnit);
         obj.put("timerPresetMs", w.timerPresetMs); obj.put("timerStartedAt", w.timerStartedAt);
         obj.put("compareA", w.compareA); obj.put("compareB", w.compareB); obj.put("compareOperator", w.compareOperator);
         obj.put("minValue", w.minValue); obj.put("maxValue", w.maxValue);
@@ -2202,6 +2208,9 @@ public class MainActivity extends Activity {
         w.timerPresetMs = Math.max(1, Math.min(3600000, obj.optInt("timerPresetMs", 1000)));
         w.timerStartedAt = obj.optLong("timerStartedAt", 0L);
         w.compareA = obj.optDouble("compareA", 0.0); w.compareB = obj.optDouble("compareB", 0.0);
+        w.fbdInvertOutput=obj.optBoolean("bloodskyFbdInvertOut",false);
+        String unit=obj.optString("bloodskyFbdTimeUnit","MS");
+        w.fbdTimeUnit="SEK".equals(unit)||"MIN".equals(unit)?unit:"MS";
         w.compareOperator = normalizeComparisonOperatorStatic(obj.optString("compareOperator", ">"));
         w.minValue = obj.optDouble("minValue", 0.0); w.maxValue = obj.optDouble("maxValue", 100.0);
         w.backgroundColor = obj.optInt("backgroundColor", 0); w.textColor = obj.optInt("textColor", Color.rgb(31, 41, 55));
@@ -2553,9 +2562,14 @@ public class MainActivity extends Activity {
     }
 
     public static boolean evaluateFbdBlock(List<Widget> widgetsList, List<FbdConnection> connectionsList, int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
-        if (index < 0 || index >= widgetsList.size()) return false;
+        if (index < 0 || index >= widgetsList.size() || visiting[index]) return false;
         if (cacheValid[index]) return cacheValues[index];
         boolean result = evaluateFbdBlockUncached(widgetsList, connectionsList, index, visiting, cacheValid, cacheValues, cacheNumeric);
+        Widget block=widgetsList.get(index);
+        if(FbdEditorModel.booleanOutput(block.type)) {
+            if(block.fbdInvertOutput)result=!result;
+            cacheNumeric[index]=result?1.0:0.0;
+        }
         cacheValues[index] = result;
         cacheValid[index] = true;
         return result;
@@ -2861,9 +2875,79 @@ public class MainActivity extends Activity {
                 return;
             }
         }
-        screen.connections.add(new FbdConnection(source, target));
-        persistProject();
-        Toast.makeText(this, "Связь FBD добавлена", Toast.LENGTH_SHORT).show();
+        if(commitFbdEdit(()->screen.connections.add(new FbdConnection(source, target))))
+            Toast.makeText(this,"Связь FBD добавлена",Toast.LENGTH_SHORT).show();
+    }
+
+    private boolean commitFbdEdit(Runnable mutation) {
+        if(operatorMode||screens.isEmpty())return false;
+        JSONObject oldProject=projectExtraFields;
+        try {
+            boolean saved=FbdEditorTransaction.apply(widgets,screens.get(currentScreenIndex).connections,mutation,()->persistProjectNow(true));
+            if(!saved) { projectExtraFields=oldProject; saveActiveScreen();
+                Toast.makeText(this,"Изменение FBD не сохранено",Toast.LENGTH_LONG).show(); }
+            if(editor!=null)editor.invalidate();
+            return saved;
+        }catch(Exception failed) {
+            Toast.makeText(this,"Не удалось изменить FBD: "+failed.getMessage(),Toast.LENGTH_LONG).show();return false;
+        }
+    }
+
+    private void showFbdContextMenu(int index) {
+        if(operatorMode||index<0||index>=widgets.size())return;
+        Widget w=widgets.get(index);
+        OriginalFbdMenus.show(this,w.text,FbdEditorModel.timer(w.type),FbdEditorModel.booleanOutput(w.type),w.fbdInvertOutput,
+                new OriginalFbdMenus.Host() {
+                    public void connect(){showFbdConnectionTargets(index);}
+                    public void invert(){commitFbdEdit(()->w.fbdInvertOutput=!w.fbdInvertOutput);}
+                    public void disconnect(){
+                        List<FbdConnection> edges=screens.get(currentScreenIndex).connections;
+                        commitFbdEdit(()->{List<FbdConnection> kept=FbdEditorModel.withoutOutput(index,edges);edges.clear();edges.addAll(kept);});
+                    }
+                    public void mode(){ OriginalFbdMenus.modes(MainActivity.this,FbdEditorModel.title(w.type),type->{
+                        commitFbdEdit(()->{
+                            String oldTitle=FbdEditorModel.title(w.type);
+                            if(oldTitle.equals(w.text))w.text=FbdEditorModel.title(type);
+                            w.type=type;w.timerStartedAt=0L;w.counterLastInput=false;
+                        });
+                    });}
+                    public void time(){OriginalFbdMenus.units(MainActivity.this,unit->showFbdDuration(index,unit));}
+                    public void properties(){editor.selected=index;editSelectedWidget();}
+                    public void more(){editor.selected=index;showWidgetContextMenu(false);}
+                });
+    }
+
+    private void showFbdDuration(int index,String unit) {
+        Widget w=widgets.get(index);
+        String displayed=FbdEditorModel.durationText(w.timerPresetMs,unit);
+        EditText field=propertyField(displayed,InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        field.setContentDescription("Длительность таймера");
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Время, "+("MS".equals(unit)?"мс":"SEK".equals(unit)?"сек":"мин"))
+                .setView(field).setNegativeButton("Отмена",null).setPositiveButton("Применить",null).create();
+        dialog.setOnShowListener(d->dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+            try {
+                String value=field.getText().toString().trim().replace(',','.');
+                Widget active=widgets.get(index);
+                int ms=FbdEditorModel.durationEdit(value,unit,active.timerPresetMs);
+                if(commitFbdEdit(()->{active.timerPresetMs=ms;active.fbdTimeUnit=unit;active.timerStartedAt=0L;active.counterLastInput=false;}))dialog.dismiss();
+            }catch(IllegalArgumentException invalid){field.setError(invalid.getMessage());}
+        }));dialog.show();
+    }
+
+    private void showFbdConnectionTargets(int source) {
+        if(source<0||source>=widgets.size()||screens.isEmpty())return;
+        List<FbdConnection> edges=screens.get(currentScreenIndex).connections;
+        List<Integer> targets=new ArrayList<>();List<String> labels=new ArrayList<>();
+        for(int target=0;target<widgets.size();target++) {
+            Widget w=widgets.get(target);int count=FbdEditorModel.incoming(target,edges);
+            if(target!=source&&isFbd(w)&&count<FbdEditorModel.inputCount(w.type)) {
+                targets.add(target);labels.add("№"+(target+1)+" "+w.text+" — "+FbdEditorModel.inputName(w.type,count));
+            }
+        }
+        if(targets.isEmpty()){Toast.makeText(this,"Нет свободных входов FBD",Toast.LENGTH_LONG).show();return;}
+        new AlertDialog.Builder(this).setTitle("Соединить с …")
+                .setItems(labels.toArray(new String[0]),(d,which)->connectFbdWidgets(source,targets.get(which)))
+                .setNegativeButton("Отмена",null).show();
     }
 
     public static class Widget {
@@ -2876,6 +2960,8 @@ public class MainActivity extends Activity {
         public int counterPreset = 1;
         public int counterValue = 0;
         public boolean counterLastInput = false;
+        public boolean fbdInvertOutput=false;
+        public String fbdTimeUnit="MS";
         public int timerPresetMs = 1000;
         public long timerStartedAt = 0L;
         public double compareA = 0.0, compareB = 0.0;
@@ -2915,6 +3001,7 @@ public class MainActivity extends Activity {
 
     private class EditorCanvas extends View {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Map<String,OriginalFbdDrawing> fbdDrawings=new HashMap<>();
         int selected = -1;
         float downX, downY, startX, startY, startW, startH;
         long downAt;
@@ -2949,7 +3036,7 @@ public class MainActivity extends Activity {
                     Widget to = widgets.get(connection.target);
                     if (!from.visible || !to.visible || !isFbd(from) || !isFbd(to)) continue;
                     float x1 = from.x + from.w, y1 = from.y + from.h / 2;
-                    float x2 = to.x, y2 = to.y + to.h / 2;
+                    float x2 = to.x, y2 = to.y + to.h * FbdEditorModel.inputY(to.type,FbdEditorModel.ordinal(connection,screen.connections));
                     float mid = (x1 + x2) / 2f;
                     canvas.drawLine(x1, y1, mid, y1, paint);
                     canvas.drawLine(mid, y1, mid, y2, paint);
@@ -2966,6 +3053,23 @@ public class MainActivity extends Activity {
                 Widget w = widgets.get(i);
                 if (!w.visible || (operatorMode && isFbd(w))) continue;
                 RectF rect = new RectF(w.x, w.y, w.x + w.w, w.y + w.h);
+                String sourceDrawing=FbdEditorModel.drawing(w.type);
+                if(sourceDrawing!=null && w.backgroundColor==0 && w.textColor==Color.rgb(31,41,55)
+                        && w.textSizeSp==14 && w.showFrame && !w.autoResizeText) {
+                    evaluateFbd(i,new boolean[widgets.size()]);
+                    OriginalFbdDrawing drawing=fbdDrawings.get(sourceDrawing);
+                    if(drawing==null) { drawing=new OriginalFbdDrawing(MainActivity.this,sourceDrawing); fbdDrawings.put(sourceDrawing,drawing); }
+                    int checkpoint=canvas.save(); canvas.translate(w.x,w.y);
+                    String caption=FbdEditorModel.caption(w.type,w.text);
+                    drawing.render(canvas,w.w,w.h,caption,w.fbdInvertOutput&&FbdEditorModel.booleanOutput(w.type),w.fbdTimeUnit);
+                    canvas.restoreToCount(checkpoint);
+                    if(i==selected) {
+                        paint.setStyle(Paint.Style.STROKE);paint.setColor(Color.rgb(21,101,192));paint.setStrokeWidth(dp(2));
+                        canvas.drawRect(rect,paint);paint.setStyle(Paint.Style.FILL);
+                        canvas.drawRect(w.x+w.w-dp(9),w.y+w.h-dp(9),w.x+w.w,w.y+w.h,paint);
+                    }
+                    continue;
+                }
                 paint.setStyle(Paint.Style.FILL);
                 if (w.backgroundColor != 0) {
                     paint.setColor(w.backgroundColor);
@@ -3020,7 +3124,10 @@ public class MainActivity extends Activity {
                     paint.setStyle(Paint.Style.FILL);
                     canvas.drawCircle(w.x + dp(4), w.y + w.h * 0.38f, dp(4), paint);
                     canvas.drawCircle(w.x + dp(4), w.y + w.h * 0.68f, dp(4), paint);
-                    canvas.drawCircle(w.x + w.w - dp(4), w.y + w.h / 2, dp(4), paint);
+                    if(w.fbdInvertOutput && FbdEditorModel.booleanOutput(w.type)) {
+                        paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(1));
+                        canvas.drawCircle(w.x+w.w-dp(9),w.y+w.h/2,dp(4),paint);paint.setStyle(Paint.Style.FILL);
+                    } else canvas.drawCircle(w.x + w.w - dp(4), w.y + w.h / 2, dp(4), paint);
                 } else if ("Динамический текст".equals(w.type)) {
                     int stateIdx = 0;
                     if (liveValues.containsKey(i)) {

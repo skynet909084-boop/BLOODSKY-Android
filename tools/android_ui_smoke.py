@@ -200,8 +200,9 @@ class Smoke:
             adb('shell', 'input', 'keyevent', '4')
 
     def capture(self, name):
+        xml = self.dump()  # Wait for accessibility idle before the pixels, including dialog transitions.
         (self.output / (name + '.png')).write_bytes(adb('exec-out', 'screencap', '-p', binary=True))
-        (self.output / (name + '.xml')).write_text(self.dump())
+        (self.output / (name + '.xml')).write_text(xml)
 
     def check_fbd_palette_and_properties(self, saved_widgets):
         baseline = saved_widgets()
@@ -269,6 +270,103 @@ class Smoke:
         if saved_widgets() != expected:
             raise AssertionError('FBD palette blocks/preset did not survive process restart')
         self.capture('04p-fbd-reopened')
+        self.check_fbd_context_actions()
+
+    def active_project(self):
+        xml = adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml')
+        return json.loads({n.get('name'): n.text for n in ET.fromstring(xml)}['active_project'])
+
+    def fbd_widget_point(self, index, corner=False):
+        widget = self.active_project()['screens'][0]['widgets'][index]
+        canvas = self.wait_node(description='Редактор экрана')
+        left, top, _, _ = map(int, re.findall(r'\d+', canvas.get('bounds')))
+        fraction = .125 if corner else .5
+        return int(left+widget['x']+widget['w']*fraction), int(top+widget['y']+widget['h']*fraction)
+
+    def fbd_context(self, index):
+        x, y = self.fbd_widget_point(index)
+        adb('shell', 'input', 'swipe', str(x), str(y), str(x), str(y), '700')
+        self.wait_node(description='Соединить с …')
+
+    def visible_input(self, description, value):
+        self.tap(description=description)
+        node = self.wait_node(description=description, class_name='android.widget.EditText')
+        adb('shell', 'input', 'keyevent', '123', *(['67']*(len(node.get('text',''))+1)))
+        if value: adb('shell','input','text',value)
+        node = self.wait_node(description=description, class_name='android.widget.EditText')
+        if node.get('text') != value: raise AssertionError('Visible input did not retain '+value)
+        if keyboard_is_shown(adb('shell','dumpsys','input_method')): adb('shell','input','keyevent','4')
+
+    def check_fbd_context_actions(self):
+        def screen(): return self.active_project()['screens'][0]
+        original = screen()['widgets']
+        canvas = self.wait_node(description='Редактор экрана')
+        left, top, right, bottom = map(int,re.findall(r'\d+',canvas.get('bounds')))
+        # Separate the overlapping default blocks using their existing properties UI.
+        for index, x, y in [(4,(right-left)*.40,(bottom-top)*.08),(5,(right-left)*.70,(bottom-top)*.45)]:
+            px, py = self.fbd_widget_point(index, corner=(index==4))
+            adb('shell','input','tap',str(px),str(py))
+            self.wait_node('Свойства: '+original[index]['type'])
+            self.last_property_description = None
+            self.replace_property_input('Положение X',str(round(x,3)))
+            self.replace_property_input('Положение Y',str(round(y,3)))
+            self.tap('Применить');self.wait_node(description='Редактор экрана')
+        self.capture('04q-source-fbd-canvas')
+        self.fbd_context(4)
+        self.capture('04r-original-fbd-context')
+        self.tap(description='Инвертировать: выключено')
+        self.wait_node(description='Редактор экрана')
+        if not screen()['widgets'][4].get('bloodskyFbdInvertOut'): raise AssertionError('Output inversion not saved')
+        self.fbd_context(4)
+        self.tap(description='Соединить с …')
+        self.tap('№6 TON — IN')
+        self.wait_node(description='Редактор экрана')
+        edges = screen()['connections']
+        if len(edges)!=1 or edges[0]['source']!=4 or edges[0]['target']!=5:
+            raise AssertionError('FBD connect targeted the wrong blocks')
+        self.capture('04s-fbd-connected-inverted')
+        # Reverse connection would make a cycle; all persisted edges must stay identical.
+        self.fbd_context(5);self.tap(description='Соединить с …');self.tap('№5 И — IN1')
+        self.wait_node(description='Редактор экрана')
+        if screen()['connections'] != edges: raise AssertionError('FBD cycle was accepted')
+        self.fbd_context(5);self.tap(description='Редактировать тип');self.tap(description='TOF')
+        self.wait_node(description='Редактор экрана')
+        if screen()['widgets'][5]['type']!='FBD TOF': raise AssertionError('Timer mode did not save')
+        if screen()['connections']!=edges: raise AssertionError('Timer mode edit changed wires')
+        self.fbd_context(5);self.tap(description='Редактировать тип времени');self.tap(description='сек')
+        self.wait_node('Время, сек')
+        self.visible_input('Длительность таймера','0');self.tap('Применить')
+        self.wait_node('Время, сек')
+        if screen()['widgets'][5]['timerPresetMs']!=2345: raise AssertionError('Invalid duration changed preset')
+        self.visible_input('Длительность таймера','2.5');self.tap('Применить')
+        self.wait_node(description='Редактор экрана')
+        w=screen()['widgets'][5]
+        if w['timerPresetMs']!=2500 or w.get('bloodskyFbdTimeUnit')!='SEK': raise AssertionError('Seconds conversion not exact')
+        adb('shell','am','force-stop',PACKAGE);adb('shell','am','start','-W','-n',PACKAGE+'/.MainActivity')
+        self.tap('Загрузить проект');self.tap(PROJECT);self.wait_node(description='Редактор экрана')
+        reopened=screen()
+        if reopened['connections']!=edges or not reopened['widgets'][4].get('bloodskyFbdInvertOut'):
+            raise AssertionError('Inverted graph did not survive process restart')
+        w=reopened['widgets'][5]
+        if w['type']!='FBD TOF' or w['timerPresetMs']!=2500 or w.get('bloodskyFbdTimeUnit')!='SEK':
+            raise AssertionError('Timer mode/unit/preset did not survive process restart')
+        self.capture('04t-fbd-graph-reopened')
+        before=reopened['widgets'][4]
+        px,py=self.fbd_widget_point(4)
+        adb('shell','input','swipe',str(px),str(py),str(px+70),str(py+45),'350')
+        self.wait_node(description='Редактор экрана')
+        moved=screen()['widgets'][4]
+        if moved['x']==before['x'] and moved['y']==before['y']: raise AssertionError('FBD drag did not move the block')
+        if screen()['connections']!=edges: raise AssertionError('FBD drag rewrote edge metadata')
+        self.capture('04u-fbd-wire-after-move')
+        self.fbd_context(4);self.tap(description='Отсоединить выход');self.wait_node(description='Редактор экрана')
+        if screen()['connections']: raise AssertionError('Disconnect output left an outgoing edge')
+        if screen()['widgets'][5]['timerPresetMs']!=2500: raise AssertionError('Disconnect changed target properties')
+        self.capture('04v-fbd-output-disconnected')
+        adb('shell','am','force-stop',PACKAGE);adb('shell','am','start','-W','-n',PACKAGE+'/.MainActivity')
+        self.tap('Загрузить проект');self.tap(PROJECT);self.wait_node(description='Редактор экрана')
+        if screen()['connections'] or not screen()['widgets'][4].get('bloodskyFbdInvertOut'):
+            raise AssertionError('Disconnected graph did not survive process restart')
 
     def run(self, apk):
         serial = adb('get-serialno').strip()
@@ -547,7 +645,7 @@ class Smoke:
         if PACKAGE in crashes:
             raise AssertionError('Application crash recorded')
         (self.output / 'result.json').write_text(json.dumps({'result': 'passed', 'package': PACKAGE,
-                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'original five-category palette', 'palette add indicator/button/text/progress', 'original 40-preview FBD palette and return/extended navigation', 'FBD AND/TON add and restart', 'invalid timer preset leaves project and form unchanged', 'exact valid timer preset preserves other fields', 'process restart', 'reload four palette-created components', 'invalid geometry leaves dialog/project unchanged', 'fractional properties survive second process restart', 'original ON/OFF dialogs and builtin state selection', 'custom document-provider image and persisted URI grant after process restart', 'original compact toolbar and hide/reveal', 'editor button opens properties without activation', 'operator drag and long-press cannot edit or activate', 'runtime button on/off and persistence after restart', 'stop and Back restore editor tools', 'confirmed deletion'],
+                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'original five-category palette', 'palette add indicator/button/text/progress', 'original 40-preview FBD palette and return/extended navigation', 'FBD AND/TON add and restart', 'source FBD canvas and context menus', 'boolean inversion and graph restart', 'connection cycle rejected', 'timer mode TOF and exact seconds conversion', 'invalid unit-duration edit leaves saved preset unchanged', 'wires remain attached after block drag', 'output disconnect and restart', 'invalid timer preset leaves project and form unchanged', 'exact valid timer preset preserves other fields', 'process restart', 'reload four palette-created components', 'invalid geometry leaves dialog/project unchanged', 'fractional properties survive second process restart', 'original ON/OFF dialogs and builtin state selection', 'custom document-provider image and persisted URI grant after process restart', 'original compact toolbar and hide/reveal', 'editor button opens properties without activation', 'operator drag and long-press cannot edit or activate', 'runtime button on/off and persistence after restart', 'stop and Back restore editor tools', 'confirmed deletion'],
                 'api_level': adb('shell', 'getprop', 'ro.build.version.sdk').strip(),
                 'display_size': adb('shell', 'wm', 'size').strip(),
                 'display_density': adb('shell', 'wm', 'density').strip()}, indent=2))
