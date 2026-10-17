@@ -3216,45 +3216,24 @@ public class MainActivity extends Activity {
                 default: return a > b;
             }
         }
-        if ("FBD TON".equals(canonicalType)) {
+        if ("FBD TON".equals(canonicalType)
+                || "FBD TOF".equals(canonicalType)
+                || "FBD TP".equals(canonicalType)) {
             boolean input = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
-            if (!input) {
-                widget.timerStartedAt = 0L;
-                return false;
-            }
+            long preset = fbdTonPresetMs(numInputs, inputPins, widget.timerPresetMs);
             long now = SystemClock.elapsedRealtime();
-            if (widget.timerStartedAt == 0L) widget.timerStartedAt = now;
-            return now - widget.timerStartedAt >= fbdTonPresetMs(numInputs, inputPins, widget.timerPresetMs);
-        }
-        if ("FBD TP".equals(widget.type)) {
-            boolean input = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
-            long now = SystemClock.elapsedRealtime();
-            if (input && !widget.counterLastInput) widget.timerStartedAt = now;
-            widget.counterLastInput = input;
-            if (widget.timerStartedAt == 0L) return false;
-            boolean pulseActive = now - widget.timerStartedAt
-                    < fbdTonPresetMs(numInputs, inputPins, widget.timerPresetMs);
-            if (!pulseActive) widget.timerStartedAt = 0L;
-            return pulseActive;
-        }
-        if ("FBD TOF".equals(widget.type)) {
-            boolean input = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
-            long now = SystemClock.elapsedRealtime();
-            if (input) {
-                widget.counterLastInput = true;
-                widget.timerStartedAt = 0L;
-                return true;
-            }
-            if (widget.counterLastInput) {
-                widget.counterLastInput = false;
-                widget.timerStartedAt = now;
-            }
-            if (widget.timerStartedAt == 0L) return false;
-            if (now - widget.timerStartedAt >= fbdTonPresetMs(numInputs, inputPins, widget.timerPresetMs)) {
-                widget.timerStartedAt = 0L;
-                return false;
-            }
-            return true;
+            FbdTimerTransitions.Step step;
+            if ("FBD TON".equals(canonicalType))
+                step = FbdTimerTransitions.ton(input, now, preset, widget.timerStartedAt);
+            else if ("FBD TOF".equals(canonicalType))
+                step = FbdTimerTransitions.tof(input, now, preset,
+                        widget.timerStartedAt, widget.counterLastInput);
+            else step = FbdTimerTransitions.tp(input, now, preset,
+                        widget.timerStartedAt, widget.counterLastInput);
+            widget.timerStartedAt = step.startedAt;
+            if (!"FBD TON".equals(canonicalType))
+                widget.counterLastInput = step.lastInput;
+            return step.output;
         }
         return false;
     }
