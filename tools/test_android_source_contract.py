@@ -145,6 +145,8 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("screen.connections.add(edge)", self.source)
         self.assertIn("hasCompatibleKnownFbdPins(json, sourceType, targetType)", self.source)
         self.assertIn("pinnedFbdConnection(source, sourcePins[sourceChoice]", self.source)
+        self.assertIn('edge.extraFields.put("sourceSignalType", sourceSignal)', self.source)
+        self.assertIn('edge.extraFields.put("targetSignalType", targetSignal)', self.source)
 
     def test_deleting_widget_removes_and_reindexes_fbd_edges(self):
         delete_start = self.source.index("private void deleteSelectedWidget()")
