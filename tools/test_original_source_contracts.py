@@ -2,7 +2,9 @@
 """Tests for original APK source contracts and verification ledger."""
 import hashlib
 import json
+
 from pathlib import Path
+import re
 import unittest
 
 from prepare_craft_resources import EXPECTED_SHA256
@@ -49,8 +51,23 @@ class OriginalSourceContractsTests(unittest.TestCase):
         )
         self.assertEqual(res["status"], "OK")
         self.assertEqual(res["total_images"], 152)
-        self.assertEqual(res["referenced_images"], 0)
-        self.assertEqual(res["unused_images"], 152)
+
+    def test_cited_call_sites_exist_in_main_activity(self):
+        """Every cited BLOODSKY call-site method must exist in MainActivity.java."""
+        main_activity_path = self.app_dir / "com/bloodsky/hmi/MainActivity.java"
+        self.assertTrue(main_activity_path.exists(), "MainActivity.java missing")
+        main_code = main_activity_path.read_text(encoding="utf-8", errors="replace")
+
+        data = json.loads(self.contracts_path.read_text(encoding="utf-8"))
+        for item in data.get("components", []) + data.get("fbd_contracts", []):
+            call_site = item.get("bloodsky_call_site", "")
+            if call_site.startswith("com.bloodsky.hmi.MainActivity."):
+                method = call_site.split(".")[-1]
+                pattern = rf'\b{method}\s*\('
+                self.assertTrue(
+                    re.search(pattern, main_code),
+                    f"Cited call-site method '{method}' for {item.get('id', item.get('block'))} not found in MainActivity.java"
+                )
 
     def test_no_matched_status_without_runtime_evidence(self):
         """No component or contract item may claim Matched without paired runtime evidence."""

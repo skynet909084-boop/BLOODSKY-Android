@@ -1,12 +1,13 @@
 {
-  "version": "1.0.0",
+  "version": "1.0.1",
   "target_application": "KaScada Craft 1.0.7",
   "archive_sha256": "316da0335dc4ea0c8f2d8c14550118ba33bd0e95d7c926f67ed848429c554cdd",
   "total_original_image_assets": 152,
   "image_aliases_status": {
     "total_packaged_in_apk": 152,
-    "directly_referenced_in_bloodsky_java": 0,
-    "packaged_but_unused_in_bloodsky": 152
+    "directly_referenced_in_bloodsky_app": 0,
+    "packaged_but_unused_in_bloodsky": 152,
+    "verification_note": "Dynamically verified against current app/ source tree by tools/verify_original_source_contracts.py"
   },
   "system_registers": {
     "device_id": 0,
@@ -51,7 +52,7 @@
         "type": "UINT16",
         "access": "RW",
         "default": 1,
-        "semantics": "Active screen number (1..countScreen). Writing triggers screen jump"
+        "semantics": "Active screen number (1..countScreen). Writing triggers active screen jump"
       },
       {
         "address": 5,
@@ -103,7 +104,7 @@
     "ambiguity_blockers": [
       "System registers belong exclusively to Device 0 (System Device).",
       "System registers MUST NOT be routed to external Modbus TCP/RTU slave network calls.",
-      "Reading/writing System Register 4 triggers active screen navigation in the HMI runtime."
+      "Reading/writing System Register 4 triggers active screen navigation in the HMI runtime loop."
     ]
   },
   "components": [
@@ -122,7 +123,7 @@
         "register",
         "bit"
       ],
-      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.createDefaultWidget (type text)",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.addWidget",
       "status": "partial",
       "evidence": "Uses Android TextView with sp font size instead of px auto-scaling and original preference row popup."
     },
@@ -145,7 +146,7 @@
         "register",
         "bit"
       ],
-      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.createDefaultWidget (type button)",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.addWidget",
       "status": "partial",
       "evidence": "Procedural canvas drawing; missing 3 original button PNG skins and original popup dialog."
     },
@@ -169,7 +170,7 @@
         "register",
         "bit"
       ],
-      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.createDefaultWidget (type indicator)",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.addWidget",
       "status": "partial",
       "evidence": "Basic circle canvas draw; missing original lamp PNG drawables and multi-color indicator states."
     },
@@ -189,7 +190,7 @@
         "device",
         "register"
       ],
-      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.createDefaultWidget (type setpoint)",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.adjustSetpoint",
       "status": "partial",
       "evidence": "Procedural +/- buttons; missing float min/max clamping and original numeric dialog."
     },
@@ -205,7 +206,7 @@
         "device",
         "register"
       ],
-      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.createDefaultWidget (type dyntext)",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.addWidget",
       "status": "partial",
       "evidence": "Hardcoded 2-state toggle; missing multi-range dynamic text dialog and table mapping."
     },
@@ -226,7 +227,7 @@
         "device",
         "register"
       ],
-      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.createDefaultWidget (type gauge)",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.addWidget",
       "status": "partial",
       "evidence": "Canvas arc draw; missing needle PNG rotation renderer."
     },
@@ -244,7 +245,7 @@
         "device",
         "register"
       ],
-      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.createDefaultWidget (type progressbar)",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.addWidget",
       "status": "partial",
       "evidence": "Simple fill Rect; missing original progress bar texture/frame asset."
     },
@@ -262,7 +263,7 @@
         "device",
         "register"
       ],
-      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.createDefaultWidget (type trend)",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.addWidget",
       "status": "partial",
       "evidence": "Basic Canvas polyline; missing multi-point historical trace array."
     },
@@ -277,7 +278,7 @@
         "device",
         "register"
       ],
-      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.createDefaultWidget (type bitlist)",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.addWidget",
       "status": "partial",
       "evidence": "Basic ListView; missing original dialog list configuration."
     },
@@ -295,7 +296,7 @@
         "register",
         "bit"
       ],
-      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.createDefaultWidget (type sound)",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.playSoundAlert",
       "status": "partial",
       "evidence": "ToneGenerator fallback; missing embedded sound asset trigger."
     },
@@ -309,7 +310,7 @@
         "targetScreenIndex",
         "buttonText"
       ],
-      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.createDefaultWidget (type screen_link)",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.activateScreen",
       "status": "implemented",
       "evidence": "Navigates active screen index on tap."
     },
@@ -326,7 +327,7 @@
         "device",
         "register"
       ],
-      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.createDefaultWidget (type multistate_photo)",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.loadCachedBitmap",
       "status": "partial",
       "evidence": "Decodes image URI; missing state index fallback image frame."
     },
@@ -340,7 +341,7 @@
         "device",
         "register"
       ],
-      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.createDefaultWidget (type voice_announcement)",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.speakVoiceAnnouncement",
       "status": "partial",
       "evidence": "TTS initialized; missing rising-edge trigger check."
     }
@@ -434,6 +435,7 @@
     {
       "block": "FB_AND",
       "source_class": "ru.himik.nightscream.kascada.Logic.FB_AND",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlock",
       "pins_in": 2,
       "pins_out": 1,
       "data_type": "BOOL",
@@ -442,6 +444,7 @@
     {
       "block": "FB_OR",
       "source_class": "ru.himik.nightscream.kascada.Logic.FB_OR",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlock",
       "pins_in": 2,
       "pins_out": 1,
       "data_type": "BOOL",
@@ -450,6 +453,7 @@
     {
       "block": "FB_XOR",
       "source_class": "ru.himik.nightscream.kascada.Logic.FB_XOR",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlock",
       "pins_in": 2,
       "pins_out": 1,
       "data_type": "BOOL",
@@ -458,6 +462,7 @@
     {
       "block": "FB_RS",
       "source_class": "ru.himik.nightscream.kascada.Logic.FB_RS",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlock",
       "pins_in": 2,
       "pins_out": 1,
       "data_type": "BOOL",
@@ -466,6 +471,7 @@
     {
       "block": "FB_TRIGGER",
       "source_class": "ru.himik.nightscream.kascada.Logic.FB_TRIGGER",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlock",
       "pins_in": 1,
       "pins_out": 1,
       "data_type": "BOOL",
@@ -474,22 +480,27 @@
     {
       "block": "FB_TIMER",
       "source_class": "ru.himik.nightscream.kascada.Logic.FB_TIMER",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlock",
       "pins_in": 2,
       "pins_out": 2,
       "time_unit": "MILLISECONDS",
-      "status": "implemented"
+      "status": "partial",
+      "evidence": "Provisional TON/TOF/TP implementation in 100ms cycle; requires exact original timer state machine validation."
     },
     {
       "block": "FB_CTU",
       "source_class": "ru.himik.nightscream.kascada.Logic.FB_CTU",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlockNumeric",
       "pins_in": 3,
       "pins_out": 2,
       "data_type": "INT16",
-      "status": "implemented"
+      "status": "partial",
+      "evidence": "Provisional CU/R/PV counter implementation; original Craft FB_CTU uses C/R/PV pins with numeric output."
     },
     {
       "block": "FB_COMPARE",
       "source_class": "ru.himik.nightscream.kascada.Logic.FB_COMPARE",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlockNumeric",
       "pins_in": 2,
       "pins_out": 1,
       "data_type": "INT16",
@@ -498,6 +509,7 @@
     {
       "block": "FB_ARITHMETIC_INT",
       "source_class": "ru.himik.nightscream.kascada.Logic.FB_ARITHMETIC_INT",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlockNumeric",
       "pins_in": 2,
       "pins_out": 1,
       "data_type": "INT16",
@@ -506,14 +518,17 @@
     {
       "block": "FB_ARITHMETIC_FLOAT",
       "source_class": "ru.himik.nightscream.kascada.Logic.FB_ARITHMETIC_FLOAT",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlockNumeric",
       "pins_in": 2,
       "pins_out": 1,
       "data_type": "FLOAT32",
-      "status": "implemented"
+      "status": "partial",
+      "evidence": "Provisional Float math; requires full IEEE 754 precision parity and NaN/Infinity clamping tests."
     },
     {
       "block": "ABS",
       "source_class": "ru.himik.nightscream.kascada.Logic.ABS",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlockNumeric",
       "pins_in": 1,
       "pins_out": 1,
       "data_type": "FLOAT32",
@@ -522,6 +537,7 @@
     {
       "block": "POW",
       "source_class": "ru.himik.nightscream.kascada.Logic.FB_POW",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlockNumeric",
       "pins_in": 2,
       "pins_out": 1,
       "data_type": "FLOAT32",
@@ -530,6 +546,7 @@
     {
       "block": "SIN",
       "source_class": "ru.himik.nightscream.kascada.Logic.SIN",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlockNumeric",
       "pins_in": 1,
       "pins_out": 1,
       "data_type": "FLOAT32",
@@ -538,6 +555,7 @@
     {
       "block": "FloatToInt",
       "source_class": "ru.himik.nightscream.kascada.Logic.FloatToInt",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlockNumeric",
       "pins_in": 1,
       "pins_out": 1,
       "conversion": "FLOAT32_TO_INT16",
@@ -546,6 +564,7 @@
     {
       "block": "IntToFloat",
       "source_class": "ru.himik.nightscream.kascada.Logic.IntToFloat",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlockNumeric",
       "pins_in": 1,
       "pins_out": 1,
       "conversion": "INT16_TO_FLOAT32",
@@ -554,10 +573,12 @@
     {
       "block": "WordToFloat",
       "source_class": "ru.himik.nightscream.kascada.Logic.WordToFloat",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlockNumeric",
       "pins_in": 2,
       "pins_out": 1,
       "conversion": "TWO_UINT16_TO_FLOAT32",
-      "status": "implemented"
+      "status": "partial",
+      "evidence": "Provisional 2-register float assembly; requires endianness verification against KaScada Craft WordToFloat."
     }
   ],
   "backlog_stages": [
@@ -598,8 +619,8 @@
       "stage": 5,
       "title": "Events, Audio & System Integrations",
       "scenarios": [
-        "Edge-triggered audio sound asset playback on register/bit state transition.",
-        "Edge-triggered TTS phrase synthesis on register value change."
+        "Edge-triggered sound playback and TTS voice synthesis.",
+        "Background alarm notification processing."
       ]
     }
   ]

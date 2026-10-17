@@ -53,19 +53,42 @@ def verify_contracts(
     alias_status = contracts.get("image_aliases_status", {})
     if alias_status.get("total_packaged_in_apk") != len(images):
         raise ValueError("Image alias count mismatch in contracts JSON")
-    if alias_status.get("directly_referenced_in_bloodsky_java") != len(used):
-        raise ValueError("Used image count mismatch in contracts JSON")
+    if alias_status.get("directly_referenced_in_bloodsky_app") != len(used):
+        raise ValueError(f"Used image count mismatch in contracts JSON: expected {alias_status.get('directly_referenced_in_bloodsky_app')}, found {len(used)}")
     if alias_status.get("packaged_but_unused_in_bloodsky") != len(unused):
-        raise ValueError("Unused image count mismatch in contracts JSON")
+        raise ValueError(f"Unused image count mismatch in contracts JSON: expected {alias_status.get('packaged_but_unused_in_bloodsky')}, found {len(unused)}")
 
-    # 5. Verify system register map against decompiled source q/d/b.java
+    # 5. Verify cited BLOODSKY production call sites exist in MainActivity.java
+    main_activity_path = app_source_dir / "com/bloodsky/hmi/MainActivity.java"
+    if main_activity_path.exists():
+        main_code = main_activity_path.read_text(encoding="utf-8", errors="replace")
+        cited_call_sites = set()
+
+        for comp in contracts.get("components", []):
+            cs = comp.get("bloodsky_call_site", "")
+            if cs.startswith("com.bloodsky.hmi.MainActivity."):
+                method = cs.split(".")[-1]
+                cited_call_sites.add(method)
+
+        for fbd in contracts.get("fbd_contracts", []):
+            cs = fbd.get("bloodsky_call_site", "")
+            if cs.startswith("com.bloodsky.hmi.MainActivity."):
+                method = cs.split(".")[-1]
+                cited_call_sites.add(method)
+
+        for method in cited_call_sites:
+            pattern = rf'\b{method}\s*\('
+            if not re.search(pattern, main_code):
+                raise ValueError(f"Cited call-site method '{method}' does not exist in MainActivity.java")
+
+    # 6. Verify system register map against decompiled source q/d/b.java
     q_d_b_path = decoded_dir / "jadx/sources/ru/himik/nightscream/kascada/q/d/b.java"
     if q_d_b_path.exists():
         q_d_b_text = q_d_b_path.read_text(encoding="utf-8", errors="replace")
         if "f9265j" not in q_d_b_text or "2000" not in q_d_b_text:
             raise ValueError("System register array signature missing from q/d/b.java")
 
-    # 6. Check synthetic fixtures
+    # 7. Check synthetic fixtures
     synthetic_files = list(fixtures_dir.glob("synthetic_*.json"))
     if not synthetic_files:
         raise ValueError("No synthetic test fixtures found in reference/fixtures/")

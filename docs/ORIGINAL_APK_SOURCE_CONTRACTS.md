@@ -13,7 +13,7 @@ All details are extracted directly from the decompiled KaScada Craft 1.0.7 refer
 The original APK contains **152 image assets** (151 PNGs + 1 JPG) in `res/drawable`:
 
 - **Total packaged original images in APK archive**: 152
-- **Directly referenced in BLOODSKY Java source code**: 0
+- **Directly referenced in BLOODSKY Java source code**: 0 (dynamically verified against current `app/` source tree by `tools/verify_original_source_contracts.py`)
 - **Packaged-but-unused in current BLOODSKY runtime**: 152
 
 ### Asset Inventory Summary
@@ -54,19 +54,19 @@ System Registers reside in **Device 0** (System Device / "Системные р�
 
 | Component | Source Class | Resources / Layout | BLOODSKY Production Call Site | Status | Evidence |
 |---|---|---|---|---|---|
-| **CustomLabel** | `CustomComponents.CustomLabel` | `res/layout/design_text.xml` | `MainActivity.createDefaultWidget("text")` | Partial | Uses Android `TextView` with sp font size instead of px auto-scaling and original preference popup. |
-| **CustomButton** | `CustomComponents.e` | `kc_button.png`, `kc_button2.png`, `kc_button3.png` | `MainActivity.createDefaultWidget("button")` | Partial | Procedural canvas drawing; missing 3 original button PNG skins and original popup dialog. |
-| **CustomIndicator** | `CustomComponents.q` | `kc_lamp_off.png`, `kc_lamp_green.png`.. | `MainActivity.createDefaultWidget("indicator")` | Partial | Basic circle canvas draw; missing original lamp PNG drawables and multi-color indicator states. |
-| **CustomSetpoint** | `CustomComponents.i` | `kc_plus.png`, `kc_minus.png` | `MainActivity.createDefaultWidget("setpoint")` | Partial | Procedural +/- buttons; missing float min/max clamping and original numeric dialog. |
-| **CustomDynText** | `CustomComponents.CustomDynText` | `res/layout/dialog_dyn_text.xml` | `MainActivity.createDefaultWidget("dyntext")` | Partial | Hardcoded 2-state toggle; missing multi-range dynamic text dialog and table mapping. |
-| **CustomGauge** | `CustomComponents.m` | `kc_needle_indicator.png`, `kc_spindle_indicator.png` | `MainActivity.createDefaultWidget("gauge")` | Partial | Canvas arc draw; missing needle PNG rotation renderer. |
-| **CustomProgressBar** | `CustomComponents.v` | `kc_progress.png` | `MainActivity.createDefaultWidget("progressbar")` | Partial | Simple fill Rect; missing original progress bar texture/frame asset. |
-| **CustomTrend** | `CustomComponents.o` | `kc_graph.png` | `MainActivity.createDefaultWidget("trend")` | Partial | Basic Canvas polyline; missing multi-point historical trace array. |
-| **CustomList** | `CustomComponents.CustomList` | `res/layout/dialog_list.xml` | `MainActivity.createDefaultWidget("bitlist")` | Partial | Basic ListView; missing original dialog list configuration. |
-| **CustomSound** | `CustomComponents.CustomSound` | `res/raw/kc_alarm.wav` | `MainActivity.createDefaultWidget("sound")` | Partial | ToneGenerator fallback; missing embedded sound asset trigger. |
-| **CustomScreenLink** | `CustomComponents.b0` | `kc_arrow_right.png` | `MainActivity.createDefaultWidget("screen_link")` | Implemented | Navigates active screen index on tap. |
-| **CustomMultiStatePhoto** | `CustomComponents.h` | `kc_dyn_picture.png`, `kc_no_picture.png` | `MainActivity.createDefaultWidget("multistate_photo")` | Partial | Decodes image URI; missing state index fallback image frame. |
-| **CustomVoice** | `CustomComponents.a0` | `res/layout/dialog_voice.xml` | `MainActivity.createDefaultWidget("voice_announcement")` | Partial | TTS initialized; missing rising-edge trigger check. |
+| **CustomLabel** | `CustomComponents.CustomLabel` | `res/layout/design_text.xml` | `MainActivity.addWidget` | Partial | Uses Android `TextView` with sp font size instead of px auto-scaling and original preference popup. |
+| **CustomButton** | `CustomComponents.e` | `kc_button.png`, `kc_button2.png`, `kc_button3.png` | `MainActivity.addWidget` | Partial | Procedural canvas drawing; missing 3 original button PNG skins and original popup dialog. |
+| **CustomIndicator** | `CustomComponents.q` | `kc_lamp_off.png`, `kc_lamp_green.png`.. | `MainActivity.addWidget` | Partial | Basic circle canvas draw; missing original lamp PNG drawables and multi-color indicator states. |
+| **CustomSetpoint** | `CustomComponents.i` | `kc_plus.png`, `kc_minus.png` | `MainActivity.adjustSetpoint` | Partial | Procedural +/- buttons; missing float min/max clamping and original numeric dialog. |
+| **CustomDynText** | `CustomComponents.CustomDynText` | `res/layout/dialog_dyn_text.xml` | `MainActivity.addWidget` | Partial | Hardcoded 2-state toggle; missing multi-range dynamic text dialog and table mapping. |
+| **CustomGauge** | `CustomComponents.m` | `kc_needle_indicator.png`, `kc_spindle_indicator.png` | `MainActivity.addWidget` | Partial | Canvas arc draw; missing needle PNG rotation renderer. |
+| **CustomProgressBar** | `CustomComponents.v` | `kc_progress.png` | `MainActivity.addWidget` | Partial | Simple fill Rect; missing original progress bar texture/frame asset. |
+| **CustomTrend** | `CustomComponents.o` | `kc_graph.png` | `MainActivity.addWidget` | Partial | Basic Canvas polyline; missing multi-point historical trace array. |
+| **CustomList** | `CustomComponents.CustomList` | `res/layout/dialog_list.xml` | `MainActivity.addWidget` | Partial | Basic ListView; missing original dialog list configuration. |
+| **CustomSound** | `CustomComponents.CustomSound` | `res/raw/kc_alarm.wav` | `MainActivity.playSoundAlert` | Partial | ToneGenerator fallback; missing embedded sound asset trigger. |
+| **CustomScreenLink** | `CustomComponents.b0` | `kc_arrow_right.png` | `MainActivity.activateScreen` | Implemented | Navigates active screen index on tap. |
+| **CustomMultiStatePhoto** | `CustomComponents.h` | `kc_dyn_picture.png`, `kc_no_picture.png` | `MainActivity.loadCachedBitmap` | Partial | Decodes image URI; missing state index fallback image frame. |
+| **CustomVoice** | `CustomComponents.a0` | `res/layout/dialog_voice.xml` | `MainActivity.speakVoiceAnnouncement` | Partial | TTS initialized; missing rising-edge trigger check. |
 
 ---
 
@@ -74,9 +74,10 @@ System Registers reside in **Device 0** (System Device / "Системные р�
 
 All FBD blocks execute in the decoupled 100ms FBD scan cycle loop:
 
-- **Timers (`FB_TIMER`)**: Evaluate TON (on-delay), TOF (off-delay), and TP (pulse) timers with preset time `PT` strictly in **milliseconds**.
-- **Math (`FB_ARITHMETIC_FLOAT`, `ABS`, `POW`, `SIN`)**: Perform 32-bit IEEE 754 Float calculations with division-by-zero clamping.
-- **Conversions (`WordToFloat`, `FloatToInt`, `IntToFloat`)**: `WordToFloat` reconstructs a 32-bit IEEE 754 Float from two 16-bit registers: `[HighWord, LowWord]`.
+- **Boolean (`FB_AND`, `FB_OR`, `FB_XOR`, `FB_RS`, `FB_TRIGGER`)**: Evaluated in `MainActivity.evaluateFbdBlock`.
+- **Timers (`FB_TIMER`)**: `FB_TIMER` evaluated in `MainActivity.evaluateFbdBlock`. Status is **partial**: provisional TON/TOF/TP logic exists in 100ms cycle using milliseconds, but requires exact state-machine verification against `ru.himik.nightscream.kascada.Logic.FB_TIMER`.
+- **Counters (`FB_CTU`)**: Evaluated in `MainActivity.evaluateFbdBlockNumeric`. Status is **partial**: BLOODSKY implements provisional `CU/R/PV` counter, whereas original Craft `FB_CTU` uses `C/R/PV` pins with numeric output.
+- **Math & Conversions (`FB_ARITHMETIC_FLOAT`, `ABS`, `POW`, `SIN`, `WordToFloat`, `FloatToInt`, `IntToFloat`)**: Evaluated in `MainActivity.evaluateFbdBlockNumeric`. `WordToFloat` is **partial** (provisional 2-register float assembly; requires endianness validation against KaScada Craft `WordToFloat`).
 
 ---
 
