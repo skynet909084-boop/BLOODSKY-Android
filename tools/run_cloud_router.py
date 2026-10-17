@@ -71,6 +71,7 @@ def main():
                   "routing": {"strategy": "priority"}}
         if args.mode == "fixture":
             config["customProviders"] = [{"baseUrl": "http://" + fixture + ":3002/v1",
+                                           "apiKey": "fixture-only-not-a-provider-key",
                                            "models": [{"model": model, "supportsTools": False}]}]
             config["fallback"] = [{"platform": "custom", "modelId": model, "priority": 1}]
         else:
@@ -122,10 +123,28 @@ def main():
                     time.sleep(1)
             else:
                 state = json.loads(docker("inspect", "--format", "{{json .State}}", router))
+                logs = subprocess.run(["docker", "logs", router], capture_output=True, text=True, timeout=10)
+                # Emit only known constant error categories, never raw log text.
+                markers = {"custom-api-key-required": "key is required for custom",
+                           "invalid-startup-config": "invalid declarative config",
+                           "sqlite-module-missing": "better-sqlite3 is not installed",
+                           "encryption-key-required": "ENCRYPTION_KEY is required",
+                           "file-permission-denied": "EACCES",
+                           "module-not-found": "ERR_MODULE_NOT_FOUND"}
+                category = [name for name, marker in markers.items() if marker in logs.stdout + logs.stderr]
                 raise RuntimeError("Router did not become healthy (status=" + state.get("Status", "unknown")
-                                   + ", exit=" + str(state.get("ExitCode")) + ")")
-            key = docker("exec", router, "node", "--input-type=module", "-e",
-                         "import {getUnifiedApiKey} from './server/dist/db/index.js'; console.log(getUnifiedApiKey())")
+                                   + ", exit=" + str(state.get("ExitCode")) + ", categories=" + str(category) + ")")
+            platform = "custom" if args.mode == "fixture" else "groq"
+            provision = ("import {connectDb,getUnifiedApiKey} from './server/dist/db/index.js';"
+                         "const db=connectDb();const platform=" + json.dumps(platform) + ",model=" + json.dumps(model) + ";"
+                         "if(!db.prepare('SELECT id FROM models WHERE platform=? AND model_id=?').get(platform,model))"
+                         "throw new Error('Selected pilot model is absent from the pinned catalog');"
+                         "db.prepare('UPDATE models SET enabled=CASE WHEN platform=? AND model_id=? THEN 1 ELSE 0 END').run(platform,model);"
+                         "db.prepare('UPDATE fallback_config SET enabled=0 WHERE model_db_id NOT IN "
+                         "(SELECT id FROM models WHERE platform=? AND model_id=?)').run(platform,model);"
+                         "db.prepare('UPDATE api_keys SET enabled=0 WHERE platform<>?').run(platform);"
+                         "console.log(getUnifiedApiKey());db.close();")
+            key = docker("exec", "--user", "node", router, "node", "--input-type=module", "-e", provision)
             # Initialization can emit migration messages; accept only the key line.
             keys = [line for line in key.splitlines() if line.startswith("freellmapi-")]
             if len(keys) != 1:
