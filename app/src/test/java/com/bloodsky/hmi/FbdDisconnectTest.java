@@ -567,6 +567,27 @@ public class FbdDisconnectTest {
         assertEquals(0L, timer.timerStartedAt);
     }
 
+    @Test public void pinPickerOnlyOffersCompatibleTypedTerminals() {
+        assertArrayEquals(new String[]{"IN"},
+                MainActivity.compatibleFbdTargetPins("FBD Вход", "Q", "FBD Таймер"));
+        assertArrayEquals(new String[]{"PT"},
+                MainActivity.compatibleFbdTargetPins("FBD POW", "OUT", "FBD TON"));
+        assertArrayEquals(new String[]{"PV"},
+                MainActivity.compatibleFbdTargetPins("FBD POW", "OUT", "FBD CTU"));
+        assertArrayEquals(new String[]{"CU", "R"},
+                MainActivity.compatibleFbdTargetPins("FBD Вход", "Q", "FBD CTU"));
+        assertArrayEquals(new String[]{"BASE", "EXP"},
+                MainActivity.compatibleFbdTargetPins("FBD ABS", "OUT", "FBD POW"));
+        assertArrayEquals(new String[]{"IN1", "IN2"},
+                MainActivity.compatibleFbdTargetPins("FBD НЕ", "Q", "FBD NAND"));
+        assertArrayEquals(new String[0],
+                MainActivity.compatibleFbdTargetPins("FBD AND", "IN1", "FBD TON"));
+        assertArrayEquals(new String[0],
+                MainActivity.compatibleFbdTargetPins("FBD Вход", "Q", "FBD Вход"));
+        assertArrayEquals(new String[0],
+                MainActivity.compatibleFbdTargetPins("FBD Вход", "Q", null));
+    }
+
     @Test public void invalidEndpointsDoNotMutateGraph() {
         List<MainActivity.FbdConnection> edges = new ArrayList<>();
         edges.add(new MainActivity.FbdConnection(0, 1));
