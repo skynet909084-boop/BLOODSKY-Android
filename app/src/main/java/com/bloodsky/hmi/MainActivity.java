@@ -2916,7 +2916,7 @@ public class MainActivity extends Activity {
             }
         }
         if ("FBD Таймер".equals(widget.type)) {
-            boolean input = !inputs.isEmpty() && inputs.get(0);
+            boolean input = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
             if (!input) {
                 widget.timerStartedAt = 0L;
                 return false;
