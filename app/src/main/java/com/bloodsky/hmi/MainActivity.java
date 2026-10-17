@@ -3047,8 +3047,15 @@ public class MainActivity extends Activity {
     }
 
     private void addFbdConnection(int source, int target, FbdConnection edge) {
+        if (edge == null || edge.source != source || edge.target != target
+                || currentScreenIndex < 0 || currentScreenIndex >= screens.size()
+                || source < 0 || target < 0 || source >= widgets.size() || target >= widgets.size()
+                || source == target || !isFbd(widgets.get(source)) || !isFbd(widgets.get(target))) return;
         Screen screen = screens.get(currentScreenIndex);
-        if (edge == null || edge.source != source || edge.target != target) return;
+        if (reachesFbd(target, source, new boolean[widgets.size()], screen.connections)) {
+            Toast.makeText(this, "Связь отменена: она создаёт цикл в FBD", Toast.LENGTH_LONG).show();
+            return;
+        }
         for (FbdConnection existing : screen.connections) {
             if (existing.source == source && existing.target == target) {
                 Toast.makeText(this, "Такая связь уже существует", Toast.LENGTH_SHORT).show();
