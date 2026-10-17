@@ -242,6 +242,48 @@ class FastFbdSmoke(Smoke):
         self.wait_node(description='Редактор экрана')
         if current_widgets() != original or self.saved_connections():
             raise AssertionError('Original Craft palette native types were not persisted')
+
+        # Versioned INTEGER SEL/COMPARE have different ports from BLOODSKY's
+        # existing generic operators. Exercise the real extended picker.
+        adb('shell', 'pm', 'clear', PACKAGE)
+        adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
+        self.tap('Создать новый проект')
+        self.tap(class_name='android.widget.EditText')
+        adb('shell', 'input', 'text', PROJECT)
+        self.tap('Создать')
+        self.wait_node(description='Редактор экрана')
+        add_native_from_extended('FBD — Craft SEL (целочисленный)')
+        add_native_from_extended('FBD — Craft COMPARE (INT32)')
+        operators = current_widgets()
+        if [w['type'] for w in operators] != [
+                'FBD CRAFT SEL', 'FBD CRAFT COMPARE']:
+            raise AssertionError('Source Integer SEL/COMPARE picker mapping incorrect: ' +
+                                 repr(operators))
+        if operators[1].get('compareOperator') != '>':
+            raise AssertionError('Original COMPARE should default to >')
+        # Edit the native comparator rather than generic double comparator.
+        canvas = self.wait_node(description='Редактор экрана')
+        x0, y0, _, _ = map(int, re.findall(r'\d+', canvas.get('bounds')))
+        cmp = operators[1]
+        adb('shell', 'input', 'tap',
+            str(round(x0 + cmp['x'] + cmp['w']/2)),
+            str(round(y0 + cmp['y'] + cmp['h']/2)))
+        self.wait_node('Свойства: FBD CRAFT COMPARE')
+        self.replace_property_input('Оператор сравнения', '<=')
+        self.tap('Применить')
+        self.wait_node(description='Редактор экрана')
+        operators = current_widgets()
+        if (operators[1]['type'] != 'FBD CRAFT COMPARE'
+                or operators[1]['compareOperator'] != '<='):
+            raise AssertionError('Original COMPARE mode or type lost after editing')
+        self.capture('fast-fbd-source-native-sel-compare')
+        adb('shell', 'am', 'force-stop', PACKAGE)
+        adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
+        self.tap('Загрузить проект')
+        self.tap(PROJECT)
+        self.wait_node(description='Редактор экрана')
+        if current_widgets() != operators or self.saved_connections():
+            raise AssertionError('Signed Integer native operator state lost after restart')
         crashes = adb('logcat', '-d', '-b', 'crash')
         (self.output / 'crash-log.txt').write_text(crashes)
         if PACKAGE in crashes:
@@ -259,6 +301,8 @@ class FastFbdSmoke(Smoke):
                 'native block cold restart',
                 'original Craft RS/T/CTU source preview selection',
                 'original source preview block cold restart',
+                'source Integer SEL and COMPARE extended picker',
+                'COMPARE exact <= mode and cold restart',
                 'no app crash']
         }, indent=2))
         print(f'FAST_FBD_SMOKE_OK elapsed_seconds={elapsed}', flush=True)
