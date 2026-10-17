@@ -165,7 +165,7 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("if (visitedCount != nodeCount)", self.source)
 
     def test_loading_only_restores_valid_fbd_connections(self):
-        load_start = self.source.index("private void loadProject()")
+        load_start = self.source.index("private boolean loadProject()")
         load_end = self.source.index("public static void validateImportedProjectStatic(", load_start)
         load_method = self.source[load_start:load_end]
         self.assertIn("source < screen.widgets.size()", load_method)
