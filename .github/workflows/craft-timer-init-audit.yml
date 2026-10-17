@@ -1,0 +1,33 @@
+name: BLOODSKY original timer constructor and unit evidence
+on:
+  pull_request:
+    paths:
+      - 'tools/craft_timer_init_probe.py'
+      - 'tools/test_craft_timer_init_probe.py'
+      - '.github/workflows/craft-timer-init-audit.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: craft-timer-init-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  source-timer-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test Java method/constant parser without executing original source
+        run: python -m unittest discover -s tools -p 'test_craft_timer_init_probe.py' -v
+      - name: Inspect pinned original timer and UsbId definitions
+        run: python tools/craft_timer_init_probe.py
+      - name: Keep small source evidence only
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-timer-init-evidence
+          path: build-reports/craft-timer-init-evidence.json
+          retention-days: 7
+          if-no-files-found: error
