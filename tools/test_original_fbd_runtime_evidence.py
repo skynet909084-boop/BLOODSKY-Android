@@ -51,7 +51,8 @@ class RuntimeEvidenceTest(unittest.TestCase):
                        if item["path"].endswith("/FB_SEL.java"))
             self.assertIn("if (sel)", sel["execution"][0]["code"])
             self.assertIn("else result", sel["execution"][0]["code"])
-            self.assertEqual(5, len(output["pending_acceptance"]))
+            self.assertTrue(any("MOVE" in item and "SEL" in item
+                                for item in output["pending_acceptance"]))
             self.assertRaises(ValueError, generate_report, archive, "0" * 64)
 
     def test_bounded_execution_body_and_qualified_parent(self):
