@@ -51,7 +51,7 @@ def contract_fingerprint(filename, raw):
             literal = match.group(1)
             if literal in CONTRACT_LABELS and len(labels) < MAX_CONTRACT_OCCURRENCES:
                 labels.append({"line": lineno, "value": literal})
-        for match in re.finditer(r"\\b([A-Za-z][A-Za-z0-9_]*)\\s*\\(", line):
+        for match in re.finditer(r"\b([A-Za-z][A-Za-z0-9_]*)\s*\(", line):
             method = match.group(1)
             if method in CONTRACT_METHODS and len(calls) < MAX_CONTRACT_OCCURRENCES:
                 calls.append({"line": lineno, "name": method})
