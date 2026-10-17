@@ -3189,7 +3189,8 @@ public class MainActivity extends Activity {
                                         edge.extraFields.put("sourceSignalType", sourceSignal);
                                         edge.extraFields.put("targetSignalType", targetSignal);
                                     }
-                                    if (!hasCompatibleKnownFbdPins(connectionToJson(edge), sourceType, targetType)) {
+                                    JSONObject json = connectionToJson(edge);
+                                    if (!hasCompatibleKnownFbdPins(json, sourceType, targetType)) {
                                         Toast.makeText(this, "Несовместимые контакты FBD", Toast.LENGTH_SHORT).show();
                                         return;
                                     }
