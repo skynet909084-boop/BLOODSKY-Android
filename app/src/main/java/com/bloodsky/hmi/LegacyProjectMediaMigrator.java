@@ -70,7 +70,7 @@ public final class LegacyProjectMediaMigrator {
             long total = 0;
             for (String relative : references) {
                 File legacyFile = findLegacyFile(filesDir, relative);
-                if (legacyFile == null) continue; // Missing historical media may already be unavailable.
+                // An explicit media/ reference must not silently become a broken link\n                // after publishing a new storage ID. Abort and retain the legacy project.\n                if (legacyFile == null)\n                    throw new java.io.FileNotFoundException(\"Referenced legacy media is missing: \" + relative);
                 if (stage == null) {
                     if (destination.exists()) throw new IOException("Migration target already exists");
                     if (!parent.isDirectory() && !parent.mkdirs())
