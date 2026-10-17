@@ -137,9 +137,9 @@ class FastFbdSmoke(Smoke):
                 if len(scrolls) != 1:
                     raise AssertionError('Native FBD extended palette scroll missing')
                 left_s, top_s, right_s, bottom_s = map(
-                    int, re.findall(r'\\d+', scrolls[0].get('bounds')))
+                    int, re.findall(r'\d+', scrolls[0].get('bounds')))
                 if nodes:
-                    l, t, r, b = map(int, re.findall(r'\\d+', nodes[0].get('bounds')))
+                    l, t, r, b = map(int, re.findall(r'\d+', nodes[0].get('bounds')))
                     if t >= top_s and b <= bottom_s and b > t:
                         self.tap(text=item_text)
                         self.wait_node(description='Редактор экрана')
