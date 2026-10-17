@@ -2400,8 +2400,9 @@ public class MainActivity extends Activity {
                             if (connectionObj == null) continue;
                             int source = connectionObj.optInt("source", -1);
                             int target = connectionObj.optInt("target", -1);
-                            if (source >= 0 && target >= 0 && source < screen.widgets.size() && target < screen.widgets.size()
-                                    && source != target && isFbd(screen.widgets.get(source)) && isFbd(screen.widgets.get(target))) {
+                            if (canLoadFbdConnection(connectionObj)
+                                    && source < screen.widgets.size() && target < screen.widgets.size()
+                                    && isFbd(screen.widgets.get(source)) && isFbd(screen.widgets.get(target))) {
                                 screen.connections.add(connectionFromJson(connectionObj));
                             }
                         }
@@ -2471,6 +2472,7 @@ public class MainActivity extends Activity {
             for (int j = 0; j < connections.length(); j++) {
                 JSONObject edge = connections.optJSONObject(j);
                 if (edge == null) throw new IllegalArgumentException("Connection must be an object");
+                if (!canLoadFbdConnection(edge)) throw new IllegalArgumentException("Invalid FBD pin metadata or endpoints");
                 int source = edge.optInt("source", -1);
                 int target = edge.optInt("target", -1);
                 if (source < 0 || target < 0 || source >= nodeCount || target >= nodeCount || source == target) {
