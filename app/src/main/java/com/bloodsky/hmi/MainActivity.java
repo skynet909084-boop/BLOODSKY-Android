@@ -3031,6 +3031,12 @@ public class MainActivity extends Activity {
                                         }
                                         FbdConnection edge = pinnedFbdConnection(source, sourcePins[sourceChoice],
                                                 target, targetPins[targetChoice]);
+                                        String sourceSignal = knownFbdPinType(sourceType, sourcePins[sourceChoice], true);
+                                        String targetSignal = knownFbdPinType(targetType, targetPins[targetChoice], false);
+                                        if (sourceSignal != null && targetSignal != null) {
+                                            edge.extraFields.put("sourceSignalType", sourceSignal);
+                                            edge.extraFields.put("targetSignalType", targetSignal);
+                                        }
                                         JSONObject json = connectionToJson(edge);
                                         if (!hasCompatibleKnownFbdPins(json, sourceType, targetType)) {
                                             Toast.makeText(this, "Несовместимые контакты FBD", Toast.LENGTH_SHORT).show();
