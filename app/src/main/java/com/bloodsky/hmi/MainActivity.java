@@ -1493,7 +1493,11 @@ public class MainActivity extends Activity {
 
     private void showAddWidgetMenu() {
         OriginalComponentPalette.show(this, this::addWidget,
-                this::showExtendedWidgetMenu, this::editScreenBackground);
+                this::showFbdPalette, this::editScreenBackground);
+    }
+
+    private void showFbdPalette() {
+        OriginalFbdPalette.show(this, this::addWidget, this::showAddWidgetMenu, this::showExtendedWidgetMenu);
     }
 
     private void showExtendedWidgetMenu() {
@@ -1798,6 +1802,7 @@ public class MainActivity extends Activity {
             timerLabel.setPadding(0, dp(10), 0, 0);
             form.addView(timerLabel);
             timerPresetField = propertyField(Integer.toString(w.timerPresetMs), InputType.TYPE_CLASS_NUMBER);
+            timerPresetField.setContentDescription("Время таймера, мс");
             form.addView(timerPresetField);
         } else {
             timerPresetField = null;
@@ -1809,6 +1814,7 @@ public class MainActivity extends Activity {
             counterLabel.setPadding(0, dp(10), 0, 0);
             form.addView(counterLabel);
             counterPresetField = propertyField(Integer.toString(w.counterPreset), InputType.TYPE_CLASS_NUMBER);
+            counterPresetField.setContentDescription("Уставка счётчика");
             form.addView(counterPresetField);
         } else {
             counterPresetField = null;
@@ -1825,6 +1831,9 @@ public class MainActivity extends Activity {
             compareLeftField = propertyField(Double.toString(w.compareA), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
             compareOperatorField = propertyField(w.compareOperator, InputType.TYPE_CLASS_TEXT);
             compareRightField = propertyField(Double.toString(w.compareB), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            compareLeftField.setContentDescription("Сравнение A");
+            compareOperatorField.setContentDescription("Оператор сравнения");
+            compareRightField.setContentDescription("Сравнение B");
             form.addView(compareLeftField);
             form.addView(compareOperatorField);
             form.addView(compareRightField);
@@ -1906,9 +1915,15 @@ public class MainActivity extends Activity {
                 .setPositiveButton("Применить", null).create();
         properties.setOnShowListener(shown -> properties.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(clicked -> {
                     final WidgetGeometryEdits geometry;
+                    final FbdPropertyEdits fbd;
                     try {
                         geometry = WidgetGeometryEdits.parse(xField.getText().toString(), yField.getText().toString(),
                                 widthField.getText().toString(), heightField.getText().toString());
+                        fbd = FbdPropertyEdits.parse(timerPresetField == null ? null : timerPresetField.getText().toString(),
+                                counterPresetField == null ? null : counterPresetField.getText().toString(),
+                                compareLeftField == null ? null : compareLeftField.getText().toString(),
+                                compareOperatorField == null ? null : compareOperatorField.getText().toString(),
+                                compareRightField == null ? null : compareRightField.getText().toString());
                     } catch (IllegalArgumentException invalid) {
                         Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show();
                         return;
@@ -1953,18 +1968,17 @@ public class MainActivity extends Activity {
                         }
                     }
                     if (timerPresetField != null) {
-                        int newPreset = readPositiveInt(timerPresetField, w.timerPresetMs, false);
-                        w.timerPresetMs = Math.max(1, Math.min(3600000, newPreset));
+                        w.timerPresetMs = fbd.timer;
                         w.timerStartedAt = 0L;
                     }
                     if (counterPresetField != null) {
-                        w.counterPreset = Math.max(1, Math.min(1000000, readPositiveInt(counterPresetField, w.counterPreset, false)));
+                        w.counterPreset = fbd.counter;
                         if ("FBD CTD".equals(w.type)) w.counterValue = w.counterPreset;
                     }
                     if (compareLeftField != null) {
-                        w.compareA = readDouble(compareLeftField, w.compareA);
-                        w.compareB = readDouble(compareRightField, w.compareB);
-                        w.compareOperator = normalizeComparisonOperator(compareOperatorField.getText().toString());
+                        w.compareA = fbd.left;
+                        w.compareB = fbd.right;
+                        w.compareOperator = fbd.operator;
                         w.text = Double.toString(w.compareA) + " " + w.compareOperator + " " + Double.toString(w.compareB);
                     }
                     if (minValField != null) {

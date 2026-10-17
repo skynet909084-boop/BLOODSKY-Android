@@ -1,0 +1,77 @@
+<?xml version='1.0' encoding='utf-8'?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:background="#232323">
+  <LinearLayout android:orientation="horizontal" android:id="@+id/kc_logic_layout_tab_component" android:background="#ff232323" android:layout_width="match_parent" android:layout_height="match_parent">
+    <LinearLayout android:orientation="vertical" android:background="#ff232323" android:layout_width="wrap_content" android:layout_height="match_parent">
+      <LinearLayout android:gravity="center" android:orientation="horizontal" android:background="#ff232323" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_weight="0.5">
+        <TextView android:textColor="#edb03b" android:gravity="center" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="8.0dp" android:layout_marginRight="8.0dp" android:text="Var" android:layout_marginStart="8.0dp" />
+      </LinearLayout>
+      <LinearLayout android:gravity="center" android:orientation="horizontal" android:background="#ff232323" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_weight="1.0">
+        <TextView android:textColor="#edb03b" android:gravity="center" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="8.0dp" android:layout_marginRight="8.0dp" android:text="FB" android:layout_marginStart="8.0dp" />
+      </LinearLayout>
+      <LinearLayout android:gravity="center" android:orientation="horizontal" android:background="#232323" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_weight="0.5">
+        <TextView android:textColor="#edb03b" android:gravity="center" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="8.0dp" android:layout_marginRight="8.0dp" android:text="EL" android:layout_marginStart="8.0dp" />
+      </LinearLayout>
+    </LinearLayout>
+    <LinearLayout android:orientation="vertical" android:id="@+id/kc_logic_rootLayout" android:background="#232323" android:layout_width="match_parent" android:layout_height="match_parent">
+      <LinearLayout android:gravity="center_vertical" android:orientation="vertical" android:layout_width="match_parent" android:layout_height="0.0dp" android:layout_weight="1.0">
+        <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="0.0dp" android:layout_weight="1.0">
+          <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_var" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="20.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="Var" />
+          <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_varOut" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="20.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="VarOut" />
+          <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_varInt" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="20.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="VarInt" />
+          <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_varOutInt" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="20.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="VarOutInt" />
+          <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_varFloat" android:background="@drawable/kc_var_float" android:layout_width="60.0dp" android:layout_height="20.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="VarFloat" />
+          <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_varOutFloat" android:background="@drawable/kc_var_out_float" android:layout_width="60.0dp" android:layout_height="20.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="VarOutFloat" />
+        </LinearLayout>
+        <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="0.0dp" android:layout_weight="1.0">
+          <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_var_name_in" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="20.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="VarNameIn" />
+          <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_var_name_out" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="20.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="VarNameOut" />
+        </LinearLayout>
+      </LinearLayout>
+      <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="0.0dp" android:layout_weight="1.0">
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_fb_rs" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="50.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="FB_RS" />
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_fb_t_trigger" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="50.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="FB_TRIGGER" />
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_fb_timer" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="50.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="FB_TIMER" />
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_fb_ctu" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="50.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="FB_CTU" />
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_fb_move" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="50.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="FB_MOVE" />
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_fb_mx" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="50.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="FB_MX" />
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_fb_macro" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="50.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="FB_MACRO" />
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_fb_array" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="50.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="FB_ARRAY" />
+      </LinearLayout>
+      <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="0.0dp" android:layout_weight="1.0">
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_fb_word_to_float" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="20.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="WordToFloat" />
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_fb_int_to_float" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="20.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="IntToFloat" />
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_fb_float_to_int" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="20.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="FloatToInt" />
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_fb_sensor_orientation" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="20.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="Sensor_Orientation" />
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_fb_dt" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="20.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="ODTEMP" />
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_fb_sensor_speed" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="20.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="Sensor_Speed" />
+      </LinearLayout>
+      <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="0.0dp" android:layout_weight="1.0">
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_fb_mqtt_subscriber" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="20.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="MQTT_SUBSCRIBER" />
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_fb_mqtt_publisher" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="50.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="MQTT_PUBLISHER" />
+      </LinearLayout>
+      <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="0.0dp" android:layout_weight="1.0">
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_fb_sin" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="20.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="SIN" />
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_fb_log" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="20.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="LOG" />
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_fb_abs" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="20.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="ABS" />
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_fb_pow" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="50.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="FB_POW" />
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_fb_xor" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="50.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="FB_XOR" />
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_fb_sel" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="50.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="FB_SEL" />
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_fb_sunrise" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="20.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="Sunrise_GPS" />
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_fb_sensor_light" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="20.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="Sensor_Light" />
+      </LinearLayout>
+      <LinearLayout android:gravity="center_vertical" android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="0.0dp" android:layout_weight="1.0">
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_el_and" android:background="#00ffffff" android:padding="5.0dp" android:layout_width="60.0dp" android:layout_height="50.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="FB_AND" />
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_el_or" android:background="#00ffffff" android:padding="5.0dp" android:layout_width="60.0dp" android:layout_height="50.0dp" android:layout_marginLeft="10.0dp" android:tag="FB_OR" />
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_el_compare_int" android:background="#00ffffff" android:padding="5.0dp" android:layout_width="60.0dp" android:layout_height="50.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="FB_COMPARE" />
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_el_arithmetic_int" android:background="#00ffffff" android:padding="5.0dp" android:layout_width="60.0dp" android:layout_height="50.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="FB_ARITHMETIC_INT" />
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_el_arithmetic_float" android:background="#00ffffff" android:padding="5.0dp" android:layout_width="60.0dp" android:layout_height="50.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="FB_ARITHMETIC_FLOAT" />
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_el_compare_float" android:background="#00ffffff" android:padding="5.0dp" android:layout_width="60.0dp" android:layout_height="50.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="FB_COMPARE_FLOAT" />
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_fb_change_i" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="50.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="FB_CHANGE_I" />
+        <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_fb_change_f" android:background="#00ffffff" android:layout_width="60.0dp" android:layout_height="50.0dp" android:layout_marginLeft="4.0dp" android:layout_marginStart="4.0dp" android:tag="FB_CHANGE_F" />
+        <RelativeLayout android:layout_width="match_parent" android:layout_height="match_parent">
+        </RelativeLayout>
+      </LinearLayout>
+    </LinearLayout>
+  </LinearLayout>
+  <ImageView android:id="@+id/kc_logic_switch_layout" android:background="@drawable/kc_tab_page3" android:layout_width="60.0dp" android:layout_height="60.0dp" android:layout_gravity="bottom|end" />
+</FrameLayout>
