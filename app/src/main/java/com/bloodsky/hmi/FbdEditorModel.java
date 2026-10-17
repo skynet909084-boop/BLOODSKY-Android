@@ -63,7 +63,8 @@ public final class FbdEditorModel {
                 ||"FBD ABS".equals(type)||"FBD SIN".equals(type)||"FBD COS".equals(type)
                 ||"FBD TAN".equals(type)||"FBD SQRT".equals(type)||"FBD FloatToInt".equals(type)
                 ||"FBD IntToFloat".equals(type)||"FBD MOVE".equals(type)) return 1;
-        if("FBD SEL".equals(type))return 3;
+        // Legacy SEL currently passes only its first incoming value through.
+        if("FBD SEL".equals(type))return 1;
         // This existing comparison block uses its A/B constants, not graph inputs.
         if("FBD Сравнение".equals(type))return 0;
         if(booleanOutput(type)||"FBD Сложение".equals(type)||"FBD Вычитание".equals(type)

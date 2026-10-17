@@ -97,7 +97,10 @@ public class FbdEditorModelTest {
     @Test public void chooserOnlyOffersInputsActuallyConsumedByTheExistingEvaluator() {
         assertEquals(0,FbdEditorModel.inputCount("FBD Сравнение"));assertEquals(0,FbdEditorModel.inputCount("FBD future"));
         assertEquals(1,FbdEditorModel.inputCount("FBD TOF"));assertEquals(2,FbdEditorModel.inputCount("FBD POW"));
-        assertEquals(3,FbdEditorModel.inputCount("FBD SEL"));
+        assertEquals(1,FbdEditorModel.inputCount("FBD SEL"));
+        MainActivity.Widget first=block("FBD Вход"),second=block("FBD Вход"),select=block("FBD SEL");
+        first.inputValue=true;second.inputValue=false;
+        assertEquals(1,numeric(Arrays.asList(first,second,select),Arrays.asList(new MainActivity.FbdConnection(0,2),new MainActivity.FbdConnection(1,2)),2),0);
     }
     @Test public void failedPublicationRestoresFieldsGeometryAndIndependentUnknownEdgeMetadata() throws Exception {
         List<MainActivity.Widget> widgets=new ArrayList<>(Arrays.asList(block("FBD И")));
