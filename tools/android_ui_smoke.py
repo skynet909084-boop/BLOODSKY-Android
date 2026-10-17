@@ -52,8 +52,12 @@ def document_nodes(xml, filename):
             and n.get('content-desc', '').startswith(filename + ', ')]
 
 
-def property_scroll_up(target, previous=None):
-    order = ['Положение X', 'Положение Y', 'Ширина элемента', 'Высота элемента']
+def property_scroll_up(target, previous=None, visible_descriptions=()):
+    order = ['Время таймера, мс', 'Уставка счётчика', 'Сравнение A', 'Оператор сравнения', 'Сравнение B', 'Положение X', 'Положение Y', 'Ширина элемента', 'Высота элемента']
+    visible = [order.index(value) for value in visible_descriptions if value in order]
+    if visible:
+        if order.index(target) > max(visible): return True
+        if order.index(target) < min(visible): return False
     return previous is None or order.index(target) >= order.index(previous)
 
 
@@ -152,6 +156,8 @@ class Smoke:
         raise AssertionError('Document did not open through system picker: ' + filename)
 
     def scroll_to_description(self, description):
+        previous_signature = None
+        previous_direction = None
         for attempt in range(16):
             xml = self.dump()
             nodes = matching_nodes(xml, description=description)
@@ -163,11 +169,16 @@ class Smoke:
                 return nodes[0]
             left, top, right, bottom = map(int, re.findall(r'\d+', scroll.get('bounds')))
             x = (left + right) // 2
-            upward = property_scroll_up(description, getattr(self, "last_property_description", None))
+            visible = [n.get("content-desc") for n in all_fields]
+            upward = property_scroll_up(description, getattr(self, "last_property_description", None), visible)
             if nodes:
                 _, node_top, _, _ = map(int, re.findall(r'\d+', nodes[0].get('bounds')))
                 upward = node_top > top
-            start, end = (bottom - 25, top + 25) if upward else (top + 25, bottom - 25)
+            signature = [(n.get('content-desc'), n.get('bounds'), n.get('text')) for n in all_fields]
+            if signature == previous_signature and previous_direction is not None:
+                upward = not previous_direction
+            previous_signature, previous_direction = signature, upward
+            start, end = (bottom - 25, top + (bottom-top)//3) if upward else (top + 25, bottom - (bottom-top)//3)
             adb('shell', 'input', 'swipe', str(x), str(start), str(x), str(end), '300')
         raise AssertionError('Property field not reachable: ' + description)
 
@@ -191,6 +202,73 @@ class Smoke:
     def capture(self, name):
         (self.output / (name + '.png')).write_bytes(adb('exec-out', 'screencap', '-p', binary=True))
         (self.output / (name + '.xml')).write_text(self.dump())
+
+    def check_fbd_palette_and_properties(self, saved_widgets):
+        baseline = saved_widgets()
+        self.tap(description='Добавить элемент')
+        self.tap(description='Функциональные блоки и другие элементы')
+        self.wait_node(description='Добавить: FBD Таймер')
+        disabled = [n for n in ET.fromstring(self.dump()).iter('node')
+                    if n.get('content-desc') == 'FB_RS: пока не перенесено']
+        if len(disabled) != 1 or disabled[0].get('enabled') != 'false':
+            raise AssertionError('Source RS with different legacy port order must stay disabled')
+        if matching_nodes(self.dump(), description='Палитра компонентов'):
+            self.tap(description='Палитра компонентов')
+        else:
+            # The original wide layout has no left arrow. Back dismisses the page.
+            adb('shell', 'input', 'keyevent', '4')
+            self.wait_node(description='Редактор экрана')
+            self.tap(description='Добавить элемент')
+        self.wait_node(description='Добавить: Индикатор')
+        self.tap(description='Функциональные блоки и другие элементы')
+        # The native scroll wrapper keeps lower source rows reachable on shorter screens.
+        for attempt in range(12):
+            xml = self.dump()
+            if matching_nodes(xml, description='Добавить: FBD И'):
+                break
+            scrolls = [n for n in ET.fromstring(xml).iter('node') if n.get('class') == 'android.widget.ScrollView']
+            if len(scrolls) != 1: raise AssertionError('Expected original FBD palette scroll view')
+            left, top, right, bottom = map(int, re.findall(r'\d+', scrolls[0].get('bounds')))
+            x = (left + right) // 2
+            adb('shell', 'input', 'swipe', str(x), str(bottom-180), str(x), str(top+80), '350')
+        self.wait_node(description='Добавить: FBD И')
+        self.capture('04m-original-fbd-lower-rows')
+        self.tap(description='Добавить: FBD И')
+        self.wait_node(description='Редактор экрана')
+        self.tap(description='Добавить элемент')
+        self.tap(description='Функциональные блоки и другие элементы')
+        self.tap(description='Добавить: FBD Таймер')
+        self.wait_node(description='Редактор экрана')
+        widgets = saved_widgets()
+        if widgets[:-2] != baseline or [w['type'] for w in widgets[-2:]] != ['FBD И', 'FBD Таймер']:
+            raise AssertionError('Original palette did not add the requested FBD types independently')
+        timer = widgets[-1]
+        canvas = self.wait_node(description='Редактор экрана')
+        left, top, _, _ = map(int, re.findall(r'\d+', canvas.get('bounds')))
+        adb('shell', 'input', 'tap', str(int(left+timer['x']+timer['w']/2)), str(int(top+timer['y']+timer['h']/2)))
+        self.wait_node('Свойства: FBD Таймер')
+        self.replace_property_input('Время таймера, мс', '0')
+        self.tap('Применить')
+        self.wait_node('Свойства: FBD Таймер')
+        if saved_widgets() != widgets:
+            raise AssertionError('Invalid FBD preset partially changed the saved project')
+        self.capture('04n-fbd-invalid-preset')
+        self.replace_property_input('Время таймера, мс', '2345')
+        self.tap('Применить')
+        self.wait_node(description='Редактор экрана')
+        self.capture('04o-fbd-preset-saved')
+        expected = json.loads(json.dumps(widgets))
+        expected[-1]['timerPresetMs'] = 2345
+        if saved_widgets() != expected:
+            raise AssertionError('FBD preset edit changed another widget field')
+        adb('shell', 'am', 'force-stop', PACKAGE)
+        adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
+        self.tap('Загрузить проект')
+        self.tap(PROJECT)
+        self.wait_node(description='Редактор экрана')
+        if saved_widgets() != expected:
+            raise AssertionError('FBD palette blocks/preset did not survive process restart')
+        self.capture('04p-fbd-reopened')
 
     def run(self, apk):
         serial = adb('get-serialno').strip()
@@ -256,8 +334,11 @@ class Smoke:
         self.wait_node(description='Редактор экрана')
         self.tap(description='Добавить элемент')
         self.tap(description='Функциональные блоки и другие элементы')
+        self.wait_node(description='Добавить: FBD Таймер')
+        self.capture('02d-original-fbd-palette')
+        self.tap(description='Другие элементы BLOODSKY')
         self.wait_node('Добавить элемент')
-        self.capture('02d-extended-components')
+        self.capture('02e-extended-components')
         self.tap('Отмена')
         self.wait_node(description='Редактор экрана')
         self.capture('02-created-editor')
@@ -443,6 +524,7 @@ class Smoke:
         if saved_widgets() != baseline:
             raise AssertionError('Stop/restart/operator off changed widget geometry or metadata')
         self.capture('04l-editor-mode-restored')
+        self.check_fbd_palette_and_properties(saved_widgets)
         adb('shell', 'input', 'keyevent', '4')
         self.wait_node('Создать новый проект')
         self.tap('Удалить проект')
@@ -465,7 +547,7 @@ class Smoke:
         if PACKAGE in crashes:
             raise AssertionError('Application crash recorded')
         (self.output / 'result.json').write_text(json.dumps({'result': 'passed', 'package': PACKAGE,
-                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'original five-category palette', 'palette add indicator/button/text/progress', 'extended component/FBD access', 'process restart', 'reload four palette-created components', 'invalid geometry leaves dialog/project unchanged', 'fractional properties survive second process restart', 'original ON/OFF dialogs and builtin state selection', 'custom document-provider image and persisted URI grant after process restart', 'original compact toolbar and hide/reveal', 'editor button opens properties without activation', 'operator drag and long-press cannot edit or activate', 'runtime button on/off and persistence after restart', 'stop and Back restore editor tools', 'confirmed deletion'],
+                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'original five-category palette', 'palette add indicator/button/text/progress', 'original 40-preview FBD palette and return/extended navigation', 'FBD AND/TON add and restart', 'invalid timer preset leaves project and form unchanged', 'exact valid timer preset preserves other fields', 'process restart', 'reload four palette-created components', 'invalid geometry leaves dialog/project unchanged', 'fractional properties survive second process restart', 'original ON/OFF dialogs and builtin state selection', 'custom document-provider image and persisted URI grant after process restart', 'original compact toolbar and hide/reveal', 'editor button opens properties without activation', 'operator drag and long-press cannot edit or activate', 'runtime button on/off and persistence after restart', 'stop and Back restore editor tools', 'confirmed deletion'],
                 'api_level': adb('shell', 'getprop', 'ro.build.version.sdk').strip(),
                 'display_size': adb('shell', 'wm', 'size').strip(),
                 'display_density': adb('shell', 'wm', 'density').strip()}, indent=2))

@@ -45,7 +45,7 @@ public final class OriginalComponentPalette {
         bind(dialog, R.id.kc_picker_tab_graph, "График / Тренд", "Тренд", add);
         bind(dialog, R.id.kc_picker_tab_dyn_pictures, "Многопозиционное фото", "Фото", add);
         action(dialog, R.id.kc_picker_tab_background, "Фон экрана", background);
-        // Keep every existing FBD and extended widget reachable while its original page is ported.
+        // The page corner opens the original FBD catalogue; its next page retains extended types.
         action(dialog, R.id.kc_picker_switch_layout, "Функциональные блоки и другие элементы", extended);
         dialog.show();
         Window window = dialog.getWindow();

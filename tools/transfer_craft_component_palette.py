@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 ANDROID = '{http://schemas.android.com/apk/res/android}'
 ET.register_namespace('android', ANDROID[1:-1])
 
-def transfer(decoded, layout_name="fragment_component_bar", prefix="kc_picker_", subtree_id=None):
+def transfer(decoded, layout_name="fragment_component_bar", prefix="kc_picker_", subtree_id=None, custom_views=False):
     original = Path(decoded) / 'apktool/res'
     values = {}
     for filename in ['colors.xml', 'dimens.xml', 'strings.xml']:
@@ -25,7 +25,11 @@ def transfer(decoded, layout_name="fragment_component_bar", prefix="kc_picker_",
     for element in root.iter():
         # These are static catalogue thumbnails, never replacement runtime components.
         if element.tag.startswith('ru.himik.'):
-            element.tag = 'ImageView' if element.tag.endswith('CustomSound') else 'TextView'
+            if custom_views:
+                element.set(ANDROID + 'tag', element.tag.split('.')[-1])
+                element.tag = 'com.bloodsky.hmi.OriginalFbdDrawing'
+            else:
+                element.tag = 'ImageView' if element.tag.endswith('CustomSound') else 'TextView'
         for attr, value in list(element.attrib.items()):
             if value.startswith(('@id/', '@+id/')):
                 value = '@+id/' + prefix + value.split('/')[-1]
