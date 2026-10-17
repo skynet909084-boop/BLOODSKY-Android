@@ -21,6 +21,11 @@ public final class OriginalFbdPalette {
         bind(dialog,R.id.kc_logic_tab_el_and,"FBD И","И",add);
         bind(dialog,R.id.kc_logic_tab_el_or,"FBD ИЛИ","ИЛИ",add);
         bind(dialog,R.id.kc_logic_tab_fb_xor,"FBD XOR","XOR",add);
+        // These three original source previews now map to VERIFIED BLOODSKY
+        // runtime contracts. All other unsupported previews remain disabled.
+        bindNative(dialog,R.id.kc_logic_tab_fb_rs,"FB_RS",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_t_trigger,"FB_TRIGGER",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_ctu,"FB_CTU",add);
         bind(dialog,R.id.kc_logic_tab_fb_timer,"FBD Таймер","TON",add);
         bind(dialog,R.id.kc_logic_tab_fb_pow,"FBD POW","POW",add);
         bind(dialog,R.id.kc_logic_tab_fb_sin,"FBD SIN","SIN",add);
@@ -38,6 +43,38 @@ public final class OriginalFbdPalette {
             window.setLayout(WindowManager.LayoutParams.MATCH_PARENT,WindowManager.LayoutParams.MATCH_PARENT);
         }
     }
+    /**
+     * Exact original FB preview tag -> a tested BLOODSKY FBD terminal contract.
+     * Never fall back to similarly named but incompatible extended widgets:
+     * native CTU uses +,-,R and numeric Q, not CU/R/PV and Boolean Q.
+     */
+    public static String nativeTypeForOriginalTag(String tag) {
+        if ("FB_RS".equals(tag)) return "FBD RS";
+        if ("FB_TRIGGER".equals(tag)) return "FBD CRAFT T";
+        if ("FB_CTU".equals(tag)) return "FBD CRAFT CTU";
+        return null; // Unverified preview remains disabled, no false affordance.
+    }
+
+    public static String nativeLabelForOriginalTag(String tag) {
+        if ("FB_RS".equals(tag)) return "RS";
+        if ("FB_TRIGGER".equals(tag)) return "T";
+        if ("FB_CTU".equals(tag)) return "CTU 16 bit";
+        return null;
+    }
+
+    private static void bindNative(Dialog dialog, int id, String sourceTag,
+                                   OriginalComponentPalette.Selection add) {
+        String type = nativeTypeForOriginalTag(sourceTag);
+        String text = nativeLabelForOriginalTag(sourceTag);
+        if (type == null || text == null)
+            throw new IllegalArgumentException("Unverified original FB preview: " + sourceTag);
+        View view = dialog.findViewById(id);
+        if (!(view instanceof OriginalFbdDrawing)
+                || !sourceTag.equals(String.valueOf(view.getTag())))
+            throw new IllegalStateException("Original FB source XML tag mismatch: " + sourceTag);
+        bind(dialog, id, type, text, add);
+    }
+
     private static void disablePreviews(ViewGroup group) {
         for(int i=0;i<group.getChildCount();i++) {
             View view=group.getChildAt(i);
