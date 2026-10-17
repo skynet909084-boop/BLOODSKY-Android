@@ -1438,7 +1438,8 @@ public class MainActivity extends Activity {
         if (timer) labels.add("Режим / единицы времени");
         labels.add("Свойства");
         labels.add("Другие действия");
-        new AlertDialog.Builder(this).setTitle(widget.text == null ? widget.type : widget.text)
+        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle(widget.text == null ? widget.type : widget.text)
                 .setItems(labels.toArray(new String[0]), (dialog, choice) -> {
                     if (blockIndex >= widgets.size() || widgets.get(blockIndex) != widget) {
                         Toast.makeText(this, "FBD изменён: выбери блок заново", Toast.LENGTH_LONG).show();
@@ -3903,8 +3904,13 @@ public class MainActivity extends Activity {
                 } else {
                     paint.setColor(Color.WHITE);
                 }
-                if (!OriginalIndicator.supports(w.type)) canvas.drawRoundRect(rect, dp(6), dp(6), paint);
-                if ((!OriginalIndicator.supports(w.type) && w.showFrame) || i == selected) {
+                // A source-backed FBD body already paints its own square
+                // outline; never leave the former purple rounded rectangle halo.
+                boolean sourceFbdSkin = FbdSourceCanvasSkin.shouldUse(w);
+                if (!OriginalIndicator.supports(w.type) && !sourceFbdSkin)
+                    canvas.drawRoundRect(rect, dp(6), dp(6), paint);
+                if ((!OriginalIndicator.supports(w.type) && w.showFrame
+                        && !sourceFbdSkin) || i == selected) {
                     paint.setStyle(Paint.Style.STROKE);
                     paint.setStrokeWidth(dp(i == selected ? 2.5f : 1));
                     paint.setColor(i == selected ? Color.rgb(21, 101, 192) : Color.rgb(148, 163, 184));
