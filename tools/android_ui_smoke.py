@@ -330,6 +330,17 @@ class Smoke:
                 'sourceSignalType': 'BOOL', 'targetSignalType': 'BOOL'}.items()):
             raise AssertionError('Named Q -> IN wire was not saved correctly: ' + repr(links))
         self.capture('04q-fbd-named-pin-wire')
+        # Original-style FBD long-press commands must be present, and
+        # opening/canceling the menu cannot mutate the saved FBD graph.
+        sx, sy = round(left+source['x']+9), round(top+source['y']+9)
+        adb('shell', 'input', 'swipe', str(sx), str(sy), str(sx), str(sy), '800')
+        self.wait_node('Соединить с…')
+        self.wait_node('Инвертировать связь BOOL…')
+        self.wait_node('Отсоединить выход')
+        self.capture('04w-fbd-block-source-actions')
+        self.tap('Отмена')
+        if self.saved_connections() != links:
+            raise AssertionError('Canceling FBD context actions changed saved wires')
         if saved_widgets() != expected:
             raise AssertionError('Adding a wire changed component properties')
         adb('shell', 'input', 'swipe',
