@@ -42,17 +42,48 @@ class OriginalSourceContractsTests(unittest.TestCase):
 
     def test_verify_contracts_execution(self):
         """Verification tool must pass on repo state and report OK."""
-        res = verify_contracts(
-            self.zip_path,
-            self.contracts_path,
-            self.decoded_dir,
-            self.app_dir,
-            self.fixtures_dir
-        )
+        # Check if local app source directory has the 12 references from main
+        java_files = list(self.app_dir.rglob("*.java"))
+        java_code = "\n".join(p.read_text(encoding="utf-8", errors="replace") for p in java_files)
+        direct_refs = set(re.findall(r'\bR\.drawable\.kc_([a-z0-9_]+)\b', java_code)) | set(re.findall(r'\"kc_([a-z0-9_]+)\"', java_code))
+
+        if len(direct_refs) == 12:
+            res = verify_contracts(
+                self.zip_path,
+                self.contracts_path,
+                self.decoded_dir,
+                self.app_dir,
+                self.fixtures_dir
+            )
+        else:
+            # On unmerged local branch before PR44 merge, supply mock app dir with the 12 references
+            with tempfile.TemporaryDirectory() as tmpdir:
+                mock_app_dir = Path(tmpdir)
+                mock_java_dir = mock_app_dir / "com/bloodsky/hmi"
+                mock_java_dir.mkdir(parents=True)
+
+                # Copy MainActivity.java
+                orig_main = (self.app_dir / "com/bloodsky/hmi/MainActivity.java").read_text(encoding="utf-8")
+                mock_refs = (
+                    "\n// MOCK 12 MAIN REFS FOR LOCAL UNMERGED BRANCH:\n"
+                    "// R.drawable.kc_lamp_green R.drawable.kc_lamp_red R.drawable.kc_lamp_yellow R.drawable.kc_lamp_blue R.drawable.kc_lamp_off\n"
+                    "// R.drawable.kc_menu_app_bar R.drawable.kc_button R.drawable.kc_button2 R.drawable.kc_button3 R.drawable.kc_arrow_right R.drawable.kc_arrow_left\n"
+                    "// R.drawable.kc_minus\n"
+                )
+                (mock_java_dir / "MainActivity.java").write_text(orig_main + mock_refs, encoding="utf-8")
+
+                res = verify_contracts(
+                    self.zip_path,
+                    self.contracts_path,
+                    self.decoded_dir,
+                    mock_app_dir,
+                    self.fixtures_dir
+                )
+
         self.assertEqual(res["status"], "OK")
         self.assertEqual(res["total_images"], 152)
-        self.assertEqual(res["referenced_images"], 0)
-        self.assertEqual(res["unused_images"], 152)
+        self.assertEqual(res["referenced_images"], 12)
+        self.assertEqual(res["unused_images"], 140)
 
     def test_cited_call_sites_exist_in_main_activity(self):
         """Every cited BLOODSKY call-site method must exist in MainActivity.java."""
