@@ -30,7 +30,9 @@ EVIDENCE = re.compile(
     r"\b(?:public|protected|private)\b.*\(",
     re.IGNORECASE,
 )
-EXTENDS = re.compile(r"\bclass\s+\w+\s+extends\s+([A-Za-z_$][\w$]*)")
+EXTENDS = re.compile(r"\bclass\s+\w+\s+extends\s+([A-Za-z_$][\w.$]*)")
+IMPORT = re.compile(r"^\s*import\s+([A-Za-z_$][\w.$]*);", re.MULTILINE)
+EXECUTE = re.compile(r"\bpublic\s+void\s+f\s*\(\s*\)\s*\{")
 
 
 def read_java(archive, relative_name):
@@ -48,6 +50,21 @@ def inspect_class(path, raw, max_lines=MAX_EVIDENCE_LINES):
     code = "\n".join(exec_view for _, exec_view in visible)
     supermatch = EXTENDS.search(code)
     superclass = supermatch.group(1) if supermatch else None
+    imports = [name for name in IMPORT.findall(code)
+               if ".Logic." in name or ".logic." in name][:25]
+    # Capture only the compact execution routine f(), not the whole file.
+    # decompiled source may use meaningless names but branch order still matters.
+    execution = []
+    for index, (_, executable) in enumerate(visible):
+        if EXECUTE.search(executable):
+            brace_depth = 0
+            for j in range(index, min(index + 130, len(visible))):
+                literal, statement = visible[j]
+                brace_depth += statement.count("{") - statement.count("}")
+                execution.append({"line": j + 1, "code": literal.strip()[:180]})
+                if brace_depth <= 0 and j > index:
+                    break
+            break
     candidates = []
     for index, (literal, executable) in enumerate(visible):
         if EVIDENCE.search(executable):
@@ -62,6 +79,7 @@ def inspect_class(path, raw, max_lines=MAX_EVIDENCE_LINES):
                       for i in range(max_lines)]
     return {"path": path, "sha256": hashlib.sha256(raw).hexdigest(),
             "line_count": len(lines), "extends": superclass,
+            "imports": imports, "execution": execution,
             "matched_lines": len([1 for _, execution in visible if EVIDENCE.search(execution)]),
             "evidence": candidates,
             "disclaimer": "static Java control-flow hints; priority, signal types and units unproven"}
@@ -98,8 +116,21 @@ def generate_report(archive_path, expected_sha256=EXPECTED_SHA256):
             row = inspect_class(path, raw)
             entries.append(row)
             parent = row["extends"]
-            if parent and parent + ".java" != name and len(found) < 24:
-                pending.append((parent + ".java", False))
+            if not parent or len(found) >= 24:
+                continue
+            # Fully qualified parent ru.himik...Logic.c.d -> c/d.java.
+            # A short obfuscated class name c may be disambiguated by imports.
+            full = parent
+            if "." not in parent:
+                full = next((imp for imp in row["imports"]
+                             if imp.endswith("." + parent)), parent)
+            marker = ".Logic."
+            if marker in full:
+                relative = full.split(marker, 1)[1].replace(".", "/") + ".java"
+            else:
+                relative = full.replace(".", "/") + ".java"
+            if relative != name:
+                pending.append((relative, False))
         if missing:
             raise ValueError("Required original FBD classes missing: " + ", ".join(missing))
     return {
