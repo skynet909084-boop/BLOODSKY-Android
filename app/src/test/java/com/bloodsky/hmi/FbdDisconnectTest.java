@@ -56,6 +56,26 @@ public class FbdDisconnectTest {
                         .put("sourcePin", 4).put("targetPin", "IN1"))));
     }
 
+    @Test public void pinnedEdgeFactoryRoundTripsItsPins() throws Exception {
+        MainActivity.FbdConnection edge = MainActivity.pinnedFbdConnection(0, "Q", 1, "IN1");
+        JSONObject saved = MainActivity.connectionToJson(edge);
+        assertEquals("Q", saved.getString("sourcePin"));
+        assertEquals("IN1", saved.getString("targetPin"));
+        assertEquals(0, saved.getInt("source"));
+        assertEquals(1, saved.getInt("target"));
+    }
+
+    @Test public void pinnedEdgeFactoryRejectsMalformedPins() throws Exception {
+        try {
+            MainActivity.pinnedFbdConnection(0, "", 1, "IN1");
+            fail("Expected invalid pin");
+        } catch (IllegalArgumentException expected) { }
+        try {
+            MainActivity.pinnedFbdConnection(1, "Q", 1, "IN1");
+            fail("Expected self-edge rejection");
+        } catch (IllegalArgumentException expected) { }
+    }
+
     @Test public void invalidEndpointsDoNotMutateGraph() {
         List<MainActivity.FbdConnection> edges = new ArrayList<>();
         edges.add(new MainActivity.FbdConnection(0, 1));
