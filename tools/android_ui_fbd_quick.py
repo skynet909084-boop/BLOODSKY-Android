@@ -192,6 +192,35 @@ class FastFbdSmoke(Smoke):
         self.wait_node(description='Редактор экрана')
         if current_widgets() != native or self.saved_connections() != edge:
             raise AssertionError('Native CTU/T project changed after app restart')
+
+        # The original 1.0.7 Craft FBD palette already contains source previews
+        # for RS, T and CTU. These preview actions are now backed by verified
+        # runtimes instead of sending users to the new generic extra menu.
+        def add_from_original_preview(type_id):
+            self.tap(description='Добавить элемент')
+            self.tap(description='Функциональные блоки и другие элементы')
+            self.tap(description='Добавить: ' + type_id)
+            self.wait_node(description='Редактор экрана')
+
+        add_from_original_preview('FBD RS')
+        add_from_original_preview('FBD CRAFT T')
+        add_from_original_preview('FBD CRAFT CTU')
+        original = current_widgets()
+        if [w['type'] for w in original[5:]] != [
+                'FBD RS', 'FBD CRAFT T', 'FBD CRAFT CTU']:
+            raise AssertionError('Original Craft source previews mapped incorrectly: '
+                                 + repr(original))
+        if original[7].get('counterValue') != 0:
+            raise AssertionError('Original CTU preview created incorrect starting count')
+        self.capture('fast-fbd-original-craft-rs-t-ctu-palette')
+
+        adb('shell', 'am', 'force-stop', PACKAGE)
+        adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
+        self.tap('Загрузить проект')
+        self.tap(PROJECT)
+        self.wait_node(description='Редактор экрана')
+        if current_widgets() != original or self.saved_connections() != edge:
+            raise AssertionError('Original Craft palette native types were not persisted')
         crashes = adb('logcat', '-d', '-b', 'crash')
         (self.output / 'crash-log.txt').write_text(crashes)
         if PACKAGE in crashes:
@@ -207,6 +236,8 @@ class FastFbdSmoke(Smoke):
                 'native Craft CTU16 + T extended palette',
                 'native BLINK palette and exact 3456ms mode preservation',
                 'native block cold restart',
+                'original Craft RS/T/CTU source preview selection',
+                'original source preview block cold restart',
                 'no app crash']
         }, indent=2))
         print(f'FAST_FBD_SMOKE_OK elapsed_seconds={elapsed}', flush=True)
