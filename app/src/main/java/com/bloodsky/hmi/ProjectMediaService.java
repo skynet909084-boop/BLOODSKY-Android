@@ -74,7 +74,8 @@ public class ProjectMediaService {
         }
     }
 
-    private static File resolveProjectMediaDir(File filesDir, String projectJson) {
+    /** Resolve paths without creating directories; used by transactional legacy migration. */
+    static File resolveProjectMediaDir(File filesDir, String projectJson) {
         String projectId = getOrGenerateProjectId(projectJson);
         String directory = "media";
         try {
