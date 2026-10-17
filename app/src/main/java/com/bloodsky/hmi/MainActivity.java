@@ -3006,6 +3006,60 @@ public class MainActivity extends Activity {
                 }).setNegativeButton("Отмена", null).show();
     }
 
+    /** Offer pin-specific wiring for blocks whose pin names are confirmed in this build. */
+    private void chooseFbdPins(int source, int target) {
+        String sourceType = widgets.get(source).type;
+        String targetType = widgets.get(target).type;
+        String[] sourcePins = knownFbdPins(sourceType, true);
+        String[] targetPins = knownFbdPins(targetType, false);
+        if (sourcePins.length == 0 || targetPins.length == 0) {
+            addFbdConnection(source, target, new FbdConnection(source, target));
+            return;
+        }
+        new AlertDialog.Builder(this).setTitle("Выход FBD")
+                .setItems(sourcePins, (dialog, sourceChoice) ->
+                        new AlertDialog.Builder(this).setTitle("Вход FBD")
+                                .setItems(targetPins, (targetDialog, targetChoice) -> {
+                                    try {
+                                        FbdConnection edge = pinnedFbdConnection(source, sourcePins[sourceChoice],
+                                                target, targetPins[targetChoice]);
+                                        JSONObject json = connectionToJson(edge);
+                                        if (!hasCompatibleKnownFbdPins(json, sourceType, targetType)) {
+                                            Toast.makeText(this, "Несовместимые контакты FBD", Toast.LENGTH_SHORT).show();
+                                            return;
+                                        }
+                                        addFbdConnection(source, target, edge);
+                                    } catch (Exception error) {
+                                        Toast.makeText(this, "Ошибка контактов FBD", Toast.LENGTH_SHORT).show();
+                                    }
+                                }).setNegativeButton("Отмена", null).show())
+                .setNegativeButton("Отмена", null).show();
+    }
+
+    public static String[] knownFbdPins(String blockType, boolean output) {
+        if (blockType == null) return new String[0];
+        String kind = blockType.trim().toUpperCase(java.util.Locale.ROOT);
+        if ("FBD AND".equals(kind) || "FBD OR".equals(kind) || "FBD XOR".equals(kind))
+            return output ? new String[]{"Q"} : new String[]{"IN1", "IN2"};
+        if ("FBD RS".equals(kind)) return output ? new String[]{"Q"} : new String[]{"S", "R"};
+        if ("FBD TON".equals(kind)) return output ? new String[]{"Q"} : new String[]{"IN", "PT"};
+        return new String[0];
+    }
+
+    private void addFbdConnection(int source, int target, FbdConnection edge) {
+        Screen screen = screens.get(currentScreenIndex);
+        for (FbdConnection existing : screen.connections) {
+            if (existing.source == source && existing.target == target) {
+                Toast.makeText(this, "Такая связь уже существует", Toast.LENGTH_SHORT).show();
+                return;
+            }
+        }
+        screen.connections.add(edge);
+        persistProject();
+        if (editor != null) editor.invalidate();
+        Toast.makeText(this, "Связь FBD добавлена", Toast.LENGTH_SHORT).show();
+    }
+
     private void connectFbdWidgets(int source, int target) {
         if (source < 0 || target < 0 || source >= widgets.size() || target >= widgets.size() || source == target) {
             Toast.makeText(this, "Выбери два разных FBD-блока", Toast.LENGTH_SHORT).show();
@@ -3020,15 +3074,7 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "Связь отменена: она создаёт цикл в FBD", Toast.LENGTH_LONG).show();
             return;
         }
-        for (FbdConnection connection : screen.connections) {
-            if (connection.source == source && connection.target == target) {
-                Toast.makeText(this, "Такая связь уже существует", Toast.LENGTH_SHORT).show();
-                return;
-            }
-        }
-        screen.connections.add(new FbdConnection(source, target));
-        persistProject();
-        Toast.makeText(this, "Связь FBD добавлена", Toast.LENGTH_SHORT).show();
+        chooseFbdPins(source, target);
     }
 
     public static class Widget {
