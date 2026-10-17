@@ -2607,9 +2607,14 @@ public class MainActivity extends Activity {
         String kind = canonicalFbdBlockType(blockType);
         String name = canonicalFbdPinName(pin);
         if (kind.equals("FBD ВХОД")) return output && "Q".equals(name) ? "BOOL" : null;
-        if (kind.equals("FBD AND") || kind.equals("FBD OR") || kind.equals("FBD XOR")) {
+        if (kind.equals("FBD AND") || kind.equals("FBD OR") || kind.equals("FBD XOR")
+                || kind.equals("FBD NAND") || kind.equals("FBD NOR")) {
             if (output && "Q".equals(name)) return "BOOL";
             if (!output && ("IN1".equals(name) || "IN2".equals(name))) return "BOOL";
+        }
+        if (kind.equals("FBD НЕ")) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && "IN".equals(name)) return "BOOL";
         }
         if (kind.equals("FBD RS") || kind.equals("FBD SR")) {
             if (output && "Q".equals(name)) return "BOOL";
@@ -2850,6 +2855,7 @@ public class MainActivity extends Activity {
             }
         }
         visiting[index] = false;
+        final String canonicalType = canonicalFbdBlockType(widget.type);
 
         if ("FBD Сложение".equals(widget.type)) {
             double sum = 0.0;
@@ -2949,12 +2955,12 @@ public class MainActivity extends Activity {
             return val != 0.0;
         }
 
-        if ("FBD И".equals(widget.type)) {
+        if ("FBD AND".equals(canonicalType)) {
             if (inputs.isEmpty()) return false;
             for (Boolean value : inputs) if (!value) return false;
             return true;
         }
-        if ("FBD ИЛИ".equals(widget.type)) {
+        if ("FBD OR".equals(canonicalType)) {
             for (Boolean value : inputs) if (value) return true;
             return false;
         }
@@ -3016,7 +3022,8 @@ public class MainActivity extends Activity {
             widget.counterLastInput = countInput;
             return widget.counterValue <= 0;
         }
-        if ("FBD НЕ".equals(widget.type)) return inputs.isEmpty() || !inputs.get(0);
+        if ("FBD НЕ".equals(canonicalType))
+            return !fbdBooleanPinValue(inputs, inputPins, "IN", 0);
         if ("FBD Сравнение".equals(widget.type)) {
             switch (normalizeComparisonOperatorStatic(widget.compareOperator)) {
                 case "<": return widget.compareA < widget.compareB;
@@ -3027,7 +3034,7 @@ public class MainActivity extends Activity {
                 default: return widget.compareA > widget.compareB;
             }
         }
-        if ("FBD Таймер".equals(widget.type)) {
+        if ("FBD TON".equals(canonicalType)) {
             boolean input = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
             if (!input) {
                 widget.timerStartedAt = 0L;
@@ -3191,8 +3198,10 @@ public class MainActivity extends Activity {
         if (blockType == null) return new String[0];
         String kind = canonicalFbdBlockType(blockType);
         if ("FBD ВХОД".equals(kind)) return output ? new String[]{"Q"} : new String[0];
-        if ("FBD AND".equals(kind) || "FBD OR".equals(kind) || "FBD XOR".equals(kind))
+        if ("FBD AND".equals(kind) || "FBD OR".equals(kind) || "FBD XOR".equals(kind)
+                || "FBD NAND".equals(kind) || "FBD NOR".equals(kind))
             return output ? new String[]{"Q"} : new String[]{"IN1", "IN2"};
+        if ("FBD НЕ".equals(kind)) return output ? new String[]{"Q"} : new String[]{"IN"};
         if ("FBD RS".equals(kind) || "FBD SR".equals(kind)) return output ? new String[]{"Q"} : new String[]{"R", "S"};
         if ("FBD R_TRIG".equals(kind) || "FBD F_TRIG".equals(kind))
             return output ? new String[]{"Q"} : new String[]{"IN"};
