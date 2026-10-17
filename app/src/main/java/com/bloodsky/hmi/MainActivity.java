@@ -2544,6 +2544,19 @@ public class MainActivity extends Activity {
         return json;
     }
 
+    /** Remove only the selected directed edge; keep other edges and their metadata intact. */
+    public static boolean disconnectFbdEdge(List<FbdConnection> connections, int source, int target) {
+        if (connections == null || source < 0 || target < 0) return false;
+        for (int i = 0; i < connections.size(); i++) {
+            FbdConnection edge = connections.get(i);
+            if (edge != null && edge.source == source && edge.target == target) {
+                connections.remove(i);
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static boolean isFbdWidget(Widget widget) {
         return widget != null && widget.type != null && widget.type.startsWith("FBD ");
     }
