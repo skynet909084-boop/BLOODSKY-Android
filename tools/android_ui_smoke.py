@@ -329,6 +329,34 @@ class Smoke:
         adb('shell', 'input', 'keyevent', '4')
         self.wait_node('Свойства: Индикатор')
         self.tap('Отмена')
+        self.capture('04h-original-selection-actions')
+        # Copy/cut/paste through the actual original action strip. All non-position
+        # fields, including fractional dimensions and custom ON/OFF URI metadata,
+        # must survive the clipboard round trip.
+        def saved_widgets():
+            xml = adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml')
+            active = json.loads({n.get('name'): n.text for n in ET.fromstring(xml)}['active_project'])
+            return active['screens'][0]['widgets']
+        self.tap(description='Копировать')
+        self.tap(description='Вставить')
+        copied = saved_widgets()
+        if len(copied) != 5:
+            raise AssertionError('Copy/paste did not add exactly one component')
+        expected_copy = {k: v for k, v in copied[0].items() if k not in ('x', 'y')}
+        if {k: v for k, v in copied[-1].items() if k not in ('x', 'y')} != expected_copy:
+            raise AssertionError('Clipboard lost indicator properties or media')
+        self.tap(description='Вырезать')
+        if len(saved_widgets()) != 4:
+            raise AssertionError('Cut did not remove selected copy')
+        self.tap(description='Вставить')
+        pasted = saved_widgets()
+        if len(pasted) != 5 or {k: v for k, v in pasted[-1].items() if k not in ('x', 'y')} != expected_copy:
+            raise AssertionError('Cut/paste lost copied indicator properties')
+        self.capture('04i-pasted-indicator')
+        self.tap(description='Вырезать')
+        self.tap(description='Вырезать')  # No selection: must leave the clipboard/project intact.
+        if saved_widgets() != copied[:4]:
+            raise AssertionError('Cut changed unrelated components or accepted an empty selection')
         self.tap('☰')
         self.tap('Удалить проект')
         self.tap(PROJECT)

@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='utf-8'?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:orientation="horizontal" android:id="@+id/kc_action_layoutSelectAction" android:background="#ff232323" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_alignParentBottom="true" android:layout_centerHorizontal="true" android:elevation="101.0dp">
+  <HorizontalScrollView android:layout_width="match_parent" android:layout_height="match_parent">
+    <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="match_parent">
+      <ImageButton android:background="@drawable/kc_action_cut" android:layout_width="40.0dp" android:layout_height="40.0dp" android:layout_marginLeft="10.0dp" android:scaleType="fitXY" android:layout_weight="1.0" android:id="@+id/kc_action_selectActionCut" />
+      <ImageButton android:background="@drawable/kc_action_copy" android:layout_width="40.0dp" android:layout_height="40.0dp" android:layout_marginLeft="10.0dp" android:scaleType="fitXY" android:layout_weight="1.0" android:id="@+id/kc_action_selectActionCopy" />
+      <ImageButton android:background="@drawable/kc_action_paste" android:layout_width="40.0dp" android:layout_height="40.0dp" android:layout_marginLeft="10.0dp" android:scaleType="fitXY" android:layout_weight="1.0" android:id="@+id/kc_action_selectActionPaste" />
+      <ImageButton android:id="@+id/kc_action_openDialogAlignComponents" android:background="@drawable/kc_align_open_menu" android:layout_width="40.0dp" android:layout_height="40.0dp" android:layout_marginLeft="10.0dp" android:scaleType="fitXY" android:layout_weight="1.0" />
+    </LinearLayout>
+  </HorizontalScrollView>
+</LinearLayout>

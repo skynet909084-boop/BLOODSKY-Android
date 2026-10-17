@@ -1,0 +1,9 @@
+# Original editor selection actions
+
+The bottom selection strip is transferred from `activity_work_portrait.xml` / `layoutSelectAction` in the pinned Craft 1.0.7 reference (SHA-256 `316da0335dc4ea0c8f2d8c14550118ba33bd0e95d7c926f67ed848429c554cdd`). The source `mbCanvas.selectActionCut/Copy/Paste` and `openDialogAlignComponents` establish the action order. Original bitmap bytes, 40dp dimensions, 10dp margins, scroll container and background are retained.
+
+`selection_actions()` deterministically extracts the original subtree using the existing resource resolver. The only subtree changes are prefixed IDs and replacement of reflection-based `android:onClick` names with explicit BLOODSKY bindings. The outer LinearLayout centers the strip below the existing canvas; the original screen uses an overlay. The rest of the toolbar and full equal-density visual parity remain open.
+
+The four icons invoke cut, copy, paste and alignment. Cut first serializes a complete independent clipboard widget, and only then invokes the existing deletion path, including removal/reindexing of incident FBD connections. Failed serialization or empty selection does not delete a component. Clipboard and deletion retain the existing single-widget semantics and SharedPreferences persistence behavior. Multi-selection, transfer of FBD wires with clipboard blocks, and clipboard restoration after process death are not implemented. Properties remain available on component tap and in its long-press menu; deletion remains in that context menu.
+
+Validation includes source-subtree/resource equality and bindings, plus the Android emulator copying a custom-image indicator, comparing all persisted non-position fields, cutting/pasting it, and ensuring an empty-selection cut changes no other components. Python tests pass locally; Gradle/SDK are unavailable locally, so Android unit/APK and emulator acceptance depend on exact-head CI. No release or pixel-perfect claim.
