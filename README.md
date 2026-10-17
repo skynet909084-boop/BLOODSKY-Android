@@ -9,6 +9,7 @@ The current prototype includes:
 - a multi-screen editor with screen naming and background color controls;
 - canvas widgets, selection, dragging, resize grip, cut/copy/paste and delete;
 - widget property editing and preservation of unknown JSON metadata;
+- compact original toolbar and a separate foreground operator mode with guarded runtime gestures;
 - local project persistence plus portable ZIP image/audio import/export and JSON export;
 - original APK home background/buttons, calculator, supported five-category palette and selection-action icons, with recorded source provenance;
 - original indicator ON/OFF image menus, built-in lamps and custom document-provider images retained after process restart;
@@ -19,6 +20,13 @@ The current prototype includes:
 This is still a working prototype, not yet a complete Kaskada Craft replacement. The exact original UI has not been verified pixel-for-pixel against the decompiled APK and reference screenshots. Full component/property parity, Modbus RTU, broader protocol compatibility, robust runtime testing and a signed release build remain open work.
 
 Current accepted milestones, implementation gaps and device/release gates: [execution status](docs/BLOODSKY_EXECUTION_STATUS.md).
+
+## Editor and operator controls
+
+- Use the bottom-left component icon to open the palette. Tap a component to edit properties; long-press it for the context menu. The bottom strip provides cut/copy/paste/alignment.
+- The original play icon starts operator mode; the stop icon returns to editing. Runtime hides editing tools, grid/selection handles and FBD editor visuals. Short taps operate existing controls; dragging and long-pressing do not edit or activate them.
+- The left toolbar icon hides the toolbar; the floating icon reveals it. The right icon opens project/screen commands. Back stops operator mode first, then returns from editing to the home menu with a save.
+- A project reopened after process restart starts in the editor and retains its saved component state. Foreground preview polling retains its existing behavior; USB/Bluetooth and background service operation remain unverified.
 
 ## Regression guardrails
 

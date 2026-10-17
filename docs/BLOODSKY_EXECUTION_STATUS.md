@@ -21,14 +21,16 @@ Target: original KaScada Craft 1.0.7 functionality and appearance with BLOODSKY 
 - PR62: original ON/OFF image menus and five built-in lamps, custom image selection through the actual Android document provider, persistent URI permission, bounded decoding/cache and per-state unknown-field preservation. Accepted at `850e8332b12826a8e781a775254e3951f26b7328`; APK/unit run [361](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/38993214536) and Android 11 UI run [33](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/38993214537) passed.
 - PR63: original cut/copy/paste/alignment icon strip with source layout/artwork; cut guards serialization before deleting and clipboard checks cover custom images/fractional dimensions. Accepted at `7cb8eea911fddb57c6090123657d02a8b8a552a4`; APK/unit run [362](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/38993220012) and Android 11 UI run [34](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/38993219703) passed. Both PRs are merged to main.
 
+- PR65: source 40dp upper toolbar with clock/hide/reveal/palette, original run/stop controls and separate operator gestures. Accepted at `26b79714ff73525968d2c30fdb918ac96324e4b8`; [APK/unit run 366](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/38994541962) and [UI run 37](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/38994542013) passed. Merged to main. Editor taps edit properties; runtime taps operate controls. Runtime drag/long-press, state persistence after restart and stop/Back restoration are verified.
+
 ## Remaining implementation work
 
-- Complete original editor toolbar, FBD picker, unsupported palette components, all property/context dialogs, fonts/drawables and every supported state; corresponding equal-density screenshots. Original home, calculator, supported palette and indicator wiring cover only part of this phase.
+- Complete original toolbar overlay/settings/menu behavior, FBD picker, unsupported palette components, all property/context dialogs, fonts/drawables and every supported state; corresponding equal-density screenshots. Original home, calculator, supported palette and indicator wiring cover only part of this phase.
 - Original SQLite `Rovki.db`/table and project-archive compatibility, including real-project fixture round trips. The named catalog/JSON ZIP format is BLOODSKY's own layer, not original database compatibility.
 - Complete original component registry/property semantics, macros, pin-specific FBD layout and source-confirmed execution order/timing. Existing generic FBD/math tests do not prove original semantic parity.
 - Source-confirmed system registers/device configuration. Do not accept PR45's unsupported register/timing claims as implementation specifications.
 - Real Android USB/Bluetooth transport integration and lifecycle/permissions/reconnect checks; current RTU stream helpers and CRC tests are not hardware support.
-- Complete work/operator mode and intentional foreground-service/background behavior. Network devices/server UI, remote control and other original integrations must be backed by implementations and tests, not only menu items.
+- Original operator password/screen-lock/PDF behavior and intentional foreground-service/background behavior remain open after the basic guarded mode in PR65. Network devices/server UI, remote control and other original integrations must be backed by implementations and tests, not only menu items.
 - Review remaining PR38/44 changes in focused main-based increments. ZIP corrections were ported separately; these old branches must not replace current Activity/TCP/FBD code wholesale.
 
 ## Device and release gates
@@ -43,8 +45,10 @@ The named catalog uses SharedPreferences snapshots; synchronous selections/impor
 
 ## Validation and next slice
 
-- Final batch: 75 Python checks; 125 Android unit tests, zero failures/errors/skips; debug APK built; complete API30 emulator flow passed at density560/1440x2560. Full Gradle/SDK/emulator runs were unavailable locally and executed in independent CI.
+- Latest batch: 78 Python checks; 129 Android unit tests, zero failures/errors/skips; debug APK built; complete API30 emulator flow passed at density560/1440x2560. Full Gradle/SDK/emulator runs were unavailable locally and executed in independent CI.
 - Reviewed screenshots show custom yellow ON and builtin blue OFF images decoding after process restart, plus all four original selection icons with the canvas visible. Clipboard assertions compare every non-position widget JSON field, and empty-selection cut changes nothing.
 - The shell-only FINGER event helper fixes the observed API30 DocumentsUI automation issue. It is not part of the installed app; no file-result or persisted-URI assertions were bypassed.
-- Next substantial slice: source-backed upper toolbar/menu and work/operator-mode behavior, followed by original FBD palette/port semantics and remaining per-component properties. These need their own implementation and runtime evidence.
+- Accepted PR65: source-backed upper toolbar and guarded operator-mode behavior. Next: original FBD palette/port semantics and remaining per-component properties, plus source settings/password/lock/PDF behavior. Each needs its own implementation and runtime evidence.
 - Full original APK parity, original project database compatibility, physical-device USB/Bluetooth, and signed public release remain open. Passing this batch is not completion of the entire clone.
+
+- PR65 screenshots reviewed: compact play/stop/navigation/clock/calculator row, runtime without grid/palette/selection strip, operational button blue-to-green, and restored editor tools. All pre-existing media/calculator/geometry/clipboard/catalog UI flows still pass. README documents the new toolbar and Back behavior.
