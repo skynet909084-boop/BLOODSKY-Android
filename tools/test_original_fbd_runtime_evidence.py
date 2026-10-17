@@ -34,12 +34,25 @@ class RuntimeEvidenceTest(unittest.TestCase):
                                 " {\n public boolean exec(){ return input.getValue(); }\n}\n").encode())
                 z.writestr(SOURCE_PREFIX + "FB_Base.java",
                            b"public class FB_Base { public void reset() {} }")
+                z.writestr(SOURCE_PREFIX + "FB_SEL.java",
+                           b"public class FB_SEL { public void f() { if (sel) result = in1; "
+                           b"else result = in2; } }")
+                z.writestr(SOURCE_PREFIX + "FB_MOVE.java",
+                           b"public class FB_MOVE { public void f() { if (en) result = input; } }")
             digest = hashlib.sha256(archive.read_bytes()).hexdigest()
             output = generate_report(archive, expected_sha256=digest)
             names = {item["path"].split("/")[-1] for item in output["classes"]}
             self.assertTrue(set(TARGETS).issubset(names))
             self.assertIn("FB_Base.java", names)
+            self.assertIn("FB_SEL.java", names)
+            self.assertIn("FB_MOVE.java", names)
             self.assertTrue(all(len(row["evidence"]) <= 96 for row in output["classes"]))
+            sel = next(item for item in output["classes"]
+                       if item["path"].endswith("/FB_SEL.java"))
+            self.assertIn("if (sel)", sel["execution"][0]["code"])
+            self.assertIn("else result", sel["execution"][0]["code"])
+            self.assertTrue(any("MOVE" in item and "SEL" in item
+                                for item in output["pending_acceptance"]))
             self.assertRaises(ValueError, generate_report, archive, "0" * 64)
 
     def test_bounded_execution_body_and_qualified_parent(self):
