@@ -3720,8 +3720,13 @@ public class MainActivity extends Activity {
             if (!canonicalFbdPinName(pins[i]).equals(name)) continue;
             // Original FB_CTU draw9(): header 1/4, input +,-,R at
             // 3/8, 5/8, 7/8 and numeric Q at 3/8. Legacy CTU is unaffected.
-            if ("FBD CRAFT CTU".equals(kind))
+            if ("FBD CRAFT CTU".equals(kind)
+                    || "FBD CRAFT SEL".equals(kind))
                 return output ? 3f / 8f : (2f * i + 3f) / 8f;
+            // Original FB_COMPARE draw15(): IN1=1/4, IN2=3/4,
+            // BOOL Q=1/2; unlike the generic source-white graph fallback.
+            if ("FBD CRAFT COMPARE".equals(kind))
+                return output ? 0.5f : (i == 0 ? 0.25f : 0.75f);
             // Original FB_RS draw8(): header 1/3, R/S at 1/2 and 5/6,
             // output Q at 1/2. Wire anchors and drawn contacts must match.
             if ("FBD RS".equals(kind))
