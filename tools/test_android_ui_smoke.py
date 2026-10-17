@@ -40,6 +40,13 @@ class AndroidSmokeHelpersTests(unittest.TestCase):
         self.assertTrue(property_scroll_up('Высота элемента', 'Ширина элемента'))
         self.assertFalse(property_scroll_up('Ширина элемента', 'Высота элемента'))
 
+    def test_observed_fields_override_stale_scroll_history_after_invalid_apply(self):
+        # Invalid Apply auto-scrolls the form to X. Width is now below the viewport,
+        # even though the last edited field was Height (the real API30 failure).
+        self.assertTrue(property_scroll_up('Ширина элемента', 'Высота элемента', ['Положение X']))
+        self.assertFalse(property_scroll_up('Положение X', 'Положение Y', ['Ширина элемента','Высота элемента']))
+        self.assertTrue(property_scroll_up('Время таймера, мс', visible_descriptions=[]))
+
     def test_keyboard_visibility_uses_observed_input_method_state(self):
         self.assertTrue(keyboard_is_shown('mInputShown=true mShowRequested=true'))
         self.assertFalse(keyboard_is_shown('mInputShown=false'))

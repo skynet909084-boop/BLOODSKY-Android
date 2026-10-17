@@ -52,8 +52,12 @@ def document_nodes(xml, filename):
             and n.get('content-desc', '').startswith(filename + ', ')]
 
 
-def property_scroll_up(target, previous=None):
+def property_scroll_up(target, previous=None, visible_descriptions=()):
     order = ['Время таймера, мс', 'Уставка счётчика', 'Сравнение A', 'Оператор сравнения', 'Сравнение B', 'Положение X', 'Положение Y', 'Ширина элемента', 'Высота элемента']
+    visible = [order.index(value) for value in visible_descriptions if value in order]
+    if visible:
+        if order.index(target) > max(visible): return True
+        if order.index(target) < min(visible): return False
     return previous is None or order.index(target) >= order.index(previous)
 
 
@@ -152,6 +156,8 @@ class Smoke:
         raise AssertionError('Document did not open through system picker: ' + filename)
 
     def scroll_to_description(self, description):
+        previous_signature = None
+        previous_direction = None
         for attempt in range(16):
             xml = self.dump()
             nodes = matching_nodes(xml, description=description)
@@ -163,11 +169,16 @@ class Smoke:
                 return nodes[0]
             left, top, right, bottom = map(int, re.findall(r'\d+', scroll.get('bounds')))
             x = (left + right) // 2
-            upward = property_scroll_up(description, getattr(self, "last_property_description", None))
+            visible = [n.get("content-desc") for n in all_fields]
+            upward = property_scroll_up(description, getattr(self, "last_property_description", None), visible)
             if nodes:
                 _, node_top, _, _ = map(int, re.findall(r'\d+', nodes[0].get('bounds')))
                 upward = node_top > top
-            start, end = (bottom - 25, top + 25) if upward else (top + 25, bottom - 25)
+            signature = [(n.get('content-desc'), n.get('bounds'), n.get('text')) for n in all_fields]
+            if signature == previous_signature and previous_direction is not None:
+                upward = not previous_direction
+            previous_signature, previous_direction = signature, upward
+            start, end = (bottom - 25, top + (bottom-top)//3) if upward else (top + 25, bottom - (bottom-top)//3)
             adb('shell', 'input', 'swipe', str(x), str(start), str(x), str(end), '300')
         raise AssertionError('Property field not reachable: ' + description)
 
@@ -201,7 +212,13 @@ class Smoke:
                     if n.get('content-desc') == 'FB_RS: пока не перенесено']
         if len(disabled) != 1 or disabled[0].get('enabled') != 'false':
             raise AssertionError('Source RS with different legacy port order must stay disabled')
-        self.tap(description='Палитра компонентов')
+        if matching_nodes(self.dump(), description='Палитра компонентов'):
+            self.tap(description='Палитра компонентов')
+        else:
+            # The original wide layout has no left arrow. Back dismisses the page.
+            adb('shell', 'input', 'keyevent', '4')
+            self.wait_node(description='Редактор экрана')
+            self.tap(description='Добавить элемент')
         self.wait_node(description='Добавить: Индикатор')
         self.tap(description='Функциональные блоки и другие элементы')
         # The native scroll wrapper keeps lower source rows reachable on shorter screens.
