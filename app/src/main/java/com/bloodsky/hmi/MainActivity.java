@@ -1610,6 +1610,43 @@ public class MainActivity extends Activity {
         picker[0].show();
     }
 
+    /**
+     * Find space for a newly created FBD block without changing existing layout.
+     * Deterministic row-major search; work in Canvas pixels (same units as Widget geometry).
+     * This is a BLOODSKY editor usability adaptation, not a copied Craft placement rule.
+     */
+    public static float[] freeFbdPlacement(List<Widget> existing, float canvasWidth,
+                                           float canvasHeight, float width, float height,
+                                           float originX, float originY, float gap) {
+        if (existing == null || !Float.isFinite(canvasWidth) || !Float.isFinite(canvasHeight)
+                || !Float.isFinite(width) || !Float.isFinite(height)
+                || !Float.isFinite(originX) || !Float.isFinite(originY)
+                || !Float.isFinite(gap) || width <= 0 || height <= 0
+                || canvasWidth <= width || canvasHeight <= height) return null;
+        float separation = Math.max(1f, gap);
+        float step = Math.max(8f, separation);
+        float startX = Math.max(0f, originX), startY = Math.max(0f, originY);
+        for (int row = 0; row < 200; row++) {
+            float y = startY + row * step;
+            if (y + height + separation > canvasHeight) break;
+            for (int col = 0; col < 200; col++) {
+                float x = startX + col * step;
+                if (x + width + separation > canvasWidth) break;
+                boolean occupied = false;
+                for (Widget old : existing) {
+                    if (old == null || !old.visible) continue;
+                    if (x < old.x + old.w + separation && x + width + separation > old.x
+                            && y < old.y + old.h + separation && y + height + separation > old.y) {
+                        occupied = true;
+                        break;
+                    }
+                }
+                if (!occupied) return new float[]{x, y};
+            }
+        }
+        return null;
+    }
+
     private void addWidget(String type, String text) {
         Widget w = new Widget();
         w.type = type;
@@ -1622,7 +1659,16 @@ public class MainActivity extends Activity {
         if (type.equals("Задатчик")) { w.w = dp(190); w.h = dp(62); }
         if (type.equals("Шкала / Стрелка") || type.equals("График / Тренд")) { w.w = dp(200); w.h = dp(110); }
         if (type.equals("Прогресс-бар") || type.equals("Битовый список")) { w.w = dp(180); w.h = dp(64); }
-        if (type.startsWith("FBD ")) { w.w = dp(150); w.h = dp(76); }
+        if (type.startsWith("FBD ")) {
+            w.w = dp(150); w.h = dp(76);
+            if (editor != null && editor.getWidth() > 0 && editor.getHeight() > 0) {
+                float[] empty = freeFbdPlacement(widgets, editor.getWidth(), editor.getHeight(),
+                        w.w, w.h, dp(40), dp(50), dp(18));
+                if (empty != null) { w.x = empty[0]; w.y = empty[1]; }
+                else Toast.makeText(this, "Нет свободного места: перемести FBD-блок вручную",
+                        Toast.LENGTH_LONG).show();
+            }
+        }
         if ("FBD CTD".equals(type)) w.counterValue = w.counterPreset;
         widgets.add(w);
         persistProject();
