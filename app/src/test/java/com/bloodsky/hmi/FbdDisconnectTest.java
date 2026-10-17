@@ -117,6 +117,26 @@ public class FbdDisconnectTest {
         } catch (IllegalArgumentException expected) { }
     }
 
+    @Test public void typedEdgesAcceptCompatibleSignalsAndRejectMismatches() throws Exception {
+        JSONObject edge = new JSONObject().put("source", 0).put("target", 1)
+                .put("sourcePin", "Q").put("targetPin", "IN1")
+                .put("sourceSignalType", "BOOL").put("targetSignalType", "BOOL");
+        assertTrue(MainActivity.canLoadFbdConnection(edge));
+        MainActivity.validateImportedProjectStatic(projectWithConnection(edge));
+        edge.put("targetSignalType", "NUMBER");
+        assertFalse(MainActivity.canLoadFbdConnection(edge));
+        try {
+            MainActivity.validateImportedProjectStatic(projectWithConnection(edge));
+            fail("Expected incompatible types to be rejected");
+        } catch (IllegalArgumentException expected) { }
+        edge.put("targetSignalType", "ANY");
+        assertTrue(MainActivity.canLoadFbdConnection(edge));
+        edge.put("targetSignalType", "INVALID");
+        assertFalse(MainActivity.canLoadFbdConnection(edge));
+        edge.remove("targetSignalType");
+        assertFalse(MainActivity.canLoadFbdConnection(edge));
+    }
+
     @Test public void invalidEndpointsDoNotMutateGraph() {
         List<MainActivity.FbdConnection> edges = new ArrayList<>();
         edges.add(new MainActivity.FbdConnection(0, 1));
