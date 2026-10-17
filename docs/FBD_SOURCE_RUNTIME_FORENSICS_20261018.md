@@ -68,6 +68,15 @@ A second standalone source-compatible block `FBD CRAFT T` is now available in BL
 - `FbdCraftToggleGraphTest` checks rising→held→falling→rising toggles, typed pin compatibility, persistence isolation and legacy rising/falling blocks.
 - This is an independent and clearly labelled extension, **not** a claim to have enabled the source's 40 disabled preview items.
 
+## Source-matched Craft BLINK — standalone operator integration
+
+- Distinct optional extended-palette block `FBD CRAFT BLINK`: source-like BOOL `IN`, NUMERIC `PT` and BOOL `Q`, preserving old timer IDs `FBD TON`, `FBD TOF` and `FBD TP`. It uses existing exact-int-millisecond saved `timerPresetMs` and MS/SEK/MIN property conversion; the spinner fixes the mode to BLINK rather than silently converting it to TON or TP.
+- The operator evaluates the independently source-backed `FbdCraftNativeTimer.BLINK` once per scan with source `System.currentTimeMillis()` and a source-style 1-scan phase restart. IN=false clears phase, arms=false and Q=false; IN=true starts ON, toggles after PT, then repeats.
+- Immutable transient `FbdCraftNativeTimer.State` is package-private (not copied into persisted JSON); switching screens/project loading resets its runtime epoch while the preset, opaque metadata and legacy graph remain intact. `resetFbdTimerRuntime` resets the new variant only in addition to existing supported timer semantics.
+- `FbdCraftBlinkGraphTest` checks actual MainActivity graph execution with pin names, numerical PT compatibility from native CTU, no accidental BOOL input from numeric output, timed ON/OFF/ON, reset/rearm, legacy timer contracts and exact 2345ms load/reset.
+- **Scope:** only BLINK, not original Craft TP whose constructor defaults Q=false and mode body has no Q=true assignment. No claim of pixel-perfect original timer or real-hardware test. Source unit-code 3 multiplier 60000 is verified from archived original. Keep original FBD preview catalogue disabled unless source behavior and visuals are documented individually.
+- **Gate:** standalone PR JUnit/APK and Android API30 test must pass, then merge to #76 feature branch only; never publish `main` without a fully reviewed combined head.
+
 ## Non-negotiable gates
 
 The runtime feature branch is not automatically promoted into `main`. Keep existing BLOODSKY CTU `CU,R,PV,Q` graph semantics intact. Original source CTU labels `+,-,R,Q`, RS priority and timer units are *open* until verified from original actual superclass implementation. Add separate native-compatible blocks, UI and source test only if the evidence supports actual operation; old project fields/anonymous wires must round-trip unchanged.
