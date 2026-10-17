@@ -316,6 +316,20 @@ public class FbdDisconnectTest {
                 java.util.Arrays.asList(Double.NaN), java.util.Arrays.asList("PT"), Integer.MAX_VALUE));
     }
 
+    @Test public void russianRuntimeWidgetTypesExposeTypedFbdPins() throws Exception {
+        assertEquals("FBD AND", MainActivity.canonicalFbdBlockType("FBD И"));
+        assertEquals("FBD OR", MainActivity.canonicalFbdBlockType("FBD ИЛИ"));
+        assertEquals("FBD TON", MainActivity.canonicalFbdBlockType("FBD Таймер"));
+        assertArrayEquals(new String[]{"IN", "PT"}, MainActivity.knownFbdPins("FBD Таймер", false));
+        assertArrayEquals(new String[]{"IN1", "IN2"}, MainActivity.knownFbdPins("FBD И", false));
+        assertEquals("NUMBER", MainActivity.knownFbdPinType("FBD Таймер", "PT", false));
+        JSONObject edge = new JSONObject().put("source", 0).put("target", 1)
+                .put("sourcePin", "Q").put("targetPin", "IN");
+        assertTrue(MainActivity.hasCompatibleKnownFbdPins(edge, "FBD И", "FBD Таймер"));
+        edge.put("targetPin", "PT");
+        assertFalse(MainActivity.hasCompatibleKnownFbdPins(edge, "FBD И", "FBD Таймер"));
+    }
+
     @Test public void invalidEndpointsDoNotMutateGraph() {
         List<MainActivity.FbdConnection> edges = new ArrayList<>();
         edges.add(new MainActivity.FbdConnection(0, 1));
