@@ -1807,7 +1807,7 @@ public class MainActivity extends Activity {
         connectionLabel.setPadding(0, dp(10), 0, 0);
         form.addView(connectionLabel);
         EditText connectionField = propertyField(w.connectionInfo == null ? "" : w.connectionInfo, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        connectionField.setHint("tcp://192.168.1.10:502/1/40001 (FC03); для Input Registers: 30001 (FC04)");
+        connectionField.setHint("tcp://192.168.1.10:502/1/40001 (FC03/FC04) или fbd://N (номер блока с 1)");
         form.addView(connectionField);
 
         final EditText[] dynStateFields = new EditText[4];
@@ -3714,8 +3714,22 @@ public class MainActivity extends Activity {
             fbdCacheValid = new boolean[widgets.size()];
             fbdCacheValues = new boolean[widgets.size()];
             fbdCacheNumeric = new double[widgets.size()];
-            if (operatorMode) for (int i = 0; i < widgets.size(); i++)
-                if (isFbd(widgets.get(i))) evaluateFbd(i, new boolean[widgets.size()]);
+            if (operatorMode) {
+                for (int i = 0; i < widgets.size(); i++)
+                    if (isFbd(widgets.get(i))) evaluateFbd(i, new boolean[widgets.size()]);
+            }
+            // FBD output bindings are read-only and local to this screen.
+            // They do not interfere with Modbus polling or write PLC registers.
+            for (int i = 0; i < widgets.size(); i++) {
+                Widget target = widgets.get(i);
+                if (isFbd(target) || target.connectionInfo == null
+                        || !target.connectionInfo.startsWith("fbd://")) continue;
+                if (operatorMode) {
+                    String value = FbdResultBinding.resolve(target.connectionInfo, widgets,
+                            fbdCacheValid, fbdCacheValues, fbdCacheNumeric);
+                    liveValues.put(i, value == null ? "CFG" : value);
+                } else liveValues.remove(i);
+            }
             for (int i = 0; i < widgets.size(); i++) {
                 Widget w = widgets.get(i);
                 if (!w.visible || (operatorMode && isFbd(w))) continue;
