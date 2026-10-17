@@ -20,7 +20,7 @@ public class FbdSourceNativeCanvasSkinTest {
         assertTrue(FbdSourceCanvasSkin.supports("FBD RS"));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT CTU", "CTU 16 bit")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT T", "T")));
-        assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT BLINK", "BLINK"));
+        assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT BLINK", "BLINK")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD RS", "RS")));
     }
 
