@@ -2547,6 +2547,14 @@ public class MainActivity extends Activity {
         return json;
     }
 
+    /** Validate pin metadata on import while leaving legacy unpinned connections intact. */
+    public static boolean canLoadFbdConnection(JSONObject json) throws Exception {
+        if (json == null) return false;
+        FbdConnection edge = connectionFromJson(json);
+        return edge.source >= 0 && edge.target >= 0 && edge.source != edge.target
+                && hasValidFbdPinMetadata(edge);
+    }
+
     /** Create an explicitly pinned connection; reject malformed metadata before graph mutation. */
     public static FbdConnection pinnedFbdConnection(int source, String sourcePin,
                                                      int target, String targetPin) throws Exception {
