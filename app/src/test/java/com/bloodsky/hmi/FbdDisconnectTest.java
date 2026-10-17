@@ -76,6 +76,19 @@ public class FbdDisconnectTest {
         } catch (IllegalArgumentException expected) { }
     }
 
+    @Test public void importValidatorAcceptsLegacyAndRejectsPartialPins() throws Exception {
+        assertTrue(MainActivity.canLoadFbdConnection(new JSONObject()
+                .put("source", 0).put("target", 1)));
+        assertTrue(MainActivity.canLoadFbdConnection(new JSONObject()
+                .put("source", 0).put("target", 1)
+                .put("sourcePin", "Q").put("targetPin", "IN1")));
+        assertFalse(MainActivity.canLoadFbdConnection(new JSONObject()
+                .put("source", 0).put("target", 1).put("sourcePin", "Q")));
+        assertFalse(MainActivity.canLoadFbdConnection(new JSONObject()
+                .put("source", 2).put("target", 2)));
+        assertFalse(MainActivity.canLoadFbdConnection(null));
+    }
+
     @Test public void invalidEndpointsDoNotMutateGraph() {
         List<MainActivity.FbdConnection> edges = new ArrayList<>();
         edges.add(new MainActivity.FbdConnection(0, 1));
