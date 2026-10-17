@@ -40,6 +40,22 @@ public class FbdDisconnectTest {
         assertFalse(MainActivity.disconnectFbdEdge(edges, second));
     }
 
+    @Test public void explicitPinsAreValidatedWithoutRejectingLegacyEdges() throws Exception {
+        assertTrue(MainActivity.hasValidFbdPinMetadata(MainActivity.connectionFromJson(
+                new JSONObject().put("source", 0).put("target", 1))));
+        assertTrue(MainActivity.hasValidFbdPinMetadata(MainActivity.connectionFromJson(
+                new JSONObject().put("source", 0).put("target", 1)
+                        .put("sourcePin", "Q").put("targetPin", "IN1"))));
+        assertFalse(MainActivity.hasValidFbdPinMetadata(MainActivity.connectionFromJson(
+                new JSONObject().put("source", 0).put("target", 1).put("sourcePin", "Q"))));
+        assertFalse(MainActivity.hasValidFbdPinMetadata(MainActivity.connectionFromJson(
+                new JSONObject().put("source", 0).put("target", 1)
+                        .put("sourcePin", " ").put("targetPin", "IN1"))));
+        assertFalse(MainActivity.hasValidFbdPinMetadata(MainActivity.connectionFromJson(
+                new JSONObject().put("source", 0).put("target", 1)
+                        .put("sourcePin", 4).put("targetPin", "IN1"))));
+    }
+
     @Test public void invalidEndpointsDoNotMutateGraph() {
         List<MainActivity.FbdConnection> edges = new ArrayList<>();
         edges.add(new MainActivity.FbdConnection(0, 1));
