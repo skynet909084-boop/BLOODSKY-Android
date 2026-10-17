@@ -21,7 +21,7 @@ public class FbdDurationUnitsTest {
     @Test public void editedDurationsCannotRoundFractionalMillisecondsOrOverflow() {
         for (String[] pair : new String[][]{
                 {"0", "MS"}, {"-1", "MS"}, {"3600001", "MS"},
-                {"0.1", "MS"}, {"0.0005", "SEK"}, {"1.5", "MIN"},
+                {"0.1", "MS"}, {"0.0005", "SEK"}, {"0.00000000000000001", "MIN"},
                 {"1.0000000001", "MS"}, {"1e50", "MS"}, {"NaN", "SEK"},
                 {"Infinity", "MIN"}, {"", "MS"}, {"  ", "MS"},
                 {"1,2,3", "SEK"}, {"6e-10", "MIN"}
