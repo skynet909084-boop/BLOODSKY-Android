@@ -47,6 +47,18 @@ Portable `FbdCraftNativeTimer` and JUnit `FbdCraftNativeTimerTest` now encode th
 
 This standalone code is **not yet an original Craft runtime or a palette entry**. No existing BLOODSKY CTU/RS/TON/TOF/TP or project JSON is altered. Required to activate native Craft blocks: inspect constructor and `setActionExecute` TP initialization, resolve the third unit constant from pinned source, then create separate native type IDs and numeric/BOOL terminal tests plus source parity UI screenshots.
 
+## Versioned native CTU now connected to BLOODSKY graph (separate from old CTU)
+
+The source-backed `FBD CRAFT CTU` widget now exists as a **new** optional item in BLOODSKY's extended widget menu. This change must not be mistaken for renaming or upgrading the existing `FBD CTU`: both IDs are distinct and old project files keep their semantics.
+
+- Inputs (all BOOL) are the original `+`, `-`, `R`; output `Q` has **NUMBER** type. The three visible contacts use ¼, ½, ¾ of block height. NUMBER Q can connect to typed numeric consumers `FBD MOVE.IN`, but **cannot** connect to Boolean AND, ensuring signal types are not confused.
+- Each operator-mode scan uses the source-backed `FbdCraftNativeTransitions.ctu` pure function: independent rising edges, wrap at 65535 (Java `char`) and reset **after** increment/decrement. The result is stored in the existing `counterValue` property and numeric FBD output cache; a Boolean proxy is returned for internal engine traversal only (nonzero), not exposed on Q as a BOOL.
+- Two additional fields `craftLastPlus` and `craftLastMinus` are intentionally **transient** (not serialized); cold project start begins with fresh native input edge detectors, while saved counterValue and unknown JSON remain preserved. No new mandatory project format fields were introduced. This avoids changing legacy projects.
+- `FbdCraftVersionedCounterTest` covers named-pin routing independent of edge insertion order, numeric Q compatibility, wraparound, reset-last, held-input suppression, JSON copies, unknown metadata, HMI display and unchanged old `FBD CTU` pin contract.
+- This native CTU is a supported BLOODSKY **source-compatible variant**, not evidence that the rest of the original FBD system (TP timer bug, output inversion, all 40 disabled palettes, real PLC conditions) is complete.
+
+**Acceptance:** exact-head Android JUnit/debug APK and emulator UI smoke before merging. The current #76 FBD parent remains separate, draft, and stable `main` untouched.
+
 ## Non-negotiable gates
 
 The runtime feature branch is not automatically promoted into `main`. Keep existing BLOODSKY CTU `CU,R,PV,Q` graph semantics intact. Original source CTU labels `+,-,R,Q`, RS priority and timer units are *open* until verified from original actual superclass implementation. Add separate native-compatible blocks, UI and source test only if the evidence supports actual operation; old project fields/anonymous wires must round-trip unchanged.
