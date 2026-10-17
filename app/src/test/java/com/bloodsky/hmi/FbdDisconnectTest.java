@@ -1,6 +1,7 @@
 package com.bloodsky.hmi;
 
 import org.json.JSONObject;
+import org.json.JSONArray;
 import org.junit.Test;
 import java.util.ArrayList;
 import java.util.List;
@@ -87,6 +88,33 @@ public class FbdDisconnectTest {
         assertFalse(MainActivity.canLoadFbdConnection(new JSONObject()
                 .put("source", 2).put("target", 2)));
         assertFalse(MainActivity.canLoadFbdConnection(null));
+    }
+
+    private static String projectWithConnection(JSONObject edge) throws Exception {
+        JSONArray widgets = new JSONArray()
+                .put(new JSONObject().put("type", "FBD AND"))
+                .put(new JSONObject().put("type", "FBD OR"));
+        JSONObject screen = new JSONObject().put("widgets", widgets)
+                .put("connections", new JSONArray().put(edge));
+        return new JSONObject().put("screens", new JSONArray().put(screen))
+                .put("currentScreen", 0).toString();
+    }
+
+    @Test public void importedProjectAcceptsLegacyAndExplicitPins() throws Exception {
+        MainActivity.validateImportedProjectStatic(projectWithConnection(
+                new JSONObject().put("source", 0).put("target", 1)));
+        MainActivity.validateImportedProjectStatic(projectWithConnection(
+                new JSONObject().put("source", 0).put("target", 1)
+                        .put("sourcePin", "Q").put("targetPin", "IN1")));
+    }
+
+    @Test public void importedProjectRejectsIncompletePins() throws Exception {
+        try {
+            MainActivity.validateImportedProjectStatic(projectWithConnection(
+                    new JSONObject().put("source", 0).put("target", 1)
+                            .put("sourcePin", "Q")));
+            fail("Expected project validation failure");
+        } catch (IllegalArgumentException expected) { }
     }
 
     @Test public void invalidEndpointsDoNotMutateGraph() {
