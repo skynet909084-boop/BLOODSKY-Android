@@ -6,15 +6,16 @@ from pathlib import Path
 import tempfile
 import threading
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 import contextlib
 import hashlib
 import io
 import os
 import sys
+from types import SimpleNamespace
 
 import cloud_coding_agent as agent
-from run_cloud_router import FIXTURE_SOURCE, UPSTREAM_SHA
+from run_cloud_router import FIXTURE_SOURCE, UPSTREAM_SHA, wait_for_router
 from check_cloud_test_results import verify
 
 NAME = agent.TEST_PREFIX + "CloudAgentRouterContractTest.java"
@@ -238,6 +239,26 @@ class JunitEvidenceTests(unittest.TestCase):
             proposal["files"].append({"path": agent.TEST_PREFIX + "CloudAgentAnotherTest.java"})
             with self.assertRaises(agent.AgentError):
                 verify(proposal, root)
+
+
+class RouterStartupTests(unittest.TestCase):
+    def test_connection_reset_before_node_listens_is_retried_on_loopback_only(self):
+        opener = Mock()
+        opener.open.side_effect = [ConnectionResetError(104, "starting"),
+                                   contextlib.nullcontext(SimpleNamespace(status=200))]
+        with patch("run_cloud_router.time.sleep") as delay:
+            self.assertTrue(wait_for_router(opener, attempts=2))
+        self.assertEqual(opener.open.call_count, 2)
+        delay.assert_called_once_with(1)
+        for call in opener.open.call_args_list:
+            self.assertEqual(call.args[0], "http://127.0.0.1:3001/api/ping")
+
+    def test_unavailable_local_router_stops_at_readiness_budget(self):
+        opener = Mock()
+        opener.open.side_effect = ConnectionResetError(104, "starting")
+        with patch("run_cloud_router.time.sleep"):
+            self.assertFalse(wait_for_router(opener, attempts=2))
+        self.assertEqual(opener.open.call_count, 2)
 
 
 if __name__ == "__main__":

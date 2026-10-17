@@ -51,6 +51,20 @@ def docker(*args, **kwargs):
     return result.stdout.strip()
 
 
+def wait_for_router(opener, attempts=60):
+    """Published ports can reset connections while Node is still starting."""
+    for _ in range(attempts):
+        try:
+            with opener.open("http://127.0.0.1:3001/api/ping", timeout=2) as response:
+                if response.status == 200:
+                    return True
+        except (urllib.error.URLError, TimeoutError, OSError) as error:
+            if isinstance(error, urllib.error.HTTPError):
+                error.close()
+        time.sleep(1)
+    return False
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=("fixture", "live", "anonymous"), default="fixture")
@@ -120,14 +134,7 @@ def main():
                        "-p", "127.0.0.1:3001:3003", "--entrypoint", "node", args.image, "-e", proxy)
                 docker("network", "connect", network, relay)
             opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-            for attempt in range(60):
-                try:
-                    with opener.open("http://127.0.0.1:3001/api/ping", timeout=2) as response:
-                        if response.status == 200:
-                            break
-                except (urllib.error.URLError, TimeoutError):
-                    time.sleep(1)
-            else:
+            if not wait_for_router(opener):
                 state = json.loads(docker("inspect", "--format", "{{json .State}}", router))
                 logs = subprocess.run(["docker", "logs", router], capture_output=True, text=True, timeout=10)
                 # Emit only known constant error categories, never raw log text.
