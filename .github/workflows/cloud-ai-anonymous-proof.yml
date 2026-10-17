@@ -8,18 +8,29 @@ on:
       - '.github/workflows/cloud-ai-publish.yml'
       - 'tools/cloud_coding_agent.py'
       - 'tools/run_cloud_router.py'
+      - 'tools/run_cloud_task.py'
+      - 'tools/test_cloud_task.py'
       - 'app/src/main/java/com/bloodsky/hmi/FbdPropertyEdits.java'
+      - 'app/src/main/java/com/bloodsky/hmi/FbdEditorModel.java'
+      - 'app/src/main/java/com/bloodsky/hmi/FbdEditorTransaction.java'
   workflow_dispatch:
     inputs:
+      profile:
+        type: choice
+        options: [fbd-duration, fbd-rollback, properties]
+        default: fbd-duration
+        description: 'Reviewed helper context and regression task'
       task:
         type: string
-        default: 'Add tests for accepted timer maximum 3600000 and rejection of 3600001 using FbdPropertyEdits.parse and JUnit4.'
-        description: 'One test-only task for the selected helper; keep below 3600 characters'
+        default: ''
+        description: 'Optional task override for the selected helper, at most 3600 characters'
   pull_request:
     paths:
       - '.github/workflows/cloud-ai-anonymous-proof.yml'
       - 'tools/cloud_coding_agent.py'
       - 'tools/run_cloud_router.py'
+      - 'tools/run_cloud_task.py'
+      - 'tools/test_cloud_task.py'
       - 'tools/test_cloud_coding_agent.py'
 
 permissions:
@@ -53,16 +64,9 @@ jobs:
         run: docker build --build-arg FREELLMAPI_COMMIT_SHA=7ae0ef193d297c02479efed2a07946c44457512b -t bloodsky-freellmapi:pilot .cloud-upstream
       - name: One actual anonymous AI coding request through FreeLLMAPI
         env:
-          TASK: ${{ inputs.task || 'Add tests for accepted timer maximum 3600000 and rejection of 3600001 using FbdPropertyEdits.parse and JUnit4.' }}
-          CLASS_NAME: CloudAgentTimerBoundary${{ github.run_id }}Test
-        run: |
-          python3 - <<'PY'
-          import os
-          from pathlib import Path
-          task = os.environ['TASK'] + '\nUse one new class named ' + os.environ['CLASS_NAME'] + '. Keep the entire JSON response short.'
-          (Path(os.environ['RUNNER_TEMP']) / 'task.txt').write_text(task, encoding='utf-8')
-          PY
-          python3 tools/run_cloud_router.py --mode anonymous --task-file "$RUNNER_TEMP/task.txt" --context app/src/main/java/com/bloodsky/hmi/FbdPropertyEdits.java
+          TASK_PROFILE: ${{ inputs.profile || 'fbd-duration' }}
+          TASK: ${{ inputs.task || '' }}
+        run: python3 tools/run_cloud_task.py
       - uses: actions/upload-artifact@v4
         with:
           name: anonymous-ai-proposal
@@ -70,6 +74,7 @@ jobs:
             cloud-output/proposal.json
             cloud-output/proposal.patch
             cloud-output/report.json
+            cloud-output/task-plan.json
           if-no-files-found: error
           retention-days: 7
 

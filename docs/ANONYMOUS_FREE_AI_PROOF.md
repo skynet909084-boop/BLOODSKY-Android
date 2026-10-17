@@ -25,3 +25,12 @@ GitHub must permit Actions to create PRs: **Settings → Actions → General →
 Owner operation: run **BLOODSKY anonymous free AI proof** on `main` with one bounded task. Accepted changes to the agent/router/publisher workflows or selected helper also trigger the default bounded task automatically. After inference and independent validation succeed, the publisher creates the draft and starts its checks. Generated test-only changes do not match the push filters, preventing recursive task creation. No scheduled self-selected product work or automatic merge is enabled by this pilot.
 
 Until a successful `BLOODSKY anonymous free AI proof` run and its artifacts have been inspected, real inference is **not verified**. A successful fixture run alone is insufficient. This workflow is experimental development tooling and is not an inference service bundled in the Android application.
+
+
+## Focused FBD task profiles
+
+The anonymous workflow accepts a reviewed `profile` choice: `fbd-duration` (default), `fbd-rollback`, or `properties`. The profile selects fixed, bounded Java helper/test context; a task override cannot select files, providers, shell commands or production edits. The generated class includes the profile and workflow run ID. Exactly one router/model request remains the limit, with no automatic repair. `task-plan.json` records the chosen profile and context alongside the proposal; independent validation still requires the generated test to execute successfully and the debug APK to build.
+
+The default FBD task covers exact units and unchanged rounded-minute edits, replacing repetitive timer-maximum-only proposals. Changes to either FBD helper trigger the main loop, while generated tests do not. The `fbd-rollback` task targets independent metadata snapshots after a false save or throwing mutation. These contexts use executable existing tests as API examples without uploading the oversized Activity source.
+
+First main-origin proof: [39016400413](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39016400413) passed 108 Python checks, 135 Android JUnit tests (including two newly generated tests), and APK assembly. The publisher pushed branch `automation/cloud-agent-39016400413`, but repository policy rejected bot PR creation. [Draft PR #73](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/73) was opened through the authorized GitHub connector. Unattended publication remains blocked until the repository owner enables the documented Actions PR permission; no admin setting or account credential was changed.
