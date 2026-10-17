@@ -48,9 +48,13 @@ public class FbdWireRuntimeAndGeometryTest {
     }
 
     @Test public void pinGeometrySeparatesEachInputAndFollowsCanonicalAliases() {
-        assertEquals(1f / 3f, MainActivity.fbdTerminalFraction("FBD OR", "IN1", false), 0.0001f);
-        assertEquals(2f / 3f, MainActivity.fbdTerminalFraction("FBD ИЛИ", " in2 ", false), 0.0001f);
+        assertEquals(0.25f, MainActivity.fbdTerminalFraction("FBD OR", "IN1", false), 0.0001f);
+        assertEquals(0.75f, MainActivity.fbdTerminalFraction("FBD ИЛИ", " in2 ", false), 0.0001f);
         assertEquals(0.5f, MainActivity.fbdTerminalFraction("FBD AND", "Q", true), 0.0001f);
+        assertEquals(0.25f, MainActivity.fbdTerminalFraction("FBD AND", "IN1", false), 0.0001f);
+        assertEquals(0.75f, MainActivity.fbdTerminalFraction("FBD XOR", "IN2", false), 0.0001f);
+        assertEquals(0.25f, MainActivity.fbdTerminalFraction("FBD Сравнение", "A", false), 0.0001f);
+        assertEquals(0.75f, MainActivity.fbdTerminalFraction("FBD Сравнение", "B", false), 0.0001f);
         assertEquals(0.25f, MainActivity.fbdTerminalFraction("FBD CTU", "CU", false), 0.0001f);
         assertEquals(0.5f, MainActivity.fbdTerminalFraction("FBD CTU", "R", false), 0.0001f);
         assertEquals(0.75f, MainActivity.fbdTerminalFraction("FBD CTU", "PV", false), 0.0001f);
