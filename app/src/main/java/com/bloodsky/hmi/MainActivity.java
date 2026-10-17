@@ -1620,7 +1620,8 @@ public class MainActivity extends Activity {
                 "FBD — RS", "FBD — SR", "FBD — CTU (счёт вверх)",
                 "FBD — CTD (счёт вниз)", "FBD — R_TRIG", "FBD — F_TRIG",
                 "FBD — Craft CTU 16 бит (+, −, R)",
-                "FBD — Craft T (переключатель по фронту)"
+                "FBD — Craft T (переключатель по фронту)",
+                "FBD — Craft BLINK (мигание)"
         };
         final String[] types = {
                 "Текст", "Кнопка", "Индикатор", "Задатчик",
@@ -1635,7 +1636,7 @@ public class MainActivity extends Activity {
                 "FBD MOVE", "FBD SEL", "FBD ABS", "FBD MIN_MAX",
                 "FBD RS", "FBD SR", "FBD CTU",
                 "FBD CTD", "FBD R_TRIG", "FBD F_TRIG",
-                "FBD CRAFT CTU", "FBD CRAFT T"
+                "FBD CRAFT CTU", "FBD CRAFT T", "FBD CRAFT BLINK"
         };
         final String[] defaults = {
                 "Надпись", "Кнопка", "Индикатор", "Задатчик: 0",
@@ -1647,7 +1648,7 @@ public class MainActivity extends Activity {
                 "Float->Int", "Int->Float",
                 "MOVE", "SEL", "ABS", "MIN/MAX",
                 "RS", "SR", "CTU", "CTD", "R_TRIG", "F_TRIG",
-                "CTU 16 bit", "T"
+                "CTU 16 bit", "T", "BLINK"
         };
         LinearLayout list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
@@ -1963,14 +1964,18 @@ public class MainActivity extends Activity {
         final EditText timerPresetField;
         final android.widget.Spinner timerUnitSelector;
         final android.widget.Spinner timerModeSelector;
-        if ("FBD Таймер".equals(w.type) || "FBD TP".equals(w.type) || "FBD TOF".equals(w.type)) {
+        if ("FBD Таймер".equals(w.type) || "FBD TP".equals(w.type)
+                || "FBD TOF".equals(w.type) || "FBD CRAFT BLINK".equals(w.type)) {
             TextView timerModeLabel = new TextView(this);
-            timerModeLabel.setText("Режим таймера (TON / TOF / TP)");
+            boolean originalBlink = "FBD CRAFT BLINK".equals(w.type);
+            timerModeLabel.setText(originalBlink ? "Режим Craft: BLINK"
+                    : "Режим таймера (TON / TOF / TP)");
             form.addView(timerModeLabel);
             timerModeSelector = new android.widget.Spinner(this);
             timerModeSelector.setContentDescription("Режим таймера FBD");
             timerModeSelector.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item, FbdDurationUnits.modes()));
+                    android.R.layout.simple_spinner_dropdown_item,
+                    originalBlink ? new String[]{"BLINK"} : FbdDurationUnits.modes()));
             String initialMode = FbdDurationUnits.modeForType(w.type);
             timerModeSelector.setSelection("TOF".equals(initialMode) ? 1 : "TP".equals(initialMode) ? 2 : 0);
             form.addView(timerModeSelector);
@@ -2188,11 +2193,14 @@ public class MainActivity extends Activity {
                         String oldMode = FbdDurationUnits.modeForType(w.type);
                         String newMode = String.valueOf(timerModeSelector.getSelectedItem());
                         w.timerPresetMs = fbd.timer;
-                        w.type = FbdDurationUnits.typeForMode(newMode);
+                        w.type = "FBD CRAFT BLINK".equals(w.type) ? w.type
+                                : FbdDurationUnits.typeForMode(newMode);
                         // Keep custom labels intact, refresh only an untouched mode label.
                         if (w.text != null && w.text.equals(oldMode)) w.text = newMode;
                         w.timerStartedAt = 0L;
                         w.counterLastInput = false;
+                        if ("FBD CRAFT BLINK".equals(w.type))
+                            w.craftBlinkState = FbdCraftNativeTimer.State.initial();
                         try {
                             String unit = new String[]{"MS", "SEK", "MIN"}[timerUnitSelector.getSelectedItemPosition()];
                             // An untouched old MS project must not acquire an extra field.
@@ -2920,7 +2928,8 @@ public class MainActivity extends Activity {
             if (output && "OUT".equals(name)) return "NUMBER";
             if (!output && "IN".equals(name)) return "NUMBER";
         }
-        if (kind.equals("FBD TON") || kind.equals("FBD TOF") || kind.equals("FBD TP")) {
+        if (kind.equals("FBD TON") || kind.equals("FBD TOF")
+                || kind.equals("FBD TP") || kind.equals("FBD CRAFT BLINK")) {
             if (output && "Q".equals(name)) return "BOOL";
             if (!output && "IN".equals(name)) return "BOOL";
             if (!output && "PT".equals(name)) return "NUMBER";
@@ -3387,6 +3396,17 @@ public class MainActivity extends Activity {
                 default: return a > b;
             }
         }
+        if ("FBD CRAFT BLINK".equals(canonicalType)) {
+            boolean input = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
+            long presetMs = fbdTonPresetMs(numInputs, inputPins, widget.timerPresetMs);
+            FbdCraftNativeTimer.State prior = widget.craftBlinkState == null
+                    ? FbdCraftNativeTimer.State.initial() : widget.craftBlinkState;
+            FbdCraftNativeTimer.State next = FbdCraftNativeTimer.step(
+                    FbdCraftNativeTimer.BLINK, prior, input,
+                    System.currentTimeMillis(), presetMs);
+            widget.craftBlinkState = next;
+            return next.output;
+        }
         if ("FBD TON".equals(canonicalType)
                 || "FBD TOF".equals(canonicalType)
                 || "FBD TP".equals(canonicalType)) {
@@ -3636,7 +3656,8 @@ public class MainActivity extends Activity {
                 // The original split-body source FB_XOR/FB_TIMER has a
                 // one-third header. Its named contacts lie at 1/2 and 5/6.
                 if ("FBD XOR".equals(kind) || "FBD TON".equals(kind)
-                        || "FBD TP".equals(kind) || "FBD TOF".equals(kind))
+                        || "FBD TP".equals(kind) || "FBD TOF".equals(kind)
+                        || "FBD CRAFT BLINK".equals(kind))
                     return i == 0 ? 0.5f : 5f / 6f;
             }
             return (i + 1f) / (pins.length + 1f);
@@ -3678,6 +3699,9 @@ public class MainActivity extends Activity {
     public static void resetFbdTimerRuntime(Widget widget) {
         if (widget == null) return;
         String kind = canonicalFbdBlockType(widget.type);
+        if ("FBD CRAFT BLINK".equals(kind)) {
+            widget.craftBlinkState = FbdCraftNativeTimer.State.initial();
+        }
         if ("FBD TON".equals(kind) || "FBD TP".equals(kind) || "FBD TOF".equals(kind)) {
             widget.timerStartedAt = 0L;
             if ("FBD TP".equals(kind) || "FBD TOF".equals(kind))
@@ -3742,7 +3766,8 @@ public class MainActivity extends Activity {
                 || "FBD COS".equals(kind) || "FBD TAN".equals(kind) || "FBD SQRT".equals(kind)
                 || "FBD FLOATTOINT".equals(kind) || "FBD INTTOFLOAT".equals(kind))
             return output ? new String[]{"OUT"} : new String[]{"IN"};
-        if ("FBD TON".equals(kind) || "FBD TOF".equals(kind) || "FBD TP".equals(kind))
+        if ("FBD TON".equals(kind) || "FBD TOF".equals(kind)
+                || "FBD TP".equals(kind) || "FBD CRAFT BLINK".equals(kind))
             return output ? new String[]{"Q"} : new String[]{"IN", "PT"};
         return new String[0];
     }
@@ -3826,6 +3851,8 @@ public class MainActivity extends Activity {
         // Do not serialize runtime latches into legacy project metadata.
         boolean craftToggleOutput = false;
         boolean craftToggleLastInput = false;
+        // Blink runtime epoch is not saved; a newly opened project starts idle.
+        FbdCraftNativeTimer.State craftBlinkState = FbdCraftNativeTimer.State.initial();
         public int timerPresetMs = 1000;
         public long timerStartedAt = 0L;
         public double compareA = 0.0, compareB = 0.0;
