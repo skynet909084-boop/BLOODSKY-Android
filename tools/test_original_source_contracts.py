@@ -51,6 +51,8 @@ class OriginalSourceContractsTests(unittest.TestCase):
         )
         self.assertEqual(res["status"], "OK")
         self.assertEqual(res["total_images"], 152)
+        self.assertEqual(res["referenced_images"], 0)
+        self.assertEqual(res["unused_images"], 152)
 
     def test_cited_call_sites_exist_in_main_activity(self):
         """Every cited BLOODSKY call-site method must exist in MainActivity.java."""
@@ -103,22 +105,20 @@ class OriginalSourceContractsTests(unittest.TestCase):
             self.assertIn("SYNTHETIC FIXTURE", content["_comment"])
 
     def test_synthetic_image_counting_positive_and_negative(self):
-        """Verifier must correctly assert count matching on 1 used and 1 unused image fixture."""
+        """Verifier must strictly enforce count equality and fail on mismatch."""
         with tempfile.TemporaryDirectory() as tmpdir:
             tmppath = Path(tmpdir)
 
-            # Setup mock decoded dir
+            # Setup mock decoded dir with 152 files (1 referenced lamp_green, 151 unused)
             mock_decoded = tmppath / "decoded"
             mock_drawables = mock_decoded / "apktool/res/drawable"
             mock_drawables.mkdir(parents=True)
             (mock_drawables / "lamp_green.png").write_bytes(b"fake_png_1")
             (mock_drawables / "lamp_blue.png").write_bytes(b"fake_png_2")
-
-            # Fill out mock_drawables to 152 files total so total_images == 152
             for i in range(150):
                 (mock_drawables / f"dummy_{i}.png").write_bytes(b"dummy")
 
-            # Setup mock app source dir
+            # Setup mock app source dir referencing R.drawable.kc_lamp_green
             mock_app = tmppath / "app"
             mock_java_dir = mock_app / "com/bloodsky/hmi"
             mock_java_dir.mkdir(parents=True)
@@ -137,7 +137,7 @@ class OriginalSourceContractsTests(unittest.TestCase):
                 encoding="utf-8"
             )
 
-            # Setup mock contracts JSON (1 referenced, 151 unused)
+            # Positive test: contract declaring 1 referenced and 151 unused passes
             contracts_data = json.loads(self.contracts_path.read_text(encoding="utf-8"))
             contracts_data["image_aliases_status"]["directly_referenced_in_bloodsky_app"] = 1
             contracts_data["image_aliases_status"]["packaged_but_unused_in_bloodsky"] = 151
@@ -145,13 +145,13 @@ class OriginalSourceContractsTests(unittest.TestCase):
             mock_contracts_json = tmppath / "contracts.json"
             mock_contracts_json.write_text(json.dumps(contracts_data), encoding="utf-8")
 
-            # Positive test: correct declared counts (1 referenced, 151 unused) pass
             res = verify_contracts(self.zip_path, mock_contracts_json, mock_decoded, mock_app, self.fixtures_dir)
             self.assertEqual(res["referenced_images"], 1)
             self.assertEqual(res["unused_images"], 151)
 
-            # Negative test: deliberately wrong contract count triggers ValueError
-            contracts_data["image_aliases_status"]["directly_referenced_in_bloodsky_app"] = 99
+            # Negative test: declaring 12 referenced on a tree with 1 referenced file must throw ValueError
+            contracts_data["image_aliases_status"]["directly_referenced_in_bloodsky_app"] = 12
+            contracts_data["image_aliases_status"]["packaged_but_unused_in_bloodsky"] = 140
             mock_contracts_json.write_text(json.dumps(contracts_data), encoding="utf-8")
 
             with self.assertRaises(ValueError) as ctx:

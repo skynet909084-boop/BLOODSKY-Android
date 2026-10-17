@@ -5,9 +5,9 @@
   "total_original_image_assets": 152,
   "image_aliases_status": {
     "total_packaged_in_apk": 152,
-    "directly_referenced_in_bloodsky_app": 12,
-    "packaged_but_unused_in_bloodsky": 140,
-    "verification_note": "Dynamically verified against current app/ source tree by tools/verify_original_source_contracts.py"
+    "directly_referenced_in_bloodsky_app": 0,
+    "packaged_but_unused_in_bloodsky": 152,
+    "verification_note": "Strictly verified against base commit d17e043789ba72041d0784406d3b64366b8ffd0d app/ source tree by tools/verify_original_source_contracts.py"
   },
   "system_registers": {
     "device_id": 0,
@@ -623,5 +623,6 @@
         "Background alarm notification processing."
       ]
     }
-  ]
+  ],
+  "base_commit_sha": "d17e043789ba72041d0784406d3b64366b8ffd0d"
 }
