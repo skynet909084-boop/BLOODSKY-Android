@@ -149,6 +149,10 @@ public final class OriginalFbdDrawing extends View {
 if __name__ == '__main__':
     root=Path(__file__).resolve().parents[1]; decoded=root/'build/craft-reference'
     (root/'app/src/main/java/com/bloodsky/hmi/OriginalFbdDrawing.java').write_text(drawing(decoded))
+    for name in ['var_float','var_out_float']:
+        dest=root/'app/src/main/res/drawable'/('kc_'+name+'.xml')
+        dest.parent.mkdir(parents=True,exist_ok=True)
+        dest.write_bytes((decoded/'apktool/res/drawable'/(name+'.xml')).read_bytes())
     for qualifier,land in [('layout',False),('layout-land',True)]:
         dest=root/'app/src/main/res'/qualifier/'kc_fragment_component_logic_bar.xml'
         dest.parent.mkdir(parents=True,exist_ok=True); dest.write_text(layout(decoded,land))

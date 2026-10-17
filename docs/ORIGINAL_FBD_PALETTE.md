@@ -17,3 +17,5 @@ Timer 1..3600000 ms and counter 1..1000000 now require valid integers rather tha
 ## Verification
 
 Local Python source/resource and behavior guards; Android JUnit covers ranges, invalid/non-finite values, aliases and unknown-field/fractional round trip. Full API30 smoke additionally opens and scrolls the catalogue, verifies disabled RS and return/extended navigation, adds AND and TON, rejects timer 0, saves exactly 2345 ms and reopens after process death. CI acceptance results are recorded after the exact-head build and emulator complete.
+
+Initial CI APK run 370 (`39000650547`) and UI run 39 (`39000650530`) stopped before emulator startup because the two original float-variable XML backgrounds were missing. Both source XML files are now compiled unchanged, the generator reproduces them, and regression checks resolve every drawable referenced by both layouts. These failed runs are not acceptance evidence.

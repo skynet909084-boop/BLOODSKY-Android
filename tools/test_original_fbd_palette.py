@@ -32,6 +32,17 @@ class OriginalFbdPaletteTests(unittest.TestCase):
         self.assertIn('this::showFbdPalette',main)
         self.assertIn('this::showExtendedWidgetMenu',main)
 
+    def test_every_referenced_drawable_exists_and_xml_backgrounds_match_original(self):
+        for folder in ['layout','layout-land']:
+            for node in ET.parse(ROOT/'app/src/main/res'/folder/'kc_fragment_component_logic_bar.xml').iter():
+                background=node.get(A+'background','')
+                if background.startswith('@drawable/'):
+                    name=background.split('/')[-1]
+                    matches=list((ROOT/'app/src/main/res').glob('drawable*/'+name+'.*'))
+                    self.assertEqual(1,len(matches),name)
+                    source=ROOT/'build/craft-reference/apktool/res/drawable'/matches[0].name.removeprefix('kc_')
+                    self.assertEqual(source.read_bytes(),matches[0].read_bytes())
+
     def test_all_fbd_fields_validate_before_any_widget_change(self):
         code=(ROOT/'app/src/main/java/com/bloodsky/hmi/MainActivity.java').read_text()
         handler=code.split('final FbdPropertyEdits fbd;',1)[1].split('properties.show();',1)[0]
