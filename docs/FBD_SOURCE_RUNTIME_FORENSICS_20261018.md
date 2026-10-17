@@ -85,6 +85,14 @@ The pinned `tools/original_fbd_runtime_evidence.py` extractor now **optionally a
 
 Before enabling any corresponding original palette preview: inspect archived class constructors, `f()` branches, data types, method-call dependencies and source pins; create separate native versioned contract or demonstrate exact compatibility with existing BLOODSKY block; add Android graph and original palette screenshot smoke. This audit is **research**, not an implemented MOVE/SEL operator. Original unsupported tile click guards remain active.
 
+## Source-backed native Craft SEL (Integer) — implemented, isolated
+
+Evidence from pinned `FB_SEL.java` SHA256 `fcad265b6fa9a9bcdbce75b53094fbb44c9525f0ce1b9b2ec1c4f07318715a35`: `f()` lines 39–48 tests `f8986g` as Boolean, returns `f8988i` on true and `f8987h` on false, both cast `Integer`. `getOut()` lines 67–72 yields Integer or null if an input is disconnected. Source preview `FB_SEL` names its terminals `IN`, `I1`, `I2`, `Q`.
+
+The versioned extended-palette `FBD CRAFT SEL` has typed BOOL IN, NUMBER I1/I2 and NUMBER Q, and a dedicated pure selector `FbdCraftIntegerSelector`. Because the existing BLOODSKY graph uses NUMBER as a double representation, **only exact finite int32 values are allowed**; fractional inputs, overflow and NaN fail safely (numeric fallback 0), rather than producing a rounded signal incompatible with the original Integer cast. A missing required named terminal likewise yields a safe 0 in BLOODSKY, whereas native Craft would expose a null `getOut()`. This is a documented approximation, not an assertion of perfect null semantics.
+
+The previous BLOODSKY `FBD SEL` G/IN0/IN1 → OUT is **not renamed or overwritten**. The new selector is a separate `FBD CRAFT SEL` ID with source-like gray block skin and native named pins; unknown imported vendor JSON remains round-trippable. `FbdCraftIntegerSelectorTest` exercises signed input, exact-integer restrictions, out-of-order named wiring, disconnected inputs, numeric Q and legacy SEL contracts. Do **not** activate original `FB_SEL` icon until APK/JUnit + real Android UI acceptance of this implementation, including original preview source geometry.
+
 ## Non-negotiable gates
 
 The runtime feature branch is not automatically promoted into `main`. Keep existing BLOODSKY CTU `CU,R,PV,Q` graph semantics intact. Original source CTU labels `+,-,R,Q`, RS priority and timer units are *open* until verified from original actual superclass implementation. Add separate native-compatible blocks, UI and source test only if the evidence supports actual operation; old project fields/anonymous wires must round-trip unchanged.
