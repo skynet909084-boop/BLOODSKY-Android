@@ -2717,6 +2717,26 @@ public class MainActivity extends Activity {
                 && Boolean.TRUE.equals(values.get(legacyIndex));
     }
 
+    /** Numeric terminal lookup; unnamed legacy connections retain their positional index. */
+    public static double fbdNumericPinValue(List<Double> values, List<String> pins,
+                                            String targetPin, int legacyIndex, double defaultValue) {
+        if (values == null || pins == null) return defaultValue;
+        for (int i = 0; i < values.size() && i < pins.size(); i++) {
+            if (targetPin.equalsIgnoreCase(pins.get(i))) {
+                Double value = values.get(i);
+                return value != null && !Double.isNaN(value) && !Double.isInfinite(value)
+                        ? value : defaultValue;
+            }
+        }
+        for (String pin : pins) {
+            if (pin != null && !pin.isEmpty()) return defaultValue;
+        }
+        if (legacyIndex < 0 || legacyIndex >= values.size()) return defaultValue;
+        Double value = values.get(legacyIndex);
+        return value != null && !Double.isNaN(value) && !Double.isInfinite(value)
+                ? value : defaultValue;
+    }
+
     public static boolean evaluateFbdBlockUncached(List<Widget> widgetsList, List<FbdConnection> connectionsList, int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
         if (index < 0 || index >= widgetsList.size() || visiting[index]) return false;
         Widget widget = widgetsList.get(index);
