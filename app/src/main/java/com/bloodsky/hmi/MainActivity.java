@@ -1618,7 +1618,9 @@ public class MainActivity extends Activity {
                 "FBD — FloatToInt", "FBD — IntToFloat",
                 "FBD — MOVE", "FBD — SEL (селектор)", "FBD — ABS", "FBD — MIN / MAX",
                 "FBD — RS", "FBD — SR", "FBD — CTU (счёт вверх)",
-                "FBD — CTD (счёт вниз)", "FBD — R_TRIG", "FBD — F_TRIG"
+                "FBD — CTD (счёт вниз)", "FBD — R_TRIG", "FBD — F_TRIG",
+                "FBD — Craft CTU 16 бит (+, −, R)",
+                "FBD — Craft T (переключатель по фронту)"
         };
         final String[] types = {
                 "Текст", "Кнопка", "Индикатор", "Задатчик",
@@ -1632,7 +1634,8 @@ public class MainActivity extends Activity {
                 "FBD FloatToInt", "FBD IntToFloat",
                 "FBD MOVE", "FBD SEL", "FBD ABS", "FBD MIN_MAX",
                 "FBD RS", "FBD SR", "FBD CTU",
-                "FBD CTD", "FBD R_TRIG", "FBD F_TRIG"
+                "FBD CTD", "FBD R_TRIG", "FBD F_TRIG",
+                "FBD CRAFT CTU", "FBD CRAFT T"
         };
         final String[] defaults = {
                 "Надпись", "Кнопка", "Индикатор", "Задатчик: 0",
@@ -1643,7 +1646,8 @@ public class MainActivity extends Activity {
                 "POW", "SQRT", "SIN", "COS", "TAN",
                 "Float->Int", "Int->Float",
                 "MOVE", "SEL", "ABS", "MIN/MAX",
-                "RS", "SR", "CTU", "CTD", "R_TRIG", "F_TRIG"
+                "RS", "SR", "CTU", "CTD", "R_TRIG", "F_TRIG",
+                "CTU 16 bit", "T"
         };
         LinearLayout list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
@@ -2865,9 +2869,18 @@ public class MainActivity extends Activity {
             if (output && "Q".equals(name)) return "BOOL";
             if (!output && ("S".equals(name) || "R".equals(name))) return "BOOL";
         }
+        if (kind.equals("FBD CRAFT T")) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && "IN".equals(name)) return "BOOL";
+        }
         if (kind.equals("FBD R_TRIG") || kind.equals("FBD F_TRIG")) {
             if (output && "Q".equals(name)) return "BOOL";
             if (!output && "IN".equals(name)) return "BOOL";
+        }
+        if (kind.equals("FBD CRAFT CTU")) {
+            if (output && "Q".equals(name)) return "NUMBER";
+            if (!output && ("+".equals(name) || "-".equals(name) || "R".equals(name)))
+                return "BOOL";
         }
         if (kind.equals("FBD CTU") || kind.equals("FBD CTD")) {
             if (output && "Q".equals(name)) return "BOOL";
@@ -3305,6 +3318,15 @@ public class MainActivity extends Activity {
             else if (reset) widget.rsState = false;
             return widget.rsState;
         }
+        if ("FBD CRAFT T".equals(widget.type)) {
+            boolean input = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
+            FbdCraftNativeTransitions.Trigger next = FbdCraftNativeTransitions.toggleRise(
+                    new FbdCraftNativeTransitions.Trigger(
+                            widget.craftToggleOutput, widget.craftToggleLastInput), input);
+            widget.craftToggleOutput = next.output;
+            widget.craftToggleLastInput = next.lastInput;
+            return next.output;
+        }
         if ("FBD R_TRIG".equals(widget.type)) {
             boolean input = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
             boolean risingEdge = input && !widget.counterLastInput;
@@ -3316,6 +3338,23 @@ public class MainActivity extends Activity {
             boolean fallingEdge = !input && widget.counterLastInput;
             widget.counterLastInput = input;
             return fallingEdge;
+        }
+        if ("FBD CRAFT CTU".equals(widget.type)) {
+            // Source-backed Craft +,-,R: independent rising edges, reset last,
+            // unsigned (char) 16-bit count and a NUMBER Q output. This is a
+            // separate versioned block; legacy BLOODSKY CTU stays unchanged.
+            boolean plus = fbdBooleanPinValue(inputs, inputPins, "+", 0);
+            boolean minus = fbdBooleanPinValue(inputs, inputPins, "-", 1);
+            boolean reset = fbdBooleanPinValue(inputs, inputPins, "R", 2);
+            FbdCraftNativeTransitions.Counter count = FbdCraftNativeTransitions.ctu(
+                    new FbdCraftNativeTransitions.Counter(widget.counterValue,
+                            widget.craftLastPlus, widget.craftLastMinus),
+                    plus, minus, reset);
+            widget.counterValue = count.value;
+            widget.craftLastPlus = count.lastPlus;
+            widget.craftLastMinus = count.lastMinus;
+            cacheNumeric[index] = count.value;
+            return count.value != 0;
         }
         if ("FBD CTU".equals(widget.type)) {
             boolean countInput = fbdBooleanPinValue(inputs, inputPins, "CU", 0);
@@ -3681,8 +3720,11 @@ public class MainActivity extends Activity {
             return output ? new String[]{"Q"} : new String[]{"IN1", "IN2"};
         if ("FBD НЕ".equals(kind)) return output ? new String[]{"Q"} : new String[]{"IN"};
         if ("FBD RS".equals(kind) || "FBD SR".equals(kind)) return output ? new String[]{"Q"} : new String[]{"R", "S"};
-        if ("FBD R_TRIG".equals(kind) || "FBD F_TRIG".equals(kind))
+        if ("FBD R_TRIG".equals(kind) || "FBD F_TRIG".equals(kind)
+                || "FBD CRAFT T".equals(kind))
             return output ? new String[]{"Q"} : new String[]{"IN"};
+        if ("FBD CRAFT CTU".equals(kind))
+            return output ? new String[]{"Q"} : new String[]{"+", "-", "R"};
         if ("FBD CTU".equals(kind)) return output ? new String[]{"Q"} : new String[]{"CU", "R", "PV"};
         if ("FBD CTD".equals(kind)) return output ? new String[]{"Q"} : new String[]{"CD", "LD", "PV"};
         if ("FBD СЛОЖЕНИЕ".equals(kind) || "FBD ВЫЧИТАНИЕ".equals(kind)
@@ -3776,6 +3818,14 @@ public class MainActivity extends Activity {
         public int counterPreset = 1;
         public int counterValue = 0;
         public boolean counterLastInput = false;
+        // Native Craft edge flags are transient operator runtime only;
+        // their absence from JSON protects old project schemas on save/copy.
+        boolean craftLastPlus = false;
+        boolean craftLastMinus = false;
+        // Original FB_TRIGGER mode T resets to Q=false on a fresh instance.
+        // Do not serialize runtime latches into legacy project metadata.
+        boolean craftToggleOutput = false;
+        boolean craftToggleLastInput = false;
         public int timerPresetMs = 1000;
         public long timerStartedAt = 0L;
         public double compareA = 0.0, compareB = 0.0;
@@ -3943,7 +3993,8 @@ public class MainActivity extends Activity {
                     paint.setTextSize(dp(w.textSizeSp));
                     if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(24)) / Math.max(4f, w.text.length() * 0.58f))));
                     String blockTitle = "FBD Вход".equals(w.type) ? "Вход " + (w.inputValue ? "1" : "0")
-                            : (("FBD CTU".equals(w.type) || "FBD CTD".equals(w.type)) ? ("FBD CTD".equals(w.type) ? "CTD " : "CTU ") + w.counterValue + "/" + w.counterPreset : w.text);
+                            : ("FBD CRAFT CTU".equals(w.type) ? "CTU16 " + w.counterValue
+                            : (("FBD CTU".equals(w.type) || "FBD CTD".equals(w.type)) ? ("FBD CTD".equals(w.type) ? "CTD " : "CTU ") + w.counterValue + "/" + w.counterPreset : w.text));
                     if (liveValues.containsKey(i) && !"FBD Вход".equals(w.type)) blockTitle += " [" + liveValues.get(i) + "]";
                     canvas.drawText(blockTitle, w.x + dp(12), w.y + dp(23), paint);
                     // Never evaluate stateful FBD logic from the editor's paint pass:
