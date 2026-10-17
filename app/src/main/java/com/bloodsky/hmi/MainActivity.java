@@ -3078,6 +3078,11 @@ public class MainActivity extends Activity {
         String[] sourcePins = knownFbdPins(sourceType, true);
         String[] targetPins = knownFbdPins(targetType, false);
         if (sourcePins.length == 0 || targetPins.length == 0) {
+            // Known typed terminals must never be silently downgraded to untyped wires.
+            if (sourcePins.length != targetPins.length) {
+                Toast.makeText(this, "Для этого FBD-блока не определены контакты", Toast.LENGTH_LONG).show();
+                return;
+            }
             addFbdConnection(source, target, new FbdConnection(source, target));
             return;
         }
