@@ -98,16 +98,18 @@ public class MainActivity extends Activity {
         if (imageCache.containsKey(pathOrUri)) return imageCache.get(pathOrUri);
         Bitmap bitmap = null;
         try {
-            if (pathOrUri.startsWith("content://")) {
-                try (InputStream is = getContentResolver().openInputStream(Uri.parse(pathOrUri))) {
-                    bitmap = BitmapFactory.decodeStream(is);
-                }
-            } else {
-                String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
-                java.io.File file = ProjectMediaService.resolveMediaFile(getFilesDir(), json, pathOrUri);
-                bitmap = BitmapFactory.decodeFile(file.getAbsolutePath());
-            }
+            String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
+            byte[] bytes = readProjectMediaData(pathOrUri, json);
+            BitmapFactory.Options bounds = new BitmapFactory.Options(); bounds.inJustDecodeBounds = true;
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.length, bounds);
+            BitmapFactory.Options options = new BitmapFactory.Options();
+            options.inSampleSize = ProjectImageSizing.sampleSize(bounds.outWidth, bounds.outHeight);
+            bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length, options);
         } catch (Exception ignored) {}
+        long bytesCached = 0;
+        for (Bitmap cached : imageCache.values()) if (cached != null) bytesCached += cached.getByteCount();
+        if (imageCache.size() >= 128 || (bitmap != null && bytesCached + bitmap.getByteCount() > 32L * 1024 * 1024))
+            imageCache.clear();
         imageCache.put(pathOrUri, bitmap);
         return bitmap;
     }
@@ -1632,6 +1634,51 @@ public class MainActivity extends Activity {
         return field;
     }
 
+    private boolean selectIndicatorImage(Widget widget, boolean active, boolean user, String value) {
+        if (!widgets.contains(widget) || !OriginalIndicator.supports(widget.type)) return false;
+        JSONObject old = widget.extraFields;
+        JSONObject oldProject = projectExtraFields;
+        try {
+            widget.extraFields = OriginalIndicator.withImage(old, active, user, value);
+            if (!persistProjectNow(true)) {
+                widget.extraFields = old; projectExtraFields = oldProject; saveActiveScreen();
+                Toast.makeText(this, "Не удалось сохранить изображение", Toast.LENGTH_LONG).show();
+                return false;
+            }
+            if (editor != null) editor.invalidate();
+            return true;
+        } catch (Exception invalid) {
+            widget.extraFields = old; projectExtraFields = oldProject;
+            Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show(); return false;
+        }
+    }
+
+    private void showIndicatorImages(Widget widget) {
+        OriginalIndicatorImages.show(this, new OriginalIndicatorImages.Host() {
+            public Bitmap preview(boolean active) { return originalIndicatorBitmap(widget, active); }
+            public boolean select(boolean active, boolean user, String value) {
+                return selectIndicatorImage(widget, active, user, value);
+            }
+            public void chooseCustom(boolean active, Runnable changed) {
+                LinearLayout form = new LinearLayout(MainActivity.this); form.setOrientation(LinearLayout.VERTICAL);
+                EditText path = propertyField("", InputType.TYPE_CLASS_TEXT);
+                path.setHint("Файл / content URI"); path.setContentDescription("Своё изображение индикатора");
+                form.addView(path); addMediaPicker(form, path, "image/*");
+                AlertDialog custom = new AlertDialog.Builder(MainActivity.this).setTitle("Своё изображение")
+                        .setView(form).setNegativeButton("Отмена", null).setPositiveButton("Применить", null).create();
+                custom.setOnShowListener(shown -> custom.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                    String selected = path.getText().toString().trim();
+                    imageCache.remove(selected);
+                    if (selected.isEmpty() || loadCachedBitmap(selected) == null) {
+                        Toast.makeText(MainActivity.this, "Выберите доступное изображение", Toast.LENGTH_LONG).show(); return;
+                    }
+                    if (selectIndicatorImage(widget, active, true, selected)) {custom.dismiss();changed.run();}
+                }));
+                custom.show();
+            }
+        });
+    }
+
     private void editSelectedWidget() {
         if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
             Toast.makeText(this, "Сначала выбери элемент на экране", Toast.LENGTH_SHORT).show();
@@ -1642,6 +1689,11 @@ public class MainActivity extends Activity {
         form.setOrientation(LinearLayout.VERTICAL);
         int pad = dp(16);
         form.setPadding(pad, dp(4), pad, 0);
+
+        if (OriginalIndicator.supports(w.type)) {
+            Button images = new Button(this); images.setText("Сменить изображение"); images.setAllCaps(false);
+            images.setOnClickListener(v -> showIndicatorImages(w)); form.addView(images);
+        }
 
         TextView textLabel = new TextView(this);
         textLabel.setText("Подпись");
@@ -2254,7 +2306,9 @@ public class MainActivity extends Activity {
         return json;
     }
 
-    private void persistProject() {
+    private void persistProject() { persistProjectNow(false); }
+
+    private boolean persistProjectNow(boolean synchronous) {
         try {
             saveActiveScreen();
             JSONObject project = new JSONObject();
@@ -2284,9 +2338,10 @@ public class MainActivity extends Activity {
             project.put("projectName", projectName);
             project = new JSONObject(ProjectMediaService.ensureProjectHasId(project.toString()));
             projectExtraFields = new JSONObject(project.toString());
-            storeActiveProject(project.toString(), false);
+            return storeActiveProject(project.toString(), synchronous);
         } catch (Exception ignored) {
             Toast.makeText(this, "Не удалось сохранить проект", Toast.LENGTH_SHORT).show();
+            return false;
         }
     }
 

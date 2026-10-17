@@ -226,6 +226,31 @@ class Smoke:
         adb('shell', 'input', 'tap', str(round(left + first['x'] + first['w'] / 2)),
             str(round(top + first['y'] + first['h'] / 2)))
         self.wait_node('Свойства: Индикатор')
+        self.tap('Сменить изображение')
+        self.wait_node(description='Изображение ON')
+        self.capture('04c-original-on-off')
+        self.tap(description='Изображение ON')
+        self.wait_node(description='Красная лампа')
+        self.capture('04d-original-image-library')
+        self.tap(description='Красная лампа')
+        self.tap(description='Изображение OFF')
+        self.tap(description='Синяя лампа')
+        self.capture('04e-selected-state-images')
+        # Exercise the actual Android document provider and a persistent content URI grant.
+        adb('push', 'build/craft-reference/apktool/res/drawable/lamp_yellow.png', '/sdcard/Download/bloodsky-custom.png')
+        self.tap(description='Изображение ON')
+        self.tap(description='Выбрать своё изображение')
+        self.wait_node('Своё изображение')
+        self.tap('Выбрать файл…')
+        self.tap(description='Show roots')
+        self.tap('Downloads')
+        self.tap('bloodsky-custom.png')
+        self.wait_node('Своё изображение')
+        self.tap('Применить')
+        self.wait_node(description='Изображение ON')
+        self.capture('04f-custom-state-image')
+        adb('shell', 'input', 'keyevent', '4')
+        self.wait_node('Свойства: Индикатор')
         self.replace_property_input('Положение X', '40.125')
         self.replace_property_input('Положение Y', '50.875')
         self.replace_property_input('Ширина элемента', '')
@@ -251,7 +276,25 @@ class Smoke:
         expected = dict(x=40.125, y=50.875, w=160.375, h=140.625)
         if any(after[key] != value for key, value in expected.items()):
             raise AssertionError('Fractional property edit did not survive process restart')
+        state_images = after.get('other', after)
+        if isinstance(state_images, str):
+            state_images = json.loads(state_images)
+        if not state_images.get('pathOrNameOn', '').startswith('content://') or state_images.get('pathOrNameOff') != 'blue':
+            raise AssertionError('Selected ON/OFF images did not survive process restart')
+        if not state_images.get('isImageUserOn') or state_images.get('isImageUserOff'):
+            raise AssertionError('Builtin/custom image flags were not retained')
         self.capture('04b-fractional-reopened')
+        canvas = self.wait_node(description='Редактор экрана')
+        left, top, _, _ = map(int, re.findall(r'\d+', canvas.get('bounds')))
+        adb('shell', 'input', 'tap', str(round(left + after['x'] + after['w'] / 2)),
+            str(round(top + after['y'] + after['h'] / 2)))
+        self.wait_node('Свойства: Индикатор')
+        self.tap('Сменить изображение')
+        self.wait_node(description='Изображение ON')
+        self.capture('04g-custom-image-after-restart')
+        adb('shell', 'input', 'keyevent', '4')
+        self.wait_node('Свойства: Индикатор')
+        self.tap('Отмена')
         self.tap('☰')
         self.tap('Удалить проект')
         self.tap(PROJECT)
@@ -273,7 +316,7 @@ class Smoke:
         if PACKAGE in crashes:
             raise AssertionError('Application crash recorded')
         (self.output / 'result.json').write_text(json.dumps({'result': 'passed', 'package': PACKAGE,
-                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'original five-category palette', 'palette add indicator/button/text/progress', 'extended component/FBD access', 'process restart', 'reload four palette-created components', 'invalid geometry leaves dialog/project unchanged', 'fractional properties survive second process restart', 'confirmed deletion'],
+                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'original five-category palette', 'palette add indicator/button/text/progress', 'extended component/FBD access', 'process restart', 'reload four palette-created components', 'invalid geometry leaves dialog/project unchanged', 'fractional properties survive second process restart', 'original ON/OFF dialogs and builtin state selection', 'custom document-provider image and persisted URI grant after process restart', 'confirmed deletion'],
                 'api_level': adb('shell', 'getprop', 'ro.build.version.sdk').strip(),
                 'display_size': adb('shell', 'wm', 'size').strip(),
                 'display_density': adb('shell', 'wm', 'density').strip()}, indent=2))
