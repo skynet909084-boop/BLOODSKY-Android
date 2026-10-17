@@ -2490,9 +2490,9 @@ public class MainActivity extends Activity {
                         targetWidget.optString("type", ""))) {
                     throw new IllegalArgumentException("Invalid FBD pin direction or type");
                 }
-                String targetPin = edge.optString("targetPin", "");
+                String targetPin = canonicalFbdPinName(edge.optString("targetPin", ""));
                 if (!targetPin.isEmpty() && !occupiedTargetPins.add(target + ":"
-                        + targetPin.toUpperCase(java.util.Locale.ROOT))) {
+                        + targetPin)) {
                     throw new IllegalArgumentException("Multiple FBD wires drive the same target pin");
                 }
                 long edgeKey = (((long) source) << 32) | (target & 0xffffffffL);
@@ -2501,7 +2501,7 @@ public class MainActivity extends Activity {
                     pairPins = new java.util.HashSet<>();
                     pinsByPair.put(edgeKey, pairPins);
                 }
-                String normalizedPin = targetPin.toUpperCase(java.util.Locale.ROOT);
+                String normalizedPin = targetPin;
                 if (pairPins.contains("") || (normalizedPin.isEmpty() && !pairPins.isEmpty())
                         || !pairPins.add(normalizedPin)) {
                     throw new IllegalArgumentException("Duplicate FBD connection");
@@ -2597,10 +2597,15 @@ public class MainActivity extends Activity {
         return kind;
     }
 
+    /** Compare pin identifiers consistently without rewriting imported project metadata. */
+    public static String canonicalFbdPinName(String pin) {
+        return pin == null ? "" : pin.trim().toUpperCase(java.util.Locale.ROOT);
+    }
+
     public static String knownFbdPinType(String blockType, String pin, boolean output) {
         if (blockType == null || pin == null) return null;
         String kind = canonicalFbdBlockType(blockType);
-        String name = pin.trim().toUpperCase(java.util.Locale.ROOT);
+        String name = canonicalFbdPinName(pin);
         if (kind.equals("FBD ВХОД")) return output && "Q".equals(name) ? "BOOL" : null;
         if (kind.equals("FBD AND") || kind.equals("FBD OR") || kind.equals("FBD XOR")) {
             if (output && "Q".equals(name)) return "BOOL";
@@ -2706,9 +2711,9 @@ public class MainActivity extends Activity {
     public static boolean duplicateFbdEndpoint(FbdConnection oldEdge, FbdConnection newEdge) {
         if (oldEdge == null || newEdge == null || oldEdge.source != newEdge.source
                 || oldEdge.target != newEdge.target) return false;
-        String oldPin = oldEdge.extraFields.optString("targetPin", "");
-        String newPin = newEdge.extraFields.optString("targetPin", "");
-        return oldPin.isEmpty() || newPin.isEmpty() || oldPin.equalsIgnoreCase(newPin);
+        String oldPin = canonicalFbdPinName(oldEdge.extraFields.optString("targetPin", ""));
+        String newPin = canonicalFbdPinName(newEdge.extraFields.optString("targetPin", ""));
+        return oldPin.isEmpty() || newPin.isEmpty() || oldPin.equals(newPin);
     }
 
     /** Remove a selected edge by identity, even if a legacy project contains duplicates. */
@@ -2756,12 +2761,14 @@ public class MainActivity extends Activity {
     public static boolean fbdBooleanPinValue(List<Boolean> values, List<String> pins,
                                              String targetPin, int legacyIndex) {
         if (values == null || pins == null) return false;
+        String requested = canonicalFbdPinName(targetPin);
+        if (requested.isEmpty()) return false;
         for (int i = 0; i < values.size() && i < pins.size(); i++) {
-            if (targetPin.equalsIgnoreCase(pins.get(i))) return Boolean.TRUE.equals(values.get(i));
+            if (requested.equals(canonicalFbdPinName(pins.get(i)))) return Boolean.TRUE.equals(values.get(i));
         }
         // Old projects have no pin names; keep their original positional behavior.
         boolean hasNamedPin = false;
-        for (String pin : pins) if (pin != null && !pin.isEmpty()) hasNamedPin = true;
+        for (String pin : pins) if (!canonicalFbdPinName(pin).isEmpty()) hasNamedPin = true;
         return !hasNamedPin && legacyIndex >= 0 && legacyIndex < values.size()
                 && Boolean.TRUE.equals(values.get(legacyIndex));
     }
@@ -2770,15 +2777,17 @@ public class MainActivity extends Activity {
     public static double fbdNumericPinValue(List<Double> values, List<String> pins,
                                             String targetPin, int legacyIndex, double defaultValue) {
         if (values == null || pins == null) return defaultValue;
+        String requested = canonicalFbdPinName(targetPin);
+        if (requested.isEmpty()) return defaultValue;
         for (int i = 0; i < values.size() && i < pins.size(); i++) {
-            if (targetPin.equalsIgnoreCase(pins.get(i))) {
+            if (requested.equals(canonicalFbdPinName(pins.get(i)))) {
                 Double value = values.get(i);
                 return value != null && !Double.isNaN(value) && !Double.isInfinite(value)
                         ? value : defaultValue;
             }
         }
         for (String pin : pins) {
-            if (pin != null && !pin.isEmpty()) return defaultValue;
+            if (!canonicalFbdPinName(pin).isEmpty()) return defaultValue;
         }
         if (legacyIndex < 0 || legacyIndex >= values.size()) return defaultValue;
         Double value = values.get(legacyIndex);
@@ -3218,9 +3227,9 @@ public class MainActivity extends Activity {
             return;
         }
         for (FbdConnection existing : screen.connections) {
-            String newTargetPin = edge.extraFields.optString("targetPin", "");
+            String newTargetPin = canonicalFbdPinName(edge.extraFields.optString("targetPin", ""));
             if (!newTargetPin.isEmpty() && existing.target == target
-                    && newTargetPin.equalsIgnoreCase(existing.extraFields.optString("targetPin", ""))) {
+                    && newTargetPin.equals(canonicalFbdPinName(existing.extraFields.optString("targetPin", "")))) {
                 Toast.makeText(this, "Вход FBD уже занят другим проводом", Toast.LENGTH_SHORT).show();
                 return;
             }
