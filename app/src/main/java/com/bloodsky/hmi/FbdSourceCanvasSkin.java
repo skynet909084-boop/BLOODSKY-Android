@@ -18,7 +18,9 @@ public final class FbdSourceCanvasSkin {
         return "FBD И".equals(type) || "FBD ИЛИ".equals(type)
                 || "FBD XOR".equals(type) || "FBD Таймер".equals(type)
                 || "FBD TOF".equals(type) || "FBD TP".equals(type)
-                || "FBD Сравнение".equals(type);
+                || "FBD Сравнение".equals(type)
+                || "FBD CRAFT CTU".equals(type) || "FBD CRAFT T".equals(type)
+                || "FBD CRAFT BLINK".equals(type);
     }
 
     public static boolean shouldUse(MainActivity.Widget w) {
@@ -28,6 +30,9 @@ public final class FbdSourceCanvasSkin {
                 || w.w < 70 || w.h < 36) return false;
         String defaultCaption = "FBD И".equals(w.type) ? "И" : "FBD ИЛИ".equals(w.type) ? "ИЛИ"
                 : "FBD Сравнение".equals(w.type) ? "Сравнение"
+                : "FBD CRAFT CTU".equals(w.type) ? "CTU 16 bit"
+                : "FBD CRAFT T".equals(w.type) ? "T"
+                : "FBD CRAFT BLINK".equals(w.type) ? "BLINK"
                 : isTimer(w.type) ? FbdDurationUnits.modeForType(w.type) : "XOR";
         // Preserve manually edited labels by falling back to the editable skin.
         return w.text == null || w.text.isEmpty() || defaultCaption.equals(w.text);
@@ -44,7 +49,8 @@ public final class FbdSourceCanvasSkin {
     }
 
     private static boolean isTimer(String type) {
-        return "FBD Таймер".equals(type) || "FBD TOF".equals(type) || "FBD TP".equals(type);
+        return "FBD Таймер".equals(type) || "FBD TOF".equals(type)
+                || "FBD TP".equals(type) || "FBD CRAFT BLINK".equals(type);
     }
 
     public static void draw(Canvas canvas, Paint brush, MainActivity.Widget w, float density) {
@@ -94,6 +100,9 @@ public final class FbdSourceCanvasSkin {
             String name = "FBD И".equals(w.type) ? "AND" : "FBD ИЛИ".equals(w.type) ? "OR"
                     : "FBD XOR".equals(w.type) ? "XOR"
                     : "FBD Сравнение".equals(w.type) ? w.compareOperator
+                    : "FBD CRAFT CTU".equals(w.type) ? "CTU16"
+                    : "FBD CRAFT T".equals(w.type) ? "T"
+                    : "FBD CRAFT BLINK".equals(w.type) ? "BLINK"
                     : FbdDurationUnits.modeForType(w.type);
             float center = (left + right) / 2f;
             if (divided) {
@@ -113,6 +122,23 @@ public final class FbdSourceCanvasSkin {
             } else {
                 canvas.drawText(name, center, y0 + w.h / 2f
                         - (brush.ascent() + brush.descent()) / 2f, brush);
+                // New Craft-compatible source blocks retain visible port labels,
+                // including the counter's unusual original +,-,R terminals.
+                if ("FBD CRAFT CTU".equals(w.type) || "FBD CRAFT T".equals(w.type)) {
+                    brush.setTextAlign(Paint.Align.LEFT);
+                    brush.setTextSize(Math.min(10f * density, Math.max(7f * density, w.h / 8f)));
+                    for (String port : inputPins) {
+                        float py = y0 + w.h * inputY(w.type, port);
+                        canvas.drawText(port, left + 4 * density,
+                                py - (brush.ascent() + brush.descent()) / 2f, brush);
+                    }
+                    if (outputPins.length > 0) {
+                        brush.setTextAlign(Paint.Align.RIGHT);
+                        canvas.drawText(outputPins[0], right - 4 * density,
+                                y0 + w.h / 2f - (brush.ascent() + brush.descent()) / 2f,
+                                brush);
+                    }
+                }
             }
         } finally {
             brush.setColor(priorColor);
