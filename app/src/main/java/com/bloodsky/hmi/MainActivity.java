@@ -1755,7 +1755,6 @@ public class MainActivity extends Activity {
     }
 
     private void addWidget(String type, String text) {
-        fbdWireHistory.clear();
         Widget w = new Widget();
         w.type = type;
         w.text = text;
@@ -1763,7 +1762,6 @@ public class MainActivity extends Activity {
         w.y = dp(50) + (widgets.size() % 6) * dp(22);
         w.w = OriginalIndicator.supports(type) ? dp(40) : dp(160);
         w.h = OriginalIndicator.supports(type) ? dp(40) : dp(58);
-        liveValues.clear();
         if (type.equals("Задатчик")) { w.w = dp(190); w.h = dp(62); }
         if (type.equals("Шкала / Стрелка") || type.equals("График / Тренд")) { w.w = dp(200); w.h = dp(110); }
         if (type.equals("Прогресс-бар") || type.equals("Битовый список")) { w.w = dp(180); w.h = dp(64); }
@@ -1773,11 +1771,22 @@ public class MainActivity extends Activity {
                 float[] empty = freeFbdPlacement(widgets, editor.getWidth(), editor.getHeight(),
                         w.w, w.h, dp(40), dp(50), dp(18));
                 if (empty != null) { w.x = empty[0]; w.y = empty[1]; }
-                else Toast.makeText(this, "Нет свободного места: перемести FBD-блок вручную",
-                        Toast.LENGTH_LONG).show();
+                else {
+                    // The old fallback inserted the block at a hard-coded offset,
+                    // overlapping other blocks while claiming that no space was
+                    // available. Fail without changing project/history instead.
+                    Toast.makeText(this,
+                            "Нет свободного места для FBD-блока: освободи место на экране",
+                            Toast.LENGTH_LONG).show();
+                    return;
+                }
             }
         }
         if ("FBD CTD".equals(type)) w.counterValue = w.counterPreset;
+        // Only a successfully placed element may invalidate undo history and
+        // graph output caches. A rejected insert leaves the project unchanged.
+        fbdWireHistory.clear();
+        liveValues.clear();
         widgets.add(w);
         persistProject();
         if (editor != null) editor.invalidate();

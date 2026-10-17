@@ -17,9 +17,11 @@ public class FbdSourceNativeCanvasSkinTest {
         assertTrue(FbdSourceCanvasSkin.supports("FBD CRAFT CTU"));
         assertTrue(FbdSourceCanvasSkin.supports("FBD CRAFT T"));
         assertTrue(FbdSourceCanvasSkin.supports("FBD CRAFT BLINK"));
+        assertTrue(FbdSourceCanvasSkin.supports("FBD RS"));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT CTU", "CTU 16 bit")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT T", "T")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT BLINK", "BLINK")));
+        assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD RS", "RS")));
     }
 
     @Test public void sourceGeometryAlignsNativePinContacts() {
@@ -27,6 +29,8 @@ public class FbdSourceNativeCanvasSkinTest {
         assertEquals(2f/4f, FbdSourceCanvasSkin.inputY("FBD CRAFT CTU", "-"), 0.00001f);
         assertEquals(3f/4f, FbdSourceCanvasSkin.inputY("FBD CRAFT CTU", "R"), 0.00001f);
         assertEquals(.5f, FbdSourceCanvasSkin.inputY("FBD CRAFT T", "IN"), 0.00001f);
+        assertEquals(1f / 3f, FbdSourceCanvasSkin.inputY("FBD RS", "R"), 0.00001f);
+        assertEquals(2f / 3f, FbdSourceCanvasSkin.inputY("FBD RS", "S"), 0.00001f);
         assertEquals(.5f, FbdSourceCanvasSkin.inputY("FBD CRAFT BLINK", "IN"), 0.00001f);
         assertEquals(5f/6f, FbdSourceCanvasSkin.inputY("FBD CRAFT BLINK", "PT"), 0.00001f);
     }

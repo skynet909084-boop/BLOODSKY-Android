@@ -91,6 +91,16 @@ The original fullscreen logic palette already contains imported preview widgets 
 
 `OriginalFbdNativePaletteMappingTest` asserts both native IDs, counter numeric vs legacy bool Q, source RS R/S priority, and unmapped tags. `tools/android_ui_fbd_quick.py` now also tests opening **actual original FBD palette**, tapping RS/T/CTU (not the generic extended picker), verifying new project node types and a cold reload. No original bitmap/source graphics are fabricated or enabled without evidence. This is a **candidate until exact-head Android JUnit, source audits and API30 UI pass**, and does not signify all original FBD previews have been ported.
 
+## Original FBD palette crowded-screen placement defect — resolved separately
+
+Reviewing real Android screenshot from the accepted [#121](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/121) original RS/T/CTU palette run **39070131140** (artifact `12114798193`) exposed a real editor defect: when `freeFbdPlacement` returned null due lack of space, `addWidget` showed a toast but **still inserted a new 150dp FBD at the stale default offset**, overlapping existing native blocks. The test previously checked types and save/reload but failed to assert non-overlapping geometry.
+
+The corrected `addWidget` now returns immediately without altering widgets, caches, history, or saved project on a failed placement. The toast tells the operator to make room first; this is intentionally a conservative safety behavior, **not** an infinite Canvas or auto-zoom feature. An expanded workspace/pan-and-zoom is a separate future UX task.
+
+The real Android smoke now starts a second **fresh test project** for original RS/T/CTU picker selections, so all three can be placed and the test asserts that their rectangles do not overlap before cold-restart verification. Existing extended CTU/T/BLINK and 2345/3456 ms tests still run in the first project. RS now also uses the established source-gray default FBD canvas style, R/S/Q labels and no custom-color override, replacing the visibly inconsistent purple skin seen in the original screenshot. Dedicated Java skin assertions cover original R/S terminal fractions and default appearance.
+
+No native FBD algorithms changed; no existing project files changed. Requires exact-head JUnit/APK + Android API30 before merging into draft feature #76. Original source palette fidelity remains incremental, not pixel-perfect.
+
 ## Non-negotiable gates
 
 The runtime feature branch is not automatically promoted into `main`. Keep existing BLOODSKY CTU `CU,R,PV,Q` graph semantics intact. Original source CTU labels `+,-,R,Q`, RS priority and timer units are *open* until verified from original actual superclass implementation. Add separate native-compatible blocks, UI and source test only if the evidence supports actual operation; old project fields/anonymous wires must round-trip unchanged.
