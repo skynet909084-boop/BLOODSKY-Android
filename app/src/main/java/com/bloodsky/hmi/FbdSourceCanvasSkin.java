@@ -60,8 +60,8 @@ public final class FbdSourceCanvasSkin {
 
     /** Decompiled original FB_CTU=draw9 and FB_RS/FB_TRIGGER=draw8. */
     private static boolean hasNativeHeader(String type) {
-        return "FBD CRAFT CTU".equals(type) || "FBD CRAFT T".equals(type)
-                || "FBD RS".equals(type);
+        return "FBD CRAFT CTU".equals(type) || "FBD CRAFT SEL".equals(type)
+                || "FBD CRAFT T".equals(type) || "FBD RS".equals(type);
     }
 
     public static void draw(Canvas canvas, Paint brush, MainActivity.Widget w, float density) {
@@ -86,7 +86,8 @@ public final class FbdSourceCanvasSkin {
 
             boolean divided = "FBD XOR".equals(w.type) || isTimer(w.type)
                     || hasNativeHeader(w.type);
-            float headerFraction = "FBD CRAFT CTU".equals(w.type) ? 0.25f : 1f / 3f;
+            float headerFraction = ("FBD CRAFT CTU".equals(w.type)
+                    || "FBD CRAFT SEL".equals(w.type)) ? 0.25f : 1f / 3f;
             if (divided) {
                 float header = y0 + w.h * headerFraction;
                 brush.setColor(Color.BLACK);
