@@ -1,0 +1,125 @@
+package com.bloodsky.hmi;
+
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.RectF;
+
+/**
+ * Source-backed default FBD visual skin on the actual editor canvas.
+ * Derived from documented FB_AND/OR (two quarter-height contacts) and
+ * FB_XOR/FB_TIMER (header + split lower body) layout geometry, not from
+ * palette screenshots. Custom-styled BLOODSKY widgets retain prior drawing.
+ */
+public final class FbdSourceCanvasSkin {
+    private FbdSourceCanvasSkin() {}
+
+    public static boolean supports(String type) {
+        return "FBD И".equals(type) || "FBD ИЛИ".equals(type)
+                || "FBD XOR".equals(type) || "FBD Таймер".equals(type)
+                || "FBD TOF".equals(type) || "FBD TP".equals(type)
+                || "FBD Сравнение".equals(type);
+    }
+
+    public static boolean shouldUse(MainActivity.Widget w) {
+        if (w == null || !supports(w.type) || w.backgroundColor != 0
+                || w.textColor != Color.rgb(31, 41, 55)
+                || w.textSizeSp != 14 || !w.showFrame || w.autoResizeText
+                || w.w < 70 || w.h < 36) return false;
+        String defaultCaption = "FBD И".equals(w.type) ? "И" : "FBD ИЛИ".equals(w.type) ? "ИЛИ"
+                : "FBD Сравнение".equals(w.type) ? "Сравнение"
+                : isTimer(w.type) ? FbdDurationUnits.modeForType(w.type) : "XOR";
+        // Preserve manually edited labels by falling back to the editable skin.
+        return w.text == null || w.text.isEmpty() || defaultCaption.equals(w.text);
+    }
+
+    public static float inputY(String type, String name) {
+        if ("FBD XOR".equals(type) || isTimer(type)) {
+            String[] pins = MainActivity.knownFbdPins(type, false);
+            for (int i = 0; i < pins.length; i++) {
+                if (pins[i].equalsIgnoreCase(name)) return i == 0 ? 0.5f : (5f / 6f);
+            }
+        }
+        return MainActivity.fbdTerminalFraction(type, name, false);
+    }
+
+    private static boolean isTimer(String type) {
+        return "FBD Таймер".equals(type) || "FBD TOF".equals(type) || "FBD TP".equals(type);
+    }
+
+    public static void draw(Canvas canvas, Paint brush, MainActivity.Widget w, float density) {
+        if (!shouldUse(w)) return;
+        float pin = Math.max(5, 10 * density);
+        float x0 = w.x, x1 = w.x + w.w, y0 = w.y, y1 = w.y + w.h;
+        float left = x0 + pin, right = x1 - pin;
+        RectF body = new RectF(left, y0, right, y1);
+        Paint.Style priorStyle = brush.getStyle();
+        float priorSize = brush.getTextSize();
+        float priorWidth = brush.getStrokeWidth();
+        Paint.Align priorAlign = brush.getTextAlign();
+        int priorColor = brush.getColor();
+        try {
+            brush.setStyle(Paint.Style.FILL);
+            brush.setColor(Color.rgb(136, 136, 136));
+            canvas.drawRect(body, brush);
+            brush.setStyle(Paint.Style.STROKE);
+            brush.setColor(Color.BLACK);
+            brush.setStrokeWidth(Math.max(1, density));
+            canvas.drawRect(body, brush);
+
+            boolean divided = "FBD XOR".equals(w.type) || isTimer(w.type);
+            if (divided) {
+                float header = y0 + w.h / 3f;
+                brush.setColor(Color.BLACK);
+                canvas.drawLine(left, header, right, header, brush);
+                canvas.drawLine((left + right) / 2f, header, (left + right) / 2f, y1, brush);
+            }
+            String[] inputPins = MainActivity.knownFbdPins(w.type, false);
+            brush.setColor(Color.BLACK);
+            brush.setStyle(Paint.Style.STROKE);
+            for (String port : inputPins) {
+                float yy = y0 + w.h * inputY(w.type, port);
+                canvas.drawLine(x0, yy, left, yy, brush);
+            }
+            String[] outputPins = MainActivity.knownFbdPins(w.type, true);
+            for (String port : outputPins) {
+                float yy = y0 + w.h * MainActivity.fbdTerminalFraction(w.type, port, true);
+                canvas.drawLine(right, yy, x1, yy, brush);
+            }
+
+            brush.setStyle(Paint.Style.FILL);
+            brush.setColor(Color.WHITE);
+            brush.setTextAlign(Paint.Align.CENTER);
+            brush.setTextSize(Math.min(12f * density, Math.max(7f * density, w.h / 5f)));
+            String name = "FBD И".equals(w.type) ? "AND" : "FBD ИЛИ".equals(w.type) ? "OR"
+                    : "FBD XOR".equals(w.type) ? "XOR"
+                    : "FBD Сравнение".equals(w.type) ? w.compareOperator
+                    : FbdDurationUnits.modeForType(w.type);
+            float center = (left + right) / 2f;
+            if (divided) {
+                canvas.drawText(name, center, y0 + w.h / 6f
+                        - (brush.ascent() + brush.descent()) / 2f, brush);
+                float sectionStart = y0 + w.h / 3f;
+                float remaining = w.h * 2f / 3f;
+                brush.setTextSize(Math.min(10 * density, Math.max(6 * density, w.h / 7f)));
+                for (int i = 0; i < inputPins.length; i++) {
+                    float yy = y0 + w.h * inputY(w.type, inputPins[i]);
+                    canvas.drawText(inputPins[i], (left + center) / 2f,
+                            yy - (brush.ascent() + brush.descent()) / 2f, brush);
+                }
+                if (outputPins.length > 0)
+                    canvas.drawText(outputPins[0], (center + right) / 2f,
+                            sectionStart + remaining / 4f - (brush.ascent() + brush.descent()) / 2f, brush);
+            } else {
+                canvas.drawText(name, center, y0 + w.h / 2f
+                        - (brush.ascent() + brush.descent()) / 2f, brush);
+            }
+        } finally {
+            brush.setColor(priorColor);
+            brush.setStyle(priorStyle);
+            brush.setTextSize(priorSize);
+            brush.setTextAlign(priorAlign);
+            brush.setStrokeWidth(priorWidth);
+        }
+    }
+}

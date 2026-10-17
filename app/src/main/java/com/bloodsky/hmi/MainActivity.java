@@ -1415,6 +1415,59 @@ public class MainActivity extends Activity {
 
     private void showWidgetContextMenu() {
         if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) return;
+        if (isFbd(widgets.get(editor.selected))) {
+            showFbdBlockContextMenu(editor.selected);
+            return;
+        }
+        showStandardWidgetContextMenu();
+    }
+
+    /** Source-ordered FBD actions with existing typed graph guards. */
+    private void showFbdBlockContextMenu(final int blockIndex) {
+        if (operatorMode || blockIndex < 0 || blockIndex >= widgets.size()) return;
+        final Widget widget = widgets.get(blockIndex);
+        final boolean timer = "FBD Таймер".equals(widget.type)
+                || "FBD TOF".equals(widget.type) || "FBD TP".equals(widget.type);
+        final boolean invertible = knownFbdPins(widget.type, true).length == 1
+                && "BOOL".equals(knownFbdPinType(widget.type,
+                        knownFbdPins(widget.type, true)[0], true));
+        final java.util.List<String> labels = new ArrayList<>();
+        labels.add("Соединить с…");
+        if (invertible) labels.add("Инвертировать связь BOOL…");
+        labels.add("Отсоединить выход");
+        if (timer) labels.add("Режим / единицы времени");
+        labels.add("Свойства");
+        labels.add("Другие действия");
+        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle(widget.text == null ? widget.type : widget.text)
+                .setItems(labels.toArray(new String[0]), (dialog, choice) -> {
+                    if (blockIndex >= widgets.size() || widgets.get(blockIndex) != widget) {
+                        Toast.makeText(this, "FBD изменён: выбери блок заново", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    String label = labels.get(choice);
+                    if ("Соединить с…".equals(label)) {
+                        fbdWireMode = true;
+                        wireSource = blockIndex;
+                        Toast.makeText(this, "Выбери целевой блок FBD", Toast.LENGTH_LONG).show();
+                    } else if ("Инвертировать связь BOOL…".equals(label)) {
+                        showFbdInversionDialog(blockIndex);
+                    } else if ("Отсоединить выход".equals(label)) {
+                        showFbdDisconnectDialog(blockIndex);
+                    } else if ("Режим / единицы времени".equals(label)
+                            || "Свойства".equals(label)) {
+                        editor.selected = blockIndex;
+                        editSelectedWidget();
+                    } else {
+                        editor.selected = blockIndex;
+                        showStandardWidgetContextMenu();
+                    }
+                    if (editor != null) editor.invalidate();
+                }).setNegativeButton("Отмена", null).show();
+    }
+
+    private void showStandardWidgetContextMenu() {
+        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) return;
 
         Widget selectedWidget = widgets.get(editor.selected);
         String titleText = selectedWidget.text == null || selectedWidget.text.trim().isEmpty()
@@ -1904,16 +1957,61 @@ public class MainActivity extends Activity {
         }
 
         final EditText timerPresetField;
+        final android.widget.Spinner timerUnitSelector;
+        final android.widget.Spinner timerModeSelector;
         if ("FBD Таймер".equals(w.type) || "FBD TP".equals(w.type) || "FBD TOF".equals(w.type)) {
+            TextView timerModeLabel = new TextView(this);
+            timerModeLabel.setText("Режим таймера (TON / TOF / TP)");
+            form.addView(timerModeLabel);
+            timerModeSelector = new android.widget.Spinner(this);
+            timerModeSelector.setContentDescription("Режим таймера FBD");
+            timerModeSelector.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item, FbdDurationUnits.modes()));
+            String initialMode = FbdDurationUnits.modeForType(w.type);
+            timerModeSelector.setSelection("TOF".equals(initialMode) ? 1 : "TP".equals(initialMode) ? 2 : 0);
+            form.addView(timerModeSelector);
+
             TextView timerLabel = new TextView(this);
-            timerLabel.setText("Время " + ("FBD TP".equals(w.type) ? "импульса TP" : ("FBD TOF".equals(w.type) ? "выключения TOF" : "задержки TON")) + " (миллисекунды)");
+            timerLabel.setText("Время таймера (исходное значение хранится точно в мс)");
             timerLabel.setPadding(0, dp(10), 0, 0);
             form.addView(timerLabel);
-            timerPresetField = propertyField(Integer.toString(w.timerPresetMs), InputType.TYPE_CLASS_NUMBER);
-            timerPresetField.setContentDescription("Время таймера, мс");
+            String[] unitValues = {"MS", "SEK", "MIN"};
+            String initialUnit = FbdDurationUnits.normalize(w.extraFields.optString("bloodskyFbdTimeUnit", "MS"));
+            int initialUnitIndex = "SEK".equals(initialUnit) ? 1 : "MIN".equals(initialUnit) ? 2 : 0;
+            timerPresetField = propertyField(FbdDurationUnits.display(w.timerPresetMs, initialUnit),
+                    InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL
+                            | InputType.TYPE_NUMBER_FLAG_SIGNED);
+            timerPresetField.setContentDescription(initialUnitIndex == 0 ? "Время таймера, мс"
+                    : "Время таймера, " + (initialUnitIndex == 1 ? "сек" : "мин"));
             form.addView(timerPresetField);
+            timerUnitSelector = new android.widget.Spinner(this);
+            timerUnitSelector.setContentDescription("Единица времени FBD");
+            timerUnitSelector.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item,
+                    new String[]{"мс", "сек", "мин"}));
+            timerUnitSelector.setSelection(initialUnitIndex);
+            final int[] lastUnit = {initialUnitIndex};
+            timerUnitSelector.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+                public void onNothingSelected(android.widget.AdapterView<?> parent) {}
+                public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                    if (position == lastUnit[0]) return;
+                    try {
+                        int oldMilliseconds = FbdDurationUnits.parse(
+                                timerPresetField.getText().toString(), unitValues[lastUnit[0]], w.timerPresetMs);
+                        timerPresetField.setText(FbdDurationUnits.display(oldMilliseconds, unitValues[position]));
+                        timerPresetField.setContentDescription(position == 0 ? "Время таймера, мс"
+                                : "Время таймера, " + (position == 1 ? "сек" : "мин"));
+                    } catch (IllegalArgumentException ignored) {
+                        // Keep invalid text visible so Apply reports an error.
+                    }
+                    lastUnit[0] = position;
+                }
+            });
+            form.addView(timerUnitSelector);
         } else {
             timerPresetField = null;
+            timerUnitSelector = null;
+            timerModeSelector = null;
         }
         final EditText counterPresetField;
         if ("FBD CTU".equals(w.type) || "FBD CTD".equals(w.type)) {
@@ -2027,7 +2125,13 @@ public class MainActivity extends Activity {
                     try {
                         geometry = WidgetGeometryEdits.parse(xField.getText().toString(), yField.getText().toString(),
                                 widthField.getText().toString(), heightField.getText().toString());
-                        fbd = FbdPropertyEdits.parse(timerPresetField == null ? null : timerPresetField.getText().toString(),
+                        String timerDurationMs = null;
+                        if (timerPresetField != null) {
+                            String unit = new String[]{"MS", "SEK", "MIN"}[timerUnitSelector.getSelectedItemPosition()];
+                            timerDurationMs = Integer.toString(FbdDurationUnits.parse(
+                                    timerPresetField.getText().toString(), unit, w.timerPresetMs));
+                        }
+                        fbd = FbdPropertyEdits.parse(timerDurationMs,
                                 counterPresetField == null ? null : counterPresetField.getText().toString(),
                                 compareLeftField == null ? null : compareLeftField.getText().toString(),
                                 compareOperatorField == null ? null : compareOperatorField.getText().toString(),
@@ -2077,8 +2181,20 @@ public class MainActivity extends Activity {
                         }
                     }
                     if (timerPresetField != null) {
+                        String oldMode = FbdDurationUnits.modeForType(w.type);
+                        String newMode = String.valueOf(timerModeSelector.getSelectedItem());
                         w.timerPresetMs = fbd.timer;
+                        w.type = FbdDurationUnits.typeForMode(newMode);
+                        // Keep custom labels intact, refresh only an untouched mode label.
+                        if (w.text != null && w.text.equals(oldMode)) w.text = newMode;
                         w.timerStartedAt = 0L;
+                        w.counterLastInput = false;
+                        try {
+                            String unit = new String[]{"MS", "SEK", "MIN"}[timerUnitSelector.getSelectedItemPosition()];
+                            // An untouched old MS project must not acquire an extra field.
+                            if (!"MS".equals(unit) || w.extraFields.has("bloodskyFbdTimeUnit"))
+                                w.extraFields.put("bloodskyFbdTimeUnit", unit);
+                        } catch (org.json.JSONException ignored) {}
                     }
                     if (counterPresetField != null) {
                         w.counterPreset = fbd.counter;
@@ -3305,13 +3421,16 @@ public class MainActivity extends Activity {
     }
 
     /** Named BOOL-only wire inversion, with undo/redo and immediate persistence. */
-    private void showFbdInversionDialog() {
+    private void showFbdInversionDialog() { showFbdInversionDialog(-1); }
+
+    private void showFbdInversionDialog(int sourceFilter) {
         if (operatorMode || screens.isEmpty() || currentScreenIndex < 0
                 || currentScreenIndex >= screens.size()) return;
         Screen screen = screens.get(currentScreenIndex);
         final List<FbdConnection> choices = new ArrayList<>();
         final List<String> labels = new ArrayList<>();
         for (FbdConnection edge : screen.connections) {
+            if (edge == null || (sourceFilter >= 0 && edge.source != sourceFilter)) continue;
             if (edge.source < 0 || edge.target < 0
                     || edge.source >= widgets.size() || edge.target >= widgets.size()) continue;
             Widget from = widgets.get(edge.source);
@@ -3356,7 +3475,9 @@ public class MainActivity extends Activity {
                 }).setNegativeButton("Отмена", null).show();
     }
 
-    private void showFbdDisconnectDialog() {
+    private void showFbdDisconnectDialog() { showFbdDisconnectDialog(-1); }
+
+    private void showFbdDisconnectDialog(int sourceFilter) {
         if (screens.isEmpty() || currentScreenIndex < 0 || currentScreenIndex >= screens.size()) return;
         Screen screen = screens.get(currentScreenIndex);
         if (screen.connections.isEmpty()) {
@@ -3366,7 +3487,8 @@ public class MainActivity extends Activity {
         final List<FbdConnection> candidates = new ArrayList<>();
         final List<String> labels = new ArrayList<>();
         for (FbdConnection edge : screen.connections) {
-            if (edge == null || edge.source < 0 || edge.target < 0
+            if (edge == null || (sourceFilter >= 0 && edge.source != sourceFilter)
+                    || edge.source < 0 || edge.target < 0
                     || edge.source >= widgets.size() || edge.target >= widgets.size()) continue;
             candidates.add(edge);
             JSONObject metadata = edge.extraFields;
@@ -3468,10 +3590,16 @@ public class MainActivity extends Activity {
             if (!canonicalFbdPinName(pins[i]).equals(name)) continue;
             // The original Craft AND/OR/XOR and compare drawing uses
             // quarter-height and three-quarter-height input ports.
-            if (!output && pins.length == 2
-                    && ("FBD AND".equals(kind) || "FBD OR".equals(kind)
-                    || "FBD XOR".equals(kind) || "FBD СРАВНЕНИЕ".equals(kind)))
-                return i == 0 ? 0.25f : 0.75f;
+            if (!output && pins.length == 2) {
+                if ("FBD AND".equals(kind) || "FBD OR".equals(kind)
+                        || "FBD СРАВНЕНИЕ".equals(kind))
+                    return i == 0 ? 0.25f : 0.75f;
+                // The original split-body source FB_XOR/FB_TIMER has a
+                // one-third header. Its named contacts lie at 1/2 and 5/6.
+                if ("FBD XOR".equals(kind) || "FBD TON".equals(kind)
+                        || "FBD TP".equals(kind) || "FBD TOF".equals(kind))
+                    return i == 0 ? 0.5f : 5f / 6f;
+            }
             return (i + 1f) / (pins.length + 1f);
         }
         // Legacy unpinned graph edges have no source-confirmed pin geometry.
@@ -3776,8 +3904,13 @@ public class MainActivity extends Activity {
                 } else {
                     paint.setColor(Color.WHITE);
                 }
-                if (!OriginalIndicator.supports(w.type)) canvas.drawRoundRect(rect, dp(6), dp(6), paint);
-                if ((!OriginalIndicator.supports(w.type) && w.showFrame) || i == selected) {
+                // A source-backed FBD body already paints its own square
+                // outline; never leave the former purple rounded rectangle halo.
+                boolean sourceFbdSkin = FbdSourceCanvasSkin.shouldUse(w);
+                if (!OriginalIndicator.supports(w.type) && !sourceFbdSkin)
+                    canvas.drawRoundRect(rect, dp(6), dp(6), paint);
+                if ((!OriginalIndicator.supports(w.type) && w.showFrame
+                        && !sourceFbdSkin) || i == selected) {
                     paint.setStyle(Paint.Style.STROKE);
                     paint.setStrokeWidth(dp(i == selected ? 2.5f : 1));
                     paint.setColor(i == selected ? Color.rgb(21, 101, 192) : Color.rgb(148, 163, 184));
@@ -3793,6 +3926,19 @@ public class MainActivity extends Activity {
                 paint.setColor(w.textColor);
                 paint.setTextSize(dp(w.textSizeSp));
                 if (w.type != null && w.type.startsWith("FBD ")) {
+                    if (FbdSourceCanvasSkin.shouldUse(w)) {
+                        FbdSourceCanvasSkin.draw(canvas, paint, w, getResources().getDisplayMetrics().density);
+                        if (i == selected) {
+                            paint.setStyle(Paint.Style.STROKE);
+                            paint.setStrokeWidth(dp(2.5f));
+                            paint.setColor(Color.rgb(21, 101, 192));
+                            canvas.drawRect(rect, paint);
+                            paint.setStyle(Paint.Style.FILL);
+                            float grip = dp(9);
+                            canvas.drawRect(w.x + w.w - grip, w.y + w.h - grip,
+                                    w.x + w.w, w.y + w.h, paint);
+                        }
+                    } else {
                     paint.setColor(w.textColor);
                     paint.setTextSize(dp(w.textSizeSp));
                     if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(24)) / Math.max(4f, w.text.length() * 0.58f))));
@@ -3828,6 +3974,7 @@ public class MainActivity extends Activity {
                         canvas.drawCircle(w.x + w.w - dp(4), py, dp(4), paint);
                     }
                     paint.setStyle(Paint.Style.FILL);
+                    }
                 } else if ("Динамический текст".equals(w.type)) {
                     int stateIdx = 0;
                     if (liveValues.containsKey(i)) {
