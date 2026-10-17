@@ -2881,7 +2881,7 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle("Удалить связь FBD")
                 .setItems(labels.toArray(new String[0]), (dialog, selected) -> {
                     FbdConnection edge = candidates.get(selected);
-                    if (disconnectFbdEdge(screen.connections, edge.source, edge.target)) {
+                    if (screen.connections.remove(edge)) {
                         persistProject();
                         if (editor != null) editor.invalidate();
                         Toast.makeText(this, "Связь FBD удалена", Toast.LENGTH_SHORT).show();
