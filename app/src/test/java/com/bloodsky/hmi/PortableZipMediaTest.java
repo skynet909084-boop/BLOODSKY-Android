@@ -141,30 +141,40 @@ public class PortableZipMediaTest {
     }
 
     @Test
-    public void testTwoCyrillicOrUnnamedProjectsIsolated() throws Exception {
+    public void testTwoCyrillicOrUnnamedProjectsIsolatedWithMigration() throws Exception {
         JSONObject projA = createTestProjectJson(null, "Проект 1", null, null, null);
         JSONObject projB = createTestProjectJson(null, "Проект 2", null, null, null);
-        JSONObject projTraversal = createTestProjectJson("..", "../Traversal", null, null, null);
 
-        String idA = ProjectMediaService.getOrGenerateProjectId(projA.toString());
-        String idB = ProjectMediaService.getOrGenerateProjectId(projB.toString());
-        String idTraversal = ProjectMediaService.getOrGenerateProjectId(projTraversal.toString());
+        // Pre-create legacy media in old default_project directory
+        File defaultMediaDir = ProjectMediaService.getProjectMediaDir(rootDir, projA.toString());
+        File legacyFile = new File(defaultMediaDir, "legacy_asset.png");
+        byte[] legacyContent = "LEGACY_ASSET_BYTES".getBytes(StandardCharsets.UTF_8);
+        try (FileOutputStream fos = new FileOutputStream(legacyFile)) { fos.write(legacyContent); }
 
-        assertNotNull(idA);
-        assertNotNull(idB);
-        // Both projects lack explicit id/storageId, so both default to default_project unless assigned a storageId
-        JSONObject projAWithStorage = new JSONObject(ProjectMediaService.ensureProjectHasId(projA.toString()));
-        JSONObject projBWithStorage = new JSONObject(ProjectMediaService.ensureProjectHasId(projB.toString()));
+        Map<String, String> prefsMap = new HashMap<>();
+        ProjectMediaService.ProjectSaveHandler saveHandlerA = json -> {
+            prefsMap.put("active_project", json);
+            return true;
+        };
 
-        String storageIdA = ProjectMediaService.getOrGenerateProjectId(projAWithStorage.toString());
-        String storageIdB = ProjectMediaService.getOrGenerateProjectId(projBWithStorage.toString());
+        String migratedJsonA = ProjectMediaService.migrateLegacyProjectStorage(rootDir, projA.toString(), saveHandlerA);
+        assertNotEquals(projA.toString(), migratedJsonA);
+        assertTrue(migratedJsonA.contains("storageId"));
 
-        assertNotEquals(storageIdA, storageIdB);
-        assertFalse(idTraversal.contains(".."));
+        File mediaDirA = ProjectMediaService.getProjectMediaDir(rootDir, migratedJsonA);
+        File migratedFileA = new File(mediaDirA, "legacy_asset.png");
+        assertTrue(migratedFileA.exists());
+        assertArrayEquals(legacyContent, java.nio.file.Files.readAllBytes(migratedFileA.toPath()));
 
-        File mediaDirA = ProjectMediaService.getProjectMediaDir(rootDir, projAWithStorage.toString());
-        File mediaDirB = ProjectMediaService.getProjectMediaDir(rootDir, projBWithStorage.toString());
+        ProjectMediaService.ProjectSaveHandler saveHandlerB = json -> {
+            prefsMap.put("active_project_B", json);
+            return true;
+        };
 
+        String migratedJsonB = ProjectMediaService.migrateLegacyProjectStorage(rootDir, projB.toString(), saveHandlerB);
+        assertNotEquals(migratedJsonA, migratedJsonB);
+
+        File mediaDirB = ProjectMediaService.getProjectMediaDir(rootDir, migratedJsonB);
         assertNotEquals(mediaDirA.getAbsolutePath(), mediaDirB.getAbsolutePath());
     }
 

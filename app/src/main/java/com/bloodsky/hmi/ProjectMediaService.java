@@ -61,6 +61,70 @@ public class ProjectMediaService {
         return projectJson;
     }
 
+    public static String migrateLegacyProjectStorage(File filesDir, String projectJson, ProjectSaveHandler saveHandler) {
+        if (projectJson == null || projectJson.trim().isEmpty()) return projectJson;
+        try {
+            JSONObject obj = new JSONObject(projectJson);
+            boolean missingId = (!obj.has("id") || obj.optString("id", "").trim().isEmpty()) &&
+                                (!obj.has("storageId") || obj.optString("storageId", "").trim().isEmpty());
+
+            if (missingId) {
+                String oldProjectId = getOrGenerateProjectId(projectJson);
+                File oldMediaDir = new File(new File(filesDir, "projects"), oldProjectId + "/media");
+
+                String newStorageId = UUID.randomUUID().toString();
+                JSONObject updatedObj = new JSONObject(projectJson);
+                updatedObj.put("storageId", newStorageId);
+                String updatedJson = updatedObj.toString();
+
+                String newProjectId = getOrGenerateProjectId(updatedJson);
+                File newMediaDir = new File(new File(filesDir, "projects"), newProjectId + "/media");
+
+                boolean copied = false;
+                if (oldMediaDir.exists() && oldMediaDir.isDirectory()) {
+                    File[] files = oldMediaDir.listFiles();
+                    if (files != null && files.length > 0) {
+                        copyDirectoryRecursively(oldMediaDir, newMediaDir);
+                        copied = true;
+                    }
+                }
+
+                if (saveHandler != null) {
+                    if (saveHandler.saveActiveProject(updatedJson)) {
+                        return updatedJson;
+                    }
+                }
+
+                // If save failed, rollback newMediaDir if we created it
+                if (copied || newMediaDir.exists()) {
+                    deleteDirectoryRecursively(newMediaDir);
+                }
+            }
+        } catch (Exception ignored) {}
+        return projectJson;
+    }
+
+    public static void copyDirectoryRecursively(File src, File dest) throws IOException {
+        if (src.isDirectory()) {
+            if (!dest.exists()) dest.mkdirs();
+            File[] files = src.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    copyDirectoryRecursively(file, new File(dest, file.getName()));
+                }
+            }
+        } else {
+            dest.getParentFile().mkdirs();
+            try (InputStream in = new FileInputStream(src); OutputStream out = new FileOutputStream(dest)) {
+                byte[] buf = new byte[8192];
+                int len;
+                while ((len = in.read(buf)) != -1) {
+                    out.write(buf, 0, len);
+                }
+            }
+        }
+    }
+
     private static String hashString(String input) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");

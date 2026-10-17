@@ -143,9 +143,8 @@ public class MainActivity extends Activity {
                 bitmap = BitmapFactory.decodeFile(pathOrUri);
             } else {
                 String activeJson = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
-                String migratedJson = ProjectMediaService.ensureProjectHasId(activeJson);
-                if (activeJson != null && !activeJson.equals(migratedJson)) {
-                    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(ACTIVE_PROJECT, migratedJson).apply();
+                String migratedJson = ProjectMediaService.migrateLegacyProjectStorage(getFilesDir(), activeJson, json -> getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(ACTIVE_PROJECT, json).commit());
+                if (migratedJson != null) {
                     activeJson = migratedJson;
                 }
                 java.io.File mediaDir = getProjectMediaDir(this, activeJson);
@@ -316,9 +315,8 @@ public class MainActivity extends Activity {
                     targetFile = new java.io.File(pathOrUri);
                 } else {
                     String activeJson = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
-                String migratedJson = ProjectMediaService.ensureProjectHasId(activeJson);
-                if (activeJson != null && !activeJson.equals(migratedJson)) {
-                    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(ACTIVE_PROJECT, migratedJson).apply();
+                String migratedJson = ProjectMediaService.migrateLegacyProjectStorage(getFilesDir(), activeJson, json -> getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(ACTIVE_PROJECT, json).commit());
+                if (migratedJson != null) {
                     activeJson = migratedJson;
                 }
                     java.io.File mediaDir = getProjectMediaDir(this, activeJson);
@@ -1152,9 +1150,8 @@ public class MainActivity extends Activity {
             java.io.File f = new java.io.File(cleanPath);
             if (!f.exists()) {
                 String activeJson = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
-                String migratedJson = ProjectMediaService.ensureProjectHasId(activeJson);
-                if (activeJson != null && !activeJson.equals(migratedJson)) {
-                    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(ACTIVE_PROJECT, migratedJson).apply();
+                String migratedJson = ProjectMediaService.migrateLegacyProjectStorage(getFilesDir(), activeJson, json -> getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(ACTIVE_PROJECT, json).commit());
+                if (migratedJson != null) {
                     activeJson = migratedJson;
                 }
                 java.io.File mediaDir = getProjectMediaDir(this, activeJson);
@@ -2821,9 +2818,8 @@ public class MainActivity extends Activity {
         android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         projectName = prefs.getString("project_name", projectName);
         String json = prefs.getString(ACTIVE_PROJECT, "[]");
-        String migratedJson = ProjectMediaService.ensureProjectHasId(json);
-        if (json != null && !json.equals(migratedJson)) {
-            prefs.edit().putString(ACTIVE_PROJECT, migratedJson).apply();
+        String migratedJson = ProjectMediaService.migrateLegacyProjectStorage(getFilesDir(), json, j -> prefs.edit().putString(ACTIVE_PROJECT, j).commit());
+        if (migratedJson != null) {
             json = migratedJson;
         }
         try {
