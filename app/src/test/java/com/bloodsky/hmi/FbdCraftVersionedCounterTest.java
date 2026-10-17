@@ -41,9 +41,10 @@ public class FbdCraftVersionedCounterTest {
                 MainActivity.compatibleFbdTargetPins("FBD CRAFT CTU", "Q", "FBD MOVE"));
         assertEquals(0, MainActivity.compatibleFbdTargetPins(
                 "FBD CRAFT CTU", "Q", "FBD AND").length);
-        assertEquals(.25f, MainActivity.fbdTerminalFraction("FBD CRAFT CTU", "+", false), .00001f);
-        assertEquals(.5f, MainActivity.fbdTerminalFraction("FBD CRAFT CTU", "-", false), .00001f);
-        assertEquals(.75f, MainActivity.fbdTerminalFraction("FBD CRAFT CTU", "R", false), .00001f);
+        assertEquals(3f/8f, MainActivity.fbdTerminalFraction("FBD CRAFT CTU", "+", false), .00001f);
+        assertEquals(5f/8f, MainActivity.fbdTerminalFraction("FBD CRAFT CTU", "-", false), .00001f);
+        assertEquals(7f/8f, MainActivity.fbdTerminalFraction("FBD CRAFT CTU", "R", false), .00001f);
+        assertEquals(3f/8f, MainActivity.fbdTerminalFraction("FBD CRAFT CTU", "Q", true), .00001f);
     }
 
     @Test public void nativeCtuGraphExecutesEdgesByPinNotConnectionOrder() throws Exception {

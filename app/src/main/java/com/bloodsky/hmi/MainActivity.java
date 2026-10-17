@@ -3656,6 +3656,14 @@ public class MainActivity extends Activity {
         String kind = canonicalFbdBlockType(type);
         for (int i = 0; i < pins.length; i++) {
             if (!canonicalFbdPinName(pins[i]).equals(name)) continue;
+            // Original FB_CTU draw9(): header 1/4, input +,-,R at
+            // 3/8, 5/8, 7/8 and numeric Q at 3/8. Legacy CTU is unaffected.
+            if ("FBD CRAFT CTU".equals(kind))
+                return output ? 3f / 8f : (2f * i + 3f) / 8f;
+            // Original FB_RS draw8(): header 1/3, R/S at 1/2 and 5/6,
+            // output Q at 1/2. Wire anchors and drawn contacts must match.
+            if ("FBD RS".equals(kind))
+                return output ? 0.5f : (i == 0 ? 0.5f : 5f / 6f);
             // The original Craft AND/OR/XOR and compare drawing uses
             // quarter-height and three-quarter-height input ports.
             if (!output && pins.length == 2) {

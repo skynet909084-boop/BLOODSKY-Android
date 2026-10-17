@@ -55,6 +55,12 @@ public final class FbdSourceCanvasSkin {
                 || "FBD TP".equals(type) || "FBD CRAFT BLINK".equals(type);
     }
 
+    /** Decompiled original FB_CTU=draw9 and FB_RS/FB_TRIGGER=draw8. */
+    private static boolean hasNativeHeader(String type) {
+        return "FBD CRAFT CTU".equals(type) || "FBD CRAFT T".equals(type)
+                || "FBD RS".equals(type);
+    }
+
     public static void draw(Canvas canvas, Paint brush, MainActivity.Widget w, float density) {
         if (!shouldUse(w)) return;
         float pin = Math.max(5, 10 * density);
@@ -75,9 +81,11 @@ public final class FbdSourceCanvasSkin {
             brush.setStrokeWidth(Math.max(1, density));
             canvas.drawRect(body, brush);
 
-            boolean divided = "FBD XOR".equals(w.type) || isTimer(w.type);
+            boolean divided = "FBD XOR".equals(w.type) || isTimer(w.type)
+                    || hasNativeHeader(w.type);
+            float headerFraction = "FBD CRAFT CTU".equals(w.type) ? 0.25f : 1f / 3f;
             if (divided) {
-                float header = y0 + w.h / 3f;
+                float header = y0 + w.h * headerFraction;
                 brush.setColor(Color.BLACK);
                 canvas.drawLine(left, header, right, header, brush);
                 canvas.drawLine((left + right) / 2f, header, (left + right) / 2f, y1, brush);
@@ -102,17 +110,17 @@ public final class FbdSourceCanvasSkin {
             String name = "FBD И".equals(w.type) ? "AND" : "FBD ИЛИ".equals(w.type) ? "OR"
                     : "FBD XOR".equals(w.type) ? "XOR"
                     : "FBD Сравнение".equals(w.type) ? w.compareOperator
-                    : "FBD CRAFT CTU".equals(w.type) ? "CTU16"
+                    : "FBD CRAFT CTU".equals(w.type) ? "CTU"
                     : "FBD CRAFT T".equals(w.type) ? "T"
                     : "FBD RS".equals(w.type) ? "RS"
                     : "FBD CRAFT BLINK".equals(w.type) ? "BLINK"
                     : FbdDurationUnits.modeForType(w.type);
             float center = (left + right) / 2f;
             if (divided) {
-                canvas.drawText(name, center, y0 + w.h / 6f
+                canvas.drawText(name, center, y0 + w.h * headerFraction / 2f
                         - (brush.ascent() + brush.descent()) / 2f, brush);
-                float sectionStart = y0 + w.h / 3f;
-                float remaining = w.h * 2f / 3f;
+                float sectionStart = y0 + w.h * headerFraction;
+                float remaining = w.h * (1f - headerFraction);
                 brush.setTextSize(Math.min(10 * density, Math.max(6 * density, w.h / 7f)));
                 for (int i = 0; i < inputPins.length; i++) {
                     float yy = y0 + w.h * inputY(w.type, inputPins[i]);
@@ -121,7 +129,8 @@ public final class FbdSourceCanvasSkin {
                 }
                 if (outputPins.length > 0)
                     canvas.drawText(outputPins[0], (center + right) / 2f,
-                            sectionStart + remaining / 4f - (brush.ascent() + brush.descent()) / 2f, brush);
+                            y0 + w.h * MainActivity.fbdTerminalFraction(w.type, outputPins[0], true)
+                                    - (brush.ascent() + brush.descent()) / 2f, brush);
             } else {
                 canvas.drawText(name, center, y0 + w.h / 2f
                         - (brush.ascent() + brush.descent()) / 2f, brush);
