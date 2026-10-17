@@ -212,6 +212,29 @@ public class FbdDisconnectTest {
         assertFalse(MainActivity.fbdBooleanPinValue(null, legacyPins, "R", 0));
     }
 
+    @Test public void importRejectsTwoDriversOnOneNamedInput() throws Exception {
+        JSONArray widgets = new JSONArray()
+                .put(new JSONObject().put("type", "FBD AND"))
+                .put(new JSONObject().put("type", "FBD OR"))
+                .put(new JSONObject().put("type", "FBD XOR"));
+        JSONArray edges = new JSONArray()
+                .put(new JSONObject().put("source", 0).put("target", 2)
+                        .put("sourcePin", "Q").put("targetPin", "IN1"))
+                .put(new JSONObject().put("source", 1).put("target", 2)
+                        .put("sourcePin", "Q").put("targetPin", "IN1"));
+        String project = new JSONObject().put("screens", new JSONArray()
+                .put(new JSONObject().put("widgets", widgets).put("connections", edges)))
+                .put("currentScreen", 0).toString();
+        try {
+            MainActivity.validateImportedProjectStatic(project);
+            fail("Expected duplicate input driver rejection");
+        } catch (IllegalArgumentException expected) { }
+        edges.getJSONObject(1).put("targetPin", "IN2");
+        MainActivity.validateImportedProjectStatic(new JSONObject(project)
+                .put("screens", new JSONArray().put(new JSONObject()
+                        .put("widgets", widgets).put("connections", edges))).toString());
+    }
+
     @Test public void invalidEndpointsDoNotMutateGraph() {
         List<MainActivity.FbdConnection> edges = new ArrayList<>();
         edges.add(new MainActivity.FbdConnection(0, 1));
