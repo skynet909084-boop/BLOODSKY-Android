@@ -38,3 +38,15 @@ Original user-supplied `reference/craft-reference.zip` SHA256 `316da0335dc4ea0c8
 5. Move to editor widgets, Modbus, tags, alarms and runtime workstreams #79–86; do not repeatedly re-audit old accepted FBD changes.
 
 Log each exact SHA, CI run, merge and blockers in this file before declaring the phase done. Passing APK is not equivalent to functional parity.
+
+## Consolidated source geometry / FBD manual input — prepared branch
+
+Combined head branch: `feat/fbd-original-pin-geometry-constant-input-20261017`, starting from #105. All previous FBD patches #101–105 are inherited in order. This branch is intentionally not yet a PR while previous emulator checks are running; opening a new PR earlier would spend additional free GitHub Actions minutes.
+
+- AND, OR, XOR, and numeric compare terminals use source-documented input fractions `1/4`, `3/4` from `docs/CRAFT_FBD_SOURCE_MATRIX.md`. Both drawn pin dots and wire endpoints use the same pure `fbdTerminalFraction` calculation. Three-input BLOODSKY counters keep explicit `1/4`, `1/2`, `3/4` positions; other extensions retain their previously tested geometry.
+- FBD Вход now exposes a Boolean constant toggle in the normal properties dialog. It reads `inputValue`, applies to the saved widget, and remains compatible with optional Modbus TCP input bindings. State/extraFields round-trip tested by `FbdManualInputPersistenceTest`.
+- New Python regression `tools/test_fbd_manual_input_property.py` checks actual editor checkbox wiring and ensures Canvas drawing is not executing stateful FBD evaluation.
+- #100 source scanner lexical fix fully passed source audit, APK and API30 UI, and was merged into the #76 feature branch at `51aa8c8199cea6a28a75ec1f3a580066facb417f`.
+- #101–#105 have green exact-head APK/JUnit builds at this checkpoint, but UI smoke must finish before acceptance. Use GitHub workflows, not agent task comments, as proof.
+
+**Efficient integration:** After #105 emulator passes and this preparatory branch is reviewed, open ONE consolidated draft PR from this branch into `feat/fbd-75-pin-semantics`. This carries all app work #101–#105 + the two new improvements. Run full exact-head APK/JUnit + API30 smoke + source audit against #76's updated #100 baseline. Merge into the FBD feature branch if all pass; close stacked superseded drafts with explicit references. Do not merge to stable main or declare full original Craft parity until the unresolved source semantics/hardware/screenshot gates are satisfied.
