@@ -62,7 +62,7 @@ def inspect_class(path, raw, max_lines=MAX_EVIDENCE_LINES):
                 literal, statement = visible[j]
                 brace_depth += statement.count("{") - statement.count("}")
                 execution.append({"line": j + 1, "code": literal.strip()[:180]})
-                if brace_depth <= 0 and j > index:
+                if brace_depth <= 0:
                     break
             break
     candidates = []
