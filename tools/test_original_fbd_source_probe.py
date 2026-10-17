@@ -133,7 +133,8 @@ class OriginalFbdSourceProbeTests(unittest.TestCase):
                   '/* ignored drawText("PV")\n'
                   '   ignored setValue() */ drawText("S");\n'
                   'String quoted = "getInput("; char c = \'/\';\n'
-                  'setValue(42);\n'\n                  'get/* comment separating method tokens */Value();\n')
+                  'setValue(42);\n'
+                  'get/* comment separating method tokens */Value();\n')
         row = contract_fingerprint(SOURCE_PREFIX + "FB_RS.java", source.encode())
         self.assertEqual(["R", "S"], [label["value"] for label in row["literal_labels"]])
         self.assertEqual([1, 3], [label["line"] for label in row["literal_labels"]])
