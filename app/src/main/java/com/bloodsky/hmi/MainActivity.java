@@ -2137,8 +2137,10 @@ public class MainActivity extends Activity {
                         w.timerStartedAt = 0L;
                         w.counterLastInput = false;
                         try {
-                            w.extraFields.put("bloodskyFbdTimeUnit",
-                                    new String[]{"MS", "SEK", "MIN"}[timerUnitSelector.getSelectedItemPosition()]);
+                            String unit = new String[]{"MS", "SEK", "MIN"}[timerUnitSelector.getSelectedItemPosition()];
+                            // An untouched old MS project must not acquire an extra field.
+                            if (!"MS".equals(unit) || w.extraFields.has("bloodskyFbdTimeUnit"))
+                                w.extraFields.put("bloodskyFbdTimeUnit", unit);
                         } catch (org.json.JSONException ignored) {}
                     }
                     if (counterPresetField != null) {
