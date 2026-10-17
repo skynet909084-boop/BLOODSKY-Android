@@ -17,6 +17,7 @@ jobs:
         run: |
           set -euo pipefail
           test -f docs/FREELLMAPI_CLOUD_PILOT.md
+          python3 tools/check_cloud_ai_pilot.py
           test -f settings.gradle
           python3 - <<'PY'
           from pathlib import Path
