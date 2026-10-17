@@ -3160,38 +3160,61 @@ public class MainActivity extends Activity {
             return;
         }
         new AlertDialog.Builder(this).setTitle("Выход FBD")
-                .setItems(sourcePins, (dialog, sourceChoice) ->
-                        new AlertDialog.Builder(this).setTitle("Вход FBD")
-                                .setItems(targetPins, (targetDialog, targetChoice) -> {
-                                    try {
-                                        if (screenAtSelection != currentScreenIndex || source >= widgets.size()
-                                                || target >= widgets.size()
-                                                || widgets.get(source) != sourceAtSelection
-                                                || widgets.get(target) != targetAtSelection
-                                                || !sourceType.equals(widgets.get(source).type)
-                                                || !targetType.equals(widgets.get(target).type)) {
-                                            Toast.makeText(this, "FBD-блоки изменились: выбери их заново", Toast.LENGTH_LONG).show();
-                                            return;
-                                        }
-                                        FbdConnection edge = pinnedFbdConnection(source, sourcePins[sourceChoice],
-                                                target, targetPins[targetChoice]);
-                                        String sourceSignal = knownFbdPinType(sourceType, sourcePins[sourceChoice], true);
-                                        String targetSignal = knownFbdPinType(targetType, targetPins[targetChoice], false);
-                                        if (sourceSignal != null && targetSignal != null) {
-                                            edge.extraFields.put("sourceSignalType", sourceSignal);
-                                            edge.extraFields.put("targetSignalType", targetSignal);
-                                        }
-                                        JSONObject json = connectionToJson(edge);
-                                        if (!hasCompatibleKnownFbdPins(json, sourceType, targetType)) {
-                                            Toast.makeText(this, "Несовместимые контакты FBD", Toast.LENGTH_SHORT).show();
-                                            return;
-                                        }
-                                        addFbdConnection(source, target, edge);
-                                    } catch (Exception error) {
-                                        Toast.makeText(this, "Ошибка контактов FBD", Toast.LENGTH_SHORT).show();
+                .setItems(sourcePins, (dialog, sourceChoice) -> {
+                    String chosenSourcePin = sourcePins[sourceChoice];
+                    String[] compatiblePins = compatibleFbdTargetPins(
+                            sourceType, chosenSourcePin, targetType);
+                    if (compatiblePins.length == 0) {
+                        Toast.makeText(this, "Нет совместимых входов FBD", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    new AlertDialog.Builder(this).setTitle("Вход FBD")
+                            .setItems(compatiblePins, (targetDialog, targetChoice) -> {
+                                try {
+                                    if (screenAtSelection != currentScreenIndex || source >= widgets.size()
+                                            || target >= widgets.size()
+                                            || widgets.get(source) != sourceAtSelection
+                                            || widgets.get(target) != targetAtSelection
+                                            || !sourceType.equals(widgets.get(source).type)
+                                            || !targetType.equals(widgets.get(target).type)) {
+                                        Toast.makeText(this, "FBD-блоки изменились: выбери их заново", Toast.LENGTH_LONG).show();
+                                        return;
                                     }
-                                }).setNegativeButton("Отмена", null).show())
+                                    String chosenTargetPin = compatiblePins[targetChoice];
+                                    FbdConnection edge = pinnedFbdConnection(source, chosenSourcePin,
+                                            target, chosenTargetPin);
+                                    String sourceSignal = knownFbdPinType(sourceType, chosenSourcePin, true);
+                                    String targetSignal = knownFbdPinType(targetType, chosenTargetPin, false);
+                                    if (sourceSignal != null && targetSignal != null) {
+                                        edge.extraFields.put("sourceSignalType", sourceSignal);
+                                        edge.extraFields.put("targetSignalType", targetSignal);
+                                    }
+                                    if (!hasCompatibleKnownFbdPins(connectionToJson(edge), sourceType, targetType)) {
+                                        Toast.makeText(this, "Несовместимые контакты FBD", Toast.LENGTH_SHORT).show();
+                                        return;
+                                    }
+                                    addFbdConnection(source, target, edge);
+                                } catch (Exception error) {
+                                    Toast.makeText(this, "Ошибка контактов FBD", Toast.LENGTH_SHORT).show();
+                                }
+                            }).setNegativeButton("Отмена", null).show();
+                })
                 .setNegativeButton("Отмена", null).show();
+    }
+
+    /** Show only type-compatible target terminals after choosing a source pin. */
+    public static String[] compatibleFbdTargetPins(String sourceType, String sourcePin, String targetType) {
+        String[] targetPins = knownFbdPins(targetType, false);
+        String sourceSignal = knownFbdPinType(sourceType, sourcePin, true);
+        if (knownFbdPins(sourceType, true).length > 0 && sourceSignal == null)
+            return new String[0];
+        List<String> compatible = new ArrayList<>();
+        for (String targetPin : targetPins) {
+            String targetSignal = knownFbdPinType(targetType, targetPin, false);
+            if (sourceSignal == null || targetSignal == null || sourceSignal.equals(targetSignal))
+                compatible.add(targetPin);
+        }
+        return compatible.toArray(new String[0]);
     }
 
     public static String[] knownFbdPins(String blockType, boolean output) {
