@@ -77,22 +77,6 @@ A second standalone source-compatible block `FBD CRAFT T` is now available in BL
 - **Scope:** only BLINK, not original Craft TP whose constructor defaults Q=false and mode body has no Q=true assignment. No claim of pixel-perfect original timer or real-hardware test. Source unit-code 3 multiplier 60000 is verified from archived original. Keep original FBD preview catalogue disabled unless source behavior and visuals are documented individually.
 - **Gate:** standalone PR JUnit/APK and Android API30 test must pass, then merge to #76 feature branch only; never publish `main` without a fully reviewed combined head.
 
-## Second-pass native Craft source audit — MOVE, SEL, COMPARE, POW, MX, ARRAY, MACRO
-
-Beyond the accepted CTU16/RS/T/BLINK runtime, the **next highest-value original preview classes are still unverified**: `FB_MOVE`, `FB_SEL`, `FB_COMPARE`, `FB_POW`, `FB_MX`, `FB_ARRAY`, `FB_MACRO`. Their preview icons exist in original source palette, but they are not safely interchangeable with similarly named BLOODSKY generic blocks. For example the original MOVE drawing shows `EN`, `I`, `Q`, whereas the current BLOODSKY MOVE contract is numeric `IN`, `OUT`; activating it by name would create incompatible connections.
-
-The pinned `tools/original_fbd_runtime_evidence.py` extractor now **optionally and safely** includes those original Java classes, hashes their exact source bytes, identifies parent class and bounded `f()` branch/statement excerpts, and emits hints in the existing source evidence artifact. Optional absence is recorded by omission, never fabricated. The synthetic regression verifies `FB_SEL` and `FB_MOVE` method capture and retains legacy required CTU/RS/TIMER/TRIGGER assurance.
-
-Before enabling any corresponding original palette preview: inspect archived class constructors, `f()` branches, data types, method-call dependencies and source pins; create separate native versioned contract or demonstrate exact compatibility with existing BLOODSKY block; add Android graph and original palette screenshot smoke. This audit is **research**, not an implemented MOVE/SEL operator. Original unsupported tile click guards remain active.
-
-## Source-backed native Craft SEL (Integer) — implemented, isolated
-
-Evidence from pinned `FB_SEL.java` SHA256 `fcad265b6fa9a9bcdbce75b53094fbb44c9525f0ce1b9b2ec1c4f07318715a35`: `f()` lines 39–48 tests `f8986g` as Boolean, returns `f8988i` on true and `f8987h` on false, both cast `Integer`. `getOut()` lines 67–72 yields Integer or null if an input is disconnected. Source preview `FB_SEL` names its terminals `IN`, `I1`, `I2`, `Q`.
-
-The versioned extended-palette `FBD CRAFT SEL` has typed BOOL IN, NUMBER I1/I2 and NUMBER Q, and a dedicated pure selector `FbdCraftIntegerSelector`. Because the existing BLOODSKY graph uses NUMBER as a double representation, **only exact finite int32 values are allowed**; fractional inputs, overflow and NaN fail safely (numeric fallback 0), rather than producing a rounded signal incompatible with the original Integer cast. A missing required named terminal likewise yields a safe 0 in BLOODSKY, whereas native Craft would expose a null `getOut()`. This is a documented approximation, not an assertion of perfect null semantics.
-
-The previous BLOODSKY `FBD SEL` G/IN0/IN1 → OUT is **not renamed or overwritten**. The new selector is a separate `FBD CRAFT SEL` ID with source-like gray block skin and native named pins; unknown imported vendor JSON remains round-trippable. `FbdCraftIntegerSelectorTest` exercises signed input, exact-integer restrictions, out-of-order named wiring, disconnected inputs, numeric Q and legacy SEL contracts. Do **not** activate original `FB_SEL` icon until APK/JUnit + real Android UI acceptance of this implementation, including original preview source geometry.
-
 ## Non-negotiable gates
 
 The runtime feature branch is not automatically promoted into `main`. Keep existing BLOODSKY CTU `CU,R,PV,Q` graph semantics intact. Original source CTU labels `+,-,R,Q`, RS priority and timer units are *open* until verified from original actual superclass implementation. Add separate native-compatible blocks, UI and source test only if the evidence supports actual operation; old project fields/anonymous wires must round-trip unchanged.
