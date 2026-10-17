@@ -195,6 +195,23 @@ public class FbdDisconnectTest {
         assertEquals("orange", roundTrip.getJSONObject("vendor").getString("wireColor"));
     }
 
+    @Test public void namedRsInputsIgnoreConnectionInsertionOrder() {
+        List<Boolean> values = java.util.Arrays.asList(true, false);
+        List<String> pins = java.util.Arrays.asList("R", "S");
+        assertTrue(MainActivity.fbdBooleanPinValue(values, pins, "R", 1));
+        assertFalse(MainActivity.fbdBooleanPinValue(values, pins, "S", 0));
+        assertFalse(MainActivity.fbdBooleanPinValue(values, pins, "IN", 0));
+    }
+
+    @Test public void oldRsConnectionsRetainPositionalInputs() {
+        List<Boolean> values = java.util.Arrays.asList(true, false);
+        List<String> legacyPins = java.util.Arrays.asList("", "");
+        assertTrue(MainActivity.fbdBooleanPinValue(values, legacyPins, "S", 0));
+        assertFalse(MainActivity.fbdBooleanPinValue(values, legacyPins, "R", 1));
+        assertFalse(MainActivity.fbdBooleanPinValue(values, legacyPins, "R", 5));
+        assertFalse(MainActivity.fbdBooleanPinValue(null, legacyPins, "R", 0));
+    }
+
     @Test public void invalidEndpointsDoNotMutateGraph() {
         List<MainActivity.FbdConnection> edges = new ArrayList<>();
         edges.add(new MainActivity.FbdConnection(0, 1));
