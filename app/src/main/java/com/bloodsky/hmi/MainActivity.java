@@ -2485,6 +2485,10 @@ public class MainActivity extends Activity {
                         || !targetWidget.optString("type", "").startsWith("FBD ")) {
                     throw new IllegalArgumentException("Connections must link FBD blocks");
                 }
+                if (!hasCompatibleKnownFbdPins(edge, sourceWidget.optString("type", ""),
+                        targetWidget.optString("type", ""))) {
+                    throw new IllegalArgumentException("Invalid FBD pin direction or type");
+                }
                 long edgeKey = (((long) source) << 32) | (target & 0xffffffffL);
                 if (!uniqueEdges.add(edgeKey)) throw new IllegalArgumentException("Duplicate FBD connection");
                 adjacency.get(source).add(target);
@@ -2565,6 +2569,41 @@ public class MainActivity extends Activity {
         if (!("BOOL".equals(a) || "NUMBER".equals(a) || "ANY".equals(a))) return false;
         if (!("BOOL".equals(b) || "NUMBER".equals(b) || "ANY".equals(b))) return false;
         return a.equals(b) || "ANY".equals(a) || "ANY".equals(b);
+    }
+
+    /** Minimal built-in FBD pin contract; unknown blocks stay untyped until sourced. */
+    public static String knownFbdPinType(String blockType, String pin, boolean output) {
+        if (blockType == null || pin == null) return null;
+        String kind = blockType.trim().toUpperCase(java.util.Locale.ROOT);
+        String name = pin.trim().toUpperCase(java.util.Locale.ROOT);
+        if (kind.equals("FBD AND") || kind.equals("FBD OR") || kind.equals("FBD XOR")) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && ("IN1".equals(name) || "IN2".equals(name))) return "BOOL";
+        }
+        return null;
+    }
+
+    /** Enforce known pin directions and types; preserve legacy unpinned connections. */
+    public static boolean hasCompatibleKnownFbdPins(JSONObject edge, String sourceType, String targetType) throws Exception {
+        if (!canLoadFbdConnection(edge)) return false;
+        if (!edge.has("sourcePin") && !edge.has("targetPin")) return true;
+        String sourcePin = edge.optString("sourcePin", "");
+        String targetPin = edge.optString("targetPin", "");
+        String sourceKnown = knownFbdPinType(sourceType, sourcePin, true);
+        String targetKnown = knownFbdPinType(targetType, targetPin, false);
+        boolean sourceBlockKnown = "FBD AND".equalsIgnoreCase(sourceType) || "FBD OR".equalsIgnoreCase(sourceType)
+                || "FBD XOR".equalsIgnoreCase(sourceType);
+        boolean targetBlockKnown = "FBD AND".equalsIgnoreCase(targetType) || "FBD OR".equalsIgnoreCase(targetType)
+                || "FBD XOR".equalsIgnoreCase(targetType);
+        if ((sourceBlockKnown && sourceKnown == null) || (targetBlockKnown && targetKnown == null)) return false;
+        if (sourceKnown != null && targetKnown != null && !sourceKnown.equals(targetKnown)) return false;
+        if (sourceKnown != null && edge.has("sourceSignalType")
+                && !("ANY".equalsIgnoreCase(edge.optString("sourceSignalType"))
+                || sourceKnown.equalsIgnoreCase(edge.optString("sourceSignalType")))) return false;
+        if (targetKnown != null && edge.has("targetSignalType")
+                && !("ANY".equalsIgnoreCase(edge.optString("targetSignalType"))
+                || targetKnown.equalsIgnoreCase(edge.optString("targetSignalType")))) return false;
+        return true;
     }
 
     /** Validate pin metadata on import while leaving legacy unpinned connections intact. */
