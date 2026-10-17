@@ -2,6 +2,13 @@ name: BLOODSKY Android UI smoke
 
 on:
   workflow_dispatch:
+    inputs:
+      ui_profile:
+        description: "Run all UI regressions (full) or focused FBD gate (quick)"
+        required: true
+        type: choice
+        default: full
+        options: [full, quick]
   pull_request:
     paths:
       - 'app/**'
@@ -31,6 +38,10 @@ jobs:
   emulator-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    # Feature→feature PRs get fast FBD verification; PR→main, push→main
+    # and manually dispatched default runs retain every legacy UI scenario.
+    env:
+      BLOODSKY_UI_PROFILE: ${{ github.event_name == 'pull_request' && github.base_ref != 'main' && 'quick' || (github.event_name == 'workflow_dispatch' && inputs.ui_profile == 'quick' && 'quick' || 'full') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -69,7 +80,19 @@ jobs:
           emulator-boot-timeout: 600
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
-          script: python tools/android_ui_smoke.py --apk app/build/outputs/apk/debug/app-debug.apk
+          # The emulator action runs the script as a single /bin/sh command.
+          # A multiline if/fi passed directly as input is split by that action.
+          script: bash tools/run_android_ui_profile.sh app/build/outputs/apk/debug/app-debug.apk
+      - name: Record UI gate and selection
+        if: always()
+        run: |
+          {
+            echo "## BLOODSKY Android UI"
+            echo "- Profile: $BLOODSKY_UI_PROFILE"
+            echo "- Commit: $GITHUB_SHA"
+            echo "- To run full on a feature branch: Actions → BLOODSKY Android UI smoke → Run workflow → ui_profile=full"
+            echo "- PRs targeting main always use full"
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Save UI screenshots and diagnostics
         if: always()
         uses: actions/upload-artifact@v4

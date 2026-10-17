@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+"""Focused FBD Android UI gate for feature PRs.
+
+The full 800+ line Android smoke remains mandatory before integration to
+main/release. This fast test is deterministic and tests FBD native UI, graph
+persistence, inverter undo, geometry and mode/unit editor without unrelated
+DocumentsUI/media/calculator/screen-copy scenarios.
+"""
+import argparse
+import json
+from pathlib import Path
+import re
+import time
+import xml.etree.ElementTree as ET
+
+from android_ui_smoke import PACKAGE, PROJECT, Smoke, adb, center, matching_nodes
+
+
+def current_widgets():
+    payload = adb('shell', 'run-as', PACKAGE, 'cat',
+                  'shared_prefs/bloodsky_projects.xml')
+    preferences = {node.get('name'): node.text for node in ET.fromstring(payload)}
+    return json.loads(preferences['active_project'])['screens'][0]['widgets']
+
+
+class FastFbdSmoke(Smoke):
+    def run_fast(self, apk):
+        started = time.monotonic()
+        serial = adb('get-serialno').strip()
+        if not serial.startswith('emulator-') or adb('shell', 'getprop', 'ro.kernel.qemu').strip() != '1':
+            raise RuntimeError('Refusing destructive UI smoke on a real Android device')
+        adb('install', '-r', str(apk))
+        adb('shell', 'pm', 'clear', PACKAGE)
+        adb('logcat', '-c')
+        adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
+        self.tap('Создать новый проект')
+        self.tap(class_name='android.widget.EditText')
+        adb('shell', 'input', 'text', PROJECT)
+        self.tap('Создать')
+        self.wait_node(description='Редактор экрана')
+
+        # Keep one source-backed AND and TON as real editable Android widgets.
+        self.tap(description='Добавить элемент')
+        self.tap(description='Функциональные блоки и другие элементы')
+        for attempt in range(12):
+            xml = self.dump()
+            if matching_nodes(xml, description='Добавить: FBD И'):
+                break
+            scrolls = [n for n in ET.fromstring(xml).iter('node')
+                       if n.get('class') == 'android.widget.ScrollView']
+            if len(scrolls) != 1:
+                raise AssertionError('Original FBD AND palette entry not reachable')
+            x, top, right, bottom = map(int, re.findall(r'\d+', scrolls[0].get('bounds')))
+            adb('shell', 'input', 'swipe', str((x+right)//2),
+                str(bottom-180), str((x+right)//2), str(top+80), '300')
+        self.tap(description='Добавить: FBD И')
+        self.wait_node(description='Редактор экрана')
+        self.tap(description='Добавить элемент')
+        self.tap(description='Функциональные блоки и другие элементы')
+        self.tap(description='Добавить: FBD Таймер')
+        initial = current_widgets()
+        if [x['type'] for x in initial] != ['FBD И', 'FBD Таймер']:
+            raise AssertionError('Wrong original palette FBD blocks: ' + repr(initial))
+        source, target = initial
+        canvas = self.wait_node(description='Редактор экрана')
+        left, top, _, _ = map(int, re.findall(r'\d+', canvas.get('bounds')))
+
+        # Source long-press: the new menu must not modify the graph by itself.
+        sx, sy = round(left + source['x'] + 9), round(top + source['y'] + 9)
+        adb('shell', 'input', 'swipe', str(sx), str(sy), str(sx), str(sy), '800')
+        for label in ('Соединить с…', 'Инвертировать связь BOOL…',
+                      'Отсоединить выход', 'Свойства', 'Другие действия'):
+            self.wait_node(label)
+        self.capture('fast-fbd-longpress-menu')
+        self.tap('Отмена')
+        if current_widgets() != initial or self.saved_connections():
+            raise AssertionError('Cancelled FBD context menu changed the graph')
+
+        # Save an exact, non-round 2345ms timer preset.
+        tx = round(left + target['x'] + target['w'] / 2)
+        ty = round(top + target['y'] + target['h'] / 2)
+        adb('shell', 'input', 'tap', str(tx), str(ty))
+        self.wait_node('Свойства: FBD Таймер')
+        self.replace_property_input('Время таймера, мс', '2345')
+        self.tap('Применить')
+        self.wait_node(description='Редактор экрана')
+        changed = current_widgets()
+        if changed[1]['timerPresetMs'] != 2345 or changed[0] != source:
+            raise AssertionError('Timer preset or unrelated FBD property changed')
+        self.capture('fast-fbd-source-canvas')
+
+        # Typed Q->IN edge, BOOL inversion and persisted undo.
+        self.tap_editor_menu_item('Связать FBD')
+        adb('shell', 'input', 'tap', str(sx), str(sy))
+        adb('shell', 'input', 'tap', str(tx), str(ty))
+        self.wait_node('Выход FBD')
+        self.tap('Q')
+        self.wait_node('Вход FBD')
+        self.tap('IN')
+        edge = self.saved_connections()
+        if len(edge) != 1 or any(edge[0].get(k) != v for k, v in {
+                'source': 0, 'target': 1, 'sourcePin': 'Q', 'targetPin': 'IN',
+                'sourceSignalType': 'BOOL', 'targetSignalType': 'BOOL'}.items()):
+            raise AssertionError('Typed FBD edge incorrectly persisted: ' + repr(edge))
+        self.tap_editor_menu_item('Инвертировать BOOL-связь FBD…')
+        self.wait_node('Инверсия связи FBD (BOOL)')
+        self.tap('1:Q → 2:IN  обычная')
+        inverted = self.saved_connections()
+        if not inverted[0].get('inverted'):
+            raise AssertionError('BOOL inversion failed to save')
+        self.capture('fast-fbd-inverted-wire')
+        self.tap_editor_menu_item('Отменить связь FBD')
+        if self.saved_connections() != edge:
+            raise AssertionError('Undo did not restore exact pin metadata')
+
+        # A force-stopped process must reload the same source, timer and edge.
+        expected = current_widgets()
+        adb('shell', 'am', 'force-stop', PACKAGE)
+        adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
+        self.tap('Загрузить проект')
+        self.tap(PROJECT)
+        self.wait_node(description='Редактор экрана')
+        if current_widgets() != expected or self.saved_connections() != edge:
+            raise AssertionError('FBD graph changed after cold restart')
+        crashes = adb('logcat', '-d', '-b', 'crash')
+        (self.output / 'crash-log.txt').write_text(crashes)
+        if PACKAGE in crashes:
+            raise AssertionError('Android crash detected')
+        elapsed = round(time.monotonic() - started, 2)
+        (self.output / 'result.json').write_text(json.dumps({
+            'result': 'passed', 'profile': 'quick-fbd',
+            'package': PACKAGE, 'api_level': adb('shell', 'getprop', 'ro.build.version.sdk').strip(),
+            'elapsed_seconds': elapsed, 'checks': [
+                'source FBD palette', 'long-press context', 'cancel without mutation',
+                'exact timer ms persistence', 'source canvas', 'typed BOOL Q-IN edge',
+                'BOOL invert and undo', 'project cold restart', 'no app crash']
+        }, indent=2))
+        print(f'FAST_FBD_SMOKE_OK elapsed_seconds={elapsed}', flush=True)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--apk', required=True, type=Path)
+    parser.add_argument('--output', type=Path,
+                        default=Path('build-reports/android-ui-smoke'))
+    args = parser.parse_args()
+    smoke = FastFbdSmoke(args.output)
+    args.output.mkdir(parents=True, exist_ok=True)
+    try:
+        smoke.run_fast(args.apk)
+    except Exception:
+        try:
+            smoke.capture('fast-fbd-failure')
+            (args.output / 'logcat.txt').write_text(adb('logcat', '-d', '-t', '1000'))
+        except Exception:
+            pass
+        raise
+
+
+if __name__ == '__main__':
+    main()
