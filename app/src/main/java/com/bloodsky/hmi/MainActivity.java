@@ -1226,6 +1226,9 @@ public class MainActivity extends Activity {
             menu.getMenu().add(fbdWireMode ? "Выключить связь FBD" : "Связать FBD").setOnMenuItemClickListener(item -> {
                 fbdWireMode = !fbdWireMode; wireSource = -1; showEditor(); return true;
             });
+            menu.getMenu().add("Удалить связь FBD…").setOnMenuItemClickListener(item -> {
+                showFbdDisconnectDialog(); return true;
+            });
         }
         menu.getMenu().add("Modbus").setOnMenuItemClickListener(item -> { showModbusDiagnostics(); return true; });
         menu.getMenu().add("Главное меню").setOnMenuItemClickListener(item -> {
@@ -2852,6 +2855,38 @@ public class MainActivity extends Activity {
             if (connection.source == current && reachesFbd(connection.target, goal, visited, connections)) return true;
         }
         return false;
+    }
+
+    /** Explicit edge selection avoids deleting unrelated FBD connections. */
+    private void showFbdDisconnectDialog() {
+        if (screens.isEmpty() || currentScreenIndex < 0 || currentScreenIndex >= screens.size()) return;
+        Screen screen = screens.get(currentScreenIndex);
+        if (screen.connections.isEmpty()) {
+            Toast.makeText(this, "Нет связей FBD для удаления", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final List<FbdConnection> candidates = new ArrayList<>();
+        final List<String> labels = new ArrayList<>();
+        for (FbdConnection edge : screen.connections) {
+            if (edge == null || edge.source < 0 || edge.target < 0
+                    || edge.source >= widgets.size() || edge.target >= widgets.size()) continue;
+            candidates.add(edge);
+            labels.add((edge.source + 1) + ": " + widgets.get(edge.source).text
+                    + " → " + (edge.target + 1) + ": " + widgets.get(edge.target).text);
+        }
+        if (candidates.isEmpty()) {
+            Toast.makeText(this, "Нет доступных связей FBD", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        new AlertDialog.Builder(this).setTitle("Удалить связь FBD")
+                .setItems(labels.toArray(new String[0]), (dialog, selected) -> {
+                    FbdConnection edge = candidates.get(selected);
+                    if (disconnectFbdEdge(screen.connections, edge.source, edge.target)) {
+                        persistProject();
+                        if (editor != null) editor.invalidate();
+                        Toast.makeText(this, "Связь FBD удалена", Toast.LENGTH_SHORT).show();
+                    }
+                }).setNegativeButton("Отмена", null).show();
     }
 
     private void connectFbdWidgets(int source, int target) {
