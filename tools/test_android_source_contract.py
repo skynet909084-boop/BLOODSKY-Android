@@ -141,7 +141,10 @@ class AndroidSourceContractTests(unittest.TestCase):
     def test_fbd_connections_reject_cycles_and_duplicates(self):
         self.assertIn("reachesFbd(target, source", self.source)
         self.assertIn("Такая связь уже существует", self.source)
-        self.assertIn("screen.connections.add(new FbdConnection(source, target))", self.source)
+        self.assertIn("chooseFbdPins(source, target)", self.source)
+        self.assertIn("screen.connections.add(edge)", self.source)
+        self.assertIn("hasCompatibleKnownFbdPins(json, sourceType, targetType)", self.source)
+        self.assertIn("pinnedFbdConnection(source, sourcePins[sourceChoice]", self.source)
 
     def test_deleting_widget_removes_and_reindexes_fbd_edges(self):
         delete_start = self.source.index("private void deleteSelectedWidget()")
