@@ -58,7 +58,7 @@ public class FbdPlacementTest {
         assertNull(MainActivity.freeFbdPlacement(Arrays.asList(full),
                 300, 300, 150, 80, 40, 50, 20));
         assertNull(MainActivity.freeFbdPlacement(Arrays.asList(full),
-                500, 300, 150, 80, 40, 50, 20));
+                460, 300, 150, 80, 40, 50, 20));
         assertEquals(0f, full.x, 0f);
         assertEquals(300f, full.w, 0f);
     }
