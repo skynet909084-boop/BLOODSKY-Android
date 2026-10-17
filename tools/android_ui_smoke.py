@@ -116,6 +116,15 @@ class Smoke:
         adb('shell', 'input', 'tap', str(x), str(y))
 
     def tap_document(self, filename):
+        # DocumentsUI's image grid delegates touch handling to its thumbnail.
+        # Use its ordinary list presentation so the filename is the open target,
+        # rather than the thumbnail/preview gesture surface.
+        xml = self.dump()
+        list_buttons = [n for n in matching_nodes(xml, description='List view')
+                        if n.get('package') == 'com.android.documentsui']
+        if len(list_buttons) == 1:
+            x, y = center(list_buttons[0].get('bounds'))
+            adb('shell', 'input', 'tap', str(x), str(y))
         deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             nodes = document_nodes(self.dump(), filename)

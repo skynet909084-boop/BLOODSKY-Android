@@ -1,4 +1,8 @@
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
+from android_ui_smoke import Smoke
 from android_ui_smoke import center, matching_nodes, preferences_are_empty, properties_scroll_node, property_input_matches, property_scroll_up, keyboard_is_shown, document_nodes
 
 class AndroidSmokeHelpersTests(unittest.TestCase):
@@ -54,6 +58,17 @@ class AndroidSmokeHelpersTests(unittest.TestCase):
         for bounds in ['bad', '[1,2][1,2]', '[100,20][10,30]']:
             with self.subTest(bounds=bounds), self.assertRaises(ValueError):
                 center(bounds)
+
+    def test_document_selection_switches_grid_to_list_and_opens_exact_filename(self):
+        grid = '<hierarchy><node package="com.android.documentsui" content-desc="List view" enabled="true" bounds="[200,20][300,80]"/></hierarchy>'
+        listing = '<hierarchy><node package="com.android.documentsui" text="bloodsky-custom.png" enabled="true" bounds="[50,100][350,200]"/><node package="com.android.documentsui" text="other.png" enabled="true" bounds="[50,200][350,300]"/></hierarchy>'
+        with TemporaryDirectory() as folder, patch('android_ui_smoke.adb') as command:
+            smoke = Smoke(Path(folder))
+            with patch.object(smoke, 'dump', side_effect=[grid, listing]):
+                smoke.tap_document('bloodsky-custom.png')
+            self.assertEqual([('shell', 'input', 'tap', '250', '50'),
+                              ('shell', 'input', 'tap', '200', '150')],
+                             [c.args for c in command.call_args_list])
 
     def test_deletion_requires_both_active_and_catalog_to_be_empty(self):
         self.assertTrue(preferences_are_empty('<map><string name="project_catalog_v1">{}</string></map>'))
