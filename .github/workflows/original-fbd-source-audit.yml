@@ -1,0 +1,37 @@
+name: BLOODSKY Original Craft FBD source audit
+
+on:
+  pull_request:
+    paths:
+      - 'tools/original_fbd_source_probe.py'
+      - 'tools/test_original_fbd_source_probe.py'
+      - '.github/workflows/original-fbd-source-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: original-fbd-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test hash guard, path containment and source line citations
+        run: python -m unittest discover -s tools -p 'test_original_fbd_source_probe.py' -v
+      - name: Index pinned original Craft FBD Java/layout classes
+        run: python tools/original_fbd_source_probe.py
+      - name: Upload source-backed index, not original APK/classes
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-fbd-source-index
+          path: build-reports/original-fbd-source-probe.json
+          if-no-files-found: error
+          retention-days: 14
