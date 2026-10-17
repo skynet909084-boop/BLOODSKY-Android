@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 ANDROID = '{http://schemas.android.com/apk/res/android}'
 ET.register_namespace('android', ANDROID[1:-1])
 
-def transfer(decoded):
+def transfer(decoded, layout_name="fragment_component_bar", prefix="kc_picker_"):
     original = Path(decoded) / 'apktool/res'
     values = {}
     for filename in ['colors.xml', 'dimens.xml', 'strings.xml']:
@@ -19,14 +19,14 @@ def transfer(decoded):
         if value.startswith('@') and not value.startswith('@android:'):
             return literal(*value[1:].split('/'))
         return value
-    root = ET.parse(original / 'layout/fragment_component_bar.xml').getroot()
+    root = ET.parse(original / 'layout' / (layout_name + '.xml')).getroot()
     for element in root.iter():
         # These are static catalogue thumbnails, never replacement runtime components.
         if element.tag.startswith('ru.himik.'):
             element.tag = 'ImageView' if element.tag.endswith('CustomSound') else 'TextView'
         for attr, value in list(element.attrib.items()):
             if value.startswith(('@id/', '@+id/')):
-                value = '@+id/kc_picker_' + value.split('/')[-1]
+                value = '@+id/' + prefix + value.split('/')[-1]
             elif value.startswith('@drawable/'):
                 value = '@drawable/kc_' + value.split('/')[-1]
             elif value.startswith(('@color/', '@dimen/', '@string/')):

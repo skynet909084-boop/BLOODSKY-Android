@@ -25,6 +25,18 @@ public final class OriginalIndicator {
     public static String imageValue(JSONObject settings, boolean active) {
         return settings.optString(active ? "pathOrNameOn" : "pathOrNameOff", active ? "green" : "off");
     }
+    public static JSONObject withImage(JSONObject fields, boolean active, boolean user, String value) throws Exception {
+        if (value == null || value.trim().isEmpty() || value.length() > 4096)
+            throw new IllegalArgumentException("Укажите изображение");
+        if (!user && "warning_32".equals(builtinName(value)))
+            throw new IllegalArgumentException("Неизвестное встроенное изображение");
+        JSONObject copy = new JSONObject(fields.toString());
+        JSONObject selected = settings(copy);
+        selected.put(active ? "isImageUserOn" : "isImageUserOff", user);
+        selected.put(active ? "pathOrNameOn" : "pathOrNameOff", value);
+        storeSettings(copy, selected);
+        return copy;
+    }
     public static String builtinName(String value) {
         if ("off".equals(value) || "green".equals(value) || "red".equals(value)
                 || "yellow".equals(value) || "blue".equals(value)) return "lamp_" + value;

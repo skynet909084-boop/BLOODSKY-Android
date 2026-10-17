@@ -1,5 +1,9 @@
 import unittest
-from android_ui_smoke import center, matching_nodes, preferences_are_empty, properties_scroll_node, property_input_matches, property_scroll_up, keyboard_is_shown
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
+from android_ui_smoke import Smoke
+from android_ui_smoke import center, matching_nodes, preferences_are_empty, properties_scroll_node, property_input_matches, property_scroll_up, keyboard_is_shown, document_nodes
 
 class AndroidSmokeHelpersTests(unittest.TestCase):
     def test_observed_enabled_ui_targets_and_uppercase_russian(self):
@@ -41,10 +45,31 @@ class AndroidSmokeHelpersTests(unittest.TestCase):
         self.assertFalse(keyboard_is_shown('mInputShown=false'))
         self.assertFalse(keyboard_is_shown('unknown'))
 
+    def test_document_grid_uses_filename_description_without_matching_preview_action(self):
+        xml = '<hierarchy><node package="com.android.documentsui" content-desc="bloodsky-custom.png, 15.53 kB, 1:17 AM" enabled="true" bounds="[10,20][110,120]"/><node package="com.android.documentsui" content-desc="Preview the file bloodsky-custom.png" enabled="true" bounds="[80,20][110,50]"/></hierarchy>'
+        nodes = document_nodes(xml, 'bloodsky-custom.png')
+        self.assertEqual(1, len(nodes))
+        self.assertEqual((60,70), center(nodes[0].get('bounds')))
+        self.assertEqual([], document_nodes(xml, 'unknown.png'))
+        text_xml = '<hierarchy><node package="com.android.documentsui" text="bloodsky-custom.png" enabled="true" bounds="[10,20][110,120]"/></hierarchy>'
+        self.assertEqual(1, len(document_nodes(text_xml, 'bloodsky-custom.png')))
+
     def test_invalid_bounds_are_rejected(self):
         for bounds in ['bad', '[1,2][1,2]', '[100,20][10,30]']:
             with self.subTest(bounds=bounds), self.assertRaises(ValueError):
                 center(bounds)
+
+    def test_document_selection_switches_grid_to_list_and_opens_exact_filename(self):
+        grid = '<hierarchy><node package="com.android.documentsui" content-desc="List view" enabled="true" bounds="[200,20][300,80]"/></hierarchy>'
+        listing = '<hierarchy><node package="com.android.documentsui" text="bloodsky-custom.png" enabled="true" bounds="[50,100][350,200]"/><node package="com.android.documentsui" text="other.png" enabled="true" bounds="[50,200][350,300]"/></hierarchy>'
+        with TemporaryDirectory() as folder, patch('android_ui_smoke.adb') as command:
+            smoke = Smoke(Path(folder))
+            with patch.object(smoke, 'dump', side_effect=[grid, listing, listing, '<hierarchy><node package="com.bloodsky.hmi"/></hierarchy>']):
+                smoke.tap_document('bloodsky-custom.png')
+            self.assertEqual([('shell', 'input', 'tap', '250', '50'),
+                              ('shell', 'CLASSPATH=/data/local/tmp/bloodsky-ui-input.jar',
+                               'app_process', '/system/bin', 'BloodskyFingerTap', '200', '150')],
+                             [c.args for c in command.call_args_list])
 
     def test_deletion_requires_both_active_and_catalog_to_be_empty(self):
         self.assertTrue(preferences_are_empty('<map><string name="project_catalog_v1">{}</string></map>'))
