@@ -386,6 +386,66 @@ public class FbdDisconnectTest {
         assertEquals(0, MainActivity.fbdCountDownStep(0, true, false, false, 12));
     }
 
+    @Test public void numericOperatorsDriveNumberOnlyInputs() throws Exception {
+        assertArrayEquals(new String[]{"OUT"}, MainActivity.knownFbdPins("FBD POW", true));
+        assertArrayEquals(new String[]{"BASE", "EXP"}, MainActivity.knownFbdPins("FBD POW", false));
+        assertEquals("NUMBER", MainActivity.knownFbdPinType("FBD ABS", "OUT", true));
+        assertEquals("NUMBER", MainActivity.knownFbdPinType("FBD SIN", "IN", false));
+        JSONObject edge = new JSONObject().put("source", 0).put("target", 1)
+                .put("sourcePin", "OUT").put("targetPin", "PT");
+        assertTrue(MainActivity.hasCompatibleKnownFbdPins(edge, "FBD POW", "FBD Таймер"));
+        edge.put("targetPin", "IN");
+        assertFalse(MainActivity.hasCompatibleKnownFbdPins(edge, "FBD POW", "FBD Таймер"));
+        edge.put("targetPin", "PV");
+        assertTrue(MainActivity.hasCompatibleKnownFbdPins(edge, "FBD POW", "FBD CTU"));
+        edge.put("sourcePin", "BASE");
+        assertFalse(MainActivity.hasCompatibleKnownFbdPins(edge, "FBD POW", "FBD CTU"));
+    }
+
+    @Test public void namedNumericInputOrderDeterminesPowResult() throws Exception {
+        MainActivity.Widget base = new MainActivity.Widget();
+        base.type = "FBD POW";
+        base.compareA = 2;
+        MainActivity.Widget exponent = new MainActivity.Widget();
+        exponent.type = "FBD POW";
+        exponent.compareA = 3;
+        MainActivity.Widget result = new MainActivity.Widget();
+        result.type = "FBD POW";
+        List<MainActivity.Widget> nodes = java.util.Arrays.asList(base, exponent, result);
+        List<MainActivity.FbdConnection> connections = java.util.Arrays.asList(
+                MainActivity.pinnedFbdConnection(1, "OUT", 2, "EXP"),
+                MainActivity.pinnedFbdConnection(0, "OUT", 2, "BASE"));
+        assertEquals(8.0, MainActivity.evaluateFbdBlockNumeric(nodes, connections, 2,
+                new boolean[3], new boolean[3], new boolean[3], new double[3]), 0.000001);
+    }
+
+    @Test public void oneFbdSourceMayDriveTwoDistinctTargetPins() throws Exception {
+        MainActivity.FbdConnection first = MainActivity.pinnedFbdConnection(0, "Q", 1, "IN1");
+        MainActivity.FbdConnection second = MainActivity.pinnedFbdConnection(0, "Q", 1, "IN2");
+        assertFalse(MainActivity.duplicateFbdEndpoint(first, second));
+        assertTrue(MainActivity.duplicateFbdEndpoint(first, first));
+        JSONArray widgets = new JSONArray().put(new JSONObject().put("type", "FBD Вход"))
+                .put(new JSONObject().put("type", "FBD И"));
+        JSONArray connections = new JSONArray().put(MainActivity.connectionToJson(first))
+                .put(MainActivity.connectionToJson(second));
+        JSONObject screen = new JSONObject().put("widgets", widgets).put("connections", connections);
+        JSONObject project = new JSONObject().put("screens", new JSONArray().put(screen))
+                .put("currentScreen", 0);
+        MainActivity.validateImportedProjectStatic(project.toString());
+        connections.getJSONObject(1).put("targetPin", "IN1");
+        try {
+            MainActivity.validateImportedProjectStatic(project.toString());
+            fail("Must reject competing drivers for IN1");
+        } catch (IllegalArgumentException expected) { }
+    }
+
+    @Test public void countLimitsAreSafeForCorruptIntegerState() {
+        assertEquals(1000000, MainActivity.fbdCountUpStep(Integer.MAX_VALUE, true, false, false));
+        assertEquals(1000000, MainActivity.fbdCountUpStep(Integer.MAX_VALUE, false, false, false));
+        assertEquals(0, MainActivity.fbdCountDownStep(Integer.MIN_VALUE, true, false, false, 1));
+        assertEquals(1000000, MainActivity.fbdCountDownStep(1, false, false, true, Integer.MAX_VALUE));
+    }
+
     @Test public void invalidEndpointsDoNotMutateGraph() {
         List<MainActivity.FbdConnection> edges = new ArrayList<>();
         edges.add(new MainActivity.FbdConnection(0, 1));
