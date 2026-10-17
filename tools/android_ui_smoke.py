@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Install and exercise the debug APK on an already booted, disposable emulator."""
 import argparse
+import base64
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -269,6 +271,90 @@ class Smoke:
         if saved_widgets() != expected:
             raise AssertionError('FBD palette blocks/preset did not survive process restart')
         self.capture('04p-fbd-reopened')
+
+    def check_legacy_media_migration_on_device(self):
+        """Reproduce an id-less Android project with pre-ID photo/audio files."""
+        adb('shell', 'am', 'force-stop', PACKAGE)
+        legacy = {
+            'projectName': 'Legacy_Media_Smoke',
+            'currentScreen': 0,
+            'screens': [{
+                'name': 'Экран 1',
+                'connections': [],
+                'widgets': [
+                    {'type': 'Многопозиционное фото', 'text': 'Legacy photo',
+                     'imagePathStates': ['media/photo.png'] +
+                        ['Картинка ' + str(i) for i in range(1, 16)]},
+                    {'type': 'Звуковой сигнал', 'text': 'Legacy audio',
+                     'soundFilePath': 'media/alarm.wav'}
+                ]
+            }]
+        }
+        # A real one-pixel PNG; WAV bytes only need to survive migration.
+        image = base64.b64decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/Sc3x5QAAAABJRU5ErkJggg==')
+        audio = b'RIFF\\x24\\x00\\x00\\x00WAVEfmt LEGACY_AUDIO'
+        image_file = self.output / 'legacy-photo.png'
+        audio_file = self.output / 'legacy-alarm.wav'
+        image_file.write_bytes(image)
+        audio_file.write_bytes(audio)
+        adb('push', str(image_file), '/data/local/tmp/bloodsky-legacy-photo.png')
+        adb('push', str(audio_file), '/data/local/tmp/bloodsky-legacy-alarm.wav')
+        adb('shell', 'run-as', PACKAGE, 'mkdir', '-p', 'files/media')
+        adb('shell', 'run-as', PACKAGE, 'cp',
+            '/data/local/tmp/bloodsky-legacy-photo.png', 'files/media/photo.png')
+        adb('shell', 'run-as', PACKAGE, 'cp',
+            '/data/local/tmp/bloodsky-legacy-alarm.wav', 'files/media/alarm.wav')
+
+        root = ET.Element('map')
+        for name, value in (
+                ('active_project', json.dumps(legacy, ensure_ascii=False, separators=(',', ':'))),
+                ('project_catalog_v1', '{}'),
+                ('project_name', legacy['projectName'])):
+            ET.SubElement(root, 'string', {'name': name}).text = value
+        old_prefs = self.output / 'legacy-prefs.xml'
+        old_prefs.write_bytes(ET.tostring(root, encoding='utf-8', xml_declaration=True))
+        adb('push', str(old_prefs), '/data/local/tmp/bloodsky-legacy-prefs.xml')
+        adb('shell', 'run-as', PACKAGE, 'cp',
+            '/data/local/tmp/bloodsky-legacy-prefs.xml', 'shared_prefs/bloodsky_projects.xml')
+        adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
+        self.wait_node('Загрузить проект')
+        current_xml = adb('shell', 'run-as', PACKAGE, 'cat',
+                          'shared_prefs/bloodsky_projects.xml')
+        prefs = {node.get('name'): node.text for node in ET.fromstring(current_xml)}
+        active = json.loads(prefs['active_project'])
+        storage = active.get('storageId', '')
+        if not storage or active.get('projectName') != legacy['projectName']:
+            raise AssertionError('Id-less project failed to retain name and stable storage ID')
+        stored = json.loads(prefs.get('project_catalog_v1', '{}'))
+        project_dir = 'proj_' + hashlib.sha256(('sid_' + storage).encode()).hexdigest()[:16]
+        if project_dir not in stored:
+            raise AssertionError('Migrated identity not persisted into project catalog')
+        media = 'files/projects/' + project_dir + '/media/'
+        for filename, data in (('photo.png', image), ('alarm.wav', audio)):
+            actual = adb('shell', 'run-as', PACKAGE, 'cat', media + filename, binary=True)
+            original = adb('shell', 'run-as', PACKAGE, 'cat',
+                           'files/media/' + filename, binary=True)
+            if actual != data or original != data:
+                raise AssertionError('Legacy media migration lost or altered ' + filename)
+        self.tap('Загрузить проект')
+        self.tap(legacy['projectName'])
+        self.wait_node(description='Редактор экрана')
+        self.capture('07-migrated-legacy-media')
+        adb('shell', 'am', 'force-stop', PACKAGE)
+        adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
+        self.tap('Загрузить проект')
+        self.tap(legacy['projectName'])
+        self.wait_node(description='Редактор экрана')
+        next_xml = adb('shell', 'run-as', PACKAGE, 'cat',
+                       'shared_prefs/bloodsky_projects.xml')
+        next_active = json.loads({node.get('name'): node.text
+                                 for node in ET.fromstring(next_xml)}['active_project'])
+        if next_active.get('storageId') != storage:
+            raise AssertionError('Media storage identity changed across process restart')
+        for filename, data in (('photo.png', image), ('alarm.wav', audio)):
+            if adb('shell', 'run-as', PACKAGE, 'cat', media + filename, binary=True) != data:
+                raise AssertionError('Legacy media disappeared after restart: ' + filename)
 
     def run(self, apk):
         serial = adb('get-serialno').strip()
@@ -542,12 +628,13 @@ class Smoke:
         else:
             raise AssertionError('Deleted project remains in active project/catalog')
         self.capture('06-after-deletion')
+        self.check_legacy_media_migration_on_device()
         crashes = adb('logcat', '-d', '-b', 'crash')
         (self.output / 'crash-log.txt').write_text(crashes)
         if PACKAGE in crashes:
             raise AssertionError('Application crash recorded')
         (self.output / 'result.json').write_text(json.dumps({'result': 'passed', 'package': PACKAGE,
-                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'original five-category palette', 'palette add indicator/button/text/progress', 'original 40-preview FBD palette and return/extended navigation', 'FBD AND/TON add and restart', 'invalid timer preset leaves project and form unchanged', 'exact valid timer preset preserves other fields', 'process restart', 'reload four palette-created components', 'invalid geometry leaves dialog/project unchanged', 'fractional properties survive second process restart', 'original ON/OFF dialogs and builtin state selection', 'custom document-provider image and persisted URI grant after process restart', 'original compact toolbar and hide/reveal', 'editor button opens properties without activation', 'operator drag and long-press cannot edit or activate', 'runtime button on/off and persistence after restart', 'stop and Back restore editor tools', 'confirmed deletion'],
+                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'original five-category palette', 'palette add indicator/button/text/progress', 'original 40-preview FBD palette and return/extended navigation', 'FBD AND/TON add and restart', 'invalid timer preset leaves project and form unchanged', 'exact valid timer preset preserves other fields', 'process restart', 'reload four palette-created components', 'invalid geometry leaves dialog/project unchanged', 'fractional properties survive second process restart', 'original ON/OFF dialogs and builtin state selection', 'custom document-provider image and persisted URI grant after process restart', 'original compact toolbar and hide/reveal', 'editor button opens properties without activation', 'operator drag and long-press cannot edit or activate', 'runtime button on/off and persistence after restart', 'stop and Back restore editor tools', 'confirmed deletion', 'legacy media bytes preserved and isolated across restart'],
                 'api_level': adb('shell', 'getprop', 'ro.build.version.sdk').strip(),
                 'display_size': adb('shell', 'wm', 'size').strip(),
                 'display_density': adb('shell', 'wm', 'density').strip()}, indent=2))
