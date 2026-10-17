@@ -179,6 +179,22 @@ public class FbdDisconnectTest {
         assertEquals(0, MainActivity.knownFbdPins("FBD UNKNOWN", true).length);
     }
 
+    @Test public void pinnedConnectionSurvivesSaveAndReloadWithMetadata() throws Exception {
+        MainActivity.FbdConnection original = MainActivity.pinnedFbdConnection(0, "Q", 1, "IN1");
+        JSONObject saved = MainActivity.connectionToJson(original);
+        saved.put("sourceSignalType", "BOOL");
+        saved.put("targetSignalType", "BOOL");
+        saved.put("vendor", new JSONObject().put("wireColor", "orange"));
+        MainActivity.validateImportedProjectStatic(projectWithConnection(saved));
+        MainActivity.FbdConnection restored = MainActivity.connectionFromJson(saved);
+        JSONObject roundTrip = MainActivity.connectionToJson(restored);
+        assertEquals("Q", roundTrip.getString("sourcePin"));
+        assertEquals("IN1", roundTrip.getString("targetPin"));
+        assertEquals("BOOL", roundTrip.getString("sourceSignalType"));
+        assertEquals("BOOL", roundTrip.getString("targetSignalType"));
+        assertEquals("orange", roundTrip.getJSONObject("vendor").getString("wireColor"));
+    }
+
     @Test public void invalidEndpointsDoNotMutateGraph() {
         List<MainActivity.FbdConnection> edges = new ArrayList<>();
         edges.add(new MainActivity.FbdConnection(0, 1));
