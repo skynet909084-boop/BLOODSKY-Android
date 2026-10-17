@@ -2985,8 +2985,11 @@ public class MainActivity extends Activity {
             if (edge == null || edge.source < 0 || edge.target < 0
                     || edge.source >= widgets.size() || edge.target >= widgets.size()) continue;
             candidates.add(edge);
+            JSONObject metadata = edge.extraFields;
+            String pinLabel = metadata != null && metadata.has("sourcePin") && metadata.has("targetPin")
+                    ? " [" + metadata.optString("sourcePin") + " → " + metadata.optString("targetPin") + "]" : "";
             labels.add((edge.source + 1) + ": " + widgets.get(edge.source).text
-                    + " → " + (edge.target + 1) + ": " + widgets.get(edge.target).text);
+                    + " → " + (edge.target + 1) + ": " + widgets.get(edge.target).text + pinLabel);
         }
         if (candidates.isEmpty()) {
             Toast.makeText(this, "Нет доступных связей FBD", Toast.LENGTH_SHORT).show();
