@@ -2,9 +2,9 @@
 """Tests for original APK source contracts and verification ledger."""
 import hashlib
 import json
-
 from pathlib import Path
 import re
+import tempfile
 import unittest
 
 from prepare_craft_resources import EXPECTED_SHA256
@@ -101,6 +101,62 @@ class OriginalSourceContractsTests(unittest.TestCase):
             content = json.loads(syn.read_text(encoding="utf-8"))
             self.assertIn("_comment", content)
             self.assertIn("SYNTHETIC FIXTURE", content["_comment"])
+
+    def test_synthetic_image_counting_positive_and_negative(self):
+        """Verifier must correctly assert count matching on 1 used and 1 unused image fixture."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmppath = Path(tmpdir)
+
+            # Setup mock decoded dir
+            mock_decoded = tmppath / "decoded"
+            mock_drawables = mock_decoded / "apktool/res/drawable"
+            mock_drawables.mkdir(parents=True)
+            (mock_drawables / "lamp_green.png").write_bytes(b"fake_png_1")
+            (mock_drawables / "lamp_blue.png").write_bytes(b"fake_png_2")
+
+            # Fill out mock_drawables to 152 files total so total_images == 152
+            for i in range(150):
+                (mock_drawables / f"dummy_{i}.png").write_bytes(b"dummy")
+
+            # Setup mock app source dir
+            mock_app = tmppath / "app"
+            mock_java_dir = mock_app / "com/bloodsky/hmi"
+            mock_java_dir.mkdir(parents=True)
+            (mock_java_dir / "MainActivity.java").write_text(
+                'package com.bloodsky.hmi;\nclass MainActivity {\n'
+                '  int res = R.drawable.kc_lamp_green;\n'
+                '  void addWidget() {}\n'
+                '  void adjustSetpoint() {}\n'
+                '  void playSoundAlert() {}\n'
+                '  void activateScreen() {}\n'
+                '  void loadCachedBitmap() {}\n'
+                '  void speakVoiceAnnouncement() {}\n'
+                '  void evaluateFbdBlock() {}\n'
+                '  void evaluateFbdBlockNumeric() {}\n'
+                '}\n',
+                encoding="utf-8"
+            )
+
+            # Setup mock contracts JSON (1 referenced, 151 unused)
+            contracts_data = json.loads(self.contracts_path.read_text(encoding="utf-8"))
+            contracts_data["image_aliases_status"]["directly_referenced_in_bloodsky_app"] = 1
+            contracts_data["image_aliases_status"]["packaged_but_unused_in_bloodsky"] = 151
+
+            mock_contracts_json = tmppath / "contracts.json"
+            mock_contracts_json.write_text(json.dumps(contracts_data), encoding="utf-8")
+
+            # Positive test: correct declared counts (1 referenced, 151 unused) pass
+            res = verify_contracts(self.zip_path, mock_contracts_json, mock_decoded, mock_app, self.fixtures_dir)
+            self.assertEqual(res["referenced_images"], 1)
+            self.assertEqual(res["unused_images"], 151)
+
+            # Negative test: deliberately wrong contract count triggers ValueError
+            contracts_data["image_aliases_status"]["directly_referenced_in_bloodsky_app"] = 99
+            mock_contracts_json.write_text(json.dumps(contracts_data), encoding="utf-8")
+
+            with self.assertRaises(ValueError) as ctx:
+                verify_contracts(self.zip_path, mock_contracts_json, mock_decoded, mock_app, self.fixtures_dir)
+            self.assertIn("Referenced image count mismatch", str(ctx.exception))
 
 
 if __name__ == "__main__":

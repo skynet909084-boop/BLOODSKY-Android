@@ -13,8 +13,8 @@ All details are extracted directly from the decompiled KaScada Craft 1.0.7 refer
 The original APK contains **152 image assets** (151 PNGs + 1 JPG) in `res/drawable`:
 
 - **Total packaged original images in APK archive**: 152
-- **Directly referenced in BLOODSKY Java source code**: 12 (dynamically verified against current `app/` source tree by `tools/verify_original_source_contracts.py`)
-- **Packaged-but-unused in current BLOODSKY runtime**: 140
+- **Directly referenced in BLOODSKY Java source code**: 0 (dynamically verified against current `app/` source tree by `tools/verify_original_source_contracts.py`)
+- **Packaged-but-unused in current BLOODSKY runtime**: 152
 
 ### Asset Inventory Summary
 - **Buttons / Switches**: `kc_button.png`, `kc_button2.png`, `kc_button3.png`, `kc_switch1_off.png`..`kc_switch8_on.png`

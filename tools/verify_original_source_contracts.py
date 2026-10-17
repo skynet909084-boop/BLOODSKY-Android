@@ -45,16 +45,37 @@ def verify_contracts(
 
     java_files = list(app_source_dir.rglob("*.java"))
     java_code = "\n".join(p.read_text(encoding="utf-8", errors="replace") for p in java_files)
-    direct_refs = set(re.findall(r'R\.drawable\.kc_([a-z0-9_]+)', java_code)) | set(re.findall(r'\"kc_([a-z0-9_]+)\"', java_code))
 
-    used = [img for img in images if Path(img).stem in direct_refs]
-    unused = [img for img in images if Path(img).stem not in direct_refs]
+    # Extract referenced suffixes (e.g. lamp_green from R.drawable.kc_lamp_green or "kc_lamp_green")
+    direct_refs = set(re.findall(r'\bR\.drawable\.kc_([a-z0-9_]+)\b', java_code)) | set(re.findall(r'\"kc_([a-z0-9_]+)\"', java_code))
+
+    used = []
+    unused = []
+    for img in images:
+        stem = Path(img).stem
+        normalized_stem = stem.removeprefix("kc_")
+        if stem in direct_refs or normalized_stem in direct_refs:
+            used.append(img)
+        else:
+            unused.append(img)
 
     alias_status = contracts.get("image_aliases_status", {})
     if alias_status.get("total_packaged_in_apk") != len(images):
-        raise ValueError("Image alias count mismatch in contracts JSON")
-    if len(used) + len(unused) != len(images):
-        raise ValueError("Image sum mismatch in source tree audit")
+        raise ValueError(f"Total image count mismatch: JSON={alias_status.get('total_packaged_in_apk')}, actual={len(images)}")
+
+    expected_used = alias_status.get("directly_referenced_in_bloodsky_app")
+    if expected_used is None or expected_used != len(used):
+        raise ValueError(
+            f"Referenced image count mismatch: JSON declared {expected_used}, "
+            f"actual source scan found {len(used)}"
+        )
+
+    expected_unused = alias_status.get("packaged_but_unused_in_bloodsky")
+    if expected_unused is None or expected_unused != len(unused):
+        raise ValueError(
+            f"Unused image count mismatch: JSON declared {expected_unused}, "
+            f"actual source scan found {len(unused)}"
+        )
 
     # 5. Verify cited BLOODSKY production call sites exist in MainActivity.java
     main_activity_path = app_source_dir / "com/bloodsky/hmi/MainActivity.java"
