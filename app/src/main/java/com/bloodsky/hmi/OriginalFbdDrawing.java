@@ -104,287 +104,287 @@ public final class OriginalFbdDrawing extends View {
     }
     private void draw0(Canvas canvas) {
         int width;
-        RectF rectF = box;
-        int i2 = stroke;
-        rectF.set(i2, i2, getWidth() - pin, getHeight() - stroke);
-        ink.setStyle(Paint.Style.FILL);
-        ink.setColor(-7829368);
-        canvas.drawRect(box, ink);
-        ink.setStyle(Paint.Style.STROKE);
-        ink.setColor(-16777216);
-        canvas.drawRect(box, ink);
-        canvas.drawText(title, (getWidth() / 2) - (pin / 2), (int) ((getHeight() / 2) - ((text.descent() + text.ascent()) / 2.0f)), text);
-        if (invert) {
-            canvas.drawCircle((getWidth() - pin) + radius, getHeight() / 2, radius, ink);
-            width = (getWidth() - pin) + (radius * 2);
+        RectF rectF = this.box;
+        int i2 = this.stroke;
+        rectF.set(i2, i2, getWidth() - this.pin, getHeight() - this.stroke);
+        this.ink.setStyle(Paint.Style.FILL);
+        this.ink.setColor(-7829368);
+        canvas.drawRect(this.box, this.ink);
+        this.ink.setStyle(Paint.Style.STROKE);
+        this.ink.setColor(-16777216);
+        canvas.drawRect(this.box, this.ink);
+        canvas.drawText(this.title, (getWidth() / 2) - (this.pin / 2), (int) ((getHeight() / 2) - ((this.text.descent() + this.text.ascent()) / 2.0f)), this.text);
+        if (this.invert) {
+            canvas.drawCircle((getWidth() - this.pin) + this.radius, getHeight() / 2, this.radius, this.ink);
+            width = (getWidth() - this.pin) + (this.radius * 2);
         } else {
-            width = getWidth() - pin;
+            width = getWidth() - this.pin;
         }
-        canvas.drawLine(width, getHeight() / 2, getWidth(), getHeight() / 2, ink);
+        canvas.drawLine(width, getHeight() / 2, getWidth(), getHeight() / 2, this.ink);
     }
 
     private void draw1(Canvas canvas) {
-        canvas.drawLine(0.0f, getHeight() / 2, pin, getHeight() / 2, ink);
-        box.set(pin, stroke, getWidth() - stroke, getHeight() - stroke);
-        ink.setStyle(Paint.Style.FILL);
-        ink.setColor(-7829368);
-        canvas.drawRect(box, ink);
-        ink.setStyle(Paint.Style.STROKE);
-        ink.setColor(-16777216);
-        canvas.drawRect(box, ink);
-        canvas.drawText(title, (getWidth() / 2) + (pin / 2), (int) ((getHeight() / 2) - ((text.descent() + text.ascent()) / 2.0f)), text);
+        canvas.drawLine(0.0f, getHeight() / 2, this.pin, getHeight() / 2, this.ink);
+        this.box.set(this.pin, this.stroke, getWidth() - this.stroke, getHeight() - this.stroke);
+        this.ink.setStyle(Paint.Style.FILL);
+        this.ink.setColor(-7829368);
+        canvas.drawRect(this.box, this.ink);
+        this.ink.setStyle(Paint.Style.STROKE);
+        this.ink.setColor(-16777216);
+        canvas.drawRect(this.box, this.ink);
+        canvas.drawText(this.title, (getWidth() / 2) + (this.pin / 2), (int) ((getHeight() / 2) - ((this.text.descent() + this.text.ascent()) / 2.0f)), this.text);
     }
 
     private void draw2(Canvas canvas) {
-        RectF rectF = box;
-        int i2 = stroke;
-        rectF.set(i2, i2, getWidth() - pin, getHeight() - stroke);
-        ink.setStyle(Paint.Style.FILL);
-        ink.setColor(-7829368);
-        RectF rectF2 = box;
-        int i3 = pin;
-        canvas.drawRoundRect(rectF2, i3, i3, ink);
-        ink.setStyle(Paint.Style.STROKE);
-        ink.setColor(-16777216);
-        RectF rectF3 = box;
-        int i4 = pin;
-        canvas.drawRoundRect(rectF3, i4, i4, ink);
-        canvas.drawText(title, (getWidth() / 2) - (pin / 2), (int) ((getHeight() / 2) - ((text.descent() + text.ascent()) / 2.0f)), text);
-        canvas.drawLine(getWidth() - pin, getHeight() / 2, getWidth(), getHeight() / 2, ink);
+        RectF rectF = this.box;
+        int i2 = this.stroke;
+        rectF.set(i2, i2, getWidth() - this.pin, getHeight() - this.stroke);
+        this.ink.setStyle(Paint.Style.FILL);
+        this.ink.setColor(-7829368);
+        RectF rectF2 = this.box;
+        int i3 = this.pin;
+        canvas.drawRoundRect(rectF2, i3, i3, this.ink);
+        this.ink.setStyle(Paint.Style.STROKE);
+        this.ink.setColor(-16777216);
+        RectF rectF3 = this.box;
+        int i4 = this.pin;
+        canvas.drawRoundRect(rectF3, i4, i4, this.ink);
+        canvas.drawText(this.title, (getWidth() / 2) - (this.pin / 2), (int) ((getHeight() / 2) - ((this.text.descent() + this.text.ascent()) / 2.0f)), this.text);
+        canvas.drawLine(getWidth() - this.pin, getHeight() / 2, getWidth(), getHeight() / 2, this.ink);
     }
 
     private void draw3(Canvas canvas) {
-        box.set(pin, stroke, getWidth(), getHeight() - stroke);
-        ink.setStyle(Paint.Style.FILL);
-        ink.setColor(-7829368);
-        RectF rectF = box;
-        int i2 = pin;
-        canvas.drawRoundRect(rectF, i2, i2, ink);
-        ink.setStyle(Paint.Style.STROKE);
-        ink.setColor(-16777216);
-        RectF rectF2 = box;
-        int i3 = pin;
-        canvas.drawRoundRect(rectF2, i3, i3, ink);
-        canvas.drawText(title, (getWidth() / 2) + (pin / 2), (int) ((getHeight() / 2) - ((text.descent() + text.ascent()) / 2.0f)), text);
-        canvas.drawLine(pin, getHeight() / 2, stroke, getHeight() / 2, ink);
+        this.box.set(this.pin, this.stroke, getWidth(), getHeight() - this.stroke);
+        this.ink.setStyle(Paint.Style.FILL);
+        this.ink.setColor(-7829368);
+        RectF rectF = this.box;
+        int i2 = this.pin;
+        canvas.drawRoundRect(rectF, i2, i2, this.ink);
+        this.ink.setStyle(Paint.Style.STROKE);
+        this.ink.setColor(-16777216);
+        RectF rectF2 = this.box;
+        int i3 = this.pin;
+        canvas.drawRoundRect(rectF2, i3, i3, this.ink);
+        canvas.drawText(this.title, (getWidth() / 2) + (this.pin / 2), (int) ((getHeight() / 2) - ((this.text.descent() + this.text.ascent()) / 2.0f)), this.text);
+        canvas.drawLine(this.pin, getHeight() / 2, this.stroke, getHeight() / 2, this.ink);
     }
 
     private void draw4(Canvas canvas) {
-        RectF rectF = box;
-        int i2 = stroke;
-        rectF.set(i2, i2, getWidth() - pin, getHeight() - stroke);
-        ink.setStyle(Paint.Style.FILL);
-        ink.setColor(-7829368);
-        canvas.drawPath(u(box, getHeight(), 0.0f, 0.0f, getHeight()), ink);
-        ink.setStyle(Paint.Style.STROKE);
-        ink.setColor(-16777216);
-        canvas.drawPath(u(box, getHeight(), 0.0f, 0.0f, getHeight()), ink);
-        canvas.drawText(title, (getWidth() / 2) - (pin / 2), (int) ((getHeight() / 2) - ((text.descent() + text.ascent()) / 2.0f)), text);
-        canvas.drawLine(getWidth() - pin, getHeight() / 2, getWidth(), getHeight() / 2, ink);
+        RectF rectF = this.box;
+        int i2 = this.stroke;
+        rectF.set(i2, i2, getWidth() - this.pin, getHeight() - this.stroke);
+        this.ink.setStyle(Paint.Style.FILL);
+        this.ink.setColor(-7829368);
+        canvas.drawPath(u(this.box, getHeight(), 0.0f, 0.0f, getHeight()), this.ink);
+        this.ink.setStyle(Paint.Style.STROKE);
+        this.ink.setColor(-16777216);
+        canvas.drawPath(u(this.box, getHeight(), 0.0f, 0.0f, getHeight()), this.ink);
+        canvas.drawText(this.title, (getWidth() / 2) - (this.pin / 2), (int) ((getHeight() / 2) - ((this.text.descent() + this.text.ascent()) / 2.0f)), this.text);
+        canvas.drawLine(getWidth() - this.pin, getHeight() / 2, getWidth(), getHeight() / 2, this.ink);
     }
 
     private void draw5(Canvas canvas) {
-        box.set(pin, stroke, getWidth(), getHeight() - stroke);
-        ink.setStyle(Paint.Style.FILL);
-        ink.setColor(-7829368);
-        canvas.drawPath(u(box, 0.0f, getHeight(), getHeight(), 0.0f), ink);
-        ink.setStyle(Paint.Style.STROKE);
-        ink.setColor(-16777216);
-        canvas.drawPath(u(box, 0.0f, getHeight(), getHeight(), 0.0f), ink);
-        canvas.drawText(title, (getWidth() / 2) + (pin / 2), (int) ((getHeight() / 2) - ((text.descent() + text.ascent()) / 2.0f)), text);
-        canvas.drawLine(pin, getHeight() / 2, stroke, getHeight() / 2, ink);
+        this.box.set(this.pin, this.stroke, getWidth(), getHeight() - this.stroke);
+        this.ink.setStyle(Paint.Style.FILL);
+        this.ink.setColor(-7829368);
+        canvas.drawPath(u(this.box, 0.0f, getHeight(), getHeight(), 0.0f), this.ink);
+        this.ink.setStyle(Paint.Style.STROKE);
+        this.ink.setColor(-16777216);
+        canvas.drawPath(u(this.box, 0.0f, getHeight(), getHeight(), 0.0f), this.ink);
+        canvas.drawText(this.title, (getWidth() / 2) + (this.pin / 2), (int) ((getHeight() / 2) - ((this.text.descent() + this.text.ascent()) / 2.0f)), this.text);
+        canvas.drawLine(this.pin, getHeight() / 2, this.stroke, getHeight() / 2, this.ink);
     }
 
     private void draw6(Canvas canvas) {
         int width;
-        path.setFillType(Path.FillType.EVEN_ODD);
-        ink.setStrokeWidth(stroke);
-        path.reset();
-        Path path = path;
-        int i2 = stroke;
+        this.path.setFillType(Path.FillType.EVEN_ODD);
+        this.ink.setStrokeWidth(this.stroke);
+        this.path.reset();
+        Path path = this.path;
+        int i2 = this.stroke;
         path.moveTo(i2, i2);
-        path.lineTo(getWidth() - (pin * 2), stroke);
-        path.lineTo(getWidth() - pin, getHeight() / 2);
-        path.lineTo(getWidth() - (pin * 2), getHeight() - stroke);
-        path.lineTo(stroke, getHeight() - stroke);
-        path.lineTo(stroke, getHeight() - stroke);
-        Path path2 = path;
-        int i3 = stroke;
+        this.path.lineTo(getWidth() - (this.pin * 2), this.stroke);
+        this.path.lineTo(getWidth() - this.pin, getHeight() / 2);
+        this.path.lineTo(getWidth() - (this.pin * 2), getHeight() - this.stroke);
+        this.path.lineTo(this.stroke, getHeight() - this.stroke);
+        this.path.lineTo(this.stroke, getHeight() - this.stroke);
+        Path path2 = this.path;
+        int i3 = this.stroke;
         path2.lineTo(i3, i3);
-        path.close();
-        ink.setStyle(Paint.Style.FILL);
-        ink.setColor(-7829368);
-        canvas.drawPath(path, ink);
-        ink.setStyle(Paint.Style.STROKE);
-        ink.setColor(-16777216);
-        canvas.drawPath(path, ink);
-        if (invert && outType == 1) {
-            canvas.drawCircle((getWidth() - pin) + radius, getHeight() / 2, radius, ink);
-            width = (getWidth() - pin) + (radius * 2);
+        this.path.close();
+        this.ink.setStyle(Paint.Style.FILL);
+        this.ink.setColor(-7829368);
+        canvas.drawPath(this.path, this.ink);
+        this.ink.setStyle(Paint.Style.STROKE);
+        this.ink.setColor(-16777216);
+        canvas.drawPath(this.path, this.ink);
+        if (this.invert && this.outType == 1) {
+            canvas.drawCircle((getWidth() - this.pin) + this.radius, getHeight() / 2, this.radius, this.ink);
+            width = (getWidth() - this.pin) + (this.radius * 2);
         } else {
-            width = getWidth() - pin;
+            width = getWidth() - this.pin;
         }
-        canvas.drawLine(width, getHeight() / 2, getWidth(), getHeight() / 2, ink);
-        canvas.drawText(title, (getWidth() / 2) - pin, (int) ((getHeight() / 2) - ((text.descent() + text.ascent()) / 2.0f)), text);
+        canvas.drawLine(width, getHeight() / 2, getWidth(), getHeight() / 2, this.ink);
+        canvas.drawText(this.title, (getWidth() / 2) - this.pin, (int) ((getHeight() / 2) - ((this.text.descent() + this.text.ascent()) / 2.0f)), this.text);
     }
 
     private void draw7(Canvas canvas) {
-        path.setFillType(Path.FillType.EVEN_ODD);
-        ink.setStrokeWidth(stroke);
-        path.reset();
-        path.moveTo(stroke, getHeight() / 2);
-        path.lineTo(pin, getHeight() / 2);
-        path.lineTo(pin * 2, stroke);
-        Path path = path;
+        this.path.setFillType(Path.FillType.EVEN_ODD);
+        this.ink.setStrokeWidth(this.stroke);
+        this.path.reset();
+        this.path.moveTo(this.stroke, getHeight() / 2);
+        this.path.lineTo(this.pin, getHeight() / 2);
+        this.path.lineTo(this.pin * 2, this.stroke);
+        Path path = this.path;
         int width = getWidth();
-        int i2 = stroke;
+        int i2 = this.stroke;
         path.lineTo(width - i2, i2);
-        path.lineTo(getWidth() - stroke, getHeight() - stroke);
-        path.lineTo(pin * 2, getHeight() - stroke);
-        path.lineTo(pin, getHeight() / 2);
-        path.close();
-        ink.setStyle(Paint.Style.FILL);
-        ink.setColor(-7829368);
-        canvas.drawPath(path, ink);
-        ink.setStyle(Paint.Style.STROKE);
-        ink.setColor(-16777216);
-        canvas.drawPath(path, ink);
-        canvas.drawText(title, (getWidth() / 2) + pin, (int) ((getHeight() / 2) - ((text.descent() + text.ascent()) / 2.0f)), text);
+        this.path.lineTo(getWidth() - this.stroke, getHeight() - this.stroke);
+        this.path.lineTo(this.pin * 2, getHeight() - this.stroke);
+        this.path.lineTo(this.pin, getHeight() / 2);
+        this.path.close();
+        this.ink.setStyle(Paint.Style.FILL);
+        this.ink.setColor(-7829368);
+        canvas.drawPath(this.path, this.ink);
+        this.ink.setStyle(Paint.Style.STROKE);
+        this.ink.setColor(-16777216);
+        canvas.drawPath(this.path, this.ink);
+        canvas.drawText(this.title, (getWidth() / 2) + this.pin, (int) ((getHeight() / 2) - ((this.text.descent() + this.text.ascent()) / 2.0f)), this.text);
     }
 
     private void draw8(Canvas canvas) {
         int width;
-        ink.setStyle(Paint.Style.FILL);
-        ink.setColor(-7829368);
-        ink.setStrokeWidth(stroke);
-        box.set(pin, stroke, getWidth() - pin, getHeight() - stroke);
-        canvas.drawRect(box, ink);
-        ink.setStyle(Paint.Style.STROKE);
-        ink.setColor(-16777216);
-        canvas.drawRect(box, ink);
-        text.setTextAlign(Paint.Align.CENTER);
-        canvas.drawLine(pin, getHeight() / 3, (getWidth() - pin) - (stroke / 2), getHeight() / 3, ink);
-        canvas.drawLine(getWidth() / 2, getHeight() / 3, getWidth() / 2, getHeight() - stroke, ink);
-        canvas.drawText(title, getWidth() / 2, ((getHeight() / 3) - ((getHeight() / 3) / 2)) + baseline, text);
-        if (in1.length() > 0) {
-            String str = in1;
+        this.ink.setStyle(Paint.Style.FILL);
+        this.ink.setColor(-7829368);
+        this.ink.setStrokeWidth(this.stroke);
+        this.box.set(this.pin, this.stroke, getWidth() - this.pin, getHeight() - this.stroke);
+        canvas.drawRect(this.box, this.ink);
+        this.ink.setStyle(Paint.Style.STROKE);
+        this.ink.setColor(-16777216);
+        canvas.drawRect(this.box, this.ink);
+        this.text.setTextAlign(Paint.Align.CENTER);
+        canvas.drawLine(this.pin, getHeight() / 3, (getWidth() - this.pin) - (this.stroke / 2), getHeight() / 3, this.ink);
+        canvas.drawLine(getWidth() / 2, getHeight() / 3, getWidth() / 2, getHeight() - this.stroke, this.ink);
+        canvas.drawText(this.title, getWidth() / 2, ((getHeight() / 3) - ((getHeight() / 3) / 2)) + this.baseline, this.text);
+        if (this.in1.length() > 0) {
+            String str = this.in1;
             int width2 = getWidth() / 2;
-            int i2 = pin;
-            canvas.drawText(str, ((width2 - i2) / 2) + i2, ((getHeight() / 3) / 2) + (getHeight() / 3) + baseline, text);
-            canvas.drawLine(0.0f, ((getHeight() / 3) / 2) + (getHeight() / 3), pin, ((getHeight() / 3) / 2) + (getHeight() / 3), ink);
+            int i2 = this.pin;
+            canvas.drawText(str, ((width2 - i2) / 2) + i2, ((getHeight() / 3) / 2) + (getHeight() / 3) + this.baseline, this.text);
+            canvas.drawLine(0.0f, ((getHeight() / 3) / 2) + (getHeight() / 3), this.pin, ((getHeight() / 3) / 2) + (getHeight() / 3), this.ink);
         }
-        if (in2.length() > 0) {
-            String str2 = in2;
+        if (this.in2.length() > 0) {
+            String str2 = this.in2;
             int width3 = getWidth() / 2;
-            int i3 = pin;
-            canvas.drawText(str2, ((width3 - i3) / 2) + i3, ((getHeight() / 3) / 2) + ((getHeight() / 3) * 2) + baseline, text);
-            canvas.drawLine(0.0f, ((getHeight() / 3) / 2) + ((getHeight() / 3) * 2), pin, ((getHeight() / 3) / 2) + ((getHeight() / 3) * 2), ink);
+            int i3 = this.pin;
+            canvas.drawText(str2, ((width3 - i3) / 2) + i3, ((getHeight() / 3) / 2) + ((getHeight() / 3) * 2) + this.baseline, this.text);
+            canvas.drawLine(0.0f, ((getHeight() / 3) / 2) + ((getHeight() / 3) * 2), this.pin, ((getHeight() / 3) / 2) + ((getHeight() / 3) * 2), this.ink);
         }
-        if (out.length() > 0) {
-            canvas.drawText(out, (getWidth() / 2) + (((getWidth() / 2) - pin) / 2), ((getHeight() / 3) / 2) + (getHeight() / 3) + baseline, text);
-            if (invert && outType == 1) {
-                canvas.drawCircle((getWidth() - pin) + radius, ((getHeight() / 3) / 2) + (getHeight() / 3), radius, ink);
-                width = (getWidth() - pin) + (radius * 2);
+        if (this.out.length() > 0) {
+            canvas.drawText(this.out, (getWidth() / 2) + (((getWidth() / 2) - this.pin) / 2), ((getHeight() / 3) / 2) + (getHeight() / 3) + this.baseline, this.text);
+            if (this.invert && this.outType == 1) {
+                canvas.drawCircle((getWidth() - this.pin) + this.radius, ((getHeight() / 3) / 2) + (getHeight() / 3), this.radius, this.ink);
+                width = (getWidth() - this.pin) + (this.radius * 2);
             } else {
-                width = getWidth() - pin;
+                width = getWidth() - this.pin;
             }
-            canvas.drawLine(width, ((getHeight() / 3) / 2) + (getHeight() / 3), getWidth(), ((getHeight() / 3) / 2) + (getHeight() / 3), ink);
+            canvas.drawLine(width, ((getHeight() / 3) / 2) + (getHeight() / 3), getWidth(), ((getHeight() / 3) / 2) + (getHeight() / 3), this.ink);
         }
     }
 
     private void draw9(Canvas canvas) {
         int width;
         
-        ink.setStyle(Paint.Style.FILL);
-        ink.setColor(-7829368);
-        ink.setStrokeWidth(stroke);
-        box.set(pin, stroke, getWidth() - pin, getHeight() - stroke);
-        canvas.drawRect(box, ink);
-        ink.setStyle(Paint.Style.STROKE);
-        ink.setColor(-16777216);
-        canvas.drawRect(box, ink);
-        text.setTextAlign(Paint.Align.CENTER);
-        canvas.drawLine(pin, getHeight() / 4, (getWidth() - pin) - (stroke / 2), getHeight() / 4, ink);
-        canvas.drawLine(getWidth() / 2, getHeight() / 4, getWidth() / 2, getHeight() - stroke, ink);
-        canvas.drawText(title, getWidth() / 2, ((getHeight() / 4) - ((getHeight() / 4) / 2)) + baseline, text);
-        if (in1.length() > 0) {
-            String str = in1;
+        this.ink.setStyle(Paint.Style.FILL);
+        this.ink.setColor(-7829368);
+        this.ink.setStrokeWidth(this.stroke);
+        this.box.set(this.pin, this.stroke, getWidth() - this.pin, getHeight() - this.stroke);
+        canvas.drawRect(this.box, this.ink);
+        this.ink.setStyle(Paint.Style.STROKE);
+        this.ink.setColor(-16777216);
+        canvas.drawRect(this.box, this.ink);
+        this.text.setTextAlign(Paint.Align.CENTER);
+        canvas.drawLine(this.pin, getHeight() / 4, (getWidth() - this.pin) - (this.stroke / 2), getHeight() / 4, this.ink);
+        canvas.drawLine(getWidth() / 2, getHeight() / 4, getWidth() / 2, getHeight() - this.stroke, this.ink);
+        canvas.drawText(this.title, getWidth() / 2, ((getHeight() / 4) - ((getHeight() / 4) / 2)) + this.baseline, this.text);
+        if (this.in1.length() > 0) {
+            String str = this.in1;
             int width2 = getWidth() / 2;
-            int i2 = pin;
-            canvas.drawText(str, ((width2 - i2) / 2) + i2, ((getHeight() / 4) / 2) + (getHeight() / 4) + baseline, text);
-            canvas.drawLine(0.0f, ((getHeight() / 4) / 2) + (getHeight() / 4), pin, ((getHeight() / 4) / 2) + (getHeight() / 4), ink);
+            int i2 = this.pin;
+            canvas.drawText(str, ((width2 - i2) / 2) + i2, ((getHeight() / 4) / 2) + (getHeight() / 4) + this.baseline, this.text);
+            canvas.drawLine(0.0f, ((getHeight() / 4) / 2) + (getHeight() / 4), this.pin, ((getHeight() / 4) / 2) + (getHeight() / 4), this.ink);
         }
-        if (in2.length() > 0) {
-            String str2 = in2;
+        if (this.in2.length() > 0) {
+            String str2 = this.in2;
             int width3 = getWidth() / 2;
-            int i3 = pin;
-            canvas.drawText(str2, ((width3 - i3) / 2) + i3, ((getHeight() / 4) / 2) + ((getHeight() / 4) * 2) + baseline, text);
-            canvas.drawLine(0.0f, ((getHeight() / 4) / 2) + ((getHeight() / 4) * 2), pin, ((getHeight() / 4) / 2) + ((getHeight() / 4) * 2), ink);
+            int i3 = this.pin;
+            canvas.drawText(str2, ((width3 - i3) / 2) + i3, ((getHeight() / 4) / 2) + ((getHeight() / 4) * 2) + this.baseline, this.text);
+            canvas.drawLine(0.0f, ((getHeight() / 4) / 2) + ((getHeight() / 4) * 2), this.pin, ((getHeight() / 4) / 2) + ((getHeight() / 4) * 2), this.ink);
         }
-        if (in3.length() > 0) {
-            String str3 = in3;
+        if (this.in3.length() > 0) {
+            String str3 = this.in3;
             int width4 = getWidth() / 2;
-            int i4 = pin;
-            canvas.drawText(str3, ((width4 - i4) / 2) + i4, ((getHeight() / 4) / 2) + ((getHeight() / 4) * 3) + baseline, text);
-            canvas.drawLine(0.0f, ((getHeight() / 4) / 2) + ((getHeight() / 4) * 3), pin, ((getHeight() / 4) / 2) + ((getHeight() / 4) * 3), ink);
+            int i4 = this.pin;
+            canvas.drawText(str3, ((width4 - i4) / 2) + i4, ((getHeight() / 4) / 2) + ((getHeight() / 4) * 3) + this.baseline, this.text);
+            canvas.drawLine(0.0f, ((getHeight() / 4) / 2) + ((getHeight() / 4) * 3), this.pin, ((getHeight() / 4) / 2) + ((getHeight() / 4) * 3), this.ink);
         }
-        if (out.length() > 0) {
-            canvas.drawText(out, (getWidth() / 2) + (((getWidth() / 2) - pin) / 2), ((getHeight() / 4) / 2) + (getHeight() / 4) + baseline, text);
-            if (invert && outType == 1) {
-                canvas.drawCircle((getWidth() - pin) + radius, ((getHeight() / 4) / 2) + (getHeight() / 4), radius, ink);
-                width = (getWidth() - pin) + (radius * 2);
+        if (this.out.length() > 0) {
+            canvas.drawText(this.out, (getWidth() / 2) + (((getWidth() / 2) - this.pin) / 2), ((getHeight() / 4) / 2) + (getHeight() / 4) + this.baseline, this.text);
+            if (this.invert && this.outType == 1) {
+                canvas.drawCircle((getWidth() - this.pin) + this.radius, ((getHeight() / 4) / 2) + (getHeight() / 4), this.radius, this.ink);
+                width = (getWidth() - this.pin) + (this.radius * 2);
             } else {
-                width = getWidth() - pin;
+                width = getWidth() - this.pin;
             }
-            canvas.drawLine(width, ((getHeight() / 4) / 2) + (getHeight() / 4), getWidth(), ((getHeight() / 4) / 2) + (getHeight() / 4), ink);
+            canvas.drawLine(width, ((getHeight() / 4) / 2) + (getHeight() / 4), getWidth(), ((getHeight() / 4) / 2) + (getHeight() / 4), this.ink);
         }
-        if (selected) {
-            selection.setColor(-16711936);
-            selection.setAlpha(100);
-            canvas.drawRect(0.0f, 0.0f, getWidth(), getHeight(), selection);
+        if (this.selected) {
+            this.selection.setColor(-16711936);
+            this.selection.setAlpha(100);
+            canvas.drawRect(0.0f, 0.0f, getWidth(), getHeight(), this.selection);
         }
     }
 
     private void draw10(Canvas canvas) {
-        canvas.drawLine(getWidth() - pin, getHeight() / 2, getWidth(), getHeight() / 2, ink);
-        canvas.drawLine(stroke, getHeight() / 2, pin, getHeight() / 2, ink);
-        box.set(pin, stroke, getWidth() - pin, getHeight() - stroke);
-        ink.setStyle(Paint.Style.FILL);
-        ink.setColor(-7829368);
-        canvas.drawRect(box, ink);
-        ink.setStyle(Paint.Style.STROKE);
-        ink.setColor(-16777216);
-        canvas.drawRect(box, ink);
-        canvas.drawText(title, getWidth() / 2, (int) ((getHeight() / 2) - ((text.descent() + text.ascent()) / 2.0f)), text);
+        canvas.drawLine(getWidth() - this.pin, getHeight() / 2, getWidth(), getHeight() / 2, this.ink);
+        canvas.drawLine(this.stroke, getHeight() / 2, this.pin, getHeight() / 2, this.ink);
+        this.box.set(this.pin, this.stroke, getWidth() - this.pin, getHeight() - this.stroke);
+        this.ink.setStyle(Paint.Style.FILL);
+        this.ink.setColor(-7829368);
+        canvas.drawRect(this.box, this.ink);
+        this.ink.setStyle(Paint.Style.STROKE);
+        this.ink.setColor(-16777216);
+        canvas.drawRect(this.box, this.ink);
+        canvas.drawText(this.title, getWidth() / 2, (int) ((getHeight() / 2) - ((this.text.descent() + this.text.ascent()) / 2.0f)), this.text);
     }
 
     private void draw11(Canvas canvas) {
-        RectF rectF = box;
-        int i2 = stroke;
-        rectF.set(i2, i2, getWidth() - pin, getHeight() - stroke);
-        ink.setStyle(Paint.Style.FILL);
-        ink.setColor(-7829368);
-        canvas.drawRect(box, ink);
-        ink.setStyle(Paint.Style.STROKE);
-        ink.setColor(-16777216);
-        canvas.drawRect(box, ink);
-        canvas.drawText(title, (getWidth() / 2) - (pin / 2), (int) ((getHeight() / 2) - ((text.descent() + text.ascent()) / 2.0f)), text);
-        canvas.drawLine(getWidth() - pin, getHeight() / 2, getWidth(), getHeight() / 2, ink);
+        RectF rectF = this.box;
+        int i2 = this.stroke;
+        rectF.set(i2, i2, getWidth() - this.pin, getHeight() - this.stroke);
+        this.ink.setStyle(Paint.Style.FILL);
+        this.ink.setColor(-7829368);
+        canvas.drawRect(this.box, this.ink);
+        this.ink.setStyle(Paint.Style.STROKE);
+        this.ink.setColor(-16777216);
+        canvas.drawRect(this.box, this.ink);
+        canvas.drawText(this.title, (getWidth() / 2) - (this.pin / 2), (int) ((getHeight() / 2) - ((this.text.descent() + this.text.ascent()) / 2.0f)), this.text);
+        canvas.drawLine(getWidth() - this.pin, getHeight() / 2, getWidth(), getHeight() / 2, this.ink);
     }
 
     private void draw12(Canvas canvas) {
         
-        RectF rectF = box;
-        int i2 = stroke;
-        rectF.set(i2, i2, getWidth() - pin, getHeight() - stroke);
-        ink.setStyle(Paint.Style.FILL);
-        ink.setColor(-7829368);
-        canvas.drawRect(box, ink);
-        ink.setStyle(Paint.Style.STROKE);
-        ink.setColor(-16777216);
-        canvas.drawRect(box, ink);
-        canvas.drawText(title, (getWidth() / 2) - (pin / 2), (int) ((getHeight() / 2) - ((text.descent() + text.ascent()) / 2)), text);
-        canvas.drawLine(getWidth() - pin, getHeight() / 2.0f, getWidth(), getHeight() / 2.0f, ink);
+        RectF rectF = this.box;
+        int i2 = this.stroke;
+        rectF.set(i2, i2, getWidth() - this.pin, getHeight() - this.stroke);
+        this.ink.setStyle(Paint.Style.FILL);
+        this.ink.setColor(-7829368);
+        canvas.drawRect(this.box, this.ink);
+        this.ink.setStyle(Paint.Style.STROKE);
+        this.ink.setColor(-16777216);
+        canvas.drawRect(this.box, this.ink);
+        canvas.drawText(this.title, (getWidth() / 2) - (this.pin / 2), (int) ((getHeight() / 2) - ((this.text.descent() + this.text.ascent()) / 2)), this.text);
+        canvas.drawLine(getWidth() - this.pin, getHeight() / 2.0f, getWidth(), getHeight() / 2.0f, this.ink);
     }
 
     private void draw13(Canvas canvas) {
@@ -402,83 +402,83 @@ public final class OriginalFbdDrawing extends View {
 
     private void draw14(Canvas canvas) {
         int width;
-        ink.setStyle(Paint.Style.FILL);
-        ink.setColor(-7829368);
-        ink.setStrokeWidth(stroke);
-        box.set(pin, stroke, getWidth() - pin, getHeight() - stroke);
-        canvas.drawRect(box, ink);
-        ink.setStyle(Paint.Style.STROKE);
-        ink.setColor(-16777216);
-        canvas.drawRect(box, ink);
-        text.setTextAlign(Paint.Align.CENTER);
-        text.setFlags(1);
-        canvas.drawText(title, getWidth() / 2, (int) ((getHeight() / 2) - ((text.descent() + text.ascent()) / 2.0f)), text);
-        canvas.drawLine(0.0f, getHeight() / 4, pin, getHeight() / 4, ink);
-        canvas.drawLine(0.0f, (getHeight() / 4) * 3, pin, (getHeight() / 4) * 3, ink);
-        if (invert && outType == 1) {
-            canvas.drawCircle((getWidth() - pin) + radius, ((getHeight() / 3) / 2) + (getHeight() / 3), radius, ink);
-            width = (getWidth() - pin) + (radius * 2);
+        this.ink.setStyle(Paint.Style.FILL);
+        this.ink.setColor(-7829368);
+        this.ink.setStrokeWidth(this.stroke);
+        this.box.set(this.pin, this.stroke, getWidth() - this.pin, getHeight() - this.stroke);
+        canvas.drawRect(this.box, this.ink);
+        this.ink.setStyle(Paint.Style.STROKE);
+        this.ink.setColor(-16777216);
+        canvas.drawRect(this.box, this.ink);
+        this.text.setTextAlign(Paint.Align.CENTER);
+        this.text.setFlags(1);
+        canvas.drawText(this.title, getWidth() / 2, (int) ((getHeight() / 2) - ((this.text.descent() + this.text.ascent()) / 2.0f)), this.text);
+        canvas.drawLine(0.0f, getHeight() / 4, this.pin, getHeight() / 4, this.ink);
+        canvas.drawLine(0.0f, (getHeight() / 4) * 3, this.pin, (getHeight() / 4) * 3, this.ink);
+        if (this.invert && this.outType == 1) {
+            canvas.drawCircle((getWidth() - this.pin) + this.radius, ((getHeight() / 3) / 2) + (getHeight() / 3), this.radius, this.ink);
+            width = (getWidth() - this.pin) + (this.radius * 2);
         } else {
-            width = getWidth() - pin;
+            width = getWidth() - this.pin;
         }
-        canvas.drawLine(width, ((getHeight() / 3) / 2) + (getHeight() / 3), getWidth(), ((getHeight() / 3) / 2) + (getHeight() / 3), ink);
+        canvas.drawLine(width, ((getHeight() / 3) / 2) + (getHeight() / 3), getWidth(), ((getHeight() / 3) / 2) + (getHeight() / 3), this.ink);
     }
 
     private void draw15(Canvas canvas) {
         int width;
-        ink.setStyle(Paint.Style.FILL);
-        ink.setColor(-7829368);
-        ink.setStrokeWidth(stroke);
-        box.set(pin, stroke, getWidth() - pin, getHeight() - stroke);
-        canvas.drawRect(box, ink);
-        ink.setStyle(Paint.Style.STROKE);
-        ink.setColor(-16777216);
-        canvas.drawRect(box, ink);
-        text.setTextAlign(Paint.Align.CENTER);
-        text.setFlags(1);
-        text.setTextSize(getHeight() / 3);
-        canvas.drawText(title, getWidth() / 2, (int) ((getHeight() / 2) - ((text.descent() + text.ascent()) / 2.0f)), text);
-        canvas.drawLine(0.0f, getHeight() / 4, pin, getHeight() / 4, ink);
-        canvas.drawLine(0.0f, (getHeight() / 4) * 3, pin, (getHeight() / 4) * 3, ink);
-        if (invert && outType == 1) {
-            canvas.drawCircle((getWidth() - pin) + radius, ((getHeight() / 3) / 2) + (getHeight() / 3), radius, ink);
-            width = (getWidth() - pin) + (radius * 2);
+        this.ink.setStyle(Paint.Style.FILL);
+        this.ink.setColor(-7829368);
+        this.ink.setStrokeWidth(this.stroke);
+        this.box.set(this.pin, this.stroke, getWidth() - this.pin, getHeight() - this.stroke);
+        canvas.drawRect(this.box, this.ink);
+        this.ink.setStyle(Paint.Style.STROKE);
+        this.ink.setColor(-16777216);
+        canvas.drawRect(this.box, this.ink);
+        this.text.setTextAlign(Paint.Align.CENTER);
+        this.text.setFlags(1);
+        this.text.setTextSize(getHeight() / 3);
+        canvas.drawText(this.title, getWidth() / 2, (int) ((getHeight() / 2) - ((this.text.descent() + this.text.ascent()) / 2.0f)), this.text);
+        canvas.drawLine(0.0f, getHeight() / 4, this.pin, getHeight() / 4, this.ink);
+        canvas.drawLine(0.0f, (getHeight() / 4) * 3, this.pin, (getHeight() / 4) * 3, this.ink);
+        if (this.invert && this.outType == 1) {
+            canvas.drawCircle((getWidth() - this.pin) + this.radius, ((getHeight() / 3) / 2) + (getHeight() / 3), this.radius, this.ink);
+            width = (getWidth() - this.pin) + (this.radius * 2);
         } else {
-            width = getWidth() - pin;
+            width = getWidth() - this.pin;
         }
-        canvas.drawLine(width, ((getHeight() / 3) / 2) + (getHeight() / 3), getWidth(), ((getHeight() / 3) / 2) + (getHeight() / 3), ink);
+        canvas.drawLine(width, ((getHeight() / 3) / 2) + (getHeight() / 3), getWidth(), ((getHeight() / 3) / 2) + (getHeight() / 3), this.ink);
     }
 
     private void draw16(Canvas canvas) {
         int width;
-        ink.setFlags(1);
-        path.setFillType(Path.FillType.EVEN_ODD);
-        ink.setStrokeWidth(stroke);
-        text.setTextAlign(Paint.Align.CENTER);
-        text.setFlags(1);
-        text.setTextSize(getHeight() / 3);
-        path.reset();
-        canvas.drawLine(pin, getHeight() / 4, 0.0f, getHeight() / 4, ink);
-        canvas.drawLine(pin, (getHeight() / 4) * 3, 0.0f, (getHeight() / 4) * 3, ink);
-        path.moveTo(pin, 0.0f);
-        path.lineTo(pin, getHeight());
-        path.lineTo(getWidth() - pin, getHeight() / 2);
-        path.lineTo(pin, 0.0f);
-        path.close();
-        ink.setStyle(Paint.Style.FILL);
-        ink.setColor(-7829368);
-        canvas.drawPath(path, ink);
-        ink.setStyle(Paint.Style.STROKE);
-        ink.setColor(-16777216);
-        canvas.drawPath(path, ink);
-        if (invert) {
-            canvas.drawCircle((getWidth() - pin) + radius, getHeight() / 2, radius, ink);
-            width = (getWidth() - pin) + (radius * 2);
+        this.ink.setFlags(1);
+        this.path.setFillType(Path.FillType.EVEN_ODD);
+        this.ink.setStrokeWidth(this.stroke);
+        this.text.setTextAlign(Paint.Align.CENTER);
+        this.text.setFlags(1);
+        this.text.setTextSize(getHeight() / 3);
+        this.path.reset();
+        canvas.drawLine(this.pin, getHeight() / 4, 0.0f, getHeight() / 4, this.ink);
+        canvas.drawLine(this.pin, (getHeight() / 4) * 3, 0.0f, (getHeight() / 4) * 3, this.ink);
+        this.path.moveTo(this.pin, 0.0f);
+        this.path.lineTo(this.pin, getHeight());
+        this.path.lineTo(getWidth() - this.pin, getHeight() / 2);
+        this.path.lineTo(this.pin, 0.0f);
+        this.path.close();
+        this.ink.setStyle(Paint.Style.FILL);
+        this.ink.setColor(-7829368);
+        canvas.drawPath(this.path, this.ink);
+        this.ink.setStyle(Paint.Style.STROKE);
+        this.ink.setColor(-16777216);
+        canvas.drawPath(this.path, this.ink);
+        if (this.invert) {
+            canvas.drawCircle((getWidth() - this.pin) + this.radius, getHeight() / 2, this.radius, this.ink);
+            width = (getWidth() - this.pin) + (this.radius * 2);
         } else {
-            width = getWidth() - pin;
+            width = getWidth() - this.pin;
         }
-        canvas.drawLine(width, getHeight() / 2, getWidth(), getHeight() / 2, ink);
-        canvas.drawText(title, pin * 2, (int) ((getHeight() / 2) - ((text.descent() + text.ascent()) / 2.0f)), text);
+        canvas.drawLine(width, getHeight() / 2, getWidth(), getHeight() / 2, this.ink);
+        canvas.drawText(title, this.pin * 2, (int) ((getHeight() / 2) - ((this.text.descent() + this.text.ascent()) / 2.0f)), this.text);
     }
     private Path u(RectF rectF,float f2,float f3,float f4,float f5) {
         Path path = new Path();

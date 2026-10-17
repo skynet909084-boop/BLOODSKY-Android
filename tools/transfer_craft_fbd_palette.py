@@ -83,7 +83,7 @@ def drawing(decoded):
             draw_source = source if 'protected void onDraw(Canvas canvas) {' in source else (Path(decoded)/'jadx/sources/ru/himik/nightscream/kascada/Logic/c'/f'{base}.java').read_text()
             body = method(draw_source, 'protected void onDraw(Canvas canvas) {')
             body = body.replace('super.onDraw(canvas);', '').replace('j.d(canvas, "canvas");', '')
-            body = re.sub(r'this\.(\w+)', lambda m: BASE_FIELDS[base].get(m.group(1), 'UNMAPPED_'+m.group(1)), body)
+            body = re.sub(r'this\.(\w+)', lambda m: 'this.' + BASE_FIELDS[base].get(m.group(1), 'UNMAPPED_'+m.group(1)), body)
             body = body.replace('getName()', 'title')
             if 'UNMAPPED_' in body: raise ValueError(name+': '+body)
         body = body.rstrip()

@@ -13,6 +13,8 @@ class OriginalFbdPaletteTests(unittest.TestCase):
         for folder,landscape in [('layout',False),('layout-land',True)]:
             self.assertEqual(layout(decoded,landscape),(ROOT/'app/src/main/res'/folder/'kc_fragment_component_logic_bar.xml').read_text())
         self.assertEqual(40,len(inventory(decoded)))
+        self.assertNotIn('Path path = path;',drawing(decoded))
+        self.assertIn('Path path = this.path;',drawing(decoded))
 
     def test_every_thumbnail_is_a_drawing_and_only_explicit_supported_entries_are_enabled(self):
         root=ET.parse(ROOT/'app/src/main/res/layout/kc_fragment_component_logic_bar.xml')
