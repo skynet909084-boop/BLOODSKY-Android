@@ -15,7 +15,7 @@ Input FBD widgets already accept the existing `tcp://host:port/unit/address` Mod
 
 ## Safety and known limitations
 
-- `fbd://N` is positional: inserting/deleting/reordering widgets can change the referred block. Use stable screen layouts; a future ID-backed reference format is recommended before claiming source Craft project portability.
+- `fbd://N` is positional: deletion now reindexes surviving bindings to preserve source identity; deleting the referenced source marks it `fbd://missing-N` so runtime displays `CFG` instead of silently showing another block. Independent add-at-end does not change existing references. External import/reorder operations still require ID-backed source references before claiming original Craft compatibility.
 - This binding updates **presentation values**, not Modbus output coils/registers and not audio event handling outside existing widget flows.
 - The runtime evaluates FBD once per Android canvas update; larger timing/runtime performance remains hardware-dependent.
 - Original Craft native tag/register/FBD interop, real hardware and pixel-level UI parity are separate acceptance tasks. This extension is BLOODSKY-specific.
