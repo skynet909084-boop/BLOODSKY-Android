@@ -356,6 +356,25 @@ public class FbdDisconnectTest {
         assertFalse(MainActivity.hasCompatibleKnownFbdPins(edge, "FBD Вход", "FBD SR"));
     }
 
+    @Test public void counterPinContractsAndNumericPvFallback() throws Exception {
+        assertArrayEquals(new String[]{"CU", "R", "PV"}, MainActivity.knownFbdPins("FBD CTU", false));
+        assertArrayEquals(new String[]{"CD", "LD", "PV"}, MainActivity.knownFbdPins("FBD CTD", false));
+        assertEquals("NUMBER", MainActivity.knownFbdPinType("FBD CTU", "PV", false));
+        assertEquals("BOOL", MainActivity.knownFbdPinType("FBD CTD", "LD", false));
+        assertEquals(null, MainActivity.knownFbdPinType("FBD CTU", "CD", false));
+        assertEquals(12, MainActivity.fbdCounterPreset(java.util.Arrays.asList(12.0, 1.0),
+                java.util.Arrays.asList("PV", "CU"), 3));
+        assertEquals(3, MainActivity.fbdCounterPreset(java.util.Arrays.asList(-1.0),
+                java.util.Arrays.asList("PV"), 3));
+        assertEquals(1000000, MainActivity.fbdCounterPreset(java.util.Arrays.asList(Double.NaN),
+                java.util.Arrays.asList("PV"), Integer.MAX_VALUE));
+        JSONObject edge = new JSONObject().put("source", 0).put("target", 1)
+                .put("sourcePin", "Q").put("targetPin", "CU");
+        assertTrue(MainActivity.hasCompatibleKnownFbdPins(edge, "FBD Вход", "FBD CTU"));
+        edge.put("targetPin", "PV");
+        assertFalse(MainActivity.hasCompatibleKnownFbdPins(edge, "FBD Вход", "FBD CTU"));
+    }
+
     @Test public void invalidEndpointsDoNotMutateGraph() {
         List<MainActivity.FbdConnection> edges = new ArrayList<>();
         edges.add(new MainActivity.FbdConnection(0, 1));
