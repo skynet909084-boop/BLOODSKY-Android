@@ -17,14 +17,20 @@ public final class FbdSourceCanvasSkin {
     public static boolean supports(String type) {
         return "FBD И".equals(type) || "FBD ИЛИ".equals(type)
                 || "FBD XOR".equals(type) || "FBD Таймер".equals(type)
-                || "FBD TOF".equals(type) || "FBD TP".equals(type);
+                || "FBD TOF".equals(type) || "FBD TP".equals(type)
+                || "FBD Сравнение".equals(type);
     }
 
     public static boolean shouldUse(MainActivity.Widget w) {
-        return w != null && supports(w.type) && w.backgroundColor == 0
-                && w.textColor == Color.rgb(31, 41, 55)
-                && w.textSizeSp == 14 && w.showFrame && !w.autoResizeText
-                && w.w >= 70 && w.h >= 36;
+        if (w == null || !supports(w.type) || w.backgroundColor != 0
+                || w.textColor != Color.rgb(31, 41, 55)
+                || w.textSizeSp != 14 || !w.showFrame || w.autoResizeText
+                || w.w < 70 || w.h < 36) return false;
+        String defaultCaption = "FBD И".equals(w.type) ? "И" : "FBD ИЛИ".equals(w.type) ? "ИЛИ"
+                : "FBD Сравнение".equals(w.type) ? "Сравнение"
+                : isTimer(w.type) ? FbdDurationUnits.modeForType(w.type) : "XOR";
+        // Preserve manually edited labels by falling back to the editable skin.
+        return w.text == null || w.text.isEmpty() || defaultCaption.equals(w.text);
     }
 
     public static float inputY(String type, String name) {
@@ -86,7 +92,9 @@ public final class FbdSourceCanvasSkin {
             brush.setTextAlign(Paint.Align.CENTER);
             brush.setTextSize(Math.min(12f * density, Math.max(7f * density, w.h / 5f)));
             String name = "FBD И".equals(w.type) ? "AND" : "FBD ИЛИ".equals(w.type) ? "OR"
-                    : "FBD XOR".equals(w.type) ? "XOR" : FbdDurationUnits.modeForType(w.type);
+                    : "FBD XOR".equals(w.type) ? "XOR"
+                    : "FBD Сравнение".equals(w.type) ? w.compareOperator
+                    : FbdDurationUnits.modeForType(w.type);
             float center = (left + right) / 2f;
             if (divided) {
                 canvas.drawText(name, center, y0 + w.h / 6f
