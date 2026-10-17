@@ -42,14 +42,9 @@ jobs:
         env:
           CONFIRMED: ${{ vars.BLOODSKY_FREE_TIER_CONFIRMED }}
           FREE_KEY: ${{ secrets.GROQ_FREE_API_KEY }}
-          PUBLISH: ${{ inputs.publish }}
-          PR_TOKEN: ${{ secrets.BLOODSKY_AGENT_TOKEN }}
         run: |
           test "$CONFIRMED" = true || { echo '::error::Confirm a free-only Groq account without billing first.'; exit 1; }
           test -n "$FREE_KEY" || { echo '::error::GROQ_FREE_API_KEY is missing.'; exit 1; }
-          if [ "$PUBLISH" = true ]; then
-            test -n "$PR_TOKEN" || { echo '::error::BLOODSKY_AGENT_TOKEN is required to trigger independent PR CI.'; exit 1; }
-          fi
       - name: Checkout immutable FreeLLMAPI v0.15.0 source
         uses: actions/checkout@v4
         with:
@@ -113,6 +108,8 @@ jobs:
         run: python3 -m unittest discover -s tools -p 'test_*.py' -v
       - name: Android unit tests including the proposed tests
         run: gradle testDebugUnitTest --stacktrace
+      - name: Verify every proposed class actually executed passing tests
+        run: python3 tools/check_cloud_test_results.py "$RUNNER_TEMP/cloud-proposal/proposal.json" app/build/test-results/testDebugUnitTest
       - name: Build debug APK with the proposed tests
         run: gradle assembleDebug --stacktrace
       - name: Retain independent validation reports
@@ -163,6 +160,7 @@ jobs:
           BRANCH: automation/cloud-agent-${{ github.run_id }}
         run: |
           set -euo pipefail
+          test -n "$GH_TOKEN" || { echo '::error::BLOODSKY_AGENT_TOKEN is required to trigger independent PR CI.'; exit 1; }
           git config user.name 'BLOODSKY cloud pilot'
           git config user.email 'bloodsky-cloud@users.noreply.github.com'
           git switch -c "$BRANCH"

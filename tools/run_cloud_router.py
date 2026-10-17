@@ -6,7 +6,6 @@ outbound internet. Live mode uses only one explicitly selected Groq free model.
 Never upload router logs, its database, generated keys or startup configuration.
 """
 import argparse
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
@@ -40,35 +39,6 @@ public class CloudAgentRouterContractTest {
 '''
 
 
-class FixtureHandler(BaseHTTPRequestHandler):
-    calls = 0
-
-    def log_message(self, *_):
-        pass
-
-    def do_POST(self):
-        size = int(self.headers.get("Content-Length", "0"))
-        if self.path != "/v1/chat/completions" or not 0 < size <= 150000:
-            self.send_error(400)
-            return
-        request = json.loads(self.rfile.read(size))
-        if request.get("model") != FIXTURE_MODEL:
-            self.send_error(400)
-            return
-        type(self).calls += 1
-        proposal = {"files": [{"path": "app/src/test/java/com/bloodsky/hmi/CloudAgentRouterContractTest.java",
-                               "content": FIXTURE_SOURCE}]}
-        response = {"id": "contract", "object": "chat.completion", "created": 0,
-                    "model": FIXTURE_MODEL, "choices": [{"index": 0, "finish_reason": "stop",
-                    "message": {"role": "assistant", "content": json.dumps(proposal)}}],
-                    "usage": {"prompt_tokens": 100, "completion_tokens": 200, "total_tokens": 300}}
-        data = json.dumps(response).encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
-
 
 def docker(*args, **kwargs):
     # Capture output because Docker/node diagnostics may include configuration.
@@ -81,21 +51,18 @@ def docker(*args, **kwargs):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fixture-server", action="store_true")
     parser.add_argument("--mode", choices=("fixture", "live"), default="fixture")
     parser.add_argument("--image", default="bloodsky-freellmapi:pilot")
     parser.add_argument("--task-file", type=Path)
     parser.add_argument("--context", nargs="+")
     parser.add_argument("--output", type=Path, default=Path("cloud-output"))
     args = parser.parse_args()
-    if args.fixture_server:
-        ThreadingHTTPServer(("0.0.0.0", 3002), FixtureHandler).serve_forever()
-        return
     if args.mode == "live" and (os.environ.get("BLOODSKY_FREE_TIER_CONFIRMED") != "true"
                                 or not os.environ.get("GROQ_FREE_API_KEY")):
         raise RuntimeError("Live mode requires confirmed free-only Groq account and GROQ_FREE_API_KEY")
     suffix = secrets.token_hex(6)
     router, fixture, network = "bloodsky-router-" + suffix, "bloodsky-fixture-" + suffix, "bloodsky-" + suffix
+    relay, front = "bloodsky-relay-" + suffix, "bloodsky-front-" + suffix
     root = Path(__file__).resolve().parents[1]
     model = FIXTURE_MODEL if args.mode == "fixture" else LIVE_MODEL
     with tempfile.TemporaryDirectory(prefix="bloodsky-router-") as temp:
@@ -111,7 +78,7 @@ def main():
             config["fallback"] = [{"platform": "groq", "modelId": model, "priority": 1}]
         env_file = work / "router.env"
         env_file.write_text("ENCRYPTION_KEY=" + secrets.token_hex(32)
-                            + "\nNODE_ENV=production\nCATALOG_SYNC_DISABLED=1\n"
+                            + "\nNODE_ENV=production\nHOST=0.0.0.0\nCATALOG_SYNC_DISABLED=1\n"
                             + "FREEAPI_CONFIG_JSON=" + json.dumps(config) + "\n", encoding="utf-8")
         env_file.chmod(0o600)
         try:
@@ -129,8 +96,22 @@ def main():
                           "s.writeHead(200,{'Content-Type':'application/json'});s.end(body);});}).listen(3002,'0.0.0.0');")
                 docker("run", "-d", "--name", fixture, "--network", network,
                        "--entrypoint", "node", args.image, "-e", server)
+            ports = [] if args.mode == "fixture" else ["-p", "127.0.0.1:3001:3001"]
             docker("run", "-d", "--name", router, "--network", network,
-                   "-p", "127.0.0.1:3001:3001", "--env-file", str(env_file), args.image)
+                   *ports, "--env-file", str(env_file), args.image)
+            if args.mode == "fixture":
+                # Docker does not publish ports for an internal-only network.
+                # A fixed-target relay exposes loopback without giving either
+                # the router or fixture an internet route. It cannot proxy to
+                # an arbitrary destination supplied by a request.
+                docker("network", "create", front)
+                proxy = ("const h=require('http');h.createServer((q,s)=>{"
+                         "const r=h.request({hostname:" + json.dumps(router) + ",port:3001,"
+                         "path:q.url,method:q.method,headers:q.headers},p=>{s.writeHead(p.statusCode,p.headers);p.pipe(s);});"
+                         "r.on('error',()=>{s.writeHead(502);s.end();});q.pipe(r);}).listen(3003,'0.0.0.0');")
+                docker("run", "-d", "--name", relay, "--network", front,
+                       "-p", "127.0.0.1:3001:3003", "--entrypoint", "node", args.image, "-e", proxy)
+                docker("network", "connect", network, relay)
             opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
             for attempt in range(60):
                 try:
@@ -140,7 +121,9 @@ def main():
                 except (urllib.error.URLError, TimeoutError):
                     time.sleep(1)
             else:
-                raise RuntimeError("Router did not become healthy")
+                state = json.loads(docker("inspect", "--format", "{{json .State}}", router))
+                raise RuntimeError("Router did not become healthy (status=" + state.get("Status", "unknown")
+                                   + ", exit=" + str(state.get("ExitCode")) + ")")
             key = docker("exec", router, "node", "--input-type=module", "-e",
                          "import {getUnifiedApiKey} from './server/dist/db/index.js'; console.log(getUnifiedApiKey())")
             # Initialization can emit migration messages; accept only the key line.
@@ -168,14 +151,18 @@ def main():
             report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
             print("Router contract completed (" + args.mode + "); patch awaits independent tests.")
         finally:
-            for name in (router, fixture):
+            for name in (relay, router, fixture):
                 subprocess.run(["docker", "rm", "-f", name], capture_output=True, timeout=30)
-            subprocess.run(["docker", "network", "rm", network], capture_output=True, timeout=30)
+            for name in (front, network):
+                subprocess.run(["docker", "network", "rm", name], capture_output=True, timeout=30)
 
 
 if __name__ == "__main__":
     try:
         main()
-    except (RuntimeError, subprocess.SubprocessError):
+    except RuntimeError as error:
+        print("Cloud router pilot failed: " + str(error) + "; raw router logs suppressed.", file=sys.stderr)
+        raise SystemExit(1)
+    except subprocess.SubprocessError:
         print("Cloud router pilot failed; credentials and raw router logs suppressed.", file=sys.stderr)
         raise SystemExit(1)

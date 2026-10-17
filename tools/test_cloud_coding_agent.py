@@ -7,9 +7,15 @@ import tempfile
 import threading
 import unittest
 from unittest.mock import patch
+import contextlib
+import hashlib
+import io
+import os
+import sys
 
 import cloud_coding_agent as agent
 from run_cloud_router import FIXTURE_SOURCE, UPSTREAM_SHA
+from check_cloud_test_results import verify
 
 NAME = agent.TEST_PREFIX + "CloudAgentRouterContractTest.java"
 
@@ -168,6 +174,55 @@ class HttpContractTests(unittest.TestCase):
         self.assertNotIn("pull_request_target:", workflow)
         self.assertIn("needs: validate", workflow)
         self.assertIn("--draft", workflow)
+
+    def test_cli_artifact_round_trip_cleans_generation_checkout(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "docs").mkdir()
+            (root / "AGENTS.md").write_text("instructions")
+            (root / "docs/BLOODSKY_SAFE_AUTONOMOUS_AGENT.md").write_text("rules")
+            java = root / "app/src/main/java/com/bloodsky/hmi/Small.java"
+            java.parent.mkdir(parents=True)
+            java.write_text("class Small {}")
+            task = root / "task.txt"
+            task.write_text("Add boundary coverage")
+            output = root / "output"
+            proposal = {"files": [{"path": NAME, "content": FIXTURE_SOURCE}]}
+            url, _ = self.request(body=json.dumps({"choices": [{"finish_reason": "stop",
+                                    "message": {"content": json.dumps(proposal)}}]}).encode())
+            argv = ["agent", "--root", str(root), "--task-file", str(task), "--model", "fixture",
+                    "--context", java.relative_to(root).as_posix(), "--output", str(output)]
+            with patch.object(sys, "argv", argv), patch.dict(os.environ, {
+                    "FREELLMAPI_BASE_URL": url, "FREELLMAPI_API_KEY": "test-private-token"}), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(agent.main(), 0)
+            self.assertFalse((root / NAME).exists())
+            report = json.loads((output / "report.json").read_text())
+            self.assertEqual(report["patch_sha256"], hashlib.sha256((output / "proposal.patch").read_bytes()).hexdigest())
+            self.assertEqual(report["validation"], "pending independent job")
+            for artifact in output.iterdir():
+                self.assertNotIn("test-private-token", artifact.read_text())
+            agent.apply_proposal(root, json.loads((output / "proposal.json").read_text()))
+            self.assertEqual((root / NAME).read_text(), FIXTURE_SOURCE)
+
+
+class JunitEvidenceTests(unittest.TestCase):
+    def test_missing_empty_skipped_failed_and_passing_reports(self):
+        proposal = {"files": [{"path": NAME}]}
+        classname = "com.bloodsky.hmi.CloudAgentRouterContractTest"
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            with self.assertRaises(agent.AgentError):
+                verify(proposal, root)
+            report = root / "TEST-proposed.xml"
+            for child in ("<skipped/>", "<failure/>", "<error/>"):
+                report.write_text('<testsuite><testcase classname="' + classname + '">' + child + '</testcase></testsuite>')
+                with self.assertRaises(agent.AgentError):
+                    verify(proposal, root)
+            report.write_text('<testsuite><testcase classname="' + classname + '"/></testsuite>')
+            self.assertEqual(verify(proposal, root), 1)
+            proposal["files"].append({"path": agent.TEST_PREFIX + "CloudAgentAnotherTest.java"})
+            with self.assertRaises(agent.AgentError):
+                verify(proposal, root)
 
 
 if __name__ == "__main__":

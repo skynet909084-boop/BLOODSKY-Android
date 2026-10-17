@@ -37,6 +37,7 @@ class AgentError(ValueError):
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
+        fp.close()
         raise AgentError("Router redirects are forbidden")
 
 
@@ -89,7 +90,11 @@ def complete(base_url, key, model, task, context):
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
         with opener.open(request, timeout=90) as response:
             data = response.read(MAX_RESPONSE + 1)
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+    except urllib.error.HTTPError as error:
+        status = error.code
+        error.close()
+        raise AgentError("FreeLLMAPI HTTP " + str(status) + "; no automatic provider retry") from None
+    except (urllib.error.URLError, TimeoutError, OSError):
         # Provider error bodies/URLs can echo secrets. Never print them.
         raise AgentError("FreeLLMAPI request failed; no automatic provider retry") from None
     if len(data) > MAX_RESPONSE:
