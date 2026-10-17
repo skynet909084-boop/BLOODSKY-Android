@@ -1239,6 +1239,9 @@ public class MainActivity extends Activity {
 
     private void toggleOperatorMode() {
         if (!persistProjectNow(true)) return;
+        // Editing must not advance timers. Re-entering runtime starts a fresh
+        // clock epoch rather than resuming an old saved elapsedRealtime value.
+        if (!operatorMode) for (Widget value : widgets) resetFbdTimerRuntime(value);
         operatorMode = !operatorMode; fbdWireMode = false; wireSource = -1;
         showEditor();
     }
@@ -1257,6 +1260,9 @@ public class MainActivity extends Activity {
             });
             menu.getMenu().add("Удалить связь FBD…").setOnMenuItemClickListener(item -> {
                 showFbdDisconnectDialog(); return true;
+            });
+            menu.getMenu().add("Инвертировать BOOL-связь FBD…").setOnMenuItemClickListener(item -> {
+                showFbdInversionDialog(); return true;
             });
             if (currentScreenIndex >= 0 && currentScreenIndex < screens.size()) {
                 Screen current = screens.get(currentScreenIndex);
@@ -1801,8 +1807,17 @@ public class MainActivity extends Activity {
         connectionLabel.setPadding(0, dp(10), 0, 0);
         form.addView(connectionLabel);
         EditText connectionField = propertyField(w.connectionInfo == null ? "" : w.connectionInfo, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        connectionField.setHint("tcp://192.168.1.10:502/1/40001 (FC03); для Input Registers: 30001 (FC04)");
+        connectionField.setHint("tcp://192.168.1.10:502/1/40001 (FC03/FC04) или fbd://N (номер блока с 1)");
         form.addView(connectionField);
+
+        final android.widget.CheckBox fbdInputField;
+        if ("FBD Вход".equals(w.type)) {
+            fbdInputField = new android.widget.CheckBox(this);
+            fbdInputField.setText("Постоянное значение FBD-входа (1 / 0)");
+            fbdInputField.setContentDescription("Значение входа FBD");
+            fbdInputField.setChecked(w.inputValue);
+            form.addView(fbdInputField);
+        } else fbdInputField = null;
 
         final EditText[] dynStateFields = new EditText[4];
         if ("Динамический текст".equals(w.type)) {
@@ -2023,6 +2038,7 @@ public class MainActivity extends Activity {
                     }
                     w.text = textField.getText().toString();
                     w.connectionInfo = connectionField.getText().toString().trim();
+                    if (fbdInputField != null) w.inputValue = fbdInputField.isChecked();
                     if ("Динамический текст".equals(w.type)) {
                         for (int k = 0; k < 4; k++) {
                             if (dynStateFields[k] != null) {
@@ -2219,6 +2235,12 @@ public class MainActivity extends Activity {
         int removed = editor.selected;
         fbdWireHistory.clear();
         widgets.remove(removed);
+        // A positional fbd://N reference must never silently switch to a
+        // different source after deletion. Missing sources render CFG.
+        for (Widget survivor : widgets) {
+            survivor.connectionInfo = FbdResultBinding.afterWidgetRemoved(
+                    survivor.connectionInfo, removed);
+        }
         if (!screens.isEmpty()) {
             Screen screen = screens.get(currentScreenIndex);
             List<FbdConnection> kept = new ArrayList<>();
@@ -2524,6 +2546,10 @@ public class MainActivity extends Activity {
         }
         if (screens.isEmpty()) screens.add(new Screen("Экран 1"));
         currentScreenIndex = Math.max(0, Math.min(currentScreenIndex, screens.size() - 1));
+        // elapsedRealtime belongs to the running device, not a saved project.
+        // Retain presets and unknown fields, discard only timer runtime epoch.
+        for (Screen loaded : screens) for (Widget saved : loaded.widgets)
+            resetFbdTimerRuntime(saved);
         for (Widget w : screens.get(currentScreenIndex).widgets) widgets.add(copyWidget(w));
         return true;
     }
@@ -2736,6 +2762,25 @@ public class MainActivity extends Activity {
             }
             if (!output && "PV".equals(name)) return "NUMBER";
         }
+        if (kind.equals("FBD СЛОЖЕНИЕ") || kind.equals("FBD ВЫЧИТАНИЕ")
+                || kind.equals("FBD УМНОЖЕНИЕ") || kind.equals("FBD ДЕЛЕНИЕ")
+                || kind.equals("FBD MIN_MAX")) {
+            if (output && "OUT".equals(name)) return "NUMBER";
+            if (!output && ("IN1".equals(name) || "IN2".equals(name))) return "NUMBER";
+        }
+        if (kind.equals("FBD СРАВНЕНИЕ")) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && ("A".equals(name) || "B".equals(name))) return "NUMBER";
+        }
+        if (kind.equals("FBD MOVE")) {
+            if (output && "OUT".equals(name)) return "NUMBER";
+            if (!output && "IN".equals(name)) return "NUMBER";
+        }
+        if (kind.equals("FBD SEL")) {
+            if (output && "OUT".equals(name)) return "NUMBER";
+            if (!output && "G".equals(name)) return "BOOL";
+            if (!output && ("IN0".equals(name) || "IN1".equals(name))) return "NUMBER";
+        }
         if (kind.equals("FBD POW")) {
             if (output && "OUT".equals(name)) return "NUMBER";
             if (!output && ("BASE".equals(name) || "EXP".equals(name))) return "NUMBER";
@@ -2882,6 +2927,13 @@ public class MainActivity extends Activity {
                 && Boolean.TRUE.equals(values.get(legacyIndex));
     }
 
+    /** Imported unnamed graphs retain positional math; new named ones use terminals. */
+    public static boolean hasNamedFbdInput(List<String> pins) {
+        if (pins == null) return false;
+        for (String pin : pins) if (!canonicalFbdPinName(pin).isEmpty()) return true;
+        return false;
+    }
+
     /** Numeric terminal lookup; unnamed legacy connections retain their positional index. */
     public static double fbdNumericPinValue(List<Double> values, List<String> pins,
                                             String targetPin, int legacyIndex, double defaultValue) {
@@ -2953,8 +3005,13 @@ public class MainActivity extends Activity {
             for (FbdConnection connection : connectionsList) {
                 if (connection.target == index) {
                     inputPins.add(connection.extraFields.optString("targetPin", ""));
-                    inputs.add(evaluateFbdBlock(widgetsList, connectionsList, connection.source, visiting, cacheValid, cacheValues, cacheNumeric));
-                    numInputs.add(evaluateFbdBlockNumeric(widgetsList, connectionsList, connection.source, visiting, cacheValid, cacheValues, cacheNumeric));
+                    boolean sourceValue = evaluateFbdBlock(widgetsList, connectionsList, connection.source,
+                            visiting, cacheValid, cacheValues, cacheNumeric);
+                    String sourceType = connection.source >= 0 && connection.source < widgetsList.size()
+                            ? widgetsList.get(connection.source).type : "";
+                    inputs.add(effectiveFbdBooleanInput(connection, sourceType, widget.type, sourceValue));
+                    numInputs.add(evaluateFbdBlockNumeric(widgetsList, connectionsList, connection.source,
+                            visiting, cacheValid, cacheValues, cacheNumeric));
                 }
             }
         }
@@ -2963,30 +3020,52 @@ public class MainActivity extends Activity {
 
         if ("FBD Сложение".equals(widget.type)) {
             double sum = 0.0;
-            for (Double v : numInputs) sum += v;
+            if (hasNamedFbdInput(inputPins)) {
+                sum = fbdNumericPinValue(numInputs, inputPins, "IN1", 0, 0.0)
+                        + fbdNumericPinValue(numInputs, inputPins, "IN2", 1, 0.0);
+            } else for (Double v : numInputs) sum += v;
             if (Double.isNaN(sum) || Double.isInfinite(sum)) sum = 0.0;
             cacheNumeric[index] = sum;
             return sum != 0.0;
         }
         if ("FBD Вычитание".equals(widget.type)) {
-            double diff = numInputs.isEmpty() ? 0.0 : numInputs.get(0);
-            for (int i = 1; i < numInputs.size(); i++) diff -= numInputs.get(i);
+            double diff;
+            if (hasNamedFbdInput(inputPins)) {
+                diff = fbdNumericPinValue(numInputs, inputPins, "IN1", 0, 0.0)
+                        - fbdNumericPinValue(numInputs, inputPins, "IN2", 1, 0.0);
+            } else {
+                diff = numInputs.isEmpty() ? 0.0 : numInputs.get(0);
+                for (int i = 1; i < numInputs.size(); i++) diff -= numInputs.get(i);
+            }
             if (Double.isNaN(diff) || Double.isInfinite(diff)) diff = 0.0;
             cacheNumeric[index] = diff;
             return diff != 0.0;
         }
         if ("FBD Умножение".equals(widget.type)) {
-            double prod = numInputs.isEmpty() ? 0.0 : 1.0;
-            for (Double v : numInputs) prod *= v;
+            double prod;
+            if (hasNamedFbdInput(inputPins)) {
+                prod = fbdNumericPinValue(numInputs, inputPins, "IN1", 0, 0.0)
+                        * fbdNumericPinValue(numInputs, inputPins, "IN2", 1, 0.0);
+            } else {
+                prod = numInputs.isEmpty() ? 0.0 : 1.0;
+                for (Double v : numInputs) prod *= v;
+            }
             if (Double.isNaN(prod) || Double.isInfinite(prod)) prod = 0.0;
             cacheNumeric[index] = prod;
             return prod != 0.0;
         }
         if ("FBD Деление".equals(widget.type)) {
-            double div = numInputs.isEmpty() ? 0.0 : numInputs.get(0);
-            for (int i = 1; i < numInputs.size(); i++) {
-                double denom = numInputs.get(i);
-                div = (denom != 0.0) ? div / denom : 0.0;
+            double div;
+            if (hasNamedFbdInput(inputPins)) {
+                double numerator = fbdNumericPinValue(numInputs, inputPins, "IN1", 0, 0.0);
+                double denominator = fbdNumericPinValue(numInputs, inputPins, "IN2", 1, 0.0);
+                div = denominator != 0.0 ? numerator / denominator : 0.0;
+            } else {
+                div = numInputs.isEmpty() ? 0.0 : numInputs.get(0);
+                for (int i = 1; i < numInputs.size(); i++) {
+                    double denom = numInputs.get(i);
+                    div = denom != 0.0 ? div / denom : 0.0;
+                }
             }
             if (Double.isNaN(div) || Double.isInfinite(div)) div = 0.0;
             cacheNumeric[index] = div;
@@ -3046,14 +3125,27 @@ public class MainActivity extends Activity {
             return val != 0.0;
         }
         if ("FBD MIN_MAX".equals(widget.type)) {
-            double minV = numInputs.isEmpty() ? 0.0 : numInputs.get(0);
-            for (Double v : numInputs) minV = Math.min(minV, v);
+            double minV;
+            if (hasNamedFbdInput(inputPins)) {
+                minV = Math.min(fbdNumericPinValue(numInputs, inputPins, "IN1", 0, 0.0),
+                        fbdNumericPinValue(numInputs, inputPins, "IN2", 1, 0.0));
+            } else {
+                minV = numInputs.isEmpty() ? 0.0 : numInputs.get(0);
+                for (Double v : numInputs) minV = Math.min(minV, v);
+            }
             if (Double.isNaN(minV) || Double.isInfinite(minV)) minV = 0.0;
             cacheNumeric[index] = minV;
             return minV != 0.0;
         }
         if ("FBD MOVE".equals(widget.type) || "FBD SEL".equals(widget.type)) {
-            double val = numInputs.isEmpty() ? widget.compareA : numInputs.get(0);
+            double val;
+            if (hasNamedFbdInput(inputPins)) {
+                if ("FBD SEL".equals(widget.type)) {
+                    boolean selector = fbdBooleanPinValue(inputs, inputPins, "G", -1);
+                    val = selector ? fbdNumericPinValue(numInputs, inputPins, "IN1", -1, widget.compareA)
+                            : fbdNumericPinValue(numInputs, inputPins, "IN0", -1, widget.compareA);
+                } else val = fbdNumericPinValue(numInputs, inputPins, "IN", 0, widget.compareA);
+            } else val = numInputs.isEmpty() ? widget.compareA : numInputs.get(0);
             if (Double.isNaN(val) || Double.isInfinite(val)) val = 0.0;
             cacheNumeric[index] = val;
             return val != 0.0;
@@ -3129,54 +3221,35 @@ public class MainActivity extends Activity {
         if ("FBD НЕ".equals(canonicalType))
             return !fbdBooleanPinValue(inputs, inputPins, "IN", 0);
         if ("FBD Сравнение".equals(widget.type)) {
+            double a = fbdNumericPinValue(numInputs, inputPins, "A", 0, widget.compareA);
+            double b = fbdNumericPinValue(numInputs, inputPins, "B", 1, widget.compareB);
             switch (normalizeComparisonOperatorStatic(widget.compareOperator)) {
-                case "<": return widget.compareA < widget.compareB;
-                case ">=": return widget.compareA >= widget.compareB;
-                case "<=": return widget.compareA <= widget.compareB;
-                case "==": return Double.compare(widget.compareA, widget.compareB) == 0;
-                case "!=": return Double.compare(widget.compareA, widget.compareB) != 0;
-                default: return widget.compareA > widget.compareB;
+                case "<": return a < b;
+                case ">=": return a >= b;
+                case "<=": return a <= b;
+                case "==": return Double.compare(a, b) == 0;
+                case "!=": return Double.compare(a, b) != 0;
+                default: return a > b;
             }
         }
-        if ("FBD TON".equals(canonicalType)) {
+        if ("FBD TON".equals(canonicalType)
+                || "FBD TOF".equals(canonicalType)
+                || "FBD TP".equals(canonicalType)) {
             boolean input = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
-            if (!input) {
-                widget.timerStartedAt = 0L;
-                return false;
-            }
+            long preset = fbdTonPresetMs(numInputs, inputPins, widget.timerPresetMs);
             long now = SystemClock.elapsedRealtime();
-            if (widget.timerStartedAt == 0L) widget.timerStartedAt = now;
-            return now - widget.timerStartedAt >= fbdTonPresetMs(numInputs, inputPins, widget.timerPresetMs);
-        }
-        if ("FBD TP".equals(widget.type)) {
-            boolean input = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
-            long now = SystemClock.elapsedRealtime();
-            if (input && !widget.counterLastInput) widget.timerStartedAt = now;
-            widget.counterLastInput = input;
-            if (widget.timerStartedAt == 0L) return false;
-            boolean pulseActive = now - widget.timerStartedAt
-                    < fbdTonPresetMs(numInputs, inputPins, widget.timerPresetMs);
-            if (!pulseActive) widget.timerStartedAt = 0L;
-            return pulseActive;
-        }
-        if ("FBD TOF".equals(widget.type)) {
-            boolean input = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
-            long now = SystemClock.elapsedRealtime();
-            if (input) {
-                widget.counterLastInput = true;
-                widget.timerStartedAt = 0L;
-                return true;
-            }
-            if (widget.counterLastInput) {
-                widget.counterLastInput = false;
-                widget.timerStartedAt = now;
-            }
-            if (widget.timerStartedAt == 0L) return false;
-            if (now - widget.timerStartedAt >= fbdTonPresetMs(numInputs, inputPins, widget.timerPresetMs)) {
-                widget.timerStartedAt = 0L;
-                return false;
-            }
-            return true;
+            FbdTimerTransitions.Step step;
+            if ("FBD TON".equals(canonicalType))
+                step = FbdTimerTransitions.ton(input, now, preset, widget.timerStartedAt);
+            else if ("FBD TOF".equals(canonicalType))
+                step = FbdTimerTransitions.tof(input, now, preset,
+                        widget.timerStartedAt, widget.counterLastInput);
+            else step = FbdTimerTransitions.tp(input, now, preset,
+                        widget.timerStartedAt, widget.counterLastInput);
+            widget.timerStartedAt = step.startedAt;
+            if (!"FBD TON".equals(canonicalType))
+                widget.counterLastInput = step.lastInput;
+            return step.output;
         }
         return false;
     }
@@ -3229,6 +3302,58 @@ public class MainActivity extends Activity {
             fbdWireHistory.clear();
             Toast.makeText(this, "Не удалось восстановить связь FBD", Toast.LENGTH_LONG).show();
         }
+    }
+
+    /** Named BOOL-only wire inversion, with undo/redo and immediate persistence. */
+    private void showFbdInversionDialog() {
+        if (operatorMode || screens.isEmpty() || currentScreenIndex < 0
+                || currentScreenIndex >= screens.size()) return;
+        Screen screen = screens.get(currentScreenIndex);
+        final List<FbdConnection> choices = new ArrayList<>();
+        final List<String> labels = new ArrayList<>();
+        for (FbdConnection edge : screen.connections) {
+            if (edge.source < 0 || edge.target < 0
+                    || edge.source >= widgets.size() || edge.target >= widgets.size()) continue;
+            Widget from = widgets.get(edge.source);
+            Widget to = widgets.get(edge.target);
+            if (!isInvertibleFbdBoolWire(edge, from.type, to.type)) continue;
+            choices.add(edge);
+            labels.add((edge.source + 1) + ":" + edge.extraFields.optString("sourcePin", "")
+                    + " → " + (edge.target + 1) + ":" + edge.extraFields.optString("targetPin", "")
+                    + (isFbdBooleanWireInverted(edge, from.type, to.type) ? "  ✓ ИНВ" : "  обычная"));
+        }
+        if (choices.isEmpty()) {
+            Toast.makeText(this, "Нет типизированных BOOL-связей для инверсии", Toast.LENGTH_LONG).show();
+            return;
+        }
+        new AlertDialog.Builder(this).setTitle("Инверсия связи FBD (BOOL)")
+                .setItems(labels.toArray(new String[0]), (dialog, index) -> {
+                    FbdConnection edge = choices.get(index);
+                    if (!screen.connections.contains(edge)) return;
+                    Widget from = widgets.get(edge.source), to = widgets.get(edge.target);
+                    if (!isInvertibleFbdBoolWire(edge, from.type, to.type)) return;
+                    Object previous = edge.extraFields.opt("inverted");
+                    boolean existed = edge.extraFields.has("inverted");
+                    try {
+                        fbdWireHistory.recordBefore(screen, screen.connections);
+                        if (!toggleFbdBooleanWireInversion(edge, from.type, to.type)) return;
+                        if (!persistProjectNow(true)) {
+                            if (existed) edge.extraFields.put("inverted", previous);
+                            else edge.extraFields.remove("inverted");
+                            fbdWireHistory.clear();
+                            Toast.makeText(this, "Инверсия не сохранена", Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                        if (editor != null) editor.invalidate();
+                    } catch (Exception failure) {
+                        try {
+                            if (existed) edge.extraFields.put("inverted", previous);
+                            else edge.extraFields.remove("inverted");
+                        } catch (Exception ignored) {}
+                        fbdWireHistory.clear();
+                        Toast.makeText(this, "Ошибка изменения BOOL-связи", Toast.LENGTH_LONG).show();
+                    }
+                }).setNegativeButton("Отмена", null).show();
     }
 
     private void showFbdDisconnectDialog() {
@@ -3334,6 +3459,65 @@ public class MainActivity extends Activity {
                 .setNegativeButton("Отмена", null).show();
     }
 
+    /** A named terminal's physical Y position is stable across edits and drags. */
+    public static float fbdTerminalFraction(String type, String pin, boolean output) {
+        String[] pins = knownFbdPins(type, output);
+        String name = canonicalFbdPinName(pin);
+        String kind = canonicalFbdBlockType(type);
+        for (int i = 0; i < pins.length; i++) {
+            if (!canonicalFbdPinName(pins[i]).equals(name)) continue;
+            // The original Craft AND/OR/XOR and compare drawing uses
+            // quarter-height and three-quarter-height input ports.
+            if (!output && pins.length == 2
+                    && ("FBD AND".equals(kind) || "FBD OR".equals(kind)
+                    || "FBD XOR".equals(kind) || "FBD СРАВНЕНИЕ".equals(kind)))
+                return i == 0 ? 0.25f : 0.75f;
+            return (i + 1f) / (pins.length + 1f);
+        }
+        // Legacy unpinned graph edges have no source-confirmed pin geometry.
+        return 0.5f;
+    }
+
+    public static boolean isInvertibleFbdBoolWire(FbdConnection connection,
+                                                   String sourceType, String targetType) {
+        if (connection == null || connection.extraFields == null) return false;
+        JSONObject meta = connection.extraFields;
+        return "BOOL".equals(knownFbdPinType(sourceType, meta.optString("sourcePin", ""), true))
+                && "BOOL".equals(knownFbdPinType(targetType, meta.optString("targetPin", ""), false));
+    }
+
+    public static boolean isFbdBooleanWireInverted(FbdConnection edge,
+                                                    String sourceType, String targetType) {
+        return isInvertibleFbdBoolWire(edge, sourceType, targetType)
+                && Boolean.TRUE.equals(edge.extraFields.opt("inverted"));
+    }
+
+    public static boolean effectiveFbdBooleanInput(FbdConnection connection, String sourceType,
+                                                    String targetType, boolean sourceValue) {
+        return isFbdBooleanWireInverted(connection, sourceType, targetType)
+                ? !sourceValue : sourceValue;
+    }
+
+    /** Mutate only a known Boolean edge; other imported metadata is untouched. */
+    public static boolean toggleFbdBooleanWireInversion(FbdConnection connection, String sourceType,
+                                                         String targetType) throws Exception {
+        if (!isInvertibleFbdBoolWire(connection, sourceType, targetType)) return false;
+        connection.extraFields.put("inverted",
+                !isFbdBooleanWireInverted(connection, sourceType, targetType));
+        return true;
+    }
+
+    /** Clock epochs must never leak from saved files or editing into live execution. */
+    public static void resetFbdTimerRuntime(Widget widget) {
+        if (widget == null) return;
+        String kind = canonicalFbdBlockType(widget.type);
+        if ("FBD TON".equals(kind) || "FBD TP".equals(kind) || "FBD TOF".equals(kind)) {
+            widget.timerStartedAt = 0L;
+            if ("FBD TP".equals(kind) || "FBD TOF".equals(kind))
+                widget.counterLastInput = false;
+        }
+    }
+
     /** Only unsupported legacy block pairs may use anonymous positional connections. */
     public static boolean canUseUnpinnedFbdFallback(String sourceType, String targetType) {
         if (sourceType == null || targetType == null
@@ -3373,6 +3557,16 @@ public class MainActivity extends Activity {
             return output ? new String[]{"Q"} : new String[]{"IN"};
         if ("FBD CTU".equals(kind)) return output ? new String[]{"Q"} : new String[]{"CU", "R", "PV"};
         if ("FBD CTD".equals(kind)) return output ? new String[]{"Q"} : new String[]{"CD", "LD", "PV"};
+        if ("FBD СЛОЖЕНИЕ".equals(kind) || "FBD ВЫЧИТАНИЕ".equals(kind)
+                || "FBD УМНОЖЕНИЕ".equals(kind) || "FBD ДЕЛЕНИЕ".equals(kind)
+                || "FBD MIN_MAX".equals(kind))
+            return output ? new String[]{"OUT"} : new String[]{"IN1", "IN2"};
+        if ("FBD СРАВНЕНИЕ".equals(kind))
+            return output ? new String[]{"Q"} : new String[]{"A", "B"};
+        if ("FBD MOVE".equals(kind))
+            return output ? new String[]{"OUT"} : new String[]{"IN"};
+        if ("FBD SEL".equals(kind))
+            return output ? new String[]{"OUT"} : new String[]{"G", "IN0", "IN1"};
         if ("FBD POW".equals(kind)) return output ? new String[]{"OUT"} : new String[]{"BASE", "EXP"};
         if ("FBD SIN".equals(kind) || "FBD ABS".equals(kind)
                 || "FBD COS".equals(kind) || "FBD TAN".equals(kind) || "FBD SQRT".equals(kind)
@@ -3526,8 +3720,14 @@ public class MainActivity extends Activity {
                     Widget from = widgets.get(connection.source);
                     Widget to = widgets.get(connection.target);
                     if (!from.visible || !to.visible || !isFbd(from) || !isFbd(to)) continue;
-                    float x1 = from.x + from.w, y1 = from.y + from.h / 2;
-                    float x2 = to.x, y2 = to.y + to.h / 2;
+                    float x1 = from.x + from.w;
+                    float y1 = from.y + from.h * fbdTerminalFraction(from.type,
+                            connection.extraFields.optString("sourcePin", ""), true);
+                    float x2 = to.x;
+                    float y2 = to.y + to.h * fbdTerminalFraction(to.type,
+                            connection.extraFields.optString("targetPin", ""), false);
+                    paint.setColor(isFbdBooleanWireInverted(connection, from.type, to.type)
+                            ? Color.rgb(234, 88, 12) : Color.rgb(124, 58, 237));
                     float mid = (x1 + x2) / 2f;
                     canvas.drawLine(x1, y1, mid, y1, paint);
                     canvas.drawLine(mid, y1, mid, y2, paint);
@@ -3538,8 +3738,22 @@ public class MainActivity extends Activity {
             fbdCacheValid = new boolean[widgets.size()];
             fbdCacheValues = new boolean[widgets.size()];
             fbdCacheNumeric = new double[widgets.size()];
-            if (operatorMode) for (int i = 0; i < widgets.size(); i++)
-                if (isFbd(widgets.get(i))) evaluateFbd(i, new boolean[widgets.size()]);
+            if (operatorMode) {
+                for (int i = 0; i < widgets.size(); i++)
+                    if (isFbd(widgets.get(i))) evaluateFbd(i, new boolean[widgets.size()]);
+            }
+            // FBD output bindings are read-only and local to this screen.
+            // They do not interfere with Modbus polling or write PLC registers.
+            for (int i = 0; i < widgets.size(); i++) {
+                Widget target = widgets.get(i);
+                if (isFbd(target) || target.connectionInfo == null
+                        || !target.connectionInfo.startsWith("fbd://")) continue;
+                if (operatorMode) {
+                    String value = FbdResultBinding.resolve(target.connectionInfo, widgets,
+                            fbdCacheValid, fbdCacheValues, fbdCacheNumeric);
+                    liveValues.put(i, value == null ? "CFG" : value);
+                } else liveValues.remove(i);
+            }
             for (int i = 0; i < widgets.size(); i++) {
                 Widget w = widgets.get(i);
                 if (!w.visible || (operatorMode && isFbd(w))) continue;
@@ -3586,19 +3800,34 @@ public class MainActivity extends Activity {
                             : (("FBD CTU".equals(w.type) || "FBD CTD".equals(w.type)) ? ("FBD CTD".equals(w.type) ? "CTD " : "CTU ") + w.counterValue + "/" + w.counterPreset : w.text);
                     if (liveValues.containsKey(i) && !"FBD Вход".equals(w.type)) blockTitle += " [" + liveValues.get(i) + "]";
                     canvas.drawText(blockTitle, w.x + dp(12), w.y + dp(23), paint);
-                    boolean output = evaluateFbd(i, new boolean[widgets.size()]);
+                    // Never evaluate stateful FBD logic from the editor's paint pass:
+                    // drawing alone must not count edges or advance TON/TOF/TP.
                     paint.setTextSize(dp(11));
-                    paint.setColor(output ? Color.rgb(22, 163, 74) : Color.rgb(100, 116, 139));
-                    canvas.drawText("OUT = " + (output ? "1" : "0"), w.x + dp(12), w.y + w.h - dp(8), paint);
-                    paint.setTextSize(dp(13));
+                    paint.setColor(Color.rgb(100, 116, 139));
+                    canvas.drawText("OUT = —", w.x + dp(12), w.y + w.h - dp(8), paint);
+                    paint.setTextSize(dp(10));
                     paint.setColor(Color.rgb(109, 40, 217));
-                    canvas.drawLine(w.x, w.y + w.h * 0.38f, w.x + dp(14), w.y + w.h * 0.38f, paint);
-                    canvas.drawLine(w.x, w.y + w.h * 0.68f, w.x + dp(14), w.y + w.h * 0.68f, paint);
-                    canvas.drawLine(w.x + w.w - dp(14), w.y + w.h / 2, w.x + w.w, w.y + w.h / 2, paint);
+                    String[] blockInputs = knownFbdPins(w.type, false);
+                    if (blockInputs.length == 0) blockInputs = new String[]{"", ""};
+                    for (int pinIndex = 0; pinIndex < blockInputs.length; pinIndex++) {
+                        float py = w.y + w.h * (blockInputs[pinIndex].isEmpty()
+                                ? (pinIndex + 1f) / (blockInputs.length + 1f)
+                                : fbdTerminalFraction(w.type, blockInputs[pinIndex], false));
+                        canvas.drawLine(w.x, py, w.x + dp(14), py, paint);
+                        canvas.drawCircle(w.x + dp(4), py, dp(4), paint);
+                        if (!blockInputs[pinIndex].isEmpty())
+                            canvas.drawText(blockInputs[pinIndex], w.x + dp(17), py - dp(3), paint);
+                    }
+                    String[] blockOutputs = knownFbdPins(w.type, true);
+                    if (blockOutputs.length == 0) blockOutputs = new String[]{""};
+                    for (int pinIndex = 0; pinIndex < blockOutputs.length; pinIndex++) {
+                        float py = w.y + w.h * (blockOutputs[pinIndex].isEmpty()
+                                ? (pinIndex + 1f) / (blockOutputs.length + 1f)
+                                : fbdTerminalFraction(w.type, blockOutputs[pinIndex], true));
+                        canvas.drawLine(w.x + w.w - dp(14), py, w.x + w.w, py, paint);
+                        canvas.drawCircle(w.x + w.w - dp(4), py, dp(4), paint);
+                    }
                     paint.setStyle(Paint.Style.FILL);
-                    canvas.drawCircle(w.x + dp(4), w.y + w.h * 0.38f, dp(4), paint);
-                    canvas.drawCircle(w.x + dp(4), w.y + w.h * 0.68f, dp(4), paint);
-                    canvas.drawCircle(w.x + w.w - dp(4), w.y + w.h / 2, dp(4), paint);
                 } else if ("Динамический текст".equals(w.type)) {
                     int stateIdx = 0;
                     if (liveValues.containsKey(i)) {
