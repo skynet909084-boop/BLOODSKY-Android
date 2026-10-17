@@ -33,11 +33,13 @@ public class FbdSourceNativeCanvasSkinTest {
         assertEquals(5f/8f, FbdSourceCanvasSkin.inputY("FBD CRAFT CTU", "-"), 0.00001f);
         assertEquals(7f/8f, FbdSourceCanvasSkin.inputY("FBD CRAFT CTU", "R"), 0.00001f);
         assertEquals(.5f, FbdSourceCanvasSkin.inputY("FBD CRAFT T", "IN"), 0.00001f);
-        assertEquals(.25f, FbdSourceCanvasSkin.inputY("FBD CRAFT SEL", "IN"), 0.00001f);
-        assertEquals(1f/3f, FbdSourceCanvasSkin.inputY("FBD CRAFT COMPARE", "IN1"), 0.00001f);
-        assertEquals(2f/3f, FbdSourceCanvasSkin.inputY("FBD CRAFT COMPARE", "IN2"), 0.00001f);
-        assertEquals(.50f, FbdSourceCanvasSkin.inputY("FBD CRAFT SEL", "I1"), 0.00001f);
-        assertEquals(.75f, FbdSourceCanvasSkin.inputY("FBD CRAFT SEL", "I2"), 0.00001f);
+        assertEquals(3f/8f, FbdSourceCanvasSkin.inputY("FBD CRAFT SEL", "IN"), 0.00001f);
+        assertEquals(.25f, FbdSourceCanvasSkin.inputY("FBD CRAFT COMPARE", "IN1"), 0.00001f);
+        assertEquals(.75f, FbdSourceCanvasSkin.inputY("FBD CRAFT COMPARE", "IN2"), 0.00001f);
+        assertEquals(3f/8f, MainActivity.fbdTerminalFraction("FBD CRAFT SEL", "Q", true), 0.00001f);
+        assertEquals(.5f, MainActivity.fbdTerminalFraction("FBD CRAFT COMPARE", "Q", true), 0.00001f);
+        assertEquals(5f/8f, FbdSourceCanvasSkin.inputY("FBD CRAFT SEL", "I1"), 0.00001f);
+        assertEquals(7f/8f, FbdSourceCanvasSkin.inputY("FBD CRAFT SEL", "I2"), 0.00001f);
         assertEquals(.5f, FbdSourceCanvasSkin.inputY("FBD RS", "R"), 0.00001f);
         assertEquals(5f/6f, FbdSourceCanvasSkin.inputY("FBD RS", "S"), 0.00001f);
         assertEquals(.5f, MainActivity.fbdTerminalFraction("FBD RS", "Q", true), .00001f);
