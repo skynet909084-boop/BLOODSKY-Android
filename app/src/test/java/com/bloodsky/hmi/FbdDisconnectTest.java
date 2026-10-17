@@ -330,6 +330,19 @@ public class FbdDisconnectTest {
         assertFalse(MainActivity.hasCompatibleKnownFbdPins(edge, "FBD И", "FBD Таймер"));
     }
 
+    @Test public void russianFbdInputIsBooleanSourceNotSink() throws Exception {
+        assertArrayEquals(new String[]{"Q"}, MainActivity.knownFbdPins("FBD Вход", true));
+        assertEquals(0, MainActivity.knownFbdPins("FBD Вход", false).length);
+        assertEquals("BOOL", MainActivity.knownFbdPinType("FBD Вход", "Q", true));
+        JSONObject edge = new JSONObject().put("source", 0).put("target", 1)
+                .put("sourcePin", "Q").put("targetPin", "IN1");
+        assertTrue(MainActivity.hasCompatibleKnownFbdPins(edge, "FBD Вход", "FBD И"));
+        edge.put("sourcePin", "IN1");
+        assertFalse(MainActivity.hasCompatibleKnownFbdPins(edge, "FBD Вход", "FBD И"));
+        edge.put("sourcePin", "Q").put("targetPin", "PT");
+        assertFalse(MainActivity.hasCompatibleKnownFbdPins(edge, "FBD Вход", "FBD Таймер"));
+    }
+
     @Test public void invalidEndpointsDoNotMutateGraph() {
         List<MainActivity.FbdConnection> edges = new ArrayList<>();
         edges.add(new MainActivity.FbdConnection(0, 1));
