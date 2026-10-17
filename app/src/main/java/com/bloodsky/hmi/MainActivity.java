@@ -2767,9 +2767,7 @@ public class MainActivity extends Activity {
                 ? value : defaultValue;
     }
 
-    /** PT values use milliseconds; reject invalid durations rather than overflow timer arithmetic. */
-    /** Counter preset is a nonnegative integer; preserve saved preset for invalid PV. */
-    /** A counter must see a fresh low-to-high edge after reset/load is released. */
+    /** Counter transition functions are deterministic and independent of the Android clock. */
     public static int fbdCountUpStep(int current, boolean count, boolean previousCount,
                                       boolean reset) {
         if (reset) return 0;
@@ -2783,6 +2781,7 @@ public class MainActivity extends Activity {
         return count && !previousCount ? Math.max(0, current - 1) : Math.max(0, current);
     }
 
+    /** Counter preset is a nonnegative integer; preserve saved preset for invalid PV. */
     public static int fbdCounterPreset(List<Double> values, List<String> pins, int configured) {
         int fallback = Math.max(0, Math.min(1000000, configured));
         double value = fbdNumericPinValue(values, pins, "PV", -1, fallback);
@@ -2791,6 +2790,7 @@ public class MainActivity extends Activity {
         return (int) Math.round(value);
     }
 
+    /** PT uses milliseconds in the current BLOODSKY runtime; original Craft parity remains under audit. */
     public static long fbdTonPresetMs(List<Double> values, List<String> pins, int configuredMs) {
         long fallback = Math.max(1L, Math.min(3600000L, (long) configuredMs));
         double raw = fbdNumericPinValue(values, pins, "PT", -1, fallback);
