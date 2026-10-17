@@ -268,6 +268,22 @@ class Smoke:
         widgets = saved_widgets()
         if widgets[:-2] != baseline or [w['type'] for w in widgets[-2:]] != ['FBD И', 'FBD Таймер']:
             raise AssertionError('Original palette did not add the requested FBD types independently')
+        # Every newly placed FBD block must be visually distinct from all other
+        # visible widgets; a previously passing smoke screenshot hid its Q->IN wire
+        # underneath the overlapping AND and TON rectangles.
+        def overlaps(first, second):
+            return (first['x'] < second['x'] + second['w']
+                    and first['x'] + first['w'] > second['x']
+                    and first['y'] < second['y'] + second['h']
+                    and first['y'] + first['h'] > second['y'])
+        for idx in (len(widgets)-2, len(widgets)-1):
+            placed = widgets[idx]
+            for other_idx, other in enumerate(widgets):
+                if other_idx == idx or other.get('visible', True) is False:
+                    continue
+                if overlaps(placed, other):
+                    raise AssertionError('New FBD block overlaps visible widget '
+                                         + str(other_idx) + ': ' + repr(placed))
         timer = widgets[-1]
         canvas = self.wait_node(description='Редактор экрана')
         left, top, _, _ = map(int, re.findall(r'\d+', canvas.get('bounds')))
@@ -288,8 +304,7 @@ class Smoke:
         if saved_widgets() != expected:
             raise AssertionError('FBD preset edit changed another widget field')
         # Exercise the real editor's named-pin wiring, drag persistence and removal.
-        # The preceding palette blocks overlap: select the exposed upper-left
-        # corner of AND instead of its obscured center (TON is drawn on top).
+        # Select a point well inside the source, away from its resize grip.
         if self.saved_connections():
             raise AssertionError('New FBD blocks unexpectedly have existing wires')
         source_idx, target_idx = len(expected)-2, len(expected)-1
@@ -634,7 +649,7 @@ class Smoke:
         if PACKAGE in crashes:
             raise AssertionError('Application crash recorded')
         (self.output / 'result.json').write_text(json.dumps({'result': 'passed', 'package': PACKAGE,
-                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'original five-category palette', 'palette add indicator/button/text/progress', 'original 40-preview FBD palette and return/extended navigation', 'FBD AND/TON add and restart', 'FBD typed Q-IN wiring, drag, restart and disconnect', 'invalid timer preset leaves project and form unchanged', 'exact valid timer preset preserves other fields', 'process restart', 'reload four palette-created components', 'invalid geometry leaves dialog/project unchanged', 'fractional properties survive second process restart', 'original ON/OFF dialogs and builtin state selection', 'custom document-provider image and persisted URI grant after process restart', 'original compact toolbar and hide/reveal', 'editor button opens properties without activation', 'operator drag and long-press cannot edit or activate', 'runtime button on/off and persistence after restart', 'stop and Back restore editor tools', 'confirmed deletion'],
+                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'original five-category palette', 'palette add indicator/button/text/progress', 'original 40-preview FBD palette and return/extended navigation', 'FBD AND/TON add and restart', 'FBD non-overlapping initial block positions', 'FBD typed Q-IN wiring, drag, restart and disconnect', 'invalid timer preset leaves project and form unchanged', 'exact valid timer preset preserves other fields', 'process restart', 'reload four palette-created components', 'invalid geometry leaves dialog/project unchanged', 'fractional properties survive second process restart', 'original ON/OFF dialogs and builtin state selection', 'custom document-provider image and persisted URI grant after process restart', 'original compact toolbar and hide/reveal', 'editor button opens properties without activation', 'operator drag and long-press cannot edit or activate', 'runtime button on/off and persistence after restart', 'stop and Back restore editor tools', 'confirmed deletion'],
                 'api_level': adb('shell', 'getprop', 'ro.build.version.sdk').strip(),
                 'display_size': adb('shell', 'wm', 'size').strip(),
                 'display_density': adb('shell', 'wm', 'density').strip()}, indent=2))
