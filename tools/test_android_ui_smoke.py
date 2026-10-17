@@ -64,7 +64,7 @@ class AndroidSmokeHelpersTests(unittest.TestCase):
         listing = '<hierarchy><node package="com.android.documentsui" text="bloodsky-custom.png" enabled="true" bounds="[50,100][350,200]"/><node package="com.android.documentsui" text="other.png" enabled="true" bounds="[50,200][350,300]"/></hierarchy>'
         with TemporaryDirectory() as folder, patch('android_ui_smoke.adb') as command:
             smoke = Smoke(Path(folder))
-            with patch.object(smoke, 'dump', side_effect=[grid, listing]):
+            with patch.object(smoke, 'dump', side_effect=[grid, listing, listing, '<hierarchy><node package="com.bloodsky.hmi"/></hierarchy>']):
                 smoke.tap_document('bloodsky-custom.png')
             self.assertEqual([('shell', 'input', 'tap', '250', '50'),
                               ('shell', 'input', 'tap', '200', '150')],

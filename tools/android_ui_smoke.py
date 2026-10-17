@@ -116,26 +116,39 @@ class Smoke:
         adb('shell', 'input', 'tap', str(x), str(y))
 
     def tap_document(self, filename):
-        # DocumentsUI's image grid delegates touch handling to its thumbnail.
-        # Use its ordinary list presentation so the filename is the open target,
-        # rather than the thumbnail/preview gesture surface.
         xml = self.dump()
         list_buttons = [n for n in matching_nodes(xml, description='List view')
                         if n.get('package') == 'com.android.documentsui']
         if len(list_buttons) == 1:
             x, y = center(list_buttons[0].get('bounds'))
             adb('shell', 'input', 'tap', str(x), str(y))
+        # Wait for filename text in the settled list. A grid accessibility row may
+        # survive a layout switch briefly; its old center can miss the shorter row.
         deadline = time.monotonic() + 30
+        previous = None
+        attempts = 0
         while time.monotonic() < deadline:
-            nodes = document_nodes(self.dump(), filename)
-            if len(nodes) == 1:
-                x, y = center(nodes[0].get('bounds'))
-                adb('shell', 'input', 'tap', str(x), str(y))
-                return
+            xml = self.dump()
+            nodes = [n for n in matching_nodes(xml, text=filename)
+                     if n.get('package') == 'com.android.documentsui']
             if len(nodes) > 1:
                 raise AssertionError('Ambiguous document: ' + filename)
-            time.sleep(0.3)
-        raise AssertionError('Document not found: ' + filename)
+            bounds = nodes[0].get('bounds') if len(nodes) == 1 else None
+            if bounds and bounds == previous:
+                x, y = center(bounds)
+                print('Opening document', filename, 'at', x, y, flush=True)
+                adb('shell', 'input', 'tap', str(x), str(y))
+                attempts += 1
+                for _ in range(3):
+                    xml = self.dump()
+                    if not any(n.get('package') == 'com.android.documentsui'
+                               for n in ET.fromstring(xml).iter('node')):
+                        return
+                if attempts >= 3:
+                    break
+            previous = bounds
+        (self.output / 'document-selection-ui.xml').write_text(xml)
+        raise AssertionError('Document did not open through system picker: ' + filename)
 
     def scroll_to_description(self, description):
         for attempt in range(16):
