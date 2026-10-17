@@ -41,6 +41,17 @@ def preferences_are_empty(xml):
     return 'active_project' not in values and json.loads(values.get('project_catalog_v1', '{}')) == {}
 
 
+def document_nodes(xml, filename):
+    # Android DocumentsUI grid exposes display name in accessibility description, not text.
+    text_nodes = [n for n in matching_nodes(xml, text=filename)
+                  if n.get('package') == 'com.android.documentsui']
+    if text_nodes:
+        return text_nodes
+    return [n for n in matching_nodes(xml)
+            if n.get('package') == 'com.android.documentsui'
+            and n.get('content-desc', '').startswith(filename + ', ')]
+
+
 def property_scroll_up(target, previous=None):
     order = ['Положение X', 'Положение Y', 'Ширина элемента', 'Высота элемента']
     return previous is None or order.index(target) >= order.index(previous)
@@ -103,6 +114,19 @@ class Smoke:
         node = self.wait_node(text, class_name, description=description)
         x, y = center(node.get('bounds'))
         adb('shell', 'input', 'tap', str(x), str(y))
+
+    def tap_document(self, filename):
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            nodes = document_nodes(self.dump(), filename)
+            if len(nodes) == 1:
+                x, y = center(nodes[0].get('bounds'))
+                adb('shell', 'input', 'tap', str(x), str(y))
+                return
+            if len(nodes) > 1:
+                raise AssertionError('Ambiguous document: ' + filename)
+            time.sleep(0.3)
+        raise AssertionError('Document not found: ' + filename)
 
     def scroll_to_description(self, description):
         for attempt in range(16):
@@ -244,7 +268,8 @@ class Smoke:
         self.tap('Выбрать файл…')
         self.tap(description='Show roots')
         self.tap('Downloads')
-        self.tap('bloodsky-custom.png')
+        self.capture('04f-document-picker')
+        self.tap_document('bloodsky-custom.png')
         self.wait_node('Своё изображение')
         self.tap('Применить')
         self.wait_node(description='Изображение ON')

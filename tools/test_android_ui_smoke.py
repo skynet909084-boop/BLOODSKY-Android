@@ -1,5 +1,5 @@
 import unittest
-from android_ui_smoke import center, matching_nodes, preferences_are_empty, properties_scroll_node, property_input_matches, property_scroll_up, keyboard_is_shown
+from android_ui_smoke import center, matching_nodes, preferences_are_empty, properties_scroll_node, property_input_matches, property_scroll_up, keyboard_is_shown, document_nodes
 
 class AndroidSmokeHelpersTests(unittest.TestCase):
     def test_observed_enabled_ui_targets_and_uppercase_russian(self):
@@ -40,6 +40,15 @@ class AndroidSmokeHelpersTests(unittest.TestCase):
         self.assertTrue(keyboard_is_shown('mInputShown=true mShowRequested=true'))
         self.assertFalse(keyboard_is_shown('mInputShown=false'))
         self.assertFalse(keyboard_is_shown('unknown'))
+
+    def test_document_grid_uses_filename_description_without_matching_preview_action(self):
+        xml = '<hierarchy><node package="com.android.documentsui" content-desc="bloodsky-custom.png, 15.53 kB, 1:17 AM" enabled="true" bounds="[10,20][110,120]"/><node package="com.android.documentsui" content-desc="Preview the file bloodsky-custom.png" enabled="true" bounds="[80,20][110,50]"/></hierarchy>'
+        nodes = document_nodes(xml, 'bloodsky-custom.png')
+        self.assertEqual(1, len(nodes))
+        self.assertEqual((60,70), center(nodes[0].get('bounds')))
+        self.assertEqual([], document_nodes(xml, 'unknown.png'))
+        text_xml = '<hierarchy><node package="com.android.documentsui" text="bloodsky-custom.png" enabled="true" bounds="[10,20][110,120]"/></hierarchy>'
+        self.assertEqual(1, len(document_nodes(text_xml, 'bloodsky-custom.png')))
 
     def test_invalid_bounds_are_rejected(self):
         for bounds in ['bad', '[1,2][1,2]', '[100,20][10,30]']:
