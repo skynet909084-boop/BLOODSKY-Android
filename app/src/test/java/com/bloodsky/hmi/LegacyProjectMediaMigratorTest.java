@@ -121,6 +121,50 @@ public class LegacyProjectMediaMigratorTest {
         assertFalse(ProjectMediaService.getProjectMediaDir(files, after).listFiles().length > 0);
     }
 
+    @Test public void missingReferencedImageRefusesMigrationWithoutCommittingNewIdentity() throws Exception {
+        File files = temp.newFolder("missing_image");
+        String legacy = oldProject("Incomplete", "media/missing-photo.png", "Аларм");
+        final boolean[] saved = {false};
+        try {
+            LegacyProjectMediaMigrator.migrate(files, legacy, candidate -> {
+                saved[0] = true;
+                return true;
+            });
+            fail("Must refuse to migrate a broken media/ reference");
+        } catch (java.io.FileNotFoundException expected) {
+            assertTrue(expected.getMessage().contains("missing-photo.png"));
+        }
+        assertFalse("No modified project identity should be published", saved[0]);
+    }
+
+    @Test public void missingReferencedAudioDoesNotPublishPartialImageCopy() throws Exception {
+        File files = temp.newFolder("missing_audio");
+        File image = write(files, "media/photo.png", "ORIGINAL_PHOTO");
+        String legacy = oldProject("Incomplete sound", "media/photo.png", "media/missing.wav");
+        final boolean[] saved = {false};
+        try {
+            LegacyProjectMediaMigrator.migrate(files, legacy, candidate -> {
+                saved[0] = true;
+                return true;
+            });
+            fail("An absent referenced sound must abort the whole migration");
+        } catch (java.io.FileNotFoundException expected) {
+            assertTrue(expected.getMessage().contains("missing.wav"));
+        }
+        assertFalse(saved[0]);
+        assertTrue(image.isFile());
+        assertEquals("ORIGINAL_PHOTO", new String(
+                java.nio.file.Files.readAllBytes(image.toPath()), StandardCharsets.UTF_8));
+        File projects = new File(files, "projects");
+        File[] generated = projects.listFiles();
+        if (generated != null) for (File candidate : generated) {
+            File[] children = candidate.listFiles();
+            if (children != null) for (File child : children) {
+                assertFalse("Do not leave a published media directory or migration stage", child.exists());
+            }
+        }
+    }
+
     @Test public void traversalReferenceFailsBeforeSaveWithoutTouchingOldBytes() throws Exception {
         File files = temp.newFolder("files6");
         File oldFile = write(files, "media/a.png", "KEEP");
