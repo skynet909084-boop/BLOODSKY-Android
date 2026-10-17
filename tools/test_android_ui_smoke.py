@@ -67,7 +67,8 @@ class AndroidSmokeHelpersTests(unittest.TestCase):
             with patch.object(smoke, 'dump', side_effect=[grid, listing, listing, '<hierarchy><node package="com.bloodsky.hmi"/></hierarchy>']):
                 smoke.tap_document('bloodsky-custom.png')
             self.assertEqual([('shell', 'input', 'tap', '250', '50'),
-                              ('shell', 'input', 'tap', '200', '150')],
+                              ('shell', 'CLASSPATH=/data/local/tmp/bloodsky-ui-input.jar',
+                               'app_process', '/system/bin', 'BloodskyFingerTap', '200', '150')],
                              [c.args for c in command.call_args_list])
 
     def test_deletion_requires_both_active_and_catalog_to_be_empty(self):
