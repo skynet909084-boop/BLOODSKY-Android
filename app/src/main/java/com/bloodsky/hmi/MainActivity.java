@@ -2549,12 +2549,30 @@ public class MainActivity extends Activity {
         return json;
     }
 
+    /** Optional signal types: explicit pins must agree unless either is ANY. */
+    public static boolean hasCompatibleFbdSignalTypes(FbdConnection edge) {
+        if (!hasValidFbdPinMetadata(edge)) return false;
+        JSONObject fields = edge.extraFields;
+        boolean sourcePresent = fields.has("sourceSignalType");
+        boolean targetPresent = fields.has("targetSignalType");
+        if (!sourcePresent && !targetPresent) return true;
+        if (!sourcePresent || !targetPresent) return false;
+        Object source = fields.opt("sourceSignalType");
+        Object target = fields.opt("targetSignalType");
+        if (!(source instanceof String) || !(target instanceof String)) return false;
+        String a = ((String) source).trim().toUpperCase(java.util.Locale.ROOT);
+        String b = ((String) target).trim().toUpperCase(java.util.Locale.ROOT);
+        if (!("BOOL".equals(a) || "NUMBER".equals(a) || "ANY".equals(a))) return false;
+        if (!("BOOL".equals(b) || "NUMBER".equals(b) || "ANY".equals(b))) return false;
+        return a.equals(b) || "ANY".equals(a) || "ANY".equals(b);
+    }
+
     /** Validate pin metadata on import while leaving legacy unpinned connections intact. */
     public static boolean canLoadFbdConnection(JSONObject json) throws Exception {
         if (json == null) return false;
         FbdConnection edge = connectionFromJson(json);
         return edge.source >= 0 && edge.target >= 0 && edge.source != edge.target
-                && hasValidFbdPinMetadata(edge);
+                && hasCompatibleFbdSignalTypes(edge);
     }
 
     /** Create an explicitly pinned connection; reject malformed metadata before graph mutation. */
