@@ -59,6 +59,15 @@ The source-backed `FBD CRAFT CTU` widget now exists as a **new** optional item i
 
 **Acceptance:** exact-head Android JUnit/debug APK and emulator UI smoke before merging. The current #76 FBD parent remains separate, draft, and stable `main` untouched.
 
+## Original Craft T toggle mode — versioned operator block
+
+A second standalone source-compatible block `FBD CRAFT T` is now available in BLOODSKY's **extended** FBD picker without altering the existing `FBD R_TRIG` / `FBD F_TRIG` variants. Original pinned `FB_TRIGGER.java` constructor at lines 18–35 initializes output `false` and mode 1; execution lines 53–63 toggles Q only on rising `IN` edges.
+
+- Typed source-backed contacts: BOOL `IN`, BOOL `Q`. Numerical signals cannot connect to the Boolean input.
+- Operator graph invokes `FbdCraftNativeTransitions.toggleRise` once per scan and keeps separate, **transient** `craftToggleOutput` / `craftToggleLastInput` state. Cold project loading resets both to false, as with a fresh source constructor, while saved unknown widget fields remain unchanged.
+- `FbdCraftToggleGraphTest` checks rising→held→falling→rising toggles, typed pin compatibility, persistence isolation and legacy rising/falling blocks.
+- This is an independent and clearly labelled extension, **not** a claim to have enabled the source's 40 disabled preview items.
+
 ## Non-negotiable gates
 
 The runtime feature branch is not automatically promoted into `main`. Keep existing BLOODSKY CTU `CU,R,PV,Q` graph semantics intact. Original source CTU labels `+,-,R,Q`, RS priority and timer units are *open* until verified from original actual superclass implementation. Add separate native-compatible blocks, UI and source test only if the evidence supports actual operation; old project fields/anonymous wires must round-trip unchanged.
