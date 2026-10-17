@@ -295,6 +295,23 @@ public class FbdDisconnectTest {
                 java.util.Arrays.asList(Double.POSITIVE_INFINITY), java.util.Arrays.asList("PT"), "PT", 0, 1000.0), 0.0);
     }
 
+    @Test public void tonPresetUsesNamedPtAndBoundsInvalidValues() {
+        assertEquals(2500L, MainActivity.fbdTonPresetMs(
+                java.util.Arrays.asList(2500.0, 1.0),
+                java.util.Arrays.asList("PT", "IN"), 1000));
+        assertEquals(1000L, MainActivity.fbdTonPresetMs(
+                java.util.Arrays.asList(1.0), java.util.Arrays.asList("IN"), 1000));
+        for (double invalid : new double[]{-1.0, 0.0, 3600001.0, Double.NaN,
+                Double.POSITIVE_INFINITY}) {
+            assertEquals(1000L, MainActivity.fbdTonPresetMs(
+                    java.util.Arrays.asList(invalid), java.util.Arrays.asList("PT"), 1000));
+        }
+        assertEquals(1L, MainActivity.fbdTonPresetMs(
+                java.util.Arrays.asList(1.0), java.util.Arrays.asList("PT"), 1000));
+        assertEquals(3600000L, MainActivity.fbdTonPresetMs(
+                java.util.Arrays.asList(3600000.0), java.util.Arrays.asList("PT"), 1000));
+    }
+
     @Test public void invalidEndpointsDoNotMutateGraph() {
         List<MainActivity.FbdConnection> edges = new ArrayList<>();
         edges.add(new MainActivity.FbdConnection(0, 1));
