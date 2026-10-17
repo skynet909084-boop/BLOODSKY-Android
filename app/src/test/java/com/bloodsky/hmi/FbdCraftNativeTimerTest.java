@@ -66,6 +66,16 @@ public class FbdCraftNativeTimerTest {
         assertTrue(s.output);
     }
 
+    @Test public void originalConstructorStartsWithFalseOutput() {
+        FbdCraftNativeTimer.State fresh = FbdCraftNativeTimer.State.initial();
+        assertFalse(fresh.output);
+        assertFalse(fresh.started);
+        assertFalse(fresh.armed);
+        assertEquals(0L, fresh.startMillis);
+        assertFalse("Pinned original TP cannot produce a true Q from fresh false state",
+                step(FbdCraftNativeTimer.TP, fresh, true, 100, 50).output);
+    }
+
     @Test public void nativeTpDoesNotInventAnOutputRiseMissingFromSourceFunction() {
         FbdCraftNativeTimer.State initial = FbdCraftNativeTimer.State.initial();
         FbdCraftNativeTimer.State s = step(3, initial, true, 100, 10);
@@ -87,7 +97,13 @@ public class FbdCraftNativeTimerTest {
     @Test public void originalTimeUnitsRequireAVerifiedThirdMultiplier() {
         assertEquals(2345, FbdCraftNativeTimer.durationMillis(2345, 1, 0));
         assertEquals(2500, FbdCraftNativeTimer.durationMillis(25, 2, 0)/10);
+        assertEquals(60000L, FbdCraftNativeTimer.VERIFIED_MINUTE_MS);
+        assertEquals(120000, FbdCraftNativeTimer.durationMillis(2, 3));
         assertEquals(120000, FbdCraftNativeTimer.durationMillis(2, 3, 60000));
+        try {
+            FbdCraftNativeTimer.durationMillis(2, 3, 59999);
+            fail("Wrong original minute multiplier must be rejected");
+        } catch (IllegalArgumentException expected) {}
         for (int unit : new int[]{0,3,4}) {
             try {
                 FbdCraftNativeTimer.durationMillis(3, unit, 0);
