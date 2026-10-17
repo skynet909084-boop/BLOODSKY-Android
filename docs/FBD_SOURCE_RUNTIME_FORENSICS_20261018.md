@@ -77,14 +77,6 @@ A second standalone source-compatible block `FBD CRAFT T` is now available in BL
 - **Scope:** only BLINK, not original Craft TP whose constructor defaults Q=false and mode body has no Q=true assignment. No claim of pixel-perfect original timer or real-hardware test. Source unit-code 3 multiplier 60000 is verified from archived original. Keep original FBD preview catalogue disabled unless source behavior and visuals are documented individually.
 - **Gate:** standalone PR JUnit/APK and Android API30 test must pass, then merge to #76 feature branch only; never publish `main` without a fully reviewed combined head.
 
-## Second-pass native Craft source audit — MOVE, SEL, COMPARE, POW, MX, ARRAY, MACRO
-
-Beyond the accepted CTU16/RS/T/BLINK runtime, the **next highest-value original preview classes are still unverified**: `FB_MOVE`, `FB_SEL`, `FB_COMPARE`, `FB_POW`, `FB_MX`, `FB_ARRAY`, `FB_MACRO`. Their preview icons exist in original source palette, but they are not safely interchangeable with similarly named BLOODSKY generic blocks. For example the original MOVE drawing shows `EN`, `I`, `Q`, whereas the current BLOODSKY MOVE contract is numeric `IN`, `OUT`; activating it by name would create incompatible connections.
-
-The pinned `tools/original_fbd_runtime_evidence.py` extractor now **optionally and safely** includes those original Java classes, hashes their exact source bytes, identifies parent class and bounded `f()` branch/statement excerpts, and emits hints in the existing source evidence artifact. Optional absence is recorded by omission, never fabricated. The synthetic regression verifies `FB_SEL` and `FB_MOVE` method capture and retains legacy required CTU/RS/TIMER/TRIGGER assurance.
-
-Before enabling any corresponding original palette preview: inspect archived class constructors, `f()` branches, data types, method-call dependencies and source pins; create separate native versioned contract or demonstrate exact compatibility with existing BLOODSKY block; add Android graph and original palette screenshot smoke. This audit is **research**, not an implemented MOVE/SEL operator. Original unsupported tile click guards remain active.
-
 ## Non-negotiable gates
 
 The runtime feature branch is not automatically promoted into `main`. Keep existing BLOODSKY CTU `CU,R,PV,Q` graph semantics intact. Original source CTU labels `+,-,R,Q`, RS priority and timer units are *open* until verified from original actual superclass implementation. Add separate native-compatible blocks, UI and source test only if the evidence supports actual operation; old project fields/anonymous wires must round-trip unchanged.
