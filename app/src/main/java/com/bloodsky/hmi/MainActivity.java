@@ -2697,6 +2697,20 @@ public class MainActivity extends Activity {
         return cacheNumeric[index];
     }
 
+    /** Pinned wires are addressed by their target terminal, never by insertion order. */
+    public static boolean fbdBooleanPinValue(List<Boolean> values, List<String> pins,
+                                             String targetPin, int legacyIndex) {
+        if (values == null || pins == null) return false;
+        for (int i = 0; i < values.size() && i < pins.size(); i++) {
+            if (targetPin.equalsIgnoreCase(pins.get(i))) return Boolean.TRUE.equals(values.get(i));
+        }
+        // Old projects have no pin names; keep their original positional behavior.
+        boolean hasNamedPin = false;
+        for (String pin : pins) if (pin != null && !pin.isEmpty()) hasNamedPin = true;
+        return !hasNamedPin && legacyIndex >= 0 && legacyIndex < values.size()
+                && Boolean.TRUE.equals(values.get(legacyIndex));
+    }
+
     public static boolean evaluateFbdBlockUncached(List<Widget> widgetsList, List<FbdConnection> connectionsList, int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
         if (index < 0 || index >= widgetsList.size() || visiting[index]) return false;
         Widget widget = widgetsList.get(index);
@@ -2708,9 +2722,11 @@ public class MainActivity extends Activity {
         visiting[index] = true;
         List<Boolean> inputs = new ArrayList<>();
         List<Double> numInputs = new ArrayList<>();
+        List<String> inputPins = new ArrayList<>();
         if (connectionsList != null) {
             for (FbdConnection connection : connectionsList) {
                 if (connection.target == index) {
+                    inputPins.add(connection.extraFields.optString("targetPin", ""));
                     inputs.add(evaluateFbdBlock(widgetsList, connectionsList, connection.source, visiting, cacheValid, cacheValues, cacheNumeric));
                     numInputs.add(evaluateFbdBlockNumeric(widgetsList, connectionsList, connection.source, visiting, cacheValid, cacheValues, cacheNumeric));
                 }
@@ -2841,8 +2857,8 @@ public class MainActivity extends Activity {
             return result;
         }
         if ("FBD RS".equals(widget.type)) {
-            boolean set = !inputs.isEmpty() && inputs.get(0);
-            boolean reset = inputs.size() > 1 && inputs.get(1);
+            boolean set = fbdBooleanPinValue(inputs, inputPins, "S", 0);
+            boolean reset = fbdBooleanPinValue(inputs, inputPins, "R", 1);
             if (reset) widget.rsState = false;
             else if (set) widget.rsState = true;
             return widget.rsState;
