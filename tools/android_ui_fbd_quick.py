@@ -216,8 +216,18 @@ class FastFbdSmoke(Smoke):
                 nodes = matching_nodes(xml, description=desc)
                 scrolls = [n for n in ET.fromstring(xml).iter('node')
                            if n.get('class') == 'android.widget.ScrollView']
+                # Original Craft has TWO genuine layouts. Portrait holds
+                # a ScrollView; the wide/landscape palette is a flat grid.
+                # The latter exposes every enabled original source tile
+                # directly and must NOT be rejected for lacking scrolling.
+                if not scrolls:
+                    if len(nodes) != 1:
+                        raise AssertionError('Original wide Craft tile not found: ' + desc)
+                    self.tap(description=desc)
+                    self.wait_node(description='Редактор экрана')
+                    return
                 if len(scrolls) != 1:
-                    raise AssertionError('Original Craft source preview scrolling list missing')
+                    raise AssertionError('Ambiguous original Craft scrolling list')
                 left, top, right, bottom = map(
                     int, re.findall(r'\d+', scrolls[0].get('bounds')))
                 if len(nodes) == 1:
