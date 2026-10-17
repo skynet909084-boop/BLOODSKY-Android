@@ -40,10 +40,6 @@ public class ProjectMediaService {
                 if (!storageId.isEmpty() && !"..".equals(storageId) && !".".equals(storageId)) {
                     return hashString("sid_" + storageId);
                 }
-                String rawName = obj.optString("name", "").trim();
-                if (!rawName.isEmpty()) {
-                    return hashString("name_" + rawName + "_" + projectJson.length());
-                }
             } catch (Exception ignored) {}
         }
         return "default_project";

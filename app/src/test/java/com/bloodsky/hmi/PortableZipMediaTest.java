@@ -152,11 +152,18 @@ public class PortableZipMediaTest {
 
         assertNotNull(idA);
         assertNotNull(idB);
-        assertNotEquals(idA, idB);
+        // Both projects lack explicit id/storageId, so both default to default_project unless assigned a storageId
+        JSONObject projAWithStorage = new JSONObject(ProjectMediaService.ensureProjectHasId(projA.toString()));
+        JSONObject projBWithStorage = new JSONObject(ProjectMediaService.ensureProjectHasId(projB.toString()));
+
+        String storageIdA = ProjectMediaService.getOrGenerateProjectId(projAWithStorage.toString());
+        String storageIdB = ProjectMediaService.getOrGenerateProjectId(projBWithStorage.toString());
+
+        assertNotEquals(storageIdA, storageIdB);
         assertFalse(idTraversal.contains(".."));
 
-        File mediaDirA = ProjectMediaService.getProjectMediaDir(rootDir, projA.toString());
-        File mediaDirB = ProjectMediaService.getProjectMediaDir(rootDir, projB.toString());
+        File mediaDirA = ProjectMediaService.getProjectMediaDir(rootDir, projAWithStorage.toString());
+        File mediaDirB = ProjectMediaService.getProjectMediaDir(rootDir, projBWithStorage.toString());
 
         assertNotEquals(mediaDirA.getAbsolutePath(), mediaDirB.getAbsolutePath());
     }
