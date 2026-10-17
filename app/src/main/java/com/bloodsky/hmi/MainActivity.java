@@ -71,6 +71,7 @@ public class MainActivity extends Activity {
     private Widget clipboardWidget;
     private boolean operatorMode = false;
     private boolean fbdWireMode = false;
+    private final FbdWireHistory fbdWireHistory = new FbdWireHistory();
     private int wireSource = -1;
     private boolean[] fbdCacheValid = new boolean[0];
     private boolean[] fbdCacheValues = new boolean[0];
@@ -1229,6 +1230,17 @@ public class MainActivity extends Activity {
             menu.getMenu().add("Удалить связь FBD…").setOnMenuItemClickListener(item -> {
                 showFbdDisconnectDialog(); return true;
             });
+            if (currentScreenIndex >= 0 && currentScreenIndex < screens.size()) {
+                Screen current = screens.get(currentScreenIndex);
+                if (fbdWireHistory.canUndo(current))
+                    menu.getMenu().add("Отменить связь FBD").setOnMenuItemClickListener(item -> {
+                        replayFbdWireEdit(false); return true;
+                    });
+                if (fbdWireHistory.canRedo(current))
+                    menu.getMenu().add("Повторить связь FBD").setOnMenuItemClickListener(item -> {
+                        replayFbdWireEdit(true); return true;
+                    });
+            }
         }
         menu.getMenu().add("Modbus").setOnMenuItemClickListener(item -> { showModbusDiagnostics(); return true; });
         menu.getMenu().add("Главное меню").setOnMenuItemClickListener(item -> {
@@ -1283,6 +1295,7 @@ public class MainActivity extends Activity {
     }
 
     private void activateScreen(int index) {
+        fbdWireHistory.clear();
         saveActiveScreen();
         if (screens.isEmpty()) screens.add(new Screen("Экран 1"));
         currentScreenIndex = Math.max(0, Math.min(index, screens.size() - 1));
@@ -1304,6 +1317,7 @@ public class MainActivity extends Activity {
     }
 
     private void addScreen() {
+        fbdWireHistory.clear();
         saveActiveScreen();
         screens.add(new Screen("Экран " + (screens.size() + 1)));
         currentScreenIndex = screens.size() - 1;
@@ -1322,6 +1336,7 @@ public class MainActivity extends Activity {
                 .setMessage("Экран «" + currentScreenName() + "» и все его элементы будут удалены.")
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Удалить", (dialog, which) -> {
+                    fbdWireHistory.clear();
                     saveActiveScreen();
                     screens.remove(currentScreenIndex);
                     currentScreenIndex = Math.max(0, Math.min(currentScreenIndex, screens.size() - 1));
@@ -1648,6 +1663,7 @@ public class MainActivity extends Activity {
     }
 
     private void addWidget(String type, String text) {
+        fbdWireHistory.clear();
         Widget w = new Widget();
         w.type = type;
         w.text = text;
@@ -2118,6 +2134,7 @@ public class MainActivity extends Activity {
             float maxY = editor == null ? Math.max(0, copy.y + offset) : Math.max(0, editor.getHeight() - copy.h);
             copy.x = Math.max(0, Math.min(maxX, copy.x + offset));
             copy.y = Math.max(0, Math.min(maxY, copy.y + offset));
+            fbdWireHistory.clear();
             widgets.add(copy);
             if (editor != null) {
                 editor.selected = widgets.size() - 1;
@@ -2172,6 +2189,7 @@ public class MainActivity extends Activity {
             return;
         }
         int removed = editor.selected;
+        fbdWireHistory.clear();
         widgets.remove(removed);
         if (!screens.isEmpty()) {
             Screen screen = screens.get(currentScreenIndex);
@@ -2418,6 +2436,7 @@ public class MainActivity extends Activity {
     }
 
     private void loadProject() {
+        fbdWireHistory.clear();
         imageCache.clear();
         widgets.clear(); screens.clear(); currentScreenIndex = 0;
         projectExtraFields = new JSONObject();
@@ -3153,6 +3172,25 @@ public class MainActivity extends Activity {
     }
 
     /** Explicit edge selection avoids deleting unrelated FBD connections. */
+    /** Wire history is session-local and never changes persisted legacy edge metadata. */
+    private void replayFbdWireEdit(boolean redo) {
+        if (operatorMode || currentScreenIndex < 0 || currentScreenIndex >= screens.size()) return;
+        Screen current = screens.get(currentScreenIndex);
+        try {
+            boolean changed = redo
+                    ? fbdWireHistory.redo(current, current.connections)
+                    : fbdWireHistory.undo(current, current.connections);
+            if (!changed) return;
+            persistProject();
+            if (editor != null) editor.invalidate();
+            Toast.makeText(this, redo ? "Связь FBD повторена" : "Связь FBD отменена",
+                    Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            fbdWireHistory.clear();
+            Toast.makeText(this, "Не удалось восстановить связь FBD", Toast.LENGTH_LONG).show();
+        }
+    }
+
     private void showFbdDisconnectDialog() {
         if (screens.isEmpty() || currentScreenIndex < 0 || currentScreenIndex >= screens.size()) return;
         Screen screen = screens.get(currentScreenIndex);
@@ -3179,6 +3217,13 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle("Удалить связь FBD")
                 .setItems(labels.toArray(new String[0]), (dialog, selected) -> {
                     FbdConnection edge = candidates.get(selected);
+                    if (!screen.connections.contains(edge)) return;
+                    try {
+                        fbdWireHistory.recordBefore(screen, screen.connections);
+                    } catch (Exception invalid) {
+                        Toast.makeText(this, "Не удалось сохранить историю FBD", Toast.LENGTH_LONG).show();
+                        return;
+                    }
                     if (disconnectFbdEdge(screen.connections, edge)) {
                         persistProject();
                         if (editor != null) editor.invalidate();
@@ -3316,6 +3361,12 @@ public class MainActivity extends Activity {
                 Toast.makeText(this, "Такая связь уже существует", Toast.LENGTH_SHORT).show();
                 return;
             }
+        }
+        try {
+            fbdWireHistory.recordBefore(screen, screen.connections);
+        } catch (Exception invalid) {
+            Toast.makeText(this, "Не удалось сохранить историю FBD", Toast.LENGTH_LONG).show();
+            return;
         }
         screen.connections.add(edge);
         persistProject();
