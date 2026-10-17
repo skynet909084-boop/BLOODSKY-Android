@@ -1,5 +1,15 @@
 # BLOODSKY FBD — working handoff, 17 Oct 2026
 
+## Current authoritative status — 17 October 2026
+
+- **ACTIVE FBD integration parent:** [PR #76](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/76), branch `feat/fbd-75-pin-semantics`, last verified merged commit `87f1aa1ada09580a1bfd7568bf0f060dd09aec58`, target `main` still **DRAFT / UNMERGED**. All three exact-head gates **PASS**: original pinned-source audit [39055132308](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39055132308), Android JUnit/APK [39055132283](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39055132283) and Android API30 full smoke [39055132344](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39055132344).
+- #106 is merged into #76 and includes 100/101/102/103/104/105; redundant stacked PRs were closed. It integrates typed pin positions, inversion and history, arithmetic, TON/TOF/TP, Modbus→FBD→HMI display, deletion-safe fbd://N bindings, manual FBD input and legacy media migration. Do **not** reopen the old tasks or wait for agents.
+- **NEW finalization draft:** [PR #107](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/107), branch `feat/fbd-source-drawing-duration-batch-20261017`, adds source-backed gray source canvas for AND/OR/XOR/TIMER/compare, named pin geometry based on source header layout, a safe millisecond exact units editor MS/SEK/MIN, TON/TOF/TP selector, and block-specific long-press connect/invert/disconnect context menu. Python/Java and Android UI checks at **latest head pending**. Do not merge a stale head.
+- Work in batches directly via GitHub connector, not agents. Preserve old JSON, screenshots, user-authored captions, and stable main. Never infer unavailable source algorithms from names only.
+- Source **parity blockers still unresolved**: native CTU `+,-,R` numeric output vs provisional `CU,R,PV` counter, original RS latch priority, BLINK, 40 disabled native FBD previews, exact source screen density/style and physical Android/PLC verification. Do not label full Craft parity or issue a release without source evidence.
+
+Historical notes below are retained for traceability, but this section supersedes their older pending statuses.
+
 ## Continuation anchor
 
 Repository: `skynet909084-boop/BLOODSKY-Android`. Do **not** restart from earlier PR #70 or reassign vague tasks to agents. All work is being performed directly and verified in GitHub Actions. Main branch remains stable.
