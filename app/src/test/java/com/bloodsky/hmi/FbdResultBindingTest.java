@@ -52,6 +52,28 @@ public class FbdResultBindingTest {
         assertNull(FbdResultBinding.resolve("tcp://host", nodes, valid, boolOutputs, numericOutputs));
     }
 
+    @Test public void removingEarlierWidgetKeepsSourceIdentity() {
+        assertEquals("fbd://1", FbdResultBinding.afterWidgetRemoved("fbd://2", 0));
+        assertEquals("fbd://2", FbdResultBinding.afterWidgetRemoved("fbd://3", 0));
+        assertEquals("fbd://2", FbdResultBinding.afterWidgetRemoved("fbd://3", 1));
+        assertEquals("fbd://1", FbdResultBinding.afterWidgetRemoved("fbd://1", 2));
+        assertEquals("fbd://1", FbdResultBinding.afterWidgetRemoved("fbd://0002", 0));
+    }
+
+    @Test public void removingBoundSourceFailsClosedRatherThanRebinding() {
+        assertEquals("fbd://missing-1", FbdResultBinding.afterWidgetRemoved("fbd://1", 0));
+        assertEquals("fbd://missing-5", FbdResultBinding.afterWidgetRemoved("fbd://5", 4));
+        assertEquals(-1, FbdResultBinding.sourceIndex(
+                FbdResultBinding.afterWidgetRemoved("fbd://5", 4)));
+        assertEquals("fbd://missing-5",
+                FbdResultBinding.afterWidgetRemoved("fbd://missing-5", 0));
+        assertEquals("tcp://host:502/1/40001",
+                FbdResultBinding.afterWidgetRemoved("tcp://host:502/1/40001", 0));
+        assertEquals("fbd://nonsense",
+                FbdResultBinding.afterWidgetRemoved("fbd://nonsense", 0));
+        assertNull(FbdResultBinding.afterWidgetRemoved(null, 0));
+    }
+
     @Test public void incompleteRuntimeCachesCannotLeakOldFbdValues() {
         List<MainActivity.Widget> nodes = Arrays.asList(widget("FBD AND"), widget("Индикатор"));
         boolean[] incomplete = {false, false};
