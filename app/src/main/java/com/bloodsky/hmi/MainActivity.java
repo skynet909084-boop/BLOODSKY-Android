@@ -1621,7 +1621,8 @@ public class MainActivity extends Activity {
                 "FBD — CTD (счёт вниз)", "FBD — R_TRIG", "FBD — F_TRIG",
                 "FBD — Craft CTU 16 бит (+, −, R)",
                 "FBD — Craft T (переключатель по фронту)",
-                "FBD — Craft BLINK (мигание)"
+                "FBD — Craft BLINK (мигание)",
+                "FBD — Craft SEL (целочисленный)"
         };
         final String[] types = {
                 "Текст", "Кнопка", "Индикатор", "Задатчик",
@@ -1636,7 +1637,8 @@ public class MainActivity extends Activity {
                 "FBD MOVE", "FBD SEL", "FBD ABS", "FBD MIN_MAX",
                 "FBD RS", "FBD SR", "FBD CTU",
                 "FBD CTD", "FBD R_TRIG", "FBD F_TRIG",
-                "FBD CRAFT CTU", "FBD CRAFT T", "FBD CRAFT BLINK"
+                "FBD CRAFT CTU", "FBD CRAFT T", "FBD CRAFT BLINK",
+                "FBD CRAFT SEL"
         };
         final String[] defaults = {
                 "Надпись", "Кнопка", "Индикатор", "Задатчик: 0",
@@ -1648,7 +1650,7 @@ public class MainActivity extends Activity {
                 "Float->Int", "Int->Float",
                 "MOVE", "SEL", "ABS", "MIN/MAX",
                 "RS", "SR", "CTU", "CTD", "R_TRIG", "F_TRIG",
-                "CTU 16 bit", "T", "BLINK"
+                "CTU 16 bit", "T", "BLINK", "SEL"
         };
         LinearLayout list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
@@ -2913,6 +2915,12 @@ public class MainActivity extends Activity {
             if (output && "OUT".equals(name)) return "NUMBER";
             if (!output && "IN".equals(name)) return "NUMBER";
         }
+        if (kind.equals("FBD CRAFT SEL")) {
+            if (output && "Q".equals(name)) return "NUMBER";
+            if (!output && "IN".equals(name)) return "BOOL";
+            if (!output && ("I1".equals(name) || "I2".equals(name)))
+                return "NUMBER";
+        }
         if (kind.equals("FBD SEL")) {
             if (output && "OUT".equals(name)) return "NUMBER";
             if (!output && "G".equals(name)) return "BOOL";
@@ -3274,6 +3282,22 @@ public class MainActivity extends Activity {
             if (Double.isNaN(minV) || Double.isInfinite(minV)) minV = 0.0;
             cacheNumeric[index] = minV;
             return minV != 0.0;
+        }
+        if ("FBD CRAFT SEL".equals(widget.type)) {
+            // Pinned original FB_SEL: IN ? I2 : I1, signed Integer output.
+            // Never reinterpret legacy SEL G/IN0/IN1/OUT or auto-round FLOAT.
+            boolean selector = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
+            Integer i1 = FbdCraftIntegerSelector.exactInteger(
+                    fbdNumericPinValue(numInputs, inputPins, "I1", 1, Double.NaN));
+            Integer i2 = FbdCraftIntegerSelector.exactInteger(
+                    fbdNumericPinValue(numInputs, inputPins, "I2", 2, Double.NaN));
+            if (i1 == null || i2 == null) {
+                cacheNumeric[index] = 0.0;
+                return false;  // Native source does not emit Q with absent operands.
+            }
+            int value = FbdCraftIntegerSelector.select(selector, i1, i2);
+            cacheNumeric[index] = value;
+            return value != 0;
         }
         if ("FBD MOVE".equals(widget.type) || "FBD SEL".equals(widget.type)) {
             double val;
@@ -3759,6 +3783,8 @@ public class MainActivity extends Activity {
             return output ? new String[]{"Q"} : new String[]{"A", "B"};
         if ("FBD MOVE".equals(kind))
             return output ? new String[]{"OUT"} : new String[]{"IN"};
+        if ("FBD CRAFT SEL".equals(kind))
+            return output ? new String[]{"Q"} : new String[]{"IN", "I1", "I2"};
         if ("FBD SEL".equals(kind))
             return output ? new String[]{"OUT"} : new String[]{"G", "IN0", "IN1"};
         if ("FBD POW".equals(kind)) return output ? new String[]{"OUT"} : new String[]{"BASE", "EXP"};
