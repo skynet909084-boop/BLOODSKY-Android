@@ -2605,6 +2605,15 @@ public class MainActivity extends Activity {
             if (output && "Q".equals(name)) return "BOOL";
             if (!output && "IN".equals(name)) return "BOOL";
         }
+        if (kind.equals("FBD CTU") || kind.equals("FBD CTD")) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && ("CU".equals(name) || "CD".equals(name)
+                    || "R".equals(name) || "LD".equals(name))) {
+                if (kind.equals("FBD CTU")) return ("CU".equals(name) || "R".equals(name)) ? "BOOL" : null;
+                return ("CD".equals(name) || "LD".equals(name)) ? "BOOL" : null;
+            }
+            if (!output && "PV".equals(name)) return "NUMBER";
+        }
         if (kind.equals("FBD TON")) {
             if (output && "Q".equals(name)) return "BOOL";
             if (!output && "IN".equals(name)) return "BOOL";
@@ -2625,12 +2634,14 @@ public class MainActivity extends Activity {
                 || "FBD XOR".equalsIgnoreCase(canonicalFbdBlockType(sourceType)) || "FBD RS".equalsIgnoreCase(canonicalFbdBlockType(sourceType)) || "FBD SR".equalsIgnoreCase(canonicalFbdBlockType(sourceType))
                 || "FBD R_TRIG".equalsIgnoreCase(canonicalFbdBlockType(sourceType))
                 || "FBD F_TRIG".equalsIgnoreCase(canonicalFbdBlockType(sourceType))
-                || "FBD TON".equalsIgnoreCase(canonicalFbdBlockType(sourceType));
+                || "FBD TON".equalsIgnoreCase(canonicalFbdBlockType(sourceType)) || "FBD CTU".equalsIgnoreCase(canonicalFbdBlockType(sourceType))
+                || "FBD CTD".equalsIgnoreCase(canonicalFbdBlockType(sourceType));
         boolean targetBlockKnown = "FBD ВХОД".equalsIgnoreCase(canonicalFbdBlockType(targetType)) || "FBD AND".equalsIgnoreCase(canonicalFbdBlockType(targetType)) || "FBD OR".equalsIgnoreCase(canonicalFbdBlockType(targetType))
                 || "FBD XOR".equalsIgnoreCase(canonicalFbdBlockType(targetType)) || "FBD RS".equalsIgnoreCase(canonicalFbdBlockType(targetType)) || "FBD SR".equalsIgnoreCase(canonicalFbdBlockType(targetType))
                 || "FBD R_TRIG".equalsIgnoreCase(canonicalFbdBlockType(targetType))
                 || "FBD F_TRIG".equalsIgnoreCase(canonicalFbdBlockType(targetType))
-                || "FBD TON".equalsIgnoreCase(canonicalFbdBlockType(targetType));
+                || "FBD TON".equalsIgnoreCase(canonicalFbdBlockType(targetType)) || "FBD CTU".equalsIgnoreCase(canonicalFbdBlockType(targetType))
+                || "FBD CTD".equalsIgnoreCase(canonicalFbdBlockType(targetType));
         if ((sourceBlockKnown && sourceKnown == null) || (targetBlockKnown && targetKnown == null)) return false;
         if (sourceKnown != null && targetKnown != null && !sourceKnown.equals(targetKnown)) return false;
         if (sourceKnown != null && edge.has("sourceSignalType")
@@ -2937,8 +2948,8 @@ public class MainActivity extends Activity {
             return fallingEdge;
         }
         if ("FBD CTU".equals(widget.type)) {
-            boolean countInput = !inputs.isEmpty() && inputs.get(0);
-            boolean resetInput = inputs.size() > 1 && inputs.get(1);
+            boolean countInput = fbdBooleanPinValue(inputs, inputPins, "CU", 0);
+            boolean resetInput = fbdBooleanPinValue(inputs, inputPins, "R", 1);
             if (resetInput) {
                 widget.counterValue = 0;
             } else if (countInput && !widget.counterLastInput) {
@@ -2948,8 +2959,8 @@ public class MainActivity extends Activity {
             return widget.counterValue >= widget.counterPreset;
         }
         if ("FBD CTD".equals(widget.type)) {
-            boolean countInput = !inputs.isEmpty() && inputs.get(0);
-            boolean loadInput = inputs.size() > 1 && inputs.get(1);
+            boolean countInput = fbdBooleanPinValue(inputs, inputPins, "CD", 0);
+            boolean loadInput = fbdBooleanPinValue(inputs, inputPins, "LD", 1);
             if (loadInput) {
                 widget.counterValue = widget.counterPreset;
             } else if (countInput && !widget.counterLastInput) {
@@ -3138,6 +3149,8 @@ public class MainActivity extends Activity {
         if ("FBD RS".equals(kind) || "FBD SR".equals(kind)) return output ? new String[]{"Q"} : new String[]{"R", "S"};
         if ("FBD R_TRIG".equals(kind) || "FBD F_TRIG".equals(kind))
             return output ? new String[]{"Q"} : new String[]{"IN"};
+        if ("FBD CTU".equals(kind)) return output ? new String[]{"Q"} : new String[]{"CU", "R", "PV"};
+        if ("FBD CTD".equals(kind)) return output ? new String[]{"Q"} : new String[]{"CD", "LD", "PV"};
         if ("FBD TON".equals(kind)) return output ? new String[]{"Q"} : new String[]{"IN", "PT"};
         return new String[0];
     }
