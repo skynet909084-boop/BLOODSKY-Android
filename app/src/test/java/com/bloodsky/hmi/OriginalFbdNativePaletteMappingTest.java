@@ -1,0 +1,50 @@
+package com.bloodsky.hmi;
+
+import org.junit.Test;
+import static org.junit.Assert.*;
+
+/**
+ * Match original decompiled FB preview names to versioned native runtimes.
+ * No unsupported source preview may become a misleading clickable control.
+ */
+public class OriginalFbdNativePaletteMappingTest {
+    @Test public void originalCtuPreviewPointsToNumericNotLegacyThresholdCounter() {
+        String mapped = OriginalFbdPalette.nativeTypeForOriginalTag("FB_CTU");
+        assertEquals("FBD CRAFT CTU", mapped);
+        assertEquals("CTU 16 bit", OriginalFbdPalette.nativeLabelForOriginalTag("FB_CTU"));
+        assertArrayEquals(new String[]{"+","-","R"}, MainActivity.knownFbdPins(mapped, false));
+        assertEquals("NUMBER", MainActivity.knownFbdPinType(mapped, "Q", true));
+        assertNotEquals("FBD CTU", mapped);
+        assertEquals("BOOL", MainActivity.knownFbdPinType("FBD CTU", "Q", true));
+    }
+
+    @Test public void originalTriggerPreviewPointsToSourceToggleMode() {
+        String mapped = OriginalFbdPalette.nativeTypeForOriginalTag("FB_TRIGGER");
+        assertEquals("FBD CRAFT T", mapped);
+        assertEquals("T", OriginalFbdPalette.nativeLabelForOriginalTag("FB_TRIGGER"));
+        assertArrayEquals(new String[]{"IN"}, MainActivity.knownFbdPins(mapped, false));
+        assertEquals("BOOL", MainActivity.knownFbdPinType(mapped, "Q", true));
+        assertNotEquals("FBD R_TRIG", mapped);
+    }
+
+    @Test public void originalRsPreviewUsesResetDominantExistingRs() {
+        String mapped = OriginalFbdPalette.nativeTypeForOriginalTag("FB_RS");
+        assertEquals("FBD RS", mapped);
+        assertEquals("RS", OriginalFbdPalette.nativeLabelForOriginalTag("FB_RS"));
+        assertArrayEquals(new String[]{"R","S"}, MainActivity.knownFbdPins(mapped, false));
+        assertFalse(FbdCraftNativeTransitions.rs(false, true, true));
+        assertTrue(FbdCraftNativeTransitions.rs(false, false, true));
+    }
+
+    @Test public void unsupportedOriginalBlocksStayDisabledAndUnmapped() {
+        for (String source : new String[]{
+                "FB_MOVE", "FB_SEL", "FB_TIMER", "FB_ARRAY", "FB_MACRO",
+                "FB_COMPARE", "FB_MX", "MQTT_SUBSCRIBER", "Var",
+                "FB_POW", "FB_TRIGGER_ALT", "", "FB_CTU_OLD"}) {
+            assertNull(source, OriginalFbdPalette.nativeTypeForOriginalTag(source));
+            assertNull(source, OriginalFbdPalette.nativeLabelForOriginalTag(source));
+        }
+        assertNull(OriginalFbdPalette.nativeTypeForOriginalTag(null));
+        assertNull(OriginalFbdPalette.nativeLabelForOriginalTag(null));
+    }
+}
