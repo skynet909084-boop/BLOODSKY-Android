@@ -2547,6 +2547,19 @@ public class MainActivity extends Activity {
         return json;
     }
 
+    /** Check whether an edge's explicit pin metadata is well-formed; legacy edges have no pins. */
+    public static boolean hasValidFbdPinMetadata(FbdConnection edge) {
+        if (edge == null || edge.extraFields == null) return false;
+        JSONObject json = edge.extraFields;
+        if (!json.has("sourcePin") && !json.has("targetPin")) return true;
+        if (!json.has("sourcePin") || !json.has("targetPin")) return false;
+        Object sourcePin = json.opt("sourcePin");
+        Object targetPin = json.opt("targetPin");
+        return sourcePin instanceof String && targetPin instanceof String
+                && !((String) sourcePin).trim().isEmpty()
+                && !((String) targetPin).trim().isEmpty();
+    }
+
     /** Remove a selected edge by identity, even if a legacy project contains duplicates. */
     public static boolean disconnectFbdEdge(List<FbdConnection> connections, FbdConnection selected) {
         return connections != null && selected != null && connections.remove(selected);
