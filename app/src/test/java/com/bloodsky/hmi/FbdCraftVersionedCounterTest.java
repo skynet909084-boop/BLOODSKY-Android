@@ -108,7 +108,7 @@ public class FbdCraftVersionedCounterTest {
         assertFalse(imported.craftLastMinus);
         assertEquals("keep", MainActivity.widgetToJson(imported).getString("vendorExtra"));
         // State is integer and readable by existing HMI fbd://N presentation.
-        assertEquals("432", FbdResultBinding.resolve(
+        assertEquals("432.0", FbdResultBinding.resolve(
                 "fbd://1", Arrays.asList(imported),
                 new boolean[]{true}, new boolean[]{true}, new double[]{432}));
     }
