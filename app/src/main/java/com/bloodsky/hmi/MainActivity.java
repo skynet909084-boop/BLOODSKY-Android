@@ -69,6 +69,7 @@ public class MainActivity extends Activity {
     private final List<Screen> screens = new ArrayList<>();
     private int currentScreenIndex = 0;
     private Widget clipboardWidget;
+    private boolean operatorMode = false;
     private boolean fbdWireMode = false;
     private int wireSource = -1;
     private boolean[] fbdCacheValid = new boolean[0];
@@ -275,6 +276,7 @@ public class MainActivity extends Activity {
     }
 
     private void showHome() {
+        operatorMode = false;
         setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
         stopModbusPolling();
         editor = null;
@@ -1153,86 +1155,90 @@ public class MainActivity extends Activity {
 
     private void showEditor() {
         setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-        root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
+        root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.rgb(35, 35, 35));
-
-        LinearLayout top = new LinearLayout(this);
-        top.setGravity(Gravity.CENTER_VERTICAL);
-        top.setPadding(dp(3), dp(2), dp(3), dp(2));
-        top.setBackgroundColor(Color.rgb(35, 35, 35));
-        top.addView(legacyToolbarButton("☰", this::showHome),
-                new LinearLayout.LayoutParams(dp(42), dp(38)));
-        Button rename = legacyToolbarButton(projectName, this::editProjectName);
-        top.addView(rename, new LinearLayout.LayoutParams(0, dp(38), 1));
-        top.addView(legacyToolbarButton("💾", () -> {
-            persistProject();
-            Toast.makeText(this, "Проект сохранён на устройстве", Toast.LENGTH_SHORT).show();
-        }), new LinearLayout.LayoutParams(dp(48), dp(38)));
-        root.addView(top, new LinearLayout.LayoutParams(-1, dp(42)));
-
-        LinearLayout screenBar = new LinearLayout(this);
-        screenBar.setGravity(Gravity.CENTER_VERTICAL);
-        screenBar.setPadding(dp(3), dp(1), dp(3), dp(1));
-        screenBar.setBackgroundColor(Color.rgb(48, 48, 48));
-        screenBar.addView(legacyToolbarButton("◀", this::previousScreen),
-                new LinearLayout.LayoutParams(dp(38), dp(34)));
-        screenBar.addView(legacyToolbarButton(currentScreenName(), this::renameCurrentScreen),
-                new LinearLayout.LayoutParams(0, dp(34), 1));
-        screenBar.addView(legacyToolbarButton("Фон", this::editScreenBackground),
-                new LinearLayout.LayoutParams(dp(54), dp(34)));
-        screenBar.addView(legacyToolbarButton("▶", this::nextScreen),
-                new LinearLayout.LayoutParams(dp(38), dp(34)));
-        screenBar.addView(legacyToolbarButton("+", this::addScreen),
-                new LinearLayout.LayoutParams(dp(38), dp(34)));
-        screenBar.addView(legacyToolbarButton("−", this::removeCurrentScreen),
-                new LinearLayout.LayoutParams(dp(38), dp(34)));
-        root.addView(screenBar, new LinearLayout.LayoutParams(-1, dp(36)));
-
-        LinearLayout toolsBar = new LinearLayout(this);
-        toolsBar.setGravity(Gravity.CENTER_VERTICAL);
-        toolsBar.setPadding(dp(3), dp(2), dp(3), dp(2));
-        toolsBar.setBackgroundColor(Color.rgb(35, 35, 35));
-        toolsBar.addView(legacyToolbarButton("+ Элемент", this::showAddWidgetMenu),
-                new LinearLayout.LayoutParams(0, dp(36), 1));
-        toolsBar.addView(legacyToolbarButton(fbdWireMode ? "Связь: ВКЛ" : "Связать FBD", () -> {
-            fbdWireMode = !fbdWireMode;
-            wireSource = -1;
-            Toast.makeText(this, fbdWireMode ? "Режим связи: выбери исходный FBD-блок, затем целевой" : "Режим связи выключен", Toast.LENGTH_LONG).show();
-            showEditor();
-        }), new LinearLayout.LayoutParams(0, dp(36), 1));
-        toolsBar.addView(legacyToolbarButton("Выравн.", this::showAlignDialog),
-                new LinearLayout.LayoutParams(dp(60), dp(36)));
-        toolsBar.addView(legacyToolbarButton("Modbus", this::showModbusDiagnostics),
-                new LinearLayout.LayoutParams(dp(64), dp(36)));
-        toolsBar.addView(legacyToolbarButton("Настр.", this::showProjectSettingsDialog),
-                new LinearLayout.LayoutParams(dp(60), dp(36)));
-        android.widget.ImageButton calculator = new android.widget.ImageButton(this);
-        calculator.setImageResource(R.drawable.kc_calculator);
-        calculator.setContentDescription("Калькулятор");
-        calculator.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
-        calculator.setBackgroundColor(Color.TRANSPARENT);
-        calculator.setPadding(0, 0, 0, 0);
-        calculator.setOnClickListener(v -> {
-            if (getFragmentManager().findFragmentByTag("original-calculator") == null) {
-                new OriginalCalculatorDialog().show(getFragmentManager(), "original-calculator");
-            }
+        android.widget.FrameLayout area = new android.widget.FrameLayout(this);
+        android.widget.ImageButton reveal = editorIcon(R.drawable.kc_menu_app_bar, "Показать панель");
+        final View[] toolbar = new View[1];
+        toolbar[0] = OriginalEditorToolbar.create(root, currentScreenName(), operatorMode, new OriginalEditorToolbar.Host() {
+            public void hide() { toolbar[0].setVisibility(View.GONE); reveal.setVisibility(View.VISIBLE); }
+            public void toggleMode() { toggleOperatorMode(); }
+            public void previous() { previousScreen(); }
+            public void next() { nextScreen(); }
+            public void renameScreen() { renameCurrentScreen(); }
+            public void calculator() { showOriginalCalculator(); }
+            public void menu(View anchor) { showEditorCommands(anchor); }
         });
-        toolsBar.addView(calculator, new LinearLayout.LayoutParams(dp(40), dp(36)));
-        root.addView(toolsBar, new LinearLayout.LayoutParams(-1, dp(40)));
-
+        root.addView(toolbar[0], new LinearLayout.LayoutParams(-1, -2));
         editor = new EditorCanvas();
-        editor.setContentDescription("Редактор экрана");
-        root.addView(editor, new LinearLayout.LayoutParams(-1, 0, 1));
+        editor.setContentDescription(operatorMode ? "Рабочий экран" : "Редактор экрана");
+        area.addView(editor, new android.widget.FrameLayout.LayoutParams(-1, -1));
+        reveal.setVisibility(View.GONE);
+        reveal.setOnClickListener(v -> { reveal.setVisibility(View.GONE); toolbar[0].setVisibility(View.VISIBLE); });
+        android.widget.FrameLayout.LayoutParams revealParams = new android.widget.FrameLayout.LayoutParams(dp(40), dp(40), Gravity.TOP | Gravity.LEFT);
+        revealParams.leftMargin = dp(10); revealParams.topMargin = dp(5);
+        area.addView(reveal, revealParams);
+        if (!operatorMode) {
+            android.widget.ImageButton palette = editorIcon(R.drawable.kc_menu_bar_component, "Добавить элемент");
+            palette.setOnClickListener(v -> showAddWidgetMenu());
+            android.widget.FrameLayout.LayoutParams paletteParams = new android.widget.FrameLayout.LayoutParams(dp(40), dp(40), Gravity.BOTTOM | Gravity.LEFT);
+            paletteParams.setMargins(dp(15), dp(15), dp(15), dp(15));
+            area.addView(palette, paletteParams);
+        }
+        root.addView(area, new LinearLayout.LayoutParams(-1, 0, 1));
+        if (!operatorMode) {
+            View actions = OriginalSelectionActions.create(root, this::cutSelectedWidget,
+                    this::copySelectedWidget, this::pasteWidget, this::showAlignDialog);
+            LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(-2, -2);
+            actionParams.gravity = Gravity.CENTER_HORIZONTAL;
+            root.addView(actions, actionParams);
+        }
+        setContentView(root); editor.invalidate(); startModbusPolling();
+    }
 
-        View actions = OriginalSelectionActions.create(root, this::cutSelectedWidget,
-                this::copySelectedWidget, this::pasteWidget, this::showAlignDialog);
-        LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(-2, -2);
-        actionParams.gravity = Gravity.CENTER_HORIZONTAL;
-        root.addView(actions, actionParams);
-        setContentView(root);
-        editor.invalidate();
-        startModbusPolling();
+    private android.widget.ImageButton editorIcon(int drawable, String description) {
+        android.widget.ImageButton button = new android.widget.ImageButton(this);
+        button.setBackgroundColor(Color.TRANSPARENT); button.setImageResource(drawable);
+        button.setScaleType(android.widget.ImageView.ScaleType.FIT_XY); button.setPadding(0, 0, 0, 0);
+        button.setContentDescription(description); return button;
+    }
+
+    private void showOriginalCalculator() {
+        if (getFragmentManager().findFragmentByTag("original-calculator") == null)
+            new OriginalCalculatorDialog().show(getFragmentManager(), "original-calculator");
+    }
+
+    private void toggleOperatorMode() {
+        if (!persistProjectNow(true)) return;
+        operatorMode = !operatorMode; fbdWireMode = false; wireSource = -1;
+        showEditor();
+    }
+
+    private void showEditorCommands(View anchor) {
+        android.widget.PopupMenu menu = new android.widget.PopupMenu(this, anchor);
+        if (!operatorMode) {
+            menu.getMenu().add("Имя проекта").setOnMenuItemClickListener(item -> { editProjectName(); return true; });
+            menu.getMenu().add("Настройки проекта").setOnMenuItemClickListener(item -> { showProjectSettingsDialog(); return true; });
+            menu.getMenu().add("Сохранить проект").setOnMenuItemClickListener(item -> { persistProject(); return true; });
+            menu.getMenu().add("Добавить экран").setOnMenuItemClickListener(item -> { addScreen(); return true; });
+            menu.getMenu().add("Удалить экран").setOnMenuItemClickListener(item -> { removeCurrentScreen(); return true; });
+            menu.getMenu().add("Фон экрана").setOnMenuItemClickListener(item -> { editScreenBackground(); return true; });
+            menu.getMenu().add(fbdWireMode ? "Выключить связь FBD" : "Связать FBD").setOnMenuItemClickListener(item -> {
+                fbdWireMode = !fbdWireMode; wireSource = -1; showEditor(); return true;
+            });
+        }
+        menu.getMenu().add("Modbus").setOnMenuItemClickListener(item -> { showModbusDiagnostics(); return true; });
+        menu.getMenu().add("Главное меню").setOnMenuItemClickListener(item -> {
+            if (persistProjectNow(true)) showHome(); return true;
+        });
+        menu.show();
+    }
+
+    @Override public void onBackPressed() {
+        if (editor != null) {
+            if (operatorMode) toggleOperatorMode();
+            else if (persistProjectNow(true)) showHome();
+        } else super.onBackPressed();
     }
 
     private String currentScreenName() {
@@ -2913,10 +2919,12 @@ public class MainActivity extends Activity {
             paint.setColor(Color.rgb(228, 234, 241));
             paint.setStrokeWidth(1);
             int grid = dp(20);
-            for (int x = 0; x < getWidth(); x += grid) canvas.drawLine(x, 0, x, getHeight(), paint);
-            for (int y = 0; y < getHeight(); y += grid) canvas.drawLine(0, y, getWidth(), y, paint);
+            if (!operatorMode) {
+                for (int x = 0; x < getWidth(); x += grid) canvas.drawLine(x, 0, x, getHeight(), paint);
+                for (int y = 0; y < getHeight(); y += grid) canvas.drawLine(0, y, getWidth(), y, paint);
+            }
 
-            if (!screens.isEmpty()) {
+            if (!operatorMode && !screens.isEmpty()) {
                 Screen screen = screens.get(currentScreenIndex);
                 paint.setColor(Color.rgb(124, 58, 237));
                 paint.setStrokeWidth(dp(2));
@@ -2938,9 +2946,11 @@ public class MainActivity extends Activity {
             fbdCacheValid = new boolean[widgets.size()];
             fbdCacheValues = new boolean[widgets.size()];
             fbdCacheNumeric = new double[widgets.size()];
+            if (operatorMode) for (int i = 0; i < widgets.size(); i++)
+                if (isFbd(widgets.get(i))) evaluateFbd(i, new boolean[widgets.size()]);
             for (int i = 0; i < widgets.size(); i++) {
                 Widget w = widgets.get(i);
-                if (!w.visible) continue;
+                if (!w.visible || (operatorMode && isFbd(w))) continue;
                 RectF rect = new RectF(w.x, w.y, w.x + w.w, w.y + w.h);
                 paint.setStyle(Paint.Style.FILL);
                 if (w.backgroundColor != 0) {
@@ -3177,7 +3187,82 @@ public class MainActivity extends Activity {
             }
         }
 
+        private final OperatorGesture operatorGesture = new OperatorGesture();
+
+        private int hitRuntimeWidget(float x, float y) {
+            for (int i = widgets.size() - 1; i >= 0; i--) {
+                Widget w = widgets.get(i);
+                if (w.visible && !isFbd(w) && x >= w.x && x <= w.x + w.w && y >= w.y && y <= w.y + w.h) return i;
+            }
+            return -1;
+        }
+
+        private boolean onOperatorTouch(MotionEvent event) {
+            float x = event.getX(), y = event.getY();
+            int action = event.getActionMasked();
+            if (action == MotionEvent.ACTION_DOWN)
+                operatorGesture.begin(hitRuntimeWidget(x, y), x, y, SystemClock.elapsedRealtime());
+            else if (action == MotionEvent.ACTION_MOVE) operatorGesture.move(x, y, dp(5));
+            else if (action == MotionEvent.ACTION_UP) {
+                int target = operatorGesture.end(hitRuntimeWidget(x, y), x, y, SystemClock.elapsedRealtime(), dp(5));
+                if (target >= 0 && target < widgets.size()) activateRuntimeWidget(target, x, y);
+                invalidate();
+            } else if (action == MotionEvent.ACTION_CANCEL || action == MotionEvent.ACTION_POINTER_DOWN)
+                operatorGesture.cancel();
+            return true;
+        }
+
+        private void activateRuntimeWidget(int index, float x, float y) {
+            Widget picked = widgets.get(index);
+            if ("Задатчик".equals(picked.type) && y >= picked.y + dp(29)) {
+                adjustSetpoint(picked, x < picked.x + picked.w / 2 ? -1 : 1);
+            } else if ("Кнопка".equals(picked.type)) {
+                picked.buttonState = !picked.buttonState;
+                persistProject();
+                BindingRequest request = parseBinding(-1, picked.connectionInfo);
+                if (request != null && request.functionCode == 3) {
+                    final boolean btnOn = picked.buttonState;
+                    modbusExecutor.execute(() -> {
+                        try {
+                            boolean ok = writeModbusRegisterStatic(request.host, request.port, request.unit, request.address, btnOn ? 1 : 0);
+                            if (!ok) throw new IOException("Устройство отклонило запись регистра");
+                        } catch (Exception ex) {
+                            android.util.Log.e("BLOODSKY", "Modbus write failed", ex);
+                            runOnUiThread(() -> {
+                                picked.buttonState = !btnOn;
+                                persistProject();
+                                if (editor != null) editor.invalidate();
+                                Toast.makeText(MainActivity.this, "Ошибка записи Modbus: " + (ex.getMessage() != null ? ex.getMessage() : "ошибка связи"), Toast.LENGTH_LONG).show();
+                            });
+                        }
+                    });
+                }
+                Toast.makeText(MainActivity.this, picked.text + (picked.buttonState ? ": ВКЛ" : ": ВЫКЛ"), Toast.LENGTH_SHORT).show();
+            } else if ("FBD Вход".equals(picked.type)) {
+                picked.inputValue = !picked.inputValue;
+                persistProject();
+                Toast.makeText(MainActivity.this, "Вход FBD = " + (picked.inputValue ? "1" : "0"), Toast.LENGTH_SHORT).show();
+            } else if ("Переход на экран".equals(picked.type)) {
+                if (picked.targetScreenIndex >= 0 && picked.targetScreenIndex < screens.size()) {
+                    activateScreen(picked.targetScreenIndex);
+                    Toast.makeText(MainActivity.this, "Переход на Экран " + (picked.targetScreenIndex + 1), Toast.LENGTH_SHORT).show();
+                } else if (picked.targetUrl != null && !picked.targetUrl.trim().isEmpty()) {
+                    try {
+                        Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(picked.targetUrl));
+                        startActivity(browserIntent);
+                    } catch (Exception ex) {
+                        Toast.makeText(MainActivity.this, "Не удалось открыть URL: " + picked.targetUrl, Toast.LENGTH_SHORT).show();
+                    }
+                } else {
+                    // No properties dialogs in operator mode.
+                }
+            } else {
+                // No properties dialogs in operator mode.
+            }
+        }
+
         @Override public boolean onTouchEvent(MotionEvent event) {
+            if (operatorMode) return onOperatorTouch(event);
             float x = event.getX(), y = event.getY();
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
                 downX = x; downY = y; downAt = SystemClock.elapsedRealtime(); dragging = false; resizing = false; selected = -1;
@@ -3234,52 +3319,7 @@ public class MainActivity extends Activity {
                         fbdWireMode = false;
                     }
                 } else if (selected >= 0) {
-                    Widget picked = widgets.get(selected);
-                    if ("Задатчик".equals(picked.type) && y >= picked.y + dp(29)) {
-                        adjustSetpoint(picked, x < picked.x + picked.w / 2 ? -1 : 1);
-                    } else if ("Кнопка".equals(picked.type)) {
-                        picked.buttonState = !picked.buttonState;
-                        persistProject();
-                        BindingRequest request = parseBinding(-1, picked.connectionInfo);
-                        if (request != null && request.functionCode == 3) {
-                            final boolean btnOn = picked.buttonState;
-                            modbusExecutor.execute(() -> {
-                                try {
-                                    boolean ok = writeModbusRegisterStatic(request.host, request.port, request.unit, request.address, btnOn ? 1 : 0);
-                                    if (!ok) throw new IOException("Устройство отклонило запись регистра");
-                                } catch (Exception ex) {
-                                    android.util.Log.e("BLOODSKY", "Modbus write failed", ex);
-                                    runOnUiThread(() -> {
-                                        picked.buttonState = !btnOn;
-                                        persistProject();
-                                        if (editor != null) editor.invalidate();
-                                        Toast.makeText(MainActivity.this, "Ошибка записи Modbus: " + (ex.getMessage() != null ? ex.getMessage() : "ошибка связи"), Toast.LENGTH_LONG).show();
-                                    });
-                                }
-                            });
-                        }
-                        Toast.makeText(MainActivity.this, picked.text + (picked.buttonState ? ": ВКЛ" : ": ВЫКЛ"), Toast.LENGTH_SHORT).show();
-                    } else if ("FBD Вход".equals(picked.type)) {
-                        picked.inputValue = !picked.inputValue;
-                        persistProject();
-                        Toast.makeText(MainActivity.this, "Вход FBD = " + (picked.inputValue ? "1" : "0"), Toast.LENGTH_SHORT).show();
-                    } else if ("Переход на экран".equals(picked.type)) {
-                        if (picked.targetScreenIndex >= 0 && picked.targetScreenIndex < screens.size()) {
-                            activateScreen(picked.targetScreenIndex);
-                            Toast.makeText(MainActivity.this, "Переход на Экран " + (picked.targetScreenIndex + 1), Toast.LENGTH_SHORT).show();
-                        } else if (picked.targetUrl != null && !picked.targetUrl.trim().isEmpty()) {
-                            try {
-                                Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(picked.targetUrl));
-                                startActivity(browserIntent);
-                            } catch (Exception ex) {
-                                Toast.makeText(MainActivity.this, "Не удалось открыть URL: " + picked.targetUrl, Toast.LENGTH_SHORT).show();
-                            }
-                        } else {
-                            editSelectedWidget();
-                        }
-                    } else {
-                        editSelectedWidget();
-                    }
+                    editSelectedWidget();
                 }
                 invalidate();
                 return true;

@@ -47,6 +47,17 @@ def selection_actions(decoded):
     ET.indent(root)
     return ET.tostring(root, encoding='unicode', xml_declaration=True)
 
+def editor_toolbar(decoded):
+    root = ET.fromstring(transfer(decoded, 'activity_work_portrait', 'kc_toolbar_', 'toolbar'))
+    for node in root.iter():
+        node.attrib.pop(ANDROID + 'onClick', None)
+        if node.get(ANDROID + 'id') == '@+id/kc_toolbar_nowTime':
+            node.tag = 'TextClock'
+            node.set(ANDROID + 'format12Hour', 'HH:mm')
+            node.set(ANDROID + 'format24Hour', 'HH:mm')
+    ET.indent(root)
+    return ET.tostring(root, encoding='unicode', xml_declaration=True)
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--decoded', type=Path, default=Path('build/craft-reference'))
