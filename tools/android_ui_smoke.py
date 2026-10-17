@@ -364,6 +364,15 @@ class Smoke:
         if self.saved_connections():
             raise AssertionError('FBD disconnect did not persist removal')
         self.capture('04s-fbd-disconnected')
+        # Undo must restore the same fully typed connection, not a generic wire.
+        self.tap_editor_menu_item('Отменить связь FBD')
+        if self.saved_connections() != links:
+            raise AssertionError('FBD undo failed to restore Q -> IN with all metadata')
+        self.capture('04t-fbd-undo-restored')
+        self.tap_editor_menu_item('Повторить связь FBD')
+        if self.saved_connections():
+            raise AssertionError('FBD redo failed to remove the restored wire')
+        self.capture('04u-fbd-redo-disconnected')
         adb('shell', 'am', 'force-stop', PACKAGE)
         adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
         self.tap('Загрузить проект')
@@ -649,7 +658,7 @@ class Smoke:
         if PACKAGE in crashes:
             raise AssertionError('Application crash recorded')
         (self.output / 'result.json').write_text(json.dumps({'result': 'passed', 'package': PACKAGE,
-                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'original five-category palette', 'palette add indicator/button/text/progress', 'original 40-preview FBD palette and return/extended navigation', 'FBD AND/TON add and restart', 'FBD non-overlapping initial block positions', 'FBD typed Q-IN wiring, drag, restart and disconnect', 'invalid timer preset leaves project and form unchanged', 'exact valid timer preset preserves other fields', 'process restart', 'reload four palette-created components', 'invalid geometry leaves dialog/project unchanged', 'fractional properties survive second process restart', 'original ON/OFF dialogs and builtin state selection', 'custom document-provider image and persisted URI grant after process restart', 'original compact toolbar and hide/reveal', 'editor button opens properties without activation', 'operator drag and long-press cannot edit or activate', 'runtime button on/off and persistence after restart', 'stop and Back restore editor tools', 'confirmed deletion'],
+                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'original five-category palette', 'palette add indicator/button/text/progress', 'original 40-preview FBD palette and return/extended navigation', 'FBD AND/TON add and restart', 'FBD non-overlapping initial block positions', 'FBD typed Q-IN wiring, drag, restart, disconnect, undo and redo', 'invalid timer preset leaves project and form unchanged', 'exact valid timer preset preserves other fields', 'process restart', 'reload four palette-created components', 'invalid geometry leaves dialog/project unchanged', 'fractional properties survive second process restart', 'original ON/OFF dialogs and builtin state selection', 'custom document-provider image and persisted URI grant after process restart', 'original compact toolbar and hide/reveal', 'editor button opens properties without activation', 'operator drag and long-press cannot edit or activate', 'runtime button on/off and persistence after restart', 'stop and Back restore editor tools', 'confirmed deletion'],
                 'api_level': adb('shell', 'getprop', 'ro.build.version.sdk').strip(),
                 'display_size': adb('shell', 'wm', 'size').strip(),
                 'display_density': adb('shell', 'wm', 'density').strip()}, indent=2))
