@@ -2768,6 +2768,15 @@ public class MainActivity extends Activity {
     }
 
     /** PT values use milliseconds; reject invalid durations rather than overflow timer arithmetic. */
+    /** Counter preset is a nonnegative integer; preserve saved preset for invalid PV. */
+    public static int fbdCounterPreset(List<Double> values, List<String> pins, int configured) {
+        int fallback = Math.max(0, Math.min(1000000, configured));
+        double value = fbdNumericPinValue(values, pins, "PV", -1, fallback);
+        if (value < 0 || value > 1000000 || Double.isNaN(value) || Double.isInfinite(value))
+            return fallback;
+        return (int) Math.round(value);
+    }
+
     public static long fbdTonPresetMs(List<Double> values, List<String> pins, int configuredMs) {
         long fallback = Math.max(1L, Math.min(3600000L, (long) configuredMs));
         double raw = fbdNumericPinValue(values, pins, "PT", -1, fallback);
@@ -2956,13 +2965,13 @@ public class MainActivity extends Activity {
                 widget.counterValue = Math.min(1000000, widget.counterValue + 1);
             }
             widget.counterLastInput = countInput;
-            return widget.counterValue >= widget.counterPreset;
+            return widget.counterValue >= fbdCounterPreset(numInputs, inputPins, widget.counterPreset);
         }
         if ("FBD CTD".equals(widget.type)) {
             boolean countInput = fbdBooleanPinValue(inputs, inputPins, "CD", 0);
             boolean loadInput = fbdBooleanPinValue(inputs, inputPins, "LD", 1);
             if (loadInput) {
-                widget.counterValue = widget.counterPreset;
+                widget.counterValue = fbdCounterPreset(numInputs, inputPins, widget.counterPreset);
             } else if (countInput && !widget.counterLastInput) {
                 widget.counterValue = Math.max(0, widget.counterValue - 1);
             }
