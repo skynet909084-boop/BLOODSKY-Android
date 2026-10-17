@@ -95,7 +95,7 @@ def drawing(decoded):
         vals = ', '.join(json.dumps(v,ensure_ascii=False) for v in [title,*ins,out])
         cases.append(f'            case "{name}": configure({vals}, {str(base in "bfg").lower()}, {index}); break;')
     helper = method((Path(decoded)/'jadx/sources/ru/himik/nightscream/kascada/Logic/VarFloat.java').read_text(), 'public Path u(RectF rectF, float f2, float f3, float f4, float f5) {')
-    return '''package com.bloodsky.hmi;
+    java = '''package com.bloodsky.hmi;
 
 import android.content.Context;
 import android.graphics.*;
@@ -145,6 +145,8 @@ public final class OriginalFbdDrawing extends View {
         }
     }
 ''' + '\n'.join(f'    private void draw{i}(Canvas canvas) {{{body}\n    }}\n' for i,body in enumerate(bodies)) + '    private Path u(RectF rectF,float f2,float f3,float f4,float f5) {'+helper+'\n    }\n}\n'
+
+    return '\n'.join(line.rstrip() for line in java.splitlines()) + '\n'
 
 if __name__ == '__main__':
     root=Path(__file__).resolve().parents[1]; decoded=root/'build/craft-reference'

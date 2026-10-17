@@ -294,7 +294,7 @@ public final class OriginalFbdDrawing extends View {
 
     private void draw9(Canvas canvas) {
         int width;
-        
+
         this.ink.setStyle(Paint.Style.FILL);
         this.ink.setColor(-7829368);
         this.ink.setStrokeWidth(this.stroke);
@@ -373,7 +373,7 @@ public final class OriginalFbdDrawing extends View {
     }
 
     private void draw12(Canvas canvas) {
-        
+
         RectF rectF = this.box;
         int i2 = this.stroke;
         rectF.set(i2, i2, getWidth() - this.pin, getHeight() - this.stroke);
@@ -517,6 +517,6 @@ public final class OriginalFbdDrawing extends View {
         path.quadTo(f16, f17, f6 + f16, f17);
         path.close();
         return path;
-    
+
     }
 }
