@@ -28,7 +28,7 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn('project.put("currentScreen", currentScreenIndex)', self.source)
 
     def test_project_load_supports_multiscreen_and_legacy_array(self):
-        self.assertIn("private void loadProject()", self.source)
+        self.assertRegex(self.source, r"private (?:void|boolean) loadProject\(\)")
         self.assertIn('project.optJSONArray("screens")', self.source)
         self.assertIn("parsed instanceof JSONArray", self.source)
         self.assertIn("new Screen(\"Экран 1\")", self.source)
@@ -172,6 +172,16 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("target < screen.widgets.size()", load_method)
         self.assertIn("isFbd(screen.widgets.get(source))", load_method)
         self.assertIn("isFbd(screen.widgets.get(target))", load_method)
+
+    def test_legacy_media_migration_is_checked_before_opening_project(self):
+        load_start = self.source.index("private boolean loadProject()")
+        load_end = self.source.index("public static void validateImportedProjectStatic(", load_start)
+        method = self.source[load_start:load_end]
+        self.assertIn("LegacyProjectMediaMigrator.needsMigration(json)", method)
+        self.assertLess(method.index("migrateLegacyActiveProject(json)"),
+                        method.index("widgets.clear()"))
+        self.assertIn("storeActiveProject(newJson, true)", self.source)
+        self.assertIn("if (!loadProject())", self.source)
 
     def test_ci_runs_python_tests_android_tests_and_builds_apk(self):
         self.assertIn("python -m unittest discover -s tools -p 'test_*.py' -v", self.workflow)
