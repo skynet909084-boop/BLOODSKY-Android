@@ -1,6 +1,11 @@
 name: BLOODSKY Cloud AI Preflight
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/cloud-ai-preflight.yml'
+      - 'tools/check_cloud_ai_pilot.py'
+      - 'docs/FREELLMAPI_CLOUD_PILOT.md'
 permissions:
   contents: read
 concurrency:
