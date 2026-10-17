@@ -1,0 +1,43 @@
+name: BLOODSKY free self-hosted Windows build
+
+# This never uses rented GitHub-hosted compute.
+on:
+  workflow_dispatch:
+    inputs:
+      ui_profile:
+        description: "None for APK/JUnit; Full for the already running emulator"
+        type: choice
+        default: None
+        options: [None, Full]
+  pull_request:
+    paths:
+      - 'scripts/build_bloodsky_windows.ps1'
+      - '.github/workflows/bloodsky-selfhosted-windows.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bloodsky-selfhosted-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  local-windows:
+    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == 'skynet909084-boop')
+    runs-on: [self-hosted, Windows, X64, bloodsky-local]
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run local build and tests (no hosted runner minutes)
+        shell: powershell
+        env:
+          BLOODSKY_UI_PROFILE: ${{ github.event_name == 'workflow_dispatch' && inputs.ui_profile || 'None' }}
+        run: .\scripts\build_bloodsky_windows.ps1 -UiProfile $env:BLOODSKY_UI_PROFILE
+      - name: Upload APK (2-day retention to conserve artifact storage)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BLOODSKY-Windows-selfhosted-debug-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 2
