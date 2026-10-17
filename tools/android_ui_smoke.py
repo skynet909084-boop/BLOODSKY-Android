@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Install and exercise the debug APK on an already booted, disposable emulator."""
 import argparse
-import base64
+import io
+import wave
+from png_pixel_probe import solid_rgba_png, count_matching_png_pixels
 import hashlib
 import json
 from pathlib import Path
@@ -283,17 +285,25 @@ class Smoke:
                 'connections': [],
                 'widgets': [
                     {'type': 'Многопозиционное фото', 'text': 'Legacy photo',
+                     'x': 160, 'y': 135, 'w': 210, 'h': 110,
                      'imagePathStates': ['media/photo.png'] +
                         ['Картинка ' + str(i) for i in range(1, 16)]},
                     {'type': 'Звуковой сигнал', 'text': 'Legacy audio',
+                     'x': 500, 'y': 135, 'w': 140, 'h': 80,
                      'soundFilePath': 'media/alarm.wav'}
                 ]
             }]
         }
-        # A real one-pixel PNG; WAV bytes only need to survive migration.
-        image = base64.b64decode(
-            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/Sc3x5QAAAABJRU5ErkJggg==')
-        audio = b'RIFF\\x24\\x00\\x00\\x00WAVEfmt LEGACY_AUDIO'
+        # Draw a real, CRC-valid magenta PNG. The previous one-pixel fixture
+        # had an invalid IDAT CRC: copying its bytes passed but it did not render.
+        image = solid_rgba_png(8, 8, (235, 21, 207, 255))
+        audio_buffer = io.BytesIO()
+        with wave.open(audio_buffer, 'wb') as sound:
+            sound.setnchannels(1)
+            sound.setsampwidth(2)
+            sound.setframerate(8000)
+            sound.writeframes(b'\x00\x00' * 800)
+        audio = audio_buffer.getvalue()
         image_file = self.output / 'legacy-photo.png'
         audio_file = self.output / 'legacy-alarm.wav'
         image_file.write_bytes(image)
@@ -341,6 +351,13 @@ class Smoke:
         self.tap(legacy['projectName'])
         self.wait_node(description='Редактор экрана')
         self.capture('07-migrated-legacy-media')
+        visible_pixels = count_matching_png_pixels(
+            (self.output / '07-migrated-legacy-media.png').read_bytes(),
+            (235, 21, 207), tolerance=12)
+        if visible_pixels < 800:
+            raise AssertionError(
+                'Migrated image bytes exist, but editor did not render the actual PNG: '
+                + str(visible_pixels) + ' magenta pixels')
         adb('shell', 'am', 'force-stop', PACKAGE)
         adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
         self.tap('Загрузить проект')
@@ -352,6 +369,13 @@ class Smoke:
                                  for node in ET.fromstring(next_xml)}['active_project'])
         if next_active.get('storageId') != storage:
             raise AssertionError('Media storage identity changed across process restart')
+        self.capture('07b-migrated-legacy-media-reopened')
+        reopened_pixels = count_matching_png_pixels(
+            (self.output / '07b-migrated-legacy-media-reopened.png').read_bytes(),
+            (235, 21, 207), tolerance=12)
+        if reopened_pixels < 800:
+            raise AssertionError('Migrated image stopped rendering after restart: '
+                                 + str(reopened_pixels) + ' magenta pixels')
         for filename, data in (('photo.png', image), ('alarm.wav', audio)):
             if adb('shell', 'run-as', PACKAGE, 'cat', media + filename, binary=True) != data:
                 raise AssertionError('Legacy media disappeared after restart: ' + filename)
@@ -634,7 +658,7 @@ class Smoke:
         if PACKAGE in crashes:
             raise AssertionError('Application crash recorded')
         (self.output / 'result.json').write_text(json.dumps({'result': 'passed', 'package': PACKAGE,
-                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'original five-category palette', 'palette add indicator/button/text/progress', 'original 40-preview FBD palette and return/extended navigation', 'FBD AND/TON add and restart', 'invalid timer preset leaves project and form unchanged', 'exact valid timer preset preserves other fields', 'process restart', 'reload four palette-created components', 'invalid geometry leaves dialog/project unchanged', 'fractional properties survive second process restart', 'original ON/OFF dialogs and builtin state selection', 'custom document-provider image and persisted URI grant after process restart', 'original compact toolbar and hide/reveal', 'editor button opens properties without activation', 'operator drag and long-press cannot edit or activate', 'runtime button on/off and persistence after restart', 'stop and Back restore editor tools', 'confirmed deletion', 'legacy media bytes preserved and isolated across restart'],
+                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'original five-category palette', 'palette add indicator/button/text/progress', 'original 40-preview FBD palette and return/extended navigation', 'FBD AND/TON add and restart', 'invalid timer preset leaves project and form unchanged', 'exact valid timer preset preserves other fields', 'process restart', 'reload four palette-created components', 'invalid geometry leaves dialog/project unchanged', 'fractional properties survive second process restart', 'original ON/OFF dialogs and builtin state selection', 'custom document-provider image and persisted URI grant after process restart', 'original compact toolbar and hide/reveal', 'editor button opens properties without activation', 'operator drag and long-press cannot edit or activate', 'runtime button on/off and persistence after restart', 'stop and Back restore editor tools', 'confirmed deletion', 'legacy media bytes preserved and visible PNG rendered across restart'],
                 'api_level': adb('shell', 'getprop', 'ro.build.version.sdk').strip(),
                 'display_size': adb('shell', 'wm', 'size').strip(),
                 'display_density': adb('shell', 'wm', 'density').strip()}, indent=2))
