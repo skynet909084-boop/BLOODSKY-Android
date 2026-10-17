@@ -26,6 +26,20 @@ public final class FbdResultBinding {
         }
     }
 
+    /** Preserve binding identity when earlier widgets are deleted.
+     *
+     * Removing the source itself marks its old position missing instead of
+     * silently connecting a display to an unrelated block now at that index.
+     * The old number remains readable so the operator can repair the binding.
+     */
+    public static String afterWidgetRemoved(String binding, int removedIndex) {
+        int source = sourceIndex(binding);
+        if (source < 0 || removedIndex < 0) return binding;
+        if (source == removedIndex) return "fbd://missing-" + (source + 1);
+        if (source > removedIndex) return "fbd://" + source;
+        return binding;
+    }
+
     /** Null: not an FBD binding. CFG: invalid, missing, or unsupported source. */
     public static String resolve(String binding, List<MainActivity.Widget> widgets,
                                  boolean[] valid, boolean[] boolOutputs, double[] numericOutputs) {
