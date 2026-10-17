@@ -360,6 +360,26 @@ class Smoke:
         if self.saved_connections() != links:
             raise AssertionError('Named FBD pin wiring was lost after process restart')
         self.capture('04p-fbd-reopened')
+        # A typed BOOL wire can be inverted without changing the saved pin
+        # identities. Undo/redo must restore the exact connection metadata.
+        self.tap_editor_menu_item('Инвертировать BOOL-связь FBD…')
+        self.wait_node('Инверсия связи FBD (BOOL)')
+        self.tap(str(source_idx+1) + ':Q → ' + str(target_idx+1) + ':IN  обычная')
+        inverted = self.saved_connections()
+        if len(inverted) != 1 or not inverted[0].get('inverted'):
+            raise AssertionError('Named BOOL wire inversion was not persisted')
+        if {k: v for k, v in inverted[0].items() if k != 'inverted'} != links[0]:
+            raise AssertionError('Wire inversion changed other saved metadata')
+        self.capture('04v-fbd-inverted-bool-wire')
+        self.tap_editor_menu_item('Отменить связь FBD')
+        if self.saved_connections() != links:
+            raise AssertionError('Undo did not restore normal BOOL wire metadata')
+        self.tap_editor_menu_item('Повторить связь FBD')
+        if self.saved_connections() != inverted:
+            raise AssertionError('Redo did not restore inverted BOOL wire metadata')
+        self.tap_editor_menu_item('Отменить связь FBD')
+        if self.saved_connections() != links:
+            raise AssertionError('Second undo failed to restore normal BOOL wire')
         self.tap_editor_menu_item('Удалить связь FBD…')
         label = (str(source_idx+1) + ': ' + source['text'] + ' → '
                  + str(target_idx+1) + ': ' + target['text'] + ' [Q → IN]')
