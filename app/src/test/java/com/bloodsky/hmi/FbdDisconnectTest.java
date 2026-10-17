@@ -375,6 +375,17 @@ public class FbdDisconnectTest {
         assertFalse(MainActivity.hasCompatibleKnownFbdPins(edge, "FBD Вход", "FBD CTU"));
     }
 
+    @Test public void counterTransitionsCountOnlyRisingEdgesAndRespectPriority() {
+        assertEquals(1, MainActivity.fbdCountUpStep(0, true, false, false));
+        assertEquals(1, MainActivity.fbdCountUpStep(1, true, true, false));
+        assertEquals(0, MainActivity.fbdCountUpStep(10, true, false, true));
+        assertEquals(1000000, MainActivity.fbdCountUpStep(1000000, true, false, false));
+        assertEquals(4, MainActivity.fbdCountDownStep(5, true, false, false, 12));
+        assertEquals(5, MainActivity.fbdCountDownStep(5, true, true, false, 12));
+        assertEquals(12, MainActivity.fbdCountDownStep(5, true, false, true, 12));
+        assertEquals(0, MainActivity.fbdCountDownStep(0, true, false, false, 12));
+    }
+
     @Test public void invalidEndpointsDoNotMutateGraph() {
         List<MainActivity.FbdConnection> edges = new ArrayList<>();
         edges.add(new MainActivity.FbdConnection(0, 1));
