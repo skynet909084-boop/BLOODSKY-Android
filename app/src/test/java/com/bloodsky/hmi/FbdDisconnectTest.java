@@ -310,6 +310,10 @@ public class FbdDisconnectTest {
                 java.util.Arrays.asList(1.0), java.util.Arrays.asList("PT"), 1000));
         assertEquals(3600000L, MainActivity.fbdTonPresetMs(
                 java.util.Arrays.asList(3600000.0), java.util.Arrays.asList("PT"), 1000));
+        assertEquals(1L, MainActivity.fbdTonPresetMs(
+                java.util.Arrays.asList(0.0), java.util.Arrays.asList("PT"), 0));
+        assertEquals(3600000L, MainActivity.fbdTonPresetMs(
+                java.util.Arrays.asList(Double.NaN), java.util.Arrays.asList("PT"), Integer.MAX_VALUE));
     }
 
     @Test public void invalidEndpointsDoNotMutateGraph() {
