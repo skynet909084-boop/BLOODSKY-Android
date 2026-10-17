@@ -3805,8 +3805,8 @@ public class MainActivity extends Activity {
         public boolean counterLastInput = false;
         // Native Craft edge flags are transient operator runtime only;
         // their absence from JSON protects old project schemas on save/copy.
-        public boolean craftLastPlus = false;
-        public boolean craftLastMinus = false;
+        boolean craftLastPlus = false;
+        boolean craftLastMinus = false;
         public int timerPresetMs = 1000;
         public long timerStartedAt = 0L;
         public double compareA = 0.0, compareB = 0.0;
