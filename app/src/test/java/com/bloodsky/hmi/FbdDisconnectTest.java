@@ -174,7 +174,7 @@ public class FbdDisconnectTest {
     @Test public void editorPinChoicesMatchKnownContracts() {
         assertArrayEquals(new String[]{"Q"}, MainActivity.knownFbdPins("FBD AND", true));
         assertArrayEquals(new String[]{"IN1", "IN2"}, MainActivity.knownFbdPins("FBD OR", false));
-        assertArrayEquals(new String[]{"S", "R"}, MainActivity.knownFbdPins("FBD RS", false));
+        assertArrayEquals(new String[]{"R", "S"}, MainActivity.knownFbdPins("FBD RS", false));
         assertArrayEquals(new String[]{"IN", "PT"}, MainActivity.knownFbdPins("FBD TON", false));
         assertEquals(0, MainActivity.knownFbdPins("FBD UNKNOWN", true).length);
     }
