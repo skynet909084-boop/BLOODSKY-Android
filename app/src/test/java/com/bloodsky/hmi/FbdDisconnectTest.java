@@ -27,9 +27,9 @@ public class FbdDisconnectTest {
 
     @Test public void identitySelectionRemovesOnlyOneDuplicate() throws Exception {
         MainActivity.FbdConnection first = MainActivity.connectionFromJson(
-                new JSONObject("{\\"source\\":0,\\"target\\":1,\\"note\\":\\"first\\"}"));
+                new JSONObject("{\"source\":0,\"target\":1,\"note\":\"first\"}"));
         MainActivity.FbdConnection second = MainActivity.connectionFromJson(
-                new JSONObject("{\\"source\\":0,\\"target\\":1,\\"note\\":\\"second\\"}"));
+                new JSONObject("{\"source\":0,\"target\":1,\"note\":\"second\"}"));
         List<MainActivity.FbdConnection> edges = new ArrayList<>();
         edges.add(first);
         edges.add(second);
