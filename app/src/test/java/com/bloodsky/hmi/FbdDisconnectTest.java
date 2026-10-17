@@ -282,6 +282,19 @@ public class FbdDisconnectTest {
         assertEquals("Disabled TON resets its timer", 0L, timer.timerStartedAt);
     }
 
+    @Test public void numericTerminalLookupIsOrderIndependentAndFinite() {
+        List<Double> values = java.util.Arrays.asList(2500.0, 1.0);
+        List<String> pins = java.util.Arrays.asList("PT", "IN");
+        assertEquals(2500.0, MainActivity.fbdNumericPinValue(values, pins, "PT", 1, 1000.0), 0.0);
+        assertEquals(1000.0, MainActivity.fbdNumericPinValue(values, pins, "UNKNOWN", 0, 1000.0), 0.0);
+        assertEquals(2500.0, MainActivity.fbdNumericPinValue(values,
+                java.util.Arrays.asList("", ""), "PT", 0, 1000.0), 0.0);
+        assertEquals(1000.0, MainActivity.fbdNumericPinValue(
+                java.util.Arrays.asList(Double.NaN), java.util.Arrays.asList("PT"), "PT", 0, 1000.0), 0.0);
+        assertEquals(1000.0, MainActivity.fbdNumericPinValue(
+                java.util.Arrays.asList(Double.POSITIVE_INFINITY), java.util.Arrays.asList("PT"), "PT", 0, 1000.0), 0.0);
+    }
+
     @Test public void invalidEndpointsDoNotMutateGraph() {
         List<MainActivity.FbdConnection> edges = new ArrayList<>();
         edges.add(new MainActivity.FbdConnection(0, 1));
