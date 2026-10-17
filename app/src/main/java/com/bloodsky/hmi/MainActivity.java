@@ -2225,6 +2225,12 @@ public class MainActivity extends Activity {
         int removed = editor.selected;
         fbdWireHistory.clear();
         widgets.remove(removed);
+        // A positional fbd://N reference must never silently switch to a
+        // different source after deletion. Missing sources render CFG.
+        for (Widget survivor : widgets) {
+            survivor.connectionInfo = FbdResultBinding.afterWidgetRemoved(
+                    survivor.connectionInfo, removed);
+        }
         if (!screens.isEmpty()) {
             Screen screen = screens.get(currentScreenIndex);
             List<FbdConnection> kept = new ArrayList<>();
