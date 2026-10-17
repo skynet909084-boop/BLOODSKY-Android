@@ -203,6 +203,32 @@ class Smoke:
         (self.output / (name + '.png')).write_bytes(adb('exec-out', 'screencap', '-p', binary=True))
         (self.output / (name + '.xml')).write_text(self.dump())
 
+    def tap_editor_menu_item(self, item):
+        self.tap(description='Меню проекта')
+        for attempt in range(7):
+            xml = self.dump()
+            available = matching_nodes(xml, text=item)
+            if len(available) == 1:
+                x, y = center(available[0].get('bounds'))
+                adb('shell', 'input', 'tap', str(x), str(y))
+                return
+            if len(available) > 1:
+                raise AssertionError('Ambiguous project command: ' + item)
+            scrollable = [n for n in ET.fromstring(xml).iter('node')
+                          if n.get('scrollable') == 'true'
+                          and n.get('bounds') != '[0,0][0,0]']
+            if not scrollable:
+                raise AssertionError('Project command not reachable: ' + item)
+            left, top, right, bottom = map(int, re.findall(r'\d+', scrollable[-1].get('bounds')))
+            x = (left + right) // 2
+            adb('shell', 'input', 'swipe', str(x), str(bottom-20), str(x), str(top+20), '300')
+        raise AssertionError('Project menu did not reveal: ' + item)
+
+    def saved_connections(self):
+        xml = adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml')
+        active = json.loads({n.get('name'): n.text for n in ET.fromstring(xml)}['active_project'])
+        return active['screens'][0].get('connections', [])
+
     def check_fbd_palette_and_properties(self, saved_widgets):
         baseline = saved_widgets()
         self.tap(description='Добавить элемент')
@@ -261,6 +287,50 @@ class Smoke:
         expected[-1]['timerPresetMs'] = 2345
         if saved_widgets() != expected:
             raise AssertionError('FBD preset edit changed another widget field')
+        # Exercise the real editor's named-pin wiring, drag persistence and removal.
+        # The preceding palette blocks overlap: select the exposed upper-left
+        # corner of AND instead of its obscured center (TON is drawn on top).
+        if self.saved_connections():
+            raise AssertionError('New FBD blocks unexpectedly have existing wires')
+        source_idx, target_idx = len(expected)-2, len(expected)-1
+        source, target = expected[source_idx], expected[target_idx]
+        canvas = self.wait_node(description='Редактор экрана')
+        left, top, _, _ = map(int, re.findall(r'\d+', canvas.get('bounds')))
+        self.tap_editor_menu_item('Связать FBD')
+        adb('shell', 'input', 'tap', str(round(left+source['x']+9)), str(round(top+source['y']+9)))
+        adb('shell', 'input', 'tap', str(round(left+target['x']+target['w']/2)),
+            str(round(top+target['y']+target['h']/2)))
+        self.wait_node('Выход FBD')
+        self.tap('Q')
+        self.wait_node('Вход FBD')
+        self.tap('IN')
+        links = self.saved_connections()
+        if len(links) != 1 or any(links[0].get(k) != value for k, value in {
+                'source': source_idx, 'target': target_idx,
+                'sourcePin': 'Q', 'targetPin': 'IN',
+                'sourceSignalType': 'BOOL', 'targetSignalType': 'BOOL'}.items()):
+            raise AssertionError('Named Q -> IN wire was not saved correctly: ' + repr(links))
+        self.capture('04q-fbd-named-pin-wire')
+        if saved_widgets() != expected:
+            raise AssertionError('Adding a wire changed component properties')
+        adb('shell', 'input', 'swipe',
+            str(round(left+source['x']+9)), str(round(top+source['y']+9)),
+            str(round(left+source['x']+39)), str(round(top+source['y']+19)), '310')
+        dragged_widgets = saved_widgets()
+        if dragged_widgets == expected:
+            raise AssertionError('FBD drag did not persist new geometry')
+        for idx, widget in enumerate(dragged_widgets):
+            old = expected[idx]
+            if idx == source_idx:
+                if {k: v for k, v in widget.items() if k not in ('x', 'y')} != {
+                        k: v for k, v in old.items() if k not in ('x', 'y')}:
+                    raise AssertionError('Dragging FBD source mutated non-geometry fields')
+            elif widget != old:
+                raise AssertionError('Dragging FBD source moved or modified another block')
+        if self.saved_connections() != links:
+            raise AssertionError('Dragging an FBD block changed its named wire')
+        self.capture('04r-fbd-drag-wire-preserved')
+        expected = dragged_widgets
         adb('shell', 'am', 'force-stop', PACKAGE)
         adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
         self.tap('Загрузить проект')
@@ -268,7 +338,24 @@ class Smoke:
         self.wait_node(description='Редактор экрана')
         if saved_widgets() != expected:
             raise AssertionError('FBD palette blocks/preset did not survive process restart')
+        if self.saved_connections() != links:
+            raise AssertionError('Named FBD pin wiring was lost after process restart')
         self.capture('04p-fbd-reopened')
+        self.tap_editor_menu_item('Удалить связь FBD…')
+        label = (str(source_idx+1) + ': ' + source['text'] + ' → '
+                 + str(target_idx+1) + ': ' + target['text'] + ' [Q → IN]')
+        self.wait_node('Удалить связь FBD')
+        self.tap(label)
+        if self.saved_connections():
+            raise AssertionError('FBD disconnect did not persist removal')
+        self.capture('04s-fbd-disconnected')
+        adb('shell', 'am', 'force-stop', PACKAGE)
+        adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
+        self.tap('Загрузить проект')
+        self.tap(PROJECT)
+        self.wait_node(description='Редактор экрана')
+        if self.saved_connections() or saved_widgets() != expected:
+            raise AssertionError('Removed FBD wire or dragged blocks failed to persist after restart')
 
     def run(self, apk):
         serial = adb('get-serialno').strip()
@@ -547,7 +634,7 @@ class Smoke:
         if PACKAGE in crashes:
             raise AssertionError('Application crash recorded')
         (self.output / 'result.json').write_text(json.dumps({'result': 'passed', 'package': PACKAGE,
-                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'original five-category palette', 'palette add indicator/button/text/progress', 'original 40-preview FBD palette and return/extended navigation', 'FBD AND/TON add and restart', 'invalid timer preset leaves project and form unchanged', 'exact valid timer preset preserves other fields', 'process restart', 'reload four palette-created components', 'invalid geometry leaves dialog/project unchanged', 'fractional properties survive second process restart', 'original ON/OFF dialogs and builtin state selection', 'custom document-provider image and persisted URI grant after process restart', 'original compact toolbar and hide/reveal', 'editor button opens properties without activation', 'operator drag and long-press cannot edit or activate', 'runtime button on/off and persistence after restart', 'stop and Back restore editor tools', 'confirmed deletion'],
+                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'original five-category palette', 'palette add indicator/button/text/progress', 'original 40-preview FBD palette and return/extended navigation', 'FBD AND/TON add and restart', 'FBD typed Q-IN wiring, drag, restart and disconnect', 'invalid timer preset leaves project and form unchanged', 'exact valid timer preset preserves other fields', 'process restart', 'reload four palette-created components', 'invalid geometry leaves dialog/project unchanged', 'fractional properties survive second process restart', 'original ON/OFF dialogs and builtin state selection', 'custom document-provider image and persisted URI grant after process restart', 'original compact toolbar and hide/reveal', 'editor button opens properties without activation', 'operator drag and long-press cannot edit or activate', 'runtime button on/off and persistence after restart', 'stop and Back restore editor tools', 'confirmed deletion'],
                 'api_level': adb('shell', 'getprop', 'ro.build.version.sdk').strip(),
                 'display_size': adb('shell', 'wm', 'size').strip(),
                 'display_density': adb('shell', 'wm', 'density').strip()}, indent=2))
