@@ -2134,7 +2134,6 @@ public class MainActivity extends Activity {
                         w.type = FbdDurationUnits.typeForMode(newMode);
                         // Keep custom labels intact, refresh only an untouched mode label.
                         if (w.text != null && w.text.equals(oldMode)) w.text = newMode;
-                        FbdTimerTransitions.Step ignoredStep = null; // runtime state belongs to the new mode
                         w.timerStartedAt = 0L;
                         w.counterLastInput = false;
                         try {
