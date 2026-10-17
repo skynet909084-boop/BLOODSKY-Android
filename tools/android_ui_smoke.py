@@ -97,14 +97,14 @@ class Smoke:
         adb('shell', 'uiautomator', 'dump', '/sdcard/bloodsky-ui.xml')
         return adb('shell', 'cat', '/sdcard/bloodsky-ui.xml')
 
-    def wait_node(self, text=None, class_name=None, timeout=30, description=None):
+    def wait_node(self, text=None, class_name=None, timeout=30, description=None, focused=None):
         deadline = time.monotonic() + timeout
         last = ''
         while time.monotonic() < deadline:
             try:
                 last = self.dump()
                 nodes = matching_nodes(last, text, class_name, description)
-                if len(nodes) == 1:
+                if len(nodes) == 1 and (focused is None or nodes[0].get('focused') == str(focused).lower()):
                     return nodes[0]
                 if len(nodes) > 1:
                     raise RuntimeError('Ambiguous UI target: ' + str(text or class_name))
@@ -186,7 +186,7 @@ class Smoke:
         node = self.scroll_to_description(description)
         x, y = center(node.get('bounds'))
         adb('shell', 'input', 'tap', str(x), str(y))
-        focused = self.wait_node(description=description, class_name='android.widget.EditText')
+        focused = self.wait_node(description=description, class_name='android.widget.EditText', focused=True, timeout=10)
         if focused.get('focused') != 'true':
             raise AssertionError('Property field did not receive focus: ' + description)
         adb('shell', 'input', 'keyevent', '123', *(['67'] * (len(focused.get('text', '')) + 1)))

@@ -3,6 +3,7 @@
 
 Fixture mode uses an internal Docker network: no provider credentials or
 outbound internet. Live mode uses only one explicitly selected Groq free model.
+Anonymous mode uses OVHcloud without an account or provider credentials.
 Never upload router logs, its database, generated keys or startup configuration.
 """
 import argparse
@@ -19,6 +20,7 @@ import urllib.request
 
 UPSTREAM_SHA = "7ae0ef193d297c02479efed2a07946c44457512b"  # v0.15.0, MIT
 LIVE_MODEL = "openai/gpt-oss-120b"
+ANONYMOUS_MODEL = "gpt-oss-120b"
 FIXTURE_MODEL = "bloodsky-fixture"
 FIXTURE_SOURCE = '''package com.bloodsky.hmi;
 import org.junit.Test;
@@ -45,13 +47,29 @@ def docker(*args, **kwargs):
     result = subprocess.run(["docker", *args], capture_output=True, text=True,
                             timeout=kwargs.pop("timeout", 60), **kwargs)
     if result.returncode:
+        if "Selected pilot model is absent" in result.stderr:
+            raise RuntimeError("Selected pilot model has not been provisioned in the ephemeral catalog")
         raise RuntimeError("Docker operation failed: " + args[0])
     return result.stdout.strip()
 
 
+def wait_for_router(opener, attempts=60):
+    """Published ports can reset connections while Node is still starting."""
+    for _ in range(attempts):
+        try:
+            with opener.open("http://127.0.0.1:3001/api/ping", timeout=2) as response:
+                if response.status == 200:
+                    return True
+        except (urllib.error.URLError, TimeoutError, OSError) as error:
+            if isinstance(error, urllib.error.HTTPError):
+                error.close()
+        time.sleep(1)
+    return False
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", choices=("fixture", "live"), default="fixture")
+    parser.add_argument("--mode", choices=("fixture", "live", "anonymous"), default="fixture")
     parser.add_argument("--image", default="bloodsky-freellmapi:pilot")
     parser.add_argument("--task-file", type=Path)
     parser.add_argument("--context", nargs="+")
@@ -64,7 +82,7 @@ def main():
     router, fixture, network = "bloodsky-router-" + suffix, "bloodsky-fixture-" + suffix, "bloodsky-" + suffix
     relay, front = "bloodsky-relay-" + suffix, "bloodsky-front-" + suffix
     root = Path(__file__).resolve().parents[1]
-    model = FIXTURE_MODEL if args.mode == "fixture" else LIVE_MODEL
+    model = {"fixture": FIXTURE_MODEL, "live": LIVE_MODEL, "anonymous": ANONYMOUS_MODEL}[args.mode]
     with tempfile.TemporaryDirectory(prefix="bloodsky-router-") as temp:
         work = Path(temp)
         config = {"admin": {"email": "pilot@example.invalid", "password": secrets.token_hex(24)},
@@ -74,9 +92,20 @@ def main():
                                            "apiKey": "fixture-only-not-a-provider-key",
                                            "models": [{"model": model, "supportsTools": False}]}]
             config["fallback"] = [{"platform": "custom", "modelId": model, "priority": 1}]
-        else:
+        elif args.mode == "live":
             config["keys"] = [{"platform": "groq", "key": os.environ["GROQ_FREE_API_KEY"]}]
             config["fallback"] = [{"platform": "groq", "modelId": model, "priority": 1}]
+        else:
+            # Official anonymous OVH endpoint: no account, key or billing data.
+            config["keys"] = [{"platform": "ovh"}]
+            # OVH rows are distributed by the optional catalog feed rather
+            # than bundled migrations. Declare the documented model directly;
+            # no Premium feed or auto-updating catalog is needed.
+            config["models"] = [{"platform": "ovh", "modelId": model,
+                                  "displayName": "GPT-OSS 120B anonymous proof",
+                                  "enabled": True, "fallbackEnabled": True,
+                                  "rpmLimit": 2, "contextWindow": 131072}]
+            config["fallback"] = [{"platform": "ovh", "modelId": model, "priority": 1}]
         env_file = work / "router.env"
         env_file.write_text("ENCRYPTION_KEY=" + secrets.token_hex(32)
                             + "\nNODE_ENV=production\nHOST=0.0.0.0\nCATALOG_SYNC_DISABLED=1\n"
@@ -114,14 +143,7 @@ def main():
                        "-p", "127.0.0.1:3001:3003", "--entrypoint", "node", args.image, "-e", proxy)
                 docker("network", "connect", network, relay)
             opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-            for attempt in range(60):
-                try:
-                    with opener.open("http://127.0.0.1:3001/api/ping", timeout=2) as response:
-                        if response.status == 200:
-                            break
-                except (urllib.error.URLError, TimeoutError):
-                    time.sleep(1)
-            else:
+            if not wait_for_router(opener):
                 state = json.loads(docker("inspect", "--format", "{{json .State}}", router))
                 logs = subprocess.run(["docker", "logs", router], capture_output=True, text=True, timeout=10)
                 # Emit only known constant error categories, never raw log text.
@@ -134,7 +156,7 @@ def main():
                 category = [name for name, marker in markers.items() if marker in logs.stdout + logs.stderr]
                 raise RuntimeError("Router did not become healthy (status=" + state.get("Status", "unknown")
                                    + ", exit=" + str(state.get("ExitCode")) + ", categories=" + str(category) + ")")
-            platform = "custom" if args.mode == "fixture" else "groq"
+            platform = {"fixture": "custom", "live": "groq", "anonymous": "ovh"}[args.mode]
             provision = ("import {connectDb,getUnifiedApiKey} from './server/dist/db/index.js';"
                          "const db=connectDb();const platform=" + json.dumps(platform) + ",model=" + json.dumps(model) + ";"
                          "if(!db.prepare('SELECT id FROM models WHERE platform=? AND model_id=?').get(platform,model))"
@@ -158,15 +180,17 @@ def main():
             # No provider key or GitHub credential is inherited by the agent.
             env = {k: v for k, v in os.environ.items() if k in ("PATH", "LANG", "SYSTEMROOT")}
             env.update(FREELLMAPI_BASE_URL="http://127.0.0.1:3001/v1", FREELLMAPI_API_KEY=keys[0])
+            budget = ["--max-tokens", "1024", "--reasoning-effort", "low"] if args.mode == "anonymous" else []
             subprocess.run([sys.executable, str(root / "tools/cloud_coding_agent.py"),
                             "--task-file", str(task), "--model", model,
-                            "--output", str(args.output), "--context", *args.context],
+                            "--output", str(args.output), *budget, "--context", *args.context],
                            cwd=root, env=env, check=True, timeout=120)
             report_path = args.output / "report.json"
             report = json.loads(report_path.read_text())
             report.update(router_source=UPSTREAM_SHA, mode=args.mode,
-                          provider="local fixture; no inference" if args.mode == "fixture" else "Groq free-tier",
-                          live_inference_verified=args.mode == "live")
+                          provider={"fixture": "local fixture; no inference", "live": "Groq free-tier",
+                                    "anonymous": "OVHcloud anonymous; no account credentials"}[args.mode],
+                          live_inference_verified=args.mode != "fixture")
             report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
             print("Router contract completed (" + args.mode + "); patch awaits independent tests.")
         finally:

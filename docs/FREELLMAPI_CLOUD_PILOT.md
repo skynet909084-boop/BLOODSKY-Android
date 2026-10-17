@@ -22,6 +22,8 @@ The real router forwards a completion request to a deterministic local fixture o
 
 ## Live free-provider setup
 
+An anonymous, no-account path is now documented in [ANONYMOUS_FREE_AI_PROOF.md](ANONYMOUS_FREE_AI_PROOF.md). Actual OVH inference through the pinned router and independent Python/JUnit/APK validation were confirmed in [run 39013819242](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39013819242). That path needs no provider key or payment method. The Groq configuration below remains a separate optional mode.
+
 After this workflow is accepted onto the default branch, the repository owner can select **BLOODSKY FreeLLMAPI agent → Run workflow → mode: live**. Keep `publish: false` for the first inference proof.
 
 Required repository configuration:
@@ -48,4 +50,4 @@ Private repositories may have GitHub Actions minute limits or charges. Stop when
 
 ## Current state
 
-The static preflight is confirmed on `eedd963`. This implementation adds the real-router fixture and the manually gated live agent. Final-head run links and conclusions must be recorded after CI completes. Live inference, provider credentials, billing state and draft publication have not been verified in this session. Absence of a live run must never be reported as a successful inference. Android UI/physical-device and visual-parity claims remain governed by their existing checks.
+The initial preflight is confirmed on `eedd963`; PR #70's final router fixture, unit/APK and API30 emulator checks passed on `7f2bba6` before merge. Anonymous real inference and independent test/APK validation are confirmed by the run linked above. Groq live mode, its account/billing configuration, and actual automatic draft publication remain unverified until their own successful runs are inspected. Absence of a live run must never be reported as a successful inference. Android physical-device and visual-parity claims remain governed by their existing checks.

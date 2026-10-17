@@ -83,5 +83,26 @@ class AndroidSmokeHelpersTests(unittest.TestCase):
         self.assertFalse(preferences_are_empty('<map><string name="active_project">{}</string></map>'))
         self.assertFalse(preferences_are_empty('<map><string name="project_catalog_v1">{"project":{}}</string></map>'))
 
+class PropertyFocusWaitTests(unittest.TestCase):
+    def xml(self, focused):
+        return '<hierarchy><node class="android.widget.EditText" content-desc="timer" text="1000" enabled="true" focused="' + focused + '" bounds="[1,1][100,40]"/></hierarchy>'
+
+    def test_existing_field_waits_for_focus_transition_before_typing(self):
+        with TemporaryDirectory() as temp:
+            smoke = Smoke(Path(temp))
+            with patch.object(smoke, 'dump', side_effect=[self.xml('false'), self.xml('true')]) as dump, patch('android_ui_smoke.time.sleep'):
+                node = smoke.wait_node(description='timer', class_name='android.widget.EditText', focused=True)
+            self.assertEqual(node.get('focused'), 'true')
+            self.assertEqual(dump.call_count, 2)
+
+    def test_existing_unfocused_field_cannot_pass_focus_requirement(self):
+        with TemporaryDirectory() as temp:
+            smoke = Smoke(Path(temp))
+            with patch.object(smoke, 'dump', return_value=self.xml('false')), patch('android_ui_smoke.time.monotonic', side_effect=[0, 0, 2]), patch('android_ui_smoke.time.sleep'):
+                with self.assertRaises(AssertionError):
+                    smoke.wait_node(description='timer', focused=True, timeout=1)
+            self.assertIn('focused="false"', (Path(temp) / 'last-ui.xml').read_text())
+
+
 if __name__ == '__main__':
     unittest.main()
