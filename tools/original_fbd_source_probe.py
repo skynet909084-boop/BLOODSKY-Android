@@ -32,6 +32,33 @@ CONTRACT_METHODS = frozenset(("getValue", "setValue", "getName", "setName",
                               "invalidate", "setText"))
 MAX_CONTRACT_OCCURRENCES = 64
 
+# These are literal tokens observed in the SHA-pinned original source, not
+# inferred executable contracts. Inputs/outputs, data types and priorities
+# still require superclass/call-graph analysis and differential tests.
+EXPECTED_ORIGINAL_LABEL_SEQUENCE = {
+    "FB_CTU.java": ("CTU", "+", "-", "R", "Q"),
+    "FB_RS.java": ("RS", "R", "S", "Q"),
+    "FB_TIMER.java": ("TON", "IN", "Q", "TOF", "TP"),
+}
+
+
+def assert_pinned_original_labels(contracts):
+    """Fail the pinned source audit when a published literal claim changes."""
+    indexed = {row["archive_path"].rsplit("/", 1)[-1]: row for row in contracts}
+    confirmed = []
+    for filename, expected in EXPECTED_ORIGINAL_LABEL_SEQUENCE.items():
+        if filename not in indexed:
+            raise ValueError("Original FBD class missing: " + filename)
+        actual = [row["value"] for row in indexed[filename]["literal_labels"]]
+        unique = list(dict.fromkeys(actual))
+        if unique != list(expected):
+            raise ValueError("Original FBD label sequence mismatch: " + filename)
+        confirmed.append({"class": filename, "sha256": indexed[filename]["sha256"],
+                          "labels": list(expected),
+                          "claim": "source literals only; directions and runtime semantics unverified"})
+    return confirmed
+
+
 
 def contract_fingerprint(filename, raw):
     """Return source-hashed line positions for exact, small identifiers only.
@@ -125,7 +152,10 @@ def report_from_zip(archive, expected_sha256=EXPECTED_SHA256):
                     "hit_count": len(file_hits),
                     "hits": file_hits,
                 })
+    pinned_claims = (assert_pinned_original_labels(contracts)
+                     if expected_sha256 == EXPECTED_SHA256 else [])
     return {
+        "pinned_label_checks": pinned_claims,
         "source_archive": str(archive),
         "source_sha256": expected_sha256,
         "scope": "read-only source keyword audit; not executable Craft semantics or visual parity",
