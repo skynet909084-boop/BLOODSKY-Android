@@ -137,6 +137,24 @@ public class FbdDisconnectTest {
         assertFalse(MainActivity.canLoadFbdConnection(edge));
     }
 
+    @Test public void knownBooleanBlocksEnforcePinDirections() throws Exception {
+        JSONObject edge = new JSONObject().put("source", 0).put("target", 1)
+                .put("sourcePin", "Q").put("targetPin", "IN1");
+        assertTrue(MainActivity.hasCompatibleKnownFbdPins(edge, "FBD AND", "FBD OR"));
+        MainActivity.validateImportedProjectStatic(projectWithConnection(edge));
+        edge.put("sourcePin", "IN1");
+        assertFalse(MainActivity.hasCompatibleKnownFbdPins(edge, "FBD AND", "FBD OR"));
+        try {
+            MainActivity.validateImportedProjectStatic(projectWithConnection(edge));
+            fail("Expected invalid output pin to be rejected");
+        } catch (IllegalArgumentException expected) { }
+        edge.put("sourcePin", "Q").put("targetPin", "Q");
+        assertFalse(MainActivity.hasCompatibleKnownFbdPins(edge, "FBD AND", "FBD OR"));
+        edge.put("targetPin", "IN2").put("sourceSignalType", "NUMBER")
+                .put("targetSignalType", "NUMBER");
+        assertFalse(MainActivity.hasCompatibleKnownFbdPins(edge, "FBD AND", "FBD OR"));
+    }
+
     @Test public void invalidEndpointsDoNotMutateGraph() {
         List<MainActivity.FbdConnection> edges = new ArrayList<>();
         edges.add(new MainActivity.FbdConnection(0, 1));
