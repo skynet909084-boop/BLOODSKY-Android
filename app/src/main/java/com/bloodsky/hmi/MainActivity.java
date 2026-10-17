@@ -2737,6 +2737,14 @@ public class MainActivity extends Activity {
                 ? value : defaultValue;
     }
 
+    /** PT values use milliseconds; reject invalid durations rather than overflow timer arithmetic. */
+    public static long fbdTonPresetMs(List<Double> values, List<String> pins, int configuredMs) {
+        double raw = fbdNumericPinValue(values, pins, "PT", -1, configuredMs);
+        if (raw < 1.0 || raw > 3600000.0 || Double.isNaN(raw) || Double.isInfinite(raw))
+            return configuredMs;
+        return Math.round(raw);
+    }
+
     public static boolean evaluateFbdBlockUncached(List<Widget> widgetsList, List<FbdConnection> connectionsList, int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
         if (index < 0 || index >= widgetsList.size() || visiting[index]) return false;
         Widget widget = widgetsList.get(index);
@@ -2949,7 +2957,7 @@ public class MainActivity extends Activity {
             }
             long now = SystemClock.elapsedRealtime();
             if (widget.timerStartedAt == 0L) widget.timerStartedAt = now;
-            return now - widget.timerStartedAt >= widget.timerPresetMs;
+            return now - widget.timerStartedAt >= fbdTonPresetMs(numInputs, inputPins, widget.timerPresetMs);
         }
         if ("FBD TP".equals(widget.type)) {
             boolean input = !inputs.isEmpty() && inputs.get(0);
