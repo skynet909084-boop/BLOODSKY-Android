@@ -1619,7 +1619,8 @@ public class MainActivity extends Activity {
                 "FBD — MOVE", "FBD — SEL (селектор)", "FBD — ABS", "FBD — MIN / MAX",
                 "FBD — RS", "FBD — SR", "FBD — CTU (счёт вверх)",
                 "FBD — CTD (счёт вниз)", "FBD — R_TRIG", "FBD — F_TRIG",
-                "FBD — Craft CTU 16 бит (+, −, R)"
+                "FBD — Craft CTU 16 бит (+, −, R)",
+                "FBD — Craft T (переключатель по фронту)"
         };
         final String[] types = {
                 "Текст", "Кнопка", "Индикатор", "Задатчик",
@@ -1634,7 +1635,7 @@ public class MainActivity extends Activity {
                 "FBD MOVE", "FBD SEL", "FBD ABS", "FBD MIN_MAX",
                 "FBD RS", "FBD SR", "FBD CTU",
                 "FBD CTD", "FBD R_TRIG", "FBD F_TRIG",
-                "FBD CRAFT CTU"
+                "FBD CRAFT CTU", "FBD CRAFT T"
         };
         final String[] defaults = {
                 "Надпись", "Кнопка", "Индикатор", "Задатчик: 0",
@@ -1646,7 +1647,7 @@ public class MainActivity extends Activity {
                 "Float->Int", "Int->Float",
                 "MOVE", "SEL", "ABS", "MIN/MAX",
                 "RS", "SR", "CTU", "CTD", "R_TRIG", "F_TRIG",
-                "CTU 16 bit"
+                "CTU 16 bit", "T"
         };
         LinearLayout list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
@@ -2868,6 +2869,10 @@ public class MainActivity extends Activity {
             if (output && "Q".equals(name)) return "BOOL";
             if (!output && ("S".equals(name) || "R".equals(name))) return "BOOL";
         }
+        if (kind.equals("FBD CRAFT T")) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && "IN".equals(name)) return "BOOL";
+        }
         if (kind.equals("FBD R_TRIG") || kind.equals("FBD F_TRIG")) {
             if (output && "Q".equals(name)) return "BOOL";
             if (!output && "IN".equals(name)) return "BOOL";
@@ -3313,6 +3318,15 @@ public class MainActivity extends Activity {
             else if (reset) widget.rsState = false;
             return widget.rsState;
         }
+        if ("FBD CRAFT T".equals(widget.type)) {
+            boolean input = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
+            FbdCraftNativeTransitions.Trigger next = FbdCraftNativeTransitions.toggleRise(
+                    new FbdCraftNativeTransitions.Trigger(
+                            widget.craftToggleOutput, widget.craftToggleLastInput), input);
+            widget.craftToggleOutput = next.output;
+            widget.craftToggleLastInput = next.lastInput;
+            return next.output;
+        }
         if ("FBD R_TRIG".equals(widget.type)) {
             boolean input = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
             boolean risingEdge = input && !widget.counterLastInput;
@@ -3706,7 +3720,8 @@ public class MainActivity extends Activity {
             return output ? new String[]{"Q"} : new String[]{"IN1", "IN2"};
         if ("FBD НЕ".equals(kind)) return output ? new String[]{"Q"} : new String[]{"IN"};
         if ("FBD RS".equals(kind) || "FBD SR".equals(kind)) return output ? new String[]{"Q"} : new String[]{"R", "S"};
-        if ("FBD R_TRIG".equals(kind) || "FBD F_TRIG".equals(kind))
+        if ("FBD R_TRIG".equals(kind) || "FBD F_TRIG".equals(kind)
+                || "FBD CRAFT T".equals(kind))
             return output ? new String[]{"Q"} : new String[]{"IN"};
         if ("FBD CRAFT CTU".equals(kind))
             return output ? new String[]{"Q"} : new String[]{"+", "-", "R"};
@@ -3807,6 +3822,10 @@ public class MainActivity extends Activity {
         // their absence from JSON protects old project schemas on save/copy.
         boolean craftLastPlus = false;
         boolean craftLastMinus = false;
+        // Original FB_TRIGGER mode T resets to Q=false on a fresh instance.
+        // Do not serialize runtime latches into legacy project metadata.
+        boolean craftToggleOutput = false;
+        boolean craftToggleLastInput = false;
         public int timerPresetMs = 1000;
         public long timerStartedAt = 0L;
         public double compareA = 0.0, compareB = 0.0;
