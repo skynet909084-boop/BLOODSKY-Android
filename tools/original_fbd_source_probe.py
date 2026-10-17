@@ -108,6 +108,9 @@ def _java_visible_lines(lines):
             if line.startswith("//", index):
                 break
             if line.startswith("/*", index):
+                # Comments are whitespace, never glue two separate Java tokens.
+                literal_view.append(" ")
+                call_view.append(" ")
                 in_block_comment = True
                 index += 2
                 continue
