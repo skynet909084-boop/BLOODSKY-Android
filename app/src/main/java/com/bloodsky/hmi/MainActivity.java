@@ -2469,6 +2469,7 @@ public class MainActivity extends Activity {
             int[] indegree = new int[nodeCount];
             for (int node = 0; node < nodeCount; node++) adjacency.add(new ArrayList<>());
             java.util.HashSet<Long> uniqueEdges = new java.util.HashSet<>();
+            java.util.HashSet<String> occupiedTargetPins = new java.util.HashSet<>();
             for (int j = 0; j < connections.length(); j++) {
                 JSONObject edge = connections.optJSONObject(j);
                 if (edge == null) throw new IllegalArgumentException("Connection must be an object");
@@ -2488,6 +2489,11 @@ public class MainActivity extends Activity {
                 if (!hasCompatibleKnownFbdPins(edge, sourceWidget.optString("type", ""),
                         targetWidget.optString("type", ""))) {
                     throw new IllegalArgumentException("Invalid FBD pin direction or type");
+                }
+                String targetPin = edge.optString("targetPin", "");
+                if (!targetPin.isEmpty() && !occupiedTargetPins.add(target + ":"
+                        + targetPin.toUpperCase(java.util.Locale.ROOT))) {
+                    throw new IllegalArgumentException("Multiple FBD wires drive the same target pin");
                 }
                 long edgeKey = (((long) source) << 32) | (target & 0xffffffffL);
                 if (!uniqueEdges.add(edgeKey)) throw new IllegalArgumentException("Duplicate FBD connection");
