@@ -269,12 +269,12 @@ class FastFbdSmoke(Smoke):
             str(round(x0 + cmp['x'] + cmp['w']/2)),
             str(round(y0 + cmp['y'] + cmp['h']/2)))
         self.wait_node('Свойства: FBD CRAFT COMPARE')
-        self.replace_property_input('Оператор сравнения', '<=')
+        self.replace_property_input('Оператор сравнения', '==')
         self.tap('Применить')
         self.wait_node(description='Редактор экрана')
         operators = current_widgets()
         if (operators[1]['type'] != 'FBD CRAFT COMPARE'
-                or operators[1]['compareOperator'] != '<='):
+                or operators[1]['compareOperator'] != '=='):
             raise AssertionError('Original COMPARE mode or type lost after editing')
         self.capture('fast-fbd-source-native-sel-compare')
         adb('shell', 'am', 'force-stop', PACKAGE)
@@ -302,7 +302,7 @@ class FastFbdSmoke(Smoke):
                 'original Craft RS/T/CTU source preview selection',
                 'original source preview block cold restart',
                 'source Integer SEL and COMPARE extended picker',
-                'COMPARE exact <= mode and cold restart',
+                'COMPARE exact == mode and cold restart',
                 'no app crash']
         }, indent=2))
         print(f'FAST_FBD_SMOKE_OK elapsed_seconds={elapsed}', flush=True)
