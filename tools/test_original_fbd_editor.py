@@ -19,7 +19,7 @@ class OriginalFbdEditorTests(unittest.TestCase):
   draw=(ROOT/'app/src/main/java/com/bloodsky/hmi/OriginalFbdDrawing.java').read_text()
   self.assertIn('drawing.render(canvas,w.w,w.h,caption',code)
   self.assertIn('canvas.scale(width/w,height/h)',draw)
-  self.assertIn('FbdEditorModel.wireInputY(to,FbdEditorModel.ordinal(connection,screen.connections))',code)
+  self.assertIn('FbdEditorModel.inputOffsetY(to,FbdEditorModel.ordinal(connection,screen.connections))',code)
  def test_context_mutations_use_synchronous_transaction_and_restore_screen_on_failure(self):
   code=(ROOT/'app/src/main/java/com/bloodsky/hmi/MainActivity.java').read_text()
   self.assertIn('FbdEditorTransaction.apply(widgets,screens.get(currentScreenIndex).connections,mutation,()->persistProjectNow(true))',code)

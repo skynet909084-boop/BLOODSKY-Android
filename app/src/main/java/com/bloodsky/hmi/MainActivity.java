@@ -3035,8 +3035,8 @@ public class MainActivity extends Activity {
                     Widget from = widgets.get(connection.source);
                     Widget to = widgets.get(connection.target);
                     if (!from.visible || !to.visible || !isFbd(from) || !isFbd(to)) continue;
-                    float x1 = from.x + from.w, y1 = from.y + from.h / 2;
-                    float x2 = to.x, y2 = to.y + to.h * FbdEditorModel.wireInputY(to,FbdEditorModel.ordinal(connection,screen.connections));
+                    float x1 = from.x + from.w, y1 = from.y + FbdEditorModel.outputOffsetY(from);
+                    float x2 = to.x, y2 = to.y + FbdEditorModel.inputOffsetY(to,FbdEditorModel.ordinal(connection,screen.connections));
                     float mid = (x1 + x2) / 2f;
                     canvas.drawLine(x1, y1, mid, y1, paint);
                     canvas.drawLine(mid, y1, mid, y2, paint);

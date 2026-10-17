@@ -63,7 +63,13 @@ public final class FbdEditorModel {
                 ||"FBD ABS".equals(type)||"FBD SIN".equals(type)||"FBD COS".equals(type)
                 ||"FBD TAN".equals(type)||"FBD SQRT".equals(type)||"FBD FloatToInt".equals(type)
                 ||"FBD IntToFloat".equals(type)||"FBD MOVE".equals(type)) return 1;
-        return "FBD SEL".equals(type)?3:2;
+        if("FBD SEL".equals(type))return 3;
+        // This existing comparison block uses its A/B constants, not graph inputs.
+        if("FBD Сравнение".equals(type))return 0;
+        if(booleanOutput(type)||"FBD Сложение".equals(type)||"FBD Вычитание".equals(type)
+                ||"FBD Умножение".equals(type)||"FBD Деление".equals(type)
+                ||"FBD POW".equals(type)||"FBD MIN_MAX".equals(type))return 2;
+        return 0;
     }
     public static int incoming(int target,List<MainActivity.FbdConnection> edges) {
         int count=0;for(MainActivity.FbdConnection edge:edges)if(edge.target==target)count++;return count;
@@ -81,6 +87,25 @@ public final class FbdEditorModel {
         if("FBD XOR".equals(type)||timer(type)||"FBD POW".equals(type))return ordinal==0?.5f:ordinal==1?5f/6f:.5f;
         if(drawing(type)!=null)return .5f;
         return ordinal==0?.38f:ordinal==1?.68f:.5f;
+    }
+    public static float inputOffsetY(MainActivity.Widget w,int ordinal) {
+        if(!originalShape(w))return w.h*inputY(null,ordinal);
+        int height=Math.max(1,Math.round(w.h));
+        int y;
+        if("FBD И".equals(w.type)||"FBD ИЛИ".equals(w.type))
+            y=ordinal==0?height/4:ordinal==1?(height/4)*3:height/2;
+        else if("FBD XOR".equals(w.type)||timer(w.type)||"FBD POW".equals(w.type))
+            y=ordinal==0?(height/3)/2+height/3:ordinal==1?(height/3)/2+(height/3)*2:height/2;
+        else y=height/2;
+        return y*(w.h/height);
+    }
+    public static float outputOffsetY(MainActivity.Widget w) {
+        if(!originalShape(w))return w.h/2;
+        int height=Math.max(1,Math.round(w.h));
+        boolean unary="SIN".equals(drawing(w.type))||"ABS".equals(drawing(w.type))
+                ||"IntToFloat".equals(drawing(w.type))||"FloatToInt".equals(drawing(w.type));
+        int y=unary?height/2:(height/3)/2+height/3;
+        return y*(w.h/height);
     }
     public static String inputName(String type,int index) {
         if(timer(type))return "IN";

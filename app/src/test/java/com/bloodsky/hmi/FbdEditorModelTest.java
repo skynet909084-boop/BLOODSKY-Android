@@ -85,6 +85,20 @@ public class FbdEditorModelTest {
         w.backgroundColor=0;w.textSizeSp=20;
         assertEquals(.68f,FbdEditorModel.wireInputY(w,1),0);
     }
+    @Test public void wireOffsetsMatchSourceIntegerDivisionAfterFractionalCanvasScaling() {
+        MainActivity.Widget w=block("FBD И");w.textColor=0xff1f2937;w.h=78.5f;
+        assertEquals((79/4)*(78.5f/79),FbdEditorModel.inputOffsetY(w,0),0);
+        assertEquals(((79/3)/2+79/3)*(78.5f/79),FbdEditorModel.outputOffsetY(w),0);
+        w.type="FBD XOR";
+        assertEquals(((79/3)/2+(79/3)*2)*(78.5f/79),FbdEditorModel.inputOffsetY(w,1),0);
+        w.backgroundColor=0xff123456;
+        assertEquals(78.5f*.68f,FbdEditorModel.inputOffsetY(w,1),0);assertEquals(78.5f/2,FbdEditorModel.outputOffsetY(w),0);
+    }
+    @Test public void chooserOnlyOffersInputsActuallyConsumedByTheExistingEvaluator() {
+        assertEquals(0,FbdEditorModel.inputCount("FBD Сравнение"));assertEquals(0,FbdEditorModel.inputCount("FBD future"));
+        assertEquals(1,FbdEditorModel.inputCount("FBD TOF"));assertEquals(2,FbdEditorModel.inputCount("FBD POW"));
+        assertEquals(3,FbdEditorModel.inputCount("FBD SEL"));
+    }
     @Test public void failedPublicationRestoresFieldsGeometryAndIndependentUnknownEdgeMetadata() throws Exception {
         List<MainActivity.Widget> widgets=new ArrayList<>(Arrays.asList(block("FBD И")));
         List<MainActivity.FbdConnection> edges=new ArrayList<>(Arrays.asList(MainActivity.connectionFromJson(new JSONObject("{\"source\":0,\"target\":1,\"future\":{\"bend\":7}}"))));
