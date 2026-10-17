@@ -133,9 +133,13 @@ class FastFbdSmoke(Smoke):
                 xml = self.dump()
                 nodes = matching_nodes(xml, text=item_text)
                 scrolls = [n for n in ET.fromstring(xml).iter('node')
-                           if n.get('class') == 'android.widget.ScrollView']
+                           if n.get('class') == 'android.widget.ScrollView'
+                           and n.get('resource-id', '') != 'android:id/buttonPanel'
+                           and any(child.get('class') == 'android.widget.TextView'
+                                   and '    ›' in child.get('text', '')
+                                   for child in n.iter('node'))]
                 if len(scrolls) != 1:
-                    raise AssertionError('Native FBD extended palette scroll missing')
+                    raise AssertionError('Expected one scrolling extended FBD item list, got ' + str(len(scrolls)))
                 left_s, top_s, right_s, bottom_s = map(
                     int, re.findall(r'\d+', scrolls[0].get('bounds')))
                 if nodes:
