@@ -1,0 +1,91 @@
+name: BLOODSKY anonymous free AI proof
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/cloud-ai-anonymous-proof.yml'
+      - 'tools/cloud_coding_agent.py'
+      - 'tools/run_cloud_router.py'
+      - 'tools/test_cloud_coding_agent.py'
+
+permissions:
+  contents: read
+concurrency:
+  group: bloodsky-anonymous-proof-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  infer:
+    # No outsider-triggered requests; no credentials, paid account or PR writes.
+    if: >-
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.user.login == github.repository_owner &&
+       github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: tashfeenahmed/freellmapi
+          ref: 7ae0ef193d297c02479efed2a07946c44457512b
+          path: .cloud-upstream
+          persist-credentials: false
+      - name: Build the same pinned router
+        run: docker build --build-arg FREELLMAPI_COMMIT_SHA=7ae0ef193d297c02479efed2a07946c44457512b -t bloodsky-freellmapi:pilot .cloud-upstream
+      - name: One actual anonymous AI coding request through FreeLLMAPI
+        run: |
+          echo 'Add one short new CloudAgentTimerBoundaryTest class with tests for the accepted timer maximum 3600000 and rejection of 3600001. Use only FbdPropertyEdits.parse and JUnit4. Keep the entire JSON response short.' > "$RUNNER_TEMP/task.txt"
+          python3 tools/run_cloud_router.py --mode anonymous --task-file "$RUNNER_TEMP/task.txt" --context app/src/main/java/com/bloodsky/hmi/FbdPropertyEdits.java
+      - uses: actions/upload-artifact@v4
+        with:
+          name: anonymous-ai-proposal
+          path: |
+            cloud-output/proposal.json
+            cloud-output/proposal.patch
+            cloud-output/report.json
+          if-no-files-found: error
+          retention-days: 7
+
+  validate:
+    needs: infer
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: anonymous-ai-proposal
+          path: ${{ runner.temp }}/anonymous-ai
+      - run: python3 tools/apply_cloud_proposal.py "$RUNNER_TEMP/anonymous-ai/proposal.json"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - run: python3 tools/prepare_craft_resources.py
+      - run: python3 -m unittest discover -s tools -p 'test_*.py' -v
+      - run: gradle testDebugUnitTest --stacktrace
+      - run: python3 tools/check_cloud_test_results.py "$RUNNER_TEMP/anonymous-ai/proposal.json" app/build/test-results/testDebugUnitTest
+      - run: gradle assembleDebug --stacktrace
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: anonymous-ai-validation
+          path: |
+            app/build/test-results/**/*.xml
+            app/build/reports/tests/**
+            app/build/outputs/apk/debug/*.apk
+          retention-days: 7

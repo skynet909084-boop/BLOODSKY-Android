@@ -116,6 +116,15 @@ class AgentTests(unittest.TestCase):
                 agent.endpoint(url)
         self.assertEqual(agent.endpoint("http://127.0.0.1:3001/v1"), "http://127.0.0.1:3001/v1/chat/completions")
 
+    def test_invalid_output_or_reasoning_budget_fails_without_network(self):
+        with patch.object(agent.urllib.request, "build_opener") as network:
+            for budget in (0, 4097, True, "1024"):
+                with self.assertRaises(agent.AgentError):
+                    agent.complete("http://127.0.0.1:3001/v1", "test-key", "fixture", "task", {}, budget)
+            with self.assertRaises(agent.AgentError):
+                agent.complete("http://127.0.0.1:3001/v1", "test-key", "fixture", "task", {}, 1024, "invalid")
+            network.assert_not_called()
+
 
 class HttpContractTests(unittest.TestCase):
     def request(self, status=200, body=None, location=None):
@@ -154,6 +163,12 @@ class HttpContractTests(unittest.TestCase):
             agent.complete(url, "test-key", "fixture", "task", {})
         self.assertEqual(len(seen), 1)
         self.assertNotIn("echoed-private-key", str(error.exception))
+
+    def test_anonymous_budget_and_reasoning_are_explicit(self):
+        url, seen = self.request(body=b'{"choices":[{"finish_reason":"stop","message":{"content":"{\\"files\\":[]}"}}]}')
+        agent.complete(url, "local-router-key", "gpt-oss-120b", "task", {}, 1024, "low")
+        self.assertEqual(seen[0][2]["max_tokens"], 1024)
+        self.assertEqual(seen[0][2]["reasoning_effort"], "low")
 
     def test_redirect_never_forwards_key(self):
         url, seen = self.request(status=307, location="https://evil.invalid/steal")

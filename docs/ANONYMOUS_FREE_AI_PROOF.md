@@ -1,0 +1,15 @@
+# Anonymous inference proof (separate from the deterministic fixture)
+
+This follow-up tests actual AI generation through FreeLLMAPI using the documented anonymous OVHcloud endpoint. No account, provider API key, card, paid project or billing setting is supplied. The selected provider is fixed to `ovh`, model `gpt-oss-120b`; all other models/providers/fallback rows are disabled before requesting a completion. Authenticated OVHcloud accounts are outside this workflow.
+
+Official references checked 2026-10-17:
+
+- [Getting started and anonymous limits](https://docs.ovhcloud.com/en/guides/public-cloud/ai-machine-learning/ai-endpoints-getting-started): anonymous access is limited to two requests per minute per IP/model; authenticated keys require a project/payment method. This proof does not create such a project/key.
+- [Free API and data handling](https://www.ovhcloud.com/en/public-cloud/free-ai-api/): anonymous requests have limits, account trials are distinct, and OVHcloud states that inference data is not retained or used for training.
+- The pinned FreeLLMAPI provider registers OVH as keyless and omits provider authorization for its sentinel key.
+
+The owner-triggered PR/manual workflow makes one client request with a 1024-token output budget and low reasoning effort. It sends only the selected BLOODSKY helper and repository coding rules, never an archive, key or complete source tree. No retries, account creation or paid fallback is configured. Provider availability and anonymous quotas can change: an error blocks the proof instead of purchasing capacity or switching services.
+
+The response must pass the same test-only allowlist. A fresh runner then executes the full Python suite, Android JUnit tests, verifies each proposed class actually ran passing tests, and builds an APK. The resulting patch remains an artifact for review; this proof has no branch/PR write token and does not publish or merge changes. Existing deterministic router CI remains independent.
+
+Until a successful `BLOODSKY anonymous free AI proof` run and its artifacts have been inspected, real inference is **not verified**. A successful fixture run alone is insufficient. This workflow is experimental development tooling and is not an inference service bundled in the Android application.

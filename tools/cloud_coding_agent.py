@@ -73,16 +73,23 @@ def read_context(root, paths):
     return result
 
 
-def complete(base_url, key, model, task, context):
+def complete(base_url, key, model, task, context, max_tokens=4096, reasoning_effort=None):
     if not isinstance(task, str) or not 1 <= len(task) <= 4000:
         raise AgentError("Task must contain 1-4000 characters")
     if not re.fullmatch(r"[A-Za-z0-9._:/-]{1,120}", model):
         raise AgentError("Invalid model identifier")
-    body = json.dumps({"model": model, "temperature": 0, "max_tokens": 4096,
+    if type(max_tokens) is not int or not 1 <= max_tokens <= 4096:
+        raise AgentError("Output budget must be 1-4096 tokens")
+    if reasoning_effort not in (None, "low", "medium", "high"):
+        raise AgentError("Invalid reasoning effort")
+    payload = {"model": model, "temperature": 0, "max_tokens": max_tokens,
                        "stream": False, "messages": [
                            {"role": "system", "content": SYSTEM},
                            {"role": "user", "content": json.dumps({"task": task, "sources": context})}
-                       ]}).encode()
+                       ]}
+    if reasoning_effort is not None:
+        payload["reasoning_effort"] = reasoning_effort
+    body = json.dumps(payload).encode()
     request = urllib.request.Request(endpoint(base_url), data=body, headers={
         "Content-Type": "application/json", "Authorization": "Bearer " + key})
     try:
@@ -176,12 +183,15 @@ def main():
     parser.add_argument("--task-file", type=Path, required=True)
     parser.add_argument("--context", nargs="+", required=True)
     parser.add_argument("--model", required=True)
+    parser.add_argument("--max-tokens", type=int, default=4096)
+    parser.add_argument("--reasoning-effort", choices=("low", "medium", "high"))
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     root = args.root.resolve()
     proposal = complete(os.environ.get("FREELLMAPI_BASE_URL", "http://127.0.0.1:3001/v1"),
                         os.environ.get("FREELLMAPI_API_KEY", ""), args.model,
-                        args.task_file.read_text(encoding="utf-8"), read_context(root, args.context))
+                        args.task_file.read_text(encoding="utf-8"), read_context(root, args.context),
+                        args.max_tokens, args.reasoning_effort)
     files = apply_proposal(root, proposal)
     try:
         patch = patch_for(root, files)
