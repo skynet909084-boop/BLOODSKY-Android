@@ -155,6 +155,22 @@ public class FbdDisconnectTest {
         assertFalse(MainActivity.hasCompatibleKnownFbdPins(edge, "FBD AND", "FBD OR"));
     }
 
+    @Test public void rsAndTonPinContractsDistinguishBooleanAndNumericPins() throws Exception {
+        assertEquals("BOOL", MainActivity.knownFbdPinType("FBD RS", "S", false));
+        assertEquals("BOOL", MainActivity.knownFbdPinType("FBD RS", "R", false));
+        assertEquals("BOOL", MainActivity.knownFbdPinType("FBD RS", "Q", true));
+        assertNull(MainActivity.knownFbdPinType("FBD RS", "S", true));
+        assertEquals("BOOL", MainActivity.knownFbdPinType("FBD TON", "IN", false));
+        assertEquals("NUMBER", MainActivity.knownFbdPinType("FBD TON", "PT", false));
+        assertEquals("BOOL", MainActivity.knownFbdPinType("FBD TON", "Q", true));
+        assertNull(MainActivity.knownFbdPinType("FBD TON", "PT", true));
+        JSONObject edge = new JSONObject().put("source", 0).put("target", 1)
+                .put("sourcePin", "Q").put("targetPin", "IN");
+        assertTrue(MainActivity.hasCompatibleKnownFbdPins(edge, "FBD RS", "FBD TON"));
+        edge.put("targetPin", "PT");
+        assertFalse(MainActivity.hasCompatibleKnownFbdPins(edge, "FBD RS", "FBD TON"));
+    }
+
     @Test public void invalidEndpointsDoNotMutateGraph() {
         List<MainActivity.FbdConnection> edges = new ArrayList<>();
         edges.add(new MainActivity.FbdConnection(0, 1));
