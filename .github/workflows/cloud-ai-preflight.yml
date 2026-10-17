@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/cloud-ai-preflight.yml'
       - 'tools/check_cloud_ai_pilot.py'
+      - 'tools/test_cloud_ai_pilot.py'
       - 'docs/FREELLMAPI_CLOUD_PILOT.md'
 permissions:
   contents: read
@@ -22,7 +23,7 @@ jobs:
         run: |
           set -euo pipefail
           test -f docs/FREELLMAPI_CLOUD_PILOT.md
-          python3 tools/check_cloud_ai_pilot.py
+          python3 -m unittest discover -s tools -p 'test_cloud_ai_pilot.py' -v
           test -f settings.gradle
           python3 - <<'PY'
           from pathlib import Path
