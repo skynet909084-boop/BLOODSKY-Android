@@ -1810,6 +1810,15 @@ public class MainActivity extends Activity {
         connectionField.setHint("tcp://192.168.1.10:502/1/40001 (FC03/FC04) или fbd://N (номер блока с 1)");
         form.addView(connectionField);
 
+        final android.widget.CheckBox fbdInputField;
+        if ("FBD Вход".equals(w.type)) {
+            fbdInputField = new android.widget.CheckBox(this);
+            fbdInputField.setText("Постоянное значение FBD-входа (1 / 0)");
+            fbdInputField.setContentDescription("Значение входа FBD");
+            fbdInputField.setChecked(w.inputValue);
+            form.addView(fbdInputField);
+        } else fbdInputField = null;
+
         final EditText[] dynStateFields = new EditText[4];
         if ("Динамический текст".equals(w.type)) {
             TextView dynLabel = new TextView(this);
@@ -2029,6 +2038,7 @@ public class MainActivity extends Activity {
                     }
                     w.text = textField.getText().toString();
                     w.connectionInfo = connectionField.getText().toString().trim();
+                    if (fbdInputField != null) w.inputValue = fbdInputField.isChecked();
                     if ("Динамический текст".equals(w.type)) {
                         for (int k = 0; k < 4; k++) {
                             if (dynStateFields[k] != null) {
@@ -3453,9 +3463,17 @@ public class MainActivity extends Activity {
     public static float fbdTerminalFraction(String type, String pin, boolean output) {
         String[] pins = knownFbdPins(type, output);
         String name = canonicalFbdPinName(pin);
-        for (int i = 0; i < pins.length; i++)
-            if (canonicalFbdPinName(pins[i]).equals(name))
-                return (i + 1f) / (pins.length + 1f);
+        String kind = canonicalFbdBlockType(type);
+        for (int i = 0; i < pins.length; i++) {
+            if (!canonicalFbdPinName(pins[i]).equals(name)) continue;
+            // The original Craft AND/OR/XOR and compare drawing uses
+            // quarter-height and three-quarter-height input ports.
+            if (!output && pins.length == 2
+                    && ("FBD AND".equals(kind) || "FBD OR".equals(kind)
+                    || "FBD XOR".equals(kind) || "FBD СРАВНЕНИЕ".equals(kind)))
+                return i == 0 ? 0.25f : 0.75f;
+            return (i + 1f) / (pins.length + 1f);
+        }
         // Legacy unpinned graph edges have no source-confirmed pin geometry.
         return 0.5f;
     }
@@ -3792,7 +3810,9 @@ public class MainActivity extends Activity {
                     String[] blockInputs = knownFbdPins(w.type, false);
                     if (blockInputs.length == 0) blockInputs = new String[]{"", ""};
                     for (int pinIndex = 0; pinIndex < blockInputs.length; pinIndex++) {
-                        float py = w.y + w.h * (pinIndex + 1f) / (blockInputs.length + 1f);
+                        float py = w.y + w.h * (blockInputs[pinIndex].isEmpty()
+                                ? (pinIndex + 1f) / (blockInputs.length + 1f)
+                                : fbdTerminalFraction(w.type, blockInputs[pinIndex], false));
                         canvas.drawLine(w.x, py, w.x + dp(14), py, paint);
                         canvas.drawCircle(w.x + dp(4), py, dp(4), paint);
                         if (!blockInputs[pinIndex].isEmpty())
@@ -3801,7 +3821,9 @@ public class MainActivity extends Activity {
                     String[] blockOutputs = knownFbdPins(w.type, true);
                     if (blockOutputs.length == 0) blockOutputs = new String[]{""};
                     for (int pinIndex = 0; pinIndex < blockOutputs.length; pinIndex++) {
-                        float py = w.y + w.h * (pinIndex + 1f) / (blockOutputs.length + 1f);
+                        float py = w.y + w.h * (blockOutputs[pinIndex].isEmpty()
+                                ? (pinIndex + 1f) / (blockOutputs.length + 1f)
+                                : fbdTerminalFraction(w.type, blockOutputs[pinIndex], true));
                         canvas.drawLine(w.x + w.w - dp(14), py, w.x + w.w, py, paint);
                         canvas.drawCircle(w.x + w.w - dp(4), py, dp(4), paint);
                     }
