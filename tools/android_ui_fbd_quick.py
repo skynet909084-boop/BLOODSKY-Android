@@ -163,6 +163,28 @@ class FastFbdSmoke(Smoke):
             raise AssertionError('Craft CTU did not start at original zero count')
         self.capture('fast-fbd-craft-ctu16-and-toggle')
 
+        # Source native BLINK uses the same saved exact-ms preset but MUST
+        # remain mode BLINK rather than being silently switched to TON.
+        add_native_from_extended('FBD — Craft BLINK (мигание)')
+        native = current_widgets()
+        if len(native) != 5 or native[4]['type'] != 'FBD CRAFT BLINK':
+            raise AssertionError('Native BLINK extended palette ID missing: ' + repr(native))
+        if native[4]['timerPresetMs'] != 1000:
+            raise AssertionError('New native BLINK did not start at 1000ms')
+        canvas = self.wait_node(description='Редактор экрана')
+        c_left, c_top, _, _ = map(int, re.findall(r'\d+', canvas.get('bounds')))
+        bx = round(c_left + native[4]['x'] + native[4]['w'] / 2)
+        by = round(c_top + native[4]['y'] + native[4]['h'] / 2)
+        adb('shell', 'input', 'tap', str(bx), str(by))
+        self.wait_node('Свойства: FBD CRAFT BLINK')
+        self.replace_property_input('Время таймера, мс', '3456')
+        self.tap('Применить')
+        self.wait_node(description='Редактор экрана')
+        native = current_widgets()
+        if native[4]['type'] != 'FBD CRAFT BLINK' or native[4]['timerPresetMs'] != 3456:
+            raise AssertionError('Craft BLINK type or exact 3456ms preset was lost')
+        self.capture('fast-fbd-native-blink-3456ms')
+
         adb('shell', 'am', 'force-stop', PACKAGE)
         adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
         self.tap('Загрузить проект')
@@ -182,7 +204,9 @@ class FastFbdSmoke(Smoke):
                 'source FBD palette', 'long-press context', 'cancel without mutation',
                 'exact timer ms persistence', 'source canvas', 'typed BOOL Q-IN edge',
                 'BOOL invert and undo', 'project cold restart',
-                'native Craft CTU16 + T extended palette', 'native block cold restart',
+                'native Craft CTU16 + T extended palette',
+                'native BLINK palette and exact 3456ms mode preservation',
+                'native block cold restart',
                 'no app crash']
         }, indent=2))
         print(f'FAST_FBD_SMOKE_OK elapsed_seconds={elapsed}', flush=True)
