@@ -3009,6 +3009,8 @@ public class MainActivity extends Activity {
     /** Offer pin-specific wiring for blocks whose pin names are confirmed in this build. */
     private void chooseFbdPins(int source, int target) {
         final int screenAtSelection = currentScreenIndex;
+        final Widget sourceAtSelection = widgets.get(source);
+        final Widget targetAtSelection = widgets.get(target);
         String sourceType = widgets.get(source).type;
         String targetType = widgets.get(target).type;
         String[] sourcePins = knownFbdPins(sourceType, true);
@@ -3024,6 +3026,8 @@ public class MainActivity extends Activity {
                                     try {
                                         if (screenAtSelection != currentScreenIndex || source >= widgets.size()
                                                 || target >= widgets.size()
+                                                || widgets.get(source) != sourceAtSelection
+                                                || widgets.get(target) != targetAtSelection
                                                 || !sourceType.equals(widgets.get(source).type)
                                                 || !targetType.equals(widgets.get(target).type)) {
                                             Toast.makeText(this, "FBD-блоки изменились: выбери их заново", Toast.LENGTH_LONG).show();
