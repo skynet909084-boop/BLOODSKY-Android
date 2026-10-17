@@ -17,7 +17,9 @@ from original_fbd_source_probe import (
 )
 
 TARGETS = ("FB_CTU.java", "FB_RS.java", "FB_TIMER.java", "FB_TRIGGER.java")
-OPTIONAL = ("FB_BLINK.java", "FB_CTD.java", "FB_SR.java")
+OPTIONAL = ("FB_BLINK.java", "FB_CTD.java", "FB_SR.java",
+            "FB_MOVE.java", "FB_SEL.java", "FB_COMPARE.java",
+            "FB_POW.java", "FB_MX.java", "FB_ARRAY.java", "FB_MACRO.java")
 MAX_ARCHIVE_FILES = 5000
 MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
 MAX_EVIDENCE_LINES = 96
@@ -140,7 +142,10 @@ def generate_report(archive_path, expected_sha256=EXPECTED_SHA256):
         "pending_acceptance": ["CTU +,-,R numeric direction and saturation",
                                "RS concurrent-set/reset precedence",
                                "TON/TOF/TP units and modes", "BLINK execution",
-                               "trigger reset and rising/falling edge semantics"],
+                               "trigger reset and rising/falling edge semantics",
+                               "MOVE EN/I numeric gating, SEL pin selection and mode",
+                               "COMPARE and POW number type precision/NaN/overflow",
+                               "MX/ARRAY/MACRO internal state; native preview must remain disabled until verified"],
     }
 
 
