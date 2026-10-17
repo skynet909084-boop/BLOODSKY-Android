@@ -60,32 +60,93 @@ def assert_pinned_original_labels(contracts):
 
 
 
-def contract_fingerprint(filename, raw):
-    """Return source-hashed line positions for exact, small identifiers only.
+def _java_visible_lines(lines):
+    """Yield two masks per line: real string literals, and executable call text.
 
-    Do not infer the actual number/direction of pins from the presence or
-    absence of drawing labels. The original constructors/superclasses may own
-    most of the behavior, particularly in obfuscated Java.
+    Decompiled Java contains comments and string constants that can mention
+    arbitrary pin names or methods. Neither is executable code. Retain quoted
+    literals for pin-label evidence, but mask strings before identifying calls.
+    Block-comment state crosses lines; original line numbers are preserved.
+    """
+    in_block_comment = False
+    for line in lines:
+        literal_view = []
+        call_view = []
+        in_string = False
+        in_char = False
+        escaped = False
+        index = 0
+        while index < len(line):
+            char = line[index]
+            if in_block_comment:
+                if line.startswith("*/", index):
+                    in_block_comment = False
+                    index += 2
+                else:
+                    index += 1
+                continue
+            if in_string:
+                literal_view.append(char)
+                call_view.append(" ")
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == '"':
+                    in_string = False
+                index += 1
+                continue
+            if in_char:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == "'":
+                    in_char = False
+                index += 1
+                continue
+            if line.startswith("//", index):
+                break
+            if line.startswith("/*", index):
+                in_block_comment = True
+                index += 2
+                continue
+            if char == '"':
+                in_string = True
+                literal_view.append(char)
+                call_view.append(" ")
+            elif char == "'":
+                in_char = True
+            else:
+                literal_view.append(char)
+                call_view.append(char)
+            index += 1
+        yield "".join(literal_view), "".join(call_view)
+
+
+def contract_fingerprint(filename, raw):
+    """Return source-hashed line positions for real short Java string literals.
+
+    Ignore fake labels in comments and fake calls inside string constants.
+    Do not infer the actual number/direction of pins from drawing labels.
     """
     if filename.rsplit("/", 1)[-1] not in CONTRACT_SOURCES:
         return None
     lines = raw.decode("utf-8", errors="replace").splitlines()
     labels = []
     calls = []
-    for lineno, line in enumerate(lines, 1):
-        # Only literal tokens; never reproduce Java statements or large strings.
-        for match in re.finditer(r'"([^"\\\n]{1,32})"', line):
+    for lineno, (literal_text, call_text) in enumerate(_java_visible_lines(lines), 1):
+        for match in re.finditer(r'"([^"\\\n]{1,32})"', literal_text):
             literal = match.group(1)
             if literal in CONTRACT_LABELS and len(labels) < MAX_CONTRACT_OCCURRENCES:
                 labels.append({"line": lineno, "value": literal})
-        for match in re.finditer(r"\b([A-Za-z][A-Za-z0-9_]*)\s*\(", line):
+        for match in re.finditer(r"\b([A-Za-z][A-Za-z0-9_]*)\s*\(", call_text):
             method = match.group(1)
             if method in CONTRACT_METHODS and len(calls) < MAX_CONTRACT_OCCURRENCES:
                 calls.append({"line": lineno, "name": method})
     return {"archive_path": filename, "sha256": hashlib.sha256(raw).hexdigest(),
             "line_count": len(lines), "literal_labels": labels, "method_calls": calls,
-            "interpretation": "evidence only; not validated direction, priority, pin type or timer unit"}
-
+            "interpretation": "source literals and calls only; not validated direction, priority, pin type or timer unit"}
 
 def safe_name(name):
     path = PurePosixPath(name)
