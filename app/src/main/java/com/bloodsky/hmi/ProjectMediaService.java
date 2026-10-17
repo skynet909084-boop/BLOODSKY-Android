@@ -42,19 +42,21 @@ public class ProjectMediaService {
                 }
             } catch (Exception ignored) {}
         }
-        return "default_project";
+        return "proj_default_project";
     }
 
     public static String ensureProjectHasId(String projectJson) {
         if (projectJson == null || projectJson.trim().isEmpty()) return projectJson;
         try {
             JSONObject obj = new JSONObject(projectJson);
+            boolean modified = false;
             if (!obj.has("id") || obj.optString("id", "").trim().isEmpty()) {
                 if (!obj.has("storageId") || obj.optString("storageId", "").trim().isEmpty()) {
                     obj.put("storageId", UUID.randomUUID().toString());
-                    return obj.toString();
+                    modified = true;
                 }
             }
+            if (modified) return obj.toString();
         } catch (Exception ignored) {}
         return projectJson;
     }

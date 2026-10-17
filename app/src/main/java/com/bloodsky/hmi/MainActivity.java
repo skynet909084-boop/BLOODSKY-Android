@@ -143,6 +143,11 @@ public class MainActivity extends Activity {
                 bitmap = BitmapFactory.decodeFile(pathOrUri);
             } else {
                 String activeJson = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
+                String migratedJson = ProjectMediaService.ensureProjectHasId(activeJson);
+                if (activeJson != null && !activeJson.equals(migratedJson)) {
+                    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(ACTIVE_PROJECT, migratedJson).apply();
+                    activeJson = migratedJson;
+                }
                 java.io.File mediaDir = getProjectMediaDir(this, activeJson);
                 String cleanPath = pathOrUri.trim();
                 if (cleanPath.startsWith("media/")) cleanPath = cleanPath.substring("media/".length());
@@ -311,6 +316,11 @@ public class MainActivity extends Activity {
                     targetFile = new java.io.File(pathOrUri);
                 } else {
                     String activeJson = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
+                String migratedJson = ProjectMediaService.ensureProjectHasId(activeJson);
+                if (activeJson != null && !activeJson.equals(migratedJson)) {
+                    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(ACTIVE_PROJECT, migratedJson).apply();
+                    activeJson = migratedJson;
+                }
                     java.io.File mediaDir = getProjectMediaDir(this, activeJson);
                     String cleanPath = pathOrUri.trim();
                     if (cleanPath.startsWith("media/")) cleanPath = cleanPath.substring("media/".length());
@@ -1142,6 +1152,11 @@ public class MainActivity extends Activity {
             java.io.File f = new java.io.File(cleanPath);
             if (!f.exists()) {
                 String activeJson = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
+                String migratedJson = ProjectMediaService.ensureProjectHasId(activeJson);
+                if (activeJson != null && !activeJson.equals(migratedJson)) {
+                    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(ACTIVE_PROJECT, migratedJson).apply();
+                    activeJson = migratedJson;
+                }
                 java.io.File mediaDir = getProjectMediaDir(this, activeJson);
                 String relPath = cleanPath.startsWith("media/") ? cleanPath.substring("media/".length()) : cleanPath;
                 f = new java.io.File(mediaDir, relPath);
@@ -2806,6 +2821,11 @@ public class MainActivity extends Activity {
         android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         projectName = prefs.getString("project_name", projectName);
         String json = prefs.getString(ACTIVE_PROJECT, "[]");
+        String migratedJson = ProjectMediaService.ensureProjectHasId(json);
+        if (json != null && !json.equals(migratedJson)) {
+            prefs.edit().putString(ACTIVE_PROJECT, migratedJson).apply();
+            json = migratedJson;
+        }
         try {
             Object parsed = new org.json.JSONTokener(json).nextValue();
             if (parsed instanceof JSONObject) {
