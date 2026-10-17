@@ -33,6 +33,20 @@ A separate implementation `FbdCraftNativeTransitions` and Java regression `FbdCr
 
 **Do not assume the original timer's symbolic unit constant is exactly 60 seconds without reading its definition, and do not mark the entire FBD palette complete from this static trace.** Preserve user projects, legacy graph metadata and disabled preview rows.
 
+## Native Craft timer state model, isolated batch — 18 October 2026
+
+Portable `FbdCraftNativeTimer` and JUnit `FbdCraftNativeTimerTest` now encode the deterministic observable transitions in pinned original `FB_TIMER.java` SHA256 `e92072664732a19373a21afb21bb33837c412f8b7b711f3814d80bddca53c9f7`, lines 62–154.
+
+- TON (original action code 1) resets output and timer latch on low, starts clock on first high, sets Q after elapsed preset.
+- TOF (code 2) sets Q on high, delays false output after input falls, resets timer on high.
+- BLINK (code 4) starts true when enabled, toggles Q on each full preset interval, resets when disabled. Because the original method resets `i0` at each toggle, the next evaluation restarts the clock: this subtle one-scan interval is preserved rather than "fixed" arbitrarily.
+- TP (code 3) starts an epoch on new high, and visibly only clears Q after elapsed time. The observed `f()` body has **no explicit Q=true assignment** for TP. Accordingly, the pure model does not invent a positive pulse from a default false state. A seeded true output can be held until PT. Constructor / mode changes must be source-audited before we enable a native TP UI.
+- Time unit codes source-confirmed: 1 (milliseconds) and 2 (*1000); code 3 multiplies by symbolic `UsbId.SILABS_CP2102`. A caller must pass an **independently verified** multiplier; no hardcoded unsupported number. The portable implementation fails on invalid unit or signed-overflow, explicitly safer than source int overflow.
+- Source uses wall-clock `System.currentTimeMillis`, so the portable test supplies clock values deterministically. Existing BLOODSKY FBD runtime uses `SystemClock.elapsedRealtime` and is not changed, avoiding regressions in older saved projects.
+- Test coverage: exact deadlines, restart/rearm, BLINK enable/disable and alternation, TP ambiguity, inversion, invalid mode/unit/duration, wall-clock rollback and overflow.
+
+This standalone code is **not yet an original Craft runtime or a palette entry**. No existing BLOODSKY CTU/RS/TON/TOF/TP or project JSON is altered. Required to activate native Craft blocks: inspect constructor and `setActionExecute` TP initialization, resolve the third unit constant from pinned source, then create separate native type IDs and numeric/BOOL terminal tests plus source parity UI screenshots.
+
 ## Non-negotiable gates
 
 The runtime feature branch is not automatically promoted into `main`. Keep existing BLOODSKY CTU `CU,R,PV,Q` graph semantics intact. Original source CTU labels `+,-,R,Q`, RS priority and timer units are *open* until verified from original actual superclass implementation. Add separate native-compatible blocks, UI and source test only if the evidence supports actual operation; old project fields/anonymous wires must round-trip unchanged.
