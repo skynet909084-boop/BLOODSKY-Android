@@ -21,6 +21,71 @@ MAX_ARCHIVE_FILES = 5000
 MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
 MAX_EVIDENCE_FILES = 60
 
+# Evidence extraction is intentionally conservative. Literal labels and call-site
+# names are clues, not proofs of runtime pin direction or electrical semantics.
+CONTRACT_SOURCES = ("FB_CTU.java", "FB_RS.java", "FB_TIMER.java", "FB_TRIGGER.java")
+CONTRACT_LABELS = frozenset(("+", "-", "R", "S", "Q", "QN", "IN", "OUT", "PT",
+                             "PV", "CU", "CD", "LD", "TON", "TOF", "TP", "CTU",
+                             "RS", "SR", "AND", "OR", "BOOL", "FLOAT", "INT"))
+CONTRACT_METHODS = frozenset(("getValue", "setValue", "getName", "setName",
+                              "getInput", "getOutput", "onDraw", "drawText",
+                              "invalidate", "setText"))
+MAX_CONTRACT_OCCURRENCES = 64
+
+# These are literal tokens observed in the SHA-pinned original source, not
+# inferred executable contracts. Inputs/outputs, data types and priorities
+# still require superclass/call-graph analysis and differential tests.
+EXPECTED_ORIGINAL_LABEL_SEQUENCE = {
+    "FB_CTU.java": ("CTU", "+", "-", "R", "Q"),
+    "FB_RS.java": ("RS", "R", "S", "Q"),
+    "FB_TIMER.java": ("TON", "IN", "Q", "TOF", "TP"),
+}
+
+
+def assert_pinned_original_labels(contracts):
+    """Fail the pinned source audit when a published literal claim changes."""
+    indexed = {row["archive_path"].rsplit("/", 1)[-1]: row for row in contracts}
+    confirmed = []
+    for filename, expected in EXPECTED_ORIGINAL_LABEL_SEQUENCE.items():
+        if filename not in indexed:
+            raise ValueError("Original FBD class missing: " + filename)
+        actual = [row["value"] for row in indexed[filename]["literal_labels"]]
+        unique = list(dict.fromkeys(actual))
+        if unique != list(expected):
+            raise ValueError("Original FBD label sequence mismatch: " + filename)
+        confirmed.append({"class": filename, "sha256": indexed[filename]["sha256"],
+                          "labels": list(expected),
+                          "claim": "source literals only; directions and runtime semantics unverified"})
+    return confirmed
+
+
+
+def contract_fingerprint(filename, raw):
+    """Return source-hashed line positions for exact, small identifiers only.
+
+    Do not infer the actual number/direction of pins from the presence or
+    absence of drawing labels. The original constructors/superclasses may own
+    most of the behavior, particularly in obfuscated Java.
+    """
+    if filename.rsplit("/", 1)[-1] not in CONTRACT_SOURCES:
+        return None
+    lines = raw.decode("utf-8", errors="replace").splitlines()
+    labels = []
+    calls = []
+    for lineno, line in enumerate(lines, 1):
+        # Only literal tokens; never reproduce Java statements or large strings.
+        for match in re.finditer(r'"([^"\\\n]{1,32})"', line):
+            literal = match.group(1)
+            if literal in CONTRACT_LABELS and len(labels) < MAX_CONTRACT_OCCURRENCES:
+                labels.append({"line": lineno, "value": literal})
+        for match in re.finditer(r"\b([A-Za-z][A-Za-z0-9_]*)\s*\(", line):
+            method = match.group(1)
+            if method in CONTRACT_METHODS and len(calls) < MAX_CONTRACT_OCCURRENCES:
+                calls.append({"line": lineno, "name": method})
+    return {"archive_path": filename, "sha256": hashlib.sha256(raw).hexdigest(),
+            "line_count": len(lines), "literal_labels": labels, "method_calls": calls,
+            "interpretation": "evidence only; not validated direction, priority, pin type or timer unit"}
+
 
 def safe_name(name):
     path = PurePosixPath(name)
@@ -34,6 +99,7 @@ def report_from_zip(archive, expected_sha256=EXPECTED_SHA256):
     if hashlib.sha256(archive.read_bytes()).hexdigest() != expected_sha256:
         raise ValueError("Original Craft reference SHA256 mismatch")
     evidence = []
+    contracts = []
     totals = {"java": 0, "logic_java": 0, "layout_xml": 0}
     found_markers = set()
     with zipfile.ZipFile(archive) as src:
@@ -61,6 +127,10 @@ def report_from_zip(archive, expected_sha256=EXPECTED_SHA256):
             if info.file_size > 1024 * 1024:
                 raise ValueError("Oversized original Java/XML file: " + name)
             raw = src.read(info)
+            if is_logic_java:
+                fingerprint = contract_fingerprint(name, raw)
+                if fingerprint is not None:
+                    contracts.append(fingerprint)
             lines = raw.decode("utf-8", errors="replace").splitlines()
             file_hits = []
             for lineno, line in enumerate(lines, 1):
@@ -82,7 +152,10 @@ def report_from_zip(archive, expected_sha256=EXPECTED_SHA256):
                     "hit_count": len(file_hits),
                     "hits": file_hits,
                 })
+    pinned_claims = (assert_pinned_original_labels(contracts)
+                     if expected_sha256 == EXPECTED_SHA256 else [])
     return {
+        "pinned_label_checks": pinned_claims,
         "source_archive": str(archive),
         "source_sha256": expected_sha256,
         "scope": "read-only source keyword audit; not executable Craft semantics or visual parity",
@@ -90,6 +163,7 @@ def report_from_zip(archive, expected_sha256=EXPECTED_SHA256):
         "markers_present": sorted(found_markers),
         "markers_absent": sorted(set(MARKERS) - found_markers),
         "evidence": evidence,
+        "contracts": contracts,
     }
 
 
@@ -104,6 +178,7 @@ def main():
     print("Craft FBD source paths: " + str(result["totals"]))
     print("Markers present: " + ", ".join(result["markers_present"]))
     print("Evidence files: " + str(len(result["evidence"])))
+    print("FBD class fingerprints: " + str(len(result["contracts"])))
     print("Report: " + str(args.output))
 
 
