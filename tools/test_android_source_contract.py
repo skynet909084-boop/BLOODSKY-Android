@@ -144,7 +144,8 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("chooseFbdPins(source, target)", self.source)
         self.assertIn("screen.connections.add(edge)", self.source)
         self.assertIn("hasCompatibleKnownFbdPins(json, sourceType, targetType)", self.source)
-        self.assertIn("pinnedFbdConnection(source, sourcePins[sourceChoice]", self.source)
+        self.assertIn("compatibleFbdTargetPins(", self.source)
+        self.assertRegex(self.source, r"pinnedFbdConnection\(source,\s*(?:sourcePins\[sourceChoice\]|chosenSourcePin)")
         self.assertIn('edge.extraFields.put("sourceSignalType", sourceSignal)', self.source)
         self.assertIn('edge.extraFields.put("targetSignalType", targetSignal)', self.source)
 
