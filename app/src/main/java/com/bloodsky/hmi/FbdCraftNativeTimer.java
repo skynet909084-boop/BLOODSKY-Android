@@ -6,9 +6,11 @@ package com.bloodsky.hmi;
  *
  * This is NOT connected to existing BLOODSKY TON/TOF/TP runtime or palette.
  * Source's System.currentTimeMillis() is injected for deterministic tests.
- * Native mode 3 lacks a visible 'output=true' transition in f() (source
- * lines 95-107); therefore treat its initial state as an explicit input
- * pending confirmation of constructor/setActionExecute initialization.
+ * The source constructor explicitly initializes d0=false (lines 23-51).
+ * Native mode TP (3) has no visible 'output=true' assignment in f()
+ * (lines 95-107), so from a freshly constructed state its Q stays false.
+ * The original likely has a TP defect; BLOODSKY's existing functional TP
+ * must NOT be silently replaced with this faithful but inert source variant.
  */
 public final class FbdCraftNativeTimer {
     private FbdCraftNativeTimer() {}
@@ -17,6 +19,9 @@ public final class FbdCraftNativeTimer {
     public static final int TOF = 2;
     public static final int TP = 3;
     public static final int BLINK = 4;
+
+    /** Original pinned UsbId.java SHA256 1568d9aaa999f5e04e8403c2b85e51e6e0e7e7c40c62412b3d071729e743532c, line 20. */
+    public static final long VERIFIED_MINUTE_MS = 60000L;
 
     public static final class State {
         public final boolean output;
@@ -36,16 +41,22 @@ public final class FbdCraftNativeTimer {
 
     /**
      * Original f0 codes 1=millisecond, 2=second, 3=UsbId.SILABS_CP2102.
-     * A third-unit multiplier must be verified from the exact original
-     * UsbId class before calling with unitCode=3; never guess this value.
+     * The third-unit multiplier is verified as 60000 in pinned original
+     * Connections/Usb/driver/UsbId.java (line 20, SHA256 above).
      * Unlike native signed-int multiplication, fail closed on overflow.
      */
+    public static long durationMillis(int value, int unitCode) {
+        return durationMillis(value, unitCode, VERIFIED_MINUTE_MS);
+    }
+
+    /** Compatibility overload: reject third-unit values not verified in Craft source. */
     public static long durationMillis(int value, int unitCode, long verifiedThirdUnit) {
         if (value < 1) throw new IllegalArgumentException("positive duration required");
         final long factor;
         if (unitCode == 1) factor = 1L;
         else if (unitCode == 2) factor = 1000L;
-        else if (unitCode == 3 && verifiedThirdUnit > 0) factor = verifiedThirdUnit;
+        else if (unitCode == 3 && verifiedThirdUnit == VERIFIED_MINUTE_MS)
+            factor = VERIFIED_MINUTE_MS;
         else throw new IllegalArgumentException("unknown or unverified Craft unit");
         return Math.multiplyExact(value, factor);
     }
