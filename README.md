@@ -7,10 +7,11 @@ BLOODSKY is an Android APK project for a faithful, improved successor to Kaskada
 The current prototype includes:
 - named projects with separate create/load/delete actions and migration of the previous active project;
 - a multi-screen editor with screen naming and background color controls;
-- canvas widgets, selection, dragging, resize grip, copy/paste and delete;
+- canvas widgets, selection, dragging, resize grip, cut/copy/paste and delete;
 - widget property editing and preservation of unknown JSON metadata;
 - local project persistence plus portable ZIP image/audio import/export and JSON export;
-- original APK home background/buttons and indicator lamp state bitmaps, with recorded source provenance;
+- original APK home background/buttons, calculator, supported five-category palette and selection-action icons, with recorded source provenance;
+- original indicator ON/OFF image menus, built-in lamps and custom document-provider images retained after process restart;
 - a Modbus TCP register scanner for FC03/FC04;
 - periodic polling of widgets with `tcp://host:port/unit/address` bindings;
 - an initial set of FBD logic blocks and connections, including cycle checks.
