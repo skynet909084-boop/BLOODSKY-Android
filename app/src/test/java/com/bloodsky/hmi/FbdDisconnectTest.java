@@ -446,6 +446,53 @@ public class FbdDisconnectTest {
         assertEquals(1000000, MainActivity.fbdCountDownStep(1, false, false, true, Integer.MAX_VALUE));
     }
 
+    @Test public void normalizedPinLookupAgreesWithValidationAndRetainsLegacyOrder() throws Exception {
+        assertEquals("IN", MainActivity.canonicalFbdPinName("  in  "));
+        assertEquals("", MainActivity.canonicalFbdPinName(null));
+        assertTrue(MainActivity.fbdBooleanPinValue(
+                java.util.Arrays.asList(true, false), java.util.Arrays.asList(" in ", "R"), "IN", 0));
+        assertFalse(MainActivity.fbdBooleanPinValue(
+                java.util.Arrays.asList(true), java.util.Arrays.asList(" R "), "IN", 0));
+        assertTrue(MainActivity.fbdBooleanPinValue(
+                java.util.Arrays.asList(true), java.util.Arrays.asList(" "), "IN", 0));
+        assertEquals(2345.0, MainActivity.fbdNumericPinValue(
+                java.util.Arrays.asList(2345.0), java.util.Arrays.asList(" pt "), "PT", -1, 1000), 0);
+        assertEquals(1000.0, MainActivity.fbdNumericPinValue(
+                java.util.Arrays.asList(2345.0), java.util.Arrays.asList(" IN "), "PT", 0, 1000), 0);
+        JSONObject wire = new JSONObject().put("source", 0).put("target", 1)
+                .put("sourcePin", "  q ").put("targetPin", " in1 ");
+        assertTrue(MainActivity.hasCompatibleKnownFbdPins(wire, "FBD Вход", "FBD И"));
+        assertEquals(" in1 ", MainActivity.connectionToJson(
+                MainActivity.connectionFromJson(wire)).getString("targetPin"));
+    }
+
+    @Test public void importerRejectsSameInputPinWithDifferentWhitespaceOrCase() throws Exception {
+        JSONArray widgets = new JSONArray()
+                .put(new JSONObject().put("type", "FBD Вход"))
+                .put(new JSONObject().put("type", "FBD Вход"))
+                .put(new JSONObject().put("type", "FBD И"));
+        JSONObject first = new JSONObject().put("source", 0).put("target", 2)
+                .put("sourcePin", "Q").put("targetPin", " IN1 ");
+        JSONObject second = new JSONObject().put("source", 1).put("target", 2)
+                .put("sourcePin", "Q").put("targetPin", "in1");
+        JSONArray links = new JSONArray().put(first).put(second);
+        String json = new JSONObject().put("screens", new JSONArray()
+                .put(new JSONObject().put("widgets", widgets).put("connections", links)))
+                .put("currentScreen", 0).toString();
+        try {
+            MainActivity.validateImportedProjectStatic(json);
+            fail("Target IN1 must not accept two drivers differing only in padding/case");
+        } catch (IllegalArgumentException expected) { }
+        MainActivity.FbdConnection firstEdge = MainActivity.connectionFromJson(first);
+        MainActivity.FbdConnection sameEndpoints = MainActivity.connectionFromJson(
+                new JSONObject(first.toString()).put("targetPin", "in1"));
+        assertTrue(MainActivity.duplicateFbdEndpoint(firstEdge, sameEndpoints));
+        second.put("targetPin", "IN2");
+        MainActivity.validateImportedProjectStatic(new JSONObject().put("screens", new JSONArray()
+                .put(new JSONObject().put("widgets", widgets).put("connections", links)))
+                .put("currentScreen", 0).toString());
+    }
+
     @Test public void invalidEndpointsDoNotMutateGraph() {
         List<MainActivity.FbdConnection> edges = new ArrayList<>();
         edges.add(new MainActivity.FbdConnection(0, 1));
