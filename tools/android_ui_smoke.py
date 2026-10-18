@@ -310,8 +310,13 @@ class Smoke:
         self.capture('04o-fbd-preset-saved')
         expected = json.loads(json.dumps(widgets))
         expected[-1]['timerPresetMs'] = 2345
+        # Applying properties to the original Craft FB_TIMER persists its
+        # selected mode and unit alongside the duration, even when they remain
+        # at their imported TON/MS defaults.
+        expected[-1]['craftTimerMode'] = 'TON'
+        expected[-1]['craftTimerUnit'] = 'MS'
         if saved_widgets() != expected:
-            raise AssertionError('FBD preset edit changed another widget field')
+            raise AssertionError('FBD preset edit changed an unexpected project field')
         # Exercise the real editor's named-pin wiring, drag persistence and removal.
         # Select a point well inside the source, away from its resize grip.
         if self.saved_connections():
