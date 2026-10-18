@@ -99,6 +99,9 @@ public class MainActivity extends Activity {
     private static final int REQUEST_FBD_SPEED_LOCATION = 6107;
     private static final int REQUEST_VOICE_PERMISSION = 6201;
     private static final int REQUEST_SMS_SEND_PERMISSION = 6202;
+    private static final int REQUEST_SMS_RECEIVE_PERMISSION = 6203;
+    private android.content.BroadcastReceiver incomingSmsReceiver;
+    private boolean smsReceivePermissionRequested;
     private static final int VOICE_LOCAL = 1;
     private static final int VOICE_ONLINE = 2;
     private int pendingVoiceMode;
@@ -220,6 +223,7 @@ public class MainActivity extends Activity {
         super.onResume();
         activityResumed = true;
         if (editor != null) { startModbusPolling(); startFbdSensors(); startCraftMqtt(); }
+        refreshIncomingSmsReceiver();
     }
 
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
@@ -236,6 +240,15 @@ public class MainActivity extends Activity {
             else Toast.makeText(this, "Отправка SMS отключена без разрешения SEND_SMS", Toast.LENGTH_LONG).show();
             return;
         }
+        if (requestCode == REQUEST_SMS_RECEIVE_PERMISSION) {
+            smsReceivePermissionRequested = false;
+            if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                refreshIncomingSmsReceiver();
+            } else {
+                Toast.makeText(this, "Входящее SMS отключено без разрешения RECEIVE_SMS", Toast.LENGTH_LONG).show();
+            }
+            return;
+        }
         if (requestCode != REQUEST_FBD_SPEED_LOCATION) return;
         fbdLocationPermissionRequested = false;
         if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED)
@@ -244,6 +257,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onPause() {
         activityResumed = false;
+        unregisterIncomingSmsReceiver();
         stopModbusPolling();
         stopFbdSensors();
         stopCraftMqtt();
@@ -258,6 +272,7 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        unregisterIncomingSmsReceiver();
         stopModbusPolling();
         stopFbdSensors();
         stopCraftMqtt();
@@ -1982,6 +1997,7 @@ public class MainActivity extends Activity {
             root.addView(actions, actionParams);
         }
         setContentView(root); editor.invalidate(); startModbusPolling(); startFbdSensors(); startCraftMqtt();
+        refreshIncomingSmsReceiver();
     }
 
     private android.widget.ImageButton editorIcon(int drawable, String description) {
@@ -2143,6 +2159,85 @@ public class MainActivity extends Activity {
             Toast.makeText(this,"SMS отправлено через SIM",Toast.LENGTH_SHORT).show();
         } catch(Exception failure) {
             Toast.makeText(this,"Не удалось отправить SMS через SIM",Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private boolean hasConfiguredIncomingSms() {
+        if (!operatorMode || editor == null) return false;
+        for (Widget widget : widgets) {
+            if ("Входящее SMS".equals(widget.type) && widget.extraFields.optBoolean("smsEnabled", false))
+                return true;
+        }
+        return false;
+    }
+
+    private void refreshIncomingSmsReceiver() {
+        if (!activityResumed || !hasConfiguredIncomingSms()
+                || !getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_TELEPHONY)) {
+            unregisterIncomingSmsReceiver();
+            return;
+        }
+        if (checkSelfPermission(android.Manifest.permission.RECEIVE_SMS)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            unregisterIncomingSmsReceiver();
+            if (!smsReceivePermissionRequested) {
+                smsReceivePermissionRequested = true;
+                requestPermissions(new String[]{android.Manifest.permission.RECEIVE_SMS}, REQUEST_SMS_RECEIVE_PERMISSION);
+            }
+            return;
+        }
+        if (incomingSmsReceiver != null) return;
+        incomingSmsReceiver = new SmsIncomingBroadcastReceiver(this::handleIncomingSms);
+        android.content.IntentFilter filter = new android.content.IntentFilter("android.provider.Telephony.SMS_RECEIVED");
+        if (android.os.Build.VERSION.SDK_INT >= 33)
+            registerReceiver(incomingSmsReceiver, filter, android.content.Context.RECEIVER_EXPORTED);
+        else registerReceiver(incomingSmsReceiver, filter);
+    }
+
+    private void unregisterIncomingSmsReceiver() {
+        if (incomingSmsReceiver == null) return;
+        try { unregisterReceiver(incomingSmsReceiver); } catch (IllegalArgumentException ignored) {}
+        incomingSmsReceiver = null;
+    }
+
+    private void handleIncomingSms(String sender, String body) {
+        if (!activityResumed || !operatorMode || editor == null || !hasConfiguredIncomingSms()) return;
+        final long sessionToken = pollSession.token();
+        for (Widget widget : new ArrayList<>(widgets)) {
+            if (!"Входящее SMS".equals(widget.type) || !widget.extraFields.optBoolean("smsEnabled", false)) continue;
+            final String allowedSender;
+            try { allowedSender = SmsRecipientStore.read(this, widget.extraFields.optString("smsSenderId", "")); }
+            catch (Exception invalid) { continue; }
+            String modeValue = widget.extraFields.optString("smsMode", "number");
+            SmsIncomingCommand.Mode mode = "bit".equals(modeValue)
+                    ? SmsIncomingCommand.Mode.SET_BIT : SmsIncomingCommand.Mode.REGISTER_NUMBER;
+            int bit = widget.extraFields.optInt("smsBit", 0);
+            SmsIncomingCommand.Result parsed = SmsIncomingCommand.parse(allowedSender, sender,
+                    widget.extraFields.optString("smsCommand", ""), body, mode, bit);
+            if (parsed == null) continue;
+            BindingRequest binding = parseBinding(-1, widget.connectionInfo);
+            if (binding == null || binding.functionCode != 3) continue;
+            final String host = binding.host;
+            final int port = binding.port, unit = binding.unit, address = binding.address;
+            final int value = parsed.registerValue;
+            modbusExecutor.execute(() -> {
+                if (!pollSession.accepts(sessionToken) || !activityResumed || !operatorMode) return;
+                Exception failure = null;
+                try {
+                    ModbusTcpClient client = new ModbusTcpClient(host, port);
+                    if (parsed.mode == SmsIncomingCommand.Mode.SET_BIT) {
+                        client.writeMask(unit, address, parsed.writeAndMask, parsed.writeOrMask);
+                    } else {
+                        client.writeSingle(unit, address, value);
+                    }
+                } catch (Exception error) { failure = error; }
+                final Exception result = failure;
+                runOnUiThread(() -> {
+                    if (!pollSession.accepts(sessionToken) || !activityResumed || !operatorMode) return;
+                    Toast.makeText(this, result == null ? "SMS-команда выполнена: Modbus обновлён"
+                            : "SMS-команда проверена, но запись Modbus не выполнена", Toast.LENGTH_LONG).show();
+                });
+            });
         }
     }
 
@@ -3136,6 +3231,37 @@ public class MainActivity extends Activity {
             TextView smsHelp=new TextView(this);smsHelp.setText("Сообщение отправляется один раз при переходе сигнала 0→1. В тексте {value} подставляется значение Modbus. Номер хранится зашифрованно на устройстве и не входит в экспорт проекта.");form.addView(smsHelp);
         } else smsPhoneField=null;
 
+        final android.widget.CheckBox incomingSmsEnabledField;
+        final EditText incomingSmsSenderField, incomingSmsCommandField, incomingSmsBitField;
+        final android.widget.Spinner incomingSmsModeField;
+        if ("Входящее SMS".equals(w.type)) {
+            incomingSmsEnabledField = new android.widget.CheckBox(this);
+            incomingSmsEnabledField.setText("Разрешить управление этим регистром через SMS");
+            incomingSmsEnabledField.setChecked(w.extraFields.optBoolean("smsEnabled", false));
+            form.addView(incomingSmsEnabledField);
+            String savedSender = "";
+            try { savedSender = SmsRecipientStore.read(this, w.extraFields.optString("smsSenderId", "")); }
+            catch (Exception ignored) {}
+            incomingSmsSenderField = propertyField(savedSender, InputType.TYPE_CLASS_PHONE);
+            incomingSmsSenderField.setHint("Разрешённый номер, например +79991234567"); form.addView(incomingSmsSenderField);
+            incomingSmsCommandField = propertyField(w.extraFields.optString("smsCommand", ""),
+                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+            incomingSmsCommandField.setHint("Точная команда: ВКЛ или Уставка"); form.addView(incomingSmsCommandField);
+            incomingSmsModeField = new android.widget.Spinner(this);
+            incomingSmsModeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item, new String[]{"Число в holding-регистр", "Установить бит"}));
+            incomingSmsModeField.setSelection("bit".equals(w.extraFields.optString("smsMode", "number")) ? 1 : 0);
+            form.addView(incomingSmsModeField);
+            incomingSmsBitField = propertyField(Integer.toString(w.extraFields.optInt("smsBit", 0)), InputType.TYPE_CLASS_NUMBER);
+            incomingSmsBitField.setHint("Номер бита 0–15 (для режима бит)"); form.addView(incomingSmsBitField);
+            TextView smsIncomingHelp = new TextView(this);
+            smsIncomingHelp.setText("Адрес задаётся выше как tcp://хост:порт/unit/регистр; допустим только holding-регистр. Числовая команда: «команда пробел целое число» в диапазоне −32768…32767. Битовая команда должна полностью совпасть. SMS принимаются только пока открыт проект в операторском режиме; отправитель сверяется с номером из списка.");
+            form.addView(smsIncomingHelp);
+        } else {
+            incomingSmsEnabledField = null; incomingSmsSenderField = null;
+            incomingSmsCommandField = null; incomingSmsBitField = null; incomingSmsModeField = null;
+        }
+
         final android.widget.CheckBox fbdInputField;
         if ("FBD Вход".equals(w.type)) {
             fbdInputField = new android.widget.CheckBox(this);
@@ -3707,6 +3833,37 @@ public class MainActivity extends Activity {
                         try{SmsRecipientStore.save(this,recipientKey,phone);w.extraFields.put("smsRecipientId",recipientKey);}
                         catch(Exception failure){Toast.makeText(this,"Не удалось безопасно сохранить номер SMS",Toast.LENGTH_LONG).show();return;}
                     }
+                    if (incomingSmsEnabledField != null) {
+                        boolean enabled = incomingSmsEnabledField.isChecked();
+                        String sender = incomingSmsSenderField.getText().toString().trim();
+                        String command = incomingSmsCommandField.getText().toString().trim();
+                        int bit;
+                        try { bit = Integer.parseInt(incomingSmsBitField.getText().toString().trim()); }
+                        catch (NumberFormatException invalid) { bit = -1; }
+                        BindingRequest smsBinding = parseBinding(-1, w.connectionInfo);
+                        if (enabled && (!SmsIncomingCommand.isValidSender(sender)
+                                || command.isEmpty() || command.length() > 80 || command.indexOf(String.valueOf((char)10)) >= 0
+                                || command.indexOf(String.valueOf((char)13)) >= 0 || bit < 0 || bit > 15
+                                || smsBinding == null || smsBinding.functionCode != 3)) {
+                            Toast.makeText(this, "Для входящего SMS укажи номер, команду, бит 0–15 и корректный holding-регистр", Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                        if (bit < 0 || bit > 15) bit = 0;
+                        try {
+                            if (SmsIncomingCommand.isValidSender(sender)) {
+                                String senderKey = java.util.UUID.randomUUID().toString();
+                                SmsRecipientStore.save(this, senderKey, sender);
+                                w.extraFields.put("smsSenderId", senderKey);
+                            }
+                            w.extraFields.put("smsCommand", command);
+                            w.extraFields.put("smsMode", incomingSmsModeField.getSelectedItemPosition() == 1 ? "bit" : "number");
+                            w.extraFields.put("smsBit", bit);
+                            w.extraFields.put("smsEnabled", enabled);
+                        } catch (Exception failure) {
+                            Toast.makeText(this, "Не удалось безопасно сохранить номер отправителя SMS", Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                    }
                     if (fbdInputField != null) w.inputValue = fbdInputField.isChecked();
                     if ("Динамический текст".equals(w.type)) {
                         for (int k = 0; k < 4; k++) {
@@ -3804,6 +3961,7 @@ public class MainActivity extends Activity {
                     w.visible = visibleField.isChecked(); w.showFrame = frameField.isChecked(); w.autoResizeText = autoResizeField.isChecked();
                     persistProject();
                     editor.invalidate();
+                    refreshIncomingSmsReceiver();
                     properties.dismiss();
                 }));
         properties.show();
