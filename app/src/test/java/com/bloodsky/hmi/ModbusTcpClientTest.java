@@ -113,6 +113,12 @@ public class ModbusTcpClientTest {
         invalid(() -> client.writeMultiple(1, 0, new int[124]));
         invalid(() -> client.writeMultiple(1, 65535, new int[2]));
         invalid(() -> client.writeMultiple(1, 0, new int[] {1, 65536}));
+        invalid(() -> client.writeSingleCoil(1, -1, true));
+        invalid(() -> client.writeSingleCoil(256, 0, true));
+        invalid(() -> client.writeMultipleCoils(1, 0, null));
+        invalid(() -> client.writeMultipleCoils(1, 0, new int[0]));
+        invalid(() -> client.writeMultipleCoils(1, 0, new int[] {0, 2}));
+        invalid(() -> client.writeMultipleCoils(1, 65535, new int[] {1, 0}));
     }
 
     @Test(timeout = 10000) public void readsMaximumFc03RegisterCount() throws Exception {
@@ -130,6 +136,29 @@ public class ModbusTcpClientTest {
             assertEquals(0xff00, values[0]);
             assertEquals(0xff7c, values[124]);
         });
+    }
+
+    @Test(timeout = 10000) public void writesSingleCoilWithFc05AndValidatesEcho() throws Exception {
+        fixture(2000, socket -> {
+            byte[] req = request(socket);
+            assertEquals(5, req[7] & 255);
+            assertEquals(17, u16(req, 8));
+            assertEquals(0xff00, u16(req, 10));
+            socket.getOutputStream().write(reply(req, new byte[]{5, 0, 17, (byte)0xff, 0}));
+        }, client -> client.writeSingleCoil(4, 17, true));
+    }
+
+    @Test(timeout = 10000) public void packsAndWritesMultipleCoilsLeastSignificantBitFirst() throws Exception {
+        fixture(2000, socket -> {
+            byte[] req = request(socket);
+            assertEquals(15, req[7] & 255);
+            assertEquals(12, u16(req, 8));
+            assertEquals(9, u16(req, 10));
+            assertEquals(2, req[12] & 255);
+            assertEquals(0x8d, req[13] & 255);
+            assertEquals(0x01, req[14] & 255);
+            socket.getOutputStream().write(reply(req, new byte[]{15, 0, 12, 0, 9}));
+        }, client -> client.writeMultipleCoils(1, 12, new int[]{1,0,1,1,0,0,0,1,1}));
     }
 
     @Test(timeout = 10000) public void readsMaximumFc01BitCount() throws Exception {

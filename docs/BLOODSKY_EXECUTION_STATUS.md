@@ -7,6 +7,12 @@
 - `CraftRegisterGateway` validates address/range/count/mode constraints and owns event state. Unit tests cover 1–99 counts, FC04 source normalization, holding-only target, low→high edge behavior, source-change behavior, disabled import and no destination writes after a failed read.
 - Runtime still does not implement Craft system-register endpoints, RTU/Bluetooth transports, or bit gateway ID 22. The source-backed unit tests and debug APK pass in [Actions run #765](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39130772248). Simulator/hardware acceptance and physical parity remain open.
 
+## Craft bit gateway ID 22 — 2026-10-18
+
+- Manual page 60 and Craft 1.0.7 source confirm a bit-gateway widget with 1–16 bits, FC01 Coils or FC02 Discrete Inputs source selection, three transfer modes, and a holding-register bit trigger for rising-edge mode.
+- Added opt-in TCP settings/runtime: FC01/02 bit reads, FC05 one-coil write or FC15 packed writes, continuous/rising-edge/source-change modes, and a 1-bit limit for source-change. Imported endpoint indices stay disabled until manually remapped.
+- Added loopback protocol tests for FC05/15 packing and echo, importer preservation tests, and pure gateway mode/validation tests. System registers, RTU/Bluetooth and paired-device acceptance remain open.
+
 ## Full manual/decompilation audit refresh — 2026-10-18
 
 - `KASCADA_FULL_PARITY_AUDIT_20261018.md` now cross-checks all manual chapters 2–12, the decoded component registry, the pinned decompilation, and the three supplied `.pro`/ZIP samples. It separates implemented paths from tested compatibility and device/visual proof.

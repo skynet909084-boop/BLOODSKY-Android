@@ -235,6 +235,28 @@ public class CraftProjectImporterTest {
         assertEquals(18, project.getJSONObject("craftSource").getJSONArray("TableComponent").getJSONObject(2).getInt("componentId"));
     }
 
+    @Test public void mapsCraftBitGatewayAsDisabledAndPreservesItsFunctionAndBitCount() throws Exception {
+        String json = "{\"TableNameProject\":{\"name\":\"Bit gateway\",\"countScreen\":1},"
+                + "\"TableConnections\":[],\"TableComponent\":["
+                + "{\"componentId\":22,\"text\":\"legacy\",\"x\":1,\"y\":2,\"width\":30,\"height\":30,"
+                + "\"jsTableComponent_connectionInfo\":{\"posDeviceNetworkInList_source\":0,\"addressRegister_source\":7,"
+                + "\"addressBit_source\":2,\"countBit\":5,\"posDeviceNetworkInList_receive\":1,"
+                + "\"addressRegister_receive\":9,\"addressBit_receive\":4,\"posDeviceNetworkInList_trigger\":0},"
+                + "\"jsTableComponent_other\":{\"numScreen\":1,\"functionModbusSource\":2,\"mode\":1,\"regMode\":3,\"bitMode\":7}}]}";
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(json));
+        JSONObject gateway = project.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets").getJSONObject(0);
+        assertEquals("Шлюз битовый", gateway.getString("type"));
+        assertTrue(gateway.getBoolean("craftUnsupportedComponent"));
+        assertFalse(gateway.getBoolean("craftBitGatewayEnabled"));
+        assertEquals(5, gateway.getInt("craftBitGatewayCount"));
+        assertEquals(2, gateway.getInt("craftBitGatewaySourceFunction"));
+        assertEquals(1, gateway.getInt("craftBitGatewayMode"));
+        assertEquals(3, gateway.getInt("craftBitGatewayRegisterMode"));
+        assertEquals(7, gateway.getInt("craftBitGatewayTriggerBit"));
+        assertEquals(4, gateway.getJSONObject("craftConnectionInfo").getInt("addressBit_receive"));
+        MainActivity.validateImportedProjectStatic(project.toString());
+    }
+
     @Test public void reconcilesStaleCraftScreenCountWithReferencedScreens() throws Exception {
         String json = "{\"TableNameProject\":{\"name\":\"Legacy screen\",\"countScreen\":16},\"TableConnections\":[],\"TableComponent\":["
                 + "{\"componentId\":2,\"text\":\"On screen 20\",\"x\":1,\"y\":2,\"width\":100,\"height\":30,\"jsTableComponent_other\":{\"numScreen\":20}}]}";
