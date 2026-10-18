@@ -1,6 +1,7 @@
 package com.bloodsky.hmi;
 
 import org.eclipse.paho.client.mqttv3.IMqttActionListener;
+import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
 import org.eclipse.paho.client.mqttv3.IMqttToken;
 import org.eclipse.paho.client.mqttv3.MqttAsyncClient;
 import org.eclipse.paho.client.mqttv3.MqttCallbackExtended;
@@ -91,7 +92,7 @@ public final class FbdCraftMqttRuntime implements AutoCloseable {
                     String payload = new String(message.getPayload(), StandardCharsets.UTF_8);
                     for (MessageListener listener : listeners) listener.onMessage(topic, payload);
                 }
-                @Override public void deliveryComplete(IMqttToken token) {}
+                @Override public void deliveryComplete(IMqttDeliveryToken token) {}
             });
             MqttConnectOptions options = new MqttConnectOptions();
             options.setAutomaticReconnect(true);
