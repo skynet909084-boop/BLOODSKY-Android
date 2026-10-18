@@ -48,7 +48,7 @@ The original uses many custom view classes in `CustomComponents`. The decompiler
 | `r` | `showScale`, `max`, `percentLowScale` | Progress/bar indicator |
 | `u` | `digit`, `divisor`, `typeInt`, register frame | Numeric/register display |
 | `v` | `colorProgress`, `colorBackground`, `max` | Progress/value bar |
-| `w`, `x` | phone, message, command/strobe register settings | Legacy SMS/command actions; verify exact split. BLOODSKY removes SMS and uses Telegram for user notifications. |
+| `w`, `x` | phone, message, command/strobe register settings | Legacy SMS/command actions; verify exact split. Keep SIM-based SMS as an optional channel alongside Telegram; port outbound/inbound behavior before enabling these entries. |
 | `y` | `imagePosition`, visibility in work mode | Image-positioned component |
 | `f` | `rtsp_url` | RTSP/video component |
 | `d` | Archive table and CSV export strings | Archive/history service logic, not necessarily a visual widget |
