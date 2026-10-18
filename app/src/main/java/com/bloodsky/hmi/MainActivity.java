@@ -1491,18 +1491,11 @@ public class MainActivity extends Activity {
             // larger scrollable design surface so dense FBD graphs are not capped
             // by the current device dimensions.
             android.widget.ScrollView verticalWorkspace = new android.widget.ScrollView(this);
-            verticalWorkspace.setFillViewport(false);
+            verticalWorkspace.setFillViewport(true);
             verticalWorkspace.setVerticalScrollBarEnabled(true);
             verticalWorkspace.setSmoothScrollingEnabled(false);
-            android.widget.HorizontalScrollView horizontalWorkspace =
-                    new android.widget.HorizontalScrollView(this);
-            horizontalWorkspace.setFillViewport(false);
-            horizontalWorkspace.setHorizontalScrollBarEnabled(true);
-            horizontalWorkspace.setSmoothScrollingEnabled(false);
-            int workspaceWidth = dp(3000), workspaceHeight = dp(2400);
-            horizontalWorkspace.addView(editor,
-                    new android.widget.FrameLayout.LayoutParams(workspaceWidth, workspaceHeight));
-            verticalWorkspace.addView(horizontalWorkspace,
+            int workspaceHeight = dp(2400);
+            verticalWorkspace.addView(editor,
                     new android.widget.ScrollView.LayoutParams(-1, workspaceHeight));
             area.addView(verticalWorkspace,
                     new android.widget.FrameLayout.LayoutParams(-1, -1));
