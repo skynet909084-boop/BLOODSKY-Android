@@ -106,7 +106,10 @@ final class FbdCraftMacroGraphAdapter {
             JSONObject targetWidget = widgets.getJSONObject(target);
             String[] inputs = MainActivity.knownFbdPins(MainActivity.widgetFromJson(targetWidget), false);
             if (inputNumber < 1 || inputNumber > inputs.length) return null;
-            addEdge(edges, source, target, "Q", inputs[inputNumber - 1]);
+            MainActivity.Widget sourceWidget = MainActivity.widgetFromJson(widgets.getJSONObject(source));
+            String[] outputs = MainActivity.knownFbdPins(sourceWidget, true);
+            if (outputs.length == 0) return null;
+            addEdge(edges, source, target, outputs[0], inputs[inputNumber - 1]);
         }
 
         for (int i = 1; i <= countIn; i++) {
