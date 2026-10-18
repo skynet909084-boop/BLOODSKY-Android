@@ -35,6 +35,7 @@ public class FbdCraftToggleGraphTest {
     @Test public void risingEdgeTogglesAndHeldInputDoesNotRetoggle() throws Exception {
         MainActivity.Widget input = widget("FBD Вход");
         MainActivity.Widget trigger = widget("FBD CRAFT T");
+        trigger.w = 150; trigger.h = 76;
         List<MainActivity.Widget> nodes = Arrays.asList(input, trigger);
         List<MainActivity.FbdConnection> edges = Collections.singletonList(
                 MainActivity.pinnedFbdConnection(0, "Q", 1, "IN"));

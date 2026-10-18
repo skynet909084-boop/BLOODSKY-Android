@@ -2316,7 +2316,8 @@ public class MainActivity extends Activity {
 
     private String normalizeComparisonOperator(String value) {
         String operator = value == null ? ">" : value.trim();
-        return operator.equals(">") || operator.equals("<") || operator.equals(">=")
+        return operator.equals("+") || operator.equals("-") || operator.equals("*") || operator.equals("/")
+                || operator.equals(">") || operator.equals("<") || operator.equals(">=")
                 || operator.equals("<=") || operator.equals("==") || operator.equals("!=") ? operator : ">";
     }
 
@@ -4593,5 +4594,4 @@ public class MainActivity extends Activity {
         }
     }
 }
-
 
