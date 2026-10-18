@@ -184,6 +184,7 @@ public final class CraftProjectImporter {
         else if (componentId == 6) type = "Кнопка"; // CustomComponents.e, interactive button
         else if (componentId == 7) type = "Динамический текст";
         else if (componentId == 11) type = "Прогресс-бар"; // Craft progress bar
+        else if (componentId == 18) type = "Входящее SMS"; // CustomComponents.x; opt-in runtime only
         else {
             String fbdType = FbdCraftMacroGraphAdapter.typeForComponentId(componentId, other);
             type = fbdType == null ? "Текст" : fbdType;
@@ -280,6 +281,12 @@ public final class CraftProjectImporter {
             widget.put("craftGatewayMode", integer(other.opt("mode"), 0));
             widget.put("craftGatewayRegisterMode", integer(other.opt("regMode"), 0));
             widget.put("craftGatewayBitMode", integer(other.opt("bitMode"), 0));
+        } else if (componentId == 18) {
+            // Preserve the source object but require an operator to re-enter a trusted sender,
+            // command, and verified holding-register binding before this component can execute.
+            widget.put("smsEnabled", false);
+            widget.put("smsMode", "number");
+            widget.put("smsBit", 0);
         } else if (!isSupportedComponent(componentId) && FbdCraftMacroGraphAdapter.typeForComponentId(componentId, other) == null) {
             widget.put("craftUnsupportedComponent", true);
             widget.put("text", "Компонент Craft " + componentId + ": " + widget.optString("text"));
@@ -293,7 +300,7 @@ public final class CraftProjectImporter {
     }
 
     private static boolean isSupportedComponent(int id) {
-        return id == 1 || id == 2 || id == 4 || id == 5 || id == 6 || id == 7 || id == 9 || id == 11;
+        return id == 1 || id == 2 || id == 4 || id == 5 || id == 6 || id == 7 || id == 9 || id == 11 || id == 18;
     }
 
     private static String timerMode(int mode) {
