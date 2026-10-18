@@ -105,6 +105,9 @@ public class ModbusTcpClientTest {
         invalid(() -> client.writeSingle(256, 0, 0));
         invalid(() -> client.writeSingle(1, 0, 65536));
         invalid(() -> client.writeSingle(1, 0, -32769));
+        invalid(() -> client.writeMask(1, -1, 0xffff, 1));
+        invalid(() -> client.writeMask(256, 0, 0xffff, 1));
+        invalid(() -> client.writeMask(1, 0, 65536, 1));
         invalid(() -> client.writeMultiple(1, 0, null));
         invalid(() -> client.writeMultiple(1, 0, new int[0]));
         invalid(() -> client.writeMultiple(1, 0, new int[124]));
@@ -173,6 +176,29 @@ public class ModbusTcpClientTest {
             assertEquals(0x8000, u16(req, 10));
             socket.getOutputStream().write(reply(req, Arrays.copyOfRange(req, 7, 12)));
         }, client -> client.writeSingle(7, 12, -32768));
+    }
+
+    @Test(timeout = 10000) public void writesAndVerifiesAtomicFc22BitMask() throws Exception {
+        fixture(2000, socket -> {
+            byte[] req = request(socket);
+            assertEquals(22, req[7]);
+            assertEquals(12, u16(req, 8));
+            assertEquals(0xff7f, u16(req, 10));
+            assertEquals(0x80, u16(req, 12));
+            socket.getOutputStream().write(reply(req, Arrays.copyOfRange(req, 7, 14)));
+        }, client -> client.writeMask(7, 12, 0xff7f, 0x80));
+    }
+
+    @Test(timeout = 10000) public void rejectsMismatchedFc22WriteEcho() throws Exception {
+        fixture(2000, socket -> {
+            byte[] req = request(socket);
+            byte[] echo = Arrays.copyOfRange(req, 7, 14);
+            echo[6] ^= 1;
+            socket.getOutputStream().write(reply(req, echo));
+        }, client -> {
+            try { client.writeMask(7, 12, 0xff7f, 0x80); fail("Expected echo mismatch"); }
+            catch (IOException expected) { assertTrue(expected.getMessage().contains("масочной")); }
+        });
     }
 
     @Test(timeout = 10000) public void exposesDeviceExceptionFields() throws Exception {

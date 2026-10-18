@@ -75,6 +75,25 @@ public final class ModbusTcpClient {
         validateWriteEcho(pdu, 16, address, snapshot.length);
     }
 
+    /** Atomic single-bit update of a holding register (Modbus FC22). */
+    public void writeMask(int unit, int address, int andMask, int orMask) throws IOException {
+        validateUnit(unit);
+        validateRange(address, 1, 1);
+        validateValue(andMask);
+        validateValue(orMask);
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream(7);
+        DataOutputStream out = new DataOutputStream(buffer);
+        out.writeByte(22);
+        out.writeShort(address);
+        out.writeShort(andMask);
+        out.writeShort(orMask);
+        byte[] pdu = exchange(unit, buffer.toByteArray(), 8);
+        if (pdu.length != 7 || (pdu[0] & 255) != 22 || u16(pdu, 1) != address
+                || u16(pdu, 3) != (andMask & 65535) || u16(pdu, 5) != (orMask & 65535)) {
+            throw new IOException("Подтверждение масочной записи Modbus не совпадает с запросом");
+        }
+    }
+
     private static void validateUnit(int unit) {
         // TCP gateways may use 0 and 255; do not impose serial-only 1..247 here.
         if (unit < 0 || unit > 255) throw new IllegalArgumentException("Unit must be 0..255");

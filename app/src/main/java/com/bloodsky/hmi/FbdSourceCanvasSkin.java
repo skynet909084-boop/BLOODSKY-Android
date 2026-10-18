@@ -168,6 +168,12 @@ public final class FbdSourceCanvasSkin {
                     : "FBD CRAFT SEL".equals(w.type) ? "SEL"
                     : "FBD CRAFT CHANGE I".equals(w.type) ? "CH_I"
                     : "FBD CRAFT CHANGE F".equals(w.type) ? "CH_F"
+                    : "FBD CRAFT VAR BOOL".equals(w.type) ? "VAR"
+                    : "FBD CRAFT VAR INT".equals(w.type) ? "VAR_INT"
+                    : "FBD CRAFT VAR FLOAT".equals(w.type) ? "VAR_FLOAT"
+                    : "FBD CRAFT VAR OUT BOOL".equals(w.type) ? "S#"
+                    : "FBD CRAFT VAR OUT INT".equals(w.type) ? "S#_INT"
+                    : "FBD CRAFT VAR OUT FLOAT".equals(w.type) ? "S#_FLOAT"
                     : "FBD CRAFT MOVE".equals(w.type) ? "MOVE"
                     : "FBD CRAFT MX".equals(w.type) ? "MX"
                     : "FBD CRAFT ARRAY".equals(w.type) ? "ARRAY"
@@ -205,6 +211,8 @@ public final class FbdSourceCanvasSkin {
                         || "FBD RS".equals(w.type)
                         || "FBD CRAFT SEL".equals(w.type)
                         || "FBD CRAFT COMPARE".equals(w.type)
+                        || MainActivity.isCraftRegisterSource(w.type)
+                        || MainActivity.isCraftRegisterSink(w.type)
                         || "FBD CRAFT MOVE".equals(w.type)
                         || "FBD CRAFT LOG".equals(w.type)
                         || "FBD CRAFT WORD TO FLOAT".equals(w.type)

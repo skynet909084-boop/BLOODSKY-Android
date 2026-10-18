@@ -726,6 +726,10 @@ public class MainActivity extends Activity {
     }
 
     private BindingRequest parseBinding(int widgetIndex, String binding) {
+        return parseBinding(widgetIndex, binding, 1);
+    }
+
+    private BindingRequest parseBinding(int widgetIndex, String binding, int quantity) {
         if (binding == null || !binding.startsWith("tcp://")) return null;
         try {
             URI uri = URI.create(binding);
@@ -745,7 +749,8 @@ public class MainActivity extends Activity {
                 functionCode = 3;
                 address = enteredAddress - 40001;
             }
-            return new BindingRequest(widgetIndex, uri.getHost(), uri.getPort(), unit, address, functionCode);
+            if (quantity < 1 || quantity > 2 || address + quantity > 65536) return null;
+            return new BindingRequest(widgetIndex, uri.getHost(), uri.getPort(), unit, address, functionCode, quantity);
         } catch (Exception ignored) {
             return null;
         }
@@ -775,7 +780,11 @@ public class MainActivity extends Activity {
         final Map<String, BindingRequest> groupedRequests = new LinkedHashMap<>();
         for (int i = 0; i < snapshotWidgets.size(); i++) {
             Widget widget = snapshotWidgets.get(i);
-            BindingRequest request = parseBinding(i, widget.connectionInfo);
+            if (isCraftRegisterSink(widget.type)) continue;
+            boolean craftSource = isCraftRegisterSource(widget.type);
+            if (craftSource && widget.extraFields.optBoolean("craftVarConstantMode", false)) continue;
+            BindingRequest request = parseBinding(i, widget.connectionInfo,
+                    craftSource && isCraftRegisterFloat(widget.type) ? 2 : 1);
             if (request == null) continue;
             String key = request.registerKey();
             BindingRequest existing = groupedRequests.get(key);
@@ -800,12 +809,9 @@ public class MainActivity extends Activity {
                     if (!pollSession.accepts(sessionToken)) return;
                     String value;
                     try {
-                        String report = readModbusRegisters(request.host, request.port, request.unit, request.address, 1, request.functionCode);
-                        String[] lines = report.split("\n");
-                        if (lines.length < 2) throw new IOException("Пустой ответ регистра");
-                        String[] columns = lines[1].split("\\|");
-                        if (columns.length < 2) throw new IOException("Не удалось разобрать регистр");
-                        value = columns[1].trim();
+                        int[] words = new ModbusTcpClient(request.host, request.port).read(
+                                request.unit, request.address, request.quantity, request.functionCode);
+                        value = request.quantity > 1 ? words[0] + "," + words[1] : Integer.toString(words[0]);
                     } catch (Exception e) {
                         value = "ERR: " + describeModbusError(e);
                     }
@@ -821,6 +827,16 @@ public class MainActivity extends Activity {
                                 || !java.util.Objects.equals(widgets.get(index).connectionInfo, snapshotBindings.get(index))) continue;
                         Widget w = widgets.get(index);
                         liveValues.put(index, entry.getValue());
+                        if (isCraftRegisterSource(w.type)) {
+                            try {
+                                String[] words = entry.getValue().split(",");
+                                w.craftRegisterWord0 = Integer.parseInt(words[0]);
+                                w.craftRegisterWord1 = words.length > 1 ? Integer.parseInt(words[1]) : 0;
+                                w.craftRegisterValid = true;
+                            } catch (Exception invalid) { w.craftRegisterValid = false; }
+                        }
+                        if (isCraftRegisterSource(w.type) && entry.getValue() != null
+                                && entry.getValue().startsWith("ERR:")) w.craftRegisterValid = false;
                         if ("FBD Вход".equals(w.type)) {
                             w.inputValue = isActiveModbusValue(entry.getValue());
                         } else if ("Звуковой сигнал".equals(w.type)) {
@@ -859,15 +875,15 @@ public class MainActivity extends Activity {
 
     private static class BindingRequest {
         final List<Integer> widgetIndices = new ArrayList<>();
-        final int port, unit, address, functionCode;
+        final int port, unit, address, functionCode, quantity;
         final String host;
-        BindingRequest(int widgetIndex, String host, int port, int unit, int address, int functionCode) {
+        BindingRequest(int widgetIndex, String host, int port, int unit, int address, int functionCode, int quantity) {
             this.widgetIndices.add(widgetIndex);
             this.host = host; this.port = port; this.unit = unit;
-            this.address = address; this.functionCode = functionCode;
+            this.address = address; this.functionCode = functionCode; this.quantity = quantity;
         }
         String registerKey() {
-            return host.toLowerCase(java.util.Locale.ROOT) + ":" + port + "/" + unit + "/" + address + "/FC" + functionCode;
+            return host.toLowerCase(java.util.Locale.ROOT) + ":" + port + "/" + unit + "/" + address + "/FC" + functionCode + "/" + quantity;
         }
     }
 
@@ -1934,6 +1950,44 @@ public class MainActivity extends Activity {
             form.addView(fbdInputField);
         } else fbdInputField = null;
 
+        final android.widget.CheckBox craftConstantModeField;
+        final EditText craftConstantValueField;
+        final EditText craftBitField;
+        final android.widget.CheckBox craftSwapWordField;
+        final android.widget.CheckBox craftSwapByteField;
+        if (isCraftRegisterSource(w.type) || isCraftRegisterSink(w.type)) {
+            boolean source = isCraftRegisterSource(w.type);
+            craftConstantModeField = source ? new android.widget.CheckBox(this) : null;
+            craftConstantValueField = source ? propertyField(w.extraFields.optString("craftVarConstant", "0"),
+                    InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL) : null;
+            if (source) {
+                craftConstantModeField.setText("Постоянное значение вместо регистра");
+                craftConstantModeField.setChecked(w.extraFields.optBoolean("craftVarConstantMode", false));
+                form.addView(craftConstantModeField);
+                craftConstantValueField.setHint("Значение BOOL / INT / FLOAT");
+                form.addView(craftConstantValueField);
+            }
+            craftBitField = isCraftRegisterBoolean(w.type)
+                    ? propertyField(Integer.toString(w.extraFields.optInt("craftVarBit", 0)), InputType.TYPE_CLASS_NUMBER)
+                    : null;
+            if (craftBitField != null) {
+                craftBitField.setHint("Бит регистра (0–15)");
+                form.addView(craftBitField);
+            }
+            craftSwapWordField = isCraftRegisterFloat(w.type) && !source ? new android.widget.CheckBox(this) : null;
+            craftSwapByteField = isCraftRegisterFloat(w.type) && !source ? new android.widget.CheckBox(this) : null;
+            if (craftSwapWordField != null) {
+                craftSwapWordField.setText("Поменять слова Float32");
+                craftSwapWordField.setChecked(w.extraFields.optBoolean("craftSwapWord", false));
+                craftSwapByteField.setText("Поменять байты внутри слов");
+                craftSwapByteField.setChecked(w.extraFields.optBoolean("craftSwapByte", false));
+                form.addView(craftSwapWordField); form.addView(craftSwapByteField);
+            }
+        } else {
+            craftConstantModeField = null; craftConstantValueField = null; craftBitField = null;
+            craftSwapWordField = null; craftSwapByteField = null;
+        }
+
         final EditText[] dynStateFields = new EditText[4];
         if ("Динамический текст".equals(w.type)) {
             TextView dynLabel = new TextView(this);
@@ -2234,6 +2288,37 @@ public class MainActivity extends Activity {
                     } catch (IllegalArgumentException invalid) {
                         Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show();
                         return;
+                    }
+                    if (craftBitField != null) {
+                        try {
+                            int bit = Integer.parseInt(craftBitField.getText().toString().trim());
+                            if (bit < 0 || bit > 15) throw new NumberFormatException();
+                            w.extraFields.put("craftVarBit", bit);
+                        } catch (Exception invalid) {
+                            Toast.makeText(this, "Бит регистра должен быть от 0 до 15", Toast.LENGTH_LONG).show(); return;
+                        }
+                    }
+                    if (craftConstantModeField != null) {
+                        String constant = craftConstantValueField.getText().toString().trim();
+                        try {
+                            double numeric = Double.parseDouble(constant);
+                            if (!Double.isFinite(numeric)) throw new NumberFormatException();
+                            if (isCraftRegisterBoolean(w.type) && numeric != 0.0 && numeric != 1.0)
+                                throw new NumberFormatException();
+                            if ("FBD CRAFT VAR INT".equals(canonicalFbdBlockType(w.type))
+                                    && (numeric < 0 || numeric > 65535 || numeric != Math.rint(numeric)))
+                                throw new NumberFormatException();
+                            w.extraFields.put("craftVarConstant", constant);
+                            w.extraFields.put("craftVarConstantMode", craftConstantModeField.isChecked());
+                        } catch (Exception invalid) {
+                            Toast.makeText(this, "Укажи конечное значение BOOL (0/1), UINT16 или FLOAT32", Toast.LENGTH_LONG).show(); return;
+                        }
+                    }
+                    if (craftSwapWordField != null) {
+                        try {
+                            w.extraFields.put("craftSwapWord", craftSwapWordField.isChecked());
+                            w.extraFields.put("craftSwapByte", craftSwapByteField.isChecked());
+                        } catch (Exception ignored) {}
                     }
                     w.text = textField.getText().toString();
                     w.connectionInfo = connectionField.getText().toString().trim();
@@ -2978,11 +3063,37 @@ public class MainActivity extends Activity {
         return pin == null ? "" : pin.trim().toUpperCase(java.util.Locale.ROOT);
     }
 
+    public static boolean isCraftRegisterSource(String type) {
+        String kind = canonicalFbdBlockType(type);
+        return "FBD CRAFT VAR BOOL".equals(kind) || "FBD CRAFT VAR INT".equals(kind)
+                || "FBD CRAFT VAR FLOAT".equals(kind);
+    }
+
+    public static boolean isCraftRegisterSink(String type) {
+        String kind = canonicalFbdBlockType(type);
+        return "FBD CRAFT VAR OUT BOOL".equals(kind) || "FBD CRAFT VAR OUT INT".equals(kind)
+                || "FBD CRAFT VAR OUT FLOAT".equals(kind);
+    }
+
+    private static boolean isCraftRegisterFloat(String type) {
+        String kind = canonicalFbdBlockType(type);
+        return "FBD CRAFT VAR FLOAT".equals(kind) || "FBD CRAFT VAR OUT FLOAT".equals(kind);
+    }
+
+    private static boolean isCraftRegisterBoolean(String type) {
+        String kind = canonicalFbdBlockType(type);
+        return "FBD CRAFT VAR BOOL".equals(kind) || "FBD CRAFT VAR OUT BOOL".equals(kind);
+    }
+
     public static String knownFbdPinType(String blockType, String pin, boolean output) {
         if (blockType == null || pin == null) return null;
         String kind = canonicalFbdBlockType(blockType);
         String name = canonicalFbdPinName(pin);
         if (kind.equals("FBD ВХОД")) return output && "Q".equals(name) ? "BOOL" : null;
+        if (isCraftRegisterSource(kind) && output && "Q".equals(name))
+            return isCraftRegisterBoolean(kind) ? "BOOL" : "NUMBER";
+        if (isCraftRegisterSink(kind) && !output && "IN".equals(name))
+            return isCraftRegisterBoolean(kind) ? "BOOL" : "NUMBER";
         if (kind.equals("FBD AND") || kind.equals("FBD OR") || kind.equals("FBD XOR")
                 || kind.equals("FBD NAND") || kind.equals("FBD NOR")) {
             if (output && "Q".equals(name)) return "BOOL";
@@ -3212,7 +3323,8 @@ public class MainActivity extends Activity {
         if (cacheValid[index]) return cacheValues[index];
         boolean result = evaluateFbdBlockUncached(widgetsList, connectionsList, index, visiting, cacheValid, cacheValues, cacheNumeric);
         if (isFbdBlockOutputInverted(widgetsList.get(index))
-                && hasCompleteCraftGateInputs(widgetsList, connectionsList, index)) result = !result;
+                && (hasCompleteCraftGateInputs(widgetsList, connectionsList, index)
+                    || isCraftRegisterBoolean(widgetsList.get(index).type))) result = !result;
         cacheValues[index] = result;
         cacheValid[index] = true;
         return result;
@@ -3223,7 +3335,7 @@ public class MainActivity extends Activity {
         if (type == null) return false;
         String canonical = canonicalFbdBlockType(type);
         return "FBD AND".equals(canonical) || "FBD OR".equals(canonical)
-                || "FBD XOR".equals(canonical);
+                || "FBD XOR".equals(canonical) || "FBD CRAFT VAR BOOL".equals(canonical);
     }
 
     private static boolean hasCompleteCraftGateInputs(List<Widget> widgets,
@@ -3411,6 +3523,25 @@ public class MainActivity extends Activity {
         if (index < 0 || index >= widgetsList.size() || visiting[index]) return false;
         Widget widget = widgetsList.get(index);
         if (!isFbdWidget(widget)) return false;
+        if (isCraftRegisterSource(widget.type)) {
+            double value = Double.NaN;
+            if (widget.extraFields.optBoolean("craftVarConstantMode", false)) {
+                try { value = Double.parseDouble(widget.extraFields.optString("craftVarConstant", "0")); }
+                catch (Exception ignored) { value = Double.NaN; }
+            } else if (widget.craftRegisterValid) {
+                try {
+                    if (isCraftRegisterBoolean(widget.type))
+                        value = FbdCraftRegisterCodec.booleanValue(widget.craftRegisterWord0,
+                                widget.extraFields.optInt("craftVarBit", 0), false) ? 1.0 : 0.0;
+                    else if ("FBD CRAFT VAR INT".equals(canonicalFbdBlockType(widget.type)))
+                        value = FbdCraftRegisterCodec.integerValue(widget.craftRegisterWord0);
+                    else value = FbdCraftRegisterCodec.floatValue(widget.craftRegisterWord0,
+                                widget.craftRegisterWord1);
+                } catch (Exception ignored) { value = Double.NaN; }
+            }
+            cacheNumeric[index] = value;
+            return Double.isFinite(value) && value != 0.0;
+        }
         if ("FBD Вход".equals(widget.type)) {
             cacheNumeric[index] = widget.inputValue ? 1.0 : 0.0;
             return widget.inputValue;
@@ -3435,6 +3566,13 @@ public class MainActivity extends Activity {
         }
         visiting[index] = false;
         final String canonicalType = canonicalFbdBlockType(widget.type);
+
+        if (isCraftRegisterSink(widget.type)) {
+            if (inputPins.isEmpty()) cacheNumeric[index] = Double.NaN;
+            else if (isCraftRegisterBoolean(widget.type)) cacheNumeric[index] = inputs.get(0) ? 1.0 : 0.0;
+            else cacheNumeric[index] = numInputs.get(0);
+            return !Double.isNaN(cacheNumeric[index]) && cacheNumeric[index] != 0.0;
+        }
 
         if ("FBD Сложение".equals(widget.type)) {
             double sum = 0.0;
@@ -3914,6 +4052,67 @@ public class MainActivity extends Activity {
         return false;
     }
 
+    private void scheduleCraftRegisterWrite(Widget widget, int widgetIndex, double value) {
+        if (!operatorMode || widget == null || widget.craftRegisterWritePending
+                || !Double.isFinite(value) || widget.connectionInfo == null) return;
+        BindingRequest request = parseBinding(widgetIndex, widget.connectionInfo,
+                isCraftRegisterFloat(widget.type) ? 2 : 1);
+        if (request == null || request.functionCode != 3) return;
+        String key = widget.connectionInfo + "|" + value + "|" + widget.extraFields.optInt("craftVarBit", 0)
+                + "|" + widget.extraFields.optBoolean("craftSwapWord", false)
+                + "|" + widget.extraFields.optBoolean("craftSwapByte", false);
+        if (key.equals(widget.craftRegisterLastWriteKey)
+                || android.os.SystemClock.elapsedRealtime() < widget.craftRegisterRetryAt) return;
+        boolean bool = isCraftRegisterBoolean(widget.type), floating = isCraftRegisterFloat(widget.type);
+        int bit = widget.extraFields.optInt("craftVarBit", 0), integer = 0;
+        int[] words = null;
+        try {
+            if (bool) FbdCraftRegisterCodec.bitWriteAndMask(bit);
+            else if (floating) {
+                if (Math.abs(value) > Float.MAX_VALUE) return;
+                words = FbdCraftRegisterCodec.floatRegisters((float)value,
+                        widget.extraFields.optBoolean("craftSwapWord", false),
+                        widget.extraFields.optBoolean("craftSwapByte", false));
+            } else {
+                if (value < 0 || value > 65535 || value != Math.rint(value)) return;
+                integer = (int)value;
+            }
+        } catch (IllegalArgumentException invalid) { return; }
+        final int[] writeWords = words;
+        final int writeInt = integer, unit = request.unit, address = request.address;
+        final boolean writeBool = bool, writeFloat = floating;
+        final String writeKey = key;
+        final Widget targetWidget = widget;
+        targetWidget.craftRegisterWritePending = true;
+        try {
+            modbusExecutor.execute(() -> {
+                String error = null;
+                try {
+                    ModbusTcpClient client = new ModbusTcpClient(request.host, request.port);
+                    if (writeBool) client.writeMask(unit, address,
+                            FbdCraftRegisterCodec.bitWriteAndMask(bit),
+                            FbdCraftRegisterCodec.bitWriteOrMask(bit, value != 0.0));
+                    else if (writeFloat) client.writeMultiple(unit, address, writeWords);
+                    else client.writeSingle(unit, address, writeInt);
+                } catch (Exception failure) { error = "ERR: " + describeModbusError(failure); }
+                final String writeError = error;
+                runOnUiThread(() -> {
+                    targetWidget.craftRegisterWritePending = false;
+                    targetWidget.craftRegisterRetryAt = android.os.SystemClock.elapsedRealtime() + 2000L;
+                    if (!operatorMode || isFinishing() || isDestroyed() || widgetIndex >= widgets.size()
+                            || widgets.get(widgetIndex) != targetWidget) return;
+                    if (writeError == null) {
+                        targetWidget.craftRegisterLastWriteKey = writeKey;
+                        liveValues.put(widgetIndex, "OK");
+                    } else liveValues.put(widgetIndex, writeError);
+                    if (editor != null) editor.invalidate();
+                });
+            });
+        } catch (java.util.concurrent.RejectedExecutionException ignored) {
+            targetWidget.craftRegisterWritePending = false;
+        }
+    }
+
     private boolean evaluateFbd(int index, boolean[] visiting) {
         if (screens.isEmpty()) return false;
         if (fbdCacheValid.length != widgets.size() || fbdCacheValues.length != widgets.size()) {
@@ -4254,6 +4453,8 @@ public class MainActivity extends Activity {
         if (blockType == null) return new String[0];
         String kind = canonicalFbdBlockType(blockType);
         if ("FBD ВХОД".equals(kind)) return output ? new String[]{"Q"} : new String[0];
+        if (isCraftRegisterSource(kind)) return output ? new String[]{"Q"} : new String[0];
+        if (isCraftRegisterSink(kind)) return output ? new String[0] : new String[]{"IN"};
         if ("FBD AND".equals(kind) || "FBD OR".equals(kind) || "FBD XOR".equals(kind)
                 || "FBD NAND".equals(kind) || "FBD NOR".equals(kind))
             return output ? new String[]{"Q"} : new String[]{"IN1", "IN2"};
@@ -4399,6 +4600,11 @@ public class MainActivity extends Activity {
         FbdCraftNativeTimer.State craftBlinkState = FbdCraftNativeTimer.State.initial();
         FbdCraftNativeTimer.State craftTimerState = FbdCraftNativeTimer.State.initial();
         boolean craftArrayLastEnable = false;
+        transient int craftRegisterWord0, craftRegisterWord1;
+        transient boolean craftRegisterValid;
+        transient boolean craftRegisterWritePending;
+        transient String craftRegisterLastWriteKey = "";
+        transient long craftRegisterRetryAt;
         public int timerPresetMs = 1000;
         public long timerStartedAt = 0L;
         public double compareA = 0.0, compareB = 0.0;
@@ -4492,9 +4698,12 @@ public class MainActivity extends Activity {
             if (operatorMode) {
                 for (int i = 0; i < widgets.size(); i++)
                     if (isFbd(widgets.get(i))) evaluateFbd(i, new boolean[widgets.size()]);
+                for (int i = 0; i < widgets.size(); i++) {
+                    Widget sink = widgets.get(i);
+                    if (isCraftRegisterSink(sink.type)) scheduleCraftRegisterWrite(sink, i, fbdCacheNumeric[i]);
+                }
             }
-            // FBD output bindings are read-only and local to this screen.
-            // They do not interfere with Modbus polling or write PLC registers.
+            // fbd:// widget bindings remain read-only; explicit VarOut blocks write only in operator mode.
             for (int i = 0; i < widgets.size(); i++) {
                 Widget target = widgets.get(i);
                 if (isFbd(target) || target.connectionInfo == null
