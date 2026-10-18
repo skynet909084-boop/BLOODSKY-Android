@@ -226,6 +226,17 @@ public class FbdCraftMacroDefinitionTest {
                 java.util.Collections.emptyList(), 0, "Q");
         assertEquals("FLOAT", floatMacro.getInputs().get(0).signalType());
         assertEquals("FLOAT", floatMacro.getOutput().signalType());
+
+        MainActivity.Widget absolute = new MainActivity.Widget();
+        absolute.type = "FBD ABS";
+        MainActivity.FbdConnection floatToAbs = MainActivity.connectionFromJson(
+                new org.json.JSONObject().put("source", 0).put("target", 1)
+                        .put("sourcePin", "Q").put("targetPin", "IN"));
+        FbdCraftMacroDefinition inferredFloat = MainActivity.createCraftMacroDefinitionFromGraph(
+                "FloatAbsolute", java.util.Arrays.asList(floating, absolute),
+                java.util.Collections.singletonList(floatToAbs), 1, "OUT");
+        assertEquals("FLOAT", inferredFloat.getInputs().get(0).signalType());
+        assertEquals("FLOAT", inferredFloat.getOutput().signalType());
     }
 
     private static void assertInvalid(ThrowingRunnable action) throws Exception {

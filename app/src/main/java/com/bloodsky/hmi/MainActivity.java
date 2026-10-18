@@ -1265,7 +1265,7 @@ public class MainActivity extends Activity {
         if (sourceWidgets == null || sourceConnections == null || outputNode < 0
                 || outputNode >= sourceWidgets.size()) throw new IllegalArgumentException("Invalid macro source graph");
         Widget outputWidget = sourceWidgets.get(outputNode);
-        int typeOut = craftMacroPortType(outputWidget, outputPin, true);
+        int typeOut = craftMacroGraphPortType(sourceWidgets, sourceConnections, outputNode, outputPin, true, new boolean[sourceWidgets.size()]);
         if (typeOut < 0) throw new IllegalArgumentException("Unsupported macro output type");
 
         boolean[] included = new boolean[sourceWidgets.size()];
@@ -1295,7 +1295,7 @@ public class MainActivity extends Activity {
             if (hasIncoming) continue;
             Widget leaf = sourceWidgets.get(node);
             String[] pins = knownFbdPins(leaf, true);
-            int code = pins.length == 0 ? -1 : craftMacroPortType(leaf, pins[0], true);
+            int code = pins.length == 0 ? -1 : craftMacroGraphPortType(sourceWidgets, sourceConnections, node, pins[0], true, new boolean[sourceWidgets.size()]);
             if (code < 0) throw new IllegalArgumentException("Входной источник без поддерживаемого типа");
             if (++inputCount > 4) throw new IllegalArgumentException("В макросе допускается не больше четырёх входов");
             isInput[node] = true;
@@ -1370,6 +1370,40 @@ public class MainActivity extends Activity {
         if ((kind.contains("FLOAT") && !kind.endsWith("FLOAT TO INT"))
                 || kind.equals("FBD CRAFT LOG") || kind.equals("FBD CRAFT POW")) return 3;
         return 2;
+    }
+
+    /** Infer polymorphic numeric outputs from their connected upstream signal types. */
+    private static int craftMacroGraphPortType(List<Widget> graphWidgets,
+            List<FbdConnection> graphConnections, int node, String pin, boolean output,
+            boolean[] visiting) {
+        if (graphWidgets == null || graphConnections == null || node < 0
+                || node >= graphWidgets.size()) return -1;
+        Widget widget = graphWidgets.get(node);
+        int declared = craftMacroPortType(widget, pin, output);
+        if (declared != 2 || !output
+                || !"NUMBER".equals(knownFbdPinType(widget, pin, true))) return declared;
+        String kind = canonicalFbdBlockType(widget == null ? null : widget.type);
+        // Explicit integer/floating blocks keep their declared conversion direction.
+        if (kind.contains("INT") || kind.contains("FLOAT")
+                || "FBD CRAFT LOG".equals(kind) || "FBD CRAFT POW".equals(kind))
+            return declared;
+        if (visiting == null || visiting.length != graphWidgets.size() || visiting[node])
+            return declared;
+        visiting[node] = true;
+        boolean hasNumericInput = false;
+        boolean hasFloatInput = false;
+        for (FbdConnection edge : graphConnections) {
+            if (edge == null || edge.target != node || edge.source < 0
+                    || edge.source >= graphWidgets.size()) continue;
+            int inputType = craftMacroGraphPortType(graphWidgets, graphConnections,
+                    edge.source, edge.sourcePin, true, visiting);
+            if (inputType == 2 || inputType == 3) {
+                hasNumericInput = true;
+                if (inputType == 3) hasFloatInput = true;
+            }
+        }
+        visiting[node] = false;
+        return hasNumericInput && hasFloatInput ? 3 : declared;
     }
 
     private void exportCraftMacroFromCatalog() {
