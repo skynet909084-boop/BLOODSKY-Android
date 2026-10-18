@@ -55,7 +55,7 @@ public class FbdCraftOutputInversionTest {
         assertTrue(evaluate(Arrays.asList(left, right, restored), edges, 2));
     }
 
-    @Test public void sourceNumericOutputsAndUnportedGenericBlocksStayNonInvertible() {
+    @Test public void sourceNumericOutputsAndUnportedGenericBlocksStayNonInvertible() throws Exception {
         assertTrue(MainActivity.supportsFbdBlockOutputInversion("FBD XOR"));
         assertFalse(MainActivity.supportsFbdBlockOutputInversion("FBD CRAFT TIMER"));
         assertFalse(MainActivity.supportsFbdBlockOutputInversion("FBD CRAFT CHANGE I"));
