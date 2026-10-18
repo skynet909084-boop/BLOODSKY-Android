@@ -27,7 +27,10 @@ FBD block can be captured with its upstream graph as a new project macro. Leaf s
 typed macro inputs; graphs with more than four inputs are rejected. Polymorphic numeric outputs
 inherit FLOAT when any connected upstream numeric signal is FLOAT, while explicit conversion blocks
 keep their declared output type. A validated graph replacement helper preserves the public macro
-port names and rejects invalid or cyclic replacements before storage. Rebuilding a macro under the
+port names and rejects invalid or cyclic replacements before storage. Blocks with embedded BLOODSKY
+graphs can be opened from the editor context menu, changed on the existing canvas, assigned a new
+output pin, and saved back into the project catalog. The edited definition refreshes all placed
+instances; invalid changes remain unsaved until corrected or discarded. Rebuilding a macro under the
 same name refreshes already-placed instances and clears their nested runtime cache. The wire
 picker, imported-project validator and canvas terminals read the
 definition's named input and output pins and enforce BOOL versus numeric compatibility. Original

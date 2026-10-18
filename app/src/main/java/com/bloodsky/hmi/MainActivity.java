@@ -71,6 +71,7 @@ public class MainActivity extends Activity {
     private final List<Widget> widgets = new ArrayList<>();
     private final List<Screen> screens = new ArrayList<>();
     private int currentScreenIndex = 0;
+    private NestedMacroEditSession nestedMacroEdit;
     private Widget clipboardWidget;
     private boolean operatorMode = false;
     private boolean fbdWireMode = false;
@@ -1917,6 +1918,7 @@ public class MainActivity extends Activity {
     }
 
     private void toggleOperatorMode() {
+        if (nestedMacroEdit != null) return;
         if (!persistProjectNow(true)) return;
         // Editing must not advance timers. Re-entering runtime starts a fresh
         // clock epoch rather than resuming an old saved elapsedRealtime value.
@@ -1938,6 +1940,18 @@ public class MainActivity extends Activity {
 
     private void showEditorCommands(View anchor) {
         android.widget.PopupMenu menu = new android.widget.PopupMenu(this, anchor);
+        if (nestedMacroEdit != null) {
+            menu.getMenu().add("Сохранить вложенный граф").setOnMenuItemClickListener(item -> {
+                if (persistProjectNow(true))
+                    Toast.makeText(this, "Вложенный граф сохранён", Toast.LENGTH_SHORT).show();
+                return true;
+            });
+            menu.getMenu().add("Вернуться на экран").setOnMenuItemClickListener(item -> {
+                closeNestedMacroGraphEditor(); return true;
+            });
+            menu.show();
+            return;
+        }
         if (!operatorMode) {
             menu.getMenu().add("Имя проекта").setOnMenuItemClickListener(item -> { editProjectName(); return true; });
             menu.getMenu().add("Настройки проекта").setOnMenuItemClickListener(item -> { showProjectSettingsDialog(); return true; });
@@ -1974,6 +1988,7 @@ public class MainActivity extends Activity {
     }
 
     @Override public void onBackPressed() {
+        if (nestedMacroEdit != null) { closeNestedMacroGraphEditor(); return; }
         if (editor != null) {
             if (operatorMode) toggleOperatorMode();
             else if (persistProjectNow(true)) showHome();
@@ -2032,16 +2047,19 @@ public class MainActivity extends Activity {
     }
 
     private void previousScreen() {
+        if (nestedMacroEdit != null) return;
         if (screens.size() < 2) { Toast.makeText(this, "Добавь ещё один экран", Toast.LENGTH_SHORT).show(); return; }
         activateScreen((currentScreenIndex - 1 + screens.size()) % screens.size());
     }
 
     private void nextScreen() {
+        if (nestedMacroEdit != null) return;
         if (screens.size() < 2) { Toast.makeText(this, "Добавь ещё один экран", Toast.LENGTH_SHORT).show(); return; }
         activateScreen((currentScreenIndex + 1) % screens.size());
     }
 
     private void addScreen() {
+        if (nestedMacroEdit != null) return;
         fbdWireHistory.clear();
         saveActiveScreen();
         screens.add(new Screen("Экран " + (screens.size() + 1)));
@@ -2052,6 +2070,7 @@ public class MainActivity extends Activity {
     }
 
     private void removeCurrentScreen() {
+        if (nestedMacroEdit != null) return;
         if (screens.size() <= 1) {
             Toast.makeText(this, "В проекте должен остаться хотя бы один экран", Toast.LENGTH_SHORT).show();
             return;
@@ -2074,6 +2093,7 @@ public class MainActivity extends Activity {
     }
 
     private void editScreenBackground() {
+        if (nestedMacroEdit != null) return;
         if (screens.isEmpty()) return;
         Screen screen = screens.get(currentScreenIndex);
         EditText input = propertyField(String.format(java.util.Locale.ROOT, "#%06X", (0xFFFFFF & screen.backgroundColor)), InputType.TYPE_CLASS_TEXT);
@@ -2130,6 +2150,12 @@ public class MainActivity extends Activity {
         if (supportsFbdBlockOutputInversion(widget.type))
             labels.add("Инвертировать выход BOOL");
         labels.add("Отсоединить выход");
+        if (nestedMacroEdit != null && knownFbdPins(widget, true).length > 0)
+            labels.add("Назначить выход макроса…");
+        FbdCraftMacroDefinition nestedDefinition = macroDefinition(widget);
+        if (nestedMacroEdit == null && nestedDefinition != null
+                && nestedDefinition.toJson().optJSONObject("bloodskyGraph") != null)
+            labels.add("Редактировать вложенный граф");
         if (timer) labels.add("Режим / единицы времени");
         labels.add("Свойства");
         labels.add("Другие действия");
@@ -2141,7 +2167,11 @@ public class MainActivity extends Activity {
                         return;
                     }
                     String label = labels.get(choice);
-                    if ("Соединить с…".equals(label)) {
+                    if ("Назначить выход макроса…".equals(label)) {
+                        chooseNestedMacroOutput(blockIndex, widget);
+                    } else if ("Редактировать вложенный граф".equals(label)) {
+                        openNestedMacroGraphEditor(blockIndex);
+                    } else if ("Соединить с…".equals(label)) {
                         fbdWireMode = true;
                         wireSource = blockIndex;
                         Toast.makeText(this, "Выбери целевой блок FBD", Toast.LENGTH_LONG).show();
@@ -2495,6 +2525,11 @@ public class MainActivity extends Activity {
     }
 
     private void addWidget(String type, String text) {
+        if (nestedMacroEdit != null && (!type.startsWith("FBD ")
+                || "FBD CRAFT MACRO".equals(canonicalFbdBlockType(type)))) {
+            Toast.makeText(this, "Во вложенный граф можно добавлять только обычные FBD-блоки", Toast.LENGTH_SHORT).show();
+            return;
+        }
         Widget w = new Widget();
         w.type = type;
         w.text = text;
@@ -3636,10 +3671,154 @@ public class MainActivity extends Activity {
         return json;
     }
 
+    private boolean persistNestedMacroEdit(boolean synchronous) {
+        NestedMacroEditSession session = nestedMacroEdit;
+        if (session == null || currentScreenIndex != session.screenIndex) return false;
+        try {
+            saveActiveScreen();
+            int outputNode = session.outputNode;
+            if (outputNode < 0 || outputNode >= widgets.size())
+                throw new IllegalArgumentException("Выходной блок удалён. Назначьте новый выход перед сохранением.");
+            FbdCraftMacroDefinition updated = updateCraftMacroDefinitionGraph(
+                    session.definition, widgets, screens.get(currentScreenIndex).connections,
+                    outputNode, session.outputPin);
+            FbdCraftMacroCatalog.upsert(projectExtraFields, updated);
+            replaceCraftMacroInstances(session.hostScreen.widgets, updated);
+            for (int i = 0; i < screens.size(); i++) {
+                if (i != session.screenIndex) replaceCraftMacroInstances(screens.get(i).widgets, updated);
+            }
+            List<Widget> nestedWidgets = new ArrayList<>(widgets);
+            session.definition = updated;
+            screens.set(session.screenIndex, session.hostScreen);
+            widgets.clear();
+            for (Widget widget : session.hostScreen.widgets) widgets.add(copyWidget(widget));
+            nestedMacroEdit = null;
+            boolean saved;
+            try {
+                saved = persistProjectNow(synchronous);
+            } finally {
+                nestedMacroEdit = session;
+                screens.set(session.screenIndex, session.nestedScreen);
+                widgets.clear();
+                widgets.addAll(nestedWidgets);
+                if (editor != null) editor.invalidate();
+            }
+            return saved;
+        } catch (Exception failure) {
+            Toast.makeText(this, "Вложенный граф не сохранён: " + failure.getMessage(),
+                    Toast.LENGTH_LONG).show();
+            return false;
+        }
+    }
+
+    private void chooseNestedMacroOutput(int blockIndex, Widget block) {
+        if (nestedMacroEdit == null || blockIndex < 0 || blockIndex >= widgets.size()) return;
+        String[] pins = knownFbdPins(block, true);
+        if (pins.length == 0) {
+            Toast.makeText(this, "У блока нет проверенного выхода", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        new AlertDialog.Builder(this).setTitle("Выход макроса")
+                .setItems(pins, (dialog, which) -> {
+                    NestedMacroEditSession session = nestedMacroEdit;
+                    int previousNode = session.outputNode;
+                    String previousPin = session.outputPin;
+                    session.outputNode = blockIndex;
+                    session.outputPin = pins[which];
+                    if (persistProjectNow(true)) {
+                        Toast.makeText(this, "Выход макроса обновлён", Toast.LENGTH_SHORT).show();
+                    } else {
+                        session.outputNode = previousNode;
+                        session.outputPin = previousPin;
+                    }
+                }).setNegativeButton("Отмена", null).show();
+    }
+
+    private void openNestedMacroGraphEditor(int blockIndex) {
+        if (operatorMode || nestedMacroEdit != null || blockIndex < 0 || blockIndex >= widgets.size()) return;
+        if (!persistProjectNow(true)) return;
+        try {
+            Screen host = screens.get(currentScreenIndex);
+            if (blockIndex >= host.widgets.size()) throw new IllegalArgumentException("Макрос не найден");
+            Widget macro = host.widgets.get(blockIndex);
+            FbdCraftMacroDefinition definition = macroDefinition(macro);
+            if (definition == null) throw new IllegalArgumentException("Определение макроса недействительно");
+            JSONObject graph = definition.toJson().optJSONObject("bloodskyGraph");
+            if (graph == null) throw new IllegalArgumentException("В этом макросе нет редактируемого BLOODSKY-графа");
+            JSONArray widgetArray = graph.optJSONArray("widgets");
+            JSONArray connectionArray = graph.optJSONArray("connections");
+            if (widgetArray == null || connectionArray == null || widgetArray.length() == 0)
+                throw new IllegalArgumentException("Вложенный граф пуст или повреждён");
+            Screen nested = new Screen("Макрос: " + definition.getName());
+            nested.backgroundColor = host.backgroundColor;
+            for (int i = 0; i < widgetArray.length(); i++)
+                nested.widgets.add(widgetFromJson(widgetArray.getJSONObject(i)));
+            for (int i = 0; i < connectionArray.length(); i++)
+                nested.connections.add(connectionFromJson(connectionArray.getJSONObject(i)));
+            int outputNode = graph.optInt("outputNode", -1);
+            String outputPin = graph.optString("outputPin", "");
+            if (outputNode < 0 || outputNode >= nested.widgets.size()
+                    || !contains(knownFbdPins(nested.widgets.get(outputNode), true), outputPin))
+                throw new IllegalArgumentException("Вложенный выход некорректен");
+            NestedMacroEditSession session = new NestedMacroEditSession(
+                    currentScreenIndex, host, nested, definition, outputNode, outputPin);
+            nestedMacroEdit = session;
+            screens.set(currentScreenIndex, nested);
+            widgets.clear();
+            for (Widget widget : nested.widgets) widgets.add(copyWidget(widget));
+            fbdWireHistory.clear();
+            fbdWireMode = false;
+            wireSource = -1;
+            editor = null;
+            showEditor();
+        } catch (Exception failure) {
+            Toast.makeText(this, "Не удалось открыть вложенный граф: " + failure.getMessage(),
+                    Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private static boolean contains(String[] values, String target) {
+        if (values == null || target == null) return false;
+        for (String value : values) if (target.equals(value)) return true;
+        return false;
+    }
+
+    private void closeNestedMacroGraphEditor() {
+        NestedMacroEditSession session = nestedMacroEdit;
+        if (session == null) return;
+        if (persistProjectNow(true)) {
+            restoreNestedMacroHost(session);
+            persistProjectNow(true);
+            showEditor();
+            return;
+        }
+        new AlertDialog.Builder(this).setTitle("Закрыть без сохранения?")
+                .setMessage("Текущие изменения вложенного графа не прошли проверку.")
+                .setNegativeButton("Остаться", null)
+                .setPositiveButton("Закрыть", (dialog, which) -> {
+                    restoreNestedMacroHost(session);
+                    persistProjectNow(true);
+                    showEditor();
+                }).show();
+    }
+
+    private void restoreNestedMacroHost(NestedMacroEditSession session) {
+        nestedMacroEdit = null;
+        currentScreenIndex = session.screenIndex;
+        screens.set(session.screenIndex, session.hostScreen);
+        widgets.clear();
+        for (Widget widget : session.hostScreen.widgets) widgets.add(copyWidget(widget));
+        fbdWireHistory.clear();
+        fbdWireMode = false;
+        wireSource = -1;
+        editor = null;
+    }
+
     private void persistProject() { persistProjectNow(false); }
 
     private boolean persistProjectNow(boolean synchronous) {
         try {
+            if (nestedMacroEdit != null) return persistNestedMacroEdit(synchronous);
             saveActiveScreen();
             JSONObject project = new JSONObject();
             if (projectExtraFields != null) {
@@ -3872,6 +4051,24 @@ public class MainActivity extends Activity {
         final List<Widget> widgets = new ArrayList<>();
         final List<FbdConnection> connections = new ArrayList<>();
         Screen(String name) { this.name = name; }
+    }
+
+    private static final class NestedMacroEditSession {
+        final int screenIndex;
+        final Screen hostScreen;
+        final Screen nestedScreen;
+        FbdCraftMacroDefinition definition;
+        int outputNode;
+        String outputPin;
+        NestedMacroEditSession(int screenIndex, Screen hostScreen, Screen nestedScreen,
+                FbdCraftMacroDefinition definition, int outputNode, String outputPin) {
+            this.screenIndex = screenIndex;
+            this.hostScreen = hostScreen;
+            this.nestedScreen = nestedScreen;
+            this.definition = definition;
+            this.outputNode = outputNode;
+            this.outputPin = outputPin;
+        }
     }
 
     public static class FbdConnection {
