@@ -24,7 +24,8 @@ The extended FBD tools now import `.mcr` files into the active project and expor
 definition back to `.mcr`. Macro widget instances carry their selected definition in preserved
 widget metadata, an imported catalog entry can be placed on the current FBD canvas, and a selected
 FBD block can be captured with its upstream graph as a new project macro. Leaf sources become
-typed macro inputs; graphs with more than four inputs are rejected. The wire
+typed macro inputs; graphs with more than four inputs are rejected. Rebuilding a macro under the
+same name refreshes already-placed instances and clears their nested runtime cache. The wire
 picker, imported-project validator and canvas terminals read the
 definition's named input and output pins and enforce BOOL versus numeric compatibility. Original
 integer and float declarations stay distinct in the saved interface; both use the app's shared

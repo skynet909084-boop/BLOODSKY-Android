@@ -128,6 +128,25 @@ public class FbdCraftMacroDefinitionTest {
         cacheValid = new boolean[2]; cacheValues = new boolean[2]; cacheNumeric = new double[2];
         assertEquals(9.0, MainActivity.evaluateFbdBlockNumeric(widgets, connections, 1,
                 new boolean[2], cacheValid, cacheValues, cacheNumeric), 0.0);
+
+        MainActivity.Widget otherSource = new MainActivity.Widget();
+        otherSource.type = "FBD CRAFT VAR INT";
+        otherSource.extraFields.put("craftVarConstantMode", true).put("craftVarConstant", "12");
+        MainActivity.Widget otherMacro = new MainActivity.Widget();
+        otherMacro.type = "FBD CRAFT MACRO";
+        otherMacro.extraFields.put("craftMacroDefinition", definition.toJson());
+        java.util.List<MainActivity.Widget> twoInstances = java.util.Arrays.asList(
+                source, macroWidget, otherSource, otherMacro);
+        java.util.List<MainActivity.FbdConnection> twoEdges = java.util.Arrays.asList(
+                MainActivity.connectionFromJson(new org.json.JSONObject(
+                        "{\"source\":0,\"target\":1,\"sourcePin\":\"Q\",\"targetPin\":\"Raw\"}")),
+                MainActivity.connectionFromJson(new org.json.JSONObject(
+                        "{\"source\":2,\"target\":3,\"sourcePin\":\"Q\",\"targetPin\":\"Raw\"}")));
+        cacheValid = new boolean[4]; cacheValues = new boolean[4]; cacheNumeric = new double[4];
+        assertEquals(9.0, MainActivity.evaluateFbdBlockNumeric(twoInstances, twoEdges, 1,
+                new boolean[4], cacheValid, cacheValues, cacheNumeric), 0.0);
+        assertEquals(12.0, MainActivity.evaluateFbdBlockNumeric(twoInstances, twoEdges, 3,
+                new boolean[4], cacheValid, cacheValues, cacheNumeric), 0.0);
     }
 
     @Test public void capturesUpstreamCanvasAndCreatesTypedMacroInputs() throws Exception {
@@ -153,6 +172,22 @@ public class FbdCraftMacroDefinitionTest {
         assertEquals(2, graph.getJSONArray("connections").length());
         assertEquals("IN1", graph.getJSONArray("connections").getJSONObject(0).getString("targetPin"));
         assertEquals("IN2", graph.getJSONArray("connections").getJSONObject(1).getString("targetPin"));
+
+        MainActivity.Widget singleInput = new MainActivity.Widget();
+        singleInput.type = "FBD Вход";
+        FbdCraftMacroDefinition revised = MainActivity.createCraftMacroDefinitionFromGraph(
+                "BothEnabled", java.util.Collections.singletonList(singleInput),
+                java.util.Collections.emptyList(), 0, "Q");
+        MainActivity.Widget placedA = new MainActivity.Widget();
+        placedA.type = "FBD CRAFT MACRO";
+        placedA.extraFields.put("craftMacroDefinition", captured.toJson());
+        MainActivity.Widget placedB = new MainActivity.Widget();
+        placedB.type = "FBD CRAFT MACRO";
+        placedB.extraFields.put("craftMacroDefinition", captured.toJson());
+        assertEquals(2, MainActivity.replaceCraftMacroInstances(
+                java.util.Arrays.asList(placedA, placedB), revised));
+        assertEquals(1, FbdCraftMacroDefinition.fromJson(
+                placedA.extraFields.getJSONObject("craftMacroDefinition").toString()).getInputs().size());
 
         MainActivity.Widget floating = new MainActivity.Widget();
         floating.type = "FBD CRAFT VAR FLOAT";

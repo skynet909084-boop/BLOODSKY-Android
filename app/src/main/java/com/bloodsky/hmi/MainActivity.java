@@ -1246,8 +1246,10 @@ public class MainActivity extends Activity {
                     name, widgets, edges, outputNode, outputPin);
             FbdCraftMacroCatalog.upsert(projectExtraFields, definition);
             if (!persistProjectNow(true)) throw new IOException("Не удалось сохранить проект");
+            int refreshed = replaceCraftMacroInstances(widgets, definition);
             addCraftMacroWidget(definition);
-            Toast.makeText(this, "Макрос «" + definition.getName() + "» создан и добавлен на схему",
+            Toast.makeText(this, "Макрос «" + definition.getName() + "» создан; обновлено блоков: "
+                    + refreshed + ", добавлен новый экземпляр",
                     Toast.LENGTH_LONG).show();
         } catch (Exception failure) {
             Toast.makeText(this, "Макрос не создан: " + failure.getMessage(), Toast.LENGTH_LONG).show();
@@ -1335,6 +1337,27 @@ public class MainActivity extends Activity {
                 .append(",\"outputPin\":").append(JSONObject.quote(isInput[outputNode] ? "Q" : outputPin))
                 .append(",\"outputPort\":").append(JSONObject.quote(outputPin)).append("}}");
         return FbdCraftMacroDefinition.fromJson(root.toString());
+    }
+
+    /** Refresh every placed instance when the project definition is rebuilt under the same name. */
+    public static int replaceCraftMacroInstances(List<Widget> widgets,
+                                                 FbdCraftMacroDefinition definition) throws Exception {
+        if (widgets == null || definition == null) return 0;
+        int updated = 0;
+        for (Widget widget : widgets) {
+            if (widget == null || !"FBD CRAFT MACRO".equals(canonicalFbdBlockType(widget.type))) continue;
+            FbdCraftMacroDefinition existing = macroDefinition(widget);
+            if (existing == null || !existing.getName().equalsIgnoreCase(definition.getName())) continue;
+            widget.extraFields.put("craftMacroDefinition", definition.toJson());
+            widget.craftMacroDefinitionSourceCache = null;
+            widget.craftMacroDefinitionCache = null;
+            widget.craftMacroRuntimeGraphSource = null;
+            widget.craftMacroRuntimeWidgets = null;
+            widget.craftMacroRuntimeConnections = null;
+            widget.craftMacroRuntimeOutputNode = -1;
+            updated++;
+        }
+        return updated;
     }
 
     private static int craftMacroPortType(Widget widget, String pin, boolean output) {
