@@ -176,7 +176,8 @@ public final class OriginalFbdPalette {
     }
     private static void bind(Dialog dialog,int id,String type,String text,OriginalComponentPalette.Selection add) {
         View view=dialog.findViewById(id); view.setEnabled(true); view.setAlpha(1f);
-        action(dialog,id,"Добавить: "+type,()->add.add(type,text));
+        String accessibilityName = "FBD CRAFT TIMER".equals(type) ? "FBD Таймер" : type;
+        action(dialog,id,"Добавить: "+accessibilityName,()->add.add(type,text));
     }
     private static void action(Dialog dialog,int id,String label,Runnable callback) {
         View view=dialog.findViewById(id); view.setContentDescription(label);
