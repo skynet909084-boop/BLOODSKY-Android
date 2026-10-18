@@ -57,6 +57,7 @@ public class MainActivity extends Activity {
     private static final String PREFS = "bloodsky_projects";
     private static final String ACTIVE_PROJECT = "active_project";
     private static final String PROJECT_CATALOG = "project_catalog_v1";
+    private static final String TELEGRAM_PREFS = "bloodsky_telegram";
     private static final int REQUEST_EXPORT_PROJECT = 7101;
     private static final int REQUEST_IMPORT_PROJECT = 7102;
     private static final int REQUEST_PICK_MEDIA = 7103;
@@ -84,6 +85,7 @@ public class MainActivity extends Activity {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService modbusExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService craftSensorExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService telegramExecutor = Executors.newSingleThreadExecutor();
     private FbdCraftMqttRuntime craftMqttRuntime;
     private final Map<Integer, String> liveValues = new HashMap<>();
     private boolean modbusPollingActive = false;
@@ -241,6 +243,7 @@ public class MainActivity extends Activity {
         editor = null;
         modbusExecutor.shutdownNow();
         craftSensorExecutor.shutdownNow();
+        telegramExecutor.shutdownNow();
         if (mediaPlayer != null) {
             try { mediaPlayer.stop(); } catch (Exception ignored) {}
             try { mediaPlayer.release(); } catch (Exception ignored) {}
@@ -1130,6 +1133,13 @@ public class MainActivity extends Activity {
                                 w.lastVoiceState = voiceIdx;
                                 speakVoiceAnnouncement(w.voiceMessages[voiceIdx]);
                             }
+                        } else if ("Telegram-уведомление".equals(w.type)) {
+                            String state = entry.getValue();
+                            if (state != null && !state.startsWith("ERR:") && !state.startsWith("CFG")) {
+                                boolean active = isActiveModbusValue(state);
+                                if (active && !w.lastTelegramState) sendTelegramNotification(index, w, state);
+                                w.lastTelegramState = active;
+                            }
                         }
                     }
                     editor.invalidate();
@@ -2018,11 +2028,103 @@ public class MainActivity extends Activity {
                     });
             }
         }
+        menu.getMenu().add("Telegram — настройки и тест").setOnMenuItemClickListener(item -> {
+            showTelegramSettingsDialog(); return true;
+        });
         menu.getMenu().add("Modbus").setOnMenuItemClickListener(item -> { showModbusDiagnostics(); return true; });
         menu.getMenu().add("Главное меню").setOnMenuItemClickListener(item -> {
             if (persistProjectNow(true)) showHome(); return true;
         });
         menu.show();
+    }
+
+    private void showTelegramSettingsDialog() {
+        android.content.SharedPreferences prefs = getSharedPreferences(TELEGRAM_PREFS, MODE_PRIVATE);
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(dp(20), dp(8), dp(20), dp(4));
+        TextView note = new TextView(this);
+        note.setText("Укажи токен своего Telegram-бота и chat_id. Данные хранятся отдельно от проектов и не попадают в экспорт.");
+        form.addView(note);
+        EditText tokenField = propertyField(prefs.getString("bot_token", ""), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        tokenField.setSingleLine(true); tokenField.setHint("Токен бота"); form.addView(tokenField);
+        EditText chatField = propertyField(prefs.getString("chat_id", ""), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        chatField.setSingleLine(true); chatField.setHint("chat_id или @канал"); form.addView(chatField);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Telegram-уведомления")
+                .setView(form)
+                .setPositiveButton("Сохранить", null)
+                .setNeutralButton("Отправить тест", null)
+                .setNegativeButton("Закрыть", null)
+                .create();
+        dialog.setOnShowListener(ignored -> {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                String token = tokenField.getText().toString().trim();
+                String chatId = chatField.getText().toString().trim();
+                if (token.isEmpty() && chatId.isEmpty()) {
+                    prefs.edit().remove("bot_token").remove("chat_id").apply();
+                    Toast.makeText(this, "Настройки Telegram удалены", Toast.LENGTH_SHORT).show();
+                    dialog.dismiss(); return;
+                }
+                if (!TelegramBotClient.isValidToken(token) || !TelegramBotClient.isValidChatId(chatId)) {
+                    Toast.makeText(this, "Проверь токен бота и chat_id", Toast.LENGTH_LONG).show(); return;
+                }
+                prefs.edit().putString("bot_token", token).putString("chat_id", chatId).apply();
+                Toast.makeText(this, "Настройки Telegram сохранены", Toast.LENGTH_SHORT).show();
+                dialog.dismiss();
+            });
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
+                String token = tokenField.getText().toString().trim();
+                String chatId = chatField.getText().toString().trim();
+                if (!TelegramBotClient.isValidToken(token) || !TelegramBotClient.isValidChatId(chatId)) {
+                    Toast.makeText(this, "Сначала укажи корректные токен и chat_id", Toast.LENGTH_LONG).show(); return;
+                }
+                dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setEnabled(false);
+                telegramExecutor.execute(() -> {
+                    String error = null;
+                    try { TelegramBotClient.sendMessage(token, chatId, "BLOODSKY: тестовое Telegram-уведомление."); }
+                    catch (Exception failure) { error = failure.getMessage(); }
+                    final String result = error;
+                    runOnUiThread(() -> {
+                        if (isFinishing() || isDestroyed()) return;
+                        if (dialog.isShowing()) dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setEnabled(true);
+                        Toast.makeText(this, result == null ? "Тестовое уведомление отправлено" : "Telegram: " + result,
+                                Toast.LENGTH_LONG).show();
+                        if (result == null) {
+                            prefs.edit().putString("bot_token", token).putString("chat_id", chatId).apply();
+                            if (dialog.isShowing()) dialog.dismiss();
+                        }
+                    });
+                });
+            });
+        });
+        dialog.show();
+    }
+
+    private void sendTelegramNotification(int widgetIndex, Widget widget, String value) {
+        android.content.SharedPreferences prefs = getSharedPreferences(TELEGRAM_PREFS, MODE_PRIVATE);
+        String token = prefs.getString("bot_token", "");
+        String chatId = prefs.getString("chat_id", "");
+        if (!TelegramBotClient.isValidToken(token) || !TelegramBotClient.isValidChatId(chatId)) {
+            liveValues.put(widgetIndex, "Telegram CFG");
+            if (editor != null) editor.invalidate();
+            return;
+        }
+        String message = (widget.text == null || widget.text.trim().isEmpty() ? "BLOODSKY: событие" : widget.text.trim())
+                + "\nЗначение: " + value;
+        final EditorCanvas sessionEditor = editor;
+        telegramExecutor.execute(() -> {
+            String status = "Telegram отправлено";
+            try { TelegramBotClient.sendMessage(token, chatId, message); }
+            catch (Exception failure) { status = "Telegram ERR"; }
+            final String result = status;
+            runOnUiThread(() -> {
+                if (widgetIndex < 0 || widgetIndex >= widgets.size() || widgets.get(widgetIndex) != widget
+                        || editor != sessionEditor || !activityResumed) return;
+                liveValues.put(widgetIndex, result);
+                if (editor != null) editor.invalidate();
+            });
+        });
     }
 
     @Override public void onBackPressed() {
@@ -2068,6 +2170,7 @@ public class MainActivity extends Activity {
         copy.targetUrl = source.targetUrl;
         copy.lastVoiceState = source.lastVoiceState;
         copy.lastSoundState = source.lastSoundState;
+        copy.lastTelegramState = source.lastTelegramState;
         copy.craftVariableNamespace = source.craftVariableNamespace;
         try { copy.extraFields = new JSONObject(source.extraFields.toString()); } catch (Exception ignored) { copy.extraFields = new JSONObject(); }
         copy.x = source.x; copy.y = source.y; copy.w = source.w; copy.h = source.h;
@@ -6166,6 +6269,7 @@ public class MainActivity extends Activity {
         public String targetUrl = "";
         public int lastVoiceState = -1;
         public boolean lastSoundState = false;
+        public boolean lastTelegramState = false;
         public JSONObject extraFields = new JSONObject();
         transient JSONObject craftMacroDefinitionSourceCache;
         transient FbdCraftMacroDefinition craftMacroDefinitionCache;
