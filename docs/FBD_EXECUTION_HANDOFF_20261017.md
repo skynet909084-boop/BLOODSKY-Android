@@ -72,6 +72,14 @@ Original user-supplied `reference/craft-reference.zip` SHA256 `316da0335dc4ea0c8
 
 Log each exact SHA, CI run, merge and blockers in this file before declaring the phase done. Passing APK is not equivalent to functional parity.
 
+## 18 Oct 2026 — consolidated Craft math batch
+
+- Active worktree `feat/fbd-complete-source-batch-20261018` starts from `d4749f5c8b02d21723895fd2bd659243c9712f27`, retaining the prior CH_I/CH_F and native picker/restart coverage.
+- Added original palette and extended picker actions for `FB_ARITHMETIC_INT`, `FB_ARITHMETIC_FLOAT`, and `FB_COMPARE_FLOAT`, implemented as versioned typed blocks. Source hashes and exact arithmetic edge cases are in `docs/FBD_CRAFT_MATH_BATCH_20261018.md`.
+- Added unit and named-graph tests. Local Python suite passed 135 tests before the last batch changes; rerun on the final tree. Local Android Gradle tests/build cannot run because Gradle is not installed; exact-head GitHub CI remains required.
+- Remaining blockers before calling all FBD work complete: MX/ARRAY register transport and validation; MACRO nested graph/persistence; original trigger T/F/R modes; unresolved timer source semantics; full palette/action parity and same-density visual acceptance; exact-head UI/APK gates for #136/#137 and this combined batch.
+- `main` remains untouched. Do not close the FBD phase or claim full parity based on this batch alone.
+
 ## Consolidated source geometry / FBD manual input — prepared branch
 
 Combined head branch: `feat/fbd-original-pin-geometry-constant-input-20261017`, starting from #105. All previous FBD patches #101–105 are inherited in order. This branch is intentionally not yet a PR while previous emulator checks are running; opening a new PR earlier would spend additional free GitHub Actions minutes.

@@ -1625,7 +1625,10 @@ public class MainActivity extends Activity {
                 "FBD — Craft SEL (целочисленный)",
                 "FBD — Craft COMPARE (INT32)",
                 "FBD — Craft CH_I (изменение Integer)",
-                "FBD — Craft CH_F (изменение Float)"
+                "FBD — Craft CH_F (изменение Float)",
+                "FBD — Craft Arithmetic INT (16 бит)",
+                "FBD — Craft Arithmetic FLOAT32",
+                "FBD — Craft COMPARE FLOAT32"
         };
         final String[] types = {
                 "Текст", "Кнопка", "Индикатор", "Задатчик",
@@ -1642,7 +1645,9 @@ public class MainActivity extends Activity {
                 "FBD CTD", "FBD R_TRIG", "FBD F_TRIG",
                 "FBD CRAFT CTU", "FBD CRAFT T", "FBD CRAFT BLINK",
                 "FBD CRAFT SEL", "FBD CRAFT COMPARE",
-                "FBD CRAFT CHANGE I", "FBD CRAFT CHANGE F"
+                "FBD CRAFT CHANGE I", "FBD CRAFT CHANGE F",
+                "FBD CRAFT ARITHMETIC INT", "FBD CRAFT ARITHMETIC FLOAT",
+                "FBD CRAFT COMPARE FLOAT"
         };
         final String[] defaults = {
                 "Надпись", "Кнопка", "Индикатор", "Задатчик: 0",
@@ -1655,7 +1660,7 @@ public class MainActivity extends Activity {
                 "MOVE", "SEL", "ABS", "MIN/MAX",
                 "RS", "SR", "CTU", "CTD", "R_TRIG", "F_TRIG",
                 "CTU 16 bit", "T", "BLINK", "SEL", ">",
-                "CH_I", "CH_F"
+                "CH_I", "CH_F", "+", "+", ">"
         };
         LinearLayout list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
@@ -1765,6 +1770,8 @@ public class MainActivity extends Activity {
         Widget w = new Widget();
         w.type = type;
         w.text = text;
+        if ("FBD CRAFT ARITHMETIC INT".equals(type)
+                || "FBD CRAFT ARITHMETIC FLOAT".equals(type)) w.compareOperator = "+";
         w.x = dp(40) + (widgets.size() % 4) * dp(24);
         w.y = dp(50) + (widgets.size() % 6) * dp(22);
         w.w = OriginalIndicator.supports(type) ? dp(40) : dp(160);
@@ -1980,6 +1987,19 @@ public class MainActivity extends Activity {
         final EditText timerPresetField;
         final android.widget.Spinner timerUnitSelector;
         final android.widget.Spinner timerModeSelector;
+        final android.widget.Spinner triggerModeSelector;
+        if ("FBD CRAFT T".equals(w.type)) {
+            TextView triggerLabel = new TextView(this);
+            triggerLabel.setText("Режим исходного Craft trigger");
+            form.addView(triggerLabel);
+            triggerModeSelector = new android.widget.Spinner(this);
+            triggerModeSelector.setContentDescription("Режим триггера Craft");
+            triggerModeSelector.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item, new String[]{"T", "R", "F"}));
+            String mode = w.extraFields.optString("craftTriggerMode", "T");
+            triggerModeSelector.setSelection("R".equals(mode) ? 1 : "F".equals(mode) ? 2 : 0);
+            form.addView(triggerModeSelector);
+        } else triggerModeSelector = null;
         if ("FBD Таймер".equals(w.type) || "FBD TP".equals(w.type)
                 || "FBD TOF".equals(w.type) || "FBD CRAFT BLINK".equals(w.type)) {
             TextView timerModeLabel = new TextView(this);
@@ -2055,10 +2075,18 @@ public class MainActivity extends Activity {
         final EditText compareOperatorField;
         final EditText compareRightField;
         if ("FBD Сравнение".equals(w.type)
-                || "FBD CRAFT COMPARE".equals(w.type)) {
+                || "FBD CRAFT COMPARE".equals(w.type)
+                || "FBD CRAFT COMPARE FLOAT".equals(w.type)
+                || "FBD CRAFT ARITHMETIC INT".equals(w.type)
+                || "FBD CRAFT ARITHMETIC FLOAT".equals(w.type)) {
             TextView compareLabel = new TextView(this);
             compareLabel.setText("FBD CRAFT COMPARE".equals(w.type)
                     ? "Craft INT32: оператор >, <, <=, >=, ==, !=; входы IN1/IN2"
+                    : "FBD CRAFT COMPARE FLOAT".equals(w.type)
+                    ? "Craft FLOAT32: оператор >, <, <=, >=, ==, !=; входы IN1/IN2"
+                    : ("FBD CRAFT ARITHMETIC INT".equals(w.type)
+                            || "FBD CRAFT ARITHMETIC FLOAT".equals(w.type))
+                    ? "Craft: оператор +, −, ×, ÷; входы IN1/IN2"
                     : "Числовое сравнение A / оператор / B");
             compareLabel.setPadding(0, dp(10), 0, 0);
             form.addView(compareLabel);
@@ -2227,6 +2255,12 @@ public class MainActivity extends Activity {
                                 w.extraFields.put("bloodskyFbdTimeUnit", unit);
                         } catch (org.json.JSONException ignored) {}
                     }
+                    if (triggerModeSelector != null) {
+                        String mode = String.valueOf(triggerModeSelector.getSelectedItem());
+                        try { w.extraFields.put("craftTriggerMode", mode); }
+                        catch (org.json.JSONException ignored) {}
+                        w.text = mode;
+                    }
                     if (counterPresetField != null) {
                         w.counterPreset = fbd.counter;
                         if ("FBD CTD".equals(w.type)) w.counterValue = w.counterPreset;
@@ -2235,7 +2269,10 @@ public class MainActivity extends Activity {
                         w.compareA = fbd.left;
                         w.compareB = fbd.right;
                         w.compareOperator = fbd.operator;
-                        w.text = "FBD CRAFT COMPARE".equals(w.type)
+                        w.text = ("FBD CRAFT COMPARE".equals(w.type)
+                                || "FBD CRAFT COMPARE FLOAT".equals(w.type)
+                                || "FBD CRAFT ARITHMETIC INT".equals(w.type)
+                                || "FBD CRAFT ARITHMETIC FLOAT".equals(w.type))
                                 ? w.compareOperator
                                 : Double.toString(w.compareA) + " " + w.compareOperator
                                         + " " + Double.toString(w.compareB);
@@ -2903,6 +2940,15 @@ public class MainActivity extends Activity {
             if (output && "Q".equals(name)) return "BOOL";
             if (!output && "IN".equals(name)) return "BOOL";
         }
+        if (kind.equals("FBD CRAFT ARITHMETIC INT")
+                || kind.equals("FBD CRAFT ARITHMETIC FLOAT")) {
+            if (output && "Q".equals(name)) return "NUMBER";
+            if (!output && ("IN1".equals(name) || "IN2".equals(name))) return "NUMBER";
+        }
+        if (kind.equals("FBD CRAFT COMPARE FLOAT")) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && ("IN1".equals(name) || "IN2".equals(name))) return "NUMBER";
+        }
         if (kind.equals("FBD R_TRIG") || kind.equals("FBD F_TRIG")) {
             if (output && "Q".equals(name)) return "BOOL";
             if (!output && "IN".equals(name)) return "BOOL";
@@ -3416,10 +3462,15 @@ public class MainActivity extends Activity {
             return widget.rsState;
         }
         if ("FBD CRAFT T".equals(widget.type)) {
+            String mode = widget.extraFields == null ? "T"
+                    : widget.extraFields.optString("craftTriggerMode", "T");
             boolean input = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
-            FbdCraftNativeTransitions.Trigger next = FbdCraftNativeTransitions.toggleRise(
-                    new FbdCraftNativeTransitions.Trigger(
-                            widget.craftToggleOutput, widget.craftToggleLastInput), input);
+            FbdCraftNativeTransitions.Trigger prior = new FbdCraftNativeTransitions.Trigger(
+                    widget.craftToggleOutput, widget.craftToggleLastInput);
+            FbdCraftNativeTransitions.Trigger next = "R".equals(mode)
+                    ? FbdCraftNativeTransitions.rTrig(prior, input)
+                    : "F".equals(mode) ? FbdCraftNativeTransitions.fTrig(prior, input)
+                    : FbdCraftNativeTransitions.toggleRise(prior, input);
             widget.craftToggleOutput = next.output;
             widget.craftToggleLastInput = next.lastInput;
             return next.output;
@@ -3472,6 +3523,36 @@ public class MainActivity extends Activity {
         }
         if ("FBD НЕ".equals(canonicalType))
             return !fbdBooleanPinValue(inputs, inputPins, "IN", 0);
+        if ("FBD CRAFT ARITHMETIC INT".equals(widget.type)
+                || "FBD CRAFT ARITHMETIC FLOAT".equals(widget.type)
+                || "FBD CRAFT COMPARE FLOAT".equals(widget.type)) {
+            boolean leftConnected = false, rightConnected = false;
+            for (String pin : inputPins) {
+                String normalized = canonicalFbdPinName(pin);
+                if ("IN1".equals(normalized)) leftConnected = true;
+                if ("IN2".equals(normalized)) rightConnected = true;
+            }
+            if (!leftConnected || !rightConnected) return false;
+            double left = fbdNumericPinValue(numInputs, inputPins, "IN1", 0, Double.NaN);
+            double right = fbdNumericPinValue(numInputs, inputPins, "IN2", 1, Double.NaN);
+            int action = FbdCraftMath.actionForOperator(widget.compareOperator,
+                    "FBD CRAFT COMPARE FLOAT".equals(widget.type));
+            if ("FBD CRAFT ARITHMETIC INT".equals(widget.type)) {
+                Integer l = FbdCraftIntegerSelector.exactInteger(left);
+                Integer r = FbdCraftIntegerSelector.exactInteger(right);
+                if (l == null || r == null) return false;
+                int result = FbdCraftMath.intArithmetic(l, r, action);
+                cacheNumeric[index] = result;
+                return result != 0;
+            }
+            float l = (float) left, r = (float) right;
+            if ("FBD CRAFT ARITHMETIC FLOAT".equals(widget.type)) {
+                float result = FbdCraftMath.floatArithmetic(l, r, action);
+                cacheNumeric[index] = result;
+                return result != 0f;
+            }
+            return FbdCraftMath.compare(l, r, action);
+        }
         if ("FBD CRAFT COMPARE".equals(widget.type)) {
             // Source FB_COMPARE uses signed Integer operands, never float.
             // Invalid, disconnected or fractional operands safely return false.
@@ -3761,6 +3842,10 @@ public class MainActivity extends Activity {
             // BOOL Q=1/2; unlike the generic source-white graph fallback.
             if ("FBD CRAFT COMPARE".equals(kind))
                 return output ? 0.5f : (i == 0 ? 0.25f : 0.75f);
+            if ("FBD CRAFT COMPARE FLOAT".equals(kind)
+                    || "FBD CRAFT ARITHMETIC INT".equals(kind)
+                    || "FBD CRAFT ARITHMETIC FLOAT".equals(kind))
+                return output ? 0.5f : (i == 0 ? 0.25f : 0.75f);
             // Original FB_RS draw8(): header 1/3, R/S at 1/2 and 5/6,
             // output Q at 1/2. Wire anchors and drawn contacts must match.
             if ("FBD RS".equals(kind))
@@ -3874,6 +3959,10 @@ public class MainActivity extends Activity {
                 || "FBD MIN_MAX".equals(kind))
             return output ? new String[]{"OUT"} : new String[]{"IN1", "IN2"};
         if ("FBD CRAFT COMPARE".equals(kind))
+            return output ? new String[]{"Q"} : new String[]{"IN1", "IN2"};
+        if ("FBD CRAFT COMPARE FLOAT".equals(kind)
+                || "FBD CRAFT ARITHMETIC INT".equals(kind)
+                || "FBD CRAFT ARITHMETIC FLOAT".equals(kind))
             return output ? new String[]{"Q"} : new String[]{"IN1", "IN2"};
         if ("FBD СРАВНЕНИЕ".equals(kind))
             return output ? new String[]{"Q"} : new String[]{"A", "B"};

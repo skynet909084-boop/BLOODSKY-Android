@@ -2,7 +2,7 @@ package com.bloodsky.hmi;
 
 /**
  * Pure, source-hashed reference transitions for original KaScada Craft 1.0.7
- * FB_CTU / FB_RS / FB_TRIGGER. Not wired to the existing BLOODSKY palette yet.
+ * FB_CTU / FB_RS / FB_TRIGGER. Native trigger modes are wired to the original palette.
  *
  * CTU source: FB_CTU.java sha256 76baf47e..., lines 46-69 and 88-93.
  * RS source: FB_RS.java sha256 543a1707..., lines 41-55 and 69-74.

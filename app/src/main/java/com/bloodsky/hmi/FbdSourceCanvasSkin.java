@@ -23,6 +23,9 @@ public final class FbdSourceCanvasSkin {
                 || "FBD CRAFT BLINK".equals(type)
                 || "FBD RS".equals(type) || "FBD CRAFT SEL".equals(type)
                 || "FBD CRAFT COMPARE".equals(type)
+                || "FBD CRAFT COMPARE FLOAT".equals(type)
+                || "FBD CRAFT ARITHMETIC INT".equals(type)
+                || "FBD CRAFT ARITHMETIC FLOAT".equals(type)
                 || "FBD CRAFT CHANGE I".equals(type)
                 || "FBD CRAFT CHANGE F".equals(type);
     }
@@ -42,9 +45,14 @@ public final class FbdSourceCanvasSkin {
                 : "FBD CRAFT CHANGE I".equals(w.type) ? "CH_I"
                 : "FBD CRAFT CHANGE F".equals(w.type) ? "CH_F"
                 : "FBD CRAFT COMPARE".equals(w.type) ? w.compareOperator
+                : "FBD CRAFT COMPARE FLOAT".equals(w.type)
+                        || "FBD CRAFT ARITHMETIC INT".equals(w.type)
+                        || "FBD CRAFT ARITHMETIC FLOAT".equals(w.type) ? w.compareOperator
                 : isTimer(w.type) ? FbdDurationUnits.modeForType(w.type) : "XOR";
         // Preserve manually edited labels by falling back to the editable skin.
-        return w.text == null || w.text.isEmpty() || defaultCaption.equals(w.text);
+        return w.text == null || w.text.isEmpty() || defaultCaption.equals(w.text)
+                || ("FBD CRAFT T".equals(w.type)
+                    && ("T".equals(w.text) || "R".equals(w.text) || "F".equals(w.text)));
     }
 
     public static float inputY(String type, String name) {

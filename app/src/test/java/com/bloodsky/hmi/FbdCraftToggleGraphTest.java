@@ -74,4 +74,20 @@ public class FbdCraftToggleGraphTest {
         assertArrayEquals(new String[]{"Q"}, MainActivity.knownFbdPins("FBD R_TRIG", true));
         assertArrayEquals(new String[]{"Q"}, MainActivity.knownFbdPins("FBD F_TRIG", true));
     }
+
+    @Test public void sourceTriggerModesTFRHaveExactEdgeBehaviorAndPersistMode() throws Exception {
+        FbdCraftNativeTransitions.Trigger initial = new FbdCraftNativeTransitions.Trigger(false, false);
+        assertTrue(FbdCraftNativeTransitions.toggleRise(initial, true).output);
+        assertTrue(FbdCraftNativeTransitions.rTrig(initial, true).output);
+        assertFalse(FbdCraftNativeTransitions.rTrig(
+                FbdCraftNativeTransitions.rTrig(initial, true), true).output);
+        assertTrue(FbdCraftNativeTransitions.fTrig(
+                new FbdCraftNativeTransitions.Trigger(false, true), false).output);
+        MainActivity.Widget trigger = widget("FBD CRAFT T");
+        trigger.extraFields.put("craftTriggerMode", "F");
+        MainActivity.Widget restored = MainActivity.widgetFromJson(MainActivity.widgetToJson(trigger));
+        assertEquals("F", restored.extraFields.getString("craftTriggerMode"));
+        trigger.text = "F";
+        assertTrue(FbdSourceCanvasSkin.shouldUse(trigger));
+    }
 }

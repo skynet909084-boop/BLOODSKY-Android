@@ -34,6 +34,7 @@ public final class FbdPropertyEdits {
     }
     private static String comparison(String text) {
         String value=text.trim();
+        if(value.equals("+")||value.equals("-")||value.equals("*")||value.equals("/")) return value;
         if(value.equals("=")) value="==";
         if(value.equals("<>")) value="!=";
         if(value.equals(">")||value.equals("<")||value.equals(">=")||value.equals("<=")
