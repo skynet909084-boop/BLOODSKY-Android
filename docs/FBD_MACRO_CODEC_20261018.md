@@ -33,13 +33,15 @@ replaces definitions case-insensitively by name, and caps the catalog at 64 entr
 Import is bounded while reading the selected document and validates the entire definition
 before saving the project. Definitions may also retain an optional `bloodskyGraph` object;
 its bounded widget/edge counts, named macro inputs, output reference and acyclic topology are
-validated while preserving unknown graph metadata.
+validated while preserving unknown graph metadata. During operator scans, an imported macro
+instance evaluates that validated graph with its own child-widget runtime state and named typed
+inputs; separate instances keep separate nested state. Definitions without an embedded
+BLOODSKY graph remain importable and inspectable but evaluate as unavailable.
 
 ## Scope and remaining work
 
-This remains an import/export and definition-model layer. It does not yet add an editor for nested
-child graphs, evaluate child blocks in scan order, or enable `FB_MACRO` in the original palette.
-Runtime namespaces already exist for
-named Craft variables but are not proof of complete macro execution. Keep the original
-palette entry gated until the complete nested graph lifecycle and exact-head Android gates
-pass. No visual parity or physical PLC behavior is claimed.
+The nested graph editor and `FB_MACRO` entry in the original palette are still gated. The nested
+runtime executes the explicitly embedded BLOODSKY graph; it does not claim that opaque original
+Craft child records execute. Keep the original palette entry gated until the nested graph
+authoring lifecycle and exact-head Android gates pass. No visual parity or physical PLC behavior
+is claimed.

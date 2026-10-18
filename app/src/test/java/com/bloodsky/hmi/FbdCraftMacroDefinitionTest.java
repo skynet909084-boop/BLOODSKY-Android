@@ -95,6 +95,41 @@ public class FbdCraftMacroDefinitionTest {
         assertInvalid(() -> FbdCraftMacroDefinition.fromJson(macro(duplicateTarget)));
     }
 
+    @Test public void evaluatesTypedNestedGraphAndKeepsPerInstanceRuntime() throws Exception {
+        String definitionJson = "{\"name\":\"Magnitude\",\"countIn\":1,"
+                + "\"nameIn1\":\"Raw\",\"typeIn1\":2,\"typeOut\":2,"
+                + "\"fbInMacros\":[],\"bloodskyGraph\":{"
+                + "\"widgets\":[{\"type\":\"FBD CRAFT MACRO IN\","
+                + "\"craftMacroPortName\":\"Raw\",\"craftMacroPortType\":2},"
+                + "{\"type\":\"FBD ABS\"}],"
+                + "\"connections\":[{\"source\":0,\"sourcePin\":\"Q\","
+                + "\"target\":1,\"targetPin\":\"IN\"}],"
+                + "\"outputNode\":1,\"outputPin\":\"OUT\",\"outputPort\":\"Q\"}}";
+        FbdCraftMacroDefinition definition = FbdCraftMacroDefinition.fromJson(definitionJson);
+        MainActivity.Widget source = new MainActivity.Widget();
+        source.type = "FBD CRAFT VAR INT";
+        source.extraFields.put("craftVarConstantMode", true).put("craftVarConstant", "5");
+        MainActivity.Widget macroWidget = new MainActivity.Widget();
+        macroWidget.type = "FBD CRAFT MACRO";
+        macroWidget.extraFields.put("craftMacroDefinition", definition.toJson());
+        java.util.List<MainActivity.Widget> widgets = java.util.Arrays.asList(source, macroWidget);
+        MainActivity.FbdConnection edge = MainActivity.connectionFromJson(new org.json.JSONObject(
+                "{\"source\":0,\"target\":1,\"sourcePin\":\"Q\",\"targetPin\":\"Raw\"}"));
+        java.util.List<MainActivity.FbdConnection> connections = java.util.Collections.singletonList(edge);
+        boolean[] visiting = new boolean[2], cacheValid = new boolean[2], cacheValues = new boolean[2];
+        double[] cacheNumeric = new double[2];
+
+        assertTrue(MainActivity.evaluateFbdBlock(widgets, connections, 1, visiting,
+                cacheValid, cacheValues, cacheNumeric));
+        assertEquals(5.0, MainActivity.evaluateFbdBlockNumeric(widgets, connections, 1,
+                visiting, cacheValid, cacheValues, cacheNumeric), 0.0);
+
+        source.extraFields.put("craftVarConstant", "9");
+        cacheValid = new boolean[2]; cacheValues = new boolean[2]; cacheNumeric = new double[2];
+        assertEquals(9.0, MainActivity.evaluateFbdBlockNumeric(widgets, connections, 1,
+                new boolean[2], cacheValid, cacheValues, cacheNumeric), 0.0);
+    }
+
     private static void assertInvalid(ThrowingRunnable action) throws Exception {
         try { action.run(); fail("Expected invalid macro to be rejected"); }
         catch (JSONException expected) { /* expected */ }

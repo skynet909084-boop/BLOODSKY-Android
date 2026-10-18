@@ -4350,6 +4350,14 @@ public class MainActivity extends Activity {
         if (index < 0 || index >= widgetsList.size() || visiting[index]) return false;
         Widget widget = widgetsList.get(index);
         if (!isFbdWidget(widget)) return false;
+        if ("FBD CRAFT MACRO".equals(canonicalFbdBlockType(widget.type)))
+            return evaluateCraftMacroBlock(widgetsList, connectionsList, index, visiting,
+                    cacheValid, cacheValues, cacheNumeric);
+        if ("FBD CRAFT MACRO IN".equals(canonicalFbdBlockType(widget.type))) {
+            double value = widget.craftMacroInputValid ? widget.craftMacroInputValue : Double.NaN;
+            cacheNumeric[index] = value;
+            return Double.isFinite(value) && value != 0.0;
+        }
         if (isCraftMqttSubscriber(widget.type)) {
             double value = widget.craftMqttValue == null ? Double.NaN : widget.craftMqttValue;
             cacheNumeric[index] = value;
@@ -4931,6 +4939,88 @@ public class MainActivity extends Activity {
             return step.output;
         }
         return false;
+    }
+
+    /** Execute a validated, acyclic BLOODSKY macro graph in its own runtime namespace. */
+    private static boolean evaluateCraftMacroBlock(List<Widget> widgetsList,
+            List<FbdConnection> connectionsList, int index, boolean[] visiting,
+            boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
+        Widget macro = widgetsList.get(index);
+        FbdCraftMacroDefinition definition = macroDefinition(macro);
+        if (definition == null) { cacheNumeric[index] = Double.NaN; return false; }
+        final JSONObject graph;
+        try { graph = definition.toJson().optJSONObject("bloodskyGraph"); }
+        catch (Exception invalid) { cacheNumeric[index] = Double.NaN; return false; }
+        if (graph == null) { cacheNumeric[index] = Double.NaN; return false; }
+        if (macro.craftMacroRuntimeGraphSource != graph
+                && (macro.craftMacroRuntimeGraphSource == null
+                    || !macro.craftMacroRuntimeGraphSource.toString().equals(graph.toString()))) {
+            try {
+                JSONArray rawWidgets = graph.getJSONArray("widgets");
+                JSONArray rawConnections = graph.getJSONArray("connections");
+                List<Widget> nestedWidgets = new ArrayList<>();
+                for (int i = 0; i < rawWidgets.length(); i++)
+                    nestedWidgets.add(widgetFromJson(rawWidgets.getJSONObject(i)));
+                List<FbdConnection> nestedConnections = new ArrayList<>();
+                for (int i = 0; i < rawConnections.length(); i++)
+                    nestedConnections.add(connectionFromJson(rawConnections.getJSONObject(i)));
+                macro.craftMacroRuntimeGraphSource = new JSONObject(graph.toString());
+                macro.craftMacroRuntimeWidgets = nestedWidgets;
+                macro.craftMacroRuntimeConnections = nestedConnections;
+                macro.craftMacroRuntimeOutputNode = graph.getInt("outputNode");
+                macro.craftMacroRuntimeOutputPin = graph.getString("outputPin");
+            } catch (Exception malformed) {
+                macro.craftMacroRuntimeGraphSource = null;
+                macro.craftMacroRuntimeWidgets = null;
+                macro.craftMacroRuntimeConnections = null;
+                cacheNumeric[index] = Double.NaN;
+                return false;
+            }
+        }
+        List<Widget> nested = macro.craftMacroRuntimeWidgets;
+        List<FbdConnection> nestedEdges = macro.craftMacroRuntimeConnections;
+        if (nested == null || nested.isEmpty()) { cacheNumeric[index] = Double.NaN; return false; }
+        visiting[index] = true;
+        try {
+            for (Widget child : nested) if ("FBD CRAFT MACRO IN".equals(
+                    canonicalFbdBlockType(child.type))) child.craftMacroInputValid = false;
+            if (connectionsList != null) for (FbdConnection edge : connectionsList) {
+                if (edge == null || edge.target != index || edge.source < 0
+                        || edge.source >= widgetsList.size()) continue;
+                String inputName = canonicalFbdPinName(edge.extraFields.optString("targetPin", ""));
+                FbdCraftMacroDefinition.Port input = null;
+                for (FbdCraftMacroDefinition.Port port : definition.getInputs())
+                    if (canonicalFbdPinName(port.name).equals(inputName)) { input = port; break; }
+                if (input == null) continue;
+                Widget inputNode = null;
+                for (Widget child : nested) if ("FBD CRAFT MACRO IN".equals(
+                        canonicalFbdBlockType(child.type))
+                        && input.name.equalsIgnoreCase(child.extraFields.optString(
+                                "craftMacroPortName", ""))) { inputNode = child; break; }
+                if (inputNode == null) continue;
+                boolean sourceBool = evaluateFbdBlock(widgetsList, connectionsList, edge.source,
+                        visiting, cacheValid, cacheValues, cacheNumeric);
+                double sourceNumber = evaluateFbdBlockNumeric(widgetsList, connectionsList,
+                        edge.source, visiting, cacheValid, cacheValues, cacheNumeric);
+                inputNode.craftMacroInputValue = input.type == 1
+                        ? (sourceBool ? 1.0 : 0.0) : sourceNumber;
+                inputNode.craftMacroInputValid = true;
+            }
+            boolean[] nestedVisiting = new boolean[nested.size()];
+            boolean[] nestedCacheValid = new boolean[nested.size()];
+            boolean[] nestedCacheValues = new boolean[nested.size()];
+            double[] nestedCacheNumeric = new double[nested.size()];
+            int outputNode = macro.craftMacroRuntimeOutputNode;
+            boolean outputBool = evaluateFbdBlock(nested, nestedEdges, outputNode,
+                    nestedVisiting, nestedCacheValid, nestedCacheValues, nestedCacheNumeric);
+            double value = nestedCacheNumeric[outputNode];
+            FbdCraftMacroDefinition.Port output = definition.getOutput();
+            if (output.type == 1) value = outputBool ? 1.0 : 0.0;
+            cacheNumeric[index] = value;
+            return output.type == 1 ? outputBool : Double.isFinite(value) && value != 0.0;
+        } finally {
+            visiting[index] = false;
+        }
     }
 
     private void scheduleCraftRegisterWrite(Widget widget, int widgetIndex, double value) {
@@ -5540,6 +5630,13 @@ public class MainActivity extends Activity {
         transient boolean craftRegisterWritePending;
         transient String craftRegisterLastWriteKey = "";
         transient long craftRegisterRetryAt;
+        transient boolean craftMacroInputValid;
+        transient double craftMacroInputValue = Double.NaN;
+        transient JSONObject craftMacroRuntimeGraphSource;
+        transient List<Widget> craftMacroRuntimeWidgets;
+        transient List<FbdConnection> craftMacroRuntimeConnections;
+        transient int craftMacroRuntimeOutputNode = -1;
+        transient String craftMacroRuntimeOutputPin = "";
         public int timerPresetMs = 1000;
         public long timerStartedAt = 0L;
         public double compareA = 0.0, compareB = 0.0;
