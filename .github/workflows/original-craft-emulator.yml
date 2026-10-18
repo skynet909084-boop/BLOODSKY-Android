@@ -45,8 +45,9 @@ jobs:
           java -jar /tmp/apktool.jar --version
       - name: Rebuild original APK
         run: |
-          chmod +x "$ANDROID_HOME/build-tools/35.0.0/aapt2"
-          java -jar /tmp/apktool.jar b build/craft-decompiled/apktool --aapt "$ANDROID_HOME/build-tools/35.0.0/aapt2" -o build/KaScada-Craft-1.0.7-unsigned.apk
+          cp "$ANDROID_HOME/build-tools/35.0.0/aapt2" /tmp/aapt2
+          chmod +x /tmp/aapt2
+          java -jar /tmp/apktool.jar b build/craft-decompiled/apktool --aapt /tmp/aapt2 -o build/KaScada-Craft-1.0.7-unsigned.apk
           keytool -genkeypair -keystore /tmp/craft-debug.keystore -storepass android -keypass android -alias androiddebugkey -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign --ks /tmp/craft-debug.keystore --ks-pass pass:android --key-pass pass:android --out build/KaScada-Craft-1.0.7.apk build/KaScada-Craft-1.0.7-unsigned.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify build/KaScada-Craft-1.0.7.apk
