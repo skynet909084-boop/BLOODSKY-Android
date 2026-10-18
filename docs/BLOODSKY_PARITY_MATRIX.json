@@ -89,6 +89,13 @@
           "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
+          "id": "widget.linear_setpoint",
+          "name": "Linear Setpoint (Craft CustomSeekBar, component ID 13)",
+          "status": "partial",
+          "criteria": "Horizontal/vertical integer slider with configured maximum, persisted value and Modbus holding-register write on commit.",
+          "audit_note": "Importer, palette, range editor and operator slider are implemented. Imported legacy connections remain disabled until an explicit TCP holding-register mapping; visual/device acceptance remains open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
+        },
+        {
           "id": "widget.dyntext",
           "name": "Dynamic Text (CustomDynText)",
           "status": "partial",
