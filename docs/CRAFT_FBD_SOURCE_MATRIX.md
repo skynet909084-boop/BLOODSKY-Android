@@ -42,3 +42,56 @@ Source: decompiled APK artifact `11912849123`, `jadx/sources/ru/himik/nightscrea
 5. Keep custom BLOODSKY improvements out of the baseline clone.
 
 This matrix remains an **audit**, not evidence of full pixel or lifecycle parity. `FB_MACRO` nested graph storage, remaining palette/action coverage, exact same-density drawings, and complete original project/storage behavior remain open. See per-batch runtime evidence before treating any row as accepted.
+
+
+## Complete factory → importer ID matrix (101–140)
+
+This table records the original factory class and the exact `other` keys read by `mbCanvas.m(...)`, then the current BLOODSKY `FbdCraftMacroGraphAdapter.typeForComponentId()` result. It is a mapping audit, not a claim that all mapped fields, execution behavior, or rendering are at parity. Dynamic VarName IDs 133/134 depend on `typeVar`; Craft ID 135 remains intentionally unmapped and fail-closed.
+
+Source: pinned decompilation artifact [run 38600957172](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/38600957172), SHA-256 `d78bd703d6096ac12d69e19f8b5b5dfa9a4c25e342ce9af0ef8b42326aaa3f8c`. JADX factory `mbCanvas.java` nested switch covers 101–140; Smali `mbCanvas.smali` packed-switch begins at `0x65` (101). The decompiled ID 128 case is emitted as a resource constant comment, but the Smali key is numeric 128 and the constructed class is `FB_MX`.
+
+All 40 IDs have an original factory branch. BLOODSKY has 39 adapter type mappings; ID 135 (`FB_MACRO`) has no `typeForComponentId` mapping. Mapped type names do not establish exact properties, FBD pin compatibility, runtime semantics, save/reopen of macro child records, or visual parity. Existing source-by-source renderer/runtime findings remain in the rows above and require per-class acceptance.
+
+| Craft ID | Factory class | Keys read from `other` | BLOODSKY adapter mapping |
+|---:|---|---|---|
+| 101 | `Var` | `bit, constant, invertOut, isConstant, keyOut, numOnIn, numScreen, reg, saveKey` | FBD CRAFT VAR BOOL |
+| 102 | `VarOut` | `bit, invertOut, keyOut, numOnIn, numScreen, reg, saveKey` | FBD CRAFT VAR OUT BOOL |
+| 103 | `FB_AND` | `invertOut, keyOut, nMcr, numOnIn, numScreen, saveKey, unIdMcr` | FBD AND |
+| 104 | `FB_OR` | `invertOut, keyOut, nMcr, numOnIn, numScreen, saveKey, unIdMcr` | FBD OR |
+| 105 | `VarInt` | `constant, isConstant, keyOut, numOnIn, numScreen, reg, saveKey` | FBD CRAFT VAR INT |
+| 106 | `VarOutInt` | `invertOut, keyOut, numOnIn, numScreen, reg, saveKey` | FBD CRAFT VAR OUT INT |
+| 107 | `FB_COMPARE` | `compareAction, invertOut, keyOut, nMcr, numOnIn, numScreen, saveKey, unIdMcr` | FBD CRAFT COMPARE |
+| 108 | `VarFloat` | `constant, invertOut, isConstant, keyOut, numOnIn, numScreen, reg, saveKey` | FBD CRAFT VAR FLOAT |
+| 109 | `VarOutFloat` | `invertOut, isHighByte, isHighRegister, keyOut, numOnIn, numScreen, reg, saveKey` | FBD CRAFT VAR OUT FLOAT |
+| 110 | `FB_ARITHMETIC_INT` | `compareAction, keyOut, nMcr, numOnIn, numScreen, saveKey, unIdMcr` | FBD CRAFT ARITHMETIC INT |
+| 111 | `FB_ARITHMETIC_FLOAT` | `compareAction, keyOut, nMcr, numOnIn, numScreen, saveKey, unIdMcr` | FBD CRAFT ARITHMETIC FLOAT |
+| 112 | `FB_COMPARE_FLOAT` | `compareAction, invertOut, keyOut, nMcr, numOnIn, numScreen, saveKey, unIdMcr` | FBD CRAFT COMPARE FLOAT |
+| 113 | `FB_RS` | `invertOut, keyOut, nMcr, numOnIn, numScreen, saveKey, unIdMcr` | FBD RS |
+| 114 | `FB_TRIGGER` | `invertOut, keyOut, nMcr, numOnIn, numScreen, saveKey, type, unIdMcr` | FBD CRAFT T |
+| 115 | `FB_TIMER` | `invertOut, keyOut, nMcr, numOnIn, numScreen, saveKey, type, typeTime, unIdMcr` | FBD CRAFT TIMER |
+| 116 | `FB_CTU` | `invertOut, keyOut, nMcr, numOnIn, numScreen, saveKey, unIdMcr` | FBD CRAFT CTU |
+| 117 | `FB_MOVE` | `keyOut, nMcr, numOnIn, numScreen, saveKey, unIdMcr` | FBD CRAFT MOVE |
+| 118 | `IntToFloat` | `keyOut, nMcr, numOnIn, numScreen, saveKey, unIdMcr` | FBD CRAFT INT TO FLOAT |
+| 119 | `FloatToInt` | `keyOut, nMcr, numOnIn, numScreen, saveKey, unIdMcr` | FBD CRAFT FLOAT TO INT |
+| 120 | `Sensor_Orientation` | `keyOut, nMcr, numOnIn, numScreen, saveKey, type, unIdMcr` | FBD CRAFT SENSOR ORIENTATION |
+| 121 | `SIN` | `keyOut, nMcr, numOnIn, numScreen, saveKey, unIdMcr` | FBD CRAFT SIN |
+| 122 | `LOG` | `keyOut, nMcr, numOnIn, numScreen, saveKey, unIdMcr` | FBD CRAFT LOG |
+| 123 | `ABS` | `keyOut, nMcr, numOnIn, numScreen, saveKey, unIdMcr` | FBD CRAFT ABS |
+| 124 | `FB_POW` | `keyOut, nMcr, numOnIn, numScreen, saveKey, unIdMcr` | FBD CRAFT POW |
+| 125 | `FB_XOR` | `keyOut, nMcr, numOnIn, numScreen, saveKey, unIdMcr` | FBD XOR |
+| 126 | `FB_SEL` | `keyOut, nMcr, numOnIn, numScreen, saveKey, unIdMcr` | FBD CRAFT SEL |
+| 127 | `Sunrise_GPS` | `keyOut, latitude, longitude, nMcr, numOnIn, numScreen, saveKey, type, unIdMcr` | FBD CRAFT SUNRISE |
+| 128 | `FB_MX` | `keyOut, nMcr, numOnIn, numScreen, saveKey, unIdMcr` | FBD CRAFT MX |
+| 129 | `WordToFloat` | `keyOut, nMcr, numOnIn, numScreen, saveKey, unIdMcr` | FBD CRAFT WORD TO FLOAT |
+| 130 | `ODTEMP` | `ip, keyOut, nMcr, numOnIn, numScreen, saveKey, typeResponse, typeSensor, unIdMcr` | FBD CRAFT ODTEMP |
+| 131 | `Sensor_Light` | `keyOut, nMcr, numOnIn, numScreen, saveKey, unIdMcr` | FBD CRAFT SENSOR LIGHT |
+| 132 | `Sensor_Speed` | `keyOut, nMcr, numOnIn, numScreen, saveKey, unIdMcr` | FBD CRAFT SENSOR SPEED |
+| 133 | `VarNameIn` | `constant, invertOut, isConstant, keyOut, nMcr, numOnIn, numScreen, saveKey, typeVar, typeVarValue, unIdMcr` | namedVariableType(false, typeVar) |
+| 134 | `VarNameOut` | `keyOut, nMcr, numOnIn, numScreen, saveKey, typeVar, unIdMcr` | namedVariableType(true, typeVar) |
+| 135 | `FB_MACRO` | `countIn, keyOut, keyOutIn1, keyOutIn2, keyOutIn3, keyOutIn4, nameIn1, nameIn2, nameIn3, nameIn4, nameOut, numOnIn, numOnIn1, numOnIn2, numOnIn3, numOnIn4, numScreen, saveKey, saveKeyOut, typeIn1, typeIn2, typeIn3, typeIn4, typeOut, uniqueId` | Unsupported; macro child graph remains disabled |
+| 136 | `FB_ARRAY` | `keyOut, numOnIn, numScreen, saveKey` | FBD CRAFT ARRAY |
+| 137 | `FB_CHANGE_I` | `keyOut, numOnIn, numScreen, saveKey` | FBD CRAFT CHANGE I |
+| 138 | `FB_CHANGE_F` | `keyOut, numOnIn, numScreen, saveKey` | FBD CRAFT CHANGE F |
+| 139 | `MQTT_SUBSCRIBER` | `keyOut, numMqttServer, numOnIn, numScreen, saveKey, topic, typeQ` | FBD CRAFT MQTT SUB BOOL |
+| 140 | `MQTT_PUBLISHER` | `keyOut, mqttRetain, numMqttServer, numOnIn, numScreen, saveKey, topic, typeIn` | FBD CRAFT MQTT PUB BOOL |
+

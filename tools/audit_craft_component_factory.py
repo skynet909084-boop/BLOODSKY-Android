@@ -57,12 +57,52 @@ def extract_factory(source: str) -> dict[int, tuple[str | None, list[str], list[
     return result
 
 
+def extract_logic_factory(source: str) -> dict[int, tuple[str | None, list[str]]]:
+    marker = "private ru.himik.nightscream.kascada.CustomComponents.z m("
+    start = source.find(marker)
+    if start < 0:
+        raise ValueError("Could not find mbCanvas component factory m(...)")
+    next_method = source.find("\n    private ", start + len(marker))
+    factory = source[start : next_method if next_method >= 0 else len(source)]
+    nested = re.search(r"default\s*:\s*switch\s*\(\s*i2\s*\)\s*\{", factory)
+    if not nested:
+        raise ValueError("Could not find nested FBD factory switch(i2)")
+    logic = factory[nested.end() :]
+    markers = list(re.finditer(r"case\s+[^:\n]*?(?:/\*\s*(\d+)\s*\*/\s*)?:", logic))
+    starts: dict[int, int] = {}
+    for match in markers:
+        if match.group(1):
+            component_id = int(match.group(1))
+        else:
+            value = re.match(r"case\s+(\d+)\s*:", match.group(0))
+            if not value:
+                continue
+            component_id = int(value.group(1))
+        if 101 <= component_id <= 140:
+            starts[component_id] = match.start()
+
+    result: dict[int, tuple[str | None, list[str]]] = {}
+    for component_id, branch_start in starts.items():
+        later = [pos for key, pos in starts.items() if key > component_id and pos > branch_start]
+        branch = logic[branch_start : min(later) if later else len(logic)]
+        default_branch = re.search(r"\n\s*default\s*:", branch)
+        if default_branch:
+            branch = branch[: default_branch.start()]
+        class_match = CLASS_RE.search(branch)
+        json_match = re.search(r"new\s+JSONObject\(\s*str3\s*\)", branch)
+        keys = sorted(set(JSON_KEY_RE.findall(branch[json_match.end() :] if json_match else "")))
+        result[component_id] = (class_match.group(1) if class_match else None, keys)
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mbcanvas", type=Path, help="Path to JADX mbCanvas.java")
     args = parser.parse_args()
     try:
-        result = extract_factory(args.mbcanvas.read_text(encoding="utf-8"))
+        source = args.mbcanvas.read_text(encoding="utf-8")
+        result = extract_factory(source)
+        logic_result = extract_logic_factory(source)
     except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -85,6 +125,17 @@ def main() -> int:
     if result[17][0] != "ru.himik.nightscream.kascada.CustomComponents.h":
         print("error: ID 17 factory class differs from audited mapping", file=sys.stderr)
         return 1
+    if set(logic_result) != set(range(101, 141)):
+        missing = sorted(set(range(101, 141)) - set(logic_result))
+        print(f"error: FBD factory IDs missing: {missing}", file=sys.stderr)
+        return 1
+    if "FB_MX" not in (logic_result[128][0] or "") or "FB_MACRO" not in (logic_result[135][0] or ""):
+        print("error: FBD factory IDs 128/135 differ from audited mapping", file=sys.stderr)
+        return 1
+    print("\nlogic_id\tclass\tother_keys")
+    for component_id in range(101, 141):
+        class_name, keys = logic_result[component_id]
+        print(f"{component_id}\t{class_name or 'CLASS_UNRESOLVED'}\t{','.join(keys)}")
     return 0
 
 
