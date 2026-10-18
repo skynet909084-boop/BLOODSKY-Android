@@ -24,6 +24,9 @@ public class FbdCraftVarBlockTest {
         assertEquals("FBD CRAFT VAR OUT FLOAT", OriginalFbdPalette.nativeTypeForOriginalTag("VarOutFloat"));
         assertEquals("FBD CRAFT VAR NAME IN INT", OriginalFbdPalette.nativeTypeForOriginalTag("VarNameIn"));
         assertEquals("FBD CRAFT VAR NAME OUT INT", OriginalFbdPalette.nativeTypeForOriginalTag("VarNameOut"));
+        assertEquals("FBD CRAFT SENSOR LIGHT", OriginalFbdPalette.nativeTypeForOriginalTag("Sensor_Light"));
+        assertEquals("FBD CRAFT SENSOR ORIENTATION", OriginalFbdPalette.nativeTypeForOriginalTag("Sensor_Orientation"));
+        assertEquals("FBD CRAFT SUNRISE", OriginalFbdPalette.nativeTypeForOriginalTag("Sunrise_GPS"));
     }
 
     @Test public void sourcesProvideConstantsAndDecodeRegisterWords() throws Exception {
@@ -78,5 +81,21 @@ public class FbdCraftVarBlockTest {
         assertEquals(321.0, value(nodes, wires, 0), 0.0);
         assertEquals("BOOL", MainActivity.knownFbdPinType("FBD CRAFT VAR NAME IN BOOL", "Q", true));
         assertEquals("NUMBER", MainActivity.knownFbdPinType("FBD CRAFT VAR NAME OUT FLOAT", "IN", false));
+    }
+
+    @Test public void phoneSensorSourcesExposeValuesOnlyAfterSensorEvents() throws Exception {
+        MainActivity.Widget light = block("FBD CRAFT SENSOR LIGHT");
+        light.craftSensorValue = 250.0; light.craftSensorValid = true;
+        MainActivity.Widget orientation = block("FBD CRAFT SENSOR ORIENTATION");
+        orientation.craftOrientationValues = new double[]{12.0, -4.0, 25.0};
+        orientation.craftSensorValid = true;
+        orientation.extraFields.put("craftSensorAxis", 3);
+        List<MainActivity.Widget> nodes = Arrays.asList(light, orientation);
+        assertEquals(250.0, value(nodes, null, 0), 0.0);
+        assertEquals(25.0, value(nodes, null, 1), 0.0);
+        light.craftSensorValid = false;
+        assertTrue(Double.isNaN(value(nodes, null, 0)));
+        assertArrayEquals(new String[0], MainActivity.knownFbdPins("FBD CRAFT SENSOR LIGHT", false));
+        assertArrayEquals(new String[]{"Q"}, MainActivity.knownFbdPins("FBD CRAFT SENSOR LIGHT", true));
     }
 }

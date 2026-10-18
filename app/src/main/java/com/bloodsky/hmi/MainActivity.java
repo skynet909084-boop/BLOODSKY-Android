@@ -81,6 +81,28 @@ public class MainActivity extends Activity {
     private final Map<Integer, String> liveValues = new HashMap<>();
     private boolean modbusPollingActive = false;
     private boolean activityResumed = false;
+    private android.hardware.SensorManager fbdSensorManager;
+    private boolean fbdSensorsRegistered;
+    private final android.hardware.SensorEventListener fbdSensorListener = new android.hardware.SensorEventListener() {
+        @Override public void onAccuracyChanged(android.hardware.Sensor sensor, int accuracy) {}
+        @Override public void onSensorChanged(android.hardware.SensorEvent event) {
+            if (!operatorMode || editor == null || event.values == null) return;
+            boolean changed = false;
+            if (event.sensor.getType() == android.hardware.Sensor.TYPE_LIGHT && event.values.length > 0) {
+                for (Widget widget : widgets) if ("FBD CRAFT SENSOR LIGHT".equals(widget.type)) {
+                    widget.craftSensorValue = Math.max(0, (int)event.values[0]); widget.craftSensorValid = true; changed = true;
+                }
+            } else if (event.sensor.getType() == android.hardware.Sensor.TYPE_ORIENTATION && event.values.length >= 3) {
+                for (Widget widget : widgets) if ("FBD CRAFT SENSOR ORIENTATION".equals(widget.type)) {
+                    widget.craftOrientationValues[0] = event.values[0];
+                    widget.craftOrientationValues[1] = event.values[1];
+                    widget.craftOrientationValues[2] = event.values[2];
+                    widget.craftSensorValid = true; changed = true;
+                }
+            }
+            if (changed) editor.invalidate();
+        }
+    };
     private final PollSessionGuard pollSession = new PollSessionGuard();
     private volatile boolean modbusPollInFlight = false;
     private final Runnable modbusPollRunnable = new Runnable() {
@@ -163,12 +185,13 @@ public class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         activityResumed = true;
-        if (editor != null) startModbusPolling();
+        if (editor != null) { startModbusPolling(); startFbdSensors(); }
     }
 
     @Override protected void onPause() {
         activityResumed = false;
         stopModbusPolling();
+        stopFbdSensors();
         if (mediaPlayer != null) {
             try { mediaPlayer.stop(); } catch (Exception ignored) {}
             try { mediaPlayer.release(); } catch (Exception ignored) {}
@@ -180,6 +203,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         stopModbusPolling();
+        stopFbdSensors();
         editor = null;
         modbusExecutor.shutdownNow();
         if (mediaPlayer != null) {
@@ -729,6 +753,35 @@ public class MainActivity extends Activity {
         return parseBinding(widgetIndex, binding, 1);
     }
 
+    private void startFbdSensors() {
+        if (!activityResumed || !operatorMode || editor == null || fbdSensorsRegistered) return;
+        if (fbdSensorManager == null)
+            fbdSensorManager = (android.hardware.SensorManager)getSystemService(SENSOR_SERVICE);
+        if (fbdSensorManager == null) return;
+        boolean neededLight = false, neededOrientation = false;
+        for (Widget widget : widgets) {
+            neededLight |= "FBD CRAFT SENSOR LIGHT".equals(widget.type);
+            neededOrientation |= "FBD CRAFT SENSOR ORIENTATION".equals(widget.type);
+        }
+        boolean registered = false;
+        if (neededLight) {
+            android.hardware.Sensor sensor = fbdSensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_LIGHT);
+            if (sensor != null) registered |= fbdSensorManager.registerListener(fbdSensorListener, sensor,
+                    android.hardware.SensorManager.SENSOR_DELAY_NORMAL);
+        }
+        if (neededOrientation) {
+            android.hardware.Sensor sensor = fbdSensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_ORIENTATION);
+            if (sensor != null) registered |= fbdSensorManager.registerListener(fbdSensorListener, sensor,
+                    android.hardware.SensorManager.SENSOR_DELAY_NORMAL);
+        }
+        fbdSensorsRegistered = registered;
+    }
+
+    private void stopFbdSensors() {
+        if (fbdSensorManager != null && fbdSensorsRegistered) fbdSensorManager.unregisterListener(fbdSensorListener);
+        fbdSensorsRegistered = false;
+    }
+
     private BindingRequest parseBinding(int widgetIndex, String binding, int quantity) {
         if (binding == null || !binding.startsWith("tcp://")) return null;
         try {
@@ -1238,7 +1291,7 @@ public class MainActivity extends Activity {
             actionParams.gravity = Gravity.CENTER_HORIZONTAL;
             root.addView(actions, actionParams);
         }
-        setContentView(root); editor.invalidate(); startModbusPolling();
+        setContentView(root); editor.invalidate(); startModbusPolling(); startFbdSensors();
     }
 
     private android.widget.ImageButton editorIcon(int drawable, String description) {
@@ -1960,6 +2013,34 @@ public class MainActivity extends Activity {
         final android.widget.Spinner craftVariableTypeField;
         final android.widget.CheckBox craftNamedConstantModeField;
         final EditText craftNamedConstantValueField;
+        final android.widget.Spinner craftOrientationAxisField;
+        if ("FBD CRAFT SENSOR ORIENTATION".equals(w.type)) {
+            craftOrientationAxisField = new android.widget.Spinner(this);
+            craftOrientationAxisField.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item, new String[]{"ORIENTATION_X", "ORIENTATION_Y", "ORIENTATION_Z"}));
+            craftOrientationAxisField.setSelection(craftOrientationAxis(w) - 1);
+            craftOrientationAxisField.setContentDescription("Ось датчика ориентации");
+            form.addView(craftOrientationAxisField);
+        } else craftOrientationAxisField = null;
+        final EditText craftSunriseLatitudeField, craftSunriseLongitudeField;
+        final android.widget.Spinner craftSunriseModeField;
+        if ("FBD CRAFT SUNRISE".equals(w.type)) {
+            TextView locationLabel = new TextView(this); locationLabel.setText("Координаты точки (широта / долгота)");
+            form.addView(locationLabel);
+            craftSunriseLatitudeField = propertyField(w.extraFields.has("latitude")
+                    ? Double.toString(w.extraFields.optDouble("latitude")) : "", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            craftSunriseLatitudeField.setHint("Широта: −90…90"); form.addView(craftSunriseLatitudeField);
+            craftSunriseLongitudeField = propertyField(w.extraFields.has("longitude")
+                    ? Double.toString(w.extraFields.optDouble("longitude")) : "", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            craftSunriseLongitudeField.setHint("Долгота: −180…180"); form.addView(craftSunriseLongitudeField);
+            craftSunriseModeField = new android.widget.Spinner(this);
+            craftSunriseModeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item, new String[]{"SR — восход", "SS — закат"}));
+            craftSunriseModeField.setSelection("SS".equals(craftSunriseMode(w)) ? 1 : 0);
+            form.addView(craftSunriseModeField);
+        } else {
+            craftSunriseLatitudeField = null; craftSunriseLongitudeField = null; craftSunriseModeField = null;
+        }
         if (isCraftNamedVariableSource(w.type) || isCraftNamedVariableSink(w.type)) {
             boolean source = isCraftNamedVariableSource(w.type);
             craftVariableNameField = propertyField(w.extraFields.optString("craftVariableName",
@@ -2375,6 +2456,30 @@ public class MainActivity extends Activity {
                         catch (Exception ignored) {}
                         boolean source = isCraftNamedVariableSource(w.type);
                         w.type = craftNamedVariableType(variableKind, !source);
+                    }
+                    if (craftOrientationAxisField != null) {
+                        int axis = craftOrientationAxisField.getSelectedItemPosition() + 1;
+                        int oldAxis = craftOrientationAxis(w);
+                        if (textField.getText().toString().trim().equals(craftOrientationLabel(oldAxis)))
+                            textField.setText(craftOrientationLabel(axis));
+                        try { w.extraFields.put("craftSensorAxis", axis); }
+                        catch (Exception ignored) {}
+                    }
+                    if (craftSunriseModeField != null) {
+                        try {
+                            double latitude = Double.parseDouble(craftSunriseLatitudeField.getText().toString().trim());
+                            double longitude = Double.parseDouble(craftSunriseLongitudeField.getText().toString().trim());
+                            if (!Double.isFinite(latitude) || latitude < -90 || latitude > 90
+                                    || !Double.isFinite(longitude) || longitude < -180 || longitude > 180
+                                    || (latitude == 0.0 && longitude == 0.0)) throw new NumberFormatException();
+                            String oldMode = craftSunriseMode(w);
+                            String newMode = craftSunriseModeField.getSelectedItemPosition() == 1 ? "SS" : "SR";
+                            if (textField.getText().toString().trim().equals(oldMode)) textField.setText(newMode);
+                            w.extraFields.put("latitude", latitude); w.extraFields.put("longitude", longitude);
+                            w.extraFields.put("craftSunriseMode", newMode);
+                        } catch (Exception invalid) {
+                            Toast.makeText(this, "Укажи корректные координаты широты и долготы", Toast.LENGTH_LONG).show(); return;
+                        }
                     }
                     w.text = textField.getText().toString();
                     w.connectionInfo = connectionField.getText().toString().trim();
@@ -3120,6 +3225,29 @@ public class MainActivity extends Activity {
         return pin == null ? "" : pin.trim().toUpperCase(java.util.Locale.ROOT);
     }
 
+    public static boolean isCraftFbdSensorSource(String type) {
+        return "FBD CRAFT SENSOR LIGHT".equals(canonicalFbdBlockType(type))
+                || "FBD CRAFT SENSOR ORIENTATION".equals(canonicalFbdBlockType(type));
+    }
+
+    private static boolean isCraftSunriseSource(String type) {
+        return "FBD CRAFT SUNRISE".equals(canonicalFbdBlockType(type));
+    }
+
+    private static String craftOrientationLabel(int axis) {
+        return axis == 2 ? "ORIENTATION_Y" : axis == 3 ? "ORIENTATION_Z" : "ORIENTATION_X";
+    }
+
+    private static int craftOrientationAxis(Widget widget) {
+        return Math.max(1, Math.min(3, widget.extraFields.optInt("craftSensorAxis",
+                widget.extraFields.optInt("type", 1))));
+    }
+
+    private static String craftSunriseMode(Widget widget) {
+        return widget.extraFields.optString("craftSunriseMode",
+                widget.extraFields.optInt("type", 1) == 2 ? "SS" : "SR");
+    }
+
     public static boolean isCraftRegisterSource(String type) {
         String kind = canonicalFbdBlockType(type);
         return "FBD CRAFT VAR BOOL".equals(kind) || "FBD CRAFT VAR INT".equals(kind)
@@ -3177,6 +3305,7 @@ public class MainActivity extends Activity {
             return isCraftRegisterBoolean(kind) ? "BOOL" : "NUMBER";
         if (isCraftRegisterSink(kind) && !output && "IN".equals(name))
             return isCraftRegisterBoolean(kind) ? "BOOL" : "NUMBER";
+        if ((isCraftFbdSensorSource(kind) || isCraftSunriseSource(kind)) && output && "Q".equals(name)) return "NUMBER";
         if (isCraftNamedVariableSource(kind) && output && "Q".equals(name))
             return craftNamedVariableKind(kind) == 1 ? "BOOL" : "NUMBER";
         if (isCraftNamedVariableSink(kind) && !output && "IN".equals(name))
@@ -3611,6 +3740,27 @@ public class MainActivity extends Activity {
         if (index < 0 || index >= widgetsList.size() || visiting[index]) return false;
         Widget widget = widgetsList.get(index);
         if (!isFbdWidget(widget)) return false;
+        if (isCraftSunriseSource(widget.type)) {
+            int value = FbdCraftSunrise.currentLocalHhmm(
+                    widget.extraFields.optDouble("latitude", Double.NaN),
+                    widget.extraFields.optDouble("longitude", Double.NaN),
+                    "SS".equals(craftSunriseMode(widget)),
+                    System.currentTimeMillis(), java.util.TimeZone.getDefault());
+            cacheNumeric[index] = value;
+            return value != 0;
+        }
+        if (isCraftFbdSensorSource(widget.type)) {
+            double value = Double.NaN;
+            if (widget.craftSensorValid) {
+                if ("FBD CRAFT SENSOR LIGHT".equals(widget.type)) value = widget.craftSensorValue;
+                else {
+                    int axis = craftOrientationAxis(widget);
+                    if (axis >= 1 && axis <= 3) value = widget.craftOrientationValues[axis - 1];
+                }
+            }
+            cacheNumeric[index] = value;
+            return Double.isFinite(value) && value != 0.0;
+        }
         if (isCraftNamedVariableSource(widget.type)) {
             int kind = craftNamedVariableKind(widget.type);
             double value = FbdCraftNamedVariableStore.read(
@@ -4567,6 +4717,8 @@ public class MainActivity extends Activity {
         if (isCraftRegisterSink(kind)) return output ? new String[0] : new String[]{"IN"};
         if (isCraftNamedVariableSource(kind)) return output ? new String[]{"Q"} : new String[0];
         if (isCraftNamedVariableSink(kind)) return output ? new String[0] : new String[]{"IN"};
+        if (isCraftSunriseSource(kind)) return output ? new String[]{"Q"} : new String[0];
+        if (isCraftFbdSensorSource(kind)) return output ? new String[]{"Q"} : new String[0];
         if ("FBD AND".equals(kind) || "FBD OR".equals(kind) || "FBD XOR".equals(kind)
                 || "FBD NAND".equals(kind) || "FBD NOR".equals(kind))
             return output ? new String[]{"Q"} : new String[]{"IN1", "IN2"};
@@ -4712,6 +4864,9 @@ public class MainActivity extends Activity {
         FbdCraftNativeTimer.State craftBlinkState = FbdCraftNativeTimer.State.initial();
         FbdCraftNativeTimer.State craftTimerState = FbdCraftNativeTimer.State.initial();
         boolean craftArrayLastEnable = false;
+        transient double craftSensorValue = Double.NaN;
+        transient double[] craftOrientationValues = new double[]{Double.NaN, Double.NaN, Double.NaN};
+        transient boolean craftSensorValid;
         transient int craftRegisterWord0, craftRegisterWord1;
         transient boolean craftRegisterValid;
         transient boolean craftRegisterWritePending;
