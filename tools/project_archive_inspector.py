@@ -145,7 +145,7 @@ def inspect_archive(path: str) -> Report:
                 report.issues.append(Issue("error", "Non-empty entry has zero compressed size", info.filename))
             elif info.compress_size > 0 and info.file_size / info.compress_size > 1000:
                 report.issues.append(Issue("warning", "Extreme compression ratio; inspect before importing", info.filename))
-            if info.filename.lower().endswith(".json"):
+            if info.filename.lower().endswith((".json", ".pro")):
                 json_candidates.append(info.filename)
 
         # ZipFile.getinfo(name) resolves duplicate names ambiguously. Do not parse
