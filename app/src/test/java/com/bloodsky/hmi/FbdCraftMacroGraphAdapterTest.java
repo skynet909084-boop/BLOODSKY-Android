@@ -91,6 +91,17 @@ public class FbdCraftMacroGraphAdapterTest {
         assertTrue(widgets.getJSONObject(3).getBoolean("craftMqttRetain"));
     }
 
+    @Test public void preservesMacrosThatNeedScreenLevelIo() throws Exception {
+        int[] unsupported = {101, 102, 106, 108, 109, 120, 130, 131, 132, 139, 140};
+        for (int id : unsupported) {
+            JSONObject root = validMacro();
+            root.getJSONArray("fbInMacros").getJSONObject(0).put("componentId", id);
+            FbdCraftMacroDefinition expanded = FbdCraftMacroGraphAdapter.expandIfSupported(
+                    FbdCraftMacroDefinition.fromJson(root.toString()));
+            assertNull("ID " + id + " must stay opaque", expanded.toJson().optJSONObject("bloodskyGraph"));
+        }
+    }
+
     @Test public void failsClosedForUnknownIdsOrBrokenEdges() throws Exception {
         JSONObject unknown = validMacro();
         unknown.getJSONArray("fbInMacros").getJSONObject(0).put("componentId", 999);
