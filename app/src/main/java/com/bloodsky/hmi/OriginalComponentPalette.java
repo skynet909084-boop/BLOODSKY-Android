@@ -23,7 +23,8 @@ public final class OriginalComponentPalette {
         bind(dialog, R.id.kc_picker_tab_list, "Список Craft", "Список", add);
         bind(dialog, R.id.kc_picker_tab_line_setter, "Линейный задатчик Craft", "Линейный задатчик", add);
         unavailable(dialog, R.id.kc_picker_tab_voice_recognition, "Распознавание речи");
-        unavailable(dialog, R.id.kc_picker_tab_digital_indicator, "Цифровой индикатор");
+        bind(dialog, R.id.kc_picker_tab_digital_indicator,
+                "Текст", "Цифровой индикатор", add);
         bind(dialog, R.id.kc_picker_tab_alarm, "Звуковой сигнал", "Аларм", add);
         unavailable(dialog, R.id.kc_picker_tab_gif, "GIF");
         bind(dialog, R.id.kc_picker_tab_archive, "Архив Craft", "Архив", add);
