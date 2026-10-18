@@ -294,4 +294,23 @@ public class ModbusTcpTest {
             assertEquals(0, written.size());
         }
     }
+
+    @Test
+    public void testModbusRtuTransportRejectsInvalidRequestBeforeIo() throws Exception {
+        ByteArrayOutputStream written = new ByteArrayOutputStream();
+        MainActivity.ModbusRtuTransport transport = new MainActivity.ModbusRtuTransport(
+                new ByteArrayInputStream(new byte[0]), written);
+        try {
+            transport.sendAndReceive(0, 3, 0, 1);
+            fail("Expected broadcast unit to be rejected for request/response");
+        } catch (IllegalArgumentException expected) {
+            assertEquals(0, written.size());
+        }
+        try {
+            transport.sendAndReceive(1, 3, 65535, 2);
+            fail("Expected an overflowing RTU address range to be rejected");
+        } catch (IllegalArgumentException expected) {
+            assertEquals(0, written.size());
+        }
+    }
 }
