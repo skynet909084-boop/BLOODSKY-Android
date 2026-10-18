@@ -322,7 +322,7 @@ class FastFbdSmoke(Smoke):
         if not {'android.widget.ScrollView', 'android.widget.HorizontalScrollView'}.issubset(scrollable):
             raise AssertionError('FBD design surface is not scrollable in both axes: '
                                  + repr(scrollable))
-        screen_size = re.search(r'(\\d+)x(\\d+)', adb('shell', 'wm', 'size'))
+        screen_size = re.search(r'(\d+)x(\d+)', adb('shell', 'wm', 'size'))
         if not screen_size:
             raise AssertionError('Could not determine emulator screen size for workspace swipe')
         screen_w, screen_h = map(int, screen_size.groups())
