@@ -611,7 +611,15 @@ class Smoke:
         self.tap(description='Показать панель')
         self.wait_node(description='Запустить проект')
         self.tap(description='Меню проекта')
-        self.wait_node('Настройки проекта')
+        # This is the original editor overflow menu: its first row opens the
+        # project TCP bindings. Project settings live elsewhere in this build.
+        self.wait_node('Устройства / серверы')
+        self.wait_node('Пароль проекта')
+        self.wait_node('Режим станции: Мастер')
+        self.wait_node('Показывать тайм-ауты')
+        self.wait_node('Сетевое управление')
+        self.wait_node('Работа в фоне')
+        self.wait_node('Дополнительные действия BLOODSKY…')
         self.capture('01b-editor-commands')
         adb('shell', 'input', 'keyevent', '4')
         self.tap(description='Калькулятор')
