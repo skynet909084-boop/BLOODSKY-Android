@@ -91,6 +91,15 @@ The original fullscreen logic palette already contains imported preview widgets 
 
 `OriginalFbdNativePaletteMappingTest` asserts source mappings, numeric versus Boolean pin contracts, RS priority and unsupported tags. `tools/android_ui_fbd_quick.py` exercises the actual original palette, adds each enabled source-native node, checks non-overlap and verifies project cold-reload IDs. CH_I/CH_F, MOVE, TIMER and register semantics are documented in the dated source batch notes. No preview is treated as complete merely from a visual label; only MACRO nested-graph lifecycle remains open among the current source-backed operator gaps.
 
+### Remaining source-backed blocker: FB_MACRO lifecycle
+
+Direct inspection of `Logic/FB_MACRO.java`, `Logic/c/e.java`, `Logic/VarName/VarNameIn.java` and `Logic/VarName/VarNameOut.java` confirms the remaining implementation boundary:
+
+- The macro has up to four input ports (`I1`–`I4`) and a typed output (`Q`). `FB_MACRO.f()` writes connected input values to the variable store as `<uniqueId>_<variableName>`; `getOut()` reads the namespaced value using BOOL, Integer or Float according to the output port type.
+- Child VarNameIn/VarNameOut nodes receive the macro's root unique ID. Nonconstant VarNameIn reads and VarNameOut writes that same namespaced store, so two macro instances must never share runtime variables.
+- `FB_MACRO.v(SparseArray, path)` serializes only children whose root unique ID matches the macro instance, excluding the macro itself and interface nodes. Each child record includes `componentId`, position, macro name and unique ID, plus register/bit metadata for eligible logic blocks. The definition is wrapped in `fbInMacros` and saved under the macro name through the original `.mcr` helper.
+- The copy metadata additionally carries each interface port's name/type and connection keys. A compatible BLOODSKY implementation therefore needs nested graph editing, validated `.mcr` import/export, dynamic typed outer pins, child evaluation order, and unique per-instance namespaces as one feature. Until those pieces exist together, `FB_MACRO` remains disabled in the original catalogue.
+
 ## Original FBD palette crowded-screen placement defect — resolved separately
 
 Reviewing real Android screenshot from the accepted [#121](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/121) original RS/T/CTU palette run **39070131140** (artifact `12114798193`) exposed a real editor defect: when `freeFbdPlacement` returned null due lack of space, `addWidget` showed a toast but **still inserted a new 150dp FBD at the stale default offset**, overlapping existing native blocks. The test previously checked types and save/reload but failed to assert non-overlapping geometry.
