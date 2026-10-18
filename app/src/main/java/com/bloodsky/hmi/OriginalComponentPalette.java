@@ -37,7 +37,7 @@ public final class OriginalComponentPalette {
         bind(dialog, R.id.kc_picker_tab_push_notif, "Telegram-уведомление", "Событие", add);
         unavailable(dialog, R.id.kc_picker_tab_web_view, "Веб-страница");
         bind(dialog, R.id.kc_picker_tab_button, "Кнопка", "Кнопка", add);
-        bind(dialog, R.id.kc_picker_tab_digital_setters, "Задатчик", "Задатчик: 0", add);
+        bind(dialog, R.id.kc_picker_tab_digital_setters, "Числовой ввод Craft", "0", add);
         bind(dialog, R.id.kc_picker_tab_text, "Текст", "Надпись", add);
         bind(dialog, R.id.kc_picker_tab_dyn_text, "Динамический текст", "Динамический текст", add);
         bind(dialog, R.id.kc_picker_tab_lamp, "Индикатор", "Индикатор", add);
