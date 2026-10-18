@@ -19,6 +19,14 @@ Source: `HMI-KaSCADA-v1.4-ot-08.09.19 (1).pdf` (109 pages), checked as extracted
 | 10–11, FBD | RS; T/R/F triggers; TON/TOF/TP/BLINK; CTU; MOVE; POW; conversions; SIN; orientation; LN; XOR; ABS; sunrise/sunset; SEL; MX; temperature/humidity, light and speed sensors; MCR; ARRAY | Several source-compatible FBD blocks and authored macro graphs exist with tests. Opaque imported Craft macro records are preserved, not executed. | Finish per-block pin/type/scan/reset parity. Sensors need hardware lifecycle; macro import execution and full array semantics need verification. |
 | 12, EL | AND/OR, integer comparisons and arithmetic, float comparisons and arithmetic; truth tables | BLOODSKY has Boolean and typed arithmetic/compare paths; not all visual layouts and type boundaries are identical. | Compare each truth table and edge cases to the manual; verify imported wire indexes/types and editor visuals. |
 
+## Visual pages checked
+
+- Pages 6–20 show the project list, editor/work-mode menus, connection and settings dialogs, and the screen navigation surface. These pages define the interaction flow as well as the labels.
+- Pages 21–75 pair widget examples with property tables. The settings tables are useful for field-by-field editor coverage; screenshots alone do not establish runtime behavior.
+- Page 91 documents the orientation sensor axes and angles: X heading uses north/east/south/west at 0/90/180/270 degrees; Y describes tilt; Z describes side roll. These are explicit acceptance values for the FBD sensor, not just an illustration to copy.
+- Pages 102–109 show the logic element UI and truth tables. These should be used as truth-value acceptance cases when comparing the original EL block behavior.
+- The original APK's bundled drawable resources are already available through the pinned-resource preparation step. Reusing a matching bitmap helps visual parity, but does not mark the associated feature as implemented when its interaction or data path is missing.
+
 ## Decoded component IDs confirmed this pass
 
 | Craft ID | Decompiled class | Meaning | Import treatment |
