@@ -139,13 +139,9 @@ def generate_report(archive_path, expected_sha256=EXPECTED_SHA256):
         "source_sha256": expected_sha256,
         "classes": entries,
         "scope": "read-only static evidence; do not equate labels with behavior",
-        "pending_acceptance": ["CTU +,-,R numeric direction and saturation",
-                               "RS concurrent-set/reset precedence",
-                               "TON/TOF/TP units and modes", "BLINK execution",
-                               "trigger reset and rising/falling edge semantics",
-                               "MOVE EN/I numeric gating, SEL pin selection and mode",
-                               "COMPARE and POW number type precision/NaN/overflow",
-                               "MX/ARRAY/MACRO internal state; native preview must remain disabled until verified"],
+        "pending_acceptance": ["FB_MACRO nested graph editing, typed interfaces, persistence and isolated namespaces",
+                               "remaining original palette actions and hardware I/O behavior",
+                               "same-density visual parity and complete original project lifecycle"],
     }
 
 

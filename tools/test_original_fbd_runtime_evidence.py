@@ -51,7 +51,7 @@ class RuntimeEvidenceTest(unittest.TestCase):
                        if item["path"].endswith("/FB_SEL.java"))
             self.assertIn("if (sel)", sel["execution"][0]["code"])
             self.assertIn("else result", sel["execution"][0]["code"])
-            self.assertTrue(any("MOVE" in item and "SEL" in item
+            self.assertTrue(any("FB_MACRO" in item
                                 for item in output["pending_acceptance"]))
             self.assertRaises(ValueError, generate_report, archive, "0" * 64)
 
