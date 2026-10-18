@@ -95,3 +95,11 @@ Design an additive SQLite-backed catalog migration that imports existing SharedP
 - The paired 112-byte `пож.zip` contains only the empty `пож/` directory—no `.pro` JSON or media. `пож.pro` must be imported as standalone JSON or repackaged with its project assets before ZIP import can be verified.
 - The fire project also contains 5 Craft component-ID 9 rows and 11 ID 19 rows. Neither has a verified BLOODSKY component mapping; they must remain visibly flagged/preserved until their source behavior is identified. Existing imports preserve unknown records, but should not imply those controls execute.
 - Standalone Craft `.pro` JSON is detected and converted by the shared import service; existing BLOODSKY JSON and ZIP paths remain supported. Sanitized CI fixtures now preserve the three supplied projects’ component records while removing project/device credentials and labels. A new Android unit test imports all three, validates their screens/components (including fire-project screen 20 and 11 fail-closed ID 19 gateways), then atomically saves and reopens each project. The empty `пож.zip` still cannot validate media round-trip; background asset decoding remains covered separately.
+
+
+### Craft ID 20 bit list — implementation slice
+
+- Decompiled `CustomList.java` and `mbCanvas` confirm a 16-bit selection mask, labels `textBit0`–`textBit15`, multi-select popup, `visibleInWork`, and `checkNoChange` (“bits cannot be changed in work mode”).
+- BLOODSKY imports the 16 labels and flags, preserves opaque legacy connection metadata, and requires an explicit operator TCP holding-register binding. FC03 reads the UINT16 mask; FC06 writes the updated mask. Blank labels cannot be toggled.
+- New Craft list widgets can be added from the original component palette; property editor saves labels/flags and supports read-only mode and hidden-in-work mode. Tests cover mask boundary, editor normalization, serialized/object label forms, and importer fail-closed remapping.
+- Remaining: run the required Android unit tests and APK build in CI, compare operator popup/rendering side-by-side with Craft, and verify against a Modbus device.
