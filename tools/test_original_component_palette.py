@@ -40,11 +40,11 @@ class OriginalComponentPaletteTests(unittest.TestCase):
         self.assertIn('"Фон экрана", background', code)
         self.assertNotIn('java.util.function', code) # API 23 compatibility.
 
-    def test_outbound_sms_is_event_bound_inbound_stays_disabled_and_push_uses_telegram(self):
+    def test_sms_directions_are_opt_in_and_push_uses_telegram(self):
         palette = (ROOT / 'app/src/main/java/com/bloodsky/hmi/OriginalComponentPalette.java').read_text()
         main = (ROOT / 'app/src/main/java/com/bloodsky/hmi/MainActivity.java').read_text()
         manifest = (ROOT / 'app/src/main/AndroidManifest.xml').read_text()
-        self.assertIn('Входящее SMS (SIM): пока не перенесено', palette)
+        self.assertIn('bind(dialog, R.id.kc_picker_tab_sms_in, "Входящее SMS", "SMS: команда", add)', palette)
         self.assertIn('bind(dialog, R.id.kc_picker_tab_sms_out, "SMS-уведомление", "SMS: {value}", add)', palette)
         self.assertIn('R.id.kc_picker_tab_sms_in).setVisibility(View.VISIBLE)', palette)
         self.assertIn('R.id.kc_picker_tab_sms_out).setVisibility(View.VISIBLE)', palette)
@@ -52,7 +52,10 @@ class OriginalComponentPaletteTests(unittest.TestCase):
         self.assertIn('"Telegram-уведомление".equals(w.type)', main)
         self.assertIn('"SMS-уведомление".equals(w.type)', main)
         self.assertIn('android.permission.SEND_SMS', manifest)
-        self.assertNotRegex(manifest, r'android\.permission\.(?:RECEIVE|READ)_SMS')
+        self.assertIn('android.permission.RECEIVE_SMS', manifest)
+        self.assertIn('smsEnabled", false', main)
+        self.assertIn('refreshIncomingSmsReceiver()', main)
+        self.assertIn('new SmsIncomingBroadcastReceiver(this::handleIncomingSms)', main)
 
 if __name__ == '__main__':
     unittest.main()
