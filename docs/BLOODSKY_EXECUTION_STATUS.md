@@ -110,3 +110,10 @@ Design an additive SQLite-backed catalog migration that imports existing SharedP
 - Decompiled `CustomSeekBar` (`v.java`) and its `mbCanvas` save/restore and touch callbacks: the slider stores `max`, `isTurn` orientation and text/progress/background colors, and commits its integer position on release.
 - BLOODSKY now imports Craft component ID 13, preserves those visual settings and unknown source metadata, creates a property-editable horizontal/vertical slider, and allows a 1–65535 maximum. Imported device bindings remain inactive; an explicitly entered TCP holding-register endpoint is required before FC06 writes.
 - Added range/model tests and importer coverage. Validation: 141 Python tests passed locally; Android unit tests and debug APK passed in CI run #788 on code/test commit `70355b49eb723438f9dcaace2cdfcd9161d084f5`. UI smoke was skipped by workflow rules. Side-by-side rendering and Modbus-device acceptance remain open.
+
+
+### Craft ID 6 button mode 2 — constant write slice
+
+- Decompiled `CustomComponents.e` and the `mbCanvas` touch callback: button mode 2 writes a configured constant register, with `typeRegister` selecting UINT16 or Float32; `visibleInWork` controls operator-mode visibility. The existing device association is installation-specific.
+- Import now preserves the mode, constant, type, source register and visibility while leaving the old binding disabled. The button editor can switch between bit-toggle and constant-write modes; constant mode validates the value and requires an explicit TCP holding-register. Operator presses write UINT16 with FC06 or Float32 with FC16.
+- Added integer/Float32 validation and importer regressions. Validation: 141 Python tests passed locally; Android unit tests and debug APK passed in CI run #795 on code commit `02fbeeeb013a0952b17a3205180f377bc6c419c6`. UI smoke was skipped by workflow rules. Mode 0 bit-toggle parity, screen-navigation editor parity, and hardware/UI acceptance remain open.
