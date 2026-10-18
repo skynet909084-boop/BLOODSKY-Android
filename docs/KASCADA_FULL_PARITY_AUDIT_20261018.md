@@ -72,7 +72,7 @@
 
 ## Текущее решение по следующему пакету
 
-P0 audit/matrix correction completed in the preceding commit. Incoming and outgoing SMS now cover the manual's 1–16 incoming values, optional strobe, and 1–8 outgoing templates. Imported ID 18 remains disabled pending explicit operator configuration. Craft ID 27 is confirmed as a voice-recognition control with sixteen `textVoice0`–`textVoice15` fields, not a TTS announcement. Import now preserves its metadata and renders a disabled placeholder; the original recognition interaction is still unported. Exact original phrase-field mapping, local transports and FBD parity remain open. No imported command executes automatically.
+P0 audit/matrix correction completed in the preceding commit. Incoming and outgoing SMS now cover the manual's 1–16 incoming values, optional strobe, and 1–8 outgoing templates. Imported ID 18 remains disabled pending explicit operator configuration. Craft ID 27 is confirmed as a voice-recognition control with sixteen `textVoice0`–`textVoice15` fields, not a TTS announcement. Import preserves metadata, renders a disabled placeholder, and lets the operator edit all sixteen source phrase fields without enabling execution; the original recognition interaction remains unported. Exact original phrase-field mapping, local transports and FBD parity remain open. No imported command executes automatically.
 
 ## Проверки этого аудита
 
