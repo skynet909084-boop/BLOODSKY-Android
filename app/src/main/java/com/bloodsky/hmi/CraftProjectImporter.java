@@ -276,6 +276,7 @@ public final class CraftProjectImporter {
         } else if (componentId == 19) {
             // Keep the three independent connection records intact. The gateway has side effects
             // (it writes registers on activation), so imported bindings are never auto-executed.
+            widget.put("craftUnsupportedComponent", true);
             widget.put("craftGatewayMode", integer(other.opt("mode"), 0));
             widget.put("craftGatewayRegisterMode", integer(other.opt("regMode"), 0));
             widget.put("craftGatewayBitMode", integer(other.opt("bitMode"), 0));
