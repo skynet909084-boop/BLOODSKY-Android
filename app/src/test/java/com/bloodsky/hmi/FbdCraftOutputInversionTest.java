@@ -45,7 +45,7 @@ public class FbdCraftOutputInversionTest {
         assertFalse(evaluate(Arrays.asList(and), new ArrayList<>(), 0));
 
         JSONObject saved = MainActivity.widgetToJson(and);
-        assertTrue(saved.getJSONObject("vendor").getBoolean("keep"));
+        assertEquals(7, saved.getJSONObject("vendor").getInt("keep"));
         assertTrue(saved.getBoolean("invertOut"));
         MainActivity.Widget restored = MainActivity.widgetFromJson(saved);
         assertTrue(MainActivity.isFbdBlockOutputInverted(restored));
