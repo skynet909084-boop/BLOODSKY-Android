@@ -62,6 +62,7 @@ public class MainActivity extends Activity {
     private static final int REQUEST_EXPORT_PROJECT_ZIP = 7104;
     private static final int REQUEST_IMPORT_CRAFT_MACRO = 7105;
     private static final int REQUEST_EXPORT_CRAFT_MACRO = 7106;
+    private static final int MAX_PROJECT_ARCHIVE_ENTRIES = 20_000;
     private byte[] pendingCraftMacroExport;
     private EditText pendingMediaField;
     private String projectName = "Мой проект";
@@ -3638,13 +3639,18 @@ public class MainActivity extends Activity {
     public static String importProjectFromZip(InputStream inputStream, Map<String, byte[]> extractedMedia) throws Exception {
         byte[] projectJsonBytes = null;
         java.util.Set<String> entryNames = new java.util.HashSet<>();
+        Map<String, byte[]> pendingMedia = new java.util.LinkedHashMap<>();
         long totalUncompressedBytes = 0;
+        int entryCount = 0;
 
         try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(inputStream)) {
             java.util.zip.ZipEntry entry;
             while ((entry = zis.getNextEntry()) != null) {
+                if (++entryCount > MAX_PROJECT_ARCHIVE_ENTRIES) {
+                    throw new IllegalArgumentException("ZIP entry count exceeds limit");
+                }
                 String name = entry.getName();
-                if (name == null || name.contains("..") || name.startsWith("/") || name.startsWith("\\")) {
+                if (!isSafeProjectArchiveEntryName(name)) {
                     throw new IllegalArgumentException("Unsafe entry path in ZIP archive: " + name);
                 }
                 if (!entryNames.add(name.toLowerCase(java.util.Locale.ROOT))) {
@@ -3661,13 +3667,14 @@ public class MainActivity extends Activity {
                     entryBuffer.write(chunk, 0, count);
                 }
                 zis.closeEntry();
-                if ("TableNameProject.json".equalsIgnoreCase(name) || (!name.startsWith("media/") && name.endsWith(".json"))) {
+                if ("TableNameProject.json".equalsIgnoreCase(name)
+                        || (!name.startsWith("media/") && name.toLowerCase(java.util.Locale.ROOT).endsWith(".json"))) {
                     if (projectJsonBytes != null) {
                         throw new IllegalArgumentException("Multiple JSON project files in archive");
                     }
                     projectJsonBytes = entryBuffer.toByteArray();
                 } else if (name.startsWith("media/") && extractedMedia != null && !entry.isDirectory()) {
-                    extractedMedia.put(name.substring("media/".length()), entryBuffer.toByteArray());
+                    pendingMedia.put(name.substring("media/".length()), entryBuffer.toByteArray());
                 }
             }
         }
@@ -3676,7 +3683,32 @@ public class MainActivity extends Activity {
         }
         String json = new String(projectJsonBytes, StandardCharsets.UTF_8);
         validateImportedProjectStatic(json);
+        if (extractedMedia != null) {
+            for (String path : pendingMedia.keySet()) {
+                for (String existing : extractedMedia.keySet()) {
+                    if (existing.equalsIgnoreCase(path)) {
+                        throw new IllegalArgumentException("Duplicate extracted media path: " + path);
+                    }
+                }
+            }
+            extractedMedia.putAll(pendingMedia);
+        }
         return json;
+    }
+
+    /** Reject ambiguous and platform-specific paths before interpreting a ZIP member. */
+    static boolean isSafeProjectArchiveEntryName(String name) {
+        if (name == null || name.isEmpty() || name.indexOf('\\') >= 0
+                || name.indexOf('\0') >= 0 || name.startsWith("/")) return false;
+        boolean directory = name.endsWith("/");
+        String body = directory ? name.substring(0, name.length() - 1) : name;
+        if (body.isEmpty()) return false;
+        String[] parts = body.split("/", -1);
+        if (parts.length == 0 || parts[0].indexOf(':') >= 0) return false;
+        for (String part : parts) {
+            if (part.isEmpty() || ".".equals(part) || "..".equals(part)) return false;
+        }
+        return true;
     }
 
     private boolean persistNestedMacroEdit(boolean synchronous) {
