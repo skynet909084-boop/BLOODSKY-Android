@@ -507,9 +507,31 @@ class Smoke:
             (self.output / '07-migrated-legacy-media.png').read_bytes(),
             (235, 21, 207), tolerance=12)
         if visible_pixels < 800:
+            current_after_open = adb('shell', 'run-as', PACKAGE, 'cat',
+                                     'shared_prefs/bloodsky_projects.xml')
+            loaded_prefs = {node.get('name'): node.text
+                            for node in ET.fromstring(current_after_open)}
+            loaded_project = json.loads(loaded_prefs.get('active_project', '{}'))
+            loaded_screens = loaded_project.get('screens', [])
+            loaded_widgets = (loaded_screens[0].get('widgets', [])
+                             if loaded_screens else [])
+            render_state = {
+                'projectName': loaded_project.get('projectName'),
+                'storageId': loaded_project.get('storageId'),
+                'screenCount': len(loaded_screens),
+                'screenName': loaded_screens[0].get('name') if loaded_screens else None,
+                'widgets': [{
+                    'type': item.get('type'), 'text': item.get('text'),
+                    'x': item.get('x'), 'y': item.get('y'),
+                    'w': item.get('w'), 'h': item.get('h'),
+                    'visible': item.get('visible'),
+                    'imagePath0': (item.get('imagePathStates') or [None])[0]
+                } for item in loaded_widgets]
+            }
             raise AssertionError(
                 'Migrated image bytes exist, but editor did not render the actual PNG: '
-                + str(visible_pixels) + ' magenta pixels')
+                + str(visible_pixels) + ' magenta pixels; active project state='
+                + json.dumps(render_state, ensure_ascii=False))
         adb('shell', 'am', 'force-stop', PACKAGE)
         adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
         self.tap('Загрузить проект')
