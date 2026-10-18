@@ -213,6 +213,19 @@ public class FbdCraftMacroDefinitionTest {
                 new boolean[4], cacheValid, cacheValues, cacheNumeric), 0.0);
     }
 
+    @Test public void nestedMacroOutputTracksBlockDeletionAndFailsClosedIfRemoved() {
+        MainActivity.Widget earlier = new MainActivity.Widget();
+        MainActivity.Widget output = new MainActivity.Widget();
+        MainActivity.Widget later = new MainActivity.Widget();
+        java.util.List<MainActivity.Widget> graph = new java.util.ArrayList<>(
+                java.util.Arrays.asList(earlier, output, later));
+
+        graph.remove(earlier);
+        assertEquals(0, MainActivity.findCraftMacroOutputNode(graph, output));
+        graph.remove(output);
+        assertEquals(-1, MainActivity.findCraftMacroOutputNode(graph, output));
+    }
+
     @Test public void capturesUpstreamCanvasAndCreatesTypedMacroInputs() throws Exception {
         MainActivity.Widget inputA = new MainActivity.Widget();
         inputA.type = "FBD Вход";

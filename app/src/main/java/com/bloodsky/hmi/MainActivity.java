@@ -1407,6 +1407,14 @@ public class MainActivity extends Activity {
         return hasNumericInput && hasFloatInput ? 3 : declared;
     }
 
+    /** Resolve a nested macro output by widget identity after graph edits reindex the canvas. */
+    static int findCraftMacroOutputNode(List<Widget> graphWidgets, Widget outputWidget) {
+        if (graphWidgets == null || outputWidget == null) return -1;
+        for (int i = 0; i < graphWidgets.size(); i++)
+            if (graphWidgets.get(i) == outputWidget) return i;
+        return -1;
+    }
+
     /** Replace an editable nested graph, re-infer its output type, and validate the full definition. */
     public static FbdCraftMacroDefinition updateCraftMacroDefinitionGraph(
             FbdCraftMacroDefinition definition, List<Widget> graphWidgets,
@@ -3676,10 +3684,7 @@ public class MainActivity extends Activity {
         if (session == null || currentScreenIndex != session.screenIndex) return false;
         try {
             saveActiveScreen();
-            int outputNode = -1;
-            for (int i = 0; i < widgets.size(); i++) {
-                if (widgets.get(i) == session.outputWidget) { outputNode = i; break; }
-            }
+            int outputNode = findCraftMacroOutputNode(widgets, session.outputWidget);
             if (outputNode < 0)
                 throw new IllegalArgumentException("Выходной блок удалён. Назначьте новый выход перед сохранением.");
             session.outputNode = outputNode;
