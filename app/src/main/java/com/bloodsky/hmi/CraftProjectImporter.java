@@ -182,6 +182,7 @@ public final class CraftProjectImporter {
         else if (componentId == 22) type = "Шлюз битовый"; // CustomComponents.l, source/receive/trigger bit gateway
         else if (componentId == 23) type = "Видео RTSP Craft"; // CustomComponents.f; preserve as disabled until source-backed player mapping
         else if (componentId == 13) type = "Линейный задатчик Craft"; // CustomSeekBar
+        else if (componentId == 15) type = "Архив Craft"; // local-only history; Craft device links stay disabled until remapped
         else if (componentId == 20) type = "Список Craft"; // CustomList, 16 selectable bit labels
         else if (componentId == 6 && integer(other.opt("mode"), 0) == 1)
             type = "Переход на экран"; // CustomComponents.e mode 1 calls the original screen-switch handler
