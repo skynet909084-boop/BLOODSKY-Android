@@ -1,5 +1,12 @@
 # BLOODSKY execution status — 2026-10-17
 
+## Full manual/decompilation audit refresh — 2026-10-18
+
+- `KASCADA_FULL_PARITY_AUDIT_20261018.md` now cross-checks all manual chapters 2–12, the decoded component registry, the pinned decompilation, and the three supplied `.pro`/ZIP samples. It separates implemented paths from tested compatibility and device/visual proof.
+- `BLOODSKY_PARITY_MATRIX.json` was corrected: most broad feature rows are partial; bit list and voice-announcement widgets are missing. Earlier “implemented” labels had overstated KaSCADA parity.
+- The immediate open SMS gap is material: manual §8.4 describes inbound SMS as a sender- and command-matched Modbus register/bit control; BLOODSKY only has an outbound one-value event widget. Manual §8.5 allows up to eight outgoing register values; BLOODSKY currently inserts one value.
+- Stable `main` remains untouched. No new visual or physical-device parity is claimed by this audit refresh.
+
 Target: original KaScada Craft 1.0.7 functionality and appearance with BLOODSKY branding and without licensing/component-count activation. A passing build does not prove a full clone.
 
 ## Craft project import update — 2026-10-18
