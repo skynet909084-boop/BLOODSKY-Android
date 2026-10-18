@@ -6,6 +6,8 @@ import org.junit.Test;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
@@ -17,6 +19,17 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public class CraftProjectImporterTest {
+    private static String fixture(String name) throws Exception {
+        try (InputStream in = CraftProjectImporterTest.class.getResourceAsStream("/craft_samples.json")) {
+            if (in == null) throw new AssertionError("Missing sanitized Craft fixtures");
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buffer = new byte[4096];
+            int read;
+            while ((read = in.read(buffer)) != -1) out.write(buffer, 0, read);
+            return new JSONObject(new String(out.toByteArray(), StandardCharsets.UTF_8)).getString(name);
+        }
+    }
+
     private static String sample() {
         return "{\"TableNameProject\":{\"name\":\"Sample\",\"countScreen\":2,\"vendorField\":17,"
                 + "\"jsTableNameProject_screenBackground\":{\"screen1IsColor\":false,\"screen1PathImage\":\"attach.png\",\"screen1Color\":-1,\"screen2IsColor\":true,\"screen2PathImage\":\"\",\"screen2Color\":123}},"
@@ -242,6 +255,50 @@ public class CraftProjectImporterTest {
             assertTrue(expected.getMessage().contains("лимита"));
         }
         assertTrue("Screen references beyond the supported limit must be rejected", rejected);
+    }
+
+    @Test public void suppliedProjectFixturesImportValidateAndSurviveSaveReopen() throws Exception {
+        assertFixtureRoundTrip("home", 24, 16, 0);
+        assertFixtureRoundTrip("gitH", 65, 16, 0);
+        assertFixtureRoundTrip("пож", 124, 20, 11);
+    }
+
+    private static void assertFixtureRoundTrip(String name, int componentCount, int screenCount,
+                                               int disabledGatewayCount) throws Exception {
+        String imported = CraftProjectImporter.convert(fixture(name));
+        MainActivity.validateImportedProjectStatic(imported);
+        JSONObject project = new JSONObject(imported);
+        JSONArray screens = project.getJSONArray("screens");
+        assertEquals(name + " screen count", screenCount, screens.length());
+        int rows = 0;
+        int disabledGateways = 0;
+        for (int i = 0; i < screens.length(); i++) {
+            JSONArray widgets = screens.getJSONObject(i).getJSONArray("widgets");
+            rows += widgets.length();
+            for (int j = 0; j < widgets.length(); j++) {
+                JSONObject widget = widgets.getJSONObject(j);
+                if ("Шлюз Craft".equals(widget.optString("type"))
+                        && widget.optBoolean("craftUnsupportedComponent")) disabledGateways++;
+            }
+        }
+        assertEquals(name + " source component count", componentCount,
+                project.getJSONObject("craftSource").getJSONArray("TableComponent").length());
+        assertEquals(name + " imported row count", componentCount, rows);
+        assertEquals(name + " fail-closed gateways", disabledGatewayCount, disabledGateways);
+
+        File temp = File.createTempFile("craft-fixture-", ".json");
+        try {
+            MainActivity.saveProjectAtomic(temp, imported);
+            String reopened = MainActivity.loadProjectAtomic(temp);
+            MainActivity.validateImportedProjectStatic(reopened);
+            JSONObject reopenedProject = new JSONObject(reopened);
+            assertEquals(componentCount, reopenedProject.getJSONObject("craftSource")
+                    .getJSONArray("TableComponent").length());
+            assertEquals(screenCount, reopenedProject.getJSONArray("screens").length());
+        } finally {
+            //noinspection ResultOfMethodCallIgnored
+            temp.delete();
+        }
     }
 
 }
