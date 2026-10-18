@@ -11,24 +11,24 @@ Updated 2026-10-17. Stable `main` is **not changed** by this CI experiment.
 
 ## Why Android UI verification is slow
 
-The prior `.github/workflows/android-ui-smoke.yml` ran `tools/android_ui_smoke.py` for every new pull-request revision, even if a change affected only an FBD label or canvas color. Every CI runner starts clean, provisions Android SDK/build-tools and Gradle, builds the debug APK and a test input-driver JAR, boots an API30/x86_64 emulator with KVM, performs accessibility `uiautomator dump` repeatedly, drives the 800+-line UI suite with save/reopen/image-provider/canvas actions, then uploads captures. GitHub's `cancel-in-progress: true` automatically terminates obsolete intermediate head runs. Such cancellations are **not** successful verification and rerunning all UI scenarios after every small commit consumes runner time.
+Every CI runner starts clean, provisions Android SDK/build-tools and Gradle, builds the debug APK and a test input-driver JAR, boots an API30/x86_64 emulator with KVM, performs accessibility `uiautomator dump` repeatedly, drives the UI suite, then uploads captures. The quick profile shortened the on-device scenarios but still paid the full SDK and emulator startup cost. Also, `cancel-in-progress: true` terminates an obsolete run when a newer commit arrives; the next run starts fresh, so rapid pushes repeatedly paid setup cost without producing exact-head UI evidence.
 
 ## Two explicit verification tiers
 
 | Where | Profile | Coverage |
 | --- | --- | --- |
-| Feature PR targeting another feature branch, e.g. #107 or CI experiments | `quick` (automatic) | Real API30 emulator: new original FBD palette AND+TON, block-specific long-press menu and Cancel without mutation, exact 2345 ms, typed Q→IN, BOOL inverter, undo, cold project restart, crash log |
+| Feature PR targeting another feature branch | `quick` on open/reopen/ready-for-review; no emulator reboot on each synchronize | Real API30 emulator remains available for focused FBD interaction coverage. Run `workflow_dispatch` on the exact final head when UI evidence is needed. |
 | PR targeting stable `main`, push to `main` | `full` (automatic) | Unmodified `tools/android_ui_smoke.py`: original palette/editor, image library, DocumentsUI files, all FBD geometry/wire editing, copying, restart, Modbus-related UI, operator workflow, deleted/legacy media migration and crash checks |
 | `workflow_dispatch` on any branch | `full` by default; `quick` selectable | Explicit final verification before integrating feature branches |
 | Android JUnit and debug APK workflow | Unchanged | All Python source tests and Java JUnit plus compile + debug artifact for each meaningful head |
 
-**Exact-source CI gate policy:** feature→feature merges require green exact-head Android APK/JUnit AND quick UI, plus a manually dispatched **full** run at the *same head* for FBD integration into #76. PR #76 targeting `main` runs full automatically. For release or stable main merge, do not rely on only the quick profile. If the full test is red or missing, no merge, sign or release.
+**Exact-source CI gate policy:** Android APK/JUnit and source tests run on meaningful commits. For feature→feature integration, dispatch the quick UI on the exact final head when UI evidence is needed; dispatch full on that same head before integrating FBD into #76. PRs targeting `main` run full automatically for every synchronized source revision. For release or stable-main integration, do not rely on only the quick profile. If the full test is red or missing, no merge, sign or release.
 
 The quick test does not exercise the legacy-media/DocsUI/copy-clipboard flows, and should never be reported as equivalent to full. Both profiles preserve crash captures and `result.json` indicating `profile: quick-fbd` for the focused variant. The workflow step summary records profile and commit.
 
 ## What this change does NOT do
 
-- No disabling of unit tests, Android debug builds, or full UI acceptance.
+- No disabling of unit tests, Android debug builds, or full UI acceptance. Stable-main PRs still run the full UI suite on every source update.
 - No risky Android emulator snapshot cache: cached AVD states can be outdated or mask cold-boot bugs, so only test scope is shortened.
 - No agent API, paid subscription, release signing, or production PLC writes.
 - No change to FBD runtime behavior or current saved projects.

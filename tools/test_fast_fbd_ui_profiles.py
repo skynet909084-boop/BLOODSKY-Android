@@ -22,9 +22,11 @@ class FastFbdUiGateTests(unittest.TestCase):
                 "quick-fbd", "crash-log.txt", "result.json"):
             self.assertIn(evidence, script)
 
-    def test_feature_pr_fast_but_main_manual_push_still_full(self):
+    def test_feature_pr_emulator_is_not_restarted_for_each_push(self):
         workflow = (ROOT / '.github/workflows/android-ui-smoke.yml').read_text(encoding='utf-8')
         self.assertIn("github.base_ref != 'main' && 'quick'", workflow)
+        self.assertIn("github.base_ref == 'main' || github.event.action != 'synchronize'", workflow)
+        self.assertIn('types: [opened, reopened, synchronize, ready_for_review]', workflow)
         self.assertIn("inputs.ui_profile == 'quick'", workflow)
         self.assertIn("|| 'full'", workflow)
         self.assertIn("default: full", workflow)

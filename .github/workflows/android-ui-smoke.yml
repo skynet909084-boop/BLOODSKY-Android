@@ -10,6 +10,7 @@ on:
         default: full
         options: [full, quick]
   pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
     paths:
       - 'app/**'
       - 'tools/**'
@@ -36,6 +37,10 @@ concurrency:
 
 jobs:
   emulator-smoke:
+    # Keep exact-head UI verification available on demand, but do not boot a
+    # fresh emulator for every intermediate feature-branch push. Stable-main
+    # PRs still get the full smoke on every synchronized source revision.
+    if: github.event_name != 'pull_request' || github.base_ref == 'main' || github.event.action != 'synchronize'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     # Feature→feature PRs get fast FBD verification; PR→main, push→main
