@@ -27,7 +27,8 @@ public final class FbdSourceCanvasSkin {
                 || "FBD CRAFT ARITHMETIC INT".equals(type)
                 || "FBD CRAFT ARITHMETIC FLOAT".equals(type)
                 || "FBD CRAFT CHANGE I".equals(type)
-                || "FBD CRAFT CHANGE F".equals(type);
+                || "FBD CRAFT CHANGE F".equals(type)
+                || "FBD CRAFT MOVE".equals(type);
     }
 
     public static boolean shouldUse(MainActivity.Widget w) {
@@ -44,6 +45,7 @@ public final class FbdSourceCanvasSkin {
                 : "FBD CRAFT SEL".equals(w.type) ? "SEL"
                 : "FBD CRAFT CHANGE I".equals(w.type) ? "CH_I"
                 : "FBD CRAFT CHANGE F".equals(w.type) ? "CH_F"
+                : "FBD CRAFT MOVE".equals(w.type) ? "MOVE"
                 : "FBD CRAFT COMPARE".equals(w.type) ? w.compareOperator
                 : "FBD CRAFT COMPARE FLOAT".equals(w.type)
                         || "FBD CRAFT ARITHMETIC INT".equals(w.type)
@@ -56,6 +58,8 @@ public final class FbdSourceCanvasSkin {
     }
 
     public static float inputY(String type, String name) {
+        if ("FBD CRAFT MOVE".equals(type))
+            return "EN".equalsIgnoreCase(name) ? 0.5f : 5f / 6f;
         if ("FBD XOR".equals(type) || isTimer(type)) {
             String[] pins = MainActivity.knownFbdPins(type, false);
             for (int i = 0; i < pins.length; i++) {
@@ -75,7 +79,8 @@ public final class FbdSourceCanvasSkin {
         return "FBD CRAFT CTU".equals(type) || "FBD CRAFT SEL".equals(type)
                 || "FBD CRAFT T".equals(type) || "FBD RS".equals(type)
                 || "FBD CRAFT CHANGE I".equals(type)
-                || "FBD CRAFT CHANGE F".equals(type);
+                || "FBD CRAFT CHANGE F".equals(type)
+                || "FBD CRAFT MOVE".equals(type);
     }
 
     public static void draw(Canvas canvas, Paint brush, MainActivity.Widget w, float density) {
@@ -135,6 +140,7 @@ public final class FbdSourceCanvasSkin {
                     : "FBD CRAFT SEL".equals(w.type) ? "SEL"
                     : "FBD CRAFT CHANGE I".equals(w.type) ? "CH_I"
                     : "FBD CRAFT CHANGE F".equals(w.type) ? "CH_F"
+                    : "FBD CRAFT MOVE".equals(w.type) ? "MOVE"
                     : "FBD CRAFT COMPARE".equals(w.type) ? w.compareOperator
                     : FbdDurationUnits.modeForType(w.type);
             float center = (left + right) / 2f;
@@ -161,7 +167,8 @@ public final class FbdSourceCanvasSkin {
                 if ("FBD CRAFT CTU".equals(w.type) || "FBD CRAFT T".equals(w.type)
                         || "FBD RS".equals(w.type)
                         || "FBD CRAFT SEL".equals(w.type)
-                        || "FBD CRAFT COMPARE".equals(w.type)) {
+                        || "FBD CRAFT COMPARE".equals(w.type)
+                        || "FBD CRAFT MOVE".equals(w.type)) {
                     brush.setTextAlign(Paint.Align.LEFT);
                     brush.setTextSize(Math.min(10f * density, Math.max(7f * density, w.h / 8f)));
                     for (String port : inputPins) {

@@ -22,6 +22,7 @@ public class FbdSourceNativeCanvasSkinTest {
         assertTrue(FbdSourceCanvasSkin.supports("FBD CRAFT COMPARE"));
         assertTrue(FbdSourceCanvasSkin.supports("FBD CRAFT CHANGE I"));
         assertTrue(FbdSourceCanvasSkin.supports("FBD CRAFT CHANGE F"));
+        assertTrue(FbdSourceCanvasSkin.supports("FBD CRAFT MOVE"));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT CTU", "CTU 16 bit")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT T", "T")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT BLINK", "BLINK")));
@@ -29,6 +30,7 @@ public class FbdSourceNativeCanvasSkinTest {
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT SEL", "SEL")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT CHANGE I", "CH_I")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT CHANGE F", "CH_F")));
+        assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT MOVE", "MOVE")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT COMPARE", ">")));
     }
 
@@ -39,6 +41,8 @@ public class FbdSourceNativeCanvasSkinTest {
         assertEquals(.5f, FbdSourceCanvasSkin.inputY("FBD CRAFT T", "IN"), 0.00001f);
         assertEquals(.5f, FbdSourceCanvasSkin.inputY("FBD CRAFT CHANGE I", "I"), 0.00001f);
         assertEquals(.5f, FbdSourceCanvasSkin.inputY("FBD CRAFT CHANGE F", "F"), 0.00001f);
+        assertEquals(.5f, FbdSourceCanvasSkin.inputY("FBD CRAFT MOVE", "EN"), 0.00001f);
+        assertEquals(5f/6f, FbdSourceCanvasSkin.inputY("FBD CRAFT MOVE", "I"), 0.00001f);
         assertEquals(3f/8f, FbdSourceCanvasSkin.inputY("FBD CRAFT SEL", "IN"), 0.00001f);
         assertEquals(.25f, FbdSourceCanvasSkin.inputY("FBD CRAFT COMPARE", "IN1"), 0.00001f);
         assertEquals(.75f, FbdSourceCanvasSkin.inputY("FBD CRAFT COMPARE", "IN2"), 0.00001f);

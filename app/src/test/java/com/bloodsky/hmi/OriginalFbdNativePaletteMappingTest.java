@@ -70,11 +70,22 @@ public class OriginalFbdNativePaletteMappingTest {
                 FbdCraftChangeTransitions.IntState.initial(), 1).changed);
         assertTrue(FbdCraftChangeTransitions.nextFloat(
                 FbdCraftChangeTransitions.FloatState.initial(), 1f).changed);
+
+        String move = OriginalFbdPalette.nativeTypeForOriginalTag("FB_MOVE");
+        assertEquals("FBD CRAFT MOVE", move);
+        assertEquals("MOVE", OriginalFbdPalette.nativeLabelForOriginalTag("FB_MOVE"));
+        assertArrayEquals(new String[]{"EN", "I"}, MainActivity.knownFbdPins(move, false));
+        assertArrayEquals(new String[]{"Q"}, MainActivity.knownFbdPins(move, true));
+        assertEquals("BOOL", MainActivity.knownFbdPinType(move, "EN", false));
+        assertEquals("NUMBER", MainActivity.knownFbdPinType(move, "I", false));
+        assertEquals("NUMBER", MainActivity.knownFbdPinType(move, "Q", true));
+        assertEquals(0.5f, MainActivity.fbdTerminalFraction(move, "EN", false), 0.00001f);
+        assertEquals(5f/6f, MainActivity.fbdTerminalFraction(move, "I", false), 0.00001f);
     }
 
     @Test public void unsupportedOriginalBlocksStayDisabledAndUnmapped() {
         for (String source : new String[]{
-                "FB_MOVE", "FB_TIMER", "FB_ARRAY", "FB_MACRO",
+                "FB_TIMER", "FB_ARRAY", "FB_MACRO",
                 "FB_MX", "MQTT_SUBSCRIBER", "Var",
                 "FB_POW", "FB_TRIGGER_ALT", "", "FB_CTU_OLD"}) {
             assertNull(source, OriginalFbdPalette.nativeTypeForOriginalTag(source));

@@ -205,7 +205,7 @@ class FastFbdSmoke(Smoke):
         self.wait_node(description='Редактор экрана')
 
         # The original 1.0.7 Craft FBD palette already contains source previews
-        # for RS, T, CTU and the typed change detectors. These preview actions
+        # for RS, T, CTU, typed change detectors and gated Integer MOVE. These preview actions
         # are backed by verified runtimes rather than the generic extra menu.
         def add_from_original_preview(type_id):
             self.tap(description='Добавить элемент')
@@ -245,10 +245,11 @@ class FastFbdSmoke(Smoke):
         add_from_original_preview('FBD CRAFT CTU')
         add_from_original_preview('FBD CRAFT CHANGE I')
         add_from_original_preview('FBD CRAFT CHANGE F')
+        add_from_original_preview('FBD CRAFT MOVE')
         original = current_widgets()
         if [w['type'] for w in original] != [
                 'FBD RS', 'FBD CRAFT T', 'FBD CRAFT CTU',
-                'FBD CRAFT CHANGE I', 'FBD CRAFT CHANGE F']:
+                'FBD CRAFT CHANGE I', 'FBD CRAFT CHANGE F', 'FBD CRAFT MOVE']:
             raise AssertionError('Original Craft source previews mapped incorrectly: '
                                  + repr(original))
         if original[2].get('counterValue') != 0:
