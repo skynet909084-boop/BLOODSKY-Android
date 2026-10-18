@@ -95,6 +95,11 @@ public class MainActivity extends Activity {
     private android.location.LocationManager fbdLocationManager;
     private boolean fbdLocationRegistered, fbdLocationPermissionRequested;
     private static final int REQUEST_FBD_SPEED_LOCATION = 6107;
+    private static final int REQUEST_VOICE_PERMISSION = 6201;
+    private static final int VOICE_LOCAL = 1;
+    private static final int VOICE_ONLINE = 2;
+    private int pendingVoiceMode;
+    private android.speech.SpeechRecognizer speechRecognizer;
     private final android.location.LocationListener fbdLocationListener = new android.location.LocationListener() {
         @Override public void onLocationChanged(android.location.Location location) {
             if (location == null || !operatorMode || editor == null) return;
@@ -216,6 +221,12 @@ public class MainActivity extends Activity {
 
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_VOICE_PERMISSION) {
+            if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED)
+                startVoiceRecognition(pendingVoiceMode);
+            else Toast.makeText(this, "Для голосового управления нужен доступ к микрофону", Toast.LENGTH_LONG).show();
+            return;
+        }
         if (requestCode != REQUEST_FBD_SPEED_LOCATION) return;
         fbdLocationPermissionRequested = false;
         if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED)
@@ -227,6 +238,7 @@ public class MainActivity extends Activity {
         stopModbusPolling();
         stopFbdSensors();
         stopCraftMqtt();
+        releaseVoiceRecognizer();
         if (mediaPlayer != null) {
             try { mediaPlayer.stop(); } catch (Exception ignored) {}
             try { mediaPlayer.release(); } catch (Exception ignored) {}
@@ -240,6 +252,7 @@ public class MainActivity extends Activity {
         stopModbusPolling();
         stopFbdSensors();
         stopCraftMqtt();
+        releaseVoiceRecognizer();
         editor = null;
         modbusExecutor.shutdownNow();
         craftSensorExecutor.shutdownNow();
@@ -2031,11 +2044,111 @@ public class MainActivity extends Activity {
         menu.getMenu().add("Telegram — настройки и тест").setOnMenuItemClickListener(item -> {
             showTelegramSettingsDialog(); return true;
         });
+        menu.getMenu().add("Голосовой помощник").setOnMenuItemClickListener(item -> { showVoiceModeDialog(); return true; });
         menu.getMenu().add("Modbus").setOnMenuItemClickListener(item -> { showModbusDiagnostics(); return true; });
         menu.getMenu().add("Главное меню").setOnMenuItemClickListener(item -> {
             if (persistProjectNow(true)) showHome(); return true;
         });
         menu.show();
+    }
+
+    private void showVoiceModeDialog() {
+        new AlertDialog.Builder(this).setTitle("Голосовой помощник")
+                .setMessage("Локально: только встроенное распознавание на устройстве, без отправки аудио.\\n\\nЧерез интернет: аудио может обрабатываться выбранной в Android службой распознавания речи.")
+                .setPositiveButton("Локально", (dialog, which) -> requestVoicePermission(VOICE_LOCAL))
+                .setNegativeButton("Через интернет", (dialog, which) -> requestVoicePermission(VOICE_ONLINE))
+                .setNeutralButton("Отмена", null).show();
+    }
+
+    private void requestVoicePermission(int mode) {
+        pendingVoiceMode = mode;
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQUEST_VOICE_PERMISSION);
+            return;
+        }
+        startVoiceRecognition(mode);
+    }
+
+    private void startVoiceRecognition(int mode) {
+        if (mode == VOICE_LOCAL && (android.os.Build.VERSION.SDK_INT < 31
+                || !android.speech.SpeechRecognizer.isOnDeviceRecognitionAvailable(this))) {
+            Toast.makeText(this, "Офлайн-распознавание речи на этом устройстве недоступно. Интернет-режим остаётся отдельным вариантом.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        try {
+            releaseVoiceRecognizer();
+            speechRecognizer = mode == VOICE_LOCAL
+                    ? android.speech.SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
+                    : android.speech.SpeechRecognizer.createSpeechRecognizer(this);
+            speechRecognizer.setRecognitionListener(new android.speech.RecognitionListener() {
+                @Override public void onReadyForSpeech(Bundle params) { Toast.makeText(MainActivity.this, "Слушаю…", Toast.LENGTH_SHORT).show(); }
+                @Override public void onBeginningOfSpeech() {}
+                @Override public void onRmsChanged(float rmsdB) {}
+                @Override public void onBufferReceived(byte[] buffer) {}
+                @Override public void onEndOfSpeech() {}
+                @Override public void onError(int error) {
+                    Toast.makeText(MainActivity.this, "Не удалось распознать речь (код " + error + ")", Toast.LENGTH_LONG).show();
+                    releaseVoiceRecognizer();
+                }
+                @Override public void onResults(Bundle results) {
+                    ArrayList<String> phrases = results == null ? null
+                            : results.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION);
+                    releaseVoiceRecognizer();
+                    if (phrases == null || phrases.isEmpty()) { speakVoiceReply("Команда не распознана"); return; }
+                    executeVoiceCommand(phrases.get(0));
+                }
+                @Override public void onPartialResults(Bundle partialResults) {}
+                @Override public void onEvent(int eventType, Bundle params) {}
+            });
+            android.content.Intent intent = new android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, "ru-RU");
+            intent.putExtra(android.speech.RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+            if (mode == VOICE_LOCAL && android.os.Build.VERSION.SDK_INT < 33)
+                intent.putExtra(android.speech.RecognizerIntent.EXTRA_PREFER_OFFLINE, true);
+            speechRecognizer.startListening(intent);
+        } catch (Exception failure) {
+            releaseVoiceRecognizer();
+            Toast.makeText(this, "Служба распознавания речи недоступна", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void executeVoiceCommand(String phrase) {
+        ArrayList<String> names = new ArrayList<>();
+        for (Screen screen : screens) names.add(screen.name);
+        VoiceCommandParser.Command command = VoiceCommandParser.parse(phrase, names);
+        switch (command.type) {
+            case NEXT_SCREEN:
+                nextScreen(); speakVoiceReply("Открываю следующий экран"); break;
+            case PREVIOUS_SCREEN:
+                previousScreen(); speakVoiceReply("Открываю предыдущий экран"); break;
+            case OPEN_SCREEN:
+                activateScreen(command.screenIndex); speakVoiceReply("Экран " + (command.screenIndex + 1)); break;
+            case START_PROJECT:
+                if (operatorMode) { speakVoiceReply("Проект уже запущен"); break; }
+                new AlertDialog.Builder(this).setTitle("Запустить проект?")
+                        .setMessage("Голосовая команда: «" + phrase + "». Запуск включает исполнение проекта и его связей.")
+                        .setNegativeButton("Отмена", (d, w) -> speakVoiceReply("Запуск отменён"))
+                        .setPositiveButton("Запустить", (d, w) -> { toggleOperatorMode(); speakVoiceReply("Проект запущен"); }).show();
+                break;
+            case STOP_PROJECT:
+                if (operatorMode) { toggleOperatorMode(); speakVoiceReply("Проект остановлен"); }
+                else speakVoiceReply("Проект уже остановлен");
+                break;
+            default:
+                speakVoiceReply("Эта команда пока не поддерживается");
+                Toast.makeText(this, "Распознано: «" + phrase + "». Поддерживаются экраны и запуск/остановка проекта.", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void speakVoiceReply(String text) {
+        if (textToSpeech != null) textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, "bloodsky-voice-reply");
+        Toast.makeText(this, text, Toast.LENGTH_SHORT).show();
+    }
+
+    private void releaseVoiceRecognizer() {
+        if (speechRecognizer != null) { try { speechRecognizer.cancel(); speechRecognizer.destroy(); } catch (Exception ignored) {} speechRecognizer = null; }
     }
 
     private void showTelegramSettingsDialog() {
