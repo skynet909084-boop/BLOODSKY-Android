@@ -92,4 +92,29 @@ public class FbdCraftToggleGraphTest {
         trigger.text = "F";
         assertTrue(FbdSourceCanvasSkin.shouldUse(trigger));
     }
+
+    @Test public void sourceRisingAndFallingModesRunThroughTheFbdGraph() throws Exception {
+        MainActivity.Widget input = widget("FBD Вход");
+        MainActivity.Widget trigger = widget("FBD CRAFT T");
+        List<MainActivity.Widget> nodes = Arrays.asList(input, trigger);
+        List<MainActivity.FbdConnection> edges = Collections.singletonList(
+                MainActivity.pinnedFbdConnection(0, "Q", 1, "IN"));
+        trigger.extraFields.put("craftTriggerMode", "R");
+        assertFalse(scan(nodes, edges));
+        input.inputValue = true;
+        assertTrue(scan(nodes, edges));
+        assertFalse(scan(nodes, edges)); // one evaluation only while high
+        input.inputValue = false;
+        assertFalse(scan(nodes, edges));
+
+        MainActivity.Widget falling = widget("FBD CRAFT T");
+        falling.extraFields.put("craftTriggerMode", "F");
+        nodes = Arrays.asList(input, falling);
+        assertFalse(scan(nodes, edges));
+        input.inputValue = true;
+        assertFalse(scan(nodes, edges));
+        input.inputValue = false;
+        assertTrue(scan(nodes, edges));
+        assertFalse(scan(nodes, edges));
+    }
 }
