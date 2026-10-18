@@ -46,7 +46,7 @@ public class CraftRegisterGatewayTest {
         assertThrows(IllegalArgumentException.class, () -> CraftRegisterGateway.validate(true, 1, 1,
                 "tcp://a.local:502/1/40001", "tcp://b.local:502/1/40001",
                 "tcp://trigger.local:502/1/30010", 3));
-        assertNull(CraftRegisterGateway.from(new JSONObject("{\"craftGatewayEnabled\":false}")));
+        assertNull(CraftRegisterGateway.from(new JSONObject()));
     }
 
     @Test public void continuousModeTransfersEverySuccessfulPoll() throws Exception {
