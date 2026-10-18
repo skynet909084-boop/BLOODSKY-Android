@@ -1247,6 +1247,8 @@ public class MainActivity extends Activity {
             FbdCraftMacroCatalog.upsert(projectExtraFields, definition);
             if (!persistProjectNow(true)) throw new IOException("Не удалось сохранить проект");
             int refreshed = replaceCraftMacroInstances(widgets, definition);
+            persistProject();
+            if (editor != null) editor.invalidate();
             addCraftMacroWidget(definition);
             Toast.makeText(this, "Макрос «" + definition.getName() + "» создан; обновлено блоков: "
                     + refreshed + ", добавлен новый экземпляр",
