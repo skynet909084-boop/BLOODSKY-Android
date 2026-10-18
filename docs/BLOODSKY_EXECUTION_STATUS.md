@@ -2,6 +2,14 @@
 
 Target: original KaScada Craft 1.0.7 functionality and appearance with BLOODSKY branding and without licensing/component-count activation. A passing build does not prove a full clone.
 
+## Craft project import update — 2026-10-18
+
+- PR #142 imports Craft `.pro` JSON from project ZIPs into BLOODSKY screens and preserves the full source payload. The newer `gitH.zip` fixture confirmed 65 rows across three used screens, dynamic-text states/colors, five FBD blocks, and two unambiguous typed graph edges. It also exposed Craft's legacy absolute image paths; BLOODSKY resolves an attached image only when its basename matches one ZIP member.
+- PR #142 maps Craft component IDs 1, 2, 4, 5, 6, 7 and 11. Recognized FBD blocks retain their original metadata; cycles, duplicate pin drivers, ambiguous keys, unknown IDs and inactive legacy Modbus bindings fail closed or remain preserved as source data.
+- Exact head `01ae9d2299cc686a9fb37e4d9a8f59249d78f4e2`: Android unit tests + debug APK passed in [run #687](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39117140559); archive inspector passed in [run #22](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39117140629). UI smoke #349 was skipped by workflow rules; no emulator result is claimed. PR #142 remains open and unmerged.
+- Follow-up PR #143 maps verified Craft button mode 1 to screen navigation. Other Craft button modes retain their original `craftOther` fields and inactive legacy device binding.
+- The input `.pro` ZIP is Craft's JSON project export, not a raw `Rovki.db`. BLOODSKY's current named-project catalog is stored as JSON snapshots in SharedPreferences; it is not yet a SQLite catalog. Direct raw-database import and migration to SQLite are separate open tasks. No `.db` fixture was supplied, so raw database round-trip is not verified by these ZIP tests.
+
 ## Accepted software milestones
 
 - PR47: portable ZIP image/audio import/export, bounded archives and isolated media generations; existing TCP/FBD fixes retained.
@@ -44,6 +52,10 @@ Target: original KaScada Craft 1.0.7 functionality and appearance with BLOODSKY 
 ## Known persistence limitation
 
 The named catalog uses SharedPreferences snapshots; synchronous selections/imports restore prior in-memory preference values on a reported commit failure. Power-loss/disk-failure behavior still needs device testing. Old media generations are deliberately retained; garbage collection must prove no saved project references a generation before removal.
+
+### Next persistence slice
+
+Design an additive SQLite-backed catalog migration that imports existing SharedPreferences snapshots atomically, retains JSON project payloads and stable IDs, and leaves per-project media generations intact. Test the migration and restart behavior before changing the storage source of truth. Direct `Rovki.db` ingestion remains separate and requires a real database fixture to verify version-11 table contents and media ownership.
 
 ## Validation and next slice
 

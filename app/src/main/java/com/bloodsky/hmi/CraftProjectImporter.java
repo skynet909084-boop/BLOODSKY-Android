@@ -70,7 +70,7 @@ public final class CraftProjectImporter {
             int screenNumber = positiveInt(other.opt("numScreen"), 1);
             if (screenNumber > screenCount) throw new IllegalArgumentException("Компонент ссылается на отсутствующий экран Craft");
             int componentId = positiveInt(component.opt("componentId"), -1);
-            JSONObject widget = convertComponent(component, other, componentId);
+            JSONObject widget = convertComponent(component, other, componentId, screenCount);
             JSONObject screen = screens.getJSONObject(screenNumber - 1);
             componentWidgetIndices[index] = screen.getJSONArray("widgets").length();
             componentScreens[index] = screenNumber - 1;
@@ -160,12 +160,15 @@ public final class CraftProjectImporter {
         return false;
     }
 
-    private static JSONObject convertComponent(JSONObject source, JSONObject other, int componentId) throws Exception {
+    private static JSONObject convertComponent(JSONObject source, JSONObject other, int componentId,
+                                               int screenCount) throws Exception {
         JSONObject widget = new JSONObject();
         String type;
         if (componentId == 1) type = "Индикатор"; // CustomComponents.y, image-state indicator
         else if (componentId == 2 || componentId == 4) type = "Текст"; // label / numeric display
         else if (componentId == 5) type = "Индикатор"; // Craft two-state image
+        else if (componentId == 6 && integer(other.opt("mode"), 0) == 1)
+            type = "Переход на экран"; // CustomComponents.e mode 1 calls the original screen-switch handler
         else if (componentId == 6) type = "Кнопка"; // CustomComponents.e, interactive button
         else if (componentId == 7) type = "Динамический текст";
         else if (componentId == 11) type = "Прогресс-бар"; // Craft progress bar
@@ -241,6 +244,15 @@ public final class CraftProjectImporter {
             widget.put("showFrame", other.optBoolean("enableFrameLabel", true));
         } else if (componentId == 6) {
             widget.put("autoResizeText", other.optBoolean("autoResizeText", false));
+            if (integer(other.opt("mode"), 0) == 1) {
+                int targetScreen = integer(other.opt("changeScreen"), -1);
+                if (targetScreen >= 1 && targetScreen <= screenCount) {
+                    widget.put("targetScreenIndex", targetScreen - 1);
+                } else {
+                    widget.put("targetScreenIndex", -1);
+                    widget.put("craftUnsupportedAction", true);
+                }
+            }
         }
         if (componentId == 11) {
             widget.put("minValue", decimal(other.opt("min"), 0));

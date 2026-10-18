@@ -156,4 +156,23 @@ public class CraftProjectImporterTest {
         assertEquals(1, edges.length());
         MainActivity.validateImportedProjectStatic(project.toString());
     }
+
+    @Test public void mapsVerifiedCraftButtonScreenModeToOperatorNavigation() throws Exception {
+        String json = "{\"TableNameProject\":{\"name\":\"Navigation\",\"countScreen\":2},\"TableConnections\":[],\"TableComponent\":["
+                + "{\"componentId\":6,\"text\":\"Next\",\"x\":10,\"y\":20,\"width\":100,\"height\":40,\"jsTableComponent_other\":{\"numScreen\":1,\"mode\":1,\"changeScreen\":2,\"autoResizeText\":true}},"
+                + "{\"componentId\":6,\"text\":\"Invalid\",\"x\":10,\"y\":20,\"width\":100,\"height\":40,\"jsTableComponent_other\":{\"numScreen\":2,\"mode\":1,\"changeScreen\":3}}]}";
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(json));
+        JSONObject valid = project.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0);
+        assertEquals("Переход на экран", valid.getString("type"));
+        assertEquals(1, valid.getInt("targetScreenIndex"));
+        assertEquals(1, valid.getJSONObject("craftOther").getInt("mode"));
+        assertTrue(valid.getBoolean("autoResizeText"));
+
+        JSONObject invalid = project.getJSONArray("screens").getJSONObject(1)
+                .getJSONArray("widgets").getJSONObject(0);
+        assertEquals(-1, invalid.getInt("targetScreenIndex"));
+        assertTrue(invalid.getBoolean("craftUnsupportedAction"));
+        MainActivity.validateImportedProjectStatic(project.toString());
+    }
 }
