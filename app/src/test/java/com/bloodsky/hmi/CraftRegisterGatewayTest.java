@@ -17,7 +17,7 @@ public class CraftRegisterGatewayTest {
                 "tcp://192.168.1.4:502/1/40010", 3);
     }
 
-    private static final class FakeTransport implements CraftRegisterGateway.Transport {
+    private static class FakeTransport implements CraftRegisterGateway.Transport {
         final List<int[]> writes = new ArrayList<>();
         int sourceValue = 7;
         int triggerValue;
