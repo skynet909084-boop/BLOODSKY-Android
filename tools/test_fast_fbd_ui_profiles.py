@@ -10,6 +10,9 @@ class FastFbdUiGateTests(unittest.TestCase):
     def test_quick_smoke_is_parseable_and_has_actual_graph_checks(self):
         script = (ROOT / 'tools/android_ui_fbd_quick.py').read_text(encoding='utf-8')
         ast.parse(script)
+        self.assertIn("Добавить: FBD CRAFT TIMER", script)
+        self.assertIn("Свойства: FBD CRAFT TIMER", script)
+        self.assertNotIn("Добавить: FBD Таймер", script)
         for evidence in (
                 "saved_connections()", "Время таймера, мс", "Соединить с…",
                 "Инвертировать связь BOOL…", "Отменить связь FBD",

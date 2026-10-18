@@ -57,9 +57,9 @@ class FastFbdSmoke(Smoke):
         self.wait_node(description='Редактор экрана')
         self.tap(description='Добавить элемент')
         self.tap(description='Функциональные блоки и другие элементы')
-        self.tap(description='Добавить: FBD Таймер')
+        self.tap(description='Добавить: FBD CRAFT TIMER')
         initial = current_widgets()
-        if [x['type'] for x in initial] != ['FBD И', 'FBD Таймер']:
+        if [x['type'] for x in initial] != ['FBD И', 'FBD CRAFT TIMER']:
             raise AssertionError('Wrong original palette FBD blocks: ' + repr(initial))
         source, target = initial
         canvas = self.wait_node(description='Редактор экрана')
@@ -80,7 +80,7 @@ class FastFbdSmoke(Smoke):
         tx = round(left + target['x'] + target['w'] / 2)
         ty = round(top + target['y'] + target['h'] / 2)
         adb('shell', 'input', 'tap', str(tx), str(ty))
-        self.wait_node('Свойства: FBD Таймер')
+        self.wait_node('Свойства: FBD CRAFT TIMER')
         self.replace_property_input('Время таймера, мс', '2345')
         self.tap('Применить')
         self.wait_node(description='Редактор экрана')
