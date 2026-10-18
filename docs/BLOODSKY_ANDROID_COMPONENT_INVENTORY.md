@@ -23,7 +23,7 @@ Manifest names include:
 - network-device, address-connection, server-list, Bluetooth-device, alarm-sound and Wi-Fi-to-USB bridge settings
 - foreground service and Eclipse Paho MQTT service
 
-The manifest declares networking, Wi-Fi state, Bluetooth, storage, location, audio, camera, SMS, wake-lock and notification permissions. BLOODSKY should request only permissions required by enabled features, with runtime permission flows and clear explanations rather than blindly copying every legacy permission.
+The decompiled source manifest declares networking, Wi-Fi state, Bluetooth, storage, location, audio, camera, SMS, wake-lock and notification permissions. BLOODSKY's manifest currently requests only INTERNET and ACCESS_FINE_LOCATION; it does not request SMS permissions. Keep permissions limited to enabled features, with runtime permission flows and clear explanations rather than copying the legacy manifest wholesale. Telegram notifications use the existing INTERNET permission.
 
 ## Screen/widget inventory (class-name mapping is partly obfuscated)
 
@@ -48,7 +48,7 @@ The original uses many custom view classes in `CustomComponents`. The decompiler
 | `r` | `showScale`, `max`, `percentLowScale` | Progress/bar indicator |
 | `u` | `digit`, `divisor`, `typeInt`, register frame | Numeric/register display |
 | `v` | `colorProgress`, `colorBackground`, `max` | Progress/value bar |
-| `w`, `x` | phone, message, command/strobe register settings | SMS/command action; verify exact split |
+| `w`, `x` | phone, message, command/strobe register settings | Legacy SMS/command actions; verify exact split. BLOODSKY removes SMS and uses Telegram for user notifications. |
 | `y` | `imagePosition`, visibility in work mode | Image-positioned component |
 | `f` | `rtsp_url` | RTSP/video component |
 | `d` | Archive table and CSV export strings | Archive/history service logic, not necessarily a visual widget |
