@@ -3243,7 +3243,7 @@ public class MainActivity extends Activity {
                 if (sourcePins.length != 1 || !"BOOL".equals(knownFbdPinType(
                         widgets.get(edge.source).type, sourcePins[0], true))) return false;
             } else if (!"BOOL".equals(knownFbdPinType(
-                    widgets.get(edge.source).type, sourcePin, true)) return false;
+                    widgets.get(edge.source).type, sourcePin, true))) return false;
             String targetPin = canonicalFbdPinName(edge.extraFields.optString("targetPin", ""));
             if (targetPin.isEmpty()) { sawLegacy = true; legacyCount++; }
             else { sawNamed = true; named.add(targetPin); }
