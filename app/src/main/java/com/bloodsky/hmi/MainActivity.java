@@ -3761,15 +3761,26 @@ public class MainActivity extends Activity {
             addMediaPicker(form, soundFilePathField, "audio/*");
         } else { soundThresholdField = null; soundFilePathField = null; }
 
-        final EditText targetScreenIndexField;
+        final android.widget.Spinner targetScreenIndexField;
         final EditText targetUrlField;
         if ("Переход на экран".equals(w.type)) {
             TextView screenNavHeader = new TextView(this);
-            screenNavHeader.setText("Целевой экран (индекс 1..N) и URL");
+            screenNavHeader.setText("Куда перейти");
             screenNavHeader.setPadding(0, dp(10), 0, 0);
             form.addView(screenNavHeader);
-            targetScreenIndexField = propertyField(Integer.toString(w.targetScreenIndex + 1), InputType.TYPE_CLASS_NUMBER);
-            targetScreenIndexField.setHint("Номер экрана (начиная с 1)");
+            java.util.ArrayList<String> screenChoices = new java.util.ArrayList<>();
+            screenChoices.add("— выбери экран —");
+            for (int screen = 0; screen < screens.size(); screen++) {
+                String screenName = screens.get(screen).name == null || screens.get(screen).name.trim().isEmpty()
+                        ? "Экран " + (screen + 1) : screens.get(screen).name;
+                screenChoices.add((screen + 1) + " — " + screenName);
+            }
+            targetScreenIndexField = new android.widget.Spinner(this);
+            targetScreenIndexField.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item, screenChoices));
+            int selectedTarget = w.targetScreenIndex >= 0 && w.targetScreenIndex < screens.size()
+                    ? w.targetScreenIndex + 1 : 0;
+            targetScreenIndexField.setSelection(selectedTarget);
             form.addView(targetScreenIndexField);
             targetUrlField = propertyField(w.targetUrl, InputType.TYPE_CLASS_TEXT);
             targetUrlField.setHint("URL для перехода (необязательно)");
@@ -4333,9 +4344,14 @@ public class MainActivity extends Activity {
                         w.soundFilePath = soundFilePathField.getText().toString();
                     }
                     if (targetScreenIndexField != null) {
-                        int idx = readPositiveInt(targetScreenIndexField, w.targetScreenIndex + 1, false) - 1;
-                        w.targetScreenIndex = Math.max(0, idx);
-                        w.targetUrl = targetUrlField.getText().toString();
+                        int selectedTarget = targetScreenIndexField.getSelectedItemPosition();
+                        String targetUrl = targetUrlField.getText().toString().trim();
+                        if (selectedTarget <= 0 && targetUrl.isEmpty()) {
+                            Toast.makeText(this, "Выбери существующий экран или укажи URL", Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                        w.targetScreenIndex = selectedTarget > 0 ? selectedTarget - 1 : -1;
+                        w.targetUrl = targetUrl;
                     }
                     if ("Многопозиционное фото".equals(w.type)) {
                         for (int k = 0; k < imagePathFields.length; k++) {
