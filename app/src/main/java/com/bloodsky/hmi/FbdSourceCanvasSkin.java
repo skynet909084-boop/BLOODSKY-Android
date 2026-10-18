@@ -22,7 +22,9 @@ public final class FbdSourceCanvasSkin {
                 || "FBD CRAFT CTU".equals(type) || "FBD CRAFT T".equals(type)
                 || "FBD CRAFT BLINK".equals(type)
                 || "FBD RS".equals(type) || "FBD CRAFT SEL".equals(type)
-                || "FBD CRAFT COMPARE".equals(type);
+                || "FBD CRAFT COMPARE".equals(type)
+                || "FBD CRAFT CHANGE I".equals(type)
+                || "FBD CRAFT CHANGE F".equals(type);
     }
 
     public static boolean shouldUse(MainActivity.Widget w) {
@@ -37,6 +39,8 @@ public final class FbdSourceCanvasSkin {
                 : "FBD RS".equals(w.type) ? "RS"
                 : "FBD CRAFT BLINK".equals(w.type) ? "BLINK"
                 : "FBD CRAFT SEL".equals(w.type) ? "SEL"
+                : "FBD CRAFT CHANGE I".equals(w.type) ? "CH_I"
+                : "FBD CRAFT CHANGE F".equals(w.type) ? "CH_F"
                 : "FBD CRAFT COMPARE".equals(w.type) ? w.compareOperator
                 : isTimer(w.type) ? FbdDurationUnits.modeForType(w.type) : "XOR";
         // Preserve manually edited labels by falling back to the editable skin.
@@ -61,7 +65,9 @@ public final class FbdSourceCanvasSkin {
     /** Decompiled original FB_CTU=draw9 and FB_RS/FB_TRIGGER=draw8. */
     private static boolean hasNativeHeader(String type) {
         return "FBD CRAFT CTU".equals(type) || "FBD CRAFT SEL".equals(type)
-                || "FBD CRAFT T".equals(type) || "FBD RS".equals(type);
+                || "FBD CRAFT T".equals(type) || "FBD RS".equals(type)
+                || "FBD CRAFT CHANGE I".equals(type)
+                || "FBD CRAFT CHANGE F".equals(type);
     }
 
     public static void draw(Canvas canvas, Paint brush, MainActivity.Widget w, float density) {
@@ -119,6 +125,8 @@ public final class FbdSourceCanvasSkin {
                     : "FBD RS".equals(w.type) ? "RS"
                     : "FBD CRAFT BLINK".equals(w.type) ? "BLINK"
                     : "FBD CRAFT SEL".equals(w.type) ? "SEL"
+                    : "FBD CRAFT CHANGE I".equals(w.type) ? "CH_I"
+                    : "FBD CRAFT CHANGE F".equals(w.type) ? "CH_F"
                     : "FBD CRAFT COMPARE".equals(w.type) ? w.compareOperator
                     : FbdDurationUnits.modeForType(w.type);
             float center = (left + right) / 2f;
