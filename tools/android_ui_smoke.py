@@ -238,10 +238,13 @@ class Smoke:
         self.tap(description='Добавить элемент')
         self.tap(description='Функциональные блоки и другие элементы')
         self.wait_node(description='Добавить: FBD Таймер')
-        disabled = [n for n in ET.fromstring(self.dump()).iter('node')
-                    if n.get('content-desc') == 'FB_RS: пока не перенесено']
-        if len(disabled) != 1 or disabled[0].get('enabled') != 'false':
-            raise AssertionError('Source RS with different legacy port order must stay disabled')
+        # The native source RS is now tested R/S -> Q and uses the
+        # source preview; never demand that it remains disabled.
+        self.wait_node(description='Добавить: FBD RS')
+        still_disabled = [n for n in ET.fromstring(self.dump()).iter('node')
+                          if n.get('content-desc') == 'FB_SEL: пока не перенесено']
+        if len(still_disabled) != 1 or still_disabled[0].get('enabled') != 'false':
+            raise AssertionError('Unverified source SEL preview must remain disabled')
         if matching_nodes(self.dump(), description='Палитра компонентов'):
             self.tap(description='Палитра компонентов')
         else:
