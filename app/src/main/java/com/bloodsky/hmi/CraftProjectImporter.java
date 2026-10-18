@@ -180,6 +180,7 @@ public final class CraftProjectImporter {
         else if (componentId == 9) type = "Звуковой сигнал"; // CustomComponents.c, looping alarm with five built-in sounds
         else if (componentId == 19) type = "Шлюз Craft"; // CustomComponents.k, source/receive/trigger register gateway
         else if (componentId == 22) type = "Шлюз битовый"; // CustomComponents.l, source/receive/trigger bit gateway
+        else if (componentId == 13) type = "Линейный задатчик Craft"; // CustomSeekBar
         else if (componentId == 20) type = "Список Craft"; // CustomList, 16 selectable bit labels
         else if (componentId == 6 && integer(other.opt("mode"), 0) == 1)
             type = "Переход на экран"; // CustomComponents.e mode 1 calls the original screen-switch handler
@@ -298,6 +299,15 @@ public final class CraftProjectImporter {
             widget.put("craftBitGatewayRegisterMode", integer(other.opt("regMode"), 0));
             widget.put("craftBitGatewayTriggerBit", integer(other.opt("bitMode"), 0));
             widget.put("craftBitGatewayEnabled", false);
+        } else if (componentId == 13) {
+            // Craft slider writes its integer position on release. Keep legacy device IDs inactive.
+            widget.put("craftLinearMax", CraftLinearSetter.fromCraft(other));
+            widget.put("craftLinearValue", 0);
+            widget.put("craftLinearVertical", other.optBoolean("isTurn", false));
+            widget.put("craftLinearTextColor", color(other.opt("colorText"), Color.rgb(237, 176, 59)));
+            widget.put("craftLinearProgressColor", color(other.opt("colorProgress"), Color.rgb(46, 236, 0)));
+            widget.put("craftLinearBackgroundColor", color(other.opt("colorBackground"), Color.rgb(156, 156, 155)));
+            widget.put("craftLinearEnabled", false);
         } else if (componentId == 20) {
             widget.put("craftListLabels", CraftBitList.toJson(CraftBitList.labelsFromCraft(other)));
             widget.put("craftListVisibleInWork", other.optBoolean("visibleInWork", true));
@@ -326,7 +336,7 @@ public final class CraftProjectImporter {
     }
 
     private static boolean isSupportedComponent(int id) {
-        return id == 1 || id == 2 || id == 4 || id == 5 || id == 6 || id == 7 || id == 9 || id == 11 || id == 18 || id == 20 || id == 22;
+        return id == 1 || id == 2 || id == 4 || id == 5 || id == 6 || id == 7 || id == 9 || id == 11 || id == 13 || id == 18 || id == 20 || id == 22;
     }
 
     private static String timerMode(int mode) {
