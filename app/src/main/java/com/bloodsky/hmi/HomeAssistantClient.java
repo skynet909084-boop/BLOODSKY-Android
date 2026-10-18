@@ -26,6 +26,7 @@ public final class HomeAssistantClient {
         public Entity(String entityId, String name, String state) {
             this.entityId = entityId; this.name = name; this.state = state;
         }
+        public boolean canTogglePower() { return canTogglePower(entityId, state); }
         @Override public String toString() { return name + " — " + state + "  (" + entityId + ")"; }
     }
 
@@ -80,6 +81,26 @@ public final class HomeAssistantClient {
         return parseEntities(new JSONArray(response.body));
     }
 
+    public static boolean canTogglePower(String entityId, String state) {
+        if (entityId == null || state == null) return false;
+        String[] parts = entityId.split("\\.", 2);
+        if (parts.length != 2 || !("light".equals(parts[0]) || "switch".equals(parts[0])
+                || "fan".equals(parts[0]) || "input_boolean".equals(parts[0]))) return false;
+        return "on".equalsIgnoreCase(state) || "off".equalsIgnoreCase(state);
+    }
+
+    public static void setPower(String baseUrl, String token, Entity entity, boolean turnOn) throws Exception {
+        requireToken(token);
+        if (entity == null || !entity.canTogglePower()) throw new IllegalArgumentException("Это устройство нельзя безопасно включить или выключить");
+        String domain = entity.entityId.substring(0, entity.entityId.indexOf('.'));
+        String service = turnOn ? "turn_on" : "turn_off";
+        JSONObject payload = new JSONObject().put("entity_id", entity.entityId);
+        HttpResult response = request(normalizeBaseUrl(baseUrl) + "/api/services/" + domain + "/" + service,
+                token, "POST", payload.toString());
+        if (response.status < 200 || response.status >= 300)
+            throw new IllegalStateException("Home Assistant вернул HTTP " + response.status);
+    }
+
     public static List<Entity> parseEntities(JSONArray states) {
         ArrayList<Entity> result = new ArrayList<>();
         for (int i = 0; states != null && i < states.length(); i++) {
@@ -103,13 +124,24 @@ public final class HomeAssistantClient {
     }
 
     private static HttpResult request(String endpoint, String token) throws Exception {
+        return request(endpoint, token, "GET", null);
+    }
+
+    private static HttpResult request(String endpoint, String token, String method, String body) throws Exception {
         HttpURLConnection connection = (HttpURLConnection) new URL(endpoint).openConnection();
-        connection.setRequestMethod("GET");
+        connection.setRequestMethod(method);
         connection.setConnectTimeout(7000);
         connection.setReadTimeout(10000);
         connection.setInstanceFollowRedirects(false);
         connection.setRequestProperty("Authorization", "Bearer " + token.trim());
         connection.setRequestProperty("Accept", "application/json");
+        if (body != null) {
+            connection.setDoOutput(true);
+            connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+            try (java.io.OutputStream output = connection.getOutputStream()) {
+                output.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+        }
         try {
             int status = connection.getResponseCode();
             InputStream stream = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
