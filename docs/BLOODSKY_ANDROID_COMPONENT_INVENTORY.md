@@ -23,7 +23,7 @@ Manifest names include:
 - network-device, address-connection, server-list, Bluetooth-device, alarm-sound and Wi-Fi-to-USB bridge settings
 - foreground service and Eclipse Paho MQTT service
 
-The decompiled source manifest declares networking, Wi-Fi state, Bluetooth, storage, location, audio, camera, SMS, wake-lock and notification permissions. BLOODSKY requests INTERNET, ACCESS_FINE_LOCATION, RECORD_AUDIO and SEND_SMS for enabled features; SMS send permission is requested at runtime only when an SMS event is configured and first occurs. Inbound SMS remains disabled and RECEIVE_SMS/READ_SMS are not requested. Telegram notifications use the existing INTERNET permission.
+The decompiled source manifest declares networking, Wi-Fi state, Bluetooth, storage, location, audio, camera, SMS, wake-lock and notification permissions. BLOODSKY requests INTERNET, ACCESS_FINE_LOCATION, RECORD_AUDIO, SEND_SMS and RECEIVE_SMS for enabled features. SEND_SMS is requested on a configured outgoing event; RECEIVE_SMS is requested only when an enabled incoming-SMS component starts in foreground operator mode, and its dynamic receiver unregisters on pause. Imported Craft ID 18 is disabled until the sender, exact command and local holding-register binding are explicitly configured. READ_SMS is not requested. Telegram notifications use the existing INTERNET permission.
 
 ## Screen/widget inventory (class-name mapping is partly obfuscated)
 
@@ -48,7 +48,7 @@ The original uses many custom view classes in `CustomComponents`. The decompiler
 | `r` | `showScale`, `max`, `percentLowScale` | Progress/bar indicator |
 | `u` | `digit`, `divisor`, `typeInt`, register frame | Numeric/register display |
 | `v` | `colorProgress`, `colorBackground`, `max` | Progress/value bar |
-| `w`, `x` | phone, message, command/strobe register settings | Legacy SMS/command actions; verify exact split. Keep SIM-based SMS as an optional channel alongside Telegram; port outbound/inbound behavior before enabling these entries. |
+| `w`, `x` | phone, message, command/strobe register settings | Outbound `w` is an optional SIM event. Inbound `x` is now opt-in and fail-closed; imported entries require explicit sender/command/binding setup. Strobe behavior remains open. |
 | `y` | `imagePosition`, visibility in work mode | Image-positioned component |
 | `f` | `rtsp_url` | RTSP/video component |
 | `d` | Archive table and CSV export strings | Archive/history service logic, not necessarily a visual widget |
