@@ -71,8 +71,8 @@
           "id": "widget.button",
           "name": "Button Control (CustomComponents)",
           "status": "partial",
-          "criteria": "Toggleable button state with visual ON/OFF indication and register write-back.",
-          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
+          "criteria": "Craft CustomComponents.e modes: bit toggle, screen navigation and constant write (UINT16/Float32), with explicit register mapping and visible-in-work option.",
+          "audit_note": "Importer preserves Craft ID 6 mode-2 constants and visibility, and operator mode writes UINT16 via FC06 or Float32 via FC16 to an explicit TCP holding register. Bit toggle and screen navigation remain partial; UI/hardware acceptance remains open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "widget.indicator",
