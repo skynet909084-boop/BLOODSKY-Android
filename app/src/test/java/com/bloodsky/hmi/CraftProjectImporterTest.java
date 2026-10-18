@@ -215,6 +215,7 @@ public class CraftProjectImporterTest {
         JSONObject gateway = widgets.getJSONObject(1);
         assertEquals("Шлюз Craft", gateway.getString("type"));
         assertTrue(gateway.getBoolean("craftUnsupportedComponent"));
+        assertFalse(gateway.getBoolean("craftGatewayEnabled"));
         assertEquals("", gateway.getString("connectionInfo"));
         assertEquals(2, gateway.getInt("craftGatewayMode"));
         assertEquals(1, gateway.getInt("craftGatewayRegisterMode"));
