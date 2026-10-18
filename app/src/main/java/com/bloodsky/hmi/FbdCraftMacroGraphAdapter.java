@@ -164,6 +164,7 @@ final class FbdCraftMacroGraphAdapter {
             case 125: return "FBD XOR";
             case 126: return "FBD CRAFT SEL";
             case 127: return "FBD CRAFT SUNRISE";
+            case 128: return "FBD CRAFT MX";
             case 129: return "FBD CRAFT WORD TO FLOAT";
             case 130: return "FBD CRAFT ODTEMP";
             case 131: return "FBD CRAFT SENSOR LIGHT";
