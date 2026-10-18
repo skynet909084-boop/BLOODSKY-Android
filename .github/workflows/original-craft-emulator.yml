@@ -5,7 +5,7 @@ on:
     types: [opened, reopened, synchronize, ready_for_review]
     paths:
       - '.github/workflows/original-craft-emulator.yml'
-      - 'tools/original_craft_emulator_audit.py'
+      - 'tools/original_craft_emulator_probe.py'
   workflow_dispatch:
 
 permissions:
@@ -70,7 +70,7 @@ jobs:
             adb shell svc wifi disable || true
             adb shell svc data disable || true
             adb install -r build/KaScada-Craft-1.0.7.apk
-            python tools/original_craft_emulator_audit.py build-reports/original-craft-1.0.7
+            python tools/original_craft_emulator_probe.py build-reports/original-craft-1.0.7
       - name: Upload rebuilt APK and full UI evidence
         if: always()
         uses: actions/upload-artifact@v4
