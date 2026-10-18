@@ -586,6 +586,59 @@ class Smoke:
                 raise AssertionError('Legacy media disappeared after restart: ' + filename)
 
 
+    def check_craft_archive_widget_on_device(self):
+        # Exercise Craft ID 15 through the real source palette, property dialog,
+        # operator canvas and local-history dialog on the Android emulator.
+        adb('shell', 'input', 'keyevent', '4')
+        self.wait_node('Создать новый проект')
+        archive_project = 'Archive_Smoke'
+        self.tap('Создать новый проект')
+        self.tap(class_name='android.widget.EditText')
+        adb('shell', 'input', 'text', archive_project)
+        self.tap('Создать')
+        self.wait_node(description='Редактор экрана')
+        self.tap(description='Добавить элемент')
+        self.tap(description='Добавить: Архив Craft')
+        self.wait_node(description='Редактор экрана')
+        prefs = adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml')
+        widgets = json.loads({n.get('name'): n.text for n in ET.fromstring(prefs)}['active_project'])['screens'][0]['widgets']
+        if len(widgets) != 1 or widgets[0].get('type') != 'Архив Craft':
+            raise AssertionError('The original palette did not create Craft ID 15')
+        self.capture('08-craft-id15-editor')
+        canvas = self.wait_node(description='Редактор экрана')
+        left, top, _, _ = map(int, re.findall(r'\d+', canvas.get('bounds')))
+        archive = widgets[0]
+        adb('shell', 'input', 'tap', str(round(left + archive['x'] + archive['w'] / 2)),
+            str(round(top + archive['y'] + archive['h'] / 2)))
+        self.wait_node('Свойства: Архив Craft')
+        properties = self.dump()
+        labels = [n.get('text', '') for n in ET.fromstring(properties).iter('node')]
+        if not any('Данные остаются на устройстве' in label for label in labels):
+            raise AssertionError('Archive properties do not explain local-only storage')
+        self.capture('08a-craft-id15-properties')
+        self.tap('Отмена')
+        self.tap(description='Запустить проект')
+        self.wait_node(description='Рабочий экран')
+        canvas = self.wait_node(description='Рабочий экран')
+        left, top, _, _ = map(int, re.findall(r'\d+', canvas.get('bounds')))
+        adb('shell', 'input', 'tap', str(round(left + archive['x'] + archive['w'] / 2)),
+            str(round(top + archive['y'] + archive['h'] / 2)))
+        self.wait_node('Записей пока нет. Настрой локальный TCP-канал и запусти экран в рабочем режиме.')
+        self.wait_node('График')
+        self.wait_node('Экспорт CSV')
+        self.wait_node('Закрыть')
+        self.capture('08b-craft-id15-local-history')
+        self.tap('Закрыть')
+        self.tap(description='Остановить проект')
+        self.wait_node(description='Редактор экрана')
+        prefs = adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml')
+        saved = json.loads({n.get('name'): n.text for n in ET.fromstring(prefs)}['active_project'])['screens'][0]['widgets']
+        if saved != widgets:
+            raise AssertionError('Craft ID 15 settings changed during operator history view')
+        adb('shell', 'input', 'keyevent', '4')
+        self.wait_node('Создать новый проект')
+
+
     def run(self, apk):
         serial = adb('get-serialno').strip()
         if not serial.startswith('emulator-') or adb('shell', 'getprop', 'ro.kernel.qemu').strip() != '1':
@@ -867,12 +920,13 @@ class Smoke:
             raise AssertionError('Deleted project remains in active project/catalog')
         self.capture('06-after-deletion')
         self.check_legacy_media_migration_on_device()
+        self.check_craft_archive_widget_on_device()
         crashes = adb('logcat', '-d', '-b', 'crash')
         (self.output / 'crash-log.txt').write_text(crashes)
         if PACKAGE in crashes:
             raise AssertionError('Application crash recorded')
         (self.output / 'result.json').write_text(json.dumps({'result': 'passed', 'package': PACKAGE,
-                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'original five-category palette', 'palette add indicator/button/text/progress', 'original 40-preview FBD palette and return/extended navigation', 'FBD AND/TON add and restart', 'FBD non-overlapping initial block positions', 'FBD typed Q-IN wiring, drag, restart, disconnect, undo and redo', 'invalid timer preset leaves project and form unchanged', 'exact valid timer preset preserves other fields', 'process restart', 'reload four palette-created components', 'invalid geometry leaves dialog/project unchanged', 'fractional properties survive second process restart', 'original ON/OFF dialogs and builtin state selection', 'custom document-provider image and persisted URI grant after process restart', 'original compact toolbar and hide/reveal', 'editor button opens properties without activation', 'operator drag and long-press cannot edit or activate', 'runtime button on/off and persistence after restart', 'stop and Back restore editor tools', 'confirmed deletion', 'legacy media bytes preserved and visible PNG rendered across restart'],
+                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'original five-category palette', 'palette add indicator/button/text/progress', 'original 40-preview FBD palette and return/extended navigation', 'FBD AND/TON add and restart', 'FBD non-overlapping initial block positions', 'FBD typed Q-IN wiring, drag, restart, disconnect, undo and redo', 'invalid timer preset leaves project and form unchanged', 'exact valid timer preset preserves other fields', 'process restart', 'reload four palette-created components', 'invalid geometry leaves dialog/project unchanged', 'fractional properties survive second process restart', 'original ON/OFF dialogs and builtin state selection', 'custom document-provider image and persisted URI grant after process restart', 'original compact toolbar and hide/reveal', 'editor button opens properties without activation', 'operator drag and long-press cannot edit or activate', 'runtime button on/off and persistence after restart', 'stop and Back restore editor tools', 'confirmed deletion', 'legacy media bytes preserved and visible PNG rendered across restart', 'Craft ID 15 palette, property dialog and local history on Android 11'],
                 'api_level': adb('shell', 'getprop', 'ro.build.version.sdk').strip(),
                 'display_size': adb('shell', 'wm', 'size').strip(),
                 'display_density': adb('shell', 'wm', 'density').strip()}, indent=2))
