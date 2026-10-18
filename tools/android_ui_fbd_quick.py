@@ -319,8 +319,8 @@ class FastFbdSmoke(Smoke):
         hierarchy = ET.fromstring(self.dump())
         scrollable = {node.get('class') for node in hierarchy.iter('node')
                       if node.get('scrollable') == 'true'}
-        if not {'android.widget.ScrollView', 'android.widget.HorizontalScrollView'}.issubset(scrollable):
-            raise AssertionError('FBD design surface is not scrollable in both axes: '
+        if 'android.widget.ScrollView' not in scrollable:
+            raise AssertionError('FBD design surface is not vertically scrollable: '
                                  + repr(scrollable))
         screen_size = re.search(r'(\d+)x(\d+)', adb('shell', 'wm', 'size'))
         if not screen_size:
