@@ -156,7 +156,7 @@
           "name": "Voice Recognition (CustomComponents.a0)",
           "status": "partial",
           "criteria": "Craft's ID 27 recognition control reads sixteen textVoice0–textVoice15 phrases and uses the original voice-recognition interaction.",
-          "audit_note": "Craft ID 27 is correctly identified as a voice-recognition button with sixteen textVoice fields. Import preserves metadata and renders a disabled placeholder; its original recognition/runtime mapping remains unported."
+          "audit_note": "Craft ID 27 now has source-backed import, editable textVoice0–15 metadata, save/reopen coverage, and a visible disabled placeholder. The original recognition runtime is not yet ported."
         },
         {
           "id": "widget.sms_in",
