@@ -63,6 +63,34 @@ public class FbdCraftMacroGraphAdapterTest {
         assertEquals("OUT", graph.getString("outputPin"));
     }
 
+    @Test public void translatesCraftSensorSunriseAndMqttMetadata() throws Exception {
+        JSONArray children = new JSONArray()
+                .put(new JSONObject().put("componentId", 120).put("x", 0).put("y", 0)
+                        .put("type", 3).put("saveKey", 10).put("keyOut", -1))
+                .put(new JSONObject().put("componentId", 127).put("x", 0).put("y", 0)
+                        .put("type", 2).put("saveKey", 20).put("keyOut", -1)
+                        .put("latitude", 51.5).put("longitude", -0.1))
+                .put(new JSONObject().put("componentId", 139).put("x", 0).put("y", 0)
+                        .put("saveKey", 30).put("keyOut", -1).put("topic", "site/value")
+                        .put("typeQ", 3).put("numMqttServer", 2))
+                .put(new JSONObject().put("componentId", 140).put("x", 0).put("y", 0)
+                        .put("saveKey", 40).put("keyOut", -1).put("topic", "site/out")
+                        .put("typeIn", 1).put("numMqttServer", 2).put("mqttRetain", true))
+                .put(new JSONObject().put("componentId", 121).put("x", 0).put("y", 0)
+                        .put("saveKey", 50).put("keyOut", 900));
+        JSONObject root = new JSONObject().put("countIn", 0).put("saveKeyOut", 900)
+                .put("fbInMacros", children);
+        JSONObject graph = FbdCraftMacroGraphAdapter.translate(root, children);
+        assertNotNull(graph);
+        JSONArray widgets = graph.getJSONArray("widgets");
+        assertEquals(3, widgets.getJSONObject(0).getInt("craftSensorAxis"));
+        assertEquals("SS", widgets.getJSONObject(1).getString("craftSunriseMode"));
+        assertEquals("site/value", widgets.getJSONObject(2).getString("craftMqttTopic"));
+        assertEquals(3, widgets.getJSONObject(2).getInt("craftMqttType"));
+        assertEquals(2, widgets.getJSONObject(2).getInt("craftMqttServer"));
+        assertTrue(widgets.getJSONObject(3).getBoolean("craftMqttRetain"));
+    }
+
     @Test public void failsClosedForUnknownIdsOrBrokenEdges() throws Exception {
         JSONObject unknown = validMacro();
         unknown.getJSONArray("fbInMacros").getJSONObject(0).put("componentId", 999);
