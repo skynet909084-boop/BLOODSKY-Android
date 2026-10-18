@@ -184,6 +184,8 @@ public final class CraftProjectImporter {
         else if (componentId == 20) type = "Список Craft"; // CustomList, 16 selectable bit labels
         else if (componentId == 6 && integer(other.opt("mode"), 0) == 1)
             type = "Переход на экран"; // CustomComponents.e mode 1 calls the original screen-switch handler
+        else if (componentId == 6 && integer(other.opt("mode"), 0) == 2)
+            type = "Константная кнопка Craft"; // CustomComponents.e mode 2 writes a configured constant
         else if (componentId == 6) type = "Кнопка"; // CustomComponents.e, interactive button
         else if (componentId == 7) type = "Динамический текст";
         else if (componentId == 11) type = "Прогресс-бар"; // Craft progress bar
@@ -308,6 +310,14 @@ public final class CraftProjectImporter {
             widget.put("craftLinearProgressColor", color(other.opt("colorProgress"), Color.rgb(46, 236, 0)));
             widget.put("craftLinearBackgroundColor", color(other.opt("colorBackground"), Color.rgb(156, 156, 155)));
             widget.put("craftLinearEnabled", false);
+        } else if (componentId == 6 && integer(other.opt("mode"), 0) == 2) {
+            // Mode 2 writes a value when pressed. Keep the source options, but require
+            // a new explicit TCP target because Craft device IDs are installation-specific.
+            widget.put("craftButtonMode", 2);
+            widget.put("craftButtonConstantType", boundedInt(other.opt("typeRegister"), 0, 0, 1));
+            widget.put("craftButtonConstant", boundedString(other.optString("constant", "0"), 80));
+            widget.put("craftButtonConstantRegister", boundedInt(other.opt("constantRegister"), 0, 0, 65535));
+            widget.put("craftButtonConstantEnabled", false);
         } else if (componentId == 20) {
             widget.put("craftListLabels", CraftBitList.toJson(CraftBitList.labelsFromCraft(other)));
             widget.put("craftListVisibleInWork", other.optBoolean("visibleInWork", true));
