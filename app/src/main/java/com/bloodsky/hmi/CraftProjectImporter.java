@@ -189,6 +189,7 @@ public final class CraftProjectImporter {
             type = "Константная кнопка Craft"; // CustomComponents.e mode 2 writes a configured constant
         else if (componentId == 6) type = "Кнопка"; // CustomComponents.e, interactive button
         else if (componentId == 7) type = "Динамический текст";
+        else if (componentId == 8) type = "Числовой ввод Craft"; // CustomComponents.i: bounded integer / Float32 input
         else if (componentId == 11) type = "Прогресс-бар"; // Craft progress bar
         else if (componentId == 18) type = "Входящее SMS"; // CustomComponents.x; opt-in runtime only
         else if (componentId == 27) type = "Распознавание речи Craft"; // visible disabled placeholder; original recognition flow is not yet ported
@@ -246,7 +247,16 @@ public final class CraftProjectImporter {
                 if (other.has("mqttRetain")) widget.put("craftMqttRetain", other.optBoolean("mqttRetain"));
             }
         }
-        if (componentId == 7) {
+        if (componentId == 8) {
+            JSONObject numericConnection = objectValue(source.opt("jsTableComponent_connectionInfo"));
+            JSONObject numericFields = CraftNumericInput.fromCraft(numericConnection, other);
+            java.util.Iterator<String> numericKeys = numericFields.keys();
+            while (numericKeys.hasNext()) {
+                String key = numericKeys.next();
+                widget.put(key, numericFields.get(key));
+            }
+            widget.put("showFrame", numericFields.optBoolean("craftNumericFrame", false));
+        } else if (componentId == 7) {
             JSONArray states = new JSONArray();
             JSONArray colors = new JSONArray();
             for (int state = 0; state < 16; state++) {

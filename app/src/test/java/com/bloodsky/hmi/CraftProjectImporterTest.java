@@ -415,4 +415,34 @@ public class CraftProjectImporterTest {
         }
     }
 
+    @Test public void importsCraftNumericFieldsWithLegacyBindingDisabled() throws Exception {
+        String json = new JSONObject().put("TableNameProject", new JSONObject().put("name", "Numeric").put("countScreen", 1))
+                .put("TableConnections", new org.json.JSONArray())
+                .put("TableComponent", new org.json.JSONArray().put(new JSONObject()
+                        .put("componentId", 8).put("text", "12.50")
+                        .put("jsTableComponent_connectionInfo", new JSONObject()
+                                .put("posDeviceNetworkInList", 4).put("addressRegister", 77)
+                                .put("min", -10).put("max", 50).put("password", "legacy"))
+                        .put("jsTableComponent_other", new JSONObject().put("numScreen", 1).put("type", 1)
+                                .put("typeInt", 1).put("countNumAfterPointEditNumber", 2)
+                                .put("fontChange", true).put("enableFrameEditNumber", true))))
+                .toString();
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(json));
+        JSONObject numeric = project.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets").getJSONObject(0);
+        assertEquals("Числовой ввод Craft", numeric.getString("type"));
+        assertEquals("", numeric.getString("connectionInfo"));
+        assertEquals("legacy", numeric.getJSONObject("craftConnectionInfo").getString("password"));
+        assertEquals(77, numeric.getJSONObject("craftConnectionInfo").getInt("addressRegister"));
+        assertEquals(-10, numeric.getDouble("craftNumericMin"), 0);
+        assertEquals(50, numeric.getDouble("craftNumericMax"), 0);
+        assertEquals(1, numeric.getInt("craftNumericMode"));
+        assertEquals(1, numeric.getInt("craftNumericTypeInt"));
+        assertEquals(2, numeric.getInt("craftNumericDecimals"));
+        assertTrue(numeric.getBoolean("craftNumericSystemFont"));
+        assertTrue(numeric.getBoolean("craftNumericFrame"));
+        assertTrue(numeric.getBoolean("craftNumericPasswordRequired"));
+        assertFalse(numeric.getBoolean("craftNumericEnabled"));
+        MainActivity.validateImportedProjectStatic(project.toString());
+    }
+
 }
