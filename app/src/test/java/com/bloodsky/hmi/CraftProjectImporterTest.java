@@ -175,4 +175,27 @@ public class CraftProjectImporterTest {
         assertTrue(invalid.getBoolean("craftUnsupportedAction"));
         MainActivity.validateImportedProjectStatic(project.toString());
     }
+
+    @Test public void reconcilesStaleCraftScreenCountWithReferencedScreens() throws Exception {
+        String json = "{\"TableNameProject\":{\"name\":\"Legacy screen\",\"countScreen\":16},\"TableConnections\":[],\"TableComponent\":["
+                + "{\"componentId\":2,\"text\":\"On screen 20\",\"x\":1,\"y\":2,\"width\":100,\"height\":30,\"jsTableComponent_other\":{\"numScreen\":20}}]}";
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(json));
+        assertEquals(20, project.getJSONArray("screens").length());
+        assertEquals(16, project.getJSONObject("craftSource").getJSONObject("TableNameProject").getInt("countScreen"));
+        JSONObject imported = project.getJSONArray("screens").getJSONObject(19).getJSONArray("widgets").getJSONObject(0);
+        assertEquals("On screen 20", imported.getString("text"));
+        MainActivity.validateImportedProjectStatic(project.toString());
+    }
+
+    @Test public void rejectsCraftComponentScreensBeyondSupportedLimit() throws Exception {
+        String json = "{\"TableNameProject\":{\"name\":\"Too many screens\",\"countScreen\":16},\"TableConnections\":[],\"TableComponent\":["
+                + "{\"componentId\":2,\"text\":\"Overflow\",\"jsTableComponent_other\":{\"numScreen\":129}}]}";
+        try {
+            CraftProjectImporter.convert(json);
+            fail("Screen references beyond the supported limit must be rejected");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage().contains("лимита"));
+        }
+    }
+
 }
