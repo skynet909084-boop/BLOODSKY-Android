@@ -1,6 +1,6 @@
 # Component interaction audit (2026-10-18)
 
-Reference: `reference/craft-reference.zip` (SHA-256 `316da0335dc4ea0c8f2d8c14550118ba33bd0e95d7c926f67ed848429c554cdd`). Decompiled source is used as a navigation aid; ambiguous behavior should be checked in Smali before parity claims. The follow-up below compares against PR #143 HEAD `6759340d8ad1f6000c394fbef4b5ecee8607ae28` and records new source findings.
+Reference: `reference/craft-reference.zip` (SHA-256 `316da0335dc4ea0c8f2d8c14550118ba33bd0e95d7c926f67ed848429c554cdd`). Decompiled source is used as a navigation aid; ambiguous behavior should be checked in Smali before parity claims. The follow-up compares Craft against PR #143 code commit `fdfe5f37d557a80fa17e46feb0cf22dfc8a69060` and records the source findings implemented there.
 
 ## Shared tap and hold routes
 
