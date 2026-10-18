@@ -183,10 +183,13 @@ public class CraftProjectImporterTest {
                 + "{\"componentId\":19,\"text\":\"Legacy 19\",\"x\":4,\"y\":5,\"width\":30,\"height\":30,"
                 + "\"jsTableComponent_connectionInfo\":{\"posDeviceNetworkInList_source\":2,\"addressRegister_source\":17,"
                 + "\"posDeviceNetworkInList_receive\":3,\"addressRegister_receive\":21,\"posDeviceNetworkInList_trigger\":4},"
-                + "\"jsTableComponent_other\":{\"numScreen\":1,\"mode\":2,\"regMode\":1,\"bitMode\":3}}]}";
+                + "\"jsTableComponent_other\":{\"numScreen\":1,\"mode\":2,\"regMode\":1,\"bitMode\":3}},"
+                + "{\"componentId\":18,\"text\":\"SET\",\"x\":7,\"y\":8,\"width\":90,\"height\":30,"
+                + "\"jsTableComponent_connectionInfo\":{\"register\":17},"
+                + "\"jsTableComponent_other\":{\"numScreen\":1,\"mode\":1,\"vendorSmsCommand\":\"preserve-me\"}}]}";
         JSONObject project = new JSONObject(CraftProjectImporter.convert(json));
         JSONArray widgets = project.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets");
-        assertEquals(2, widgets.length());
+        assertEquals(3, widgets.length());
         JSONObject alarm = widgets.getJSONObject(0);
         assertEquals("Звуковой сигнал", alarm.getString("type"));
         assertEquals(4, alarm.getInt("craftAlarmSoundIndex"));
@@ -207,6 +210,12 @@ public class CraftProjectImporterTest {
         assertEquals(4, gateway.getJSONObject("craftConnectionInfo").getInt("posDeviceNetworkInList_trigger"));
         assertEquals(9, project.getJSONObject("craftSource").getJSONArray("TableComponent").getJSONObject(0).getInt("componentId"));
         assertEquals(19, project.getJSONObject("craftSource").getJSONArray("TableComponent").getJSONObject(1).getInt("componentId"));
+        JSONObject incomingSms = widgets.getJSONObject(2);
+        assertEquals("Входящее SMS", incomingSms.getString("type"));
+        assertFalse(incomingSms.getBoolean("smsEnabled"));
+        assertTrue(incomingSms.getJSONObject("craftOther").has("vendorSmsCommand"));
+        assertFalse(incomingSms.has("craftUnsupportedComponent"));
+        assertEquals(18, project.getJSONObject("craftSource").getJSONArray("TableComponent").getJSONObject(2).getInt("componentId"));
     }
 
     @Test public void reconcilesStaleCraftScreenCountWithReferencedScreens() throws Exception {
