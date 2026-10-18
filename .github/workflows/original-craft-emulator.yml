@@ -90,7 +90,6 @@ jobs:
             set -eu
             mkdir -p build-reports/original-craft-1.0.7
             adb shell settings put global airplane_mode_on 1
-            adb shell am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true
             adb shell svc wifi disable || true
             adb shell svc data disable || true
             adb install -r build/KaScada-Craft-1.0.7.apk
