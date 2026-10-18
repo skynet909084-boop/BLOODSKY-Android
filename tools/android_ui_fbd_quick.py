@@ -335,6 +335,37 @@ class FastFbdSmoke(Smoke):
         self.wait_node(description='Редактор экрана')
         if current_widgets() != palette_native or self.saved_connections():
             raise AssertionError('Original source SEL/COMPARE preview widgets lost after restart')
+        # Exercise both new source-backed change detectors through the real
+        # extended picker; the original preview remains gated separately.
+        add_native_from_extended('FBD — Craft CH_I (изменение Integer)')
+        add_native_from_extended('FBD — Craft CH_F (изменение Float)')
+        changes = current_widgets()
+        if [w['type'] for w in changes[-2:]] != [
+                'FBD CRAFT CHANGE I', 'FBD CRAFT CHANGE F']:
+            raise AssertionError('Craft change detector picker types incorrect')
+        if changes[:-2] != palette_native:
+            raise AssertionError('Adding change detectors altered existing native widgets')
+        # Opening and applying ordinary properties must preserve each variant.
+        for widget in changes[-2:]:
+            canvas = self.wait_node(description='Редактор экрана')
+            x0, y0, _, _ = map(int, re.findall(r'\d+', canvas.get('bounds')))
+            adb('shell', 'input', 'tap',
+                str(round(x0 + widget['x'] + widget['w']/2)),
+                str(round(y0 + widget['y'] + widget['h']/2)))
+            self.wait_node('Свойства: ' + widget['type'])
+            self.tap('Применить')
+            self.wait_node(description='Редактор экрана')
+        if current_widgets() != changes:
+            raise AssertionError('Change detector properties altered saved fields')
+        self.capture('fast-fbd-native-change-int-float')
+        adb('shell', 'am', 'force-stop', PACKAGE)
+        adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
+        self.tap('Загрузить проект')
+        self.tap(PROJECT)
+        self.wait_node(description='Редактор экрана')
+        if current_widgets() != changes or self.saved_connections():
+            raise AssertionError('Native change detector data lost after cold restart')
+        self.capture('fast-fbd-native-change-restarted')
         crashes = adb('logcat', '-d', '-b', 'crash')
         (self.output / 'crash-log.txt').write_text(crashes)
         if PACKAGE in crashes:
@@ -355,6 +386,7 @@ class FastFbdSmoke(Smoke):
                 'source Integer SEL and COMPARE extended picker',
                 'COMPARE exact == mode and cold restart',
                 'original source SEL/COMPARE previews and cold restart',
+                'native CH_I/CH_F picker, property Apply, preserved widgets and cold restart',
                 'no app crash']
         }, indent=2))
         print(f'FAST_FBD_SMOKE_OK elapsed_seconds={elapsed}', flush=True)
