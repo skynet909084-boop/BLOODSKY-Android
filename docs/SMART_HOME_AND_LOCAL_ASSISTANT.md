@@ -29,11 +29,16 @@ Do not embed undocumented Mi Home endpoints or request Xiaomi passwords in BLOOD
 
 Official Xiaomi integration and its local/cloud boundaries: <https://github.com/XiaoMi/ha_xiaomi_home>.
 
-## Local voice assistant
+## Voice assistant: offline and online modes
 
-Start with push-to-talk, offline speech recognition, a constrained Russian command grammar, and local text-to-speech. Commands can select an existing screen, read an explicitly selected value, and run or stop a named BLOODSKY scenario. The parser must only resolve to known project actions; ambiguous commands get a spoken/text clarification. Device writes and scenario starts require a confirmation step until the user can review and disable that guard per action.
+The first implementation is push-to-talk with an explicit mode choice on every activation:
 
-Android exposes an on-device `SpeechRecognizer` from API 31 and a runtime availability check. BLOODSKY supports API 23+, so older devices need an explicitly bundled offline recognizer/model; otherwise voice control reports unavailable and must not silently fall back to a network recognizer. The assistant must not transmit audio or commands to a cloud LLM. A local language model can be evaluated later against the target set-top box's RAM/CPU budget; deterministic intent parsing remains the safe execution layer.
+- **Local/offline:** API 31+ on-device `SpeechRecognizer`, gated by Android's runtime availability check. It never falls back to the network recognizer. BLOODSKY supports API 23+, so on older devices offline speech is reported unavailable until a bundled offline engine is selected and shipped.
+- **Online:** Android's default speech-recognition service. The user sees that audio may be processed by that service and explicitly chooses this mode. If it is unavailable, the command fails visibly; it does not block Modbus/FBD or change the mode behind the user's back.
+
+Both modes feed the same deterministic Russian allowlist and execute locally. The initial supported commands navigate existing screens by name/number and move to project run/stop mode. Starting the project asks for confirmation because it begins runtime execution; stopping is immediate. Unknown phrases are rejected. The current project model has no standalone named-scenario registry, so “run scenario” is not exposed as an implemented command. Arbitrary device writes, smart-home commands, and LLM-generated actions are not enabled by speech.
+
+Android exposes `createOnDeviceSpeechRecognizer()` from API 31 and requires checking `isOnDeviceRecognitionAvailable()` before creating it. Text-to-speech is local Android TTS. No cloud LLM is currently configured; a future online language model may only help interpret/clarify a request before the same local allowlist, confirmation, and capability checks. Online providers remain opt-in and no paid service is added without explicit approval.
 
 Android API reference: <https://developer.android.com/reference/android/speech/SpeechRecognizer>.
 
@@ -43,7 +48,7 @@ Android API reference: <https://developer.android.com/reference/android/speech/S
 2. Define and test the provider-neutral device/capability model against existing Modbus and MQTT types.
 3. Build the Yandex opt-in OAuth adapter, then test read-only discovery before control actions.
 4. Select a Xiaomi path from the user's actual hub/device inventory; prefer documented local control and keep any Xiaomi Cloud bridge opt-in.
-5. Add offline push-to-talk for named local scenarios, then extend to read-only telemetry and guarded control.
+5. Extend push-to-talk to read-only telemetry, then guarded controls and a real named-scenario model.
 
 ## Acceptance checks
 
@@ -51,4 +56,5 @@ Android API reference: <https://developer.android.com/reference/android/speech/S
 - Provider tokens are not serialized into project JSON/ZIP or diagnostic logs.
 - Unavailable provider devices do not change local project state or execute writes.
 - Voice input cannot run an unknown or ambiguous scenario and cannot bypass confirmation for a guarded write.
+- Offline speech never silently switches to a network recognizer; online speech is separately selected by the user.
 - SMS prompts for permission only when the user enables SMS; unsupported devices without telephony messaging show a clear unavailable state.
