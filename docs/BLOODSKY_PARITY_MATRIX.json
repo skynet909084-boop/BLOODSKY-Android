@@ -154,9 +154,9 @@
         {
           "id": "widget.voice_announcement",
           "name": "Voice Announcement (CustomComponents.a0)",
-          "status": "missing",
+          "status": "partial",
           "criteria": "Voice announcement trigger with TextToSpeech synthesis and edge-triggering.",
-          "audit_note": "Not implemented in BLOODSKY yet; see the source-backed acceptance plan in docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
+          "audit_note": "Craft ID 27 now imports as the existing 16-state voice-message widget and preserves source metadata. Legacy bindings stay inactive; original phrase-field mapping and side-by-side/device acceptance remain open."
         },
         {
           "id": "widget.sms_in",
