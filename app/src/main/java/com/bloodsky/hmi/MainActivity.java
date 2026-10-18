@@ -1396,7 +1396,7 @@ public class MainActivity extends Activity {
             if (edge == null || edge.target != node || edge.source < 0
                     || edge.source >= graphWidgets.size()) continue;
             int inputType = craftMacroGraphPortType(graphWidgets, graphConnections,
-                    edge.source, edge.sourcePin, true, visiting);
+                    edge.source, edge.extraFields == null ? "" : edge.extraFields.optString("sourcePin", ""), true, visiting);
             if (inputType == 2 || inputType == 3) {
                 hasNumericInput = true;
                 if (inputType == 3) hasFloatInput = true;
