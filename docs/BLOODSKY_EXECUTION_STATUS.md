@@ -4,7 +4,7 @@
 
 - `KASCADA_FULL_PARITY_AUDIT_20261018.md` now cross-checks all manual chapters 2–12, the decoded component registry, the pinned decompilation, and the three supplied `.pro`/ZIP samples. It separates implemented paths from tested compatibility and device/visual proof.
 - `BLOODSKY_PARITY_MATRIX.json` was corrected: most broad feature rows are partial; bit list and voice-announcement widgets are missing. Earlier “implemented” labels had overstated KaSCADA parity.
-- Incoming SMS §8.4 now has an opt-in foreground receiver, runtime permission, encrypted sender allowlist, exact command parser, up-to-16 signed 16-bit holding-register writes, atomic FC22 bit write, optional FC22 strobe set and Craft ID 18 import disabled-by-default. Android multipart/PDU/device tests remain open. Manual §8.5 allows up to eight outgoing register values; BLOODSKY currently inserts one value.
+- Incoming SMS §8.4 now has an opt-in foreground receiver, runtime permission, encrypted sender allowlist, exact command parser, up-to-16 signed 16-bit holding-register writes, atomic FC22 bit write, optional FC22 strobe set and Craft ID 18 import disabled-by-default. Outgoing SMS §8.5 reads 1–8 contiguous registers and supports `%1`–`%8`, while preserving `{value}`. Android multipart/PDU/device tests and exact vendor error UX remain open.
 - Stable `main` remains untouched. No new visual or physical-device parity is claimed by this audit refresh.
 
 Target: original KaScada Craft 1.0.7 functionality and appearance with BLOODSKY branding and without licensing/component-count activation. A passing build does not prove a full clone.
