@@ -7370,7 +7370,7 @@ public class MainActivity extends Activity {
             }
             for (int i = 0; i < widgets.size(); i++) {
                 Widget w = widgets.get(i);
-                if (!w.visible || (operatorMode && "Константная кнопка Craft".equals(w.type)
+                if (!w.visible || (operatorMode && ("Кнопка".equals(w.type) || "Константная кнопка Craft".equals(w.type))
                         && !w.extraFields.optBoolean("craftButtonVisibleInWork", true))
                         || (operatorMode && isFbd(w))
                         || (operatorMode && "Список Craft".equals(w.type)
@@ -7760,8 +7760,9 @@ public class MainActivity extends Activity {
             for (int i = widgets.size() - 1; i >= 0; i--) {
                 Widget w = widgets.get(i);
                 if (w.visible && !isFbd(w)
-                        && !(("Список Craft".equals(w.type) || "Кнопка".equals(w.type)
-                        || "Константная кнопка Craft".equals(w.type))
+                        && !("Список Craft".equals(w.type)
+                        && !w.extraFields.optBoolean("craftListVisibleInWork", true))
+                        && !(("Кнопка".equals(w.type) || "Константная кнопка Craft".equals(w.type))
                         && !w.extraFields.optBoolean("craftButtonVisibleInWork", true))
                         && x >= w.x && x <= w.x + w.w && y >= w.y && y <= w.y + w.h) return i;
             }
