@@ -403,13 +403,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void stopSoundAlert() {
-        if (mediaPlayer == null) return;
-        try { mediaPlayer.stop(); } catch (Exception ignored) {}
-        try { mediaPlayer.release(); } catch (Exception ignored) {}
-        mediaPlayer = null;
-    }
-
     private void speakVoiceAnnouncement(String text) {
         if (textToSpeech != null && text != null && !text.trim().isEmpty()) {
             try {
