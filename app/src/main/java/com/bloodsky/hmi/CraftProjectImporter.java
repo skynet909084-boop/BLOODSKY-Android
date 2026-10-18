@@ -27,9 +27,19 @@ public final class CraftProjectImporter {
         if (!isCraftProject(source)) throw new IllegalArgumentException("Не найден формат проекта Craft");
         JSONObject craftProject = source.getJSONObject("TableNameProject");
         JSONArray components = source.getJSONArray("TableComponent");
-        int screenCount = craftProject.optInt("countScreen", 1);
-        if (screenCount < 1 || screenCount > 128) throw new IllegalArgumentException("Недопустимое количество экранов Craft");
+        int declaredScreenCount = craftProject.optInt("countScreen", 1);
+        if (declaredScreenCount < 1 || declaredScreenCount > 128) throw new IllegalArgumentException("Недопустимое количество экранов Craft");
         if (components.length() > 2000) throw new IllegalArgumentException("Слишком много компонентов Craft");
+        // Some real Craft projects have stale countScreen metadata while components still reference later screens.
+        int screenCount = declaredScreenCount;
+        for (int i = 0; i < components.length(); i++) {
+            JSONObject component = components.optJSONObject(i);
+            if (component == null) throw new IllegalArgumentException("Строка компонента Craft должна быть объектом");
+            JSONObject other = objectValue(component.opt("jsTableComponent_other"));
+            int screenNumber = positiveInt(other.opt("numScreen"), 1);
+            if (screenNumber > 128) throw new IllegalArgumentException("Компонент ссылается на экран Craft за пределами лимита");
+            screenCount = Math.max(screenCount, screenNumber);
+        }
 
         JSONObject converted = new JSONObject();
         converted.put("projectName", boundedString(craftProject.optString("name", "Проект Craft"), 200));
