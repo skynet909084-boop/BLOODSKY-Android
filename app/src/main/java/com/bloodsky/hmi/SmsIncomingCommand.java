@@ -8,9 +8,14 @@ public final class SmsIncomingCommand {
         public final Mode mode;
         /** 16-bit Modbus representation; negative input is encoded as two's complement. */
         public final int registerValue;
-        private Result(Mode mode, int registerValue) {
+        /** FC22 masks for bit mode; other register bits are preserved atomically. */
+        public final int writeAndMask;
+        public final int writeOrMask;
+        private Result(Mode mode, int registerValue, int writeAndMask, int writeOrMask) {
             this.mode = mode;
             this.registerValue = registerValue;
+            this.writeAndMask = writeAndMask;
+            this.writeOrMask = writeOrMask;
         }
     }
 
@@ -18,12 +23,20 @@ public final class SmsIncomingCommand {
 
     public static Result parse(String allowedSender, String receivedSender, String command,
                                String body, Mode mode) {
+        return parse(allowedSender, receivedSender, command, body, mode, 0);
+    }
+
+    public static Result parse(String allowedSender, String receivedSender, String command,
+                               String body, Mode mode, int bitIndex) {
         if (mode == null || !samePhone(allowedSender, receivedSender)
                 || command == null || command.trim().isEmpty() || body == null
                 || body.length() > 512) return null;
         String exactCommand = command.trim();
-        if (mode == Mode.SET_BIT)
-            return exactCommand.equals(body) ? new Result(mode, 1) : null;
+        if (mode == Mode.SET_BIT) {
+            if (!exactCommand.equals(body) || bitIndex < 0 || bitIndex > 15) return null;
+            int mask = 1 << bitIndex;
+            return new Result(mode, 1, 0xffff ^ mask, mask);
+        }
         String prefix = exactCommand + " ";
         if (!body.startsWith(prefix)) return null;
         String number = body.substring(prefix.length());
@@ -31,7 +44,7 @@ public final class SmsIncomingCommand {
         try {
             int signed = Integer.parseInt(number);
             if (signed < -32768 || signed > 32767) return null;
-            return new Result(mode, signed & 0xffff);
+            return new Result(mode, signed & 0xffff, 0xffff, signed & 0xffff);
         } catch (NumberFormatException invalid) {
             return null;
         }
@@ -41,6 +54,8 @@ public final class SmsIncomingCommand {
         String expected = canonicalPhone(allowed), actual = canonicalPhone(received);
         return expected != null && expected.equals(actual);
     }
+
+    public static boolean isValidSender(String phone) { return canonicalPhone(phone) != null; }
 
     private static String canonicalPhone(String phone) {
         if (phone == null) return null;
