@@ -281,7 +281,8 @@ public final class CraftProjectImporter {
             widget.put("craftGatewayMode", integer(other.opt("mode"), 0));
             widget.put("craftGatewayRegisterMode", integer(other.opt("regMode"), 0));
             widget.put("craftGatewayBitMode", integer(other.opt("bitMode"), 0));
-            widget.put("craftGatewayCount", boundedInt(connectionInfo.opt("countRegister_source"), 1, 1, 99));
+            JSONObject gatewayConnectionInfo = source.optJSONObject("jsTableComponent_connectionInfo");
+            widget.put("craftGatewayCount", boundedInt(gatewayConnectionInfo == null ? null : gatewayConnectionInfo.opt("countRegister_source"), 1, 1, 99));
             widget.put("craftGatewayEnabled", false);
         } else if (componentId == 18) {
             // Preserve the source object but require an operator to re-enter a trusted sender,
