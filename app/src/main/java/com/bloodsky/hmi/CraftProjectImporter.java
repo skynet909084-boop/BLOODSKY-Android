@@ -191,7 +191,6 @@ public final class CraftProjectImporter {
         else if (componentId == 7) type = "Динамический текст";
         else if (componentId == 11) type = "Прогресс-бар"; // Craft progress bar
         else if (componentId == 18) type = "Входящее SMS"; // CustomComponents.x; opt-in runtime only
-        else if (componentId == 27) type = "Голосовое сообщение"; // CustomComponents.a0; editable TTS states, imported binding stays empty
         else {
             String fbdType = FbdCraftMacroGraphAdapter.typeForComponentId(componentId, other);
             type = fbdType == null ? "Текст" : fbdType;
@@ -365,7 +364,7 @@ public final class CraftProjectImporter {
     }
 
     private static boolean isSupportedComponent(int id) {
-        return id == 1 || id == 2 || id == 4 || id == 5 || id == 6 || id == 7 || id == 9 || id == 11 || id == 13 || id == 18 || id == 20 || id == 22 || id == 23 || id == 27;
+        return id == 1 || id == 2 || id == 4 || id == 5 || id == 6 || id == 7 || id == 9 || id == 11 || id == 13 || id == 18 || id == 20 || id == 22 || id == 23;
     }
 
     private static String timerMode(int mode) {
