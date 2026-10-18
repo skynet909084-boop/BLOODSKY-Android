@@ -71,8 +71,8 @@
           "id": "widget.button",
           "name": "Button Control (CustomComponents)",
           "status": "partial",
-          "criteria": "Craft CustomComponents.e modes: bit toggle, screen navigation and constant write (UINT16/Float32), with explicit register mapping and visible-in-work option.",
-          "audit_note": "Importer preserves Craft ID 6 mode-2 constants and visibility, and operator mode writes UINT16 via FC06 or Float32 via FC16 to an explicit TCP holding register. Bit toggle and screen navigation remain partial; UI/hardware acceptance remains open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
+          "criteria": "Craft CustomComponents.e modes: mode 0 momentary register-bit set on press and clear on release (FC22 after explicit TCP mapping), mode 1 screen navigation, and mode 2 constant write (UINT16/Float32), with operator-mode visibility.",
+          "audit_note": "Mode 0 preserves the imported bit hint but leaves the legacy endpoint inactive; explicit TCP holding-register mapping and opt-in are required. FC22 sets/clears on press/release, cancel, and activity pause; native BLOODSKY toggle behavior is preserved. Mode 2 writes FC06/FC16 after remapping. Mode 1 editor validation and device/UI acceptance remain open; see docs/BLOODSKY_EXECUTION_STATUS.md."
         },
         {
           "id": "widget.indicator",

@@ -119,9 +119,18 @@ Design an additive SQLite-backed catalog migration that imports existing SharedP
 - Added integer/Float32 validation and importer regressions. Validation: 141 Python tests passed locally; Android unit tests and debug APK passed in CI run #795 on code commit `02fbeeeb013a0952b17a3205180f377bc6c419c6`. UI smoke was skipped by workflow rules. Mode 0 bit-toggle parity, screen-navigation editor parity, and hardware/UI acceptance remain open.
 
 
+
+## Craft ID 6 button mode 0 — momentary bit write
+
+- Decompiled `CustomComponents.e` and the `mbCanvas` touch listener: mode 0 sets the connection bit on touch-down and clears it on touch-up or touch-cancel.
+- Import preserves Craft's `addressBit` as a 0–15 hint and keeps the source device binding disabled. The editor requires an explicit TCP holding-register mapping and an opt-in checkbox before the operator can write.
+- Operator mode uses atomic Modbus FC22 masks for the selected bit, clears the output on release/cancel and when the activity pauses, and retains the existing toggle behavior for native BLOODSKY buttons.
+- Validation: mode-mask boundaries and importer fail-closed behavior covered by Android tests. Unit tests and debug APK passed in [Actions run #807](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39138717863). UI smoke #469 was skipped by workflow rules. Modbus-device, visual comparison, and momentary release under connection loss remain open.
+
 ## Resume checkpoint — 2026-10-18
 
 - Active work is PR #143 on branch `feat/craft-screen-navigation-import-20261018`; it remains open and unmerged. Stable `main` was not changed.
-- Completed most recently: Craft ID 13 linear setter and Craft ID 6 mode-2 constant-write button, with import preservation, explicit TCP remapping, tests, and Android build validation. The latest docs workflow, [run #799](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39134337776), completed successfully, including unit tests, debug APK build, and APK upload. UI smoke was skipped by workflow rules.
-- Resume next with Craft button mode 0: compare decoded touch-down/touch-up bit semantics against existing runtime, implement explicit safe TCP bit mapping, then finish mode-1 screen-navigation property/editor parity. Continue the remaining source-backed parity audit after those slices.
-- Product constraints: keep imported Craft device bindings inactive until explicit remapping; retain optional SMS; omit licensing and mandatory cloud control.
+- Completed most recently: Craft ID 6 mode 0 momentary bit command, ID 6 mode 2 constant write, ID 13 linear setter, and ID 20 bit list. Craft mode 0/2 device links remain disabled on import; operation requires explicit TCP remapping.
+- Latest mode-0 code validation: [Actions run #807](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39138717863) passed Android unit tests and debug APK build/upload. UI smoke was skipped by workflow rules.
+- Resume next with Craft mode 1 screen-navigation editor validation/side-by-side checks, then continue the remaining source-backed component audit.
+- Product constraints: retain optional SMS; omit licensing and mandatory cloud control; imported Craft bindings stay inactive until explicitly remapped.
