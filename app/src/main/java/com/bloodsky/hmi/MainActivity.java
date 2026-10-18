@@ -7744,7 +7744,22 @@ public class MainActivity extends Activity {
                         if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(16)) / Math.max(4f, imgLabel.length() * 0.58f))));
                         canvas.drawText(imgLabel, w.x + dp(8), w.y + w.h / 2 + dp(5), paint);
                     }
-                                } else if ("Видео RTSP Craft".equals(w.type)) {
+                } else if ("Распознавание речи Craft".equals(w.type)) {
+                    paint.setColor(Color.rgb(51, 65, 85));
+                    canvas.drawRoundRect(new RectF(w.x + dp(6), w.y + dp(6),
+                            w.x + w.w - dp(6), w.y + w.h - dp(6)), dp(4), dp(4), paint);
+                    paint.setColor(Color.rgb(203, 213, 225));
+                    paint.setTextSize(dp(11));
+                    canvas.drawText(w.text, w.x + dp(12), w.y + dp(19), paint);
+                    paint.setColor(Color.rgb(248, 113, 113));
+                    paint.setTextSize(dp(10));
+                    canvas.drawText("Распознавание речи не подключено",
+                            w.x + dp(12), w.y + w.h / 2 + dp(4), paint);
+                    paint.setColor(Color.rgb(148, 163, 184));
+                    paint.setTextSize(dp(9));
+                    canvas.drawText("16 исходных фраз сохранены",
+                            w.x + dp(12), w.y + w.h - dp(10), paint);
+                } else if ("Видео RTSP Craft".equals(w.type)) {ео RTSP Craft".equals(w.type)) {
                     paint.setColor(Color.rgb(30, 41, 59));
                     canvas.drawRoundRect(new RectF(w.x + dp(6), w.y + dp(6),
                             w.x + w.w - dp(6), w.y + w.h - dp(6)), dp(4), dp(4), paint);
