@@ -760,6 +760,13 @@ public class MainActivity extends Activity {
         }
 
         public byte[] sendAndReceive(int unit, int functionCode, int startAddress, int count) throws IOException {
+            if (unit < 1 || unit > 247) throw new IllegalArgumentException("Unit ID must be 1..247 for a request/response RTU exchange");
+            if (functionCode < 1 || functionCode > 4) throw new IllegalArgumentException("RTU stream helper currently supports read functions FC01..FC04 only");
+            int maxCount = functionCode <= 2 ? 2000 : 125;
+            if (count < 1 || count > maxCount) throw new IllegalArgumentException("Invalid Modbus RTU read quantity");
+            if (startAddress < 0 || startAddress > 65535 || startAddress + count > 65536) {
+                throw new IllegalArgumentException("Modbus RTU address range must fit 0..65535");
+            }
             byte[] frame = buildModbusRtuFrame(unit, functionCode, startAddress, count);
             out.write(frame);
             out.flush();
@@ -769,6 +776,9 @@ public class MainActivity extends Activity {
 
             int respUnit = header[0] & 0xFF;
             int respFunc = header[1] & 0xFF;
+            if (respUnit != unit) {
+                throw new IOException("Unexpected unit ID in Modbus RTU response: " + respUnit);
+            }
 
             if (respFunc == (functionCode | 0x80)) {
                 int exceptionCode = header[2] & 0xFF;
@@ -789,8 +799,10 @@ public class MainActivity extends Activity {
             }
 
             int byteCount = header[2] & 0xFF;
-            if (byteCount < 0 || byteCount > 252) {
-                throw new IOException("Invalid byte count in Modbus RTU response: " + byteCount);
+            int expectedByteCount = functionCode <= 2 ? (count + 7) / 8 : count * 2;
+            if (byteCount != expectedByteCount) {
+                throw new IOException("Invalid byte count in Modbus RTU response: expected "
+                        + expectedByteCount + ", got " + byteCount);
             }
 
             byte[] payload = new byte[byteCount];
