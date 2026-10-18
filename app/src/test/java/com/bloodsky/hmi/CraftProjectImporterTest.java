@@ -196,7 +196,7 @@ public class CraftProjectImporterTest {
                 + "\"jsTableComponent_other\":{\"numScreen\":1,\"posSound\":4,\"timeZ\":12}},"
                 + "{\"componentId\":19,\"text\":\"Legacy 19\",\"x\":4,\"y\":5,\"width\":30,\"height\":30,"
                 + "\"jsTableComponent_connectionInfo\":{\"posDeviceNetworkInList_source\":2,\"addressRegister_source\":17,"
-                + "\"posDeviceNetworkInList_receive\":3,\"addressRegister_receive\":21,\"posDeviceNetworkInList_trigger\":4},"
+                + "\"posDeviceNetworkInList_receive\":3,\"addressRegister_receive\":21,\"posDeviceNetworkInList_trigger\":4,\"countRegister_source\":6},"
                 + "\"jsTableComponent_other\":{\"numScreen\":1,\"mode\":2,\"regMode\":1,\"bitMode\":3}},"
                 + "{\"componentId\":18,\"text\":\"SET\",\"x\":7,\"y\":8,\"width\":90,\"height\":30,"
                 + "\"jsTableComponent_connectionInfo\":{\"register\":17},"
@@ -220,6 +220,7 @@ public class CraftProjectImporterTest {
         assertEquals(2, gateway.getInt("craftGatewayMode"));
         assertEquals(1, gateway.getInt("craftGatewayRegisterMode"));
         assertEquals(3, gateway.getInt("craftGatewayBitMode"));
+        assertEquals(6, gateway.getInt("craftGatewayCount"));
         assertEquals(17, gateway.getJSONObject("craftConnectionInfo").getInt("addressRegister_source"));
         assertEquals(21, gateway.getJSONObject("craftConnectionInfo").getInt("addressRegister_receive"));
         assertEquals(4, gateway.getJSONObject("craftConnectionInfo").getInt("posDeviceNetworkInList_trigger"));
