@@ -616,7 +616,21 @@ class Smoke:
         if not any('Данные остаются на устройстве' in label for label in labels):
             raise AssertionError('Archive properties do not explain local-only storage')
         self.capture('08a-craft-id15-properties')
-        self.tap('Отмена')
+        self.replace_property_input('Каналы архива', '2')
+        self.tap(description='Тип записи архива')
+        self.tap('FLOAT — 32 бит')
+        self.capture('08a2-craft-id15-channel-settings')
+        self.tap('Применить')
+        self.wait_node(description='Редактор экрана')
+        prefs = adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml')
+        widgets = json.loads({n.get('name'): n.text for n in ET.fromstring(prefs)}['active_project'])['screens'][0]['widgets']
+        extras = widgets[0]
+        if (extras.get('craftArchiveChannelCount') != 2
+                or extras.get('craftArchiveRecordType') != 'FLOAT'
+                or extras.get('craftArchiveIntervalSeconds') != 1
+                or extras.get('craftArchiveMaxRows') != 10000):
+            raise AssertionError('Craft ID 15 channel settings did not persist independently: ' + repr(extras))
+        archive = widgets[0]
         self.tap(description='Запустить проект')
         self.wait_node(description='Рабочий экран')
         canvas = self.wait_node(description='Рабочий экран')

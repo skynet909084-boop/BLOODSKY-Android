@@ -2341,15 +2341,16 @@ public class MainActivity extends Activity {
         row.setOrientation(LinearLayout.VERTICAL);
         row.setPadding(dp(16), dp(8), dp(12), dp(8));
         TextView heading = new TextView(this);
-        heading.setText(title); heading.setTextSize(15);
+        heading.setText(title); heading.setTextSize(15); heading.setMaxLines(2);
         heading.setTextColor(enabled ? Color.rgb(238, 238, 238) : Color.rgb(142, 142, 142));
-        row.addView(heading);
+        row.addView(heading, new LinearLayout.LayoutParams(-1, -2));
         if (detail != null && !detail.isEmpty()) {
             TextView caption = new TextView(this);
-            caption.setText(detail); caption.setTextSize(11);
+            caption.setText(detail); caption.setTextSize(11); caption.setMaxLines(2);
             caption.setTextColor(enabled ? Color.rgb(174, 174, 174) : Color.rgb(112, 112, 112));
-            row.addView(caption);
+            row.addView(caption, new LinearLayout.LayoutParams(-1, -2));
         }
+        row.setMinimumHeight(dp(52));
         row.setEnabled(enabled);
         if (enabled && action != null) {
             row.setBackgroundResource(android.R.drawable.list_selector_background);
@@ -2358,7 +2359,7 @@ public class MainActivity extends Activity {
                 action.run();
             });
         }
-        parent.addView(row, new LinearLayout.LayoutParams(-1, dp(52)));
+        parent.addView(row, new LinearLayout.LayoutParams(-1, -2));
     }
 
     private void showBoundProjectDevices() {
@@ -3786,19 +3787,24 @@ public class MainActivity extends Activity {
             archiveHelp.setPadding(0, dp(8), 0, dp(4)); form.addView(archiveHelp);
             archiveTriggerField = propertyField(w.extraFields.optString("craftArchiveTriggerBinding", ""),
                     InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-            archiveTriggerField.setHint("Необязательный триггер: tcp://host:502/1/40002"); form.addView(archiveTriggerField);
+            archiveTriggerField.setHint("Необязательный триггер: tcp://host:502/1/40002");
+            archiveTriggerField.setContentDescription("Триггер архива"); form.addView(archiveTriggerField);
             archiveChannelCountField = propertyField(Integer.toString(Math.max(1, Math.min(4,
                     w.extraFields.optInt("craftArchiveChannelCount", 1)))), InputType.TYPE_CLASS_NUMBER);
-            archiveChannelCountField.setHint("Каналы (1–4)"); form.addView(archiveChannelCountField);
+            archiveChannelCountField.setHint("Каналы (1–4)");
+            archiveChannelCountField.setContentDescription("Каналы архива"); form.addView(archiveChannelCountField);
             archiveRecordTypeField = new Spinner(this);
+            archiveRecordTypeField.setContentDescription("Тип записи архива");
             archiveRecordTypeField.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
                     new String[]{"INT — 16 бит", "FLOAT — 32 бит"}));
             archiveRecordTypeField.setSelection("FLOAT".equals(w.extraFields.optString("craftArchiveRecordType", "INT")) ? 1 : 0);
             form.addView(archiveRecordTypeField);
             archiveIntervalField = propertyField(Integer.toString(Math.max(1, w.extraFields.optInt("craftArchiveIntervalSeconds", 1))), InputType.TYPE_CLASS_NUMBER);
-            archiveIntervalField.setHint("Интервал записи, секунды (1–86400)"); form.addView(archiveIntervalField);
+            archiveIntervalField.setHint("Интервал записи, секунды (1–86400)");
+            archiveIntervalField.setContentDescription("Интервал архива"); form.addView(archiveIntervalField);
             archiveMaxRowsField = propertyField(Integer.toString(Math.max(100, w.extraFields.optInt("craftArchiveMaxRows", 10000))), InputType.TYPE_CLASS_NUMBER);
-            archiveMaxRowsField.setHint("Максимум записей (100–100000)"); form.addView(archiveMaxRowsField);
+            archiveMaxRowsField.setHint("Максимум записей (100–100000)");
+            archiveMaxRowsField.setContentDescription("Максимум строк архива"); form.addView(archiveMaxRowsField);
         } else {
             archiveIntervalField = null; archiveMaxRowsField = null;
             archiveChannelCountField = null; archiveRecordTypeField = null; archiveTriggerField = null;
