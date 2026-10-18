@@ -33,7 +33,7 @@ The original uses many custom view classes in `CustomComponents`. The decompiler
 |---|---|---|
 | `CustomLabel` | `autoResizeText`, `enableFrameLabel`, `timeZ` | Static label/text |
 | `CustomDynText` | text variants `T0`…`T14` | Dynamic text/status text |
-| `CustomList` | register, bit, request type, visible-in-work flags | List/table-like data view |
+| `CustomList` | 16 labels and selected UINT16 mask, read-only-in-work, visible-in-work | Craft bit list; TCP FC03 read / FC06 mask write in operator mode, imported connection remapped explicitly |
 | `CustomSound` | sound paths and Modbus register/bit fields | Sound/alarm trigger |
 | `a0` | `textVoice0`… | Voice/text announcement-related component |
 | `b0` | `link0`… and URL handling | Link/navigation component |
