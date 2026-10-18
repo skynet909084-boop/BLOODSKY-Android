@@ -3703,8 +3703,7 @@ public class MainActivity extends Activity {
                         if(!SmsNotificationClient.isValidPhone(phone)) {
                             Toast.makeText(this,"Укажи номер получателя в международном формате",Toast.LENGTH_LONG).show();return;
                         }
-                        String recipientKey=w.extraFields.optString("smsRecipientId","");
-                        if(!recipientKey.matches("[A-Fa-f0-9-]{36}"))recipientKey=java.util.UUID.randomUUID().toString();
+                        String recipientKey=java.util.UUID.randomUUID().toString();
                         try{SmsRecipientStore.save(this,recipientKey,phone);w.extraFields.put("smsRecipientId",recipientKey);}
                         catch(Exception failure){Toast.makeText(this,"Не удалось безопасно сохранить номер SMS",Toast.LENGTH_LONG).show();return;}
                     }
