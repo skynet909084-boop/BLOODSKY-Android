@@ -67,10 +67,50 @@ public class FbdCraftIntegerSelectorTest {
         i1.counterValue = 66;
         i2.counterValue = 99;
         List<MainActivity.Widget> nodes = Arrays.asList(gate,i1,i2,sel);
-        assertEquals(0.0, graphOutput(nodes, Collections.emptyList()), 0);
-        assertEquals(0.0, graphOutput(nodes, Arrays.asList(
+        assertTrue(Double.isNaN(graphOutput(nodes, Collections.emptyList())));
+        assertTrue(Double.isNaN(graphOutput(nodes, Arrays.asList(
                 MainActivity.pinnedFbdConnection(1, "Q", 3, "I1"),
-                MainActivity.pinnedFbdConnection(2, "Q", 3, "I2"))), 0);
+                MainActivity.pinnedFbdConnection(2, "Q", 3, "I2")))));
+    }
+
+    @Test public void disconnectedSelCannotAccidentallyTriggerDownstreamLessThan() throws Exception {
+        MainActivity.Widget gate = block("FBD Вход");
+        MainActivity.Widget i1 = block("FBD CRAFT CTU");
+        MainActivity.Widget i2 = block("FBD CRAFT CTU");
+        MainActivity.Widget sel = block("FBD CRAFT SEL");
+        MainActivity.Widget limit = block("FBD CRAFT CTU");
+        MainActivity.Widget compare = block("FBD CRAFT COMPARE");
+        i1.counterValue = 5;
+        i2.counterValue = 20;
+        limit.counterValue = 10;
+        compare.compareOperator = "<";
+        List<MainActivity.Widget> nodes = Arrays.asList(gate, i1, i2, sel, limit, compare);
+        List<MainActivity.FbdConnection> wires = Arrays.asList(
+                MainActivity.pinnedFbdConnection(1, "Q", 3, "I1"),
+                MainActivity.pinnedFbdConnection(2, "Q", 3, "I2"),
+                MainActivity.pinnedFbdConnection(3, "Q", 5, "IN1"),
+                MainActivity.pinnedFbdConnection(4, "Q", 5, "IN2"));
+        boolean[] visiting = new boolean[nodes.size()];
+        boolean[] valid = new boolean[nodes.size()];
+        boolean[] bools = new boolean[nodes.size()];
+        double[] numeric = new double[nodes.size()];
+        assertFalse("Missing native SEL IN must never make false 0 < 10 true",
+                MainActivity.evaluateFbdBlock(nodes, wires, 5,
+                        visiting, valid, bools, numeric));
+        assertTrue(Double.isNaN(numeric[3]));
+        assertEquals("CFG", FbdResultBinding.resolve(
+                "fbd://4", nodes, valid, bools, numeric));
+        // Now connect the BOOL selector. The native integer result can be
+        // compared normally with the same saved numeric source operands.
+        List<MainActivity.FbdConnection> connected = Arrays.asList(
+                MainActivity.pinnedFbdConnection(0, "Q", 3, "IN"),
+                MainActivity.pinnedFbdConnection(1, "Q", 3, "I1"),
+                MainActivity.pinnedFbdConnection(2, "Q", 3, "I2"),
+                MainActivity.pinnedFbdConnection(3, "Q", 5, "IN1"),
+                MainActivity.pinnedFbdConnection(4, "Q", 5, "IN2"));
+        assertTrue(MainActivity.evaluateFbdBlock(nodes, connected, 5,
+                new boolean[nodes.size()], new boolean[nodes.size()],
+                new boolean[nodes.size()], new double[nodes.size()]));
     }
 
     @Test public void sourceTerminalsAndLegacyContractDoNotOverlap() throws Exception {

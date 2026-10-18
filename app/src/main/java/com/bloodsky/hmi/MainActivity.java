@@ -3304,7 +3304,9 @@ public class MainActivity extends Activity {
         }
         if ("FBD CRAFT SEL".equals(widget.type)) {
             // The source returns an Integer only when all three inputs exist.
-            // BLOODSKY numeric 0 is a documented safe fallback, not source null.
+            // Carry original null-like invalidity as NaN in the transient
+            // numeric cache. Downstream native compare rejects it and HMI
+            // displays CFG. A fake zero would incorrectly satisfy comparisons.
             boolean hasIn = false, hasI1 = false, hasI2 = false;
             for (String pin : inputPins) {
                 String name = canonicalFbdPinName(pin);
@@ -3313,7 +3315,7 @@ public class MainActivity extends Activity {
                 if ("I2".equals(name)) hasI2 = true;
             }
             if (!hasIn || !hasI1 || !hasI2) {
-                cacheNumeric[index] = 0.0;
+                cacheNumeric[index] = Double.NaN;
                 return false;
             }
             boolean selector = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
@@ -3322,7 +3324,7 @@ public class MainActivity extends Activity {
             Integer i2 = FbdCraftIntegerSelector.exactInteger(
                     fbdNumericPinValue(numInputs, inputPins, "I2", 2, Double.NaN));
             if (i1 == null || i2 == null) {
-                cacheNumeric[index] = 0.0;
+                cacheNumeric[index] = Double.NaN;
                 return false;
             }
             int value = FbdCraftIntegerSelector.select(selector, i1, i2);
