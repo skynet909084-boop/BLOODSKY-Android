@@ -3409,6 +3409,7 @@ public class MainActivity extends Activity {
         final boolean craftButtonConfig = "Кнопка".equals(w.type) || craftConstantButton;
         final android.widget.Spinner craftButtonModeField, craftButtonConstantTypeField;
         final EditText craftButtonConstantField;
+        final android.widget.CheckBox craftButtonVisibleField;
         if (craftButtonConfig) {
             craftButtonModeField = new android.widget.Spinner(this);
             craftButtonModeField.setAdapter(new android.widget.ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item,
@@ -3423,8 +3424,12 @@ public class MainActivity extends Activity {
                     InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
             craftButtonConstantField.setHint("Значение константы"); form.addView(craftButtonConstantField);
             TextView constantHelp = new TextView(this);
-            constantHelp.setText("Для записи константы укажи TCP holding-регистр FC03/FC06 выше."); form.addView(constantHelp);
-        } else { craftButtonModeField = null; craftButtonConstantTypeField = null; craftButtonConstantField = null; }
+            constantHelp.setText("Craft-регистр #" + w.extraFields.optInt("craftButtonConstantRegister", 0)
+                    + " сохранён отдельно. Для записи настрой TCP holding-регистр FC03/FC06 выше."); form.addView(constantHelp);
+            craftButtonVisibleField = new android.widget.CheckBox(this);
+            craftButtonVisibleField.setText("Показывать кнопку в рабочем режиме");
+            craftButtonVisibleField.setChecked(w.extraFields.optBoolean("craftButtonVisibleInWork", true)); form.addView(craftButtonVisibleField);
+        } else { craftButtonModeField = null; craftButtonConstantTypeField = null; craftButtonConstantField = null; craftButtonVisibleField = null; }
         final boolean craftRegisterGateway = "Шлюз Craft".equals(w.type);
         final boolean craftBitGateway = "Шлюз битовый".equals(w.type);
         if (craftRegisterGateway || craftBitGateway) {
@@ -4109,6 +4114,7 @@ public class MainActivity extends Activity {
                             w.extraFields.put("craftButtonConstantType", valueType);
                             w.extraFields.put("craftButtonConstant", constant);
                             w.extraFields.put("craftButtonConstantEnabled", mode == 2 && buttonBinding != null);
+                            w.extraFields.put("craftButtonVisibleInWork", craftButtonVisibleField.isChecked());
                             w.type = mode == 2 ? "Константная кнопка Craft" : "Кнопка";
                         } catch (Exception ignored) { }
                     }
@@ -7341,7 +7347,9 @@ public class MainActivity extends Activity {
             }
             for (int i = 0; i < widgets.size(); i++) {
                 Widget w = widgets.get(i);
-                if (!w.visible || (operatorMode && isFbd(w))
+                if (!w.visible || (operatorMode && "Константная кнопка Craft".equals(w.type)
+                        && !w.extraFields.optBoolean("craftButtonVisibleInWork", true))
+                        || (operatorMode && isFbd(w))
                         || (operatorMode && "Список Craft".equals(w.type)
                         && !w.extraFields.optBoolean("craftListVisibleInWork", true))) continue;
                 RectF rect = new RectF(w.x, w.y, w.x + w.w, w.y + w.h);
