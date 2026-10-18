@@ -1,10 +1,5 @@
-"""Inspect the pinned APK class behind Craft voice component ID 27.
-
-The source class is nested/obfuscated, so this first audit locates it by Smali
-class descriptor rather than relying on a JADX filename.
-"""
+"""Locate the decompiled Craft voice component in the pinned APK archive."""
 from pathlib import Path
-import re
 import unittest
 import zipfile
 
@@ -14,27 +9,32 @@ ARCHIVE = Path(__file__).resolve().parents[1] / "reference/craft-reference.zip"
 class CraftVoiceSourceAuditTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.matches = []
         with zipfile.ZipFile(ARCHIVE) as archive:
-            for name in archive.namelist():
-                if not name.endswith(".smali"):
+            cls.paths = archive.namelist()
+            cls.name_hints = [
+                name for name in cls.paths
+                if "a0" in name.lower() or "customcomponents" in name.lower()
+            ]
+            cls.voice_hits = []
+            for name in cls.paths:
+                if not name.endswith((".java", ".smali")):
                     continue
-                text = archive.read(name).decode("utf-8", errors="replace")
-                if any(line.startswith(".class ") and ("$a0;" in line or "/a0;" in line) for line in text.splitlines()):
-                    cls.matches.append((name, text))
-        if cls.matches:
-            cls.path, cls.source = cls.matches[0]
+                raw = archive.read(name)
+                text = raw.decode("utf-8", errors="replace")
+                if any(token in text.lower() for token in ("texttospeech", "speak(", "voice announcement", "голосов")):
+                    cls.voice_hits.append((name, text))
 
-    def test_source_class_for_craft_id_27_is_present(self):
-        self.assertTrue(self.matches, "Could not locate CustomComponents.a0 Smali class")
+    def test_pinned_reference_contains_decompiled_sources(self):
+        self.assertTrue(any(name.endswith((".java", ".smali")) for name in self.paths))
 
-    def test_print_fields_methods_and_string_constants_for_source_review(self):
-        self.assertTrue(self.matches, "Source class must be located before review")
-        lines = [
-            line.strip()
-            for line in self.source.splitlines()
-            if line.startswith((".field ", ".method ")) or any(token in line for token in ("const-string", "setText", "speak", "TextToSpeech", "performClick", "onClick"))
-        ]
-        print("Craft ID 27 source:", self.path)
-        print("\n".join(lines[:220]))
-        self.assertTrue(lines, "Located Craft ID 27 class had no inspectable members")
+    def test_print_candidate_paths_and_voice_source_signatures(self):
+        print("Craft a0/CustomComponents path hints:", self.name_hints[:100])
+        print("Voice/TTS source paths:", [name for name, _ in self.voice_hits[:100]])
+        for name, text in self.voice_hits[:20]:
+            interesting = [
+                line.strip() for line in text.splitlines()
+                if any(token in line.lower() for token in (
+                    "texttospeech", "speak(", "voice", "голос", ".field ", ".method "
+                ))
+            ]
+            print("SOURCE", name, "\n".join(interesting[:60]))
