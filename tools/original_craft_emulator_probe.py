@@ -74,7 +74,10 @@ def controls(root):
         if not match:
             continue
         x1, y1, x2, y2 = map(int, match.groups())
-        clickable = (node.attrib.get("clickable") == "true" or permission_button) and node.attrib.get("enabled") != "false"
+        visual_control = package == PACKAGE and (
+            cls.endswith("ImageView") or cls.endswith("TextView")
+        )
+        clickable = (node.attrib.get("clickable") == "true" or permission_button or visual_control) and node.attrib.get("enabled") != "false"
         field = cls.endswith("EditText") and node.attrib.get("enabled") != "false"
         if not clickable and not field:
             continue
@@ -209,6 +212,7 @@ report = {
     "limitations": [
         "Traversal is bounded by state, depth and queued-path limits; report lists any remaining frontier.",
         "Android Back is not exhaustively traversed as a branch; forward controls are explored from each captured state.",
+        "Visible app ImageView and TextView nodes are tapped even when Android accessibility marks them non-clickable, because the Craft canvas handles several palette controls through parent touch listeners.",
         "Unavailable Bluetooth and USB hardware is not simulated.",
         "Generic values are entered only into visible text fields to reveal subsequent screens; they are not valid device credentials. A deterministic test project name is used when the field identifies itself as a project-name field.",
     ],
