@@ -20,7 +20,7 @@ public class CraftBitGatewayTest {
         final List<int[]> writes = new ArrayList<>();
         int[] source = new int[]{1};
         int trigger;
-        @Override public int[] read(CraftBitGateway.Binding binding, int quantity) {
+        @Override public int[] read(CraftBitGateway.Binding binding, int quantity) throws IOException {
             if (binding.function == 3) return new int[]{trigger};
             if (source.length != quantity) {
                 int[] resized = new int[quantity];
