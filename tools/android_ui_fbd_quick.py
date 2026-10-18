@@ -316,6 +316,27 @@ class FastFbdSmoke(Smoke):
                 if intersects:
                     raise AssertionError('Native original FBD blocks overlapped: '
                                          + repr((first, second)))
+        hierarchy = ET.fromstring(self.dump())
+        scrollable = {node.get('class') for node in hierarchy.iter('node')
+                      if node.get('scrollable') == 'true'}
+        if not {'android.widget.ScrollView', 'android.widget.HorizontalScrollView'}.issubset(scrollable):
+            raise AssertionError('FBD design surface is not scrollable in both axes: '
+                                 + repr(scrollable))
+        screen_size = re.search(r'(\\d+)x(\\d+)', adb('shell', 'wm', 'size'))
+        if not screen_size:
+            raise AssertionError('Could not determine emulator screen size for workspace swipe')
+        screen_w, screen_h = map(int, screen_size.groups())
+        pan_x = round(screen_w * 0.90)
+        adb('shell', 'input', 'swipe', str(pan_x), str(round(screen_h * 0.68)),
+            str(pan_x), str(round(screen_h * 0.35)), '350')
+        time.sleep(0.2)
+        if current_widgets() != original:
+            raise AssertionError('Panning the FBD workspace changed saved widget data')
+        self.capture('fast-fbd-workspace-scrolled')
+        adb('shell', 'input', 'swipe', str(pan_x), str(round(screen_h * 0.35)),
+            str(pan_x), str(round(screen_h * 0.68)), '350')
+        if current_widgets() != original:
+            raise AssertionError('Returning the FBD workspace to the top changed widget data')
         self.capture('fast-fbd-original-craft-source-palette')
 
         adb('shell', 'am', 'force-stop', PACKAGE)
