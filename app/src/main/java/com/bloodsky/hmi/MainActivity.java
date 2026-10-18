@@ -2130,7 +2130,18 @@ public class MainActivity extends Activity {
             actionParams.gravity = Gravity.CENTER_HORIZONTAL;
             root.addView(actions, actionParams);
         }
-        setContentView(root); editor.invalidate(); startModbusPolling(); startFbdSensors(); startCraftMqtt();
+        setContentView(root);
+        EditorCanvas attachedEditor = editor;
+        // A landscape orientation change can attach the new editor tree before its first
+        // measure/draw pass. Invalidate after attachment so the canvas is not left as the
+        // transparent root background in emulator captures and on slower devices.
+        attachedEditor.post(() -> {
+            if (editor == attachedEditor) {
+                attachedEditor.requestLayout();
+                attachedEditor.invalidate();
+            }
+        });
+        startModbusPolling(); startFbdSensors(); startCraftMqtt();
         refreshIncomingSmsReceiver();
     }
 
