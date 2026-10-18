@@ -134,7 +134,7 @@ public class ProjectPersistenceTest {
     @Test
     public void zipEntryNameValidatorRejectsPlatformAndAmbiguousPaths() {
         for (String path : new String[]{"/absolute.json", "C:/drive.json", "folder/../escape.json",
-                "folder/./dot.json", "folder//empty-segment.json", "folder\\\\windows.json", "bad\\0name.json"}) {
+                "folder/./dot.json", "folder//empty-segment.json", "folder\\windows.json", "bad\\0name.json"}) {
             assertFalse(path, MainActivity.isSafeProjectArchiveEntryName(path));
         }
     }
