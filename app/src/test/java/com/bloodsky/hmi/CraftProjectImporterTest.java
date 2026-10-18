@@ -154,6 +154,7 @@ public class CraftProjectImporterTest {
         assertTrue(widgets.getJSONObject(1).getBoolean("autoResizeText"));
         assertTrue(!widgets.getJSONObject(1).getBoolean("showFrame"));
         assertEquals("Переход на экран", widgets.getJSONObject(2).getString("type"));
+        assertEquals(1, widgets.getJSONObject(2).getInt("targetScreenIndex"));
         assertTrue(widgets.getJSONObject(2).getBoolean("autoResizeText"));
         assertEquals(1, widgets.getJSONObject(2).getInt("targetScreenIndex"));
         assertEquals(2, widgets.getJSONObject(2).getJSONObject("craftOther").getInt("changeScreen"));
