@@ -5,7 +5,7 @@
 - Added an explicit settings form for source, destination, count, mode, trigger endpoint and trigger bit. Imported device-index bindings are preserved but do not run; gateway enable is opt-in and requires replacing them with TCP endpoints.
 - Added direct Modbus TCP execution for continuous transfer, rising-edge trigger, and single-register source-change mode. Reads support FC03/FC04; writes use validated FC16 holding-register batches. All network requests run on the existing background Modbus executor and are guarded by project/operator lifecycle tokens.
 - `CraftRegisterGateway` validates address/range/count/mode constraints and owns event state. Unit tests cover 1–99 counts, FC04 source normalization, holding-only target, low→high edge behavior, source-change behavior, disabled import and no destination writes after a failed read.
-- Runtime still does not implement Craft system-register endpoints, RTU/Bluetooth transports, or bit gateway ID 22. CI and simulator/hardware acceptance for this slice are pending; no physical parity is claimed.
+- Runtime still does not implement Craft system-register endpoints, RTU/Bluetooth transports, or bit gateway ID 22. The source-backed unit tests and debug APK pass in [Actions run #765](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39130772248). Simulator/hardware acceptance and physical parity remain open.
 
 ## Full manual/decompilation audit refresh — 2026-10-18
 
