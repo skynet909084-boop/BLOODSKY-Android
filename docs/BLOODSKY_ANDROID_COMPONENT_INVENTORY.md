@@ -38,7 +38,7 @@ The original uses many custom view classes in `CustomComponents`. The decompiler
 | `CustomSound` | sound paths and Modbus register/bit fields | Sound/alarm trigger |
 | `a0` | `textVoice0`… | Voice/text announcement-related component |
 | `b0` | `link0`… and URL handling | Link/navigation component |
-| `e` | `imagePosition`, `changeScreen`, `constantRegister` | Image or screen-action component; verify exact role |
+| `e` | `mode`, `changeScreen`, `typeRegister`, `constantRegister`, `constant`, `visibleInWork` | Craft ID 6 button: mode 0 bit toggle, mode 1 screen navigation, mode 2 constant write; mode 2 is implemented with explicit TCP remapping |
 | `g` | `showText`, `sizeText`, `max`, `inColor`, `outColor`, color points | Color/value visualization, likely gauge/scale |
 | `h` | `pathPic_0`… | Multi-state picture/image |
 | `i` | `min`, `max`, `password`, decimal places, edit frame | Numeric entry/setpoint |
