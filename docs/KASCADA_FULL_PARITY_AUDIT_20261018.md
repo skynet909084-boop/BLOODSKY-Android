@@ -40,9 +40,9 @@
 | Источник | Установлено | Состояние/пробел |
 |---|---|---|
 | Component registry `mbCanvas.deleteView` | Craft IDs 1–28 перечислены в `KASKADA_COMPONENT_REGISTRY.md`; ID 9 = alarm, 10 = outgoing SMS, 18 = incoming SMS, 19 = register gateway, 20 = list, 21 = sound, 22 = bit gateway, 23 = RTSP, 26 = link, 27 = voice announcement, 28 = email/notification | Нужна полная карта factory → JSON import → BLOODSKY renderer → editor properties → runtime для каждого ID. Delete dispatcher не является полным registry |
-| `home.zip` / `home.pro` | 24 компонента, один экран и background asset | Фикстура импорта есть; каждый неизвестный/неподдерживаемый тип должен отображаться и оставаться lossless. Нужен сравнительный отчёт по каждому компоненту и картинке |
-| `gitH.zip` / `gitH.pro` | 65 компонентов на трёх экранах, 5 FBD узлов, 2 однозначных типизированных ребра и background asset | Импорт/экранная сверка сделаны; полный runtime исходных bindings и визуальная проверка ещё не пройдены |
-| `пож.pro` / `пож.zip` | JSON имеет 124 компонента, объявляет 16 экранов, ссылается на экран 20; ZIP содержит только пустую директорию | Импорт standalone JSON покрыт; 5 ID 9 переводятся в alarm; 11 ID 19 пока не активируются. ZIP-перенос картинок/медиа этой копии проверить нельзя — их в ZIP нет |
+| `home.zip` / `home.pro` | 24 компонента, один используемый экран и background asset | Обезличенная CI-фикстура проверяет импорт, структуру экранов, все 24 записи и save/reopen. ZIP-медиа отдельно не включено в эту round-trip проверку; визуальная сверка остаётся открытой |
+| `gitH.zip` / `gitH.pro` | 65 компонентов на трёх используемых экранах, 5 FBD узлов, 2 однозначных типизированных ребра и background asset | Обезличенная CI-фикстура проверяет импорт/save/reopen всех 65 записей и 16 объявленных экранов; полный runtime bindings, media ZIP round-trip и визуальная проверка ещё открыты |
+| `пож.pro` / `пож.zip` | JSON имеет 124 компонента, объявляет 16 экранов, ссылается на экран 20; ZIP содержит только пустую директорию | Обезличенная CI-фикстура проверяет standalone import/save/reopen на 20 экранах; 5 ID 9 переводятся в alarm, 11 ID 19 остаются выключенными шлюзами. ZIP-перенос картинок/медиа проверить нельзя — их в ZIP нет |
 | Decompiled Smali/JADX archive | 11,080 JADX files, 15,193 Apktool files, 110 JADX decompile errors | Java подтверждать Smali, особенно SMS, FBD, device transport и obfuscated factory branches |
 
 ## Отдельные пользовательские интеграции
