@@ -10,7 +10,8 @@ class RuntimeLifecycleContractTests(unittest.TestCase):
         self.assertIn('activityResumed = false', pause)
         self.assertIn('stopModbusPolling()', pause)
         self.assertIn('stopFbdSensors()', pause)
-        self.assertIn('mediaPlayer.release()', pause)
+        self.assertIn('resetCraftAlarmEdges()', pause)
+        self.assertIn('stopAllCraftAlarmPlayback()', pause)
         self.assertIn('textToSpeech.stop()', pause)
         resume = source.split('protected void onResume()', 1)[1].split('protected void onPause()', 1)[0]
         self.assertIn('if (editor != null) { startModbusPolling(); startFbdSensors(); startCraftMqtt(); }', resume)
