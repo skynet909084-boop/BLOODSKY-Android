@@ -192,11 +192,13 @@ public class CraftProjectImporterTest {
         assertEquals(4, alarm.getInt("craftAlarmSoundIndex"));
         assertTrue(alarm.getBoolean("craftAlarmLoop"));
         assertTrue(!alarm.has("craftUnsupportedComponent"));
+        assertEquals("", alarm.getString("connectionInfo"));
         assertTrue(alarm.getJSONObject("craftConnectionInfo").has("addressRegister"));
 
         JSONObject gateway = widgets.getJSONObject(1);
         assertEquals("Шлюз Craft", gateway.getString("type"));
         assertTrue(gateway.getBoolean("craftUnsupportedComponent"));
+        assertEquals("", gateway.getString("connectionInfo"));
         assertEquals(2, gateway.getInt("craftGatewayMode"));
         assertEquals(1, gateway.getInt("craftGatewayRegisterMode"));
         assertEquals(3, gateway.getInt("craftGatewayBitMode"));
