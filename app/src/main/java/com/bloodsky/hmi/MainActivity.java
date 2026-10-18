@@ -1484,7 +1484,29 @@ public class MainActivity extends Activity {
         root.addView(toolbar[0], new LinearLayout.LayoutParams(-1, -2));
         editor = new EditorCanvas();
         editor.setContentDescription(operatorMode ? "Рабочий экран" : "Редактор экрана");
-        area.addView(editor, new android.widget.FrameLayout.LayoutParams(-1, -1));
+        if (operatorMode) {
+            area.addView(editor, new android.widget.FrameLayout.LayoutParams(-1, -1));
+        } else {
+            // Keep the visible Craft-style screen viewport, but give the editor a
+            // larger scrollable design surface so dense FBD graphs are not capped
+            // by the current device dimensions.
+            android.widget.ScrollView verticalWorkspace = new android.widget.ScrollView(this);
+            verticalWorkspace.setFillViewport(false);
+            verticalWorkspace.setVerticalScrollBarEnabled(true);
+            verticalWorkspace.setSmoothScrollingEnabled(false);
+            android.widget.HorizontalScrollView horizontalWorkspace =
+                    new android.widget.HorizontalScrollView(this);
+            horizontalWorkspace.setFillViewport(false);
+            horizontalWorkspace.setHorizontalScrollBarEnabled(true);
+            horizontalWorkspace.setSmoothScrollingEnabled(false);
+            int workspaceWidth = dp(3000), workspaceHeight = dp(2400);
+            horizontalWorkspace.addView(editor,
+                    new android.widget.FrameLayout.LayoutParams(workspaceWidth, workspaceHeight));
+            verticalWorkspace.addView(horizontalWorkspace,
+                    new android.widget.ScrollView.LayoutParams(-1, workspaceHeight));
+            area.addView(verticalWorkspace,
+                    new android.widget.FrameLayout.LayoutParams(-1, -1));
+        }
         reveal.setVisibility(View.GONE);
         reveal.setOnClickListener(v -> { reveal.setVisibility(View.GONE); toolbar[0].setVisibility(View.VISIBLE); });
         android.widget.FrameLayout.LayoutParams revealParams = new android.widget.FrameLayout.LayoutParams(dp(40), dp(40), Gravity.TOP | Gravity.LEFT);
@@ -5747,6 +5769,8 @@ public class MainActivity extends Activity {
                         break;
                     }
                 }
+                ViewParent parent = getParent();
+                if (parent != null) parent.requestDisallowInterceptTouchEvent(selected >= 0);
                 invalidate();
                 return true;
             }
@@ -5772,6 +5796,8 @@ public class MainActivity extends Activity {
                 return true;
             }
             if (event.getAction() == MotionEvent.ACTION_UP) {
+                ViewParent parent = getParent();
+                if (parent != null) parent.requestDisallowInterceptTouchEvent(false);
                 if (dragging) {
                     persistProject();
                 } else if (selected >= 0 && SystemClock.elapsedRealtime() - downAt >= 550L) {
@@ -5792,6 +5818,15 @@ public class MainActivity extends Activity {
                 } else if (selected >= 0) {
                     editSelectedWidget();
                 }
+                invalidate();
+                return true;
+            }
+            if (event.getAction() == MotionEvent.ACTION_CANCEL) {
+                ViewParent parent = getParent();
+                if (parent != null) parent.requestDisallowInterceptTouchEvent(false);
+                selected = -1;
+                dragging = false;
+                resizing = false;
                 invalidate();
                 return true;
             }
