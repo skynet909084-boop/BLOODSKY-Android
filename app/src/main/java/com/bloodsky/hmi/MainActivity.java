@@ -89,6 +89,7 @@ public class MainActivity extends Activity {
     private final ExecutorService homeAssistantExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService yandexExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService smsExecutor = Executors.newSingleThreadExecutor();
+    private final java.util.concurrent.ConcurrentHashMap<Widget, CraftRegisterGateway.State> craftGatewayStates = new java.util.concurrent.ConcurrentHashMap<>();
     private FbdCraftMqttRuntime craftMqttRuntime;
     private final Map<Integer, String> liveValues = new HashMap<>();
     private boolean modbusPollingActive = false;
@@ -1008,6 +1009,7 @@ public class MainActivity extends Activity {
     private void stopModbusPolling() {
         pollSession.stop();
         modbusPollingActive = false;
+        craftGatewayStates.clear();
         mainHandler.removeCallbacks(modbusPollRunnable);
     }
 
@@ -1089,10 +1091,20 @@ public class MainActivity extends Activity {
         if (!pollSession.accepts(sessionToken) || sessionEditor == null) return;
         final List<Widget> snapshotWidgets = new ArrayList<>(widgets);
         final List<String> snapshotBindings = new ArrayList<>();
-        for (Widget widget : snapshotWidgets) snapshotBindings.add(widget.connectionInfo);
+        final List<JSONObject> snapshotExtras = new ArrayList<>();
+        for (Widget widget : snapshotWidgets) {
+            snapshotBindings.add(widget.connectionInfo);
+            try { snapshotExtras.add(new JSONObject(widget.extraFields.toString())); }
+            catch (Exception ignored) { snapshotExtras.add(new JSONObject()); }
+        }
         final Map<String, BindingRequest> groupedRequests = new LinkedHashMap<>();
+        final List<Integer> gatewayIndices = new ArrayList<>();
         for (int i = 0; i < snapshotWidgets.size(); i++) {
             Widget widget = snapshotWidgets.get(i);
+            if ("Шлюз Craft".equals(widget.type)) {
+                if (snapshotExtras.get(i).optBoolean("craftGatewayEnabled", false)) gatewayIndices.add(i);
+                continue;
+            }
             if (isCraftRegisterSink(widget.type)) continue;
             boolean craftSource = isCraftRegisterSource(widget.type);
             if (craftSource && widget.extraFields.optBoolean("craftVarConstantMode", false)) continue;
@@ -1112,7 +1124,7 @@ public class MainActivity extends Activity {
             if (binding != null && binding.startsWith("tcp://")
                     && parseBinding(i, binding) == null) invalidBindings.put(i, "CFG");
         }
-        if (requests.isEmpty() && invalidBindings.isEmpty()) return;
+        if (requests.isEmpty() && invalidBindings.isEmpty() && gatewayIndices.isEmpty()) return;
         modbusPollInFlight = true;
         try {
             modbusExecutor.execute(() -> {
@@ -1129,6 +1141,41 @@ public class MainActivity extends Activity {
                         value = "ERR: " + describeModbusError(e);
                     }
                     for (int widgetIndex : request.widgetIndices) updates.put(widgetIndex, value);
+                }
+                for (int widgetIndex : gatewayIndices) {
+                    if (!pollSession.accepts(sessionToken)) return;
+                    Widget gatewayWidget = snapshotWidgets.get(widgetIndex);
+                    try {
+                        CraftRegisterGateway.Config config = CraftRegisterGateway.from(snapshotExtras.get(widgetIndex));
+                        if (config == null) {
+                            craftGatewayStates.remove(gatewayWidget);
+                            continue;
+                        }
+                        CraftRegisterGateway.State state = craftGatewayStates.get(gatewayWidget);
+                        if (state == null) {
+                            CraftRegisterGateway.State created = new CraftRegisterGateway.State();
+                            CraftRegisterGateway.State existing = craftGatewayStates.putIfAbsent(gatewayWidget, created);
+                            state = existing == null ? created : existing;
+                        }
+                        CraftRegisterGateway.Outcome outcome = CraftRegisterGateway.transfer(config, state,
+                                new CraftRegisterGateway.Transport() {
+                                    @Override public int[] read(CraftRegisterGateway.Binding binding, int quantity) throws IOException {
+                                        if (!pollSession.accepts(sessionToken)) throw new IOException("Сеанс проекта завершён");
+                                        return new ModbusTcpClient(binding.host, binding.port).read(
+                                                binding.unit, binding.address, quantity, binding.readFunction);
+                                    }
+                                    @Override public void write(CraftRegisterGateway.Binding binding, int[] values) throws IOException {
+                                        if (!pollSession.accepts(sessionToken) || !operatorMode || !activityResumed)
+                                            throw new IOException("Шлюз остановлен");
+                                        new ModbusTcpClient(binding.host, binding.port).writeMultiple(
+                                                binding.unit, binding.address, values);
+                                    }
+                                });
+                        updates.put(widgetIndex, outcome.transferred
+                                ? "OK: передано " + outcome.count : "Ожидание события");
+                    } catch (Exception failure) {
+                        updates.put(widgetIndex, "ERR: " + describeModbusError(failure));
+                    }
                 }
                 runOnUiThread(() -> {
                     if (!pollSession.accepts(sessionToken) || !activityResumed
@@ -3266,6 +3313,11 @@ public class MainActivity extends Activity {
         EditText connectionField = propertyField(w.connectionInfo == null ? "" : w.connectionInfo, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         connectionField.setHint("tcp://192.168.1.10:502/1/40001 (FC03/FC04) или fbd://N (номер блока с 1)");
         form.addView(connectionField);
+        final boolean craftRegisterGateway = "Шлюз Craft".equals(w.type);
+        if (craftRegisterGateway) {
+            connectionLabel.setVisibility(View.GONE);
+            connectionField.setVisibility(View.GONE);
+        }
 
         final EditText smsPhoneField;
         final android.widget.Spinner smsRegisterCountField;
@@ -3330,6 +3382,47 @@ public class MainActivity extends Activity {
             incomingSmsEnabledField = null; incomingSmsSenderField = null;
             incomingSmsCommandField = null; incomingSmsBitField = null; incomingSmsModeField = null;
             incomingSmsStrobeEnabledField = null; incomingSmsStrobeRegisterField = null; incomingSmsStrobeBitField = null;
+        }
+
+        final android.widget.CheckBox gatewayEnabledField;
+        final android.widget.Spinner gatewayModeField;
+        final EditText gatewayCountField, gatewaySourceField, gatewayDestinationField,
+                gatewayTriggerField, gatewayTriggerBitField;
+        if (craftRegisterGateway) {
+            gatewayEnabledField = new android.widget.CheckBox(this);
+            gatewayEnabledField.setText("Разрешить выполнение шлюза в операторском режиме");
+            gatewayEnabledField.setChecked(w.extraFields.optBoolean("craftGatewayEnabled", false));
+            form.addView(gatewayEnabledField);
+            gatewayModeField = new android.widget.Spinner(this);
+            gatewayModeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item,
+                    new String[]{"Постоянно", "По фронту 0→1", "По изменению источника"}));
+            int originalMode = w.extraFields.optInt("craftGatewayTransferMode", w.extraFields.optInt("craftGatewayMode", 0));
+            gatewayModeField.setSelection(Math.max(0, Math.min(2, originalMode)));
+            form.addView(gatewayModeField);
+            gatewayCountField = propertyField(Integer.toString(Math.max(1,
+                    Math.min(99, w.extraFields.optInt("craftGatewayCount", 1)))), InputType.TYPE_CLASS_NUMBER);
+            gatewayCountField.setHint("Количество регистров (1–99; по изменению — 1)"); form.addView(gatewayCountField);
+            gatewaySourceField = propertyField(w.extraFields.optString("craftGatewaySource", ""),
+                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+            gatewaySourceField.setHint("Источник: tcp://192.168.1.10:502/1/40001 (FC03/04)"); form.addView(gatewaySourceField);
+            gatewayDestinationField = propertyField(w.extraFields.optString("craftGatewayDestination", ""),
+                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+            gatewayDestinationField.setHint("Приёмник: tcp://192.168.1.11:502/1/40001 (holding)"); form.addView(gatewayDestinationField);
+            gatewayTriggerField = propertyField(w.extraFields.optString("craftGatewayTrigger", ""),
+                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+            gatewayTriggerField.setHint("Триггер для фронта: tcp://192.168.1.10:502/1/40002"); form.addView(gatewayTriggerField);
+            gatewayTriggerBitField = propertyField(Integer.toString(Math.max(0,
+                    Math.min(15, w.extraFields.optInt("craftGatewayTriggerBit", w.extraFields.optInt("craftGatewayBitMode", 0))))),
+                    InputType.TYPE_CLASS_NUMBER);
+            gatewayTriggerBitField.setHint("Бит триггера (0–15)"); form.addView(gatewayTriggerBitField);
+            TextView gatewayHelp = new TextView(this);
+            gatewayHelp.setText("У исходного проекта адреса устройств заданы внутренними индексами; они не переносятся в сетевые адреса автоматически. Укажи TCP-адреса вручную. Режимы 0/1 копируют 1–99 holding/input-регистров, режим по изменению копирует ровно один. Системные регистры, RTU и Bluetooth здесь пока не поддерживаются. Импортированный шлюз изначально выключен.");
+            form.addView(gatewayHelp);
+        } else {
+            gatewayEnabledField = null; gatewayModeField = null;
+            gatewayCountField = null; gatewaySourceField = null; gatewayDestinationField = null;
+            gatewayTriggerField = null; gatewayTriggerBitField = null;
         }
 
         final android.widget.CheckBox fbdInputField;
@@ -3782,6 +3875,38 @@ public class MainActivity extends Activity {
                         Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show();
                         return;
                     }
+                    if (gatewayEnabledField != null) {
+                        boolean enabled = gatewayEnabledField.isChecked();
+                        int mode = gatewayModeField.getSelectedItemPosition();
+                        int count, triggerBit;
+                        try {
+                            count = Integer.parseInt(gatewayCountField.getText().toString().trim());
+                            triggerBit = Integer.parseInt(gatewayTriggerBitField.getText().toString().trim());
+                        } catch (NumberFormatException invalid) {
+                            Toast.makeText(this, "Укажи количество регистров и бит триггера числами", Toast.LENGTH_LONG).show(); return;
+                        }
+                        String source = gatewaySourceField.getText().toString().trim();
+                        String destination = gatewayDestinationField.getText().toString().trim();
+                        String trigger = gatewayTriggerField.getText().toString().trim();
+                        if (enabled) {
+                            try { CraftRegisterGateway.validate(true, mode, count, source, destination, trigger, triggerBit); }
+                            catch (IllegalArgumentException invalid) {
+                                Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show(); return;
+                            }
+                        } else if (count < 1 || count > 99 || triggerBit < 0 || triggerBit > 15) {
+                            Toast.makeText(this, "Количество регистров: 1–99; бит триггера: 0–15", Toast.LENGTH_LONG).show(); return;
+                        }
+                        try {
+                            w.extraFields.put("craftGatewayEnabled", enabled);
+                            w.extraFields.put("craftGatewayTransferMode", mode);
+                            w.extraFields.put("craftGatewayCount", count);
+                            w.extraFields.put("craftGatewaySource", source);
+                            w.extraFields.put("craftGatewayDestination", destination);
+                            w.extraFields.put("craftGatewayTrigger", trigger);
+                            w.extraFields.put("craftGatewayTriggerBit", triggerBit);
+                            w.extraFields.put("craftUnsupportedComponent", !enabled);
+                        } catch (Exception ignored) {}
+                    }
                     if (craftBitField != null) {
                         try {
                             int bit = Integer.parseInt(craftBitField.getText().toString().trim());
@@ -3918,37 +4043,6 @@ public class MainActivity extends Activity {
                         int bit;
                         try { bit = Integer.parseInt(incomingSmsBitField.getText().toString().trim()); }
                         catch (NumberFormatException invalid) { bit = -1; }
-                        BindingRequest smsBinding = parseBinding(-1, w.connectionInfo);
-                        if (enabled && (!SmsIncomingCommand.isValidSender(sender)
-                                || command.isEmpty() || command.length() > 80 || command.indexOf(String.valueOf((char)10)) >= 0
-                                || command.indexOf(String.valueOf((char)13)) >= 0 || bit < 0 || bit > 15
-                                || smsBinding == null || smsBinding.functionCode != 3)) {
-                            Toast.makeText(this, "Для входящего SMS укажи номер, команду, бит 0–15 и корректный holding-регистр", Toast.LENGTH_LONG).show();
-                            return;
-                        }
-                        if (bit < 0 || bit > 15) bit = 0;
-                        try {
-                            if (SmsIncomingCommand.isValidSender(sender)) {
-                                String senderKey = java.util.UUID.randomUUID().toString();
-                                SmsRecipientStore.save(this, senderKey, sender);
-                                w.extraFields.put("smsSenderId", senderKey);
-                            }
-                            w.extraFields.put("smsCommand", command);
-                            w.extraFields.put("smsMode", incomingSmsModeField.getSelectedItemPosition() == 1 ? "bit" : "number");
-                            w.extraFields.put("smsBit", bit);
-                            w.extraFields.put("smsEnabled", enabled);
-                        } catch (Exception failure) {
-                            Toast.makeText(this, "Не удалось безопасно сохранить номер отправителя SMS", Toast.LENGTH_LONG).show();
-                            return;
-                        }
-                    }
-                    if (incomingSmsEnabledField != null) {
-                        boolean enabled = incomingSmsEnabledField.isChecked();
-                        String sender = incomingSmsSenderField.getText().toString().trim();
-                        String command = incomingSmsCommandField.getText().toString().trim();
-                        int bit;
-                        try { bit = Integer.parseInt(incomingSmsBitField.getText().toString().trim()); }
-                        catch (NumberFormatException invalid) { bit = -1; }
                         boolean strobeEnabled = incomingSmsStrobeEnabledField.isChecked();
                         int strobeRegister;
                         try { strobeRegister = Integer.parseInt(incomingSmsStrobeRegisterField.getText().toString().trim()); }
@@ -3961,8 +4055,8 @@ public class MainActivity extends Activity {
                                 : parseBinding(-1, "tcp://" + smsBinding.host + ":" + smsBinding.port + "/"
                                         + smsBinding.unit + "/" + strobeRegister);
                         if (enabled && (!SmsIncomingCommand.isValidSender(sender)
-                                || command.isEmpty() || command.length() > 80 || command.indexOf(String.valueOf((char)10)) >= 0
-                                || command.indexOf(String.valueOf((char)13)) >= 0 || bit < 0 || bit > 15
+                                || command.isEmpty() || command.length() > 80 || command.indexOf('\n') >= 0
+                                || command.indexOf('\r') >= 0 || bit < 0 || bit > 15
                                 || smsBinding == null || smsBinding.functionCode != 3
                                 || (strobeEnabled && (incomingSmsModeField.getSelectedItemPosition() != 0
                                     || smsStrobeBinding == null || smsStrobeBinding.functionCode != 3
