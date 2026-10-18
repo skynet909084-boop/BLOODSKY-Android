@@ -177,6 +177,8 @@ public final class CraftProjectImporter {
         if (componentId == 1) type = "Индикатор"; // CustomComponents.y, image-state indicator
         else if (componentId == 2 || componentId == 4) type = "Текст"; // label / numeric display
         else if (componentId == 5) type = "Индикатор"; // Craft two-state image
+        else if (componentId == 9) type = "Звуковой сигнал"; // CustomComponents.c, looping alarm with five built-in sounds
+        else if (componentId == 19) type = "Шлюз Craft"; // CustomComponents.k, source/receive/trigger register gateway
         else if (componentId == 6 && integer(other.opt("mode"), 0) == 1)
             type = "Переход на экран"; // CustomComponents.e mode 1 calls the original screen-switch handler
         else if (componentId == 6) type = "Кнопка"; // CustomComponents.e, interactive button
@@ -267,6 +269,16 @@ public final class CraftProjectImporter {
         if (componentId == 11) {
             widget.put("minValue", decimal(other.opt("min"), 0));
             widget.put("maxValue", decimal(other.opt("max"), 100));
+        } else if (componentId == 9) {
+            widget.put("soundThreshold", 1.0);
+            widget.put("craftAlarmSoundIndex", boundedInt(other.opt("posSound"), 1, 1, 5));
+            widget.put("craftAlarmLoop", true);
+        } else if (componentId == 19) {
+            // Keep the three independent connection records intact. The gateway has side effects
+            // (it writes registers on activation), so imported bindings are never auto-executed.
+            widget.put("craftGatewayMode", integer(other.opt("mode"), 0));
+            widget.put("craftGatewayRegisterMode", integer(other.opt("regMode"), 0));
+            widget.put("craftGatewayBitMode", integer(other.opt("bitMode"), 0));
         } else if (!isSupportedComponent(componentId) && FbdCraftMacroGraphAdapter.typeForComponentId(componentId, other) == null) {
             widget.put("craftUnsupportedComponent", true);
             widget.put("text", "Компонент Craft " + componentId + ": " + widget.optString("text"));
@@ -280,7 +292,7 @@ public final class CraftProjectImporter {
     }
 
     private static boolean isSupportedComponent(int id) {
-        return id == 1 || id == 2 || id == 4 || id == 5 || id == 6 || id == 7 || id == 11;
+        return id == 1 || id == 2 || id == 4 || id == 5 || id == 6 || id == 7 || id == 9 || id == 11;
     }
 
     private static String timerMode(int mode) {
