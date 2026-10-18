@@ -7759,7 +7759,7 @@ public class MainActivity extends Activity {
                     paint.setTextSize(dp(9));
                     canvas.drawText("16 исходных фраз сохранены",
                             w.x + dp(12), w.y + w.h - dp(10), paint);
-                } else if ("Видео RTSP Craft".equals(w.type)) {ео RTSP Craft".equals(w.type)) {
+                } else if ("Видео RTSP Craft".equals(w.type)) {
                     paint.setColor(Color.rgb(30, 41, 59));
                     canvas.drawRoundRect(new RectF(w.x + dp(6), w.y + dp(6),
                             w.x + w.w - dp(6), w.y + w.h - dp(6)), dp(4), dp(4), paint);
