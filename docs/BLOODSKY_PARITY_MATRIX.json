@@ -162,8 +162,8 @@
           "id": "widget.sms_out",
           "name": "Outgoing SMS with register substitutions",
           "status": "partial",
-          "criteria": "Current BLOODSKY event sends one {value}; manual parity requires selected register source, count 1..8, and %1..%8 substitutions.",
-          "audit_note": "One-value SMS event is implemented; full Craft template parity remains open."
+          "criteria": "Optional SIM event reads 1..8 contiguous values from its selected Modbus binding, substitutes %1..%8 or appends values, retains {value}, and requests SEND_SMS at runtime.",
+          "audit_note": "Template and register-read logic are implemented; Android multipart/SIM hardware tests, multi-SIM choice, and exact vendor error UX remain open."
         }
       ]
     },
