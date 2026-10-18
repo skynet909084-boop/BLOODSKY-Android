@@ -148,3 +148,11 @@ Design an additive SQLite-backed catalog migration that imports existing SharedP
 - Latest code validation: [Actions run #815](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39139483169) passed Android unit tests and debug APK build/upload. UI smoke was skipped by workflow rules.
 - Independent per-widget alarm players are implemented and guarded by source-contract tests. Resume with paired audio/UI/device acceptance, then continue the remaining source-backed widget and transport audit.
 - Product constraints: retain optional SMS; omit licensing and mandatory cloud control; imported Craft bindings stay inactive until explicitly remapped.
+
+
+## RTSP URL validation slice — 2026-10-18
+
+- Added `CraftRtspConfig` for bounded RTSP/RTSPS endpoint parsing. It rejects malformed URLs, missing hosts, invalid ports, whitespace/control characters, fragments, and embedded URI user-info so a password is not silently placed in ordinary project JSON.
+- JUnit tests cover accepted RTSP/RTSPS/IPv6 endpoints and invalid schemes, hosts, credentials, ports, whitespace, and length.
+- Exact code/test head `29897268747cf246558e155a7c1a6b7d310664c1`: Android unit tests, archive inspector, and debug APK passed in Actions run [#827](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39140908453).
+- Scope remains a validation helper only. No Craft ID 23 import/editor/player/lifecycle integration or decoder/device acceptance is claimed. Imported URLs with embedded credentials need an explicit secure-storage/export design before runtime use.
