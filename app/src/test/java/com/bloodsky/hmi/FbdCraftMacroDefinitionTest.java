@@ -126,6 +126,39 @@ public class FbdCraftMacroDefinitionTest {
         assertInvalid(() -> FbdCraftMacroDefinition.fromJson(macro(duplicateTarget)));
     }
 
+    @Test public void rebuildsValidatedNestedGraphWithoutChangingMacroPortNames() throws Exception {
+        MainActivity.Widget inputA = new MainActivity.Widget();
+        inputA.type = "FBD Вход";
+        MainActivity.Widget inputB = new MainActivity.Widget();
+        inputB.type = "FBD Вход";
+        MainActivity.Widget and = new MainActivity.Widget();
+        and.type = "FBD AND";
+        java.util.List<MainActivity.Widget> source = java.util.Arrays.asList(inputA, inputB, and);
+        java.util.List<MainActivity.FbdConnection> sourceEdges = java.util.Arrays.asList(
+                MainActivity.connectionFromJson(new org.json.JSONObject()
+                        .put("source", 0).put("target", 2).put("sourcePin", "Q").put("targetPin", "IN1")),
+                MainActivity.connectionFromJson(new org.json.JSONObject()
+                        .put("source", 1).put("target", 2).put("sourcePin", "Q").put("targetPin", "IN2")));
+        FbdCraftMacroDefinition original = MainActivity.createCraftMacroDefinitionFromGraph(
+                "Editable", source, sourceEdges, 2, "Q");
+        org.json.JSONObject graph = original.toJson().getJSONObject("bloodskyGraph");
+        java.util.List<MainActivity.Widget> nestedWidgets = new java.util.ArrayList<>();
+        for (int i = 0; i < graph.getJSONArray("widgets").length(); i++)
+            nestedWidgets.add(MainActivity.widgetFromJson(graph.getJSONArray("widgets").getJSONObject(i)));
+        java.util.List<MainActivity.FbdConnection> nestedEdges = new java.util.ArrayList<>();
+        for (int i = 0; i < graph.getJSONArray("connections").length(); i++)
+            nestedEdges.add(MainActivity.connectionFromJson(
+                    graph.getJSONArray("connections").getJSONObject(i)));
+
+        FbdCraftMacroDefinition rebuilt = MainActivity.updateCraftMacroDefinitionGraph(
+                original, nestedWidgets, nestedEdges, 2, "Q");
+        assertEquals("I1", rebuilt.getInputs().get(0).name);
+        assertEquals("I2", rebuilt.getInputs().get(1).name);
+        assertEquals(original.getOutput().name, rebuilt.getOutput().name);
+        assertEquals(3, rebuilt.toJson().getJSONObject("bloodskyGraph")
+                .getJSONArray("widgets").length());
+    }
+
     @Test public void evaluatesTypedNestedGraphAndKeepsPerInstanceRuntime() throws Exception {
         String definitionJson = "{\"name\":\"Magnitude\",\"countIn\":1,"
                 + "\"nameIn1\":\"Raw\",\"typeIn1\":2,\"typeOut\":2,"

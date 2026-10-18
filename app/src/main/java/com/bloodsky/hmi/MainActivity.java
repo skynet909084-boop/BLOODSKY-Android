@@ -1406,6 +1406,28 @@ public class MainActivity extends Activity {
         return hasNumericInput && hasFloatInput ? 3 : declared;
     }
 
+    /** Replace an editable nested graph, re-infer its output type, and validate the full definition. */
+    public static FbdCraftMacroDefinition updateCraftMacroDefinitionGraph(
+            FbdCraftMacroDefinition definition, List<Widget> graphWidgets,
+            List<FbdConnection> graphConnections, int outputNode, String outputPin) throws Exception {
+        if (definition == null || graphWidgets == null || graphConnections == null)
+            throw new IllegalArgumentException("Missing macro graph");
+        int outputType = craftMacroGraphPortType(graphWidgets, graphConnections, outputNode,
+                outputPin, true, new boolean[graphWidgets.size()]);
+        if (outputType < 1) throw new IllegalArgumentException("Unsupported macro output type");
+        JSONObject root = definition.toJson();
+        String outputPort = root.optString("nameOut", "Q");
+        JSONArray nestedWidgets = new JSONArray();
+        for (Widget widget : graphWidgets) nestedWidgets.put(widgetToJson(widget));
+        JSONArray nestedConnections = new JSONArray();
+        for (FbdConnection edge : graphConnections) nestedConnections.put(connectionToJson(edge));
+        JSONObject graph = new JSONObject().put("widgets", nestedWidgets)
+                .put("connections", nestedConnections).put("outputNode", outputNode)
+                .put("outputPin", outputPin).put("outputPort", outputPort);
+        root.put("typeOut", outputType).put("bloodskyGraph", graph);
+        return FbdCraftMacroDefinition.fromJson(root.toString());
+    }
+
     private void exportCraftMacroFromCatalog() {
         try {
             String[] names = FbdCraftMacroCatalog.names(projectExtraFields);
