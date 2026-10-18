@@ -95,12 +95,15 @@ public final class LocalArchiveStore extends SQLiteOpenHelper {
              Cursor cursor = getReadableDatabase().rawQuery("SELECT sampled_at,value FROM " + TABLE
                      + " WHERE project_id=? AND widget_key=? ORDER BY sampled_at ASC,_id ASC",
                      new String[]{projectId, widgetKey})) {
-            writer.write("timestamp,value\n");
+            writer.write("timestamp;channel1;channel2;channel3;channel4\n");
             SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ROOT);
             while (cursor.moveToNext()) {
                 writer.write(csv(format.format(new Date(cursor.getLong(0)))));
-                writer.write(',');
-                writer.write(csv(cursor.getString(1)));
+                String[] channels = cursor.getString(1).split(",", -1);
+                for (int i = 0; i < 4; i++) {
+                    writer.write(';');
+                    writer.write(i < channels.length ? csv(channels[i]) : "");
+                }
                 writer.write('\n');
             }
             writer.flush();

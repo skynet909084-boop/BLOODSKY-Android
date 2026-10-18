@@ -71,6 +71,7 @@ public class MainActivity extends Activity {
     private String projectName = "Мой проект";
     private JSONObject projectExtraFields = new JSONObject();
     private LinearLayout root;
+    private android.widget.PopupWindow sourceOverflowPopup;
     private EditorCanvas editor;
     private final List<Widget> widgets = new ArrayList<>();
     private final List<Screen> screens = new ArrayList<>();
@@ -93,6 +94,9 @@ public class MainActivity extends Activity {
     private final ExecutorService smsExecutor = Executors.newSingleThreadExecutor();
     private final java.util.concurrent.ConcurrentHashMap<Widget, CraftRegisterGateway.State> craftGatewayStates = new java.util.concurrent.ConcurrentHashMap<>();
     private final java.util.concurrent.ConcurrentHashMap<Widget, CraftBitGateway.State> craftBitGatewayStates = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.concurrent.ConcurrentHashMap<Widget, Boolean> craftArchiveTriggerHigh = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.Set<Widget> craftArchiveTriggerEdges = java.util.Collections.newSetFromMap(
+            new java.util.concurrent.ConcurrentHashMap<Widget, Boolean>());
     private FbdCraftMqttRuntime craftMqttRuntime;
     private final Map<Integer, String> liveValues = new HashMap<>();
     private boolean modbusPollingActive = false;
@@ -1058,7 +1062,21 @@ public class MainActivity extends Activity {
         modbusPollingActive = false;
         craftGatewayStates.clear();
         craftBitGatewayStates.clear();
+        craftArchiveTriggerHigh.clear();
+        craftArchiveTriggerEdges.clear();
         mainHandler.removeCallbacks(modbusPollRunnable);
+    }
+
+    private int archiveReadQuantity(Widget widget) {
+        return CraftArchiveChannels.readQuantity(widget.extraFields.optInt("craftArchiveChannelCount", 1),
+                widget.extraFields.optString("craftArchiveRecordType", "INT"));
+    }
+
+    private String formatPolledValue(Widget widget, int[] words) {
+        if ("Архив Craft".equals(widget.type)) return CraftArchiveChannels.decode(words,
+                widget.extraFields.optInt("craftArchiveChannelCount", 1),
+                widget.extraFields.optString("craftArchiveRecordType", "INT"));
+        return words.length > 1 ? words[0] + "," + words[1] : Integer.toString(words[0]);
     }
 
     private void pollCraftOdTempSources() {
@@ -1148,6 +1166,7 @@ public class MainActivity extends Activity {
         final Map<String, BindingRequest> groupedRequests = new LinkedHashMap<>();
         final List<Integer> gatewayIndices = new ArrayList<>();
         final List<Integer> bitGatewayIndices = new ArrayList<>();
+        final List<Integer> archiveTriggerIndices = new ArrayList<>();
         for (int i = 0; i < snapshotWidgets.size(); i++) {
             Widget widget = snapshotWidgets.get(i);
             if ("Шлюз битовый".equals(widget.type)) {
@@ -1158,11 +1177,15 @@ public class MainActivity extends Activity {
                 if (snapshotExtras.get(i).optBoolean("craftGatewayEnabled", false)) gatewayIndices.add(i);
                 continue;
             }
+            if ("Архив Craft".equals(widget.type)
+                    && !snapshotExtras.get(i).optString("craftArchiveTriggerBinding", "").trim().isEmpty())
+                archiveTriggerIndices.add(i);
             if (isCraftRegisterSink(widget.type)) continue;
             boolean craftSource = isCraftRegisterSource(widget.type);
             if (craftSource && widget.extraFields.optBoolean("craftVarConstantMode", false)) continue;
-            BindingRequest request = parseBinding(i, widget.connectionInfo,
-                    craftSource && isCraftRegisterFloat(widget.type) ? 2 : 1);
+            int quantity = craftSource && isCraftRegisterFloat(widget.type) ? 2 : 1;
+            if ("Архив Craft".equals(widget.type)) quantity = archiveReadQuantity(widget);
+            BindingRequest request = parseBinding(i, widget.connectionInfo, quantity);
             if (request == null) continue;
             String key = request.registerKey();
             BindingRequest existing = groupedRequests.get(key);
@@ -1189,11 +1212,24 @@ public class MainActivity extends Activity {
                     try {
                         int[] words = new ModbusTcpClient(request.host, request.port).read(
                                 request.unit, request.address, request.quantity, request.functionCode);
-                        value = request.quantity > 1 ? words[0] + "," + words[1] : Integer.toString(words[0]);
+                        StringBuilder rawWords = new StringBuilder();
+                        for (int i = 0; i < words.length; i++) {
+                            if (i > 0) rawWords.append(',');
+                            rawWords.append(words[i]);
+                        }
+                        value = rawWords.toString();
                     } catch (Exception e) {
                         value = "ERR: " + describeModbusError(e);
                     }
-                    for (int widgetIndex : request.widgetIndices) updates.put(widgetIndex, value);
+                    for (int widgetIndex : request.widgetIndices) {
+                        if (value.startsWith("ERR:")) updates.put(widgetIndex, value);
+                        else {
+                            String[] fields = value.split(",");
+                            int[] words = new int[fields.length];
+                            for (int i = 0; i < fields.length; i++) words[i] = Integer.parseInt(fields[i]);
+                            updates.put(widgetIndex, formatPolledValue(snapshotWidgets.get(widgetIndex), words));
+                        }
+                    }
                 }
                 for (int widgetIndex : gatewayIndices) {
                     if (!pollSession.accepts(sessionToken)) return;
@@ -1263,9 +1299,35 @@ public class MainActivity extends Activity {
                         updates.put(widgetIndex, "ERR: " + describeModbusError(failure));
                     }
                 }
+                final Map<Integer, Boolean> archiveTriggerUpdates = new HashMap<>();
+                for (int widgetIndex : archiveTriggerIndices) {
+                    if (!pollSession.accepts(sessionToken)) return;
+                    try {
+                        String binding = snapshotExtras.get(widgetIndex).optString("craftArchiveTriggerBinding", "").trim();
+                        BindingRequest trigger = parseBinding(widgetIndex, binding);
+                        if (trigger == null) throw new IOException("Некорректная привязка триггера архива");
+                        int[] words = new ModbusTcpClient(trigger.host, trigger.port).read(
+                                trigger.unit, trigger.address, 1, trigger.functionCode);
+                        archiveTriggerUpdates.put(widgetIndex, words.length > 0 && words[0] != 0);
+                    } catch (Exception failure) {
+                        archiveTriggerUpdates.put(widgetIndex, null);
+                    }
+                }
                 runOnUiThread(() -> {
                     if (!pollSession.accepts(sessionToken) || !activityResumed
                             || editor != sessionEditor || isFinishing() || isDestroyed()) return;
+                    for (Map.Entry<Integer, Boolean> trigger : archiveTriggerUpdates.entrySet()) {
+                        int index = trigger.getKey();
+                        if (index < 0 || index >= widgets.size() || widgets.get(index) != snapshotWidgets.get(index)) continue;
+                        Widget archive = widgets.get(index);
+                        Boolean current = trigger.getValue();
+                        if (current == null) {
+                            craftArchiveTriggerEdges.remove(archive);
+                        } else {
+                            boolean previous = Boolean.TRUE.equals(craftArchiveTriggerHigh.put(archive, current));
+                            if (current && !previous) craftArchiveTriggerEdges.add(archive);
+                        }
+                    }
                     for (Map.Entry<Integer, String> entry : updates.entrySet()) {
                         int index = entry.getKey();
                         if (index < 0 || index >= widgets.size() || index >= snapshotWidgets.size()
@@ -1273,9 +1335,11 @@ public class MainActivity extends Activity {
                                 || !java.util.Objects.equals(widgets.get(index).connectionInfo, snapshotBindings.get(index))) continue;
                         Widget w = widgets.get(index);
                         liveValues.put(index, entry.getValue());
-                        if ("Архив Craft".equals(w.type) && entry.getValue() != null
+                        if ("Архив Craft".equals(w.type) && operatorMode && entry.getValue() != null
                                 && !entry.getValue().startsWith("ERR") && !entry.getValue().startsWith("CFG")) {
                             try {
+                                boolean hasTrigger = !w.extraFields.optString("craftArchiveTriggerBinding", "").trim().isEmpty();
+                                if (hasTrigger && !craftArchiveTriggerEdges.remove(w)) continue;
                                 String projectJson = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
                                 String archiveProject = ProjectMediaService.getOrGenerateProjectId(projectJson);
                                 String archiveKey = w.extraFields.optString("craftArchiveKey", "").trim();
@@ -2226,6 +2290,95 @@ public class MainActivity extends Activity {
     }
 
     private void showEditorCommands(View anchor) {
+        if (nestedMacroEdit != null) {
+            showEditorAdvancedCommands(anchor);
+            return;
+        }
+        LinearLayout rows = new LinearLayout(this);
+        rows.setOrientation(LinearLayout.VERTICAL);
+        rows.setPadding(0, dp(4), 0, dp(4));
+        rows.setBackgroundColor(Color.rgb(35, 35, 35));
+        addSourceMenuRow(rows, "Устройства / серверы", "Локальные TCP-привязки проекта", true,
+                this::showBoundProjectDevices);
+        addSourceMenuRow(rows, "Пароль проекта", "Защищённая блокировка проекта пока не подключена", false, null);
+        boolean station = projectExtraFields.optInt("stationMode", 0) == 1;
+        addSourceMenuRow(rows, station ? "Режим станции: Слейв" : "Режим станции: Мастер",
+                "Изменить сохранённый режим; сервер не запускается", true, () -> {
+                    try {
+                        projectExtraFields.put("stationMode", station ? 0 : 1);
+                        persistProject();
+                        showEditor();
+                    } catch (Exception failure) {
+                        Toast.makeText(this, "Не удалось сохранить режим станции", Toast.LENGTH_LONG).show();
+                    }
+                });
+        addSourceMenuRow(rows, "Показывать тайм-ауты", "Отдельное отображение тайм-аутов пока не подключено", false, null);
+        // Craft includes the Wi-Fi-to-USB row only when its hidden feature flag is enabled.
+        addSourceMenuRow(rows, "Сетевое управление", "Modbus TCP Slave-сервер пока не реализован", false, null);
+        addSourceMenuRow(rows, "Работа в фоне", "Фоновый сервис проекта пока не реализован", false, null);
+        View divider = new View(this);
+        divider.setBackgroundColor(Color.rgb(75, 75, 75));
+        rows.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
+        addSourceMenuRow(rows, "Дополнительные действия BLOODSKY…", "Проект, экраны, FBD, интеграции и диагностика", true,
+                () -> showEditorAdvancedCommands(anchor));
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.addView(rows);
+        android.widget.PopupWindow popup = new android.widget.PopupWindow(scroll, dp(292),
+                Math.min(dp(560), getResources().getDisplayMetrics().heightPixels - dp(48)), true);
+        sourceOverflowPopup = popup;
+        popup.setOnDismissListener(() -> { if (sourceOverflowPopup == popup) sourceOverflowPopup = null; });
+        popup.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.rgb(35, 35, 35)));
+        popup.setOutsideTouchable(true);
+        popup.setElevation(dp(8));
+        popup.setTouchable(true);
+        popup.showAsDropDown(anchor, -dp(292) + anchor.getWidth(), 0, Gravity.END);
+    }
+
+    private void addSourceMenuRow(LinearLayout parent, String title, String detail, boolean enabled, Runnable action) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setOrientation(LinearLayout.VERTICAL);
+        row.setPadding(dp(16), dp(8), dp(12), dp(8));
+        TextView heading = new TextView(this);
+        heading.setText(title); heading.setTextSize(15);
+        heading.setTextColor(enabled ? Color.rgb(238, 238, 238) : Color.rgb(142, 142, 142));
+        row.addView(heading);
+        if (detail != null && !detail.isEmpty()) {
+            TextView caption = new TextView(this);
+            caption.setText(detail); caption.setTextSize(11);
+            caption.setTextColor(enabled ? Color.rgb(174, 174, 174) : Color.rgb(112, 112, 112));
+            row.addView(caption);
+        }
+        row.setEnabled(enabled);
+        if (enabled && action != null) {
+            row.setBackgroundResource(android.R.drawable.list_selector_background);
+            row.setOnClickListener(v -> {
+                if (sourceOverflowPopup != null) sourceOverflowPopup.dismiss();
+                action.run();
+            });
+        }
+        parent.addView(row, new LinearLayout.LayoutParams(-1, dp(52)));
+    }
+
+    private void showBoundProjectDevices() {
+        java.util.Map<String, Integer> endpoints = new java.util.TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (Widget widget : widgets) {
+            String binding = widget.connectionInfo == null ? "" : widget.connectionInfo.trim();
+            if (binding.startsWith("tcp://")) {
+                Integer count = endpoints.get(binding);
+                endpoints.put(binding, count == null ? 1 : count + 1);
+            }
+        }
+        StringBuilder text = new StringBuilder();
+        if (endpoints.isEmpty()) text.append("В проекте пока нет локальных TCP-привязок.");
+        else for (Map.Entry<String, Integer> endpoint : endpoints.entrySet())
+            text.append(endpoint.getKey()).append("  ·  компонентов: ").append(endpoint.getValue()).append('\n');
+        new AlertDialog.Builder(this).setTitle("Устройства / серверы проекта")
+                .setMessage(text.toString()).setPositiveButton("Закрыть", null).show();
+    }
+
+    private void showEditorAdvancedCommands(View anchor) {
         android.widget.PopupMenu menu = new android.widget.PopupMenu(this, anchor);
         if (nestedMacroEdit != null) {
             menu.getMenu().add("Сохранить вложенный граф").setOnMenuItemClickListener(item -> {
@@ -3135,8 +3288,86 @@ public class MainActivity extends Activity {
         content.setText(report.toString()); content.setTextSize(14);
         content.setTextColor(Color.rgb(30, 41, 59)); content.setPadding(dp(16), dp(12), dp(16), dp(12));
         scroll.addView(content);
-        new AlertDialog.Builder(this).setTitle(widget.text == null || widget.text.trim().isEmpty() ? "Архив" : widget.text)
+        String title = widget.text == null || widget.text.trim().isEmpty() ? "Архив" : widget.text;
+        new AlertDialog.Builder(this).setTitle(title)
                 .setView(scroll).setNeutralButton("Экспорт CSV", (dialog, which) -> exportLocalArchive(projectKey, widgetKey, widget.text))
+                .setNegativeButton("График", (dialog, which) -> showArchiveGraph(projectKey, widgetKey, title))
+                .setPositiveButton("Закрыть", null).show();
+    }
+
+    private void showArchiveGraph(String projectKey, String widgetKey, String title) {
+        final List<LocalArchiveStore.Sample> rows;
+        try {
+            LocalArchiveStore store = new LocalArchiveStore(this);
+            try { rows = store.latest(projectKey, widgetKey, 200); }
+            finally { store.close(); }
+        } catch (Exception failure) {
+            Toast.makeText(this, "Не удалось прочитать локальный архив", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (rows.isEmpty()) {
+            Toast.makeText(this, "Для графика пока нет записей", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        View graph = new View(this) {
+            final int[] colors = {Color.rgb(30, 136, 229), Color.rgb(67, 160, 71),
+                    Color.rgb(251, 140, 0), Color.rgb(229, 57, 53)};
+            @Override protected void onDraw(Canvas canvas) {
+                super.onDraw(canvas);
+                float left = dp(48), right = getWidth() - dp(16), top = dp(24), bottom = getHeight() - dp(40);
+                Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+                paint.setColor(Color.rgb(210, 216, 224)); paint.setStrokeWidth(dp(1));
+                for (int grid = 0; grid <= 4; grid++) {
+                    float y = top + (bottom - top) * grid / 4f;
+                    canvas.drawLine(left, y, right, y, paint);
+                }
+                int maxChannels = 1;
+                for (LocalArchiveStore.Sample row : rows)
+                    maxChannels = Math.max(maxChannels, row.value.split(",", -1).length);
+                List<Float> mins = new ArrayList<>(), maxs = new ArrayList<>();
+                for (int channel = 0; channel < maxChannels; channel++) {
+                    List<Float> values = new ArrayList<>();
+                    float min = Float.POSITIVE_INFINITY, max = Float.NEGATIVE_INFINITY;
+                    for (int i = rows.size() - 1; i >= 0; i--) {
+                        String[] fields = rows.get(i).value.split(",", -1);
+                        if (channel >= fields.length) { values.add(Float.NaN); continue; }
+                        try {
+                            float value = Float.parseFloat(fields[channel]);
+                            if (!Float.isFinite(value)) value = Float.NaN;
+                            values.add(value);
+                            if (!Float.isNaN(value)) { min = Math.min(min, value); max = Math.max(max, value); }
+                        } catch (NumberFormatException invalid) { values.add(Float.NaN); }
+                    }
+                    if (Float.isFinite(min) && Float.isFinite(max)) {
+                        mins.add(min); maxs.add(max);
+                    } else { mins.add(0f); maxs.add(1f); }
+                }
+                for (int channel = 0; channel < maxChannels; channel++) {
+                    paint.setColor(colors[channel % colors.length]); paint.setStrokeWidth(dp(2));
+                    paint.setStyle(Paint.Style.STROKE); paint.setStrokeJoin(Paint.Join.ROUND);
+                    android.graphics.Path path = new android.graphics.Path(); boolean active = false;
+                    List<LocalArchiveStore.Sample> ascending = new ArrayList<>(rows);
+                    java.util.Collections.reverse(ascending);
+                    for (int i = 0; i < ascending.size(); i++) {
+                        String[] fields = ascending.get(i).value.split(",", -1);
+                        if (channel >= fields.length) { active = false; continue; }
+                        float value;
+                        try { value = Float.parseFloat(fields[channel]); }
+                        catch (NumberFormatException invalid) { active = false; continue; }
+                        if (!Float.isFinite(value)) { active = false; continue; }
+                        float min = mins.get(channel), max = maxs.get(channel);
+                        float range = Math.max(0.0001f, max - min);
+                        float x = left + (right - left) * (ascending.size() <= 1 ? 0.5f : i / (float)(ascending.size() - 1));
+                        float y = bottom - (bottom - top) * (value - min) / range;
+                        if (!active) { path.moveTo(x, y); active = true; } else path.lineTo(x, y);
+                    }
+                    canvas.drawPath(path, paint); paint.setStyle(Paint.Style.FILL);
+                    paint.setTextSize(dp(12)); canvas.drawText("К" + (channel + 1), left + dp(6 + channel * 44), top - dp(7), paint);
+                }
+            }
+        };
+        graph.setLayoutParams(new ViewGroup.LayoutParams(-1, dp(280)));
+        new AlertDialog.Builder(this).setTitle("График — " + title).setView(graph)
                 .setPositiveButton("Закрыть", null).show();
     }
 
@@ -3423,6 +3654,8 @@ public class MainActivity extends Activity {
                 w.extraFields.put("craftArchiveKey", java.util.UUID.randomUUID().toString());
                 w.extraFields.put("craftArchiveIntervalSeconds", 1);
                 w.extraFields.put("craftArchiveMaxRows", 10000);
+                w.extraFields.put("craftArchiveChannelCount", 1);
+                w.extraFields.put("craftArchiveRecordType", "INT");
             } catch (org.json.JSONException ignored) { }
         }
         if ("Числовой ввод Craft".equals(type)) { w.w = dp(120); w.h = dp(48); }
@@ -3544,17 +3777,32 @@ public class MainActivity extends Activity {
         EditText connectionField = propertyField(w.connectionInfo == null ? "" : w.connectionInfo, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         connectionField.setHint("tcp://192.168.1.10:502/1/40001 (FC03/FC04) или fbd://N (номер блока с 1)");
         form.addView(connectionField);
-        final EditText archiveIntervalField, archiveMaxRowsField;
+        final EditText archiveIntervalField, archiveMaxRowsField, archiveChannelCountField, archiveTriggerField;
+        final Spinner archiveRecordTypeField;
         if ("Архив Craft".equals(w.type)) {
             connectionField.setHint("Локальный канал: tcp://192.168.1.10:502/1/40001 (holding-регистр FC03)");
             TextView archiveHelp = new TextView(this);
-            archiveHelp.setText("Импортированная связь Craft отключена. Укажи локальный TCP holding-регистр. Записи сохраняются только на устройстве; старые SMTP/облачные отправки не запускаются.");
+            archiveHelp.setText("Импортированные связи Craft отключены. Укажи первый локальный TCP holding-регистр; каналы читаются подряд. INT занимает один регистр, FLOAT — два. Необязательный триггер записывает на фронте 0→1; без него действует интервал. Данные остаются на устройстве; SMTP и облако не запускаются.");
             archiveHelp.setPadding(0, dp(8), 0, dp(4)); form.addView(archiveHelp);
+            archiveTriggerField = propertyField(w.extraFields.optString("craftArchiveTriggerBinding", ""),
+                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+            archiveTriggerField.setHint("Необязательный триггер: tcp://host:502/1/40002"); form.addView(archiveTriggerField);
+            archiveChannelCountField = propertyField(Integer.toString(Math.max(1, Math.min(4,
+                    w.extraFields.optInt("craftArchiveChannelCount", 1)))), InputType.TYPE_CLASS_NUMBER);
+            archiveChannelCountField.setHint("Каналы (1–4)"); form.addView(archiveChannelCountField);
+            archiveRecordTypeField = new Spinner(this);
+            archiveRecordTypeField.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
+                    new String[]{"INT — 16 бит", "FLOAT — 32 бит"}));
+            archiveRecordTypeField.setSelection("FLOAT".equals(w.extraFields.optString("craftArchiveRecordType", "INT")) ? 1 : 0);
+            form.addView(archiveRecordTypeField);
             archiveIntervalField = propertyField(Integer.toString(Math.max(1, w.extraFields.optInt("craftArchiveIntervalSeconds", 1))), InputType.TYPE_CLASS_NUMBER);
             archiveIntervalField.setHint("Интервал записи, секунды (1–86400)"); form.addView(archiveIntervalField);
             archiveMaxRowsField = propertyField(Integer.toString(Math.max(100, w.extraFields.optInt("craftArchiveMaxRows", 10000))), InputType.TYPE_CLASS_NUMBER);
             archiveMaxRowsField.setHint("Максимум записей (100–100000)"); form.addView(archiveMaxRowsField);
-        } else { archiveIntervalField = null; archiveMaxRowsField = null; }
+        } else {
+            archiveIntervalField = null; archiveMaxRowsField = null;
+            archiveChannelCountField = null; archiveRecordTypeField = null; archiveTriggerField = null;
+        }
         final boolean craftBitList = "Список Craft".equals(w.type);
         final EditText craftBitListLabelsField;
         final android.widget.CheckBox craftBitListVisibleField, craftBitListNoChangeField;
@@ -4559,19 +4807,30 @@ public class MainActivity extends Activity {
                     w.text = textField.getText().toString();
                     w.connectionInfo = connectionField.getText().toString().trim();
                     if (archiveIntervalField != null) {
-                        final int interval, maxRows;
+                        final int interval, maxRows, channelCount;
+                        String triggerBinding = archiveTriggerField.getText().toString().trim();
                         try {
                             interval = Integer.parseInt(archiveIntervalField.getText().toString().trim());
                             maxRows = Integer.parseInt(archiveMaxRowsField.getText().toString().trim());
+                            channelCount = Integer.parseInt(archiveChannelCountField.getText().toString().trim());
                         } catch (NumberFormatException invalid) {
-                            Toast.makeText(this, "Укажи интервал и лимит архива числами", Toast.LENGTH_LONG).show(); return;
+                            Toast.makeText(this, "Укажи число каналов, интервал и лимит архива", Toast.LENGTH_LONG).show(); return;
                         }
-                        if (interval < 1 || interval > 86400 || maxRows < 100 || maxRows > 100000) {
-                            Toast.makeText(this, "Интервал: 1–86400 секунд; лимит: 100–100000 записей", Toast.LENGTH_LONG).show(); return;
+                        if (channelCount < 1 || channelCount > 4 || interval < 1 || interval > 86400
+                                || maxRows < 100 || maxRows > 100000) {
+                            Toast.makeText(this, "Каналы: 1–4; интервал: 1–86400 секунд; лимит: 100–100000 записей", Toast.LENGTH_LONG).show(); return;
                         }
+                        if (!triggerBinding.isEmpty() && parseBinding(-1, triggerBinding) == null) {
+                            Toast.makeText(this, "Триггер: tcp://host:port/unit/address", Toast.LENGTH_LONG).show(); return;
+                        }
+                        craftArchiveTriggerHigh.remove(w);
+                        craftArchiveTriggerEdges.remove(w);
                         try {
                             w.extraFields.put("craftArchiveIntervalSeconds", interval);
                             w.extraFields.put("craftArchiveMaxRows", maxRows);
+                            w.extraFields.put("craftArchiveChannelCount", channelCount);
+                            w.extraFields.put("craftArchiveRecordType", archiveRecordTypeField.getSelectedItemPosition() == 1 ? "FLOAT" : "INT");
+                            w.extraFields.put("craftArchiveTriggerBinding", triggerBinding);
                             if (w.extraFields.optString("craftArchiveKey", "").trim().isEmpty())
                                 w.extraFields.put("craftArchiveKey", java.util.UUID.randomUUID().toString());
                         } catch (org.json.JSONException ignored) { }
@@ -8016,7 +8275,7 @@ public class MainActivity extends Activity {
                     paint.setTextSize(dp(13));
                     canvas.drawText("Архив: " + w.text, w.x + dp(8), w.y + dp(23), paint);
                     paint.setTextSize(dp(11));
-                    canvas.drawText(liveValues.containsKey(i) ? "Канал 1 · " + liveValues.get(i) : "Локальная история",
+                    canvas.drawText(liveValues.containsKey(i) ? "Каналы · " + liveValues.get(i) : "Локальная история",
                             w.x + dp(8), w.y + w.h - dp(9), paint);
                 } else if ("Переход на экран".equals(w.type)) {
                     paint.setColor(w.textColor);

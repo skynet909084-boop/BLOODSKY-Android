@@ -215,6 +215,13 @@ public final class CraftProjectImporter {
         widget.put("backgroundColor", color(source.opt("colorBackground"), Color.TRANSPARENT));
         widget.put("craftComponentId", componentId);
         widget.put("craftOther", other);
+        if (componentId == 15) {
+            widget.put("craftArchiveChannelCount", boundedInt(other.opt("countChannel"), 1, 1, 4));
+            String archiveType = other.optString("typeRecord", "INT").toUpperCase(java.util.Locale.ROOT);
+            widget.put("craftArchiveRecordType", "FLOAT".equals(archiveType) ? "FLOAT" : "INT");
+            widget.put("craftArchiveIntervalSeconds", 1);
+            widget.put("craftArchiveMaxRows", 10000);
+        }
         if (componentId >= 101 && componentId <= 140) {
             java.util.Iterator<String> keys = other.keys();
             while (keys.hasNext()) {

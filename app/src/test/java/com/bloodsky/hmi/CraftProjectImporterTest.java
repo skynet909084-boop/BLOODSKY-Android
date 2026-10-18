@@ -41,7 +41,8 @@ public class CraftProjectImporterTest {
     }
 
     @Test public void archiveIdKeepsArchiveIdentityAndDisablesLegacyBinding() throws Exception {
-        JSONObject other = new JSONObject().put("numScreen", 1).put("registerArchive", 40001);
+        JSONObject other = new JSONObject().put("numScreen", 1).put("registerArchive", 40001)
+                .put("countChannel", 3).put("typeRecord", "FLOAT");
         JSONObject component = new JSONObject().put("componentId", 15).put("text", "History")
                 .put("jsTableComponent_connectionInfo", "legacy-device-binding")
                 .put("jsTableComponent_other", other);
@@ -57,6 +58,9 @@ public class CraftProjectImporterTest {
         assertEquals("", archive.getString("connectionInfo"));
         assertEquals("legacy-device-binding", archive.getString("craftConnectionInfo"));
         assertEquals(40001, archive.getJSONObject("craftOther").getInt("registerArchive"));
+        assertEquals(3, archive.getInt("craftArchiveChannelCount"));
+        assertEquals("FLOAT", archive.getString("craftArchiveRecordType"));
+        assertEquals("", archive.optString("craftArchiveTriggerBinding", ""));
     }
 
     @Test public void convertsSupportedCraftRowsAndRetainsSourceMetadata() throws Exception {
