@@ -1,59 +1,24 @@
-"""Locate the decompiled Craft voice component in the pinned APK archive."""
+"""Source contract for the original Craft ID 27 voice-recognition widget."""
 from pathlib import Path
 import unittest
 import zipfile
 
 ARCHIVE = Path(__file__).resolve().parents[1] / "reference/craft-reference.zip"
+SOURCE_SUFFIX = "jadx/sources/ru/himik/nightscream/kascada/CustomComponents/a0.java"
 
 
 class CraftVoiceSourceAuditTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         with zipfile.ZipFile(ARCHIVE) as archive:
-            cls.paths = archive.namelist()
-            cls.name_hints = [
-                name for name in cls.paths
-                if "a0" in name.lower() or "customcomponents" in name.lower()
-            ]
-            cls.voice_hits = []
-            cls.component_source = []
-            for name in cls.paths:
-                if not name.endswith((".java", ".smali")):
-                    continue
-                raw = archive.read(name)
-                text = raw.decode("utf-8", errors="replace")
-                if name.endswith("/CustomComponents/a0.java"):
-                    cls.component_source.append((name, text))
-                if any(token in text.lower() for token in ("texttospeech", "speak(", "voice announcement", "голосов")):
-                    cls.voice_hits.append((name, text))
+            matches = [name for name in archive.namelist() if name.endswith(SOURCE_SUFFIX)]
+            cls.source = archive.read(matches[0]).decode("utf-8", errors="replace") if matches else ""
 
-    def test_pinned_reference_contains_decompiled_sources(self):
-        self.assertTrue(any(name.endswith((".java", ".smali")) for name in self.paths))
+    def test_original_class_identity_is_voice_recognition(self):
+        self.assertIn("this.f8705d = 27;", self.source)
+        self.assertIn("R.string.custom_voice_recognition", self.source)
+        self.assertNotIn("TextToSpeech", self.source)
 
-    def test_print_candidate_paths_and_voice_source_signatures(self):
-        print("Craft a0/CustomComponents path hints:", self.name_hints[:100])
-        self.assertTrue(self.component_source, "CustomComponents/a0.java source not found")
-        for name, text in self.component_source:
-            print("CRAFT ID 27 SOURCE", name)
-            lines = [
-                line.strip() for line in text.splitlines()
-                if any(token in line.lower() for token in (
-                    "textvoice", "custom_voice_recognition", "texttospeech", "speechrecognizer",
-                    "recognition", "startactivity", "performclick", "onclick", "dispatchtouchevent",
-                    "getjsonother", "getjsonconnectioninfo", ".method "
-                ))
-            ]
-            print("\n".join(lines))
-            keys = {index for index in range(16) if '"textVoice' + str(index) + '"' in text}
-            print("SOURCE TEXT VOICE INDICES:", sorted(keys))
-            self.assertIn(0, keys)
-            self.assertIn(15, keys)
-        print("Voice/TTS source paths:", [name for name, _ in self.voice_hits[:100]])
-        for name, text in self.voice_hits[:20]:
-            interesting = [
-                line.strip() for line in text.splitlines()
-                if any(token in line.lower() for token in (
-                    "texttospeech", "speak(", "voice", "голос", ".field ", ".method "
-                ))
-            ]
-            print("SOURCE", name, "\n".join(interesting[:60]))
+    def test_original_component_serializes_sixteen_phrase_fields(self):
+        for index in range(16):
+            self.assertIn(f'"textVoice{index}"', self.source, f"Missing Craft phrase field {index}")
