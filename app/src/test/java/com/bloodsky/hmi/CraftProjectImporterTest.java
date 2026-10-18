@@ -174,6 +174,28 @@ public class CraftProjectImporterTest {
         MainActivity.validateImportedProjectStatic(project.toString());
     }
 
+    @Test public void preservesAndMarksUnmappedIdsFoundInSuppliedCraftProject() throws Exception {
+        String json = "{\"TableNameProject\":{\"name\":\"Unmapped rows\",\"countScreen\":1},"
+                + "\"TableConnections\":[],\"TableComponent\":["
+                + "{\"componentId\":9,\"text\":\"Legacy 9\",\"x\":1,\"y\":2,\"width\":30,\"height\":30,"
+                + "\"jsTableComponent_other\":{\"numScreen\":1,\"vendorField\":\"retain-9\"}},"
+                + "{\"componentId\":19,\"text\":\"Legacy 19\",\"x\":4,\"y\":5,\"width\":30,\"height\":30,"
+                + "\"jsTableComponent_other\":{\"numScreen\":1,\"vendorField\":\"retain-19\"}}]}";
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(json));
+        JSONArray widgets = project.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets");
+        assertEquals(2, widgets.length());
+        for (int i = 0; i < widgets.length(); i++) {
+            JSONObject widget = widgets.getJSONObject(i);
+            int id = widget.getInt("craftComponentId");
+            assertTrue(id == 9 || id == 19);
+            assertEquals("Текст", widget.getString("type"));
+            assertTrue(widget.getBoolean("craftUnsupportedComponent"));
+            assertTrue(widget.getJSONObject("craftOther").getString("vendorField").contains(String.valueOf(id)));
+            assertEquals(id, project.getJSONObject("craftSource").getJSONArray("TableComponent")
+                    .getJSONObject(i).getInt("componentId"));
+        }
+    }
+
     @Test public void reconcilesStaleCraftScreenCountWithReferencedScreens() throws Exception {
         String json = "{\"TableNameProject\":{\"name\":\"Legacy screen\",\"countScreen\":16},\"TableConnections\":[],\"TableComponent\":["
                 + "{\"componentId\":2,\"text\":\"On screen 20\",\"x\":1,\"y\":2,\"width\":100,\"height\":30,\"jsTableComponent_other\":{\"numScreen\":20}}]}";
