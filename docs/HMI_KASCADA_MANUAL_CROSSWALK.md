@@ -40,6 +40,8 @@ Source: `HMI-KaSCADA-v1.4-ot-08.09.19 (1).pdf` (109 pages), checked as extracted
 | 9 | `CustomComponents.c` | Bell/alarm. `posSound` selects one of five bundled sounds; one Modbus bit connection; sound loops while active. | Maps to BLOODSKY sound alarm; selected sound index and loop flag persist. The Craft binding stays in `craftConnectionInfo`, not the active BLOODSKY binding. |
 | 19 | `CustomComponents.k` | Register gateway. Has source register, receive register and trigger connection records; modes select transfer behavior. Activation can write registers. | Maps to a labeled unsupported placeholder and preserves all original JSON/mode/connection fields. No gateway action is executed. |
 
+- A first optional Home Assistant bridge discovers and displays entity state read-only; it supports a local Xiaomi Home-to-Home Assistant path. Write controls, subscriptions, and direct Yandex account OAuth remain follow-up work.
+
 ## Working interpretation and immediate gaps
 
 1. The PDF is a functional specification; imported APK source determines the exact serialized fields and runtime details. Keep those evidence sources distinct.
