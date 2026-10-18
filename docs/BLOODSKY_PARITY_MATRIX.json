@@ -155,8 +155,8 @@
           "id": "widget.sms_in",
           "name": "Incoming SMS register/bit control",
           "status": "partial",
-          "criteria": "Pure sender/command validation accepts exact allowlisted sender and bounded signed 16-bit commands; Android receiver, runtime permission, Modbus write and widget settings still remain open.",
-          "audit_note": "Validation core is implemented and unit tested; end-to-end behavior remains incomplete. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
+          "criteria": "Opt-in foreground receiver, encrypted sender allowlist, exact command validation, signed 16-bit holding-register writes, and atomic FC22 bit setting; imported Craft ID 18 remains disabled by default.",
+          "audit_note": "Manual optional strobe behavior, Android multipart/PDU device testing, and real SIM/Modbus hardware validation remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "widget.sms_out",
