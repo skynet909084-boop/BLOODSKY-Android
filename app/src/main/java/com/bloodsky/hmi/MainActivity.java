@@ -3763,6 +3763,7 @@ public class MainActivity extends Activity {
 
         final android.widget.Spinner targetScreenIndexField;
         final EditText targetUrlField;
+        final android.widget.CheckBox targetVisibleInWorkField;
         if ("Переход на экран".equals(w.type)) {
             TextView screenNavHeader = new TextView(this);
             screenNavHeader.setText("Куда перейти");
@@ -3783,9 +3784,13 @@ public class MainActivity extends Activity {
             targetScreenIndexField.setSelection(selectedTarget);
             form.addView(targetScreenIndexField);
             targetUrlField = propertyField(w.targetUrl, InputType.TYPE_CLASS_TEXT);
-            targetUrlField.setHint("URL для перехода (необязательно)");
+            targetUrlField.setHint("Внешний URL вместо экрана (необязательно)");
             form.addView(targetUrlField);
-        } else { targetScreenIndexField = null; targetUrlField = null; }
+            targetVisibleInWorkField = new android.widget.CheckBox(this);
+            targetVisibleInWorkField.setText("Показывать в рабочем режиме");
+            targetVisibleInWorkField.setChecked(w.extraFields.optBoolean("craftButtonVisibleInWork", true));
+            form.addView(targetVisibleInWorkField);
+        } else { targetScreenIndexField = null; targetUrlField = null; targetVisibleInWorkField = null; }
 
         final EditText[] imagePathFields = new EditText[w.imagePathStates.length];
         if ("Многопозиционное фото".equals(w.type)) {
@@ -4352,6 +4357,8 @@ public class MainActivity extends Activity {
                         }
                         w.targetScreenIndex = selectedTarget > 0 ? selectedTarget - 1 : -1;
                         w.targetUrl = targetUrl;
+                        try { w.extraFields.put("craftButtonVisibleInWork", targetVisibleInWorkField.isChecked()); }
+                        catch (Exception ignored) { }
                     }
                     if ("Многопозиционное фото".equals(w.type)) {
                         for (int k = 0; k < imagePathFields.length; k++) {
@@ -7390,7 +7397,8 @@ public class MainActivity extends Activity {
             }
             for (int i = 0; i < widgets.size(); i++) {
                 Widget w = widgets.get(i);
-                if (!w.visible || (operatorMode && ("Кнопка".equals(w.type) || "Константная кнопка Craft".equals(w.type))
+                if (!w.visible || (operatorMode && ("Кнопка".equals(w.type) || "Константная кнопка Craft".equals(w.type)
+                        || "Переход на экран".equals(w.type))
                         && !w.extraFields.optBoolean("craftButtonVisibleInWork", true))
                         || (operatorMode && isFbd(w))
                         || (operatorMode && "Список Craft".equals(w.type)
@@ -7787,7 +7795,8 @@ public class MainActivity extends Activity {
                 if (w.visible && !isFbd(w)
                         && !("Список Craft".equals(w.type)
                         && !w.extraFields.optBoolean("craftListVisibleInWork", true))
-                        && !(("Кнопка".equals(w.type) || "Константная кнопка Craft".equals(w.type))
+                        && !(("Кнопка".equals(w.type) || "Константная кнопка Craft".equals(w.type)
+                        || "Переход на экран".equals(w.type))
                         && !w.extraFields.optBoolean("craftButtonVisibleInWork", true))
                         && x >= w.x && x <= w.x + w.w && y >= w.y && y <= w.y + w.h) return i;
             }
