@@ -150,6 +150,20 @@
           "status": "missing",
           "criteria": "Voice announcement trigger with TextToSpeech synthesis and edge-triggering.",
           "audit_note": "Not implemented in BLOODSKY yet; see the source-backed acceptance plan in docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
+        },
+        {
+          "id": "widget.sms_in",
+          "name": "Incoming SMS register/bit control",
+          "status": "partial",
+          "criteria": "Pure sender/command validation accepts exact allowlisted sender and bounded signed 16-bit commands; Android receiver, runtime permission, Modbus write and widget settings still remain open.",
+          "audit_note": "Validation core is implemented and unit tested; end-to-end behavior remains incomplete. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
+        },
+        {
+          "id": "widget.sms_out",
+          "name": "Outgoing SMS with register substitutions",
+          "status": "partial",
+          "criteria": "Current BLOODSKY event sends one {value}; manual parity requires selected register source, count 1..8, and %1..%8 substitutions.",
+          "audit_note": "One-value SMS event is implemented; full Craft template parity remains open."
         }
       ]
     },
