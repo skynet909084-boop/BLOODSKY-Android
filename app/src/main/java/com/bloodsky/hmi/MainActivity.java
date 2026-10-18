@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 115454)
-Total output lines: 7645
-
 package com.bloodsky.hmi;
 
 import android.app.Activity;
@@ -2115,7 +2112,3499 @@ public class MainActivity extends Activity {
             for (Widget value : widgets) {
                 resetFbdTimerRuntime(value);
                 value.craftMqttLastEnable = false;
-                value.craftMqttVa…55454 tokens truncated…by insertion order. */
+                value.craftMqttValue = null;
+            }
+        }
+        operatorMode = !operatorMode; fbdWireMode = false; wireSource = -1;
+        if (!operatorMode) for (Widget value : widgets) if (isCraftOdTempSource(value.type)) {
+            value.craftSensorValid = false; value.craftOdTempNextPollAt = 0L;
+        }
+        showEditor();
+    }
+
+    private void showEditorCommands(View anchor) {
+        android.widget.PopupMenu menu = new android.widget.PopupMenu(this, anchor);
+        if (nestedMacroEdit != null) {
+            menu.getMenu().add("Сохранить вложенный граф").setOnMenuItemClickListener(item -> {
+                if (persistProjectNow(true))
+                    Toast.makeText(this, "Вложенный граф сохранён", Toast.LENGTH_SHORT).show();
+                return true;
+            });
+            menu.getMenu().add("Вернуться на экран").setOnMenuItemClickListener(item -> {
+                closeNestedMacroGraphEditor(); return true;
+            });
+            menu.show();
+            return;
+        }
+        if (!operatorMode) {
+            menu.getMenu().add("Имя проекта").setOnMenuItemClickListener(item -> { editProjectName(); return true; });
+            menu.getMenu().add("Настройки проекта").setOnMenuItemClickListener(item -> { showProjectSettingsDialog(); return true; });
+            menu.getMenu().add("Сохранить проект").setOnMenuItemClickListener(item -> { persistProject(); return true; });
+            menu.getMenu().add("Добавить экран").setOnMenuItemClickListener(item -> { addScreen(); return true; });
+            menu.getMenu().add("Удалить экран").setOnMenuItemClickListener(item -> { removeCurrentScreen(); return true; });
+            menu.getMenu().add("Фон экрана").setOnMenuItemClickListener(item -> { editScreenBackground(); return true; });
+            menu.getMenu().add(fbdWireMode ? "Выключить связь FBD" : "Связать FBD").setOnMenuItemClickListener(item -> {
+                fbdWireMode = !fbdWireMode; wireSource = -1; showEditor(); return true;
+            });
+            menu.getMenu().add("Удалить связь FBD…").setOnMenuItemClickListener(item -> {
+                showFbdDisconnectDialog(); return true;
+            });
+            menu.getMenu().add("Инвертировать BOOL-связь FBD…").setOnMenuItemClickListener(item -> {
+                showFbdInversionDialog(); return true;
+            });
+            if (currentScreenIndex >= 0 && currentScreenIndex < screens.size()) {
+                Screen current = screens.get(currentScreenIndex);
+                if (fbdWireHistory.canUndo(current))
+                    menu.getMenu().add("Отменить связь FBD").setOnMenuItemClickListener(item -> {
+                        replayFbdWireEdit(false); return true;
+                    });
+                if (fbdWireHistory.canRedo(current))
+                    menu.getMenu().add("Повторить связь FBD").setOnMenuItemClickListener(item -> {
+                        replayFbdWireEdit(true); return true;
+                    });
+            }
+        }
+        menu.getMenu().add("Telegram — настройки и тест").setOnMenuItemClickListener(item -> {
+            showTelegramSettingsDialog(); return true;
+        });
+        menu.getMenu().add("Умный дом — Home Assistant / Xiaomi").setOnMenuItemClickListener(item -> {
+            showHomeAssistantDialog(); return true;
+        });
+        menu.getMenu().add("Умный дом — Яндекс").setOnMenuItemClickListener(item -> { showYandexSmartHomeDialog(); return true; });
+        menu.getMenu().add("Голосовой помощник").setOnMenuItemClickListener(item -> { showVoiceModeDialog(); return true; });
+        menu.getMenu().add("Modbus").setOnMenuItemClickListener(item -> { showModbusDiagnostics(); return true; });
+        menu.getMenu().add("Главное меню").setOnMenuItemClickListener(item -> {
+            if (persistProjectNow(true)) showHome(); return true;
+        });
+        menu.show();
+    }
+
+    private void showYandexSmartHomeDialog() {
+        LinearLayout form=new LinearLayout(this);form.setOrientation(LinearLayout.VERTICAL);form.setPadding(dp(20),dp(8),dp(20),dp(4));
+        TextView note=new TextView(this);
+        note.setText("Создай приложение доступа к API в Яндекс OAuth (https://oauth.yandex.ru/client/new/) с правами iot:view и iot:control, затем вставь OAuth-токен. Список устройств доступен для просмотра; запуск сценария всегда отдельно подтверждается. Токен шифруется Android Keystore и не попадает в проект.");
+        note.setAutoLinkMask(android.text.util.Linkify.WEB_URLS);form.addView(note);
+        EditText token=propertyField("",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD|InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        token.setSingleLine(true);token.setHint("OAuth-токен (пусто, если уже сохранён)");form.addView(token);
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Яндекс Умный дом")
+                .setView(form).setPositiveButton("Подключить",null).setNegativeButton("Отключить",null).setNeutralButton("Закрыть",null).create();
+        dialog.setOnShowListener(ignored->{
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+                final String entered=token.getText().toString().trim();String access=entered;
+                if(access.isEmpty())try{access=YandexTokenStore.read(this);}catch(Exception failure){Toast.makeText(this,"Не удалось прочитать токен; введи его снова",Toast.LENGTH_LONG).show();return;}
+                if(access.isEmpty()){Toast.makeText(this,"Нужен OAuth-токен Яндекс Умного дома",Toast.LENGTH_LONG).show();return;}
+                final String finalToken=access;dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
+                yandexExecutor.execute(()->{
+                    List<YandexSmartHomeClient.Item> items=null;String error=null;
+                    try{items=YandexSmartHomeClient.getHome(finalToken);}catch(Exception failure){error=failure.getMessage();}
+                    final List<YandexSmartHomeClient.Item> result=items;final String problem=error;
+                    runOnUiThread(()->{
+                        if(isFinishing()||isDestroyed())return;
+                        if(dialog.isShowing())dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
+                        if(problem!=null){Toast.makeText(this,"Яндекс: "+(problem.contains("HTTP 401")?"токен отклонён (401)":"не удалось загрузить устройства; проверь токен и интернет"),Toast.LENGTH_LONG).show();return;}
+                        try{if(!entered.isEmpty())YandexTokenStore.save(this,entered);}catch(Exception failure){Toast.makeText(this,"Токен не удалось сохранить безопасно",Toast.LENGTH_LONG).show();}
+                        dialog.dismiss();showYandexSmartHomeItems(result,finalToken);
+                    });
+                });
+            });
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(v->new AlertDialog.Builder(this)
+                    .setTitle("Отключить Яндекс?").setMessage("Удалить сохранённый токен?")
+                    .setNegativeButton("Отмена",null).setPositiveButton("Удалить",(d,w)->{YandexTokenStore.clear(this);dialog.dismiss();Toast.makeText(this,"Яндекс отключён",Toast.LENGTH_SHORT).show();}).show());
+        });
+        dialog.show();
+    }
+
+    private void showYandexSmartHomeItems(List<YandexSmartHomeClient.Item> items,String token) {
+        if(items==null||items.isEmpty()){new AlertDialog.Builder(this).setTitle("Яндекс Умный дом").setMessage("Устройства и сценарии не найдены.").setPositiveButton("ОК",null).show();return;}
+        ArrayList<YandexSmartHomeClient.Item> shown=new ArrayList<>(items.subList(0,Math.min(300,items.size())));
+        android.widget.ListView list=new android.widget.ListView(this);list.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_list_item_1,shown));
+        AlertDialog homeDialog=new AlertDialog.Builder(this).setTitle("Яндекс: устройства и сценарии").setView(list).setPositiveButton("Готово",null).create();
+        list.setOnItemClickListener((parent,view,position,id)->{
+            YandexSmartHomeClient.Item selected=shown.get(position);
+            if(!selected.scenario){Toast.makeText(this,"Устройство доступно через его capabilities; прямое управление пока не включено",Toast.LENGTH_SHORT).show();return;}
+            new AlertDialog.Builder(this).setTitle("Запустить сценарий?").setMessage("Запустить «"+selected.name+"»?")
+                    .setNegativeButton("Отмена",null).setPositiveButton("Запустить",(d,w)->{
+                        yandexExecutor.execute(()->{String error=null;try{YandexSmartHomeClient.launchScenario(token,selected.id);}catch(Exception failure){error=failure.getMessage();}
+                            final String problem=error;runOnUiThread(()->{if(isFinishing()||isDestroyed())return;if(problem!=null)Toast.makeText(this,"Яндекс: сценарий не запущен",Toast.LENGTH_LONG).show();else{homeDialog.dismiss();Toast.makeText(this,"Сценарий запущен",Toast.LENGTH_SHORT).show();}});});
+                    }).show();
+        });
+        homeDialog.show();
+    }
+
+    private void sendSmsNotification(Widget widget,String value) {
+        if (!operatorMode || !activityResumed) return;
+        String phone = "";
+        try { phone = SmsRecipientStore.read(this, widget.extraFields.optString("smsRecipientId", "")); }
+        catch (Exception ignored) {}
+        if (!SmsNotificationClient.isValidPhone(phone)) {
+            Toast.makeText(this, "У SMS-элемента не настроен номер получателя", Toast.LENGTH_LONG).show(); return;
+        }
+        if(!getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_TELEPHONY)) {
+            Toast.makeText(this,"Это устройство не поддерживает SMS через SIM",Toast.LENGTH_LONG).show();return;
+        }
+        if(checkSelfPermission(android.Manifest.permission.SEND_SMS)!=android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.SEND_SMS},REQUEST_SMS_SEND_PERMISSION);return;
+        }
+        int count = widget.extraFields.optInt("smsRegisterCount", 1);
+        if (count < 1 || count > 8) { Toast.makeText(this, "Количество регистров SMS должно быть 1–8", Toast.LENGTH_LONG).show(); return; }
+        BindingRequest source = parseBinding(-1, widget.connectionInfo, count);
+        if (source == null || (source.functionCode != 3 && source.functionCode != 4)) {
+            Toast.makeText(this, "Укажи корректный адрес регистра для SMS", Toast.LENGTH_LONG).show(); return;
+        }
+        final String destination = phone, template = widget.text, triggerValue = value;
+        final String host = source.host;
+        final int port = source.port, unit = source.unit, address = source.address;
+        final int functionCode = source.functionCode;
+        final long sessionToken = pollSession.token();
+        smsExecutor.execute(() -> {
+            String message;
+            boolean readFailed = false;
+            try {
+                int[] registers = new ModbusTcpClient(host, port).read(unit, address, count, functionCode);
+                String[] values = new String[registers.length];
+                for (int i = 0; i < registers.length; i++) values[i] = Integer.toString(registers[i]);
+                message = SmsOutgoingTemplate.render(template, values, triggerValue);
+            } catch (Exception failure) {
+                message = SmsNotificationClient.message(template, triggerValue) + " !NO RESPONSE!";
+                readFailed = true;
+            }
+            if (!pollSession.accepts(sessionToken) || !activityResumed || !operatorMode) return;
+            boolean sent = false;
+            try { SmsNotificationClient.send(this, destination, message); sent = true; }
+            catch (Exception ignored) {}
+            final boolean success = sent, noResponse = readFailed;
+            runOnUiThread(() -> {
+                if (!pollSession.accepts(sessionToken) || !activityResumed || !operatorMode) return;
+                Toast.makeText(this, success ? (noResponse ? "SMS отправлено: устройство не ответило"
+                        : "SMS отправлено через SIM") : "Не удалось отправить SMS через SIM", Toast.LENGTH_LONG).show();
+            });
+        });
+    }
+
+    private boolean hasConfiguredIncomingSms() {
+        if (!operatorMode || editor == null) return false;
+        for (Widget widget : widgets) {
+            if ("Входящее SMS".equals(widget.type) && widget.extraFields.optBoolean("smsEnabled", false))
+                return true;
+        }
+        return false;
+    }
+
+    private void refreshIncomingSmsReceiver() {
+        if (!activityResumed || !hasConfiguredIncomingSms()
+                || !getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_TELEPHONY)) {
+            unregisterIncomingSmsReceiver();
+            return;
+        }
+        if (checkSelfPermission(android.Manifest.permission.RECEIVE_SMS)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            unregisterIncomingSmsReceiver();
+            if (!smsReceivePermissionRequested) {
+                smsReceivePermissionRequested = true;
+                requestPermissions(new String[]{android.Manifest.permission.RECEIVE_SMS}, REQUEST_SMS_RECEIVE_PERMISSION);
+            }
+            return;
+        }
+        if (incomingSmsReceiver != null) return;
+        incomingSmsReceiver = new SmsIncomingBroadcastReceiver(this::handleIncomingSms);
+        android.content.IntentFilter filter = new android.content.IntentFilter("android.provider.Telephony.SMS_RECEIVED");
+        if (android.os.Build.VERSION.SDK_INT >= 33)
+            registerReceiver(incomingSmsReceiver, filter, android.content.Context.RECEIVER_EXPORTED);
+        else registerReceiver(incomingSmsReceiver, filter);
+    }
+
+    private void unregisterIncomingSmsReceiver() {
+        if (incomingSmsReceiver == null) return;
+        try { unregisterReceiver(incomingSmsReceiver); } catch (IllegalArgumentException ignored) {}
+        incomingSmsReceiver = null;
+    }
+
+    private void handleIncomingSms(String sender, String body) {
+        if (!activityResumed || !operatorMode || editor == null || !hasConfiguredIncomingSms()) return;
+        final long sessionToken = pollSession.token();
+        for (Widget widget : new ArrayList<>(widgets)) {
+            if (!"Входящее SMS".equals(widget.type) || !widget.extraFields.optBoolean("smsEnabled", false)) continue;
+            final String allowedSender;
+            try { allowedSender = SmsRecipientStore.read(this, widget.extraFields.optString("smsSenderId", "")); }
+            catch (Exception invalid) { continue; }
+            String modeValue = widget.extraFields.optString("smsMode", "number");
+            SmsIncomingCommand.Mode mode = "bit".equals(modeValue)
+                    ? SmsIncomingCommand.Mode.SET_BIT : SmsIncomingCommand.Mode.REGISTER_NUMBER;
+            int bit = widget.extraFields.optInt("smsBit", 0);
+            SmsIncomingCommand.Result parsed = SmsIncomingCommand.parse(allowedSender, sender,
+                    widget.extraFields.optString("smsCommand", ""), body, mode, bit);
+            if (parsed == null) continue;
+            BindingRequest binding = parseBinding(-1, widget.connectionInfo);
+            if (binding == null || binding.functionCode != 3) continue;
+            final String host = binding.host;
+            final int port = binding.port, unit = binding.unit, address = binding.address;
+            final int[] values = parsed.registerValues.clone();
+            final boolean setStrobe = mode == SmsIncomingCommand.Mode.REGISTER_NUMBER
+                    && widget.extraFields.optBoolean("smsStrobeEnabled", false);
+            final BindingRequest strobeBinding = setStrobe
+                    ? parseBinding(-1, "tcp://" + host + ":" + port + "/" + unit + "/"
+                            + widget.extraFields.optInt("smsStrobeRegister", -1)) : null;
+            final int strobeBit = widget.extraFields.optInt("smsStrobeBit", 0);
+            if (setStrobe && (strobeBinding == null || strobeBinding.functionCode != 3
+                    || strobeBinding.unit != unit || strobeBit < 0 || strobeBit > 15)) continue;
+            modbusExecutor.execute(() -> {
+                if (!pollSession.accepts(sessionToken) || !activityResumed || !operatorMode) return;
+                Exception failure = null;
+                try {
+                    ModbusTcpClient client = new ModbusTcpClient(host, port);
+                    if (parsed.mode == SmsIncomingCommand.Mode.SET_BIT) {
+                        client.writeMask(unit, address, parsed.writeAndMask, parsed.writeOrMask);
+                    } else {
+                        if (values.length == 1) client.writeSingle(unit, address, values[0]);
+                        else client.writeMultiple(unit, address, values);
+                        if (setStrobe) {
+                            int mask = 1 << strobeBit;
+                            client.writeMask(unit, strobeBinding.address, 0xffff ^ mask, mask);
+                        }
+                    }
+                } catch (Exception error) { failure = error; }
+                final Exception result = failure;
+                runOnUiThread(() -> {
+                    if (!pollSession.accepts(sessionToken) || !activityResumed || !operatorMode) return;
+                    Toast.makeText(this, result == null ? "SMS-команда выполнена: Modbus обновлён"
+                            : "SMS-команда проверена, но запись Modbus не выполнена", Toast.LENGTH_LONG).show();
+                });
+            });
+        }
+    }
+
+    private void showHomeAssistantDialog() {
+        android.content.SharedPreferences prefs = getSharedPreferences("bloodsky_homeassistant", MODE_PRIVATE);
+        LinearLayout form = new LinearLayout(this); form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(dp(20), dp(8), dp(20), dp(4));
+        TextView note = new TextView(this);
+        note.setText("Локальный Home Assistant может дать доступ к Xiaomi Home и другим устройствам. В Home Assistant создай access token в профиле. Токен будет храниться зашифрованно в Android Keystore и не попадёт в проект. Сейчас подключение только читает список устройств и их состояние. HTTP используй только в доверенной домашней сети; для внешних адресов нужен HTTPS.");
+        form.addView(note);
+        EditText address = propertyField(prefs.getString("base_url", ""), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        address.setSingleLine(true); address.setHint("http://homeassistant.local:8123"); form.addView(address);
+        EditText token = propertyField("", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        token.setSingleLine(true); token.setHint("Access token (оставь пустым, если сохранён)"); form.addView(token);
+        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Home Assistant / Xiaomi")
+                .setView(form).setPositiveButton("Найти устройства", null)
+                .setNegativeButton("Отключить", null).setNeutralButton("Закрыть", null).create();
+        dialog.setOnShowListener(ignored -> {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                final String baseUrl = address.getText().toString().trim();
+                final String enteredToken = token.getText().toString().trim();
+                String accessToken = enteredToken;
+                if (accessToken.isEmpty()) try { accessToken = HomeAssistantTokenStore.read(this); }
+                catch (Exception failure) { Toast.makeText(this, "Не удалось прочитать сохранённый токен; введи его заново", Toast.LENGTH_LONG).show(); return; }
+                if (accessToken.isEmpty()) { Toast.makeText(this, "Нужен access token Home Assistant", Toast.LENGTH_LONG).show(); return; }
+                final String finalToken = accessToken;
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
+                homeAssistantExecutor.execute(() -> {
+                    List<HomeAssistantClient.Entity> entities = null; String error = null;
+                    try { entities = HomeAssistantClient.getEntities(baseUrl, finalToken); }
+                    catch (Exception failure) { error = failure.getMessage(); }
+                    final List<HomeAssistantClient.Entity> found = entities; final String failureText = error;
+                    runOnUiThread(() -> {
+                        if (isFinishing() || isDestroyed()) return;
+                        if (dialog.isShowing()) dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
+                        if (failureText != null) {
+                            Toast.makeText(this, "Home Assistant: " + safeHomeAssistantError(failureText), Toast.LENGTH_LONG).show(); return;
+                        }
+                        try {
+                            prefs.edit().putString("base_url", HomeAssistantClient.normalizeBaseUrl(baseUrl)).apply();
+                            if (!enteredToken.isEmpty()) HomeAssistantTokenStore.save(this, enteredToken);
+                        } catch (Exception storageFailure) {
+                            Toast.makeText(this, "Устройства найдены, но токен не удалось сохранить безопасно", Toast.LENGTH_LONG).show();
+                        }
+                        dialog.dismiss(); showHomeAssistantEntities(found);
+                    });
+                });
+            });
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(v -> new AlertDialog.Builder(this)
+                    .setTitle("Отключить Home Assistant?")
+                    .setMessage("Удалить сохранённый адрес и токен?")
+                    .setNegativeButton("Отмена", null)
+                    .setPositiveButton("Удалить", (d, w) -> {
+                        HomeAssistantTokenStore.clear(this); prefs.edit().clear().apply(); dialog.dismiss();
+                        Toast.makeText(this, "Home Assistant отключён", Toast.LENGTH_SHORT).show();
+                    }).show());
+        });
+        dialog.show();
+    }
+
+    private String safeHomeAssistantError(String error) {
+        if (error == null || error.trim().isEmpty()) return "не удалось подключиться; проверь адрес и сеть";
+        if (error.contains("HTTP 401")) return "токен отклонён (HTTP 401)";
+        if (error.contains("HTTP 403")) return "нет доступа (HTTP 403)";
+        if (error.contains("HTTP 404")) return "не найден API Home Assistant (HTTP 404)";
+        if (error.contains("HTTPS")) return "для внешнего адреса используй HTTPS";
+        return "не удалось подключиться; проверь адрес, сеть и токен";
+    }
+
+    private void showHomeAssistantEntities(List<HomeAssistantClient.Entity> entities) {
+        if (entities == null || entities.isEmpty()) {
+            new AlertDialog.Builder(this).setTitle("Устройства Home Assistant")
+                    .setMessage("Устройства не найдены или у токена нет доступа к состояниям.")
+                    .setPositiveButton("ОК", null).show(); return;
+        }
+        ArrayList<HomeAssistantClient.Entity> shown = new ArrayList<>(entities.subList(0, Math.min(300, entities.size())));
+        android.widget.ListView list = new android.widget.ListView(this);
+        list.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, shown));
+        AlertDialog entityDialog = new AlertDialog.Builder(this).setTitle("Home Assistant: " + entities.size() + " сущностей")
+                .setView(list).setPositiveButton("Готово", null).create();
+        list.setOnItemClickListener((parent, view, position, id) -> {
+            HomeAssistantClient.Entity selected = shown.get(position);
+            if (!selected.canTogglePower()) {
+                Toast.makeText(this, "Для этой сущности доступен только просмотр", Toast.LENGTH_SHORT).show(); return;
+            }
+            boolean turnOn = "off".equalsIgnoreCase(selected.state);
+            String action = turnOn ? "включить" : "выключить";
+            new AlertDialog.Builder(this).setTitle("Подтвердить действие")
+                    .setMessage(action.substring(0, 1).toUpperCase(java.util.Locale.ROOT) + action.substring(1)
+                            + " «" + selected.name + "» (" + selected.entityId + ")?")
+                    .setNegativeButton("Отмена", null)
+                    .setPositiveButton("Подтвердить", (d, w) -> setHomeAssistantPower(selected, turnOn, entityDialog)).show();
+        });
+        entityDialog.show();
+    }
+
+    private void setHomeAssistantPower(HomeAssistantClient.Entity entity, boolean turnOn, AlertDialog entityDialog) {
+        String baseUrl = getSharedPreferences("bloodsky_homeassistant", MODE_PRIVATE).getString("base_url", "");
+        homeAssistantExecutor.execute(() -> {
+            String error = null; List<HomeAssistantClient.Entity> updated = null;
+            try {
+                String token = HomeAssistantTokenStore.read(this);
+                HomeAssistantClient.setPower(baseUrl, token, entity, turnOn);
+                updated = HomeAssistantClient.getEntities(baseUrl, token);
+            } catch (Exception failure) { error = failure.getMessage(); }
+            final String failureText = error; final List<HomeAssistantClient.Entity> states = updated;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                if (failureText != null) {
+                    Toast.makeText(this, "Home Assistant: " + safeHomeAssistantError(failureText), Toast.LENGTH_LONG).show(); return;
+                }
+                entityDialog.dismiss();
+                Toast.makeText(this, "Команда отправлена", Toast.LENGTH_SHORT).show();
+                showHomeAssistantEntities(states);
+            });
+        });
+    }
+
+    private void showVoiceModeDialog() {
+        new AlertDialog.Builder(this).setTitle("Голосовой помощник")
+                .setMessage("Локально: только встроенное распознавание на устройстве, без отправки аудио.\\n\\nЧерез интернет: аудио может обрабатываться выбранной в Android службой распознавания речи.")
+                .setPositiveButton("Локально", (dialog, which) -> requestVoicePermission(VOICE_LOCAL))
+                .setNegativeButton("Через интернет", (dialog, which) -> requestVoicePermission(VOICE_ONLINE))
+                .setNeutralButton("Отмена", null).show();
+    }
+
+    private void requestVoicePermission(int mode) {
+        pendingVoiceMode = mode;
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQUEST_VOICE_PERMISSION);
+            return;
+        }
+        startVoiceRecognition(mode);
+    }
+
+    private void startVoiceRecognition(int mode) {
+        if (mode == VOICE_LOCAL && (android.os.Build.VERSION.SDK_INT < 31
+                || !android.speech.SpeechRecognizer.isOnDeviceRecognitionAvailable(this))) {
+            Toast.makeText(this, "Офлайн-распознавание речи на этом устройстве недоступно. Интернет-режим остаётся отдельным вариантом.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        try {
+            releaseVoiceRecognizer();
+            speechRecognizer = mode == VOICE_LOCAL
+                    ? android.speech.SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
+                    : android.speech.SpeechRecognizer.createSpeechRecognizer(this);
+            speechRecognizer.setRecognitionListener(new android.speech.RecognitionListener() {
+                @Override public void onReadyForSpeech(Bundle params) { Toast.makeText(MainActivity.this, "Слушаю…", Toast.LENGTH_SHORT).show(); }
+                @Override public void onBeginningOfSpeech() {}
+                @Override public void onRmsChanged(float rmsdB) {}
+                @Override public void onBufferReceived(byte[] buffer) {}
+                @Override public void onEndOfSpeech() {}
+                @Override public void onError(int error) {
+                    Toast.makeText(MainActivity.this, "Не удалось распознать речь (код " + error + ")", Toast.LENGTH_LONG).show();
+                    releaseVoiceRecognizer();
+                }
+                @Override public void onResults(Bundle results) {
+                    ArrayList<String> phrases = results == null ? null
+                            : results.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION);
+                    releaseVoiceRecognizer();
+                    if (phrases == null || phrases.isEmpty()) { speakVoiceReply("Команда не распознана"); return; }
+                    executeVoiceCommand(phrases.get(0));
+                }
+                @Override public void onPartialResults(Bundle partialResults) {}
+                @Override public void onEvent(int eventType, Bundle params) {}
+            });
+            android.content.Intent intent = new android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, "ru-RU");
+            intent.putExtra(android.speech.RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+            if (mode == VOICE_LOCAL && android.os.Build.VERSION.SDK_INT < 33)
+                intent.putExtra(android.speech.RecognizerIntent.EXTRA_PREFER_OFFLINE, true);
+            speechRecognizer.startListening(intent);
+        } catch (Exception failure) {
+            releaseVoiceRecognizer();
+            Toast.makeText(this, "Служба распознавания речи недоступна", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void executeVoiceCommand(String phrase) {
+        ArrayList<String> names = new ArrayList<>();
+        for (Screen screen : screens) names.add(screen.name);
+        VoiceCommandParser.Command command = VoiceCommandParser.parse(phrase, names);
+        switch (command.type) {
+            case NEXT_SCREEN:
+                nextScreen(); speakVoiceReply("Открываю следующий экран"); break;
+            case PREVIOUS_SCREEN:
+                previousScreen(); speakVoiceReply("Открываю предыдущий экран"); break;
+            case OPEN_SCREEN:
+                activateScreen(command.screenIndex); speakVoiceReply("Экран " + (command.screenIndex + 1)); break;
+            case START_PROJECT:
+                if (operatorMode) { speakVoiceReply("Проект уже запущен"); break; }
+                new AlertDialog.Builder(this).setTitle("Запустить проект?")
+                        .setMessage("Голосовая команда: «" + phrase + "». Запуск включает исполнение проекта и его связей.")
+                        .setNegativeButton("Отмена", (d, w) -> speakVoiceReply("Запуск отменён"))
+                        .setPositiveButton("Запустить", (d, w) -> { toggleOperatorMode(); speakVoiceReply("Проект запущен"); }).show();
+                break;
+            case STOP_PROJECT:
+                if (operatorMode) { toggleOperatorMode(); speakVoiceReply("Проект остановлен"); }
+                else speakVoiceReply("Проект уже остановлен");
+                break;
+            default:
+                speakVoiceReply("Эта команда пока не поддерживается");
+                Toast.makeText(this, "Распознано: «" + phrase + "». Поддерживаются экраны и запуск/остановка проекта.", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void speakVoiceReply(String text) {
+        if (textToSpeech != null) textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, "bloodsky-voice-reply");
+        Toast.makeText(this, text, Toast.LENGTH_SHORT).show();
+    }
+
+    private void releaseVoiceRecognizer() {
+        if (speechRecognizer != null) { try { speechRecognizer.cancel(); speechRecognizer.destroy(); } catch (Exception ignored) {} speechRecognizer = null; }
+    }
+
+    private void showTelegramSettingsDialog() {
+        android.content.SharedPreferences prefs = getSharedPreferences(TELEGRAM_PREFS, MODE_PRIVATE);
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(dp(20), dp(8), dp(20), dp(4));
+        TextView note = new TextView(this);
+        note.setText("Укажи токен своего Telegram-бота и chat_id. Данные хранятся отдельно от проектов и не попадают в экспорт.");
+        form.addView(note);
+        EditText tokenField = propertyField(prefs.getString("bot_token", ""), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        tokenField.setSingleLine(true); tokenField.setHint("Токен бота"); form.addView(tokenField);
+        EditText chatField = propertyField(prefs.getString("chat_id", ""), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        chatField.setSingleLine(true); chatField.setHint("chat_id или @канал"); form.addView(chatField);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Telegram-уведомления")
+                .setView(form)
+                .setPositiveButton("Сохранить", null)
+                .setNeutralButton("Отправить тест", null)
+                .setNegativeButton("Закрыть", null)
+                .create();
+        dialog.setOnShowListener(ignored -> {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                String token = tokenField.getText().toString().trim();
+                String chatId = chatField.getText().toString().trim();
+                if (token.isEmpty() && chatId.isEmpty()) {
+                    prefs.edit().remove("bot_token").remove("chat_id").apply();
+                    Toast.makeText(this, "Настройки Telegram удалены", Toast.LENGTH_SHORT).show();
+                    dialog.dismiss(); return;
+                }
+                if (!TelegramBotClient.isValidToken(token) || !TelegramBotClient.isValidChatId(chatId)) {
+                    Toast.makeText(this, "Проверь токен бота и chat_id", Toast.LENGTH_LONG).show(); return;
+                }
+                prefs.edit().putString("bot_token", token).putString("chat_id", chatId).apply();
+                rearmTelegramWidgets();
+                Toast.makeText(this, "Настройки Telegram сохранены", Toast.LENGTH_SHORT).show();
+                dialog.dismiss();
+            });
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
+                String token = tokenField.getText().toString().trim();
+                String chatId = chatField.getText().toString().trim();
+                if (!TelegramBotClient.isValidToken(token) || !TelegramBotClient.isValidChatId(chatId)) {
+                    Toast.makeText(this, "Сначала укажи корректные токен и chat_id", Toast.LENGTH_LONG).show(); return;
+                }
+                dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setEnabled(false);
+                telegramExecutor.execute(() -> {
+                    String error = null;
+                    try { TelegramBotClient.sendMessage(token, chatId, "BLOODSKY: тестовое Telegram-уведомление."); }
+                    catch (Exception failure) { error = failure.getMessage(); }
+                    final String result = error;
+                    runOnUiThread(() -> {
+                        if (isFinishing() || isDestroyed()) return;
+                        if (dialog.isShowing()) dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setEnabled(true);
+                        Toast.makeText(this, result == null ? "Тестовое уведомление отправлено" : "Telegram: " + result,
+                                Toast.LENGTH_LONG).show();
+                        if (result == null) {
+                            prefs.edit().putString("bot_token", token).putString("chat_id", chatId).apply();
+                            rearmTelegramWidgets();
+                            if (dialog.isShowing()) dialog.dismiss();
+                        }
+                    });
+                });
+            });
+        });
+        dialog.show();
+    }
+
+    private void rearmTelegramWidgets() {
+        for (Widget widget : widgets) {
+            if ("Telegram-уведомление".equals(widget.type)) widget.lastTelegramState = false;
+        }
+    }
+
+    private void sendTelegramNotification(int widgetIndex, Widget widget, String value) {
+        android.content.SharedPreferences prefs = getSharedPreferences(TELEGRAM_PREFS, MODE_PRIVATE);
+        String token = prefs.getString("bot_token", "");
+        String chatId = prefs.getString("chat_id", "");
+        if (!TelegramBotClient.isValidToken(token) || !TelegramBotClient.isValidChatId(chatId)) {
+            liveValues.put(widgetIndex, "Telegram CFG");
+            if (editor != null) editor.invalidate();
+            return;
+        }
+        String message = (widget.text == null || widget.text.trim().isEmpty() ? "BLOODSKY: событие" : widget.text.trim())
+                + "\nЗначение: " + value;
+        final EditorCanvas sessionEditor = editor;
+        telegramExecutor.execute(() -> {
+            String status = "Telegram отправлено";
+            try { TelegramBotClient.sendMessage(token, chatId, message); }
+            catch (Exception failure) { status = "Telegram ERR"; }
+            final String result = status;
+            runOnUiThread(() -> {
+                if (widgetIndex < 0 || widgetIndex >= widgets.size() || widgets.get(widgetIndex) != widget
+                        || editor != sessionEditor || !activityResumed) return;
+                liveValues.put(widgetIndex, result);
+                if (editor != null) editor.invalidate();
+            });
+        });
+    }
+
+    @Override public void onBackPressed() {
+        if (nestedMacroEdit != null) { closeNestedMacroGraphEditor(); return; }
+        if (editor != null) {
+            if (operatorMode) toggleOperatorMode();
+            else if (persistProjectNow(true)) showHome();
+        } else super.onBackPressed();
+    }
+
+    private String currentScreenName() {
+        if (screens.isEmpty()) return "Экран 1";
+        currentScreenIndex = Math.max(0, Math.min(currentScreenIndex, screens.size() - 1));
+        return screens.get(currentScreenIndex).name;
+    }
+
+    private void saveActiveScreen() {
+        if (screens.isEmpty()) screens.add(new Screen("Экран 1"));
+        Screen screen = screens.get(Math.max(0, Math.min(currentScreenIndex, screens.size() - 1)));
+        screen.widgets.clear();
+        for (Widget source : widgets) screen.widgets.add(copyWidget(source));
+    }
+
+    public static Widget copyWidget(Widget source) {
+        Widget copy = new Widget();
+        copy.type = source.type; copy.text = source.text; copy.connectionInfo = source.connectionInfo; copy.inputValue = source.inputValue; copy.buttonState = source.buttonState; copy.rsState = source.rsState; copy.counterPreset = source.counterPreset; copy.counterValue = source.counterValue; copy.counterLastInput = source.counterLastInput; copy.timerPresetMs = source.timerPresetMs; copy.timerStartedAt = source.timerStartedAt; copy.compareA = source.compareA; copy.compareB = source.compareB; copy.compareOperator = source.compareOperator;
+        copy.minValue = source.minValue; copy.maxValue = source.maxValue;
+        copy.backgroundColor = source.backgroundColor; copy.textColor = source.textColor; copy.textSizeSp = source.textSizeSp;
+        copy.visible = source.visible; copy.showFrame = source.showFrame; copy.autoResizeText = source.autoResizeText;
+        for (int i = 0; i < 16; i++) {
+            copy.dynTextStates[i] = source.dynTextStates[i];
+            copy.dynTextColors[i] = source.dynTextColors[i];
+            copy.bitListLabels[i] = source.bitListLabels[i];
+            copy.voiceMessages[i] = source.voiceMessages[i];
+            copy.imagePathStates[i] = source.imagePathStates[i];
+        }
+        copy.soundThreshold = source.soundThreshold;
+        copy.soundActive = source.soundActive;
+        copy.soundFilePath = source.soundFilePath;
+        copy.craftAlarmSoundIndex = source.craftAlarmSoundIndex;
+        copy.craftAlarmLoop = source.craftAlarmLoop;
+        copy.targetScreenIndex = source.targetScreenIndex;
+        copy.targetUrl = source.targetUrl;
+        copy.lastVoiceState = source.lastVoiceState;
+        copy.lastSoundState = source.lastSoundState;
+        copy.lastTelegramState = source.lastTelegramState;
+        copy.craftVariableNamespace = source.craftVariableNamespace;
+        try { copy.extraFields = new JSONObject(source.extraFields.toString()); } catch (Exception ignored) { copy.extraFields = new JSONObject(); }
+        copy.x = source.x; copy.y = source.y; copy.w = source.w; copy.h = source.h;
+        return copy;
+    }
+
+    private void activateScreen(int index) {
+        fbdWireHistory.clear();
+        saveActiveScreen();
+        if (screens.isEmpty()) screens.add(new Screen("Экран 1"));
+        currentScreenIndex = Math.max(0, Math.min(index, screens.size() - 1));
+        liveValues.clear();
+        widgets.clear();
+        for (Widget source : screens.get(currentScreenIndex).widgets) widgets.add(copyWidget(source));
+        persistProject();
+        showEditor();
+    }
+
+    private void previousScreen() {
+        if (nestedMacroEdit != null) return;
+        if (screens.size() < 2) { Toast.makeText(this, "Добавь ещё один экран", Toast.LENGTH_SHORT).show(); return; }
+        activateScreen((currentScreenIndex - 1 + screens.size()) % screens.size());
+    }
+
+    private void nextScreen() {
+        if (nestedMacroEdit != null) return;
+        if (screens.size() < 2) { Toast.makeText(this, "Добавь ещё один экран", Toast.LENGTH_SHORT).show(); return; }
+        activateScreen((currentScreenIndex + 1) % screens.size());
+    }
+
+    private void addScreen() {
+        if (nestedMacroEdit != null) return;
+        fbdWireHistory.clear();
+        saveActiveScreen();
+        screens.add(new Screen("Экран " + (screens.size() + 1)));
+        currentScreenIndex = screens.size() - 1;
+        widgets.clear();
+        persistProject();
+        showEditor();
+    }
+
+    private void removeCurrentScreen() {
+        if (nestedMacroEdit != null) return;
+        if (screens.size() <= 1) {
+            Toast.makeText(this, "В проекте должен остаться хотя бы один экран", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("Удалить экран?")
+                .setMessage("Экран «" + currentScreenName() + "» и все его элементы будут удалены.")
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Удалить", (dialog, which) -> {
+                    fbdWireHistory.clear();
+                    saveActiveScreen();
+                    screens.remove(currentScreenIndex);
+                    currentScreenIndex = Math.max(0, Math.min(currentScreenIndex, screens.size() - 1));
+                    widgets.clear();
+                    for (Widget widget : screens.get(currentScreenIndex).widgets) widgets.add(copyWidget(widget));
+                    editor = null;
+                    persistProject();
+                    showEditor();
+                }).show();
+    }
+
+    private void editScreenBackground() {
+        if (nestedMacroEdit != null) return;
+        if (screens.isEmpty()) return;
+        Screen screen = screens.get(currentScreenIndex);
+        EditText input = propertyField(String.format(java.util.Locale.ROOT, "#%06X", (0xFFFFFF & screen.backgroundColor)), InputType.TYPE_CLASS_TEXT);
+        input.setHint("#RRGGBB");
+        new AlertDialog.Builder(this).setTitle("Цвет фона экрана").setView(input)
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Применить", (dialog, which) -> {
+                    String value = input.getText().toString().trim();
+                    if (!value.startsWith("#")) value = "#" + value;
+                    if (!value.matches("#[0-9a-fA-F]{6}")) {
+                        Toast.makeText(this, "Укажи цвет в формате #RRGGBB", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    try { screen.backgroundColor = Color.parseColor(value); }
+                    catch (IllegalArgumentException ignored) { return; }
+                    persistProject(); if (editor != null) editor.invalidate();
+                }).show();
+    }
+
+    private void renameCurrentScreen() {
+        EditText input = propertyField(currentScreenName(), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        new AlertDialog.Builder(this).setTitle("Имя экрана").setView(input)
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Сохранить", (dialog, which) -> {
+                    String name = input.getText().toString().trim();
+                    if (!name.isEmpty()) screens.get(currentScreenIndex).name = name;
+                    persistProject(); showEditor();
+                }).show();
+    }
+
+    private void showWidgetContextMenu() {
+        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) return;
+        if (isFbd(widgets.get(editor.selected))) {
+            showFbdBlockContextMenu(editor.selected);
+            return;
+        }
+        showStandardWidgetContextMenu();
+    }
+
+    /** Source-ordered FBD actions with existing typed graph guards. */
+    private void showFbdBlockContextMenu(final int blockIndex) {
+        if (operatorMode || blockIndex < 0 || blockIndex >= widgets.size()) return;
+        final Widget widget = widgets.get(blockIndex);
+        final boolean timer = "FBD Таймер".equals(widget.type)
+                || "FBD TOF".equals(widget.type) || "FBD TP".equals(widget.type)
+                || "FBD CRAFT TIMER".equals(widget.type);
+        final boolean invertible = !isDynamicMacroWidget(widget)
+                && knownFbdPins(widget, true).length == 1
+                && "BOOL".equals(knownFbdPinType(widget,
+                        knownFbdPins(widget, true)[0], true));
+        final java.util.List<String> labels = new ArrayList<>();
+        labels.add("Соединить с…");
+        if (invertible) labels.add("Инвертировать связь BOOL…");
+        if (supportsFbdBlockOutputInversion(widget.type))
+            labels.add("Инвертировать выход BOOL");
+        labels.add("Отсоединить выход");
+        if (nestedMacroEdit != null && knownFbdPins(widget, true).length > 0)
+            labels.add("Назначить выход макроса…");
+        FbdCraftMacroDefinition nestedDefinition = macroDefinition(widget);
+        if (nestedMacroEdit == null && nestedDefinition != null
+                && hasCraftMacroGraph(nestedDefinition))
+            labels.add("Редактировать вложенный граф");
+        if (timer) labels.add("Режим / единицы времени");
+        labels.add("Свойства");
+        labels.add("Другие действия");
+        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle(widget.text == null ? widget.type : widget.text)
+                .setItems(labels.toArray(new String[0]), (dialog, choice) -> {
+                    if (blockIndex >= widgets.size() || widgets.get(blockIndex) != widget) {
+                        Toast.makeText(this, "FBD изменён: выбери блок заново", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    String label = labels.get(choice);
+                    if ("Назначить выход макроса…".equals(label)) {
+                        chooseNestedMacroOutput(blockIndex, widget);
+                    } else if ("Редактировать вложенный граф".equals(label)) {
+                        openNestedMacroGraphEditor(blockIndex);
+                    } else if ("Соединить с…".equals(label)) {
+                        fbdWireMode = true;
+                        wireSource = blockIndex;
+                        Toast.makeText(this, "Выбери целевой блок FBD", Toast.LENGTH_LONG).show();
+                    } else if ("Инвертировать связь BOOL…".equals(label)) {
+                        showFbdInversionDialog(blockIndex);
+                    } else if ("Инвертировать выход BOOL".equals(label)) {
+                        try {
+                            Object previous = widget.extraFields.opt("invertOut");
+                            boolean existed = widget.extraFields.has("invertOut");
+                            if (!toggleFbdBlockOutputInversion(widget)) return;
+                            if (!persistProjectNow(true)) {
+                                if (existed) widget.extraFields.put("invertOut", previous);
+                                else widget.extraFields.remove("invertOut");
+                                Toast.makeText(this, "Не удалось сохранить инверсию выхода", Toast.LENGTH_LONG).show();
+                            }
+                            if (editor != null) editor.invalidate();
+                        } catch (Exception error) {
+                            Toast.makeText(this, "Не удалось сохранить инверсию выхода", Toast.LENGTH_LONG).show();
+                        }
+                    } else if ("Отсоединить выход".equals(label)) {
+                        showFbdDisconnectDialog(blockIndex);
+                    } else if ("Режим / единицы времени".equals(label)
+                            || "Свойства".equals(label)) {
+                        editor.selected = blockIndex;
+                        editSelectedWidget();
+                    } else {
+                        editor.selected = blockIndex;
+                        showStandardWidgetContextMenu();
+                    }
+                    if (editor != null) editor.invalidate();
+                }).setNegativeButton("Отмена", null).show();
+    }
+
+    private void showStandardWidgetContextMenu() {
+        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) return;
+
+        Widget selectedWidget = widgets.get(editor.selected);
+        String titleText = selectedWidget.text == null || selectedWidget.text.trim().isEmpty()
+                ? selectedWidget.type : selectedWidget.text;
+
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        list.setPadding(dp(4), dp(4), dp(4), dp(4));
+        list.setBackgroundColor(Color.rgb(35, 35, 35));
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.addView(list);
+
+        final AlertDialog[] menu = new AlertDialog[1];
+        final String[] labels = {"Свойства", "Выравнивание", "Копировать", "Удалить"};
+        final String[] details = {
+                "Настроить элемент и привязку",
+                "Выровнять на холсте",
+                "Создать копию элемента",
+                "Удалить элемент с экрана"
+        };
+        final int[] symbols = {0x2699, 0x21D4, 0x29C9, 0x2715};
+
+        for (int i = 0; i < labels.length; i++) {
+            final int index = i;
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(10), dp(8), dp(10), dp(8));
+            row.setMinimumHeight(dp(54));
+            row.setBackgroundColor(i % 2 == 0
+                    ? Color.rgb(48, 48, 48) : Color.rgb(40, 40, 40));
+
+            TextView symbol = new TextView(this);
+            symbol.setText(new String(Character.toChars(symbols[i])));
+            symbol.setTextSize(21);
+            symbol.setGravity(Gravity.CENTER);
+            symbol.setTextColor(i == 3 ? Color.rgb(235, 105, 90) : Color.rgb(237, 176, 59));
+            row.addView(symbol, new LinearLayout.LayoutParams(dp(38), -2));
+
+            LinearLayout textColumn = new LinearLayout(this);
+            textColumn.setOrientation(LinearLayout.VERTICAL);
+            textColumn.setPadding(dp(8), 0, 0, 0);
+            TextView label = new TextView(this);
+            label.setText(labels[i]);
+            label.setTextSize(16);
+            label.setTypeface(null, android.graphics.Typeface.BOLD);
+            label.setTextColor(i == 3 ? Color.rgb(235, 105, 90) : Color.rgb(237, 176, 59));
+            textColumn.addView(label, new LinearLayout.LayoutParams(-1, -2));
+
+            TextView detail = new TextView(this);
+            detail.setText(details[i]);
+            detail.setTextSize(12);
+            detail.setTextColor(Color.rgb(187, 187, 187));
+            textColumn.addView(detail, new LinearLayout.LayoutParams(-1, -2));
+            row.addView(textColumn, new LinearLayout.LayoutParams(0, -2, 1));
+
+            row.setOnClickListener(v -> {
+                if (menu[0] != null) menu[0].dismiss();
+                if (index == 0) editSelectedWidget();
+                else if (index == 1) showAlignDialog();
+                else if (index == 2) copySelectedWidget();
+                else deleteSelectedWidget();
+            });
+            list.addView(row, new LinearLayout.LayoutParams(-1, -2));
+
+            View separator = new View(this);
+            separator.setBackgroundColor(Color.rgb(75, 75, 75));
+            list.addView(separator, new LinearLayout.LayoutParams(-1, dp(1)));
+        }
+
+        menu[0] = new AlertDialog.Builder(this)
+                .setTitle(titleText)
+                .setView(scroll)
+                .setNegativeButton("Отмена", null)
+                .create();
+        menu[0].show();
+        int titleId = getResources().getIdentifier("alertTitle", "id", "android");
+        TextView dialogTitle = menu[0].findViewById(titleId);
+        if (dialogTitle != null) dialogTitle.setTextColor(Color.rgb(237, 176, 59));
+    }
+
+    private void showModbusDiagnostics() {
+        StringBuilder report = new StringBuilder();
+        int boundCount = 0;
+        int errorCount = 0;
+        int pendingCount = 0;
+        int activeCount = 0;
+        int inactiveCount = 0;
+        for (int i = 0; i < widgets.size(); i++) {
+            Widget widget = widgets.get(i);
+            String binding = widget.connectionInfo == null ? "" : widget.connectionInfo.trim();
+            if (binding.isEmpty()) continue;
+            boundCount++;
+            String state = liveValues.get(i);
+            if (binding.startsWith("tcp://") && parseBinding(i, binding) == null) state = "CFG — неверный адрес";
+            else if (state == null) state = "Ожидание ответа";
+            if ((state != null && state.startsWith("ERR")) || (state != null && state.startsWith("CFG"))) errorCount++;
+            else if ("Ожидание ответа".equals(state)) pendingCount++;
+            else if (isActiveModbusValue(state)) activeCount++;
+            else inactiveCount++;
+            report.append(i + 1).append(". ").append(widget.text == null || widget.text.trim().isEmpty() ? widget.type : widget.text)
+                    .append("\n  Привязка: ").append(binding)
+                    .append("\n  Текущее значение: ").append(state)
+                    .append("\n\n");
+        }
+        if (boundCount == 0) {
+            report.append("На текущем экране нет элементов с указанной привязкой.\n")
+                    .append("Открой «Свойства» элемента и укажи адрес Modbus, например:\n")
+                    .append("tcp://192.168.1.10:502/1/40001");
+        } else {
+            report.insert(0, "Привязок: " + boundCount + " · Ошибок: " + errorCount + " · Ожидание: " + pendingCount + " · Активных: " + activeCount + " · Неактивных: " + inactiveCount + "\n\n");
+        }
+        TextView content = new TextView(this);
+        content.setText(report.toString());
+        content.setTextSize(14);
+        content.setTextColor(Color.rgb(30, 41, 59));
+        content.setPadding(dp(16), dp(12), dp(16), dp(12));
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(content);
+        new AlertDialog.Builder(this)
+                .setTitle("Диагностика Modbus")
+                .setView(scroll)
+                .setPositiveButton("Обновить", (dialog, which) -> showModbusDiagnostics())
+                .setNegativeButton("Закрыть", null)
+                .show();
+    }
+
+    private void showAddWidgetMenu() {
+        OriginalComponentPalette.show(this, this::addWidget,
+                this::showFbdPalette, this::editScreenBackground);
+    }
+
+    private void showFbdPalette() {
+        OriginalFbdPalette.show(this, this::addWidget, this::showAddWidgetMenu, this::showExtendedWidgetMenu);
+    }
+
+    private void showExtendedWidgetMenu() {
+        final String[] labels = {
+                "Текст / надпись", "Кнопка", "Индикатор", "Задатчик",
+                "Динамический текст", "Битовый список", "Шкала / Стрелка", "Прогресс-бар", "График / Тренд", "Двухпозиционный индикатор",
+                "Звуковой сигнал / Аларм", "Переход на экран / Ссылка", "Многопозиционное фото", "Голосовое сообщение",
+                "FBD — Вход", "FBD — И", "FBD — ИЛИ", "FBD — НЕ",
+                "FBD — NAND", "FBD — NOR", "FBD — XOR",
+                "FBD — TON (задержка включения)", "FBD — TP (импульс)", "FBD — TOF (задержка выключения)",
+                "FBD — Сравнение", "FBD — Сложение (+)", "FBD — Вычитание (-)", "FBD — Умножение (*)", "FBD — Деление (/)",
+                "FBD — POW (степень)", "FBD — SQRT (корень)", "FBD — SIN", "FBD — COS", "FBD — TAN",
+                "FBD — FloatToInt", "FBD — IntToFloat",
+                "FBD — MOVE", "FBD — SEL (селектор)", "FBD — ABS", "FBD — MIN / MAX",
+                "FBD — RS", "FBD — SR", "FBD — CTU (счёт вверх)",
+                "FBD — CTD (счёт вниз)", "FBD — R_TRIG", "FBD — F_TRIG",
+                "FBD — Craft CTU 16 бит (+, −, R)",
+                "FBD — Craft T (переключатель по фронту)",
+                "FBD — Craft TIMER (TON / TOF / TP / BLINK)",
+                "FBD — Craft BLINK (мигание)",
+                "FBD — Craft SEL (целочисленный)",
+                "FBD — Craft COMPARE (INT32)",
+                "FBD — Craft CH_I (изменение Integer)",
+                "FBD — Craft CH_F (изменение Float)",
+                "FBD — Craft Arithmetic INT (16 бит)",
+                "FBD — Craft Arithmetic FLOAT32",
+                "FBD — Craft COMPARE FLOAT32",
+                "FBD — Craft MOVE (EN + Integer)",
+                "FBD — Craft MX (EN + Integer ID)",
+                "FBD — Craft ARRAY (EN + DT + ID)",
+                "FBD — Craft LOG (Float32)",
+                "FBD — Craft WordToFloat (Integer → Float32)",
+                "FBD — Craft POW (Float32)", "FBD — Craft SIN (Float32)",
+                "FBD — Craft ABS (Float32)", "FBD — Craft IntToFloat (signed 16-bit)",
+                "FBD — Craft FloatToInt"
+        };
+        final String[] types = {
+                "Текст", "Кнопка", "Индикатор", "Задатчик",
+                "Динамический текст", "Битовый список", "Шкала / Стрелка", "Прогресс-бар", "График / Тренд", "Двухпозиционный индикатор",
+                "Звуковой сигнал", "Переход на экран", "Многопозиционное фото", "Голосовое сообщение",
+                "FBD Вход", "FBD И", "FBD ИЛИ", "FBD НЕ",
+                "FBD NAND", "FBD NOR", "FBD XOR",
+                "FBD Таймер", "FBD TP", "FBD TOF",
+                "FBD Сравнение", "FBD Сложение", "FBD Вычитание", "FBD Умножение", "FBD Деление",
+                "FBD POW", "FBD SQRT", "FBD SIN", "FBD COS", "FBD TAN",
+                "FBD FloatToInt", "FBD IntToFloat",
+                "FBD MOVE", "FBD SEL", "FBD ABS", "FBD MIN_MAX",
+                "FBD RS", "FBD SR", "FBD CTU",
+                "FBD CTD", "FBD R_TRIG", "FBD F_TRIG",
+                "FBD CRAFT CTU", "FBD CRAFT T", "FBD CRAFT TIMER", "FBD CRAFT BLINK",
+                "FBD CRAFT SEL", "FBD CRAFT COMPARE",
+                "FBD CRAFT CHANGE I", "FBD CRAFT CHANGE F",
+                "FBD CRAFT ARITHMETIC INT", "FBD CRAFT ARITHMETIC FLOAT",
+                "FBD CRAFT COMPARE FLOAT", "FBD CRAFT MOVE",
+                "FBD CRAFT MX", "FBD CRAFT ARRAY",
+                "FBD CRAFT LOG", "FBD CRAFT WORD TO FLOAT",
+                "FBD CRAFT POW", "FBD CRAFT SIN", "FBD CRAFT ABS",
+                "FBD CRAFT INT TO FLOAT", "FBD CRAFT FLOAT TO INT"
+        };
+        final String[] defaults = {
+                "Надпись", "Кнопка", "Индикатор", "Задатчик: 0",
+                "Динамический текст", "Битовый список", "Шкала", "Уровень", "Тренд", "Состояние",
+                "Аларм", "Переход -> Экран 1", "Фото", "Голос",
+                "Вход", "И", "ИЛИ", "НЕ", "NAND", "NOR", "XOR",
+                "TON", "TP", "TOF", "A > B", "A + B", "A - B", "A * B", "A / B",
+                "POW", "SQRT", "SIN", "COS", "TAN",
+                "Float->Int", "Int->Float",
+                "MOVE", "SEL", "ABS", "MIN/MAX",
+                "RS", "SR", "CTU", "CTD", "R_TRIG", "F_TRIG",
+                "CTU 16 bit", "T", "TON", "BLINK", "SEL", ">",
+                "CH_I", "CH_F", "+", "+", ">", "MOVE", "MX", "ARRAY", "LN", "WORD->FL",
+                "POW", "SIN", "ABS", "INT->FL", "FL->INT"
+        };
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        list.setPadding(dp(8), dp(4), dp(8), dp(4));
+        Button macroTools = new Button(this);
+        macroTools.setText("Импорт / экспорт Craft .mcr");
+        macroTools.setAllCaps(false);
+        macroTools.setOnClickListener(v -> showCraftMacroTools());
+        list.addView(macroTools, new LinearLayout.LayoutParams(-1, -2));
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.addView(list);
+        final AlertDialog[] picker = new AlertDialog[1];
+
+        for (int i = 0; i < labels.length; i++) {
+            if (i == 14) {
+                TextView section = new TextView(this);
+                section.setText("ФУНКЦИОНАЛЬНЫЕ БЛОКИ (FBD)");
+                section.setTextColor(Color.rgb(37, 99, 235));
+                section.setTextSize(12);
+                section.setTypeface(null, android.graphics.Typeface.BOLD);
+                section.setPadding(dp(12), dp(14), dp(12), dp(8));
+                list.addView(section, new LinearLayout.LayoutParams(-1, -2));
+            }
+            final int index = i;
+            TextView item = new TextView(this);
+            item.setText(labels[i] + "    ›");
+            item.setTextColor(Color.rgb(30, 41, 59));
+            item.setTextSize(16);
+            item.setGravity(Gravity.CENTER_VERTICAL);
+            item.setPadding(dp(14), dp(12), dp(12), dp(12));
+            item.setBackgroundColor(i % 2 == 0
+                    ? Color.rgb(248, 250, 252) : Color.WHITE);
+            item.setMinHeight(dp(48));
+            item.setOnClickListener(v -> {
+                if (picker[0] != null) picker[0].dismiss();
+                addWidget(types[index], defaults[index]);
+            });
+            if (OriginalIndicator.supports(types[i]) || "Кнопка".equals(types[i])) {
+                // Preview with verified original APK drawable resources.
+                // Button artwork is the same original background used by legacyMenuButton.
+                LinearLayout previewRow = new LinearLayout(this);
+                previewRow.setOrientation(LinearLayout.HORIZONTAL);
+                previewRow.setGravity(Gravity.CENTER_VERTICAL);
+                android.widget.ImageView preview = new android.widget.ImageView(this);
+                boolean buttonPreview = "Кнопка".equals(types[i]);
+                preview.setImageResource(buttonPreview
+                        ? R.drawable.kc_background_button : R.drawable.kc_lamp_off);
+                preview.setContentDescription(buttonPreview
+                        ? "Кнопка: оригинальный фон" : "Индикатор: выключен");
+                preview.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+                LinearLayout.LayoutParams previewSize = new LinearLayout.LayoutParams(dp(40), dp(40));
+                previewSize.setMargins(dp(12), dp(4), dp(8), dp(4));
+                previewRow.addView(preview, previewSize);
+                previewRow.addView(item, new LinearLayout.LayoutParams(0, -2, 1f));
+                previewRow.setOnClickListener(v -> item.performClick());
+                previewRow.setMinimumHeight(dp(48));
+                list.addView(previewRow, new LinearLayout.LayoutParams(-1, -2));
+            } else {
+                list.addView(item, new LinearLayout.LayoutParams(-1, -2));
+            }
+            View separator = new View(this);
+            separator.setBackgroundColor(Color.rgb(226, 232, 240));
+            list.addView(separator, new LinearLayout.LayoutParams(-1, dp(1)));
+        }
+        picker[0] = new AlertDialog.Builder(this)
+                .setTitle("Добавить элемент")
+                .setView(scroll)
+                .setNegativeButton("Отмена", null)
+                .create();
+        picker[0].show();
+    }
+
+    /**
+     * Find space for a newly created FBD block without changing existing layout.
+     * Deterministic row-major search; work in Canvas pixels (same units as Widget geometry).
+     * This is a BLOODSKY editor usability adaptation, not a copied Craft placement rule.
+     */
+    public static float[] freeFbdPlacement(List<Widget> existing, float canvasWidth,
+                                           float canvasHeight, float width, float height,
+                                           float originX, float originY, float gap) {
+        if (existing == null || !Float.isFinite(canvasWidth) || !Float.isFinite(canvasHeight)
+                || !Float.isFinite(width) || !Float.isFinite(height)
+                || !Float.isFinite(originX) || !Float.isFinite(originY)
+                || !Float.isFinite(gap) || width <= 0 || height <= 0
+                || canvasWidth <= width || canvasHeight <= height) return null;
+        float separation = Math.max(1f, gap);
+        float step = Math.max(8f, separation);
+        float startX = Math.max(0f, originX), startY = Math.max(0f, originY);
+        for (int row = 0; row < 200; row++) {
+            float y = startY + row * step;
+            if (y + height + separation > canvasHeight) break;
+            for (int col = 0; col < 200; col++) {
+                float x = startX + col * step;
+                if (x + width + separation > canvasWidth) break;
+                boolean occupied = false;
+                for (Widget old : existing) {
+                    if (old == null || !old.visible) continue;
+                    if (x < old.x + old.w + separation && x + width + separation > old.x
+                            && y < old.y + old.h + separation && y + height + separation > old.y) {
+                        occupied = true;
+                        break;
+                    }
+                }
+                if (!occupied) return new float[]{x, y};
+            }
+        }
+        return null;
+    }
+
+    private void addWidget(String type, String text) {
+        if (nestedMacroEdit != null && (!type.startsWith("FBD ")
+                || "FBD CRAFT MACRO".equals(canonicalFbdBlockType(type)))) {
+            Toast.makeText(this, "Во вложенный граф можно добавлять только обычные FBD-блоки", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Widget w = new Widget();
+        w.type = type;
+        w.text = text;
+        if ("FBD CRAFT ARITHMETIC INT".equals(type)
+                || "FBD CRAFT ARITHMETIC FLOAT".equals(type)) w.compareOperator = "+";
+        w.x = dp(40) + (widgets.size() % 4) * dp(24);
+        w.y = dp(50) + (widgets.size() % 6) * dp(22);
+        w.w = OriginalIndicator.supports(type) ? dp(40) : dp(160);
+        w.h = OriginalIndicator.supports(type) ? dp(40) : dp(58);
+        if (type.equals("Задатчик")) { w.w = dp(190); w.h = dp(62); }
+        if (type.equals("Шкала / Стрелка") || type.equals("График / Тренд")) { w.w = dp(200); w.h = dp(110); }
+        if (type.equals("Прогресс-бар") || type.equals("Битовый список")) { w.w = dp(180); w.h = dp(64); }
+        if (type.startsWith("FBD ")) {
+            w.w = dp(150); w.h = dp(76);
+            if (editor != null && editor.getWidth() > 0 && editor.getHeight() > 0) {
+                float[] empty = freeFbdPlacement(widgets, editor.getWidth(), editor.getHeight(),
+                        w.w, w.h, dp(40), dp(50), dp(18));
+                if (empty != null) { w.x = empty[0]; w.y = empty[1]; }
+                else {
+                    // The old fallback inserted the block at a hard-coded offset,
+                    // overlapping other blocks while claiming that no space was
+                    // available. Fail without changing project/history instead.
+                    Toast.makeText(this,
+                            "Нет свободного места для FBD-блока: освободи место на экране",
+                            Toast.LENGTH_LONG).show();
+                    return;
+                }
+            }
+        }
+        if ("FBD CTD".equals(type)) w.counterValue = w.counterPreset;
+        // Only a successfully placed element may invalidate undo history and
+        // graph output caches. A rejected insert leaves the project unchanged.
+        fbdWireHistory.clear();
+        liveValues.clear();
+        widgets.add(w);
+        persistProject();
+        if (editor != null) editor.invalidate();
+    }
+
+    private EditText propertyField(String value, int inputType) {
+        EditText field = new EditText(this);
+        field.setSingleLine(true);
+        field.setInputType(inputType);
+        field.setText(value);
+        field.setSelectAllOnFocus(true);
+        field.setImeOptions(android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+        return field;
+    }
+
+    private boolean selectIndicatorImage(Widget widget, boolean active, boolean user, String value) {
+        if (!widgets.contains(widget) || !OriginalIndicator.supports(widget.type)) return false;
+        JSONObject old = widget.extraFields;
+        JSONObject oldProject = projectExtraFields;
+        try {
+            widget.extraFields = OriginalIndicator.withImage(old, active, user, value);
+            if (!persistProjectNow(true)) {
+                widget.extraFields = old; projectExtraFields = oldProject; saveActiveScreen();
+                Toast.makeText(this, "Не удалось сохранить изображение", Toast.LENGTH_LONG).show();
+                return false;
+            }
+            if (editor != null) editor.invalidate();
+            return true;
+        } catch (Exception invalid) {
+            widget.extraFields = old; projectExtraFields = oldProject;
+            Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show(); return false;
+        }
+    }
+
+    private void showIndicatorImages(Widget widget) {
+        OriginalIndicatorImages.show(this, new OriginalIndicatorImages.Host() {
+            public Bitmap preview(boolean active) { return originalIndicatorBitmap(widget, active); }
+            public boolean select(boolean active, boolean user, String value) {
+                return selectIndicatorImage(widget, active, user, value);
+            }
+            public void chooseCustom(boolean active, Runnable changed) {
+                LinearLayout form = new LinearLayout(MainActivity.this); form.setOrientation(LinearLayout.VERTICAL);
+                EditText path = propertyField("", InputType.TYPE_CLASS_TEXT);
+                path.setHint("Файл / content URI"); path.setContentDescription("Своё изображение индикатора");
+                form.addView(path); addMediaPicker(form, path, "image/*");
+                AlertDialog custom = new AlertDialog.Builder(MainActivity.this).setTitle("Своё изображение")
+                        .setView(form).setNegativeButton("Отмена", null).setPositiveButton("Применить", null).create();
+                custom.setOnShowListener(shown -> custom.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                    String selected = path.getText().toString().trim();
+                    imageCache.remove(selected);
+                    if (selected.isEmpty() || loadCachedBitmap(selected) == null) {
+                        Toast.makeText(MainActivity.this, "Выберите доступное изображение", Toast.LENGTH_LONG).show(); return;
+                    }
+                    if (selectIndicatorImage(widget, active, true, selected)) {custom.dismiss();changed.run();}
+                }));
+                custom.show();
+            }
+        });
+    }
+
+    private void editSelectedWidget() {
+        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
+            Toast.makeText(this, "Сначала выбери элемент на экране", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Widget w = widgets.get(editor.selected);
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        int pad = dp(16);
+        form.setPadding(pad, dp(4), pad, 0);
+
+        if (OriginalIndicator.supports(w.type)) {
+            Button images = new Button(this); images.setText("Сменить изображение"); images.setAllCaps(false);
+            images.setOnClickListener(v -> showIndicatorImages(w)); form.addView(images);
+        }
+
+        TextView textLabel = new TextView(this);
+        textLabel.setText("Подпись");
+        form.addView(textLabel);
+        EditText textField = propertyField(w.text, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        form.addView(textField);
+
+        TextView connectionLabel = new TextView(this);
+        connectionLabel.setText("Привязка к данным (адрес / регистр / устройство)");
+        connectionLabel.setPadding(0, dp(10), 0, 0);
+        form.addView(connectionLabel);
+        EditText connectionField = propertyField(w.connectionInfo == null ? "" : w.connectionInfo, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        connectionField.setHint("tcp://192.168.1.10:502/1/40001 (FC03/FC04) или fbd://N (номер блока с 1)");
+        form.addView(connectionField);
+        final boolean craftRegisterGateway = "Шлюз Craft".equals(w.type);
+        final boolean craftBitGateway = "Шлюз битовый".equals(w.type);
+        if (craftRegisterGateway || craftBitGateway) {
+            connectionLabel.setVisibility(View.GONE);
+            connectionField.setVisibility(View.GONE);
+        }
+
+        final EditText smsPhoneField;
+        final android.widget.Spinner smsRegisterCountField;
+        if ("SMS-уведомление".equals(w.type)) {
+            String savedPhone="";
+            try{savedPhone=SmsRecipientStore.read(this,w.extraFields.optString("smsRecipientId",""));}catch(Exception ignored){}
+            smsPhoneField=propertyField(savedPhone,InputType.TYPE_CLASS_PHONE);
+            smsPhoneField.setHint("Номер получателя, например +79991234567");form.addView(smsPhoneField);
+            smsRegisterCountField = new android.widget.Spinner(this);
+            String[] smsRegisterOptions = new String[8];
+            for (int i = 0; i < smsRegisterOptions.length; i++) smsRegisterOptions[i] = (i + 1) + " рег.";
+            smsRegisterCountField.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item, smsRegisterOptions));
+            int savedCount = Math.max(1, Math.min(8, w.extraFields.optInt("smsRegisterCount", 1)));
+            smsRegisterCountField.setSelection(savedCount - 1);
+            smsRegisterCountField.setContentDescription("Количество регистров SMS для чтения");
+            form.addView(smsRegisterCountField);
+            TextView smsHelp=new TextView(this);smsHelp.setText("Сообщение отправляется один раз при переходе сигнала 0→1. В тексте {value} подставляется значение Modbus. Номер хранится зашифрованно на устройстве и не входит в экспорт проекта.");form.addView(smsHelp);
+            TextView smsRegistersHelp = new TextView(this);
+            smsRegistersHelp.setText("Читаются последовательные регистры от адреса привязки. Значения подставляются в %1…%8; если номера %n не указаны и нет {value}, значения добавляются в конец через пробел.");
+            form.addView(smsRegistersHelp);
+        } else { smsPhoneField=null; smsRegisterCountField=null; }
+
+        final android.widget.CheckBox incomingSmsEnabledField;
+        final EditText incomingSmsSenderField, incomingSmsCommandField, incomingSmsBitField;
+        final android.widget.Spinner incomingSmsModeField;
+        final android.widget.CheckBox incomingSmsStrobeEnabledField;
+        final EditText incomingSmsStrobeRegisterField, incomingSmsStrobeBitField;
+        if ("Входящее SMS".equals(w.type)) {
+            incomingSmsEnabledField = new android.widget.CheckBox(this);
+            incomingSmsEnabledField.setText("Разрешить управление этим регистром через SMS");
+            incomingSmsEnabledField.setChecked(w.extraFields.optBoolean("smsEnabled", false));
+            form.addView(incomingSmsEnabledField);
+            String savedSender = "";
+            try { savedSender = SmsRecipientStore.read(this, w.extraFields.optString("smsSenderId", "")); }
+            catch (Exception ignored) {}
+            incomingSmsSenderField = propertyField(savedSender, InputType.TYPE_CLASS_PHONE);
+            incomingSmsSenderField.setHint("Разрешённый номер, например +79991234567"); form.addView(incomingSmsSenderField);
+            incomingSmsCommandField = propertyField(w.extraFields.optString("smsCommand", ""),
+                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+            incomingSmsCommandField.setHint("Точная команда: ВКЛ или Уставка"); form.addView(incomingSmsCommandField);
+            incomingSmsModeField = new android.widget.Spinner(this);
+            incomingSmsModeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item, new String[]{"Число в holding-регистр", "Установить бит"}));
+            incomingSmsModeField.setSelection("bit".equals(w.extraFields.optString("smsMode", "number")) ? 1 : 0);
+            form.addView(incomingSmsModeField);
+            incomingSmsBitField = propertyField(Integer.toString(w.extraFields.optInt("smsBit", 0)), InputType.TYPE_CLASS_NUMBER);
+            incomingSmsBitField.setHint("Номер бита 0–15 (для режима бит)"); form.addView(incomingSmsBitField);
+            incomingSmsStrobeEnabledField = new android.widget.CheckBox(this);
+            incomingSmsStrobeEnabledField.setText("Установить бит strobe после числовой команды");
+            incomingSmsStrobeEnabledField.setChecked(w.extraFields.optBoolean("smsStrobeEnabled", false));
+            form.addView(incomingSmsStrobeEnabledField);
+            incomingSmsStrobeRegisterField = propertyField(w.extraFields.has("smsStrobeRegister")
+                    ? Integer.toString(w.extraFields.optInt("smsStrobeRegister")) : "", InputType.TYPE_CLASS_NUMBER);
+            incomingSmsStrobeRegisterField.setHint("Holding-регистр strobe (например 40002)"); form.addView(incomingSmsStrobeRegisterField);
+            incomingSmsStrobeBitField = propertyField(Integer.toString(w.extraFields.optInt("smsStrobeBit", 0)), InputType.TYPE_CLASS_NUMBER);
+            incomingSmsStrobeBitField.setHint("Strobe бит 0–15"); form.addView(incomingSmsStrobeBitField);
+            TextView smsIncomingHelp = new TextView(this);
+            smsIncomingHelp.setText("Адрес задаётся выше как tcp://хост:порт/unit/регистр; допустим только holding-регистр. Числовая команда: «команда пробел число…» (до 16 signed 16-bit значений) записывает последовательные регистры. Битовая команда должна полностью совпасть. Strobe устанавливается после успешной числовой записи и остаётся в 1 до сброса устройством/сценарием. SMS принимаются только пока открыт проект в операторском режиме.");
+            form.addView(smsIncomingHelp);
+        } else {
+            incomingSmsEnabledField = null; incomingSmsSenderField = null;
+            incomingSmsCommandField = null; incomingSmsBitField = null; incomingSmsModeField = null;
+            incomingSmsStrobeEnabledField = null; incomingSmsStrobeRegisterField = null; incomingSmsStrobeBitField = null;
+        }
+
+        final android.widget.CheckBox gatewayEnabledField;
+        final android.widget.Spinner gatewayModeField, gatewaySourceFunctionField;
+        final EditText gatewayCountField, gatewaySourceField, gatewayDestinationField,
+                gatewayTriggerField, gatewayTriggerBitField;
+        if (craftRegisterGateway || craftBitGateway) {
+            gatewayEnabledField = new android.widget.CheckBox(this);
+            gatewayEnabledField.setText("Разрешить выполнение шлюза в операторском режиме");
+            gatewayEnabledField.setChecked(w.extraFields.optBoolean(craftBitGateway ? "craftBitGatewayEnabled" : "craftGatewayEnabled", false));
+            form.addView(gatewayEnabledField);
+            gatewayModeField = new android.widget.Spinner(this);
+            gatewayModeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item,
+                    new String[]{"Постоянно", "По фронту 0→1", "По изменению источника"}));
+            int originalMode = craftBitGateway
+                    ? w.extraFields.optInt("craftBitGatewayTransferMode", w.extraFields.optInt("craftBitGatewayMode", 0))
+                    : w.extraFields.optInt("craftGatewayTransferMode", w.extraFields.optInt("craftGatewayMode", 0));
+            gatewayModeField.setSelection(Math.max(0, Math.min(2, originalMode)));
+            form.addView(gatewayModeField);
+            if (craftBitGateway) {
+                gatewaySourceFunctionField = new android.widget.Spinner(this);
+                gatewaySourceFunctionField.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                        android.R.layout.simple_spinner_dropdown_item, new String[]{"FC01 — Coils", "FC02 — Discrete Inputs"}));
+                gatewaySourceFunctionField.setSelection(w.extraFields.optInt("craftBitGatewaySourceFunction", 1) == 2 ? 1 : 0);
+                form.addView(gatewaySourceFunctionField);
+            } else gatewaySourceFunctionField = null;
+            int maxGatewayCount = craftBitGateway ? 16 : 99;
+            gatewayCountField = propertyField(Integer.toString(Math.max(1,
+                    Math.min(maxGatewayCount, w.extraFields.optInt(craftBitGateway ? "craftBitGatewayCount" : "craftGatewayCount", 1)))), InputType.TYPE_CLASS_NUMBER);
+            gatewayCountField.setHint(craftBitGateway ? "Количество бит (1–16; по изменению — 1)" : "Количество регистров (1–99; по изменению — 1)"); form.addView(gatewayCountField);
+            gatewaySourceField = propertyField(w.extraFields.optString(craftBitGateway ? "craftBitGatewaySource" : "craftGatewaySource", ""),
+                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+            gatewaySourceField.setHint(craftBitGateway ? "Источник: tcp://192.168.1.10:502/1/0 (адрес 0-based)" : "Источник: tcp://192.168.1.10:502/1/40001 (FC03/04)"); form.addView(gatewaySourceField);
+            gatewayDestinationField = propertyField(w.extraFields.optString(craftBitGateway ? "craftBitGatewayDestination" : "craftGatewayDestination", ""),
+                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+            gatewayDestinationField.setHint(craftBitGateway ? "Coil-приёмник: tcp://192.168.1.11:502/1/0" : "Приёмник: tcp://192.168.1.11:502/1/40001 (holding)"); form.addView(gatewayDestinationField);
+            gatewayTriggerField = propertyField(w.extraFields.optString(craftBitGateway ? "craftBitGatewayTrigger" : "craftGatewayTrigger", ""),
+                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+            gatewayTriggerField.setHint("Триггер для фронта: tcp://192.168.1.10:502/1/40002"); form.addView(gatewayTriggerField);
+            gatewayTriggerBitField = propertyField(Integer.toString(Math.max(0,
+                    Math.min(15, w.extraFields.optInt(craftBitGateway ? "craftBitGatewayTriggerBit" : "craftGatewayTriggerBit",
+                            craftBitGateway ? 0 : w.extraFields.optInt("craftGatewayBitMode", 0))))),
+                    InputType.TYPE_CLASS_NUMBER);
+            gatewayTriggerBitField.setHint("Бит триггера (0–15)"); form.addView(gatewayTriggerBitField);
+            TextView gatewayHelp = new TextView(this);
+            gatewayHelp.setText(craftBitGateway
+                    ? "У исходного проекта адреса устройств заданы внутренними индексами; укажи TCP-адреса вручную. Источник читает FC01/FC02, приёмник пишет coils через FC05/FC15. Постоянно и по фронту передаётся 1–16 бит, по изменению — один. Адреса TCP здесь нумеруются с нуля. Системные регистры и RTU/Bluetooth пока не поддерживаются. Импортированный шлюз выключен."
+                    : "У исходного проекта адреса устройств заданы внутренними индексами; они не переносятся в сетевые адреса автоматически. Укажи TCP-адреса вручную. Режимы 0/1 копируют 1–99 holding/input-регистров, режим по изменению копирует ровно один. Системные регистры, RTU и Bluetooth здесь пока не поддерживаются. Импортированный шлюз изначально выключен.");
+            form.addView(gatewayHelp);
+        } else {
+            gatewayEnabledField = null; gatewayModeField = null; gatewaySourceFunctionField = null;
+            gatewayCountField = null; gatewaySourceField = null; gatewayDestinationField = null;
+            gatewayTriggerField = null; gatewayTriggerBitField = null;
+        }
+
+        final android.widget.CheckBox fbdInputField;
+        if ("FBD Вход".equals(w.type)) {
+            fbdInputField = new android.widget.CheckBox(this);
+            fbdInputField.setText("Постоянное значение FBD-входа (1 / 0)");
+            fbdInputField.setContentDescription("Значение входа FBD");
+            fbdInputField.setChecked(w.inputValue);
+            form.addView(fbdInputField);
+        } else fbdInputField = null;
+
+        final android.widget.CheckBox craftConstantModeField;
+        final EditText craftConstantValueField;
+        final EditText craftBitField;
+        final android.widget.CheckBox craftSwapWordField;
+        final android.widget.CheckBox craftSwapByteField;
+        final EditText craftVariableNameField;
+        final android.widget.Spinner craftVariableTypeField;
+        final android.widget.CheckBox craftNamedConstantModeField;
+        final EditText craftNamedConstantValueField;
+        final android.widget.Spinner craftOrientationAxisField;
+        if ("FBD CRAFT SENSOR ORIENTATION".equals(w.type)) {
+            craftOrientationAxisField = new android.widget.Spinner(this);
+            craftOrientationAxisField.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item, new String[]{"ORIENTATION_X", "ORIENTATION_Y", "ORIENTATION_Z"}));
+            craftOrientationAxisField.setSelection(craftOrientationAxis(w) - 1);
+            craftOrientationAxisField.setContentDescription("Ось датчика ориентации");
+            form.addView(craftOrientationAxisField);
+        } else craftOrientationAxisField = null;
+        final EditText craftSunriseLatitudeField, craftSunriseLongitudeField;
+        final android.widget.Spinner craftSunriseModeField;
+        if ("FBD CRAFT SUNRISE".equals(w.type)) {
+            TextView locationLabel = new TextView(this); locationLabel.setText("Координаты точки (широта / долгота)");
+            form.addView(locationLabel);
+            craftSunriseLatitudeField = propertyField(w.extraFields.has("latitude")
+                    ? Double.toString(w.extraFields.optDouble("latitude")) : "", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            craftSunriseLatitudeField.setHint("Широта: −90…90"); form.addView(craftSunriseLatitudeField);
+            craftSunriseLongitudeField = propertyField(w.extraFields.has("longitude")
+                    ? Double.toString(w.extraFields.optDouble("longitude")) : "", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            craftSunriseLongitudeField.setHint("Долгота: −180…180"); form.addView(craftSunriseLongitudeField);
+            craftSunriseModeField = new android.widget.Spinner(this);
+            craftSunriseModeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item, new String[]{"SR — восход", "SS — закат"}));
+            craftSunriseModeField.setSelection("SS".equals(craftSunriseMode(w)) ? 1 : 0);
+            form.addView(craftSunriseModeField);
+        } else {
+            craftSunriseLatitudeField = null; craftSunriseLongitudeField = null; craftSunriseModeField = null;
+        }
+        final EditText craftOdTempHostField;
+        final android.widget.Spinner craftOdTempTypeField, craftOdTempResponseField;
+        if ("FBD CRAFT ODTEMP".equals(w.type)) {
+            craftOdTempHostField = propertyField(w.extraFields.optString("ip", "10.10.0.1"), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+            craftOdTempHostField.setHint("IP устройства (частная сеть)"); form.addView(craftOdTempHostField);
+            craftOdTempTypeField = new android.widget.Spinner(this);
+            craftOdTempTypeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item, new String[]{"DT — одиночное значение", "T / влажность"}));
+            craftOdTempTypeField.setSelection(w.extraFields.optInt("craftOdTempType", w.extraFields.optInt("typeSensor", 1)) == 2 ? 1 : 0);
+            form.addView(craftOdTempTypeField);
+            craftOdTempResponseField = new android.widget.Spinner(this);
+            craftOdTempResponseField.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item, new String[]{"Температура (t)", "Влажность (h)"}));
+            craftOdTempResponseField.setSelection(w.extraFields.optInt("craftOdTempResponse", w.extraFields.optInt("typeResponse", 1)) == 2 ? 1 : 0);
+            form.addView(craftOdTempResponseField);
+        } else {
+            craftOdTempHostField = null; craftOdTempTypeField = null; craftOdTempResponseField = null;
+        }
+        final EditText craftMqttTopicField;
+        final android.widget.Spinner craftMqttTypeField, craftMqttServerField;
+        final android.widget.CheckBox craftMqttRetainField;
+        if (isCraftMqttSubscriber(w.type) || isCraftMqttPublisher(w.type)) {
+            boolean subscriber = isCraftMqttSubscriber(w.type);
+            craftMqttTopicField = propertyField(w.extraFields.optString("craftMqttTopic", ""),
+                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+            craftMqttTopicField.setHint("MQTT topic"); form.addView(craftMqttTopicField);
+            craftMqttTypeField = new android.widget.Spinner(this);
+            craftMqttTypeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item, new String[]{"BOOL", "INT", "FLOAT"}));
+            craftMqttTypeField.setSelection(mqttType(w) - 1); form.addView(craftMqttTypeField);
+            craftMqttServerField = new android.widget.Spinner(this);
+            craftMqttServerField.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item, new String[]{"MQTT сервер 1", "MQTT сервер 2"}));
+            craftMqttServerField.setSelection(mqttServer(w) - 1); form.addView(craftMqttServerField);
+            craftMqttRetainField = subscriber ? null : new android.widget.CheckBox(this);
+            if (craftMqttRetainField != null) {
+                craftMqttRetainField.setText("Retain");
+                craftMqttRetainField.setChecked(w.extraFields.optBoolean("craftMqttRetain", false));
+                form.addView(craftMqttRetainField);
+            }
+        } else {
+            craftMqttTopicField = null; craftMqttTypeField = null;
+            craftMqttServerField = null; craftMqttRetainField = null;
+        }
+        if (isCraftNamedVariableSource(w.type) || isCraftNamedVariableSink(w.type)) {
+            boolean source = isCraftNamedVariableSource(w.type);
+            craftVariableNameField = propertyField(w.extraFields.optString("craftVariableName",
+                    w.extraFields.optString("name", "")), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+            craftVariableNameField.setHint("Имя общей переменной");
+            form.addView(craftVariableNameField);
+            craftVariableTypeField = new android.widget.Spinner(this);
+            craftVariableTypeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item, new String[]{"BOOL", "INT32", "FLOAT32"}));
+            int oldKind = w.extraFields.optInt("typeVar", w.type.endsWith(" BOOL") ? 1 : w.type.endsWith(" FLOAT") ? 3 : 2);
+            craftVariableTypeField.setSelection(oldKind >= 1 && oldKind <= 3 ? oldKind - 1 : 1);
+            form.addView(craftVariableTypeField);
+            craftNamedConstantModeField = source ? new android.widget.CheckBox(this) : null;
+            craftNamedConstantValueField = source ? propertyField(w.extraFields.optString("craftNamedConstant", "0"),
+                    InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL) : null;
+            if (source) {
+                craftNamedConstantModeField.setText("Использовать константу вместо имени");
+                craftNamedConstantModeField.setChecked(w.extraFields.optBoolean("craftNamedConstantMode",
+                        w.extraFields.optBoolean("isConstant", false)));
+                craftNamedConstantValueField.setHint("Значение константы");
+                form.addView(craftNamedConstantModeField); form.addView(craftNamedConstantValueField);
+            }
+        } else {
+            craftVariableNameField = null; craftVariableTypeField = null;
+            craftNamedConstantModeField = null; craftNamedConstantValueField = null;
+        }
+        if (isCraftRegisterSource(w.type) || isCraftRegisterSink(w.type)) {
+            boolean source = isCraftRegisterSource(w.type);
+            craftConstantModeField = source ? new android.widget.CheckBox(this) : null;
+            craftConstantValueField = source ? propertyField(w.extraFields.optString("craftVarConstant", "0"),
+                    InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL) : null;
+            if (source) {
+                craftConstantModeField.setText("Постоянное значение вместо регистра");
+                craftConstantModeField.setChecked(w.extraFields.optBoolean("craftVarConstantMode", false));
+                form.addView(craftConstantModeField);
+                craftConstantValueField.setHint("Значение BOOL / INT / FLOAT");
+                form.addView(craftConstantValueField);
+            }
+            craftBitField = isCraftRegisterBoolean(w.type)
+                    ? propertyField(Integer.toString(w.extraFields.optInt("craftVarBit", 0)), InputType.TYPE_CLASS_NUMBER)
+                    : null;
+            if (craftBitField != null) {
+                craftBitField.setHint("Бит регистра (0–15)");
+                form.addView(craftBitField);
+            }
+            craftSwapWordField = isCraftRegisterFloat(w.type) && !source ? new android.widget.CheckBox(this) : null;
+            craftSwapByteField = isCraftRegisterFloat(w.type) && !source ? new android.widget.CheckBox(this) : null;
+            if (craftSwapWordField != null) {
+                craftSwapWordField.setText("Поменять слова Float32");
+                craftSwapWordField.setChecked(w.extraFields.optBoolean("craftSwapWord", false));
+                craftSwapByteField.setText("Поменять байты внутри слов");
+                craftSwapByteField.setChecked(w.extraFields.optBoolean("craftSwapByte", false));
+                form.addView(craftSwapWordField); form.addView(craftSwapByteField);
+            }
+        } else {
+            craftConstantModeField = null; craftConstantValueField = null; craftBitField = null;
+            craftSwapWordField = null; craftSwapByteField = null;
+        }
+
+        final EditText[] dynStateFields = new EditText[4];
+        if ("Динамический текст".equals(w.type)) {
+            TextView dynLabel = new TextView(this);
+            dynLabel.setText("Тексты состояний (0–3)");
+            dynLabel.setPadding(0, dp(10), 0, 0);
+            form.addView(dynLabel);
+            for (int k = 0; k < 4; k++) {
+                dynStateFields[k] = propertyField(w.dynTextStates[k], InputType.TYPE_CLASS_TEXT);
+                dynStateFields[k].setHint("Текст состояния " + k);
+                form.addView(dynStateFields[k]);
+            }
+        }
+
+        final EditText[] bitLabelFields = new EditText[4];
+        if ("Битовый список".equals(w.type)) {
+            TextView bitLabelHeader = new TextView(this);
+            bitLabelHeader.setText("Названия битов (0–3)");
+            bitLabelHeader.setPadding(0, dp(10), 0, 0);
+            form.addView(bitLabelHeader);
+            for (int k = 0; k < 4; k++) {
+                bitLabelFields[k] = propertyField(w.bitListLabels[k], InputType.TYPE_CLASS_TEXT);
+                bitLabelFields[k].setHint("Подпись бита " + k);
+                form.addView(bitLabelFields[k]);
+            }
+        }
+
+        final EditText soundThresholdField;
+        final EditText soundFilePathField;
+        if ("Звуковой сигнал".equals(w.type)) {
+            TextView soundHeader = new TextView(this);
+            soundHeader.setText("Параметры звука (порог срабатывания и имя файла)");
+            soundHeader.setPadding(0, dp(10), 0, 0);
+            form.addView(soundHeader);
+            soundThresholdField = propertyField(Double.toString(w.soundThreshold), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            soundThresholdField.setHint("Порог (например 1.0)");
+            form.addView(soundThresholdField);
+            soundFilePathField = propertyField(w.soundFilePath, InputType.TYPE_CLASS_TEXT);
+            soundFilePathField.setHint("Файл / content URI или 'Аларм'");
+            form.addView(soundFilePathField);
+            addMediaPicker(form, soundFilePathField, "audio/*");
+        } else { soundThresholdField = null; soundFilePathField = null; }
+
+        final EditText targetScreenIndexField;
+        final EditText targetUrlField;
+        if ("Переход на экран".equals(w.type)) {
+            TextView screenNavHeader = new TextView(this);
+            screenNavHeader.setText("Целевой экран (индекс 1..N) и URL");
+            screenNavHeader.setPadding(0, dp(10), 0, 0);
+            form.addView(screenNavHeader);
+            targetScreenIndexField = propertyField(Integer.toString(w.targetScreenIndex + 1), InputType.TYPE_CLASS_NUMBER);
+            targetScreenIndexField.setHint("Номер экрана (начиная с 1)");
+            form.addView(targetScreenIndexField);
+            targetUrlField = propertyField(w.targetUrl, InputType.TYPE_CLASS_TEXT);
+            targetUrlField.setHint("URL для перехода (необязательно)");
+            form.addView(targetUrlField);
+        } else { targetScreenIndexField = null; targetUrlField = null; }
+
+        final EditText[] imagePathFields = new EditText[w.imagePathStates.length];
+        if ("Многопозиционное фото".equals(w.type)) {
+            TextView imgHeader = new TextView(this);
+            imgHeader.setText("Пути к изображениям состояний (0–15)");
+            imgHeader.setPadding(0, dp(10), 0, 0);
+            form.addView(imgHeader);
+            for (int k = 0; k < imagePathFields.length; k++) {
+                imagePathFields[k] = propertyField(w.imagePathStates[k], InputType.TYPE_CLASS_TEXT);
+                imagePathFields[k].setHint("Изображение " + k + " (файл / URI)");
+                form.addView(imagePathFields[k]);
+                addMediaPicker(form, imagePathFields[k], "image/*");
+            }
+        }
+
+        final EditText[] voiceMsgFields = new EditText[w.voiceMessages.length];
+        if ("Голосовое сообщение".equals(w.type)) {
+            TextView voiceHeader = new TextView(this);
+            voiceHeader.setText("Тексты голосовых оповещений (0–15)");
+            voiceHeader.setPadding(0, dp(10), 0, 0);
+            form.addView(voiceHeader);
+            for (int k = 0; k < voiceMsgFields.length; k++) {
+                voiceMsgFields[k] = propertyField(w.voiceMessages[k], InputType.TYPE_CLASS_TEXT);
+                voiceMsgFields[k].setHint("Голос " + k);
+                form.addView(voiceMsgFields[k]);
+            }
+        }
+
+        final EditText timerPresetField;
+        final android.widget.Spinner timerUnitSelector;
+        final android.widget.Spinner timerModeSelector;
+        final android.widget.Spinner triggerModeSelector;
+        if ("FBD CRAFT T".equals(w.type)) {
+            TextView triggerLabel = new TextView(this);
+            triggerLabel.setText("Режим исходного Craft trigger");
+            form.addView(triggerLabel);
+            triggerModeSelector = new android.widget.Spinner(this);
+            triggerModeSelector.setContentDescription("Режим триггера Craft");
+            triggerModeSelector.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item, new String[]{"T", "R", "F"}));
+            String mode = w.extraFields.optString("craftTriggerMode", "T");
+            triggerModeSelector.setSelection("R".equals(mode) ? 1 : "F".equals(mode) ? 2 : 0);
+            form.addView(triggerModeSelector);
+        } else triggerModeSelector = null;
+        if ("FBD Таймер".equals(w.type) || "FBD TP".equals(w.type)
+                || "FBD TOF".equals(w.type) || "FBD CRAFT BLINK".equals(w.type)
+                || "FBD CRAFT TIMER".equals(w.type)) {
+            TextView timerModeLabel = new TextView(this);
+            boolean originalBlink = "FBD CRAFT BLINK".equals(w.type);
+            boolean originalCraftTimer = "FBD CRAFT TIMER".equals(w.type);
+            timerModeLabel.setText(originalBlink ? "Режим Craft: BLINK"
+                    : originalCraftTimer ? "Режим исходного Craft FB_TIMER"
+                    : "Режим таймера (TON / TOF / TP)");
+            form.addView(timerModeLabel);
+            timerModeSelector = new android.widget.Spinner(this);
+            timerModeSelector.setContentDescription("Режим таймера FBD");
+            timerModeSelector.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item,
+                    originalBlink ? new String[]{"BLINK"} : originalCraftTimer
+                            ? new String[]{"TON", "TOF", "TP", "BLINK"} : FbdDurationUnits.modes()));
+            String initialMode = originalCraftTimer ? w.extraFields.optString("craftTimerMode", "TON")
+                    : FbdDurationUnits.modeForType(w.type);
+            timerModeSelector.setSelection("TOF".equals(initialMode) ? 1 : "TP".equals(initialMode) ? 2 : "BLINK".equals(initialMode) && originalCraftTimer ? 3 : 0);
+            form.addView(timerModeSelector);
+
+            TextView timerLabel = new TextView(this);
+            timerLabel.setText("Время таймера (исходное значение хранится точно в мс)");
+            timerLabel.setPadding(0, dp(10), 0, 0);
+            form.addView(timerLabel);
+            String[] unitValues = {"MS", "SEK", "MIN"};
+            String initialUnit = FbdDurationUnits.normalize(w.extraFields.optString("bloodskyFbdTimeUnit", "MS"));
+            int initialUnitIndex = "SEK".equals(initialUnit) ? 1 : "MIN".equals(initialUnit) ? 2 : 0;
+            timerPresetField = propertyField(FbdDurationUnits.display(w.timerPresetMs, initialUnit),
+                    InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL
+                            | InputType.TYPE_NUMBER_FLAG_SIGNED);
+            timerPresetField.setContentDescription(initialUnitIndex == 0 ? "Время таймера, мс"
+                    : "Время таймера, " + (initialUnitIndex == 1 ? "сек" : "мин"));
+            form.addView(timerPresetField);
+            timerUnitSelector = new android.widget.Spinner(this);
+            timerUnitSelector.setContentDescription("Единица времени FBD");
+            timerUnitSelector.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item,
+                    new String[]{"мс", "сек", "мин"}));
+            timerUnitSelector.setSelection(initialUnitIndex);
+            final int[] lastUnit = {initialUnitIndex};
+            timerUnitSelector.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+                public void onNothingSelected(android.widget.AdapterView<?> parent) {}
+                public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
+                    if (position == lastUnit[0]) return;
+                    try {
+                        int oldMilliseconds = FbdDurationUnits.parse(
+                                timerPresetField.getText().toString(), unitValues[lastUnit[0]], w.timerPresetMs);
+                        timerPresetField.setText(FbdDurationUnits.display(oldMilliseconds, unitValues[position]));
+                        timerPresetField.setContentDescription(position == 0 ? "Время таймера, мс"
+                                : "Время таймера, " + (position == 1 ? "сек" : "мин"));
+                    } catch (IllegalArgumentException ignored) {
+                        // Keep invalid text visible so Apply reports an error.
+                    }
+                    lastUnit[0] = position;
+                }
+            });
+            form.addView(timerUnitSelector);
+        } else {
+            timerPresetField = null;
+            timerUnitSelector = null;
+            timerModeSelector = null;
+        }
+        final EditText counterPresetField;
+        if ("FBD CTU".equals(w.type) || "FBD CTD".equals(w.type)) {
+            TextView counterLabel = new TextView(this);
+            counterLabel.setText("Уставка счётчика " + ("FBD CTD".equals(w.type) ? "CTD" : "CTU"));
+            counterLabel.setPadding(0, dp(10), 0, 0);
+            form.addView(counterLabel);
+            counterPresetField = propertyField(Integer.toString(w.counterPreset), InputType.TYPE_CLASS_NUMBER);
+            counterPresetField.setContentDescription("Уставка счётчика");
+            form.addView(counterPresetField);
+        } else {
+            counterPresetField = null;
+        }
+
+        final EditText compareLeftField;
+        final EditText compareOperatorField;
+        final EditText compareRightField;
+        if ("FBD Сравнение".equals(w.type)
+                || "FBD CRAFT COMPARE".equals(w.type)
+                || "FBD CRAFT COMPARE FLOAT".equals(w.type)
+                || "FBD CRAFT ARITHMETIC INT".equals(w.type)
+                || "FBD CRAFT ARITHMETIC FLOAT".equals(w.type)) {
+            TextView compareLabel = new TextView(this);
+            compareLabel.setText("FBD CRAFT COMPARE".equals(w.type)
+                    ? "Craft INT32: оператор >, <, <=, >=, ==, !=; входы IN1/IN2"
+                    : "FBD CRAFT COMPARE FLOAT".equals(w.type)
+                    ? "Craft FLOAT32: оператор >, <, <=, >=, ==, !=; входы IN1/IN2"
+                    : ("FBD CRAFT ARITHMETIC INT".equals(w.type)
+                            || "FBD CRAFT ARITHMETIC FLOAT".equals(w.type))
+                    ? "Craft: оператор +, −, ×, ÷; входы IN1/IN2"
+                    : "Числовое сравнение A / оператор / B");
+            compareLabel.setPadding(0, dp(10), 0, 0);
+            form.addView(compareLabel);
+            compareLeftField = propertyField(Double.toString(w.compareA), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            compareOperatorField = propertyField(w.compareOperator, InputType.TYPE_CLASS_TEXT);
+            compareRightField = propertyField(Double.toString(w.compareB), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            compareLeftField.setContentDescription("Сравнение A");
+            compareOperatorField.setContentDescription("Оператор сравнения");
+            compareRightField.setContentDescription("Сравнение B");
+            form.addView(compareLeftField);
+            form.addView(compareOperatorField);
+            form.addView(compareRightField);
+        } else {
+            compareLeftField = null;
+            compareOperatorField = null;
+            compareRightField = null;
+        }
+
+        final EditText minValField;
+        final EditText maxValField;
+        if ("Шкала / Стрелка".equals(w.type) || "Прогресс-бар".equals(w.type) || "График / Тренд".equals(w.type)) {
+            TextView rangeLabel = new TextView(this);
+            rangeLabel.setText("Диапазон шкалы (минимум / максимум)");
+            rangeLabel.setPadding(0, dp(10), 0, 0);
+            form.addView(rangeLabel);
+            minValField = propertyField(Double.toString(w.minValue), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            minValField.setHint("Минимум (например 0)");
+            form.addView(minValField);
+            maxValField = propertyField(Double.toString(w.maxValue), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            maxValField.setHint("Максимум (например 100)");
+            form.addView(maxValField);
+        } else {
+            minValField = null;
+            maxValField = null;
+        }
+
+        TextView geometryLabel = new TextView(this);
+        geometryLabel.setText("Положение и размер (пиксели)");
+        geometryLabel.setPadding(0, dp(10), 0, 0);
+        form.addView(geometryLabel);
+
+        EditText xField = propertyField(Float.toString(w.x), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
+        xField.setHint("X");
+        xField.setContentDescription("Положение X");
+        form.addView(xField);
+        EditText yField = propertyField(Float.toString(w.y), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
+        yField.setHint("Y");
+        yField.setContentDescription("Положение Y");
+        form.addView(yField);
+        EditText widthField = propertyField(Float.toString(w.w), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
+        widthField.setHint("Ширина");
+        widthField.setContentDescription("Ширина элемента");
+        form.addView(widthField);
+        EditText heightField = propertyField(Float.toString(w.h), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
+        heightField.setHint("Высота");
+        heightField.setContentDescription("Высота элемента");
+        form.addView(heightField);
+
+        TextView styleLabel = new TextView(this);
+        styleLabel.setText("Оформление");
+        styleLabel.setPadding(0, dp(10), 0, 0);
+        form.addView(styleLabel);
+        EditText backgroundColorField = propertyField(w.backgroundColor == 0 ? "" : String.format(java.util.Locale.ROOT, "#%06X", (0xFFFFFF & w.backgroundColor)), InputType.TYPE_CLASS_TEXT);
+        backgroundColorField.setHint("Фон: #RRGGBB; пусто — цвет по типу");
+        form.addView(backgroundColorField);
+        EditText textColorField = propertyField(String.format(java.util.Locale.ROOT, "#%06X", (0xFFFFFF & w.textColor)), InputType.TYPE_CLASS_TEXT);
+        textColorField.setHint("Цвет текста: #RRGGBB");
+        form.addView(textColorField);
+        EditText textSizeField = propertyField(Integer.toString(w.textSizeSp), InputType.TYPE_CLASS_NUMBER);
+        textSizeField.setHint("Размер текста, 8–48 sp");
+        form.addView(textSizeField);
+        android.widget.CheckBox visibleField = new android.widget.CheckBox(this);
+        visibleField.setText("Элемент видим на экране"); visibleField.setChecked(w.visible); form.addView(visibleField);
+        android.widget.CheckBox frameField = new android.widget.CheckBox(this);
+        frameField.setText("Показывать рамку"); frameField.setChecked(w.showFrame); form.addView(frameField);
+        android.widget.CheckBox autoResizeField = new android.widget.CheckBox(this);
+        autoResizeField.setText("Автоподбор размера текста по ширине"); autoResizeField.setChecked(w.autoResizeText); form.addView(autoResizeField);
+
+        android.widget.ScrollView propertyScroll = new android.widget.ScrollView(this);
+        propertyScroll.setFillViewport(true);
+        propertyScroll.setClipToPadding(false);
+        propertyScroll.addView(form);
+
+        AlertDialog properties = new AlertDialog.Builder(this)
+                .setTitle("Свойства: " + w.type)
+                .setView(propertyScroll)
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Применить", null).create();
+        properties.setOnShowListener(shown -> properties.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(clicked -> {
+                    final WidgetGeometryEdits geometry;
+                    final FbdPropertyEdits fbd;
+                    try {
+                        geometry = WidgetGeometryEdits.parse(xField.getText().toString(), yField.getText().toString(),
+                                widthField.getText().toString(), heightField.getText().toString());
+                        String timerDurationMs = null;
+                        if (timerPresetField != null) {
+                            String unit = new String[]{"MS", "SEK", "MIN"}[timerUnitSelector.getSelectedItemPosition()];
+                            timerDurationMs = Integer.toString(FbdDurationUnits.parse(
+                                    timerPresetField.getText().toString(), unit, w.timerPresetMs));
+                        }
+                        fbd = FbdPropertyEdits.parse(timerDurationMs,
+                                counterPresetField == null ? null : counterPresetField.getText().toString(),
+                                compareLeftField == null ? null : compareLeftField.getText().toString(),
+                                compareOperatorField == null ? null : compareOperatorField.getText().toString(),
+                                compareRightField == null ? null : compareRightField.getText().toString());
+                    } catch (IllegalArgumentException invalid) {
+                        Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    if (gatewayEnabledField != null) {
+                        boolean enabled = gatewayEnabledField.isChecked();
+                        int mode = gatewayModeField.getSelectedItemPosition();
+                        int count, triggerBit, sourceFunction = gatewaySourceFunctionField == null ? 3
+                                : gatewaySourceFunctionField.getSelectedItemPosition() + 1;
+                        try {
+                            count = Integer.parseInt(gatewayCountField.getText().toString().trim());
+                            triggerBit = Integer.parseInt(gatewayTriggerBitField.getText().toString().trim());
+                        } catch (NumberFormatException invalid) {
+                            Toast.makeText(this, "Укажи количество значений и бит триггера числами", Toast.LENGTH_LONG).show(); return;
+                        }
+                        String source = gatewaySourceField.getText().toString().trim();
+                        String destination = gatewayDestinationField.getText().toString().trim();
+                        String trigger = gatewayTriggerField.getText().toString().trim();
+                        if (enabled) {
+                            try {
+                                if (craftBitGateway) CraftBitGateway.validate(true, mode, count, sourceFunction,
+                                        source, destination, trigger, triggerBit);
+                                else CraftRegisterGateway.validate(true, mode, count, source, destination, trigger, triggerBit);
+                            }
+                            catch (IllegalArgumentException invalid) {
+                                Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show(); return;
+                            }
+                        } else if (count < 1 || count > (craftBitGateway ? 16 : 99) || triggerBit < 0 || triggerBit > 15) {
+                            Toast.makeText(this, "Количество: " + (craftBitGateway ? "1–16 бит" : "1–99 регистров") + "; бит триггера: 0–15", Toast.LENGTH_LONG).show(); return;
+                        }
+                        try {
+                            if (craftBitGateway) {
+                                w.extraFields.put("craftBitGatewayEnabled", enabled);
+                                w.extraFields.put("craftBitGatewayTransferMode", mode);
+                                w.extraFields.put("craftBitGatewayCount", count);
+                                w.extraFields.put("craftBitGatewaySourceFunction", sourceFunction);
+                                w.extraFields.put("craftBitGatewaySource", source);
+                                w.extraFields.put("craftBitGatewayDestination", destination);
+                                w.extraFields.put("craftBitGatewayTrigger", trigger);
+                                w.extraFields.put("craftBitGatewayTriggerBit", triggerBit);
+                            } else {
+                                w.extraFields.put("craftGatewayEnabled", enabled);
+                                w.extraFields.put("craftGatewayTransferMode", mode);
+                                w.extraFields.put("craftGatewayCount", count);
+                                w.extraFields.put("craftGatewaySource", source);
+                                w.extraFields.put("craftGatewayDestination", destination);
+                                w.extraFields.put("craftGatewayTrigger", trigger);
+                                w.extraFields.put("craftGatewayTriggerBit", triggerBit);
+                            }
+                            w.extraFields.put("craftUnsupportedComponent", !enabled);
+                        } catch (Exception ignored) {}
+                    }
+                    if (craftBitField != null) {
+                        try {
+                            int bit = Integer.parseInt(craftBitField.getText().toString().trim());
+                            if (bit < 0 || bit > 15) throw new NumberFormatException();
+                            w.extraFields.put("craftVarBit", bit);
+                        } catch (Exception invalid) {
+                            Toast.makeText(this, "Бит регистра должен быть от 0 до 15", Toast.LENGTH_LONG).show(); return;
+                        }
+                    }
+                    if (craftConstantModeField != null) {
+                        String constant = craftConstantValueField.getText().toString().trim();
+                        try {
+                            double numeric = Double.parseDouble(constant);
+                            if (!Double.isFinite(numeric)) throw new NumberFormatException();
+                            if (isCraftRegisterBoolean(w.type) && numeric != 0.0 && numeric != 1.0)
+                                throw new NumberFormatException();
+                            if ("FBD CRAFT VAR INT".equals(canonicalFbdBlockType(w.type))
+                                    && (numeric < 0 || numeric > 65535 || numeric != Math.rint(numeric)))
+                                throw new NumberFormatException();
+                            w.extraFields.put("craftVarConstant", constant);
+                            w.extraFields.put("craftVarConstantMode", craftConstantModeField.isChecked());
+                        } catch (Exception invalid) {
+                            Toast.makeText(this, "Укажи конечное значение BOOL (0/1), UINT16 или FLOAT32", Toast.LENGTH_LONG).show(); return;
+                        }
+                    }
+                    if (craftSwapWordField != null) {
+                        try {
+                            w.extraFields.put("craftSwapWord", craftSwapWordField.isChecked());
+                            w.extraFields.put("craftSwapByte", craftSwapByteField.isChecked());
+                        } catch (Exception ignored) {}
+                    }
+                    if (craftVariableNameField != null) {
+                        String variableName = craftVariableNameField.getText().toString().trim();
+                        int variableKind = craftVariableTypeField.getSelectedItemPosition() + 1;
+                        boolean useConstant = craftNamedConstantModeField != null && craftNamedConstantModeField.isChecked();
+                        if (variableName.isEmpty() && !useConstant) {
+                            Toast.makeText(this, "Укажи имя общей переменной", Toast.LENGTH_LONG).show(); return;
+                        }
+                        if (craftNamedConstantValueField != null) {
+                            try {
+                                double numeric = Double.parseDouble(craftNamedConstantValueField.getText().toString().trim());
+                                if (!Double.isFinite(numeric)
+                                        || (variableKind == 1 && numeric != 0.0 && numeric != 1.0)
+                                        || (variableKind == 2 && (numeric < Integer.MIN_VALUE || numeric > Integer.MAX_VALUE || numeric != Math.rint(numeric)))
+                                        || (variableKind == 3 && Math.abs(numeric) > Float.MAX_VALUE)) throw new NumberFormatException();
+                                w.extraFields.put("craftNamedConstant", Double.toString(numeric));
+                                w.extraFields.put("craftNamedConstantMode", useConstant);
+                            } catch (Exception invalid) {
+                                Toast.makeText(this, "Константа должна соответствовать BOOL, INT32 или FLOAT32", Toast.LENGTH_LONG).show(); return;
+                            }
+                        }
+                        try { w.extraFields.put("craftVariableName", variableName); }
+                        catch (Exception ignored) {}
+                        boolean source = isCraftNamedVariableSource(w.type);
+                        w.type = craftNamedVariableType(variableKind, !source);
+                    }
+                    if (craftOrientationAxisField != null) {
+                        int axis = craftOrientationAxisField.getSelectedItemPosition() + 1;
+                        int oldAxis = craftOrientationAxis(w);
+                        if (textField.getText().toString().trim().equals(craftOrientationLabel(oldAxis)))
+                            textField.setText(craftOrientationLabel(axis));
+                        try { w.extraFields.put("craftSensorAxis", axis); }
+                        catch (Exception ignored) {}
+                    }
+                    if (craftSunriseModeField != null) {
+                        try {
+                            double latitude = Double.parseDouble(craftSunriseLatitudeField.getText().toString().trim());
+                            double longitude = Double.parseDouble(craftSunriseLongitudeField.getText().toString().trim());
+                            if (!Double.isFinite(latitude) || latitude < -90 || latitude > 90
+                                    || !Double.isFinite(longitude) || longitude < -180 || longitude > 180
+                                    || (latitude == 0.0 && longitude == 0.0)) throw new NumberFormatException();
+                            String oldMode = craftSunriseMode(w);
+                            String newMode = craftSunriseModeField.getSelectedItemPosition() == 1 ? "SS" : "SR";
+                            if (textField.getText().toString().trim().equals(oldMode)) textField.setText(newMode);
+                            w.extraFields.put("latitude", latitude); w.extraFields.put("longitude", longitude);
+                            w.extraFields.put("craftSunriseMode", newMode);
+                        } catch (Exception invalid) {
+                            Toast.makeText(this, "Укажи корректные координаты широты и долготы", Toast.LENGTH_LONG).show(); return;
+                        }
+                    }
+                    if (craftOdTempHostField != null) {
+                        String host = craftOdTempHostField.getText().toString().trim();
+                        if (!isAllowedOdTempHost(host)) {
+                            Toast.makeText(this, "Укажи частный IPv4-адрес устройства", Toast.LENGTH_LONG).show(); return;
+                        }
+                        try {
+                            w.extraFields.put("ip", host);
+                            w.extraFields.put("craftOdTempType", craftOdTempTypeField.getSelectedItemPosition() + 1);
+                            w.extraFields.put("craftOdTempResponse", craftOdTempResponseField.getSelectedItemPosition() + 1);
+                        } catch (Exception ignored) {}
+                    }
+                    if (craftMqttTopicField != null) {
+                        String topic = craftMqttTopicField.getText().toString().trim();
+                        boolean topicValid = isCraftMqttSubscriber(w.type)
+                                ? FbdCraftMqttRuntime.validTopicFilter(topic)
+                                : FbdCraftMqttRuntime.validTopic(topic);
+                        if (!topicValid) {
+                            Toast.makeText(this, "Укажи корректный MQTT topic/filter", Toast.LENGTH_LONG).show(); return;
+                        }
+                        int type = craftMqttTypeField.getSelectedItemPosition() + 1;
+                        try {
+                            w.extraFields.put("craftMqttTopic", topic);
+                            w.extraFields.put("craftMqttType", type);
+                            w.extraFields.put("craftMqttServer", craftMqttServerField.getSelectedItemPosition() + 1);
+                            if (craftMqttRetainField != null) w.extraFields.put("craftMqttRetain", craftMqttRetainField.isChecked());
+                        } catch (Exception ignored) {}
+                        String suffix = type == 1 ? "BOOL" : type == 3 ? "FLOAT" : "INT";
+                        w.type = isCraftMqttSubscriber(w.type) ? "FBD CRAFT MQTT SUB " + suffix
+                                : "FBD CRAFT MQTT PUB " + suffix;
+                    }
+                    w.text = textField.getText().toString();
+                    w.connectionInfo = connectionField.getText().toString().trim();
+                    if(smsPhoneField!=null) {
+                        String phone=smsPhoneField.getText().toString().trim();
+                        if(!SmsNotificationClient.isValidPhone(phone)) {
+                            Toast.makeText(this,"Укажи номер получателя в международном формате",Toast.LENGTH_LONG).show();return;
+                        }
+                        int registerCount = smsRegisterCountField.getSelectedItemPosition() + 1;
+                        String[] previewValues = new String[registerCount];
+                        java.util.Arrays.fill(previewValues, "0");
+                        try { SmsOutgoingTemplate.render(textField.getText().toString(), previewValues, "0"); }
+                        catch (IllegalArgumentException invalidTemplate) {
+                            Toast.makeText(this, "Шаблон SMS использует номер регистра выше выбранного количества", Toast.LENGTH_LONG).show(); return;
+                        }
+                        String recipientKey=java.util.UUID.randomUUID().toString();
+                        try{SmsRecipientStore.save(this,recipientKey,phone);w.extraFields.put("smsRecipientId",recipientKey);
+                            w.extraFields.put("smsRegisterCount",registerCount);}
+                        catch(Exception failure){Toast.makeText(this,"Не удалось безопасно сохранить номер SMS",Toast.LENGTH_LONG).show();return;}
+                    }
+                    if (incomingSmsEnabledField != null) {
+                        boolean enabled = incomingSmsEnabledField.isChecked();
+                        String sender = incomingSmsSenderField.getText().toString().trim();
+                        String command = incomingSmsCommandField.getText().toString().trim();
+                        int bit;
+                        try { bit = Integer.parseInt(incomingSmsBitField.getText().toString().trim()); }
+                        catch (NumberFormatException invalid) { bit = -1; }
+                        boolean strobeEnabled = incomingSmsStrobeEnabledField.isChecked();
+                        int strobeRegister;
+                        try { strobeRegister = Integer.parseInt(incomingSmsStrobeRegisterField.getText().toString().trim()); }
+                        catch (NumberFormatException invalid) { strobeRegister = -1; }
+                        int strobeBit;
+                        try { strobeBit = Integer.parseInt(incomingSmsStrobeBitField.getText().toString().trim()); }
+                        catch (NumberFormatException invalid) { strobeBit = -1; }
+                        BindingRequest smsBinding = parseBinding(-1, w.connectionInfo);
+                        BindingRequest smsStrobeBinding = smsBinding == null || strobeRegister < 0 ? null
+                                : parseBinding(-1, "tcp://" + smsBinding.host + ":" + smsBinding.port + "/"
+                                        + smsBinding.unit + "/" + strobeRegister);
+                        if (enabled && (!SmsIncomingCommand.isValidSender(sender)
+                                || command.isEmpty() || command.length() > 80 || command.indexOf('\n') >= 0
+                                || command.indexOf('\r') >= 0 || bit < 0 || bit > 15
+                                || smsBinding == null || smsBinding.functionCode != 3
+                                || (strobeEnabled && (incomingSmsModeField.getSelectedItemPosition() != 0
+                                    || smsStrobeBinding == null || smsStrobeBinding.functionCode != 3
+                                    || smsStrobeBinding.unit != smsBinding.unit || strobeBit < 0 || strobeBit > 15)))) {
+                            Toast.makeText(this, "Проверь номер, команду, Modbus holding-регистр и параметры strobe", Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                        if (bit < 0 || bit > 15) bit = 0;
+                        if (strobeBit < 0 || strobeBit > 15) strobeBit = 0;
+                        try {
+                            if (SmsIncomingCommand.isValidSender(sender)) {
+                                String senderKey = java.util.UUID.randomUUID().toString();
+                                SmsRecipientStore.save(this, senderKey, sender);
+                                w.extraFields.put("smsSenderId", senderKey);
+                            }
+                            w.extraFields.put("smsCommand", command);
+                            w.extraFields.put("smsMode", incomingSmsModeField.getSelectedItemPosition() == 1 ? "bit" : "number");
+                            w.extraFields.put("smsBit", bit);
+                            w.extraFields.put("smsEnabled", enabled);
+                            w.extraFields.put("smsStrobeEnabled", strobeEnabled);
+                            w.extraFields.put("smsStrobeRegister", strobeRegister);
+                            w.extraFields.put("smsStrobeBit", strobeBit);
+                        } catch (Exception failure) {
+                            Toast.makeText(this, "Не удалось безопасно сохранить номер отправителя SMS", Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                    }
+                    if (fbdInputField != null) w.inputValue = fbdInputField.isChecked();
+                    if ("Динамический текст".equals(w.type)) {
+                        for (int k = 0; k < 4; k++) {
+                            if (dynStateFields[k] != null) {
+                                w.dynTextStates[k] = dynStateFields[k].getText().toString();
+                            }
+                        }
+                    }
+                    if ("Битовый список".equals(w.type)) {
+                        for (int k = 0; k < 4; k++) {
+                            if (bitLabelFields[k] != null) {
+                                w.bitListLabels[k] = bitLabelFields[k].getText().toString();
+                            }
+                        }
+                    }
+                    if (soundThresholdField != null) {
+                        w.soundThreshold = readDouble(soundThresholdField, w.soundThreshold);
+                        w.soundFilePath = soundFilePathField.getText().toString();
+                    }
+                    if (targetScreenIndexField != null) {
+                        int idx = readPositiveInt(targetScreenIndexField, w.targetScreenIndex + 1, false) - 1;
+                        w.targetScreenIndex = Math.max(0, idx);
+                        w.targetUrl = targetUrlField.getText().toString();
+                    }
+                    if ("Многопозиционное фото".equals(w.type)) {
+                        for (int k = 0; k < imagePathFields.length; k++) {
+                            if (imagePathFields[k] != null) {
+                                w.imagePathStates[k] = imagePathFields[k].getText().toString();
+                            }
+                        }
+                    }
+                    if ("Голосовое сообщение".equals(w.type)) {
+                        for (int k = 0; k < voiceMsgFields.length; k++) {
+                            if (voiceMsgFields[k] != null) {
+                                w.voiceMessages[k] = voiceMsgFields[k].getText().toString();
+                            }
+                        }
+                    }
+                    if (timerPresetField != null) {
+                        String oldMode = FbdDurationUnits.modeForType(w.type);
+                        String newMode = String.valueOf(timerModeSelector.getSelectedItem());
+                        w.timerPresetMs = fbd.timer;
+                        boolean originalCraftTimer = "FBD CRAFT TIMER".equals(w.type);
+                        w.type = "FBD CRAFT BLINK".equals(w.type) || originalCraftTimer ? w.type
+                                : FbdDurationUnits.typeForMode(newMode);
+                        // Keep custom labels intact, refresh only an untouched mode label.
+                        if (w.text != null && w.text.equals(oldMode)) w.text = newMode;
+                        w.timerStartedAt = 0L;
+                        w.counterLastInput = false;
+                        if ("FBD CRAFT BLINK".equals(w.type))
+                            w.craftBlinkState = FbdCraftNativeTimer.State.initial();
+                        try {
+                            String unit = new String[]{"MS", "SEK", "MIN"}[timerUnitSelector.getSelectedItemPosition()];
+                            if (originalCraftTimer) {
+                                w.extraFields.put("craftTimerMode", newMode);
+                                w.extraFields.put("craftTimerUnit", unit);
+                                w.craftTimerState = FbdCraftNativeTimer.State.initial();
+                            }
+                            // An untouched old MS project must not acquire an extra field.
+                            if (!"MS".equals(unit) || w.extraFields.has("bloodskyFbdTimeUnit"))
+                                w.extraFields.put("bloodskyFbdTimeUnit", unit);
+                        } catch (org.json.JSONException ignored) {}
+                    }
+                    if (triggerModeSelector != null) {
+                        String mode = String.valueOf(triggerModeSelector.getSelectedItem());
+                        try { w.extraFields.put("craftTriggerMode", mode); }
+                        catch (org.json.JSONException ignored) {}
+                        w.text = mode;
+                    }
+                    if (counterPresetField != null) {
+                        w.counterPreset = fbd.counter;
+                        if ("FBD CTD".equals(w.type)) w.counterValue = w.counterPreset;
+                    }
+                    if (compareLeftField != null) {
+                        w.compareA = fbd.left;
+                        w.compareB = fbd.right;
+                        w.compareOperator = fbd.operator;
+                        w.text = ("FBD CRAFT COMPARE".equals(w.type)
+                                || "FBD CRAFT COMPARE FLOAT".equals(w.type)
+                                || "FBD CRAFT ARITHMETIC INT".equals(w.type)
+                                || "FBD CRAFT ARITHMETIC FLOAT".equals(w.type))
+                                ? w.compareOperator
+                                : Double.toString(w.compareA) + " " + w.compareOperator
+                                        + " " + Double.toString(w.compareB);
+                    }
+                    if (minValField != null) {
+                        w.minValue = readDouble(minValField, w.minValue);
+                        w.maxValue = readDouble(maxValField, w.maxValue);
+                    }
+                    w.x = geometry.x; w.y = geometry.y;
+                    w.w = geometry.width; w.h = geometry.height;
+                    w.backgroundColor = parseOptionalColor(backgroundColorField.getText().toString(), 0);
+                    w.textColor = parseOptionalColor(textColorField.getText().toString(), w.textColor);
+                    w.textSizeSp = Math.max(8, Math.min(48, readPositiveInt(textSizeField, w.textSizeSp, false)));
+                    w.visible = visibleField.isChecked(); w.showFrame = frameField.isChecked(); w.autoResizeText = autoResizeField.isChecked();
+                    persistProject();
+                    editor.invalidate();
+                    refreshIncomingSmsReceiver();
+                    properties.dismiss();
+                }));
+        properties.show();
+    }
+
+    private int parseOptionalColor(String text, int fallback) {
+        String value = text == null ? "" : text.trim();
+        if (value.isEmpty()) return fallback == 0 ? 0 : fallback;
+        if (!value.startsWith("#")) value = "#" + value;
+        if (value.matches("#[0-9a-fA-F]{6}")) {
+            try { return Color.parseColor(value); } catch (IllegalArgumentException ignored) { return fallback; }
+        }
+        Toast.makeText(this, "Цвет задаётся в формате #RRGGBB", Toast.LENGTH_SHORT).show();
+        return fallback;
+    }
+
+    private double readDouble(EditText field, double fallback) {
+        try {
+            double value = Double.parseDouble(field.getText().toString().trim().replace(',', '.'));
+            return Double.isNaN(value) || Double.isInfinite(value) ? fallback : value;
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
+    }
+
+    private String normalizeComparisonOperator(String value) {
+        String operator = value == null ? ">" : value.trim();
+        return operator.equals(">") || operator.equals("<") || operator.equals(">=")
+                || operator.equals("<=") || operator.equals("==") || operator.equals("!=") ? operator : ">";
+    }
+
+    private int readPositiveInt(EditText field, int fallback, boolean allowZero) {
+        try {
+            int value = Integer.parseInt(field.getText().toString().trim());
+            return allowZero ? Math.max(0, value) : Math.max(1, value);
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
+    }
+
+    private void copySelectedWidget() {
+        if (copySelectedWidgetToClipboard())
+            Toast.makeText(this, "Элемент скопирован со всеми настройками", Toast.LENGTH_SHORT).show();
+    }
+
+    private boolean copySelectedWidgetToClipboard() {
+        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
+            Toast.makeText(this, "Сначала выбери элемент на экране", Toast.LENGTH_SHORT).show();
+            return false;
+        }
+        try {
+            clipboardWidget = widgetFromJson(widgetToJson(widgets.get(editor.selected)));
+            return true;
+        } catch (Exception error) {
+            Toast.makeText(this, "Не удалось скопировать элемент", Toast.LENGTH_SHORT).show();
+            return false;
+        }
+    }
+
+    private void cutSelectedWidget() {
+        // Never remove the source if serializing its complete clipboard copy failed.
+        if (copySelectedWidgetToClipboard()) deleteSelectedWidget();
+    }
+
+    private void pasteWidget() {
+        if (clipboardWidget == null) {
+            Toast.makeText(this, "Сначала скопируй элемент", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            Widget copy = widgetFromJson(widgetToJson(clipboardWidget));
+            int offset = dp(24);
+            float maxX = editor == null ? Math.max(0, copy.x + offset) : Math.max(0, editor.getWidth() - copy.w);
+            float maxY = editor == null ? Math.max(0, copy.y + offset) : Math.max(0, editor.getHeight() - copy.h);
+            copy.x = Math.max(0, Math.min(maxX, copy.x + offset));
+            copy.y = Math.max(0, Math.min(maxY, copy.y + offset));
+            fbdWireHistory.clear();
+            widgets.add(copy);
+            if (editor != null) {
+                editor.selected = widgets.size() - 1;
+                editor.invalidate();
+            }
+            persistProject();
+            Toast.makeText(this, "Копия добавлена на экран", Toast.LENGTH_SHORT).show();
+        } catch (Exception error) {
+            Toast.makeText(this, "Не удалось вставить элемент", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void adjustSetpoint(Widget widget, int delta) {
+        String current = widget.text == null ? "Задатчик: 0" : widget.text;
+        int split = current.lastIndexOf(':');
+        String prefix = split >= 0 ? current.substring(0, split + 1) + " " : "Задатчик: ";
+        String valueText = split >= 0 ? current.substring(split + 1).trim() : current.trim();
+        double newValue = delta;
+        try {
+            double value = Double.parseDouble(valueText.replace(',', '.'));
+            newValue = value + delta;
+            widget.text = prefix + newValue;
+        } catch (NumberFormatException ignored) {
+            widget.text = prefix + delta;
+        }
+        persistProject();
+        BindingRequest request = parseBinding(-1, widget.connectionInfo);
+        if (request != null && request.functionCode == 3) {
+            final double valToWrite = newValue;
+            final String oldText = current;
+            modbusExecutor.execute(() -> {
+                try {
+                    boolean ok = writeModbusRegisterStatic(request.host, request.port, request.unit, request.address, (int) valToWrite);
+                    if (!ok) throw new IOException("Устройство отклонило запись регистра");
+                } catch (Exception ex) {
+                    android.util.Log.e("BLOODSKY", "Modbus write failed", ex);
+                    runOnUiThread(() -> {
+                        widget.text = oldText;
+                        persistProject();
+                        if (editor != null) editor.invalidate();
+                        Toast.makeText(MainActivity.this, "Ошибка записи Modbus: " + (ex.getMessage() != null ? ex.getMessage() : "ошибка связи"), Toast.LENGTH_LONG).show();
+                    });
+                }
+            });
+        }
+        Toast.makeText(MainActivity.this, "Значение: " + widget.text, Toast.LENGTH_SHORT).show();
+    }
+
+    private void deleteSelectedWidget() {
+        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
+            Toast.makeText(this, "Сначала выбери элемент на экране", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        int removed = editor.selected;
+        fbdWireHistory.clear();
+        widgets.remove(removed);
+        // A positional fbd://N reference must never silently switch to a
+        // different source after deletion. Missing sources render CFG.
+        for (Widget survivor : widgets) {
+            survivor.connectionInfo = FbdResultBinding.afterWidgetRemoved(
+                    survivor.connectionInfo, removed);
+        }
+        if (!screens.isEmpty()) {
+            Screen screen = screens.get(currentScreenIndex);
+            List<FbdConnection> kept = new ArrayList<>();
+            for (FbdConnection connection : screen.connections) {
+                if (connection.source == removed || connection.target == removed) continue;
+                if (connection.source > removed) connection.source--;
+                if (connection.target > removed) connection.target--;
+                kept.add(connection);
+            }
+            screen.connections.clear();
+            screen.connections.addAll(kept);
+        }
+        editor.selected = -1;
+        liveValues.clear();
+        persistProject();
+        editor.invalidate();
+    }
+
+    public static JSONObject widgetToJson(Widget w) throws Exception {
+        JSONObject obj = new JSONObject();
+        if (w.extraFields != null) {
+            java.util.Iterator<String> keys = w.extraFields.keys();
+            while (keys.hasNext()) {
+                String key = keys.next();
+                obj.put(key, w.extraFields.get(key));
+            }
+        }
+        obj.put("type", w.type); obj.put("text", w.text);
+        obj.put("connectionInfo", w.connectionInfo == null ? "" : w.connectionInfo);
+        obj.put("inputValue", w.inputValue); obj.put("buttonState", w.buttonState); obj.put("rsState", w.rsState); obj.put("counterPreset", w.counterPreset); obj.put("counterValue", w.counterValue); obj.put("counterLastInput", w.counterLastInput);
+        obj.put("timerPresetMs", w.timerPresetMs); obj.put("timerStartedAt", w.timerStartedAt);
+        obj.put("compareA", w.compareA); obj.put("compareB", w.compareB); obj.put("compareOperator", w.compareOperator);
+        obj.put("minValue", w.minValue); obj.put("maxValue", w.maxValue);
+        obj.put("backgroundColor", w.backgroundColor); obj.put("textColor", w.textColor); obj.put("textSizeSp", w.textSizeSp);
+        obj.put("visible", w.visible); obj.put("showFrame", w.showFrame); obj.put("autoResizeText", w.autoResizeText);
+        obj.put("x", w.x); obj.put("y", w.y); obj.put("w", w.w); obj.put("h", w.h);
+
+        obj.put("soundThreshold", w.soundThreshold);
+        obj.put("soundActive", w.soundActive);
+        obj.put("soundFilePath", w.soundFilePath == null ? "Аларм" : w.soundFilePath);
+        obj.put("craftAlarmSoundIndex", w.craftAlarmSoundIndex);
+        obj.put("craftAlarmLoop", w.craftAlarmLoop);
+        obj.put("targetScreenIndex", w.targetScreenIndex);
+        obj.put("targetUrl", w.targetUrl == null ? "" : w.targetUrl);
+
+        JSONArray dynStatesArr = new JSONArray();
+        JSONArray dynColorsArr = new JSONArray();
+        JSONArray bitLabelsArr = new JSONArray();
+        JSONArray voiceMessagesArr = new JSONArray();
+        JSONArray imagePathStatesArr = new JSONArray();
+        for (int i = 0; i < 16; i++) {
+            dynStatesArr.put(w.dynTextStates[i] == null ? "Состояние " + i : w.dynTextStates[i]);
+            dynColorsArr.put(w.dynTextColors[i]);
+            bitLabelsArr.put(w.bitListLabels[i] == null ? "Бит " + i : w.bitListLabels[i]);
+            voiceMessagesArr.put(w.voiceMessages[i] == null ? "Сообщение " + i : w.voiceMessages[i]);
+            imagePathStatesArr.put(w.imagePathStates[i] == null ? "Картинка " + i : w.imagePathStates[i]);
+        }
+        obj.put("dynTextStates", dynStatesArr);
+        obj.put("dynTextColors", dynColorsArr);
+        obj.put("bitListLabels", bitLabelsArr);
+        obj.put("voiceMessages", voiceMessagesArr);
+        obj.put("imagePathStates", imagePathStatesArr);
+        return obj;
+    }
+
+    private JSONArray widgetsToJson(List<Widget> list) throws Exception {
+        JSONArray array = new JSONArray();
+        for (Widget w : list) array.put(widgetToJson(w));
+        return array;
+    }
+
+    public static Widget widgetFromJson(JSONObject obj) {
+        Widget w = new Widget();
+        try { w.extraFields = new JSONObject(obj.toString()); } catch (Exception ignored) { w.extraFields = new JSONObject(); }
+        w.type = obj.optString("type", "Текст"); w.text = obj.optString("text", "Надпись");
+        w.connectionInfo = obj.optString("connectionInfo", "");
+        w.inputValue = obj.optBoolean("inputValue", false); w.buttonState = obj.optBoolean("buttonState", false); w.rsState = obj.optBoolean("rsState", false); w.counterPreset = Math.max(1, Math.min(1000000, obj.optInt("counterPreset", 1))); w.counterValue = Math.max(0, Math.min(1000000, obj.optInt("counterValue", 0))); w.counterLastInput = obj.optBoolean("counterLastInput", false);
+        w.timerPresetMs = Math.max(1, Math.min(3600000, obj.optInt("timerPresetMs", 1000)));
+        w.timerStartedAt = obj.optLong("timerStartedAt", 0L);
+        w.compareA = obj.optDouble("compareA", 0.0); w.compareB = obj.optDouble("compareB", 0.0);
+        boolean craftArithmetic = "FBD CRAFT ARITHMETIC INT".equals(w.type)
+                || "FBD CRAFT ARITHMETIC FLOAT".equals(w.type);
+        w.compareOperator = normalizeWidgetOperator(w.type,
+                obj.optString("compareOperator", craftArithmetic ? "+" : ">"));
+        w.minValue = obj.optDouble("minValue", 0.0); w.maxValue = obj.optDouble("maxValue", 100.0);
+        w.backgroundColor = obj.optInt("backgroundColor", 0); w.textColor = obj.optInt("textColor", Color.rgb(31, 41, 55));
+        w.textSizeSp = Math.max(8, Math.min(48, obj.optInt("textSizeSp", 14)));
+        w.visible = obj.optBoolean("visible", true); w.showFrame = obj.optBoolean("showFrame", true); w.autoResizeText = obj.optBoolean("autoResizeText", false);
+        w.soundThreshold = obj.optDouble("soundThreshold", 1.0); w.soundActive = obj.optBoolean("soundActive", false); w.soundFilePath = obj.optString("soundFilePath", "Аларм");
+        w.craftAlarmSoundIndex = Math.max(0, Math.min(5, obj.optInt("craftAlarmSoundIndex", 0)));
+        w.craftAlarmLoop = obj.optBoolean("craftAlarmLoop", false);
+        w.targetScreenIndex = obj.optInt("targetScreenIndex", 0); w.targetUrl = obj.optString("targetUrl", "");
+        w.x = (float) obj.optDouble("x", 40); w.y = (float) obj.optDouble("y", 50);
+        w.w = (float) obj.optDouble("w", 160); w.h = (float) obj.optDouble("h", 58);
+
+        JSONArray dynStatesArr = obj.optJSONArray("dynTextStates");
+        JSONArray dynColorsArr = obj.optJSONArray("dynTextColors");
+        JSONArray bitLabelsArr = obj.optJSONArray("bitListLabels");
+        JSONArray voiceMessagesArr = obj.optJSONArray("voiceMessages");
+        JSONArray imagePathStatesArr = obj.optJSONArray("imagePathStates");
+        for (int i = 0; i < 16; i++) {
+            w.dynTextStates[i] = (dynStatesArr != null && i < dynStatesArr.length()) ? dynStatesArr.optString(i, "Состояние " + i) : "Состояние " + i;
+            w.dynTextColors[i] = (dynColorsArr != null && i < dynColorsArr.length()) ? dynColorsArr.optInt(i, 0) : 0;
+            w.bitListLabels[i] = (bitLabelsArr != null && i < bitLabelsArr.length()) ? bitLabelsArr.optString(i, "Бит " + i) : "Бит " + i;
+            w.voiceMessages[i] = (voiceMessagesArr != null && i < voiceMessagesArr.length()) ? voiceMessagesArr.optString(i, "Сообщение " + i) : "Сообщение " + i;
+            w.imagePathStates[i] = (imagePathStatesArr != null && i < imagePathStatesArr.length()) ? imagePathStatesArr.optString(i, "Картинка " + i) : "Картинка " + i;
+        }
+        return w;
+    }
+
+    private static String normalizeComparisonOperatorStatic(String value) {
+        String operator = value == null ? ">" : value.trim();
+        return operator.equals(">") || operator.equals("<") || operator.equals(">=")
+                || operator.equals("<=") || operator.equals("==") || operator.equals("!=") ? operator : ">";
+    }
+
+    private static String normalizeWidgetOperator(String type, String value) {
+        String operator = value == null ? "" : value.trim();
+        if (("FBD CRAFT ARITHMETIC INT".equals(type)
+                || "FBD CRAFT ARITHMETIC FLOAT".equals(type))
+                && ("+".equals(operator) || "-".equals(operator)
+                || "*".equals(operator) || "/".equals(operator))) return operator;
+        if ("FBD CRAFT ARITHMETIC INT".equals(type)
+                || "FBD CRAFT ARITHMETIC FLOAT".equals(type)) return "+";
+        return normalizeComparisonOperatorStatic(operator);
+    }
+
+    public static void saveProjectAtomic(java.io.File targetFile, String json) throws java.io.IOException {
+        java.io.File parent = targetFile.getParentFile();
+        if (parent != null && !parent.exists()) parent.mkdirs();
+        java.io.File tempFile = new java.io.File(targetFile.getAbsolutePath() + ".tmp");
+        try (java.io.FileOutputStream out = new java.io.FileOutputStream(tempFile)) {
+            out.write(json.getBytes(StandardCharsets.UTF_8));
+            out.flush();
+            out.getFD().sync();
+        }
+        if (!tempFile.renameTo(targetFile)) {
+            if (targetFile.exists() && !targetFile.delete()) {
+                throw new java.io.IOException("Could not delete target file for atomic overwrite");
+            }
+            if (!tempFile.renameTo(targetFile)) {
+                throw new java.io.IOException("Could not rename temp project file to target");
+            }
+        }
+    }
+
+    public static String loadProjectAtomic(java.io.File targetFile) throws java.io.IOException {
+        if (!targetFile.exists()) {
+            java.io.File tempFile = new java.io.File(targetFile.getAbsolutePath() + ".tmp");
+            if (tempFile.exists()) targetFile = tempFile;
+            else throw new java.io.FileNotFoundException("Project file missing: " + targetFile);
+        }
+        try (java.io.FileInputStream in = new java.io.FileInputStream(targetFile);
+             ByteArrayOutputStream buffer = new ByteArrayOutputStream()) {
+            byte[] chunk = new byte[8192];
+            int count;
+            while ((count = in.read(chunk)) != -1) {
+                if (buffer.size() + count > 8 * 1024 * 1024) throw new IllegalArgumentException("Project file too large");
+                buffer.write(chunk, 0, count);
+            }
+            return new String(buffer.toByteArray(), StandardCharsets.UTF_8);
+        }
+    }
+
+    public static void exportProjectToZip(OutputStream outputStream, String projectJson) throws java.io.IOException {
+        try (java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(outputStream)) {
+            java.util.zip.ZipEntry entry = new java.util.zip.ZipEntry("TableNameProject.json");
+            zos.putNextEntry(entry);
+            byte[] bytes = projectJson.getBytes(StandardCharsets.UTF_8);
+            zos.write(bytes, 0, bytes.length);
+            zos.closeEntry();
+            zos.finish();
+        }
+    }
+
+    public static String importProjectFromZip(InputStream inputStream) throws Exception {
+        return importProjectFromZip(inputStream, null);
+    }
+
+    public static String importProjectFromZip(InputStream inputStream, Map<String, byte[]> extractedMedia) throws Exception {
+        byte[] projectJsonBytes = null;
+        String projectEntryPath = "";
+        java.util.Set<String> entryNames = new java.util.HashSet<>();
+        long totalUncompressedBytes = 0;
+        int entryCount = 0;
+
+        try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(inputStream)) {
+            java.util.zip.ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                if (++entryCount > 2048) throw new IllegalArgumentException("Too many files in ZIP archive");
+                String name = entry.getName();
+                if (name == null || name.contains("..") || name.startsWith("/") || name.startsWith("\\")) {
+                    throw new IllegalArgumentException("Unsafe entry path in ZIP archive: " + name);
+                }
+                if (!entryNames.add(name.toLowerCase(java.util.Locale.ROOT))) {
+                    throw new IllegalArgumentException("Duplicate entry name in ZIP archive: " + name);
+                }
+                ByteArrayOutputStream entryBuffer = new ByteArrayOutputStream();
+                byte[] chunk = new byte[8192];
+                int count;
+                while ((count = zis.read(chunk)) != -1) {
+                    totalUncompressedBytes += count;
+                    if (totalUncompressedBytes > 10 * 1024 * 1024) {
+                        throw new IllegalArgumentException("ZIP uncompressed size exceeds limit");
+                    }
+                    entryBuffer.write(chunk, 0, count);
+                }
+                zis.closeEntry();
+                String lowerName = name.toLowerCase(java.util.Locale.ROOT);
+                boolean projectCandidate = "tablenameproject.json".equals(lowerName)
+                        || lowerName.endsWith(".json") || lowerName.endsWith(".pro");
+                if (!entry.isDirectory() && projectCandidate && !lowerName.startsWith("media/")) {
+                    if (projectJsonBytes != null) {
+                        throw new IllegalArgumentException("Multiple project files in archive");
+                    }
+                    projectJsonBytes = entryBuffer.toByteArray();
+                    projectEntryPath = name;
+                } else if (extractedMedia != null && !entry.isDirectory()) {
+                    String mediaPath = lowerName.startsWith("media/")
+                            ? name.substring("media/".length()) : name;
+                    extractedMedia.put(mediaPath, entryBuffer.toByteArray());
+                }
+            }
+        }
+        if (projectJsonBytes == null) {
+            throw new IllegalArgumentException("No project JSON found in ZIP archive");
+        }
+        String json = new String(projectJsonBytes, StandardCharsets.UTF_8);
+        JSONObject parsed = new JSONObject(json);
+        if (CraftProjectImporter.isCraftProject(parsed)) {
+            json = CraftProjectImporter.convert(json, projectEntryPath, extractedMedia);
+        }
+        validateImportedProjectStatic(json);
+        return json;
+    }
+
+    private boolean persistNestedMacroEdit(boolean synchronous) {
+        NestedMacroEditSession session = nestedMacroEdit;
+        if (session == null || currentScreenIndex != session.screenIndex) return false;
+        try {
+            saveActiveScreen();
+            int outputNode = findCraftMacroOutputNode(widgets, session.outputWidget);
+            if (outputNode < 0)
+                throw new IllegalArgumentException("Выходной блок удалён. Назначьте новый выход перед сохранением.");
+            session.outputNode = outputNode;
+            FbdCraftMacroDefinition updated = updateCraftMacroDefinitionGraph(
+                    session.definition, widgets, screens.get(currentScreenIndex).connections,
+                    outputNode, session.outputPin);
+            FbdCraftMacroCatalog.upsert(projectExtraFields, updated);
+            replaceCraftMacroInstances(session.hostScreen.widgets, updated);
+            for (int i = 0; i < screens.size(); i++) {
+                if (i != session.screenIndex) replaceCraftMacroInstances(screens.get(i).widgets, updated);
+            }
+            List<Widget> nestedWidgets = new ArrayList<>(widgets);
+            session.definition = updated;
+            screens.set(session.screenIndex, session.hostScreen);
+            widgets.clear();
+            for (Widget widget : session.hostScreen.widgets) widgets.add(copyWidget(widget));
+            nestedMacroEdit = null;
+            boolean saved;
+            try {
+                saved = persistProjectNow(synchronous);
+            } finally {
+                nestedMacroEdit = session;
+                screens.set(session.screenIndex, session.nestedScreen);
+                widgets.clear();
+                widgets.addAll(nestedWidgets);
+                if (editor != null) editor.invalidate();
+            }
+            return saved;
+        } catch (Exception failure) {
+            Toast.makeText(this, "Вложенный граф не сохранён: " + failure.getMessage(),
+                    Toast.LENGTH_LONG).show();
+            return false;
+        }
+    }
+
+    private void chooseNestedMacroOutput(int blockIndex, Widget block) {
+        if (nestedMacroEdit == null || blockIndex < 0 || blockIndex >= widgets.size()) return;
+        String[] pins = knownFbdPins(block, true);
+        if (pins.length == 0) {
+            Toast.makeText(this, "У блока нет проверенного выхода", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        new AlertDialog.Builder(this).setTitle("Выход макроса")
+                .setItems(pins, (dialog, which) -> {
+                    NestedMacroEditSession session = nestedMacroEdit;
+                    int previousNode = session.outputNode;
+                    Widget previousWidget = session.outputWidget;
+                    String previousPin = session.outputPin;
+                    session.outputNode = blockIndex;
+                    session.outputWidget = widgets.get(blockIndex);
+                    session.outputPin = pins[which];
+                    if (persistProjectNow(true)) {
+                        Toast.makeText(this, "Выход макроса обновлён", Toast.LENGTH_SHORT).show();
+                    } else {
+                        session.outputNode = previousNode;
+                        session.outputWidget = previousWidget;
+                        session.outputPin = previousPin;
+                    }
+                }).setNegativeButton("Отмена", null).show();
+    }
+
+    private void openNestedMacroGraphEditor(int blockIndex) {
+        if (operatorMode || nestedMacroEdit != null || blockIndex < 0 || blockIndex >= widgets.size()) return;
+        if (!persistProjectNow(true)) return;
+        try {
+            Screen host = screens.get(currentScreenIndex);
+            if (blockIndex >= host.widgets.size()) throw new IllegalArgumentException("Макрос не найден");
+            Widget macro = host.widgets.get(blockIndex);
+            FbdCraftMacroDefinition definition = macroDefinition(macro);
+            if (definition == null) throw new IllegalArgumentException("Определение макроса недействительно");
+            JSONObject graph = definition.toJson().optJSONObject("bloodskyGraph");
+            if (graph == null) throw new IllegalArgumentException("В этом макросе нет редактируемого BLOODSKY-графа");
+            JSONArray widgetArray = graph.optJSONArray("widgets");
+            JSONArray connectionArray = graph.optJSONArray("connections");
+            if (widgetArray == null || connectionArray == null || widgetArray.length() == 0)
+                throw new IllegalArgumentException("Вложенный граф пуст или повреждён");
+            Screen nested = new Screen("Макрос: " + definition.getName());
+            nested.backgroundColor = host.backgroundColor;
+            for (int i = 0; i < widgetArray.length(); i++)
+                nested.widgets.add(widgetFromJson(widgetArray.getJSONObject(i)));
+            for (int i = 0; i < connectionArray.length(); i++)
+                nested.connections.add(connectionFromJson(connectionArray.getJSONObject(i)));
+            int outputNode = graph.optInt("outputNode", -1);
+            String outputPin = graph.optString("outputPin", "");
+            if (outputNode < 0 || outputNode >= nested.widgets.size()
+                    || !contains(knownFbdPins(nested.widgets.get(outputNode), true), outputPin))
+                throw new IllegalArgumentException("Вложенный выход некорректен");
+            NestedMacroEditSession session = new NestedMacroEditSession(
+                    currentScreenIndex, host, nested, definition, outputNode, outputPin);
+            nestedMacroEdit = session;
+            screens.set(currentScreenIndex, nested);
+            widgets.clear();
+            for (Widget widget : nested.widgets) widgets.add(copyWidget(widget));
+            session.outputWidget = widgets.get(outputNode);
+            fbdWireHistory.clear();
+            fbdWireMode = false;
+            wireSource = -1;
+            editor = null;
+            showEditor();
+        } catch (Exception failure) {
+            Toast.makeText(this, "Не удалось открыть вложенный граф: " + failure.getMessage(),
+                    Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private static boolean contains(String[] values, String target) {
+        if (values == null || target == null) return false;
+        for (String value : values) if (target.equals(value)) return true;
+        return false;
+    }
+
+    private void closeNestedMacroGraphEditor() {
+        NestedMacroEditSession session = nestedMacroEdit;
+        if (session == null) return;
+        if (persistProjectNow(true)) {
+            restoreNestedMacroHost(session);
+            persistProjectNow(true);
+            showEditor();
+            return;
+        }
+        new AlertDialog.Builder(this).setTitle("Закрыть без сохранения?")
+                .setMessage("Текущие изменения вложенного графа не прошли проверку.")
+                .setNegativeButton("Остаться", null)
+                .setPositiveButton("Закрыть", (dialog, which) -> {
+                    restoreNestedMacroHost(session);
+                    persistProjectNow(true);
+                    showEditor();
+                }).show();
+    }
+
+    private void restoreNestedMacroHost(NestedMacroEditSession session) {
+        nestedMacroEdit = null;
+        currentScreenIndex = session.screenIndex;
+        screens.set(session.screenIndex, session.hostScreen);
+        widgets.clear();
+        for (Widget widget : session.hostScreen.widgets) widgets.add(copyWidget(widget));
+        fbdWireHistory.clear();
+        fbdWireMode = false;
+        wireSource = -1;
+        editor = null;
+    }
+
+    private void persistProject() { persistProjectNow(false); }
+
+    private boolean persistProjectNow(boolean synchronous) {
+        try {
+            if (nestedMacroEdit != null) return persistNestedMacroEdit(synchronous);
+            saveActiveScreen();
+            JSONObject project = new JSONObject();
+            if (projectExtraFields != null) {
+                java.util.Iterator<String> projectKeys = projectExtraFields.keys();
+                while (projectKeys.hasNext()) { String key = projectKeys.next(); project.put(key, projectExtraFields.get(key)); }
+            }
+            JSONArray screenArray = new JSONArray();
+            for (Screen screen : screens) {
+                JSONObject screenObj = new JSONObject();
+                if (screen.extraFields != null) {
+                    java.util.Iterator<String> keys = screen.extraFields.keys();
+                    while (keys.hasNext()) { String key = keys.next(); screenObj.put(key, screen.extraFields.get(key)); }
+                }
+                screenObj.put("name", screen.name);
+                screenObj.put("backgroundColor", screen.backgroundColor);
+                screenObj.put("widgets", widgetsToJson(screen.widgets));
+                JSONArray connectionArray = new JSONArray();
+                for (FbdConnection connection : screen.connections) {
+                    connectionArray.put(connectionToJson(connection));
+                }
+                screenObj.put("connections", connectionArray);
+                screenArray.put(screenObj);
+            }
+            project.put("screens", screenArray);
+            project.put("currentScreen", currentScreenIndex);
+            project.put("projectName", projectName);
+            project = new JSONObject(ProjectMediaService.ensureProjectHasId(project.toString()));
+            projectExtraFields = new JSONObject(project.toString());
+            return storeActiveProject(project.toString(), synchronous);
+        } catch (Exception ignored) {
+            Toast.makeText(this, "Не удалось сохранить проект", Toast.LENGTH_SHORT).show();
+            return false;
+        }
+    }
+
+    private boolean loadProject() {
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        String json = prefs.getString(ACTIVE_PROJECT, "[]");
+        try {
+            if (LegacyProjectMediaMigrator.needsMigration(json))
+                json = migrateLegacyActiveProject(json);
+        } catch (Exception failure) {
+            android.util.Log.e("BLOODSKY", "Legacy project migration failed", failure);
+            Toast.makeText(this, "Не удалось перенести старые файлы проекта. Проект не изменён.",
+                    Toast.LENGTH_LONG).show();
+            return false;
+        }
+        fbdWireHistory.clear();
+        FbdCraftRegisterStore.clear();
+        FbdCraftNamedVariableStore.clear();
+        imageCache.clear();
+        widgets.clear(); screens.clear(); currentScreenIndex = 0;
+        projectExtraFields = new JSONObject();
+        projectName = prefs.getString("project_name", projectName);
+        try {
+            Object parsed = new org.json.JSONTokener(json).nextValue();
+            if (parsed instanceof JSONObject) {
+                JSONObject project = (JSONObject) parsed;
+                String importedProjectName = project.optString("projectName", projectName);
+                if (importedProjectName != null && !importedProjectName.trim().isEmpty()) projectName = importedProjectName.trim();
+                try { projectExtraFields = new JSONObject(project.toString()); } catch (Exception ignored) { projectExtraFields = new JSONObject(); }
+                JSONArray screenArray = project.optJSONArray("screens");
+                if (screenArray != null) {
+                    for (int i = 0; i < screenArray.length(); i++) {
+                        JSONObject screenObj = screenArray.getJSONObject(i);
+                        Screen screen = new Screen(screenObj.optString("name", "Экран " + (i + 1)));
+                        screen.backgroundColor = screenObj.optInt("backgroundColor", Color.rgb(250, 252, 255));
+                        try { screen.extraFields = new JSONObject(screenObj.toString()); } catch (Exception ignored) { screen.extraFields = new JSONObject(); }
+                        JSONArray widgetArray = screenObj.optJSONArray("widgets");
+                        if (widgetArray != null) for (int j = 0; j < widgetArray.length(); j++) screen.widgets.add(widgetFromJson(widgetArray.getJSONObject(j)));
+                        JSONArray connectionArray = screenObj.optJSONArray("connections");
+                        if (connectionArray != null) for (int j = 0; j < connectionArray.length(); j++) {
+                            JSONObject connectionObj = connectionArray.optJSONObject(j);
+                            if (connectionObj == null) continue;
+                            int source = connectionObj.optInt("source", -1);
+                            int target = connectionObj.optInt("target", -1);
+                            if (canLoadFbdConnection(connectionObj)
+                                    && source < screen.widgets.size() && target < screen.widgets.size()
+                                    && isFbd(screen.widgets.get(source)) && isFbd(screen.widgets.get(target))) {
+                                screen.connections.add(connectionFromJson(connectionObj));
+                            }
+                        }
+                        screens.add(screen);
+                    }
+                    currentScreenIndex = Math.max(0, Math.min(project.optInt("currentScreen", 0), Math.max(0, screens.size() - 1)));
+                }
+            } else if (parsed instanceof JSONArray) {
+                projectExtraFields = new JSONObject();
+                Screen legacy = new Screen("Экран 1");
+                JSONArray legacyWidgets = (JSONArray) parsed;
+                for (int i = 0; i < legacyWidgets.length(); i++) legacy.widgets.add(widgetFromJson(legacyWidgets.getJSONObject(i)));
+                screens.add(legacy);
+            }
+        } catch (Exception ignored) {
+            screens.clear();
+        }
+        if (screens.isEmpty()) screens.add(new Screen("Экран 1"));
+        currentScreenIndex = Math.max(0, Math.min(currentScreenIndex, screens.size() - 1));
+        // elapsedRealtime belongs to the running device, not a saved project.
+        // Retain presets and unknown fields, discard only timer runtime epoch.
+        for (Screen loaded : screens) for (Widget saved : loaded.widgets)
+            resetFbdTimerRuntime(saved);
+        for (Widget w : screens.get(currentScreenIndex).widgets) widgets.add(copyWidget(w));
+        return true;
+    }
+
+    private void validateImportedProject(String json) throws Exception {
+        validateImportedProjectStatic(json);
+    }
+
+    private void validateWidgetArray(JSONArray array) {
+        validateWidgetArrayStatic(array);
+    }
+
+    public static void validateImportedProjectStatic(String json) throws Exception {
+        org.json.JSONTokener tokener = new org.json.JSONTokener(json);
+        Object parsed = tokener.nextValue();
+        if (tokener.nextClean() != 0) throw new IllegalArgumentException("Trailing content after JSON");
+        if (parsed instanceof JSONArray) {
+            validateWidgetArrayStatic((JSONArray) parsed);
+            return;
+        }
+        if (!(parsed instanceof JSONObject)) throw new IllegalArgumentException("Project must be a JSON object or array");
+        JSONObject project = (JSONObject) parsed;
+        try { FbdCraftMacroCatalog.read(project); }
+        catch (Exception invalidCatalog) { throw new IllegalArgumentException("Invalid Craft macro catalog"); }
+        JSONArray screenArray = project.optJSONArray("screens");
+        if (screenArray == null || screenArray.length() == 0 || screenArray.length() > 100) {
+            throw new IllegalArgumentException("Invalid screen list");
+        }
+        int currentScreen = project.optInt("currentScreen", 0);
+        if (currentScreen < 0 || currentScreen >= screenArray.length()) {
+            throw new IllegalArgumentException("Current screen index out of range");
+        }
+        int totalWidgets = 0;
+        for (int i = 0; i < screenArray.length(); i++) {
+            JSONObject screen = screenArray.optJSONObject(i);
+            if (screen == null) throw new IllegalArgumentException("Screen must be an object");
+            JSONArray screenWidgets = screen.optJSONArray("widgets");
+            if (screenWidgets == null) throw new IllegalArgumentException("Screen widgets must be an array");
+            validateWidgetArrayStatic(screenWidgets);
+            totalWidgets += screenWidgets.length();
+            if (totalWidgets > 2000) throw new IllegalArgumentException("Too many widgets");
+
+            JSONArray connections = screen.optJSONArray("connections");
+            if (connections == null) continue;
+            if (connections.length() > 4000) throw new IllegalArgumentException("Too many connections");
+            int nodeCount = screenWidgets.length();
+            List<List<Integer>> adjacency = new ArrayList<>();
+            int[] indegree = new int[nodeCount];
+            for (int node = 0; node < nodeCount; node++) adjacency.add(new ArrayList<>());
+            java.util.HashMap<Long, java.util.HashSet<String>> pinsByPair = new java.util.HashMap<>();
+            java.util.HashSet<String> occupiedTargetPins = new java.util.HashSet<>();
+            for (int j = 0; j < connections.length(); j++) {
+                JSONObject edge = connections.optJSONObject(j);
+                if (edge == null) throw new IllegalArgumentException("Connection must be an object");
+                if (!canLoadFbdConnection(edge)) throw new IllegalArgumentException("Invalid FBD pin metadata or endpoints");
+                int source = edge.optInt("source", -1);
+                int target = edge.optInt("target", -1);
+                if (source < 0 || target < 0 || source >= nodeCount || target >= nodeCount || source == target) {
+                    throw new IllegalArgumentException("Connection index out of range");
+                }
+                JSONObject sourceWidget = screenWidgets.optJSONObject(source);
+                JSONObject targetWidget = screenWidgets.optJSONObject(target);
+                if (sourceWidget == null || targetWidget == null
+                        || !sourceWidget.optString("type", "").startsWith("FBD ")
+                        || !targetWidget.optString("type", "").startsWith("FBD ")) {
+                    throw new IllegalArgumentException("Connections must link FBD blocks");
+                }
+                Widget sourceForPins = widgetFromJson(sourceWidget);
+                Widget targetForPins = widgetFromJson(targetWidget);
+                if (!hasCompatibleKnownFbdPins(edge, sourceForPins, targetForPins)) {
+                    throw new IllegalArgumentException("Invalid FBD pin direction or type");
+                }
+                String targetPin = canonicalFbdPinName(edge.optString("targetPin", ""));
+                if (!targetPin.isEmpty() && !occupiedTargetPins.add(target + ":"
+                        + targetPin)) {
+                    throw new IllegalArgumentException("Multiple FBD wires drive the same target pin");
+                }
+                long edgeKey = (((long) source) << 32) | (target & 0xffffffffL);
+                java.util.HashSet<String> pairPins = pinsByPair.get(edgeKey);
+                if (pairPins == null) {
+                    pairPins = new java.util.HashSet<>();
+                    pinsByPair.put(edgeKey, pairPins);
+                }
+                String normalizedPin = targetPin;
+                if (pairPins.contains("") || (normalizedPin.isEmpty() && !pairPins.isEmpty())
+                        || !pairPins.add(normalizedPin)) {
+                    throw new IllegalArgumentException("Duplicate FBD connection");
+                }
+                adjacency.get(source).add(target);
+                indegree[target]++;
+            }
+            java.util.ArrayDeque<Integer> ready = new java.util.ArrayDeque<>();
+            for (int node = 0; node < nodeCount; node++) if (indegree[node] == 0) ready.add(node);
+            int visitedCount = 0;
+            while (!ready.isEmpty()) {
+                int node = ready.removeFirst();
+                visitedCount++;
+                for (int next : adjacency.get(node)) {
+                    if (--indegree[next] == 0) ready.addLast(next);
+                }
+            }
+            if (visitedCount != nodeCount) throw new IllegalArgumentException("Cyclic FBD connections");
+        }
+    }
+
+    public static void validateWidgetArrayStatic(JSONArray array) {
+        if (array.length() > 2000) throw new IllegalArgumentException("Too many widgets");
+        for (int i = 0; i < array.length(); i++) {
+            JSONObject widget = array.optJSONObject(i);
+            if (widget == null) throw new IllegalArgumentException("Widget must be an object");
+            String type = widget.optString("type", "Текст"), label = widget.optString("text", "Надпись");
+            if ("FBD CRAFT MACRO".equals(canonicalFbdBlockType(type))) {
+                Widget parsed = widgetFromJson(widget);
+                if (macroDefinition(parsed) == null)
+                    throw new IllegalArgumentException("FBD macro widget has no valid definition");
+            }
+            if (type.length() > 100 || label.length() > 2000 || widget.optString("connectionInfo", "").length() > 2000) throw new IllegalArgumentException("Widget field too long");
+            double x = widget.optDouble("x", widget.has("x") ? Double.NaN : 0), y = widget.optDouble("y", widget.has("y") ? Double.NaN : 0), w = widget.optDouble("w", widget.has("w") ? Double.NaN : 160), h = widget.optDouble("h", widget.has("h") ? Double.NaN : 58);
+            if (Double.isNaN(x) || Double.isNaN(y) || Double.isNaN(w) || Double.isNaN(h)
+                    || x < -100000 || x > 100000 || y < -100000 || y > 100000 || w < 1 || w > 100000 || h < 1 || h > 100000) throw new IllegalArgumentException("Widget geometry out of range");
+        }
+    }
+
+    private static class Screen {
+        String name;
+        int backgroundColor = Color.rgb(250, 252, 255);
+        JSONObject extraFields = new JSONObject();
+        final List<Widget> widgets = new ArrayList<>();
+        final List<FbdConnection> connections = new ArrayList<>();
+        Screen(String name) { this.name = name; }
+    }
+
+    private static final class NestedMacroEditSession {
+        final int screenIndex;
+        final Screen hostScreen;
+        final Screen nestedScreen;
+        FbdCraftMacroDefinition definition;
+        int outputNode;
+        Widget outputWidget;
+        String outputPin;
+        NestedMacroEditSession(int screenIndex, Screen hostScreen, Screen nestedScreen,
+                FbdCraftMacroDefinition definition, int outputNode, String outputPin) {
+            this.screenIndex = screenIndex;
+            this.hostScreen = hostScreen;
+            this.nestedScreen = nestedScreen;
+            this.definition = definition;
+            this.outputNode = outputNode;
+            this.outputPin = outputPin;
+        }
+    }
+
+    public static class FbdConnection {
+        public int source;
+        public int target;
+        private JSONObject extraFields = new JSONObject();
+        public FbdConnection(int source, int target) { this.source = source; this.target = target; }
+    }
+
+    /** Shared by the actual project loader and the round-trip regression tests. */
+    public static FbdConnection connectionFromJson(JSONObject json) throws Exception {
+        FbdConnection connection = new FbdConnection(json.optInt("source", -1), json.optInt("target", -1));
+        connection.extraFields = new JSONObject(json.toString());
+        return connection;
+    }
+
+    /** Keep unknown edge fields, but always serialize the current edited/reindexed endpoints. */
+    public static JSONObject connectionToJson(FbdConnection connection) throws Exception {
+        JSONObject json = connection.extraFields == null
+                ? new JSONObject() : new JSONObject(connection.extraFields.toString());
+        json.put("source", connection.source);
+        json.put("target", connection.target);
+        return json;
+    }
+
+    /** Optional signal types: explicit pins must agree unless either is ANY. */
+    public static boolean hasCompatibleFbdSignalTypes(FbdConnection edge) {
+        if (!hasValidFbdPinMetadata(edge)) return false;
+        JSONObject fields = edge.extraFields;
+        boolean sourcePresent = fields.has("sourceSignalType");
+        boolean targetPresent = fields.has("targetSignalType");
+        if (!sourcePresent && !targetPresent) return true;
+        if (!sourcePresent || !targetPresent) return false;
+        Object source = fields.opt("sourceSignalType");
+        Object target = fields.opt("targetSignalType");
+        if (!(source instanceof String) || !(target instanceof String)) return false;
+        String a = ((String) source).trim().toUpperCase(java.util.Locale.ROOT);
+        String b = ((String) target).trim().toUpperCase(java.util.Locale.ROOT);
+        if (!("BOOL".equals(a) || "NUMBER".equals(a) || "ANY".equals(a))) return false;
+        if (!("BOOL".equals(b) || "NUMBER".equals(b) || "ANY".equals(b))) return false;
+        return a.equals(b) || "ANY".equals(a) || "ANY".equals(b);
+    }
+
+    /** Minimal built-in FBD pin contract; unknown blocks stay untyped until sourced. */
+    /** Normalize internal Russian widget identifiers to their public FBD terminal contracts. */
+    public static String canonicalFbdBlockType(String blockType) {
+        if (blockType == null) return "";
+        String kind = blockType.trim().toUpperCase(java.util.Locale.ROOT);
+        if ("FBD И".equals(kind)) return "FBD AND";
+        if ("FBD ИЛИ".equals(kind)) return "FBD OR";
+        if ("FBD ТАЙМЕР".equals(kind)) return "FBD TON";
+        return kind;
+    }
+
+    /** Compare pin identifiers consistently without rewriting imported project metadata. */
+    public static String canonicalFbdPinName(String pin) {
+        return pin == null ? "" : pin.trim().toUpperCase(java.util.Locale.ROOT);
+    }
+
+    public static boolean isCraftFbdSensorSource(String type) {
+        return "FBD CRAFT SENSOR LIGHT".equals(canonicalFbdBlockType(type))
+                || "FBD CRAFT SENSOR ORIENTATION".equals(canonicalFbdBlockType(type))
+                || "FBD CRAFT SENSOR SPEED".equals(canonicalFbdBlockType(type));
+    }
+
+    private static boolean isCraftSunriseSource(String type) {
+        return "FBD CRAFT SUNRISE".equals(canonicalFbdBlockType(type));
+    }
+
+    private static boolean isCraftOdTempSource(String type) {
+        return "FBD CRAFT ODTEMP".equals(canonicalFbdBlockType(type));
+    }
+
+    public static boolean isCraftMqttSubscriber(String type) {
+        return type != null && type.startsWith("FBD CRAFT MQTT SUB ");
+    }
+    public static boolean isCraftMqttPublisher(String type) {
+        return type != null && type.startsWith("FBD CRAFT MQTT PUB ");
+    }
+    private static int mqttType(Widget widget) {
+        int fallback = widget.type.endsWith("BOOL") ? 1 : widget.type.endsWith("FLOAT") ? 3 : 2;
+        return Math.max(1, Math.min(3, widget.extraFields.optInt("craftMqttType", fallback)));
+    }
+    private static int mqttServer(Widget widget) {
+        return Math.max(1, Math.min(2, widget.extraFields.optInt("craftMqttServer", 1)));
+    }
+
+    public static boolean isAllowedOdTempHost(String host) {
+        if (host == null) return false;
+        String[] parts = host.trim().split("\\.", -1);
+        if (parts.length != 4) return false;
+        int[] octets = new int[4];
+        try {
+            for (int i = 0; i < 4; i++) {
+                if (parts[i].isEmpty() || (parts[i].length() > 1 && parts[i].charAt(0) == '0')) return false;
+                octets[i] = Integer.parseInt(parts[i]);
+                if (octets[i] < 0 || octets[i] > 255) return false;
+            }
+        } catch (NumberFormatException invalid) { return false; }
+        return octets[0] == 10 || octets[0] == 192 && octets[1] == 168
+                || octets[0] == 172 && octets[1] >= 16 && octets[1] <= 31
+                || octets[0] == 169 && octets[1] == 254;
+    }
+
+    private static String craftOrientationLabel(int axis) {
+        return axis == 2 ? "ORIENTATION_Y" : axis == 3 ? "ORIENTATION_Z" : "ORIENTATION_X";
+    }
+
+    private static int craftOrientationAxis(Widget widget) {
+        return Math.max(1, Math.min(3, widget.extraFields.optInt("craftSensorAxis",
+                widget.extraFields.optInt("type", 1))));
+    }
+
+    private static String craftSunriseMode(Widget widget) {
+        return widget.extraFields.optString("craftSunriseMode",
+                widget.extraFields.optInt("type", 1) == 2 ? "SS" : "SR");
+    }
+
+    public static boolean isCraftRegisterSource(String type) {
+        String kind = canonicalFbdBlockType(type);
+        return "FBD CRAFT VAR BOOL".equals(kind) || "FBD CRAFT VAR INT".equals(kind)
+                || "FBD CRAFT VAR FLOAT".equals(kind);
+    }
+
+    public static boolean isCraftNamedVariableSource(String type) {
+        return type != null && type.startsWith("FBD CRAFT VAR NAME IN ");
+    }
+
+    public static boolean isCraftNamedVariableSink(String type) {
+        return type != null && type.startsWith("FBD CRAFT VAR NAME OUT ");
+    }
+
+    private static int craftNamedVariableKind(String type) {
+        if (type == null) return 0;
+        if (type.endsWith(" BOOL")) return 1;
+        if (type.endsWith(" INT")) return 2;
+        if (type.endsWith(" FLOAT")) return 3;
+        return 0;
+    }
+
+    private static String craftNamedVariableType(int kind, boolean output) {
+        String suffix = kind == 1 ? "BOOL" : kind == 3 ? "FLOAT" : "INT";
+        return "FBD CRAFT VAR NAME " + (output ? "OUT " : "IN ") + suffix;
+    }
+
+    private static String craftNamedVariableName(Widget widget) {
+        return widget.extraFields.optString("craftVariableName",
+                widget.extraFields.optString("name", ""));
+    }
+
+    public static boolean isCraftRegisterSink(String type) {
+        String kind = canonicalFbdBlockType(type);
+        return "FBD CRAFT VAR OUT BOOL".equals(kind) || "FBD CRAFT VAR OUT INT".equals(kind)
+                || "FBD CRAFT VAR OUT FLOAT".equals(kind);
+    }
+
+    private static boolean isCraftRegisterFloat(String type) {
+        String kind = canonicalFbdBlockType(type);
+        return "FBD CRAFT VAR FLOAT".equals(kind) || "FBD CRAFT VAR OUT FLOAT".equals(kind);
+    }
+
+    private static boolean isCraftRegisterBoolean(String type) {
+        String kind = canonicalFbdBlockType(type);
+        return "FBD CRAFT VAR BOOL".equals(kind) || "FBD CRAFT VAR OUT BOOL".equals(kind);
+    }
+
+    public static String knownFbdPinType(String blockType, String pin, boolean output) {
+        if (blockType == null || pin == null) return null;
+        String kind = canonicalFbdBlockType(blockType);
+        String name = canonicalFbdPinName(pin);
+        if (kind.equals("FBD ВХОД")) return output && "Q".equals(name) ? "BOOL" : null;
+        if (isCraftMqttSubscriber(kind) && output && "Q".equals(name))
+            return kind.endsWith("BOOL") ? "BOOL" : "NUMBER";
+        if (isCraftMqttPublisher(kind) && !output) {
+            if ("EN".equals(name)) return "BOOL";
+            if ("IN".equals(name)) return kind.endsWith("BOOL") ? "BOOL" : "NUMBER";
+        }
+        if (isCraftRegisterSource(kind) && output && "Q".equals(name))
+            return isCraftRegisterBoolean(kind) ? "BOOL" : "NUMBER";
+        if (isCraftRegisterSink(kind) && !output && "IN".equals(name))
+            return isCraftRegisterBoolean(kind) ? "BOOL" : "NUMBER";
+        if ((isCraftFbdSensorSource(kind) || isCraftSunriseSource(kind) || isCraftOdTempSource(kind))
+                && output && "Q".equals(name)) return "NUMBER";
+        if (isCraftNamedVariableSource(kind) && output && "Q".equals(name))
+            return craftNamedVariableKind(kind) == 1 ? "BOOL" : "NUMBER";
+        if (isCraftNamedVariableSink(kind) && !output && "IN".equals(name))
+            return craftNamedVariableKind(kind) == 1 ? "BOOL" : "NUMBER";
+        if (kind.equals("FBD AND") || kind.equals("FBD OR") || kind.equals("FBD XOR")
+                || kind.equals("FBD NAND") || kind.equals("FBD NOR")) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && ("IN1".equals(name) || "IN2".equals(name))) return "BOOL";
+        }
+        if (kind.equals("FBD НЕ")) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && "IN".equals(name)) return "BOOL";
+        }
+        if (kind.equals("FBD RS") || kind.equals("FBD SR")) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && ("S".equals(name) || "R".equals(name))) return "BOOL";
+        }
+        if (kind.equals("FBD CRAFT T")) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && "IN".equals(name)) return "BOOL";
+        }
+        if (kind.equals("FBD CRAFT TIMER")) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && "IN".equals(name)) return "BOOL";
+            if (!output && "PT".equals(name)) return "NUMBER";
+        }
+        if (kind.equals("FBD CRAFT ARITHMETIC INT")
+                || kind.equals("FBD CRAFT ARITHMETIC FLOAT")) {
+            if (output && "Q".equals(name)) return "NUMBER";
+            if (!output && ("IN1".equals(name) || "IN2".equals(name))) return "NUMBER";
+        }
+        if (kind.equals("FBD CRAFT COMPARE FLOAT")) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && ("IN1".equals(name) || "IN2".equals(name))) return "NUMBER";
+        }
+        if (kind.equals("FBD R_TRIG") || kind.equals("FBD F_TRIG")) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && "IN".equals(name)) return "BOOL";
+        }
+        if (kind.equals("FBD CRAFT CTU")) {
+            if (output && "Q".equals(name)) return "NUMBER";
+            if (!output && ("+".equals(name) || "-".equals(name) || "R".equals(name)))
+                return "BOOL";
+        }
+        if (kind.equals("FBD CTU") || kind.equals("FBD CTD")) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && ("CU".equals(name) || "CD".equals(name)
+                    || "R".equals(name) || "LD".equals(name))) {
+                if (kind.equals("FBD CTU")) return ("CU".equals(name) || "R".equals(name)) ? "BOOL" : null;
+                return ("CD".equals(name) || "LD".equals(name)) ? "BOOL" : null;
+            }
+            if (!output && "PV".equals(name)) return "NUMBER";
+        }
+        if (kind.equals("FBD СЛОЖЕНИЕ") || kind.equals("FBD ВЫЧИТАНИЕ")
+                || kind.equals("FBD УМНОЖЕНИЕ") || kind.equals("FBD ДЕЛЕНИЕ")
+                || kind.equals("FBD MIN_MAX")) {
+            if (output && "OUT".equals(name)) return "NUMBER";
+            if (!output && ("IN1".equals(name) || "IN2".equals(name))) return "NUMBER";
+        }
+        if (kind.equals("FBD СРАВНЕНИЕ")) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && ("A".equals(name) || "B".equals(name))) return "NUMBER";
+        }
+        if (kind.equals("FBD MOVE")) {
+            if (output && "OUT".equals(name)) return "NUMBER";
+            if (!output && "IN".equals(name)) return "NUMBER";
+        }
+        if (kind.equals("FBD CRAFT COMPARE")) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && ("IN1".equals(name) || "IN2".equals(name))) return "NUMBER";
+        }
+        if (kind.equals("FBD CRAFT CHANGE I") || kind.equals("FBD CRAFT CHANGE F")) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && ("FBD CRAFT CHANGE I".equals(kind) ? "I" : "F").equals(name))
+                return "NUMBER";
+        }
+        if (kind.equals("FBD CRAFT MOVE")) {
+            if (output && "Q".equals(name)) return "NUMBER";
+            if (!output && "EN".equals(name)) return "BOOL";
+            if (!output && "I".equals(name)) return "NUMBER";
+        }
+        if (kind.equals("FBD CRAFT MX")) {
+            if (output && "Q".equals(name)) return "NUMBER";
+            if (!output && "EN".equals(name)) return "BOOL";
+            if (!output && "I".equals(name)) return "NUMBER";
+        }
+        if (kind.equals("FBD CRAFT ARRAY")) {
+            if (output && "Q".equals(name)) return "NUMBER";
+            if (!output && "EN".equals(name)) return "BOOL";
+            if (!output && ("DT".equals(name) || "ID".equals(name))) return "NUMBER";
+        }
+        if (kind.equals("FBD CRAFT LOG") || kind.equals("FBD CRAFT WORD TO FLOAT")
+                || kind.equals("FBD CRAFT SIN") || kind.equals("FBD CRAFT ABS")
+                || kind.equals("FBD CRAFT INT TO FLOAT") || kind.equals("FBD CRAFT FLOAT TO INT")) {
+            if (output && "OUT".equals(name)) return "NUMBER";
+            if (!output && "IN".equals(name)) return "NUMBER";
+        }
+        if (kind.equals("FBD CRAFT POW")) {
+            if (output && "Q".equals(name)) return "NUMBER";
+            if (!output && ("X".equals(name) || "Y".equals(name))) return "NUMBER";
+        }
+        if (kind.equals("FBD CRAFT SEL")) {
+            if (output && "Q".equals(name)) return "NUMBER";
+            if (!output && "IN".equals(name)) return "BOOL";
+            if (!output && ("I1".equals(name) || "I2".equals(name))) return "NUMBER";
+        }
+        if (kind.equals("FBD SEL")) {
+            if (output && "OUT".equals(name)) return "NUMBER";
+            if (!output && "G".equals(name)) return "BOOL";
+            if (!output && ("IN0".equals(name) || "IN1".equals(name))) return "NUMBER";
+        }
+        if (kind.equals("FBD POW")) {
+            if (output && "OUT".equals(name)) return "NUMBER";
+            if (!output && ("BASE".equals(name) || "EXP".equals(name))) return "NUMBER";
+        }
+        if (kind.equals("FBD SIN") || kind.equals("FBD ABS")
+                || kind.equals("FBD COS") || kind.equals("FBD TAN") || kind.equals("FBD SQRT")
+                || kind.equals("FBD FLOATTOINT") || kind.equals("FBD INTTOFLOAT")) {
+            if (output && "OUT".equals(name)) return "NUMBER";
+            if (!output && "IN".equals(name)) return "NUMBER";
+        }
+        if (kind.equals("FBD TON") || kind.equals("FBD TOF")
+                || kind.equals("FBD TP") || kind.equals("FBD CRAFT BLINK")
+                || kind.equals("FBD CRAFT TIMER")) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && "IN".equals(name)) return "BOOL";
+            if (!output && "PT".equals(name)) return "NUMBER";
+        }
+        return null;
+    }
+
+    public static String[] knownFbdPins(Widget widget, boolean output) {
+        if (widget == null) return new String[0];
+        if ("FBD CRAFT MACRO".equals(canonicalFbdBlockType(widget.type))) {
+            FbdCraftMacroDefinition definition = macroDefinition(widget);
+            if (definition == null) return new String[0];
+            if (output) return new String[]{definition.getOutput().name};
+            String[] pins = new String[definition.getInputs().size()];
+            for (int i = 0; i < pins.length; i++) pins[i] = definition.getInputs().get(i).name;
+            return pins;
+        }
+        if ("FBD CRAFT MACRO IN".equals(canonicalFbdBlockType(widget.type)))
+            return output ? new String[]{"Q"} : new String[0];
+        return knownFbdPins(widget.type, output);
+    }
+
+    public static String knownFbdPinType(Widget widget, String pin, boolean output) {
+        if (widget == null || pin == null) return null;
+        String kind = canonicalFbdBlockType(widget.type);
+        String canonicalPin = canonicalFbdPinName(pin);
+        if ("FBD CRAFT MACRO".equals(kind)) {
+            FbdCraftMacroDefinition definition = macroDefinition(widget);
+            if (definition == null) return null;
+            FbdCraftMacroDefinition.Port port = output ? definition.getOutput() : null;
+            if (output && canonicalFbdPinName(port.name).equals(canonicalPin))
+                return port.type == 1 ? "BOOL" : "NUMBER";
+            if (!output) for (FbdCraftMacroDefinition.Port input : definition.getInputs())
+                if (canonicalFbdPinName(input.name).equals(canonicalPin))
+                    return input.type == 1 ? "BOOL" : "NUMBER";
+            return null;
+        }
+        if ("FBD CRAFT MACRO IN".equals(kind) && output && "Q".equals(canonicalPin)) {
+            int type = widget.extraFields.optInt("craftMacroPortType", -1);
+            return type == 1 ? "BOOL" : (type == 2 || type == 3 ? "NUMBER" : null);
+        }
+        return knownFbdPinType(widget.type, pin, output);
+    }
+
+    private static FbdCraftMacroDefinition macroDefinition(Widget widget) {
+        if (widget == null || widget.extraFields == null) return null;
+        JSONObject json = widget.extraFields.optJSONObject("craftMacroDefinition");
+        if (json == null) return null;
+        if (json == widget.craftMacroDefinitionSourceCache)
+            return widget.craftMacroDefinitionCache;
+        try {
+            widget.craftMacroDefinitionCache = FbdCraftMacroDefinition.fromJson(json.toString());
+            try {
+                widget.craftMacroDefinitionCache = FbdCraftMacroGraphAdapter.expandIfSupported(
+                        widget.craftMacroDefinitionCache);
+            } catch (Exception unsupportedLegacyGraph) {
+                // Keep the original macro inspectable and lossless; execution stays fail-closed.
+            }
+            widget.craftMacroDefinitionSourceCache = json;
+            return widget.craftMacroDefinitionCache;
+        } catch (Exception invalid) {
+            widget.craftMacroDefinitionCache = null;
+            widget.craftMacroDefinitionSourceCache = json;
+            return null;
+        }
+    }
+
+    private static boolean hasCraftMacroGraph(FbdCraftMacroDefinition definition) {
+        if (definition == null) return false;
+        try { return definition.toJson().optJSONObject("bloodskyGraph") != null; }
+        catch (Exception invalid) { return false; }
+    }
+
+    private static boolean isDynamicMacroWidget(Widget widget) {
+        String kind = widget == null ? "" : canonicalFbdBlockType(widget.type);
+        return "FBD CRAFT MACRO".equals(kind) || "FBD CRAFT MACRO IN".equals(kind);
+    }
+
+    /** Enforce known pin directions and types; preserve legacy unpinned connections. */
+    public static boolean hasCompatibleKnownFbdPins(JSONObject edge, String sourceType, String targetType) throws Exception {
+        if (!canLoadFbdConnection(edge)) return false;
+        if (!edge.has("sourcePin") && !edge.has("targetPin")) return true;
+        String sourcePin = edge.optString("sourcePin", "");
+        String targetPin = edge.optString("targetPin", "");
+        String sourceKnown = knownFbdPinType(sourceType, sourcePin, true);
+        String targetKnown = knownFbdPinType(targetType, targetPin, false);
+        boolean sourceBlockKnown = knownFbdPins(sourceType, true).length > 0
+                || knownFbdPins(sourceType, false).length > 0;
+        boolean targetBlockKnown = knownFbdPins(targetType, true).length > 0
+                || knownFbdPins(targetType, false).length > 0;
+        if ((sourceBlockKnown && sourceKnown == null) || (targetBlockKnown && targetKnown == null)) return false;
+        if (sourceKnown != null && targetKnown != null && !sourceKnown.equals(targetKnown)) return false;
+        if (sourceKnown != null && edge.has("sourceSignalType")
+                && !("ANY".equalsIgnoreCase(edge.optString("sourceSignalType"))
+                || sourceKnown.equalsIgnoreCase(edge.optString("sourceSignalType")))) return false;
+        if (targetKnown != null && edge.has("targetSignalType")
+                && !("ANY".equalsIgnoreCase(edge.optString("targetSignalType"))
+                || targetKnown.equalsIgnoreCase(edge.optString("targetSignalType")))) return false;
+        return true;
+    }
+
+    public static boolean hasCompatibleKnownFbdPins(JSONObject edge, Widget sourceWidget,
+                                                     Widget targetWidget) throws Exception {
+        if (sourceWidget == null || targetWidget == null || !canLoadFbdConnection(edge)) return false;
+        if (!edge.has("sourcePin") && !edge.has("targetPin")) return true;
+        String sourcePin = edge.optString("sourcePin", "");
+        String targetPin = edge.optString("targetPin", "");
+        String sourceKnown = knownFbdPinType(sourceWidget, sourcePin, true);
+        String targetKnown = knownFbdPinType(targetWidget, targetPin, false);
+        boolean sourceBlockKnown = knownFbdPins(sourceWidget, true).length > 0
+                || knownFbdPins(sourceWidget, false).length > 0;
+        boolean targetBlockKnown = knownFbdPins(targetWidget, true).length > 0
+                || knownFbdPins(targetWidget, false).length > 0;
+        if ((sourceBlockKnown && sourceKnown == null) || (targetBlockKnown && targetKnown == null)) return false;
+        if (sourceKnown != null && targetKnown != null && !sourceKnown.equals(targetKnown)) return false;
+        if (sourceKnown != null && edge.has("sourceSignalType")
+                && !("ANY".equalsIgnoreCase(edge.optString("sourceSignalType"))
+                || sourceKnown.equalsIgnoreCase(edge.optString("sourceSignalType")))) return false;
+        if (targetKnown != null && edge.has("targetSignalType")
+                && !("ANY".equalsIgnoreCase(edge.optString("targetSignalType"))
+                || targetKnown.equalsIgnoreCase(edge.optString("targetSignalType")))) return false;
+        return true;
+    }
+
+    /** Validate pin metadata on import while leaving legacy unpinned connections intact. */
+    public static boolean canLoadFbdConnection(JSONObject json) throws Exception {
+        if (json == null) return false;
+        FbdConnection edge = connectionFromJson(json);
+        return edge.source >= 0 && edge.target >= 0 && edge.source != edge.target
+                && hasCompatibleFbdSignalTypes(edge);
+    }
+
+    /** Create an explicitly pinned connection; reject malformed metadata before graph mutation. */
+    public static FbdConnection pinnedFbdConnection(int source, String sourcePin,
+                                                     int target, String targetPin) throws Exception {
+        if (source < 0 || target < 0 || source == target) {
+            throw new IllegalArgumentException("Invalid FBD endpoints");
+        }
+        JSONObject metadata = new JSONObject();
+        metadata.put("source", source);
+        metadata.put("target", target);
+        metadata.put("sourcePin", sourcePin);
+        metadata.put("targetPin", targetPin);
+        FbdConnection edge = connectionFromJson(metadata);
+        if (!hasValidFbdPinMetadata(edge)) {
+            throw new IllegalArgumentException("Invalid FBD pin metadata");
+        }
+        return edge;
+    }
+
+    /** Check whether an edge's explicit pin metadata is well-formed; legacy edges have no pins. */
+    public static boolean hasValidFbdPinMetadata(FbdConnection edge) {
+        if (edge == null || edge.extraFields == null) return false;
+        JSONObject json = edge.extraFields;
+        if (!json.has("sourcePin") && !json.has("targetPin")) return true;
+        if (!json.has("sourcePin") || !json.has("targetPin")) return false;
+        Object sourcePin = json.opt("sourcePin");
+        Object targetPin = json.opt("targetPin");
+        return sourcePin instanceof String && targetPin instanceof String
+                && !((String) sourcePin).trim().isEmpty()
+                && !((String) targetPin).trim().isEmpty();
+    }
+
+    /** A single source may drive distinct named pins on one target, but never twice the same pin. */
+    public static boolean duplicateFbdEndpoint(FbdConnection oldEdge, FbdConnection newEdge) {
+        if (oldEdge == null || newEdge == null || oldEdge.source != newEdge.source
+                || oldEdge.target != newEdge.target) return false;
+        String oldPin = canonicalFbdPinName(oldEdge.extraFields.optString("targetPin", ""));
+        String newPin = canonicalFbdPinName(newEdge.extraFields.optString("targetPin", ""));
+        return oldPin.isEmpty() || newPin.isEmpty() || oldPin.equals(newPin);
+    }
+
+    /** Remove a selected edge by identity, even if a legacy project contains duplicates. */
+    public static boolean disconnectFbdEdge(List<FbdConnection> connections, FbdConnection selected) {
+        return connections != null && selected != null && connections.remove(selected);
+    }
+
+    /** Remove only the selected directed edge; keep other edges and their metadata intact. */
+    public static boolean disconnectFbdEdge(List<FbdConnection> connections, int source, int target) {
+        if (connections == null || source < 0 || target < 0) return false;
+        for (int i = 0; i < connections.size(); i++) {
+            FbdConnection edge = connections.get(i);
+            if (edge != null && edge.source == source && edge.target == target) {
+                connections.remove(i);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static boolean isFbdWidget(Widget widget) {
+        return widget != null && widget.type != null && widget.type.startsWith("FBD ");
+    }
+
+    private boolean isFbd(Widget widget) {
+        return isFbdWidget(widget);
+    }
+
+    public static boolean evaluateFbdBlock(List<Widget> widgetsList, List<FbdConnection> connectionsList, int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
+        if (index < 0 || index >= widgetsList.size()) return false;
+        if (cacheValid[index]) return cacheValues[index];
+        boolean result = evaluateFbdBlockUncached(widgetsList, connectionsList, index, visiting, cacheValid, cacheValues, cacheNumeric);
+        if (isFbdBlockOutputInverted(widgetsList.get(index))
+                && (hasCompleteCraftGateInputs(widgetsList, connectionsList, index)
+                    || isCraftRegisterBoolean(widgetsList.get(index).type))) result = !result;
+        cacheValues[index] = result;
+        cacheValid[index] = true;
+        return result;
+    }
+
+    /** Craft's inherited `invertOut` is source-backed for the original Boolean gates. */
+    public static boolean supportsFbdBlockOutputInversion(String type) {
+        if (type == null) return false;
+        String canonical = canonicalFbdBlockType(type);
+        return "FBD AND".equals(canonical) || "FBD OR".equals(canonical)
+                || "FBD XOR".equals(canonical) || "FBD CRAFT VAR BOOL".equals(canonical)
+                || (isCraftNamedVariableSource(canonical) && craftNamedVariableKind(canonical) == 1);
+    }
+
+    private static boolean hasCompleteCraftGateInputs(List<Widget> widgets,
+                                                       List<FbdConnection> connections,
+                                                       int targetIndex) {
+        if (connections == null) return false;
+        java.util.Set<String> named = new java.util.HashSet<>();
+        int legacyCount = 0;
+        boolean sawNamed = false, sawLegacy = false;
+        for (FbdConnection edge : connections) {
+            if (edge == null || edge.target != targetIndex) continue;
+            if (edge.source < 0 || edge.source >= widgets.size() || edge.extraFields == null)
+                return false;
+            String sourcePin = canonicalFbdPinName(edge.extraFields.optString("sourcePin", ""));
+            String[] sourcePins = knownFbdPins(widgets.get(edge.source).type, true);
+            if (sourcePin.isEmpty()) {
+                if (sourcePins.length != 1 || !"BOOL".equals(knownFbdPinType(
+                        widgets.get(edge.source).type, sourcePins[0], true))) return false;
+            } else if (!"BOOL".equals(knownFbdPinType(
+                    widgets.get(edge.source).type, sourcePin, true))) return false;
+            String targetPin = canonicalFbdPinName(edge.extraFields.optString("targetPin", ""));
+            if (targetPin.isEmpty()) { sawLegacy = true; legacyCount++; }
+            else { sawNamed = true; named.add(targetPin); }
+        }
+        if (sawNamed && sawLegacy) return false;
+        return sawNamed ? named.size() == 2 && named.contains("IN1") && named.contains("IN2")
+                : legacyCount == 2;
+    }
+
+    public static boolean isFbdBlockOutputInverted(Widget widget) {
+        return widget != null && widget.extraFields != null
+                && supportsFbdBlockOutputInversion(widget.type)
+                && widget.extraFields.optBoolean("invertOut", false);
+    }
+
+    /** Toggle only the known Craft-compatible field, retaining every other JSON field. */
+    public static boolean toggleFbdBlockOutputInversion(Widget widget) throws Exception {
+        if (widget == null || !supportsFbdBlockOutputInversion(widget.type)) return false;
+        if (widget.extraFields == null) widget.extraFields = new JSONObject();
+        widget.extraFields.put("invertOut", !isFbdBlockOutputInverted(widget));
+        return true;
+    }
+
+    public static double evaluateFbdBlockNumeric(List<Widget> widgetsList, List<FbdConnection> connectionsList, int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
+        if (index < 0 || index >= widgetsList.size()) return 0.0;
+        evaluateFbdBlock(widgetsList, connectionsList, index, visiting, cacheValid, cacheValues, cacheNumeric);
+        return cacheNumeric[index];
+    }
+
+    /** Pinned wires are addressed by their target terminal, never by insertion order. */
     public static boolean fbdBooleanPinValue(List<Boolean> values, List<String> pins,
                                              String targetPin, int legacyIndex) {
         if (values == null || pins == null) return false;
