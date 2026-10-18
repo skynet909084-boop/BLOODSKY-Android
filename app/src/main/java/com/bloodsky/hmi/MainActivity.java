@@ -2534,7 +2534,8 @@ public class MainActivity extends Activity {
 
     private static String normalizeComparisonOperatorStatic(String value) {
         String operator = value == null ? ">" : value.trim();
-        return operator.equals(">") || operator.equals("<") || operator.equals(">=")
+        return operator.equals("+") || operator.equals("-") || operator.equals("*") || operator.equals("/")
+                || operator.equals(">") || operator.equals("<") || operator.equals(">=")
                 || operator.equals("<=") || operator.equals("==") || operator.equals("!=") ? operator : ">";
     }
 

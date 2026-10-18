@@ -85,6 +85,7 @@ public class FbdCraftToggleGraphTest {
         assertTrue(FbdCraftNativeTransitions.fTrig(
                 new FbdCraftNativeTransitions.Trigger(false, true), false).output);
         MainActivity.Widget trigger = widget("FBD CRAFT T");
+        trigger.w = 150; trigger.h = 76;
         trigger.extraFields.put("craftTriggerMode", "F");
         MainActivity.Widget restored = MainActivity.widgetFromJson(MainActivity.widgetToJson(trigger));
         assertEquals("F", restored.extraFields.getString("craftTriggerMode"));
