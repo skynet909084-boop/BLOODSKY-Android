@@ -16,12 +16,13 @@ import time
 import xml.etree.ElementTree as ET
 from collections import deque
 from pathlib import Path
+from PIL import Image
 
 OUT = Path(sys.argv[1])
 OUT.mkdir(parents=True, exist_ok=True)
 PACKAGE = "ru.kascada.modbus"
-MAX_STATES = 140
-MAX_DEPTH = 7
+MAX_STATES = 300
+MAX_DEPTH = 8
 WAIT = 0.8
 
 
@@ -126,7 +127,14 @@ while queue and len(state_rows) < MAX_STATES:
     label = f"state-{len(state_rows):03d}"
     root, xml, png = dump_ui(label)
     ctrls = controls(root)
-    screenshot_hash = hashlib.sha256(png.read_bytes()).hexdigest() if png.exists() else ""
+    if png.exists():
+        with Image.open(png) as image:
+            width, height = image.size
+            # Ignore status/navigation bars and clock changes; retain visible app canvas.
+            normalized = image.crop((0, min(60, height // 10), width, max(height // 10, height - 80))).convert("L").resize((64, 64))
+            screenshot_hash = hashlib.sha256(normalized.tobytes()).hexdigest()
+    else:
+        screenshot_hash = ""
     visible = [(n.attrib.get("class", ""), n.attrib.get("text", ""),
                 n.attrib.get("content-desc", ""), n.attrib.get("bounds", ""),
                 n.attrib.get("checked", ""), n.attrib.get("selected", ""))
@@ -150,7 +158,7 @@ while queue and len(state_rows) < MAX_STATES:
     actions.append({"kind": "back", "label": "Android Back"})
     for action in actions:
         child = path + [action]
-        if len(queue) + len(state_rows) >= MAX_STATES * 4:
+        if len(queue) + len(state_rows) >= MAX_STATES * 8:
             break
         queue.append(child)
         transition_rows.append({"from": label, "action": action["label"], "depth": len(child)})
