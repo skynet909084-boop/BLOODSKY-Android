@@ -72,7 +72,7 @@
 
 ## Текущее решение по следующему пакету
 
-P0 audit/matrix correction completed in the preceding commit. Incoming and outgoing SMS now cover the manual's 1–16 incoming values, optional strobe, and 1–8 outgoing templates. Imported ID 18 remains disabled pending explicit operator configuration. Continue with remaining widgets, local transports and exact FBD parity. No imported command executes automatically.
+P0 audit/matrix correction completed in the preceding commit. Incoming and outgoing SMS now cover the manual's 1–16 incoming values, optional strobe, and 1–8 outgoing templates. Imported ID 18 remains disabled pending explicit operator configuration. Craft ID 27 now maps into the existing 16-state TTS widget; its unknown source fields are preserved and imported bindings remain empty until operator configuration. Exact original phrase-field mapping, local transports and FBD parity remain open. No imported command executes automatically.
 
 ## Проверки этого аудита
 
