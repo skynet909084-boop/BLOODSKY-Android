@@ -5769,7 +5769,7 @@ public class MainActivity extends Activity {
                         break;
                     }
                 }
-                ViewParent parent = getParent();
+                android.view.ViewParent parent = getParent();
                 if (parent != null) parent.requestDisallowInterceptTouchEvent(selected >= 0);
                 invalidate();
                 return true;
@@ -5796,7 +5796,7 @@ public class MainActivity extends Activity {
                 return true;
             }
             if (event.getAction() == MotionEvent.ACTION_UP) {
-                ViewParent parent = getParent();
+                android.view.ViewParent parent = getParent();
                 if (parent != null) parent.requestDisallowInterceptTouchEvent(false);
                 if (dragging) {
                     persistProject();
@@ -5822,7 +5822,7 @@ public class MainActivity extends Activity {
                 return true;
             }
             if (event.getAction() == MotionEvent.ACTION_CANCEL) {
-                ViewParent parent = getParent();
+                android.view.ViewParent parent = getParent();
                 if (parent != null) parent.requestDisallowInterceptTouchEvent(false);
                 selected = -1;
                 dragging = false;
