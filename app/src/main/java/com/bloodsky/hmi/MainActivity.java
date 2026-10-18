@@ -2181,6 +2181,7 @@ public class MainActivity extends Activity {
                 message = SmsNotificationClient.message(template, triggerValue) + " !NO RESPONSE!";
                 readFailed = true;
             }
+            if (!pollSession.accepts(sessionToken) || !activityResumed || !operatorMode) return;
             boolean sent = false;
             try { SmsNotificationClient.send(this, destination, message); sent = true; }
             catch (Exception ignored) {}
