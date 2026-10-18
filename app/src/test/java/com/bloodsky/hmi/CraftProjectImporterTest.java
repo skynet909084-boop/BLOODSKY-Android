@@ -48,14 +48,11 @@ public class CraftProjectImporterTest {
         assertEquals(100.0, second.getJSONObject(1).getDouble("maxValue"), 0.001);
     }
 
-    @Test public void rejectsComponentsPointingOutsideDeclaredScreens() throws Exception {
-        String bad = sample().replace("\"numScreen\":2", "\"numScreen\":3");
-        try {
-            CraftProjectImporter.convert(bad);
-            throw new AssertionError("Expected invalid screen to be rejected");
-        } catch (IllegalArgumentException expected) {
-            assertTrue(expected.getMessage().contains("экран"));
-        }
+    @Test public void expandsBeyondStaleDeclaredScreenCountForComponentReferences() throws Exception {
+        String legacy = sample().replace("\"numScreen\":2", "\"numScreen\":3");
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(legacy));
+        assertEquals(3, project.getJSONArray("screens").length());
+        assertEquals(2, project.getJSONObject("craftSource").getJSONObject("TableNameProject").getInt("countScreen"));
     }
 
     @Test public void importsProMemberAndKeepsSiblingAssets() throws Exception {
@@ -131,7 +128,7 @@ public class CraftProjectImporterTest {
     }
 
     @Test public void mapsCraftLabelsButtonsAndImageIndicatorsFromVerifiedComponentClasses() throws Exception {
-        String json = "{\"TableNameProject\":{\"name\":\"Widgets\",\"countScreen\":1},\"TableConnections\":[],\"TableComponent\":["
+        String json = "{\"TableNameProject\":{\"name\":\"Widgets\",\"countScreen\":2},\"TableConnections\":[],\"TableComponent\":["
                 + "{\"componentId\":1,\"text\":\"\",\"x\":1,\"y\":2,\"width\":30,\"height\":30,\"jsTableComponent_other\":{\"numScreen\":1,\"imagePosition\":2,\"visibleInWork\":true}},"
                 + "{\"componentId\":2,\"text\":\"Room\",\"x\":3,\"y\":4,\"width\":80,\"height\":24,\"jsTableComponent_other\":{\"numScreen\":1,\"autoResizeText\":true,\"enableFrameLabel\":false}},"
                 + "{\"componentId\":6,\"text\":\"Open\",\"x\":5,\"y\":6,\"width\":90,\"height\":30,\"jsTableComponent_other\":{\"numScreen\":1,\"changeScreen\":2,\"mode\":1,\"autoResizeText\":true}}]}";
@@ -142,8 +139,9 @@ public class CraftProjectImporterTest {
         assertEquals("Текст", widgets.getJSONObject(1).getString("type"));
         assertTrue(widgets.getJSONObject(1).getBoolean("autoResizeText"));
         assertTrue(!widgets.getJSONObject(1).getBoolean("showFrame"));
-        assertEquals("Кнопка", widgets.getJSONObject(2).getString("type"));
+        assertEquals("Переход на экран", widgets.getJSONObject(2).getString("type"));
         assertTrue(widgets.getJSONObject(2).getBoolean("autoResizeText"));
+        assertEquals(1, widgets.getJSONObject(2).getInt("targetScreenIndex"));
         assertEquals(2, widgets.getJSONObject(2).getJSONObject("craftOther").getInt("changeScreen"));
     }
 
