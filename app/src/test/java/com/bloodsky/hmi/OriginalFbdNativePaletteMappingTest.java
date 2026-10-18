@@ -36,10 +36,27 @@ public class OriginalFbdNativePaletteMappingTest {
         assertTrue(FbdCraftNativeTransitions.rs(false, false, true));
     }
 
+    @Test public void originalIntegerSelAndCompareUseDistinctSignedTypedContracts() {
+        String sel = OriginalFbdPalette.nativeTypeForOriginalTag("FB_SEL");
+        String compare = OriginalFbdPalette.nativeTypeForOriginalTag("FB_COMPARE");
+        assertEquals("FBD CRAFT SEL", sel);
+        assertEquals("FBD CRAFT COMPARE", compare);
+        assertEquals("SEL", OriginalFbdPalette.nativeLabelForOriginalTag("FB_SEL"));
+        assertEquals(">", OriginalFbdPalette.nativeLabelForOriginalTag("FB_COMPARE"));
+        assertArrayEquals(new String[]{"IN", "I1", "I2"},
+                MainActivity.knownFbdPins(sel, false));
+        assertEquals("NUMBER", MainActivity.knownFbdPinType(sel,"Q",true));
+        assertArrayEquals(new String[]{"IN1", "IN2"},
+                MainActivity.knownFbdPins(compare, false));
+        assertEquals("BOOL", MainActivity.knownFbdPinType(compare,"Q",true));
+        assertNotEquals("FBD SEL", sel);
+        assertNotEquals("FBD Сравнение", compare);
+    }
+
     @Test public void unsupportedOriginalBlocksStayDisabledAndUnmapped() {
         for (String source : new String[]{
-                "FB_MOVE", "FB_SEL", "FB_TIMER", "FB_ARRAY", "FB_MACRO",
-                "FB_COMPARE", "FB_MX", "MQTT_SUBSCRIBER", "Var",
+                "FB_MOVE", "FB_TIMER", "FB_ARRAY", "FB_MACRO",
+                "FB_MX", "MQTT_SUBSCRIBER", "Var",
                 "FB_POW", "FB_TRIGGER_ALT", "", "FB_CTU_OLD"}) {
             assertNull(source, OriginalFbdPalette.nativeTypeForOriginalTag(source));
             assertNull(source, OriginalFbdPalette.nativeLabelForOriginalTag(source));

@@ -210,8 +210,35 @@ class FastFbdSmoke(Smoke):
         def add_from_original_preview(type_id):
             self.tap(description='Добавить элемент')
             self.tap(description='Функциональные блоки и другие элементы')
-            self.tap(description='Добавить: ' + type_id)
-            self.wait_node(description='Редактор экрана')
+            desc = 'Добавить: ' + type_id
+            for attempt in range(18):
+                xml = self.dump()
+                nodes = matching_nodes(xml, description=desc)
+                scrolls = [n for n in ET.fromstring(xml).iter('node')
+                           if n.get('class') == 'android.widget.ScrollView']
+                # Original Craft has TWO genuine layouts. Portrait holds
+                # a ScrollView; the wide/landscape palette is a flat grid.
+                # The latter exposes every enabled original source tile
+                # directly and must NOT be rejected for lacking scrolling.
+                if not scrolls:
+                    if len(nodes) != 1:
+                        raise AssertionError('Original wide Craft tile not found: ' + desc)
+                    self.tap(description=desc)
+                    self.wait_node(description='Редактор экрана')
+                    return
+                if len(scrolls) != 1:
+                    raise AssertionError('Ambiguous original Craft scrolling list')
+                left, top, right, bottom = map(
+                    int, re.findall(r'\d+', scrolls[0].get('bounds')))
+                if len(nodes) == 1:
+                    _, y1, _, y2 = map(int, re.findall(r'\d+', nodes[0].get('bounds')))
+                    if top <= y1 and y2 <= bottom and y2 > y1:
+                        self.tap(description=desc)
+                        self.wait_node(description='Редактор экрана')
+                        return
+                adb('shell', 'input', 'swipe', str((left + right)//2),
+                    str(bottom - 95), str((left + right)//2), str(top + 45), '250')
+            raise AssertionError('Verified original Craft preview not reachable: ' + type_id)
 
         add_from_original_preview('FBD RS')
         add_from_original_preview('FBD CRAFT T')
@@ -242,6 +269,72 @@ class FastFbdSmoke(Smoke):
         self.wait_node(description='Редактор экрана')
         if current_widgets() != original or self.saved_connections():
             raise AssertionError('Original Craft palette native types were not persisted')
+
+        # Versioned INTEGER SEL/COMPARE have different ports from BLOODSKY's
+        # existing generic operators. Exercise the real extended picker.
+        adb('shell', 'pm', 'clear', PACKAGE)
+        adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
+        self.tap('Создать новый проект')
+        self.tap(class_name='android.widget.EditText')
+        adb('shell', 'input', 'text', PROJECT)
+        self.tap('Создать')
+        self.wait_node(description='Редактор экрана')
+        add_native_from_extended('FBD — Craft SEL (целочисленный)')
+        add_native_from_extended('FBD — Craft COMPARE (INT32)')
+        operators = current_widgets()
+        if [w['type'] for w in operators] != [
+                'FBD CRAFT SEL', 'FBD CRAFT COMPARE']:
+            raise AssertionError('Source Integer SEL/COMPARE picker mapping incorrect: ' +
+                                 repr(operators))
+        if operators[1].get('compareOperator') != '>':
+            raise AssertionError('Original COMPARE should default to >')
+        # Edit the native comparator rather than generic double comparator.
+        canvas = self.wait_node(description='Редактор экрана')
+        x0, y0, _, _ = map(int, re.findall(r'\d+', canvas.get('bounds')))
+        cmp = operators[1]
+        adb('shell', 'input', 'tap',
+            str(round(x0 + cmp['x'] + cmp['w']/2)),
+            str(round(y0 + cmp['y'] + cmp['h']/2)))
+        self.wait_node('Свойства: FBD CRAFT COMPARE')
+        self.replace_property_input('Оператор сравнения', '==')
+        self.tap('Применить')
+        self.wait_node(description='Редактор экрана')
+        operators = current_widgets()
+        if (operators[1]['type'] != 'FBD CRAFT COMPARE'
+                or operators[1]['compareOperator'] != '=='):
+            raise AssertionError('Original COMPARE mode or type lost after editing')
+        self.capture('fast-fbd-source-native-sel-compare')
+        adb('shell', 'am', 'force-stop', PACKAGE)
+        adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
+        self.tap('Загрузить проект')
+        self.tap(PROJECT)
+        self.wait_node(description='Редактор экрана')
+        if current_widgets() != operators or self.saved_connections():
+            raise AssertionError('Signed Integer native operator state lost after restart')
+
+        # Original KaScada Craft preview icons (draw9 SEL, draw15 COMPARE)
+        # must open the same tested signed-Integer runtime types.
+        adb('shell', 'pm', 'clear', PACKAGE)
+        adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
+        self.tap('Создать новый проект')
+        self.tap(class_name='android.widget.EditText')
+        adb('shell', 'input', 'text', PROJECT)
+        self.tap('Создать')
+        self.wait_node(description='Редактор экрана')
+        add_from_original_preview('FBD CRAFT SEL')
+        add_from_original_preview('FBD CRAFT COMPARE')
+        palette_native = current_widgets()
+        if [w['type'] for w in palette_native] != [
+                'FBD CRAFT SEL', 'FBD CRAFT COMPARE']:
+            raise AssertionError('Original FB_SEL/FB_COMPARE preview mapped to wrong ports')
+        self.capture('fast-fbd-original-source-integer-sel-compare')
+        adb('shell', 'am', 'force-stop', PACKAGE)
+        adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
+        self.tap('Загрузить проект')
+        self.tap(PROJECT)
+        self.wait_node(description='Редактор экрана')
+        if current_widgets() != palette_native or self.saved_connections():
+            raise AssertionError('Original source SEL/COMPARE preview widgets lost after restart')
         crashes = adb('logcat', '-d', '-b', 'crash')
         (self.output / 'crash-log.txt').write_text(crashes)
         if PACKAGE in crashes:
@@ -259,6 +352,9 @@ class FastFbdSmoke(Smoke):
                 'native block cold restart',
                 'original Craft RS/T/CTU source preview selection',
                 'original source preview block cold restart',
+                'source Integer SEL and COMPARE extended picker',
+                'COMPARE exact == mode and cold restart',
+                'original source SEL/COMPARE previews and cold restart',
                 'no app crash']
         }, indent=2))
         print(f'FAST_FBD_SMOKE_OK elapsed_seconds={elapsed}', flush=True)
