@@ -76,8 +76,9 @@ public class FbdCraftNativeIntegerChainTest {
         assertArrayEquals(new String[]{"IN1", "IN2"},
                 MainActivity.compatibleFbdTargetPins(
                         "FBD CRAFT SEL", "Q", "FBD CRAFT COMPARE"));
-        assertEquals(0, MainActivity.compatibleFbdTargetPins(
-                "FBD CRAFT COMPARE", "Q", "FBD CRAFT SEL").length);
+        assertArrayEquals(new String[]{"IN"},
+                MainActivity.compatibleFbdTargetPins(
+                        "FBD CRAFT COMPARE", "Q", "FBD CRAFT SEL"));
         assertArrayEquals(new String[]{"IN1", "IN2"},
                 MainActivity.compatibleFbdTargetPins(
                         "FBD CRAFT COMPARE", "Q", "FBD И"));
