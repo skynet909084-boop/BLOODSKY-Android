@@ -3250,6 +3250,10 @@ public class MainActivity extends Activity {
                 w.extraFields.put("craftListCheckNoChange", true);
             } catch (Exception ignored) { }
         }
+        if ("Линейный задатчик Craft".equals(type)) {
+            w.w = dp(190); w.h = dp(62);
+            try { w.extraFields.put("craftLinearMax", CraftLinearSetter.DEFAULT_MAX); w.extraFields.put("craftLinearValue", 0); } catch (Exception ignored) { }
+        }
         if (type.equals("Задатчик")) { w.w = dp(190); w.h = dp(62); }
         if (type.equals("Шкала / Стрелка") || type.equals("График / Тренд")) { w.w = dp(200); w.h = dp(110); }
         if (type.equals("Прогресс-бар") || type.equals("Битовый список")) { w.w = dp(180); w.h = dp(64); }
@@ -3387,6 +3391,20 @@ public class MainActivity extends Activity {
             TextView remapHelp = new TextView(this);
             remapHelp.setText("Импортированная связь Craft выключена. Для обмена укажи свой TCP адрес holding-регистра выше."); form.addView(remapHelp);
         } else { craftBitListLabelsField = null; craftBitListVisibleField = null; craftBitListNoChangeField = null; }
+        final boolean craftLinearSetter = "Линейный задатчик Craft".equals(w.type);
+        final EditText craftLinearMaxField;
+        final android.widget.CheckBox craftLinearVerticalField;
+        if (craftLinearSetter) {
+            connectionField.setHint("tcp://192.168.1.10:502/1/40001 (holding-регистр, FC03/FC06)");
+            craftLinearMaxField = propertyField(Integer.toString(CraftLinearSetter.maximum(w.extraFields)), InputType.TYPE_CLASS_NUMBER);
+            craftLinearMaxField.setHint("Верхний предел, 1–65535"); form.addView(craftLinearMaxField);
+            craftLinearVerticalField = new android.widget.CheckBox(this);
+            craftLinearVerticalField.setText("Вертикальная ориентация");
+            craftLinearVerticalField.setChecked(w.extraFields.optBoolean("craftLinearVertical", false));
+            form.addView(craftLinearVerticalField);
+            TextView remapHelp = new TextView(this);
+            remapHelp.setText("Связь из Craft отключена. Укажи TCP holding-регистр для чтения и записи."); form.addView(remapHelp);
+        } else { craftLinearMaxField = null; craftLinearVerticalField = null; }
         final boolean craftRegisterGateway = "Шлюз Craft".equals(w.type);
         final boolean craftBitGateway = "Шлюз битовый".equals(w.type);
         if (craftRegisterGateway || craftBitGateway) {
@@ -4036,6 +4054,21 @@ public class MainActivity extends Activity {
                             w.extraFields.put("craftListVisibleInWork", craftBitListVisibleField.isChecked());
                             w.extraFields.put("craftListCheckNoChange", craftBitListNoChangeField.isChecked());
                             w.extraFields.put("craftListEnabled", listBinding != null);
+                        } catch (Exception ignored) { }
+                    }
+                    if (craftLinearSetter) {
+                        final int maximum;
+                        try { maximum = CraftLinearSetter.requireMaximum(craftLinearMaxField.getText().toString()); }
+                        catch (IllegalArgumentException invalid) { Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show(); return; }
+                        BindingRequest linearBinding = parseBinding(-1, connectionField.getText().toString().trim());
+                        if (linearBinding != null && linearBinding.functionCode != 3) {
+                            Toast.makeText(this, "Линейный задатчик записывает holding-регистр FC03/FC06", Toast.LENGTH_LONG).show(); return;
+                        }
+                        try {
+                            w.extraFields.put("craftLinearMax", maximum);
+                            w.extraFields.put("craftLinearValue", CraftLinearSetter.value(w.extraFields, null));
+                            w.extraFields.put("craftLinearVertical", craftLinearVerticalField.isChecked());
+                            w.extraFields.put("craftLinearEnabled", linearBinding != null);
                         } catch (Exception ignored) { }
                     }
                     if (craftConstantModeField != null) {
@@ -7397,6 +7430,31 @@ public class MainActivity extends Activity {
                         paint.setColor(Color.rgb(185, 28, 28)); paint.setTextSize(dp(9));
                         canvas.drawText("Нет связи", w.x + dp(8), w.y + w.h - dp(5), paint);
                     }
+                } else if ("Линейный задатчик Craft".equals(w.type)) {
+                    int maximum = CraftLinearSetter.maximum(w.extraFields);
+                    int value = CraftLinearSetter.value(w.extraFields, liveValues.get(i));
+                    float ratio = value / (float) maximum;
+                    boolean vertical = w.extraFields.optBoolean("craftLinearVertical", false);
+                    paint.setColor(w.textColor); paint.setTextSize(dp(11));
+                    canvas.drawText(w.text + ": " + value + " / " + maximum, w.x + dp(7), w.y + dp(14), paint);
+                    paint.setColor(w.extraFields.optInt("craftLinearBackgroundColor", Color.rgb(156, 156, 155)));
+                    if (vertical) {
+                        float center = w.x + w.w / 2f;
+                        canvas.drawRoundRect(center - dp(4), w.y + dp(20), center + dp(4), w.y + w.h - dp(5), dp(4), dp(4), paint);
+                        paint.setColor(w.extraFields.optInt("craftLinearProgressColor", Color.rgb(46, 236, 0)));
+                        float bottom = w.y + w.h - dp(5), top = bottom - ((w.h - dp(25)) * ratio);
+                        canvas.drawRoundRect(center - dp(4), top, center + dp(4), bottom, dp(4), dp(4), paint);
+                    } else {
+                        RectF track = new RectF(w.x + dp(7), w.y + dp(25), w.x + w.w - dp(7), w.y + w.h - dp(8));
+                        canvas.drawRoundRect(track, dp(5), dp(5), paint);
+                        paint.setColor(w.extraFields.optInt("craftLinearProgressColor", Color.rgb(46, 236, 0)));
+                        canvas.drawRoundRect(track.left, track.top, track.left + track.width() * ratio, track.bottom, dp(5), dp(5), paint);
+                    }
+                    String linearStatus = liveValues.get(i);
+                    if (linearStatus != null && linearStatus.startsWith("ERR:")) {
+                        paint.setColor(Color.rgb(185, 28, 28)); paint.setTextSize(dp(9));
+                        canvas.drawText("Нет связи", w.x + dp(7), w.y + w.h - dp(3), paint);
+                    }
                 } else if ("Битовый список".equals(w.type)) {
                     int bitmask = 0;
                     if (liveValues.containsKey(i)) {
@@ -7662,10 +7720,57 @@ public class MainActivity extends Activity {
             dialog.show();
         }
 
+        private void openCraftLinearSetter(Widget widget, int widgetIndex) {
+            final int maximum = CraftLinearSetter.maximum(widget.extraFields);
+            final int initial = CraftLinearSetter.value(widget.extraFields, liveValues.get(widgetIndex));
+            final BindingRequest binding = parseBinding(-1, widget.connectionInfo);
+            if (widget.connectionInfo != null && !widget.connectionInfo.trim().isEmpty() && (binding == null || binding.functionCode != 3)) {
+                Toast.makeText(MainActivity.this, "Проверь TCP holding-регистр FC03/FC06", Toast.LENGTH_LONG).show(); return;
+            }
+            android.widget.LinearLayout form = new android.widget.LinearLayout(MainActivity.this);
+            form.setOrientation(android.widget.LinearLayout.VERTICAL); form.setPadding(dp(22), dp(14), dp(22), dp(4));
+            TextView current = new TextView(MainActivity.this); current.setText(initial + " / " + maximum); form.addView(current);
+            android.widget.SeekBar slider = new android.widget.SeekBar(MainActivity.this); slider.setMax(maximum); slider.setProgress(initial);
+            if (widget.extraFields.optBoolean("craftLinearVertical", false)) slider.setRotation(270f);
+            form.addView(slider);
+            slider.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
+                @Override public void onProgressChanged(android.widget.SeekBar seekBar, int progress, boolean fromUser) { current.setText(progress + " / " + maximum); }
+                @Override public void onStartTrackingTouch(android.widget.SeekBar seekBar) { }
+                @Override public void onStopTrackingTouch(android.widget.SeekBar seekBar) { }
+            });
+            new AlertDialog.Builder(MainActivity.this).setTitle(widget.text == null || widget.text.isEmpty() ? "Линейный задатчик" : widget.text)
+                    .setView(form).setNegativeButton("Отмена", null)
+                    .setPositiveButton("Задать", (d, which) -> {
+                        int next = slider.getProgress();
+                        if (binding == null) {
+                            try { widget.extraFields.put("craftLinearValue", next); } catch (Exception ignored) { }
+                            liveValues.put(widgetIndex, Integer.toString(next)); persistProject(); invalidate(); return;
+                        }
+                        modbusExecutor.execute(() -> {
+                            Exception failure = null;
+                            try {
+                                if (!operatorMode || !activityResumed || !widgets.contains(widget)) throw new IOException("Рабочий режим остановлен");
+                                new ModbusTcpClient(binding.host, binding.port).writeSingle(binding.unit, binding.address, next);
+                            } catch (Exception error) { failure = error; }
+                            final Exception result = failure;
+                            runOnUiThread(() -> {
+                                if (!widgets.contains(widget) || !operatorMode || widgets.indexOf(widget) != widgetIndex) return;
+                                if (result == null) {
+                                    try { widget.extraFields.put("craftLinearValue", next); } catch (Exception ignored) { }
+                                    liveValues.put(widgetIndex, Integer.toString(next)); persistProject();
+                                } else Toast.makeText(MainActivity.this, "Не удалось записать значение: " + describeModbusError(result), Toast.LENGTH_LONG).show();
+                                invalidate();
+                            });
+                        });
+                    }).show();
+        }
+
         private void activateRuntimeWidget(int index, float x, float y) {
             Widget picked = widgets.get(index);
             if ("Задатчик".equals(picked.type) && y >= picked.y + dp(29)) {
                 adjustSetpoint(picked, x < picked.x + picked.w / 2 ? -1 : 1);
+            } else if ("Линейный задатчик Craft".equals(picked.type)) {
+                openCraftLinearSetter(picked, index);
             } else if ("Список Craft".equals(picked.type)) {
                 openCraftBitList(picked, index);
             } else if ("Кнопка".equals(picked.type)) {
