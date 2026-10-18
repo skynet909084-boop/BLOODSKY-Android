@@ -1143,7 +1143,7 @@ public class MainActivity extends Activity {
     private void showCraftMacroTools() {
         new AlertDialog.Builder(this).setTitle("Макросы Craft (.mcr)")
                 .setItems(new String[]{"Импортировать .mcr в проект", "Экспортировать .mcr из проекта",
-                                "Добавить макрос на схему"},
+                                "Добавить макрос на схему", "Создать макрос из выбранного блока"},
                         (dialog, which) -> {
                             if (which == 0) {
                                 Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
@@ -1154,7 +1154,8 @@ public class MainActivity extends Activity {
                                     Toast.makeText(this, "Не удалось открыть выбор файла", Toast.LENGTH_LONG).show();
                                 }
                             } else if (which == 1) exportCraftMacroFromCatalog();
-                            else addCraftMacroFromCatalog();
+                            else if (which == 2) addCraftMacroFromCatalog();
+                            else createCraftMacroFromSelection();
                         }).setNegativeButton("Закрыть", null).show();
     }
 
@@ -1205,6 +1206,137 @@ public class MainActivity extends Activity {
         widgets.add(widget);
         persistProject();
         if (editor != null) editor.invalidate();
+    }
+
+    private void createCraftMacroFromSelection() {
+        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()
+                || !isFbd(widgets.get(editor.selected))) {
+            Toast.makeText(this, "Сначала выбери выходной FBD-блок на схеме", Toast.LENGTH_LONG).show();
+            return;
+        }
+        Widget output = widgets.get(editor.selected);
+        String[] outputPins = knownFbdPins(output, true);
+        if (outputPins.length == 0) {
+            Toast.makeText(this, "У выбранного блока нет проверенного выхода", Toast.LENGTH_LONG).show();
+            return;
+        }
+        EditText name = propertyField(output.text == null || output.text.trim().isEmpty()
+                ? "Macro" : output.text.trim(), InputType.TYPE_CLASS_TEXT);
+        new AlertDialog.Builder(this).setTitle("Создать макрос из схемы")
+                .setMessage("Вложенная схема будет взята от выбранного блока до его входных источников.")
+                .setView(name).setNegativeButton("Отмена", null)
+                .setPositiveButton("Далее", (dialog, which) -> {
+                    String macroName = name.getText().toString().trim();
+                    if (outputPins.length == 1) saveCraftMacroFromSelection(macroName,
+                            editor.selected, outputPins[0]);
+                    else new AlertDialog.Builder(this).setTitle("Выбери выход макроса")
+                            .setItems(outputPins, (pinDialog, pinIndex) ->
+                                    saveCraftMacroFromSelection(macroName, editor.selected,
+                                            outputPins[pinIndex]))
+                            .setNegativeButton("Отмена", null).show();
+                }).show();
+    }
+
+    private void saveCraftMacroFromSelection(String name, int outputNode, String outputPin) {
+        try {
+            if (outputNode < 0 || outputNode >= widgets.size()) throw new IllegalArgumentException(
+                    "Выбранный блок больше не существует");
+            List<FbdConnection> edges = screens.get(currentScreenIndex).connections;
+            FbdCraftMacroDefinition definition = createCraftMacroDefinitionFromGraph(
+                    name, widgets, edges, outputNode, outputPin);
+            FbdCraftMacroCatalog.upsert(projectExtraFields, definition);
+            if (!persistProjectNow(true)) throw new IOException("Не удалось сохранить проект");
+            addCraftMacroWidget(definition);
+            Toast.makeText(this, "Макрос «" + definition.getName() + "» создан и добавлен на схему",
+                    Toast.LENGTH_LONG).show();
+        } catch (Exception failure) {
+            Toast.makeText(this, "Макрос не создан: " + failure.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /** Capture one selected output and its upstream closure as a typed macro definition. */
+    public static FbdCraftMacroDefinition createCraftMacroDefinitionFromGraph(String name,
+            List<Widget> sourceWidgets, List<FbdConnection> sourceConnections,
+            int outputNode, String outputPin) throws Exception {
+        if (sourceWidgets == null || sourceConnections == null || outputNode < 0
+                || outputNode >= sourceWidgets.size()) throw new IllegalArgumentException("Invalid macro source graph");
+        Widget outputWidget = sourceWidgets.get(outputNode);
+        String outputType = knownFbdPinType(outputWidget, outputPin, true);
+        int typeOut = "BOOL".equals(outputType) ? 1 : "NUMBER".equals(outputType) ? 2 : -1;
+        if (typeOut < 0) throw new IllegalArgumentException("Unsupported macro output type");
+
+        boolean[] included = new boolean[sourceWidgets.size()];
+        List<Integer> pending = new ArrayList<>();
+        pending.add(outputNode);
+        while (!pending.isEmpty()) {
+            int target = pending.remove(pending.size() - 1);
+            if (target < 0 || target >= sourceWidgets.size() || included[target]) continue;
+            Widget widget = sourceWidgets.get(target);
+            if (!isFbdWidget(widget) || "FBD CRAFT MACRO".equals(canonicalFbdBlockType(widget.type)))
+                throw new IllegalArgumentException("Nested Craft macro blocks cannot be captured yet");
+            included[target] = true;
+            for (FbdConnection edge : sourceConnections)
+                if (edge != null && edge.target == target) pending.add(edge.source);
+        }
+
+        List<Integer> nodeIds = new ArrayList<>();
+        for (int i = 0; i < included.length; i++) if (included[i]) nodeIds.add(i);
+        boolean[] isInput = new boolean[sourceWidgets.size()];
+        int[] firstOutputType = new int[sourceWidgets.size()];
+        int inputCount = 0;
+        for (int node : nodeIds) {
+            boolean hasIncoming = false;
+            for (FbdConnection edge : sourceConnections)
+                if (edge != null && edge.target == node && edge.source >= 0
+                        && edge.source < included.length && included[edge.source]) { hasIncoming = true; break; }
+            if (hasIncoming) continue;
+            Widget leaf = sourceWidgets.get(node);
+            String[] pins = knownFbdPins(leaf, true);
+            String pinType = pins.length == 0 ? null : knownFbdPinType(leaf, pins[0], true);
+            int code = "BOOL".equals(pinType) ? 1 : "NUMBER".equals(pinType) ? 2 : -1;
+            if (code < 0) throw new IllegalArgumentException("Входной источник без поддерживаемого типа");
+            if (++inputCount > 4) throw new IllegalArgumentException("В макросе допускается не больше четырёх входов");
+            isInput[node] = true;
+            firstOutputType[node] = code;
+        }
+
+        JSONArray nestedWidgets = new JSONArray();
+        JSONArray nestedConnections = new JSONArray();
+        int[] remap = new int[sourceWidgets.size()];
+        StringBuilder root = new StringBuilder("{\"name\":").append(JSONObject.quote(name))
+                .append(",\"uniqueId\":").append(System.currentTimeMillis())
+                .append(",\"countIn\":").append(inputCount);
+        int inputIndex = 0;
+        for (int node : nodeIds) {
+            remap[node] = nestedWidgets.length();
+            if (isInput[node]) {
+                String portName = "I" + (++inputIndex);
+                int code = firstOutputType[node];
+                JSONObject inputWidget = new JSONObject().put("type", "FBD CRAFT MACRO IN")
+                        .put("craftMacroPortName", portName).put("craftMacroPortType", code);
+                nestedWidgets.put(inputWidget);
+                root.append(",\"nameIn").append(inputIndex).append("\":").append(JSONObject.quote(portName))
+                        .append(",\"typeIn").append(inputIndex).append("\":").append(code);
+            } else nestedWidgets.put(widgetToJson(sourceWidgets.get(node)));
+        }
+        for (FbdConnection edge : sourceConnections) {
+            if (edge == null || edge.source < 0 || edge.target < 0
+                    || edge.source >= included.length || edge.target >= included.length
+                    || !included[edge.source] || !included[edge.target]) continue;
+            JSONObject nestedEdge = connectionToJson(edge);
+            nestedEdge.put("source", remap[edge.source]).put("target", remap[edge.target]);
+            if (isInput[edge.source]) nestedEdge.put("sourcePin", "Q");
+            nestedConnections.put(nestedEdge);
+        }
+        root.append(",\"nameOut\":").append(JSONObject.quote(outputPin))
+                .append(",\"typeOut\":").append(typeOut)
+                .append(",\"fbInMacros\":[],\"bloodskyGraph\":{")
+                .append("\"widgets\":").append(nestedWidgets)
+                .append(",\"connections\":").append(nestedConnections)
+                .append(",\"outputNode\":").append(remap[outputNode])
+                .append(",\"outputPin\":").append(JSONObject.quote(isInput[outputNode] ? "Q" : outputPin))
+                .append(",\"outputPort\":").append(JSONObject.quote(outputPin)).append("}}");
+        return FbdCraftMacroDefinition.fromJson(root.toString());
     }
 
     private void exportCraftMacroFromCatalog() {

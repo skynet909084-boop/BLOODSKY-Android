@@ -22,7 +22,9 @@ oversize files, invalid types/names, foreign child records, and count limits.
 
 The extended FBD tools now import `.mcr` files into the active project and export a selected
 definition back to `.mcr`. Macro widget instances carry their selected definition in preserved
-widget metadata, and an imported catalog entry can be placed on the current FBD canvas. The wire
+widget metadata, an imported catalog entry can be placed on the current FBD canvas, and a selected
+FBD block can be captured with its upstream graph as a new project macro. Leaf sources become
+typed macro inputs; graphs with more than four inputs are rejected. The wire
 picker, imported-project validator and canvas terminals read the
 definition's named input and output pins and enforce BOOL versus numeric compatibility. Original
 integer and float declarations stay distinct in the saved interface; both use the app's shared
@@ -40,8 +42,9 @@ BLOODSKY graph remain importable and inspectable but evaluate as unavailable.
 
 ## Scope and remaining work
 
-The nested graph editor and `FB_MACRO` entry in the original palette are still gated. The nested
-runtime executes the explicitly embedded BLOODSKY graph; it does not claim that opaque original
-Craft child records execute. Keep the original palette entry gated until the nested graph
+The nested graph editor and `FB_MACRO` entry in the original palette are still gated. Canvas
+capture creates a new nested graph, but arbitrary nested graph editing is not yet available. The
+nested runtime executes the explicitly embedded BLOODSKY graph; it does not claim that opaque
+original Craft child records execute. Keep the original palette entry gated until the nested graph
 authoring lifecycle and exact-head Android gates pass. No visual parity or physical PLC behavior
 is claimed.

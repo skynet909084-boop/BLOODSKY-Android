@@ -130,6 +130,31 @@ public class FbdCraftMacroDefinitionTest {
                 new boolean[2], cacheValid, cacheValues, cacheNumeric), 0.0);
     }
 
+    @Test public void capturesUpstreamCanvasAndCreatesTypedMacroInputs() throws Exception {
+        MainActivity.Widget inputA = new MainActivity.Widget();
+        inputA.type = "FBD Вход";
+        MainActivity.Widget inputB = new MainActivity.Widget();
+        inputB.type = "FBD Вход";
+        MainActivity.Widget and = new MainActivity.Widget();
+        and.type = "FBD AND";
+        java.util.List<MainActivity.Widget> widgets = java.util.Arrays.asList(inputA, inputB, and);
+        java.util.List<MainActivity.FbdConnection> edges = java.util.Arrays.asList(
+                MainActivity.connectionFromJson(new org.json.JSONObject(
+                        "{\"source\":0,\"target\":2,\"sourcePin\":\"Q\",\"targetPin\":\"IN1\"}")),
+                MainActivity.connectionFromJson(new org.json.JSONObject(
+                        "{\"source\":1,\"target\":2,\"sourcePin\":\"Q\",\"targetPin\":\"IN2\"}")));
+
+        FbdCraftMacroDefinition captured = MainActivity.createCraftMacroDefinitionFromGraph(
+                "BothEnabled", widgets, edges, 2, "Q");
+        assertEquals(2, captured.getInputs().size());
+        assertEquals("BOOL", captured.getInputs().get(0).signalType());
+        org.json.JSONObject graph = captured.toJson().getJSONObject("bloodskyGraph");
+        assertEquals(3, graph.getJSONArray("widgets").length());
+        assertEquals(2, graph.getJSONArray("connections").length());
+        assertEquals("IN1", graph.getJSONArray("connections").getJSONObject(0).getString("targetPin"));
+        assertEquals("IN2", graph.getJSONArray("connections").getJSONObject(1).getString("targetPin"));
+    }
+
     private static void assertInvalid(ThrowingRunnable action) throws Exception {
         try { action.run(); fail("Expected invalid macro to be rejected"); }
         catch (JSONException expected) { /* expected */ }
