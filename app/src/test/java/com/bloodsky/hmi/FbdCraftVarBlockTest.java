@@ -148,4 +148,24 @@ public class FbdCraftVarBlockTest {
         assertEquals(654.0, FbdCraftNamedVariableStore.read("macro-beta", "state", 2), 0.0);
     }
 
+    @Test public void macroRuntimeAssignsTransientPerInstanceNamespaces() throws Exception {
+        MainActivity.Widget firstMacro = block("FBD CRAFT MACRO");
+        MainActivity.Widget firstSource = block("FBD CRAFT VAR NAME IN INT");
+        MainActivity.Widget firstSink = block("FBD CRAFT VAR NAME OUT INT");
+        MainActivity.isolateCraftMacroVariables(firstMacro, Arrays.asList(firstSource, firstSink));
+        assertFalse(firstMacro.craftVariableNamespace.isEmpty());
+        assertEquals(firstMacro.craftVariableNamespace, firstSource.craftVariableNamespace);
+        assertEquals(firstMacro.craftVariableNamespace, firstSink.craftVariableNamespace);
+
+        MainActivity.Widget secondMacro = block("FBD CRAFT MACRO");
+        MainActivity.Widget secondSource = block("FBD CRAFT VAR NAME IN INT");
+        MainActivity.isolateCraftMacroVariables(secondMacro, Arrays.asList(secondSource));
+        assertNotEquals(firstMacro.craftVariableNamespace, secondMacro.craftVariableNamespace);
+        assertEquals("", secondSource.craftVariableNamespace);
+
+        assertEquals(firstMacro.craftVariableNamespace,
+                MainActivity.copyWidget(firstMacro).craftVariableNamespace);
+        assertFalse(MainActivity.widgetToJson(firstMacro).has("craftVariableNamespace"));
+    }
+
 }
