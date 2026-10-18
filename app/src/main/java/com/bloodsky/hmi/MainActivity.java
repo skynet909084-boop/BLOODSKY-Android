@@ -4442,6 +4442,12 @@ public class MainActivity extends Activity {
             return widget.craftMacroDefinitionCache;
         try {
             widget.craftMacroDefinitionCache = FbdCraftMacroDefinition.fromJson(json.toString());
+            try {
+                widget.craftMacroDefinitionCache = FbdCraftMacroGraphAdapter.expandIfSupported(
+                        widget.craftMacroDefinitionCache);
+            } catch (Exception unsupportedLegacyGraph) {
+                // Keep the original macro inspectable and lossless; execution stays fail-closed.
+            }
             widget.craftMacroDefinitionSourceCache = json;
             return widget.craftMacroDefinitionCache;
         } catch (Exception invalid) {
