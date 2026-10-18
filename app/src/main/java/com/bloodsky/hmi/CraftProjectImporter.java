@@ -317,6 +317,7 @@ public final class CraftProjectImporter {
             widget.put("craftButtonConstantType", boundedInt(other.opt("typeRegister"), 0, 0, 1));
             widget.put("craftButtonConstant", boundedString(other.optString("constant", "0"), 80));
             widget.put("craftButtonConstantRegister", boundedInt(other.opt("constantRegister"), 0, 0, 65535));
+            widget.put("craftButtonVisibleInWork", other.optBoolean("visibleInWork", true));
             widget.put("craftButtonConstantEnabled", false);
         } else if (componentId == 20) {
             widget.put("craftListLabels", CraftBitList.toJson(CraftBitList.labelsFromCraft(other)));
