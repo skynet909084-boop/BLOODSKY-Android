@@ -20,7 +20,7 @@ class CraftVoiceSourceAuditTests(unittest.TestCase):
                 if not name.endswith(".smali"):
                     continue
                 text = archive.read(name).decode("utf-8", errors="replace")
-                if re.search(r"^\\.class .*?(?:\\$a0|/a0);", text, re.MULTILINE):
+                if any(line.startswith(".class ") and ("$a0;" in line or "/a0;" in line) for line in text.splitlines()):
                     cls.matches.append((name, text))
         if cls.matches:
             cls.path, cls.source = cls.matches[0]
@@ -33,7 +33,7 @@ class CraftVoiceSourceAuditTests(unittest.TestCase):
         lines = [
             line.strip()
             for line in self.source.splitlines()
-            if re.search(r"^\\.field |^\\.method |const-string|setText|speak|TextToSpeech|performClick|onClick", line)
+            if line.startswith((".field ", ".method ")) or any(token in line for token in ("const-string", "setText", "speak", "TextToSpeech", "performClick", "onClick"))
         ]
         print("Craft ID 27 source:", self.path)
         print("\\n".join(lines[:220]))
