@@ -26,7 +26,7 @@ public final class HomeAssistantClient {
         public Entity(String entityId, String name, String state) {
             this.entityId = entityId; this.name = name; this.state = state;
         }
-        public boolean canTogglePower() { return canTogglePower(entityId, state); }
+        public boolean canTogglePower() { return HomeAssistantClient.canTogglePower(entityId, state); }
         @Override public String toString() { return name + " — " + state + "  (" + entityId + ")"; }
     }
 
