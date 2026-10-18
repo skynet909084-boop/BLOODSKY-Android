@@ -49,6 +49,7 @@ class ParityMatrixTests(unittest.TestCase):
             for item in category["items"]
         }
         self.assertEqual("partial", items["widget.bitlist"]["status"])
+        self.assertEqual("partial", items["widget.linear_setpoint"]["status"])
         self.assertEqual("missing", items["widget.voice_announcement"]["status"])
         self.assertEqual("partial", items["widget.sms_in"]["status"])
         self.assertEqual("partial", items["widget.sms_out"]["status"])
