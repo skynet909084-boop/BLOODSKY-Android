@@ -153,6 +153,14 @@ public class FbdCraftMacroDefinitionTest {
         assertEquals(2, graph.getJSONArray("connections").length());
         assertEquals("IN1", graph.getJSONArray("connections").getJSONObject(0).getString("targetPin"));
         assertEquals("IN2", graph.getJSONArray("connections").getJSONObject(1).getString("targetPin"));
+
+        MainActivity.Widget floating = new MainActivity.Widget();
+        floating.type = "FBD CRAFT VAR FLOAT";
+        FbdCraftMacroDefinition floatMacro = MainActivity.createCraftMacroDefinitionFromGraph(
+                "FloatValue", java.util.Collections.singletonList(floating),
+                java.util.Collections.emptyList(), 0, "Q");
+        assertEquals("FLOAT", floatMacro.getInputs().get(0).signalType());
+        assertEquals("FLOAT", floatMacro.getOutput().signalType());
     }
 
     private static void assertInvalid(ThrowingRunnable action) throws Exception {

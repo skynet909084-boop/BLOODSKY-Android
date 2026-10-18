@@ -1261,8 +1261,7 @@ public class MainActivity extends Activity {
         if (sourceWidgets == null || sourceConnections == null || outputNode < 0
                 || outputNode >= sourceWidgets.size()) throw new IllegalArgumentException("Invalid macro source graph");
         Widget outputWidget = sourceWidgets.get(outputNode);
-        String outputType = knownFbdPinType(outputWidget, outputPin, true);
-        int typeOut = "BOOL".equals(outputType) ? 1 : "NUMBER".equals(outputType) ? 2 : -1;
+        int typeOut = craftMacroPortType(outputWidget, outputPin, true);
         if (typeOut < 0) throw new IllegalArgumentException("Unsupported macro output type");
 
         boolean[] included = new boolean[sourceWidgets.size()];
@@ -1292,8 +1291,7 @@ public class MainActivity extends Activity {
             if (hasIncoming) continue;
             Widget leaf = sourceWidgets.get(node);
             String[] pins = knownFbdPins(leaf, true);
-            String pinType = pins.length == 0 ? null : knownFbdPinType(leaf, pins[0], true);
-            int code = "BOOL".equals(pinType) ? 1 : "NUMBER".equals(pinType) ? 2 : -1;
+            int code = pins.length == 0 ? -1 : craftMacroPortType(leaf, pins[0], true);
             if (code < 0) throw new IllegalArgumentException("Входной источник без поддерживаемого типа");
             if (++inputCount > 4) throw new IllegalArgumentException("В макросе допускается не больше четырёх входов");
             isInput[node] = true;
@@ -1337,6 +1335,16 @@ public class MainActivity extends Activity {
                 .append(",\"outputPin\":").append(JSONObject.quote(isInput[outputNode] ? "Q" : outputPin))
                 .append(",\"outputPort\":").append(JSONObject.quote(outputPin)).append("}}");
         return FbdCraftMacroDefinition.fromJson(root.toString());
+    }
+
+    private static int craftMacroPortType(Widget widget, String pin, boolean output) {
+        String signal = knownFbdPinType(widget, pin, output);
+        if ("BOOL".equals(signal)) return 1;
+        if (!"NUMBER".equals(signal)) return -1;
+        String kind = canonicalFbdBlockType(widget == null ? null : widget.type);
+        if ((kind.contains("FLOAT") && !kind.endsWith("FLOAT TO INT"))
+                || kind.equals("FBD CRAFT LOG") || kind.equals("FBD CRAFT POW")) return 3;
+        return 2;
     }
 
     private void exportCraftMacroFromCatalog() {
