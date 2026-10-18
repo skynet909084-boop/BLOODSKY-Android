@@ -49,9 +49,11 @@ BLOODSKY graph remain importable and inspectable but evaluate as unavailable.
 
 ## Scope and remaining work
 
-The nested graph editor and `FB_MACRO` entry in the original palette are still gated. Canvas
-capture creates a new nested graph, but arbitrary nested graph editing is not yet available. The
-nested runtime executes the explicitly embedded BLOODSKY graph; it does not claim that opaque
-original Craft child records execute. Keep the original palette entry gated until the nested graph
-authoring lifecycle and exact-head Android gates pass. No visual parity or physical PLC behavior
-is claimed.
+The BLOODSKY nested graph editor is available from the FBD block context menu. It loads the
+embedded widgets and pin-specific connections into the existing canvas, lets the user assign the
+macro output to a verified block pin, validates and re-infers the output type on save, and refreshes
+all placed instances of that named macro. Invalid edits remain unsaved until corrected or discarded.
+The original `FB_MACRO` palette entry remains gated: opaque Craft child records are preserved but
+not executed because their component semantics have not yet been mapped and tested. The nested
+runtime executes only an explicitly embedded BLOODSKY graph. No visual parity or physical PLC
+behavior is claimed.
