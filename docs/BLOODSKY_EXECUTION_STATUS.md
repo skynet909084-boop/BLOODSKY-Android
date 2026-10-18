@@ -139,12 +139,12 @@ Design an additive SQLite-backed catalog migration that imports existing SharedP
 - Decompiled `CustomComponents.c`: `posSound` selects one of five bundled Craft alarms; an active trigger starts looping playback and a cleared trigger stops it.
 - The importer already preserves Craft's sound index and keeps the old device mapping inactive. The property editor now exposes all five presets and a custom audio-file option; choosing the custom option lets the saved path or content URI be used instead of the bundled sound.
 - Android unit tests and debug APK passed in [Actions run #815](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39139483169). UI smoke #477 was skipped by workflow rules.
-- Open: trigger-device acceptance, side-by-side audio/UI review, and independent playback when multiple alarm widgets are active. The current shared player allows one alarm to replace another.
+- Open: trigger-device acceptance and side-by-side audio/UI review. Playback is now keyed per screen/widget so one alarm's start, stop, or completion does not replace another; `tools/test_alarm_playback_contract.py` guards this wiring. Simultaneous playback still needs device acceptance.
 
 ## Resume checkpoint — 2026-10-18
 
 - Active work is PR #143 on branch `feat/craft-screen-navigation-import-20261018`; it remains open and unmerged. Stable `main` was not changed.
 - Completed slices include Craft ID 6 modes 0/1/2, ID 9 five bundled alarm presets/custom audio selection, ID 13 linear setter, and ID 20 bit list. Imported Craft device endpoints remain inactive until explicit TCP remapping.
 - Latest code validation: [Actions run #815](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39139483169) passed Android unit tests and debug APK build/upload. UI smoke was skipped by workflow rules.
-- Resume with independent per-widget alarm playback and paired UI/device acceptance, then continue the remaining source-backed widget and transport audit.
+- Independent per-widget alarm players are implemented and guarded by source-contract tests. Resume with paired audio/UI/device acceptance, then continue the remaining source-backed widget and transport audit.
 - Product constraints: retain optional SMS; omit licensing and mandatory cloud control; imported Craft bindings stay inactive until explicitly remapped.
