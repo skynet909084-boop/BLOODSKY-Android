@@ -230,7 +230,9 @@ class Smoke:
                 required_rows = (
                     'Устройства / серверы', 'Пароль проекта', 'Режим станции: Мастер',
                     'Показывать тайм-ауты', 'Сетевое управление', 'Работа в фоне')
-                missing = [label for label in required_rows if not matching_nodes(xml, text=label)]
+                visible_text = {node.get('text', '') for node in ET.fromstring(xml).iter('node')
+                                if node.get('bounds') != '[0,0][0,0]'}
+                missing = [label for label in required_rows if label not in visible_text]
                 if missing:
                     raise AssertionError('Source overflow menu is missing rows: ' + ', '.join(missing))
                 self.tap('Устройства / серверы')
