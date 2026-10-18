@@ -327,6 +327,13 @@ public class ProjectMediaService {
                 importedFromZip = true;
             } else {
                 importedJson = new String(inputData, StandardCharsets.UTF_8);
+                String trimmed = importedJson.trim();
+                if (trimmed.startsWith("{")) {
+                    JSONObject candidate = new JSONObject(trimmed);
+                    if (CraftProjectImporter.isCraftProject(candidate)) {
+                        importedJson = CraftProjectImporter.convert(trimmed);
+                    }
+                }
                 MainActivity.validateImportedProjectStatic(importedJson);
             }
 
