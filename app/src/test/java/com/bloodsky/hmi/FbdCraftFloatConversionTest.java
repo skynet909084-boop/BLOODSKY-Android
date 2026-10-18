@@ -23,6 +23,26 @@ public class FbdCraftFloatConversionTest {
         assertTrue(Double.isNaN(MainActivity.fbdCraftWordToFloat(Double.POSITIVE_INFINITY)));
     }
 
+    @Test public void craftShortFloatAndMathOperatorsMatchJavaSourceCasts() {
+        assertEquals((double) (float) (short) 32768,
+                MainActivity.fbdCraftIntToFloat(32768), 0.0);
+        assertEquals(-32768.0, MainActivity.fbdCraftIntToFloat(32768), 0.0);
+        assertTrue(Double.isNaN(MainActivity.fbdCraftIntToFloat(1.5)));
+        assertEquals(-2.0, MainActivity.fbdCraftFloatToInt(-2.75), 0.0);
+        assertEquals((double) Integer.MAX_VALUE,
+                MainActivity.fbdCraftFloatToInt(1e30), 0.0);
+        assertTrue(Double.isNaN(MainActivity.fbdCraftFloatToInt(Double.POSITIVE_INFINITY)));
+
+        double x = 1.234567890123;
+        assertEquals((double) (float) Math.sin((float) x),
+                MainActivity.fbdCraftUnaryFloat32(x, "SIN"), 0.0);
+        assertEquals((double) Math.abs((float) -x),
+                MainActivity.fbdCraftUnaryFloat32(-x, "ABS"), 0.0);
+        assertEquals((double) (float) Math.pow((float) x, 2f),
+                MainActivity.fbdCraftPowFloat32(x, 2.0), 0.0);
+        assertTrue(Double.isNaN(MainActivity.fbdCraftPowFloat32(-1.0, 0.5)));
+    }
+
     private static MainActivity.Widget widget(String type) {
         MainActivity.Widget w = new MainActivity.Widget();
         w.type = type;
@@ -55,5 +75,18 @@ public class FbdCraftFloatConversionTest {
         List<MainActivity.FbdConnection> logEdges = Arrays.asList(
                 MainActivity.pinnedFbdConnection(0, "Q", 1, "IN"));
         assertEquals((float) Math.log(3f), graphOutput(logNodes, logEdges, 1), 0.0);
+    }
+
+    @Test public void craftPowGraphUsesNamedXAndYInputs() throws Exception {
+        MainActivity.Widget x = widget("FBD CRAFT CTU"); x.counterValue = 3;
+        MainActivity.Widget y = widget("FBD CRAFT CTU"); y.counterValue = 2;
+        MainActivity.Widget pow = widget("FBD CRAFT POW");
+        List<MainActivity.Widget> nodes = Arrays.asList(x, y, pow);
+        List<MainActivity.FbdConnection> edges = Arrays.asList(
+                MainActivity.pinnedFbdConnection(0, "Q", 2, "X"),
+                MainActivity.pinnedFbdConnection(1, "Q", 2, "Y"));
+        assertEquals(9.0, graphOutput(nodes, edges, 2), 0.0);
+        assertEquals("FBD CRAFT POW",
+                MainActivity.widgetFromJson(MainActivity.widgetToJson(pow)).type);
     }
 }

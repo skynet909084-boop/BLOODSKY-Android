@@ -1637,7 +1637,10 @@ public class MainActivity extends Activity {
                 "FBD — Craft MX (EN + Integer ID)",
                 "FBD — Craft ARRAY (EN + DT + ID)",
                 "FBD — Craft LOG (Float32)",
-                "FBD — Craft WordToFloat (Integer → Float32)"
+                "FBD — Craft WordToFloat (Integer → Float32)",
+                "FBD — Craft POW (Float32)", "FBD — Craft SIN (Float32)",
+                "FBD — Craft ABS (Float32)", "FBD — Craft IntToFloat (signed 16-bit)",
+                "FBD — Craft FloatToInt"
         };
         final String[] types = {
                 "Текст", "Кнопка", "Индикатор", "Задатчик",
@@ -1658,7 +1661,9 @@ public class MainActivity extends Activity {
                 "FBD CRAFT ARITHMETIC INT", "FBD CRAFT ARITHMETIC FLOAT",
                 "FBD CRAFT COMPARE FLOAT", "FBD CRAFT MOVE",
                 "FBD CRAFT MX", "FBD CRAFT ARRAY",
-                "FBD CRAFT LOG", "FBD CRAFT WORD TO FLOAT"
+                "FBD CRAFT LOG", "FBD CRAFT WORD TO FLOAT",
+                "FBD CRAFT POW", "FBD CRAFT SIN", "FBD CRAFT ABS",
+                "FBD CRAFT INT TO FLOAT", "FBD CRAFT FLOAT TO INT"
         };
         final String[] defaults = {
                 "Надпись", "Кнопка", "Индикатор", "Задатчик: 0",
@@ -1671,7 +1676,8 @@ public class MainActivity extends Activity {
                 "MOVE", "SEL", "ABS", "MIN/MAX",
                 "RS", "SR", "CTU", "CTD", "R_TRIG", "F_TRIG",
                 "CTU 16 bit", "T", "TON", "BLINK", "SEL", ">",
-                "CH_I", "CH_F", "+", "+", ">", "MOVE", "MX", "ARRAY", "LN", "WORD->FL"
+                "CH_I", "CH_F", "+", "+", ">", "MOVE", "MX", "ARRAY", "LN", "WORD->FL",
+                "POW", "SIN", "ABS", "INT->FL", "FL->INT"
         };
         LinearLayout list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
@@ -3047,9 +3053,15 @@ public class MainActivity extends Activity {
             if (!output && "EN".equals(name)) return "BOOL";
             if (!output && ("DT".equals(name) || "ID".equals(name))) return "NUMBER";
         }
-        if (kind.equals("FBD CRAFT LOG") || kind.equals("FBD CRAFT WORD TO FLOAT")) {
+        if (kind.equals("FBD CRAFT LOG") || kind.equals("FBD CRAFT WORD TO FLOAT")
+                || kind.equals("FBD CRAFT SIN") || kind.equals("FBD CRAFT ABS")
+                || kind.equals("FBD CRAFT INT TO FLOAT") || kind.equals("FBD CRAFT FLOAT TO INT")) {
             if (output && "OUT".equals(name)) return "NUMBER";
             if (!output && "IN".equals(name)) return "NUMBER";
+        }
+        if (kind.equals("FBD CRAFT POW")) {
+            if (output && "Q".equals(name)) return "NUMBER";
+            if (!output && ("X".equals(name) || "Y".equals(name))) return "NUMBER";
         }
         if (kind.equals("FBD CRAFT SEL")) {
             if (output && "Q".equals(name)) return "NUMBER";
@@ -3299,6 +3311,34 @@ public class MainActivity extends Activity {
         return exact == null ? Double.NaN : (float) exact.intValue();
     }
 
+    /** Original IntToFloat narrows the signed Integer to Java short first. */
+    public static double fbdCraftIntToFloat(double value) {
+        Integer exact = FbdCraftIntegerSelector.exactInteger(value);
+        return exact == null ? Double.NaN : (float) (short) exact.intValue();
+    }
+
+    /** Original FloatToInt casts a Float to int, truncating toward zero. */
+    public static double fbdCraftFloatToInt(double value) {
+        if (!Double.isFinite(value)) return Double.NaN;
+        return (int) (float) value;
+    }
+
+    public static double fbdCraftUnaryFloat32(double value, String operation) {
+        if (!Double.isFinite(value)) return Double.NaN;
+        float input = (float) value;
+        float result;
+        if ("ABS".equals(operation)) result = Math.abs(input);
+        else if ("SIN".equals(operation)) result = (float) Math.sin(input);
+        else return Double.NaN;
+        return Float.isFinite(result) ? result : Double.NaN;
+    }
+
+    public static double fbdCraftPowFloat32(double x, double y) {
+        if (!Double.isFinite(x) || !Double.isFinite(y)) return Double.NaN;
+        float result = (float) Math.pow((float) x, (float) y);
+        return Float.isFinite(result) ? result : Double.NaN;
+    }
+
     public static boolean evaluateFbdBlockUncached(List<Widget> widgetsList, List<FbdConnection> connectionsList, int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
         if (index < 0 || index >= widgetsList.size() || visiting[index]) return false;
         Widget widget = widgetsList.get(index);
@@ -3434,17 +3474,30 @@ public class MainActivity extends Activity {
             cacheNumeric[index] = val;
             return val != 0.0;
         }
-        if ("FBD CRAFT LOG".equals(widget.type)) {
+        if ("FBD CRAFT LOG".equals(widget.type) || "FBD CRAFT WORD TO FLOAT".equals(widget.type)
+                || "FBD CRAFT INT TO FLOAT".equals(widget.type)
+                || "FBD CRAFT FLOAT TO INT".equals(widget.type)
+                || "FBD CRAFT SIN".equals(widget.type) || "FBD CRAFT ABS".equals(widget.type)) {
             if (!inputPins.contains("IN")) { cacheNumeric[index] = Double.NaN; return false; }
             double val = fbdNumericPinValue(numInputs, inputPins, "IN", -1, Double.NaN);
-            double result = fbdCraftLogFloat32(val);
+            double result;
+            if ("FBD CRAFT LOG".equals(widget.type)) result = fbdCraftLogFloat32(val);
+            else if ("FBD CRAFT WORD TO FLOAT".equals(widget.type)) result = fbdCraftWordToFloat(val);
+            else if ("FBD CRAFT INT TO FLOAT".equals(widget.type)) result = fbdCraftIntToFloat(val);
+            else if ("FBD CRAFT FLOAT TO INT".equals(widget.type)) result = fbdCraftFloatToInt(val);
+            else result = fbdCraftUnaryFloat32(val,
+                    "FBD CRAFT ABS".equals(widget.type) ? "ABS" : "SIN");
             cacheNumeric[index] = result;
             return !Double.isNaN(result) && !Double.isInfinite(result) && result != 0.0;
         }
-        if ("FBD CRAFT WORD TO FLOAT".equals(widget.type)) {
-            if (!inputPins.contains("IN")) { cacheNumeric[index] = Double.NaN; return false; }
-            double val = fbdNumericPinValue(numInputs, inputPins, "IN", -1, Double.NaN);
-            double result = fbdCraftWordToFloat(val);
+        if ("FBD CRAFT POW".equals(widget.type)) {
+            if (!inputPins.contains("X") || !inputPins.contains("Y")) {
+                cacheNumeric[index] = Double.NaN;
+                return false;
+            }
+            double result = fbdCraftPowFloat32(
+                    fbdNumericPinValue(numInputs, inputPins, "X", -1, Double.NaN),
+                    fbdNumericPinValue(numInputs, inputPins, "Y", -1, Double.NaN));
             cacheNumeric[index] = result;
             return !Double.isNaN(result) && !Double.isInfinite(result) && result != 0.0;
         }
@@ -4176,8 +4229,12 @@ public class MainActivity extends Activity {
                 || "FBD COS".equals(kind) || "FBD TAN".equals(kind) || "FBD SQRT".equals(kind)
                 || "FBD FLOATTOINT".equals(kind) || "FBD INTTOFLOAT".equals(kind))
             return output ? new String[]{"OUT"} : new String[]{"IN"};
-        if ("FBD CRAFT LOG".equals(kind) || "FBD CRAFT WORD TO FLOAT".equals(kind))
+        if ("FBD CRAFT LOG".equals(kind) || "FBD CRAFT WORD TO FLOAT".equals(kind)
+                || "FBD CRAFT SIN".equals(kind) || "FBD CRAFT ABS".equals(kind)
+                || "FBD CRAFT INT TO FLOAT".equals(kind) || "FBD CRAFT FLOAT TO INT".equals(kind))
             return output ? new String[]{"OUT"} : new String[]{"IN"};
+        if ("FBD CRAFT POW".equals(kind))
+            return output ? new String[]{"Q"} : new String[]{"X", "Y"};
         if ("FBD TON".equals(kind) || "FBD TOF".equals(kind)
                 || "FBD TP".equals(kind) || "FBD CRAFT BLINK".equals(kind)
                 || "FBD CRAFT TIMER".equals(kind))
@@ -4738,60 +4795,3 @@ public class MainActivity extends Activity {
                         selected = i; startX = w.x; startY = w.y; startW = w.w; startH = w.h;
                         float grip = dp(22);
                         resizing = x >= w.x + w.w - grip && y >= w.y + w.h - grip;
-                        break;
-                    }
-                }
-                invalidate();
-                return true;
-            }
-            if (event.getAction() == MotionEvent.ACTION_MOVE && selected >= 0) {
-                float dx = x - downX, dy = y - downY;
-                if (Math.abs(dx) + Math.abs(dy) > dp(5)) dragging = true;
-                if (dragging) {
-                    Widget w = widgets.get(selected);
-                    if (resizing) {
-                        int minW = dp(60), minH = dp(40);
-                        float maxW = Math.max(minW, getWidth() - w.x);
-                        float maxH = Math.max(minH, getHeight() - w.y);
-                        w.w = Math.max(minW, Math.min(maxW, snapToGrid(startW + dx)));
-                        w.h = Math.max(minH, Math.min(maxH, snapToGrid(startH + dy)));
-                    } else {
-                        float maxX = Math.max(0, getWidth() - w.w);
-                        float maxY = Math.max(0, getHeight() - w.h);
-                        w.x = Math.max(0, Math.min(maxX, snapToGrid(startX + dx)));
-                        w.y = Math.max(0, Math.min(maxY, snapToGrid(startY + dy)));
-                    }
-                    invalidate();
-                }
-                return true;
-            }
-            if (event.getAction() == MotionEvent.ACTION_UP) {
-                if (dragging) {
-                    persistProject();
-                } else if (selected >= 0 && SystemClock.elapsedRealtime() - downAt >= 550L) {
-                    showWidgetContextMenu();
-                } else if (selected >= 0 && fbdWireMode) {
-                    Widget picked = widgets.get(selected);
-                    if (!isFbd(picked)) {
-                        Toast.makeText(MainActivity.this, "В режиме связи выбери FBD-блок", Toast.LENGTH_SHORT).show();
-                    } else if (wireSource < 0) {
-                        wireSource = selected;
-                        Toast.makeText(MainActivity.this, "Источник выбран: " + picked.text + ". Теперь выбери целевой блок", Toast.LENGTH_LONG).show();
-                    } else {
-                        int source = wireSource;
-                        wireSource = -1;
-                        connectFbdWidgets(source, selected);
-                        fbdWireMode = false;
-                    }
-                } else if (selected >= 0) {
-                    editSelectedWidget();
-                }
-                invalidate();
-                return true;
-            }
-            return true;
-        }
-    }
-}
-
-

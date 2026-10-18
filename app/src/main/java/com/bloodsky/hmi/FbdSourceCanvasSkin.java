@@ -30,7 +30,10 @@ public final class FbdSourceCanvasSkin {
                 || "FBD CRAFT CHANGE F".equals(type)
                 || "FBD CRAFT MOVE".equals(type)
                 || "FBD CRAFT MX".equals(type) || "FBD CRAFT ARRAY".equals(type)
-                || "FBD CRAFT LOG".equals(type) || "FBD CRAFT WORD TO FLOAT".equals(type);
+                || "FBD CRAFT LOG".equals(type) || "FBD CRAFT WORD TO FLOAT".equals(type)
+                || "FBD CRAFT POW".equals(type) || "FBD CRAFT SIN".equals(type)
+                || "FBD CRAFT ABS".equals(type) || "FBD CRAFT INT TO FLOAT".equals(type)
+                || "FBD CRAFT FLOAT TO INT".equals(type);
     }
 
     public static boolean shouldUse(MainActivity.Widget w) {
@@ -53,6 +56,11 @@ public final class FbdSourceCanvasSkin {
                 : "FBD CRAFT ARRAY".equals(w.type) ? "ARRAY"
                 : "FBD CRAFT LOG".equals(w.type) ? "LN"
                 : "FBD CRAFT WORD TO FLOAT".equals(w.type) ? "WORD->FL"
+                : "FBD CRAFT POW".equals(w.type) ? "POW"
+                : "FBD CRAFT SIN".equals(w.type) ? "SIN"
+                : "FBD CRAFT ABS".equals(w.type) ? "ABS"
+                : "FBD CRAFT INT TO FLOAT".equals(w.type) ? "INT->FL"
+                : "FBD CRAFT FLOAT TO INT".equals(w.type) ? "FL->INT"
                 : "FBD CRAFT COMPARE".equals(w.type) ? w.compareOperator
                 : "FBD CRAFT COMPARE FLOAT".equals(w.type)
                         || "FBD CRAFT ARITHMETIC INT".equals(w.type)
@@ -67,6 +75,8 @@ public final class FbdSourceCanvasSkin {
     public static float inputY(String type, String name) {
         if ("FBD CRAFT MOVE".equals(type))
             return "EN".equalsIgnoreCase(name) ? 0.5f : 5f / 6f;
+        if ("FBD CRAFT POW".equals(type))
+            return "X".equalsIgnoreCase(name) ? 0.5f : 5f / 6f;
         if ("FBD CRAFT ARRAY".equals(type))
             return "EN".equalsIgnoreCase(name) ? 3f/8f : "DT".equalsIgnoreCase(name) ? 5f/8f : 7f/8f;
         if ("FBD XOR".equals(type) || isTimer(type)) {
@@ -90,7 +100,8 @@ public final class FbdSourceCanvasSkin {
                 || "FBD CRAFT T".equals(type) || "FBD RS".equals(type)
                 || "FBD CRAFT CHANGE I".equals(type)
                 || "FBD CRAFT CHANGE F".equals(type)
-                || "FBD CRAFT MOVE".equals(type) || "FBD CRAFT ARRAY".equals(type);
+                || "FBD CRAFT MOVE".equals(type) || "FBD CRAFT ARRAY".equals(type)
+                || "FBD CRAFT POW".equals(type);
     }
 
     public static void draw(Canvas canvas, Paint brush, MainActivity.Widget w, float density) {
@@ -157,6 +168,11 @@ public final class FbdSourceCanvasSkin {
                     : "FBD CRAFT ARRAY".equals(w.type) ? "ARRAY"
                     : "FBD CRAFT LOG".equals(w.type) ? "LN"
                     : "FBD CRAFT WORD TO FLOAT".equals(w.type) ? "WORD->FL"
+                    : "FBD CRAFT POW".equals(w.type) ? "POW"
+                    : "FBD CRAFT SIN".equals(w.type) ? "SIN"
+                    : "FBD CRAFT ABS".equals(w.type) ? "ABS"
+                    : "FBD CRAFT INT TO FLOAT".equals(w.type) ? "INT->FL"
+                    : "FBD CRAFT FLOAT TO INT".equals(w.type) ? "FL->INT"
                     : "FBD CRAFT COMPARE".equals(w.type) ? w.compareOperator
                     : FbdDurationUnits.modeForType(w.type);
             float center = (left + right) / 2f;
@@ -184,7 +200,14 @@ public final class FbdSourceCanvasSkin {
                         || "FBD RS".equals(w.type)
                         || "FBD CRAFT SEL".equals(w.type)
                         || "FBD CRAFT COMPARE".equals(w.type)
-                        || "FBD CRAFT MOVE".equals(w.type)) {
+                        || "FBD CRAFT MOVE".equals(w.type)
+                        || "FBD CRAFT LOG".equals(w.type)
+                        || "FBD CRAFT WORD TO FLOAT".equals(w.type)
+                        || "FBD CRAFT POW".equals(w.type)
+                        || "FBD CRAFT SIN".equals(w.type)
+                        || "FBD CRAFT ABS".equals(w.type)
+                        || "FBD CRAFT INT TO FLOAT".equals(w.type)
+                        || "FBD CRAFT FLOAT TO INT".equals(w.type)) {
                     brush.setTextAlign(Paint.Align.LEFT);
                     brush.setTextSize(Math.min(10f * density, Math.max(7f * density, w.h / 8f)));
                     for (String port : inputPins) {

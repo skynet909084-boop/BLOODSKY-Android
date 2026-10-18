@@ -315,6 +315,40 @@ class FastFbdSmoke(Smoke):
         if current_widgets() != original or self.saved_connections():
             raise AssertionError('Original Craft palette native types were not persisted')
 
+        # Pure Float32 operators and source casts have a separate clean canvas.
+        adb('shell', 'pm', 'clear', PACKAGE)
+        adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
+        self.tap('Создать новый проект')
+        self.tap(class_name='android.widget.EditText')
+        adb('shell', 'input', 'text', PROJECT)
+        self.tap('Создать')
+        self.wait_node(description='Редактор экрана')
+        expected_pure = ['FBD CRAFT POW', 'FBD CRAFT SIN', 'FBD CRAFT ABS',
+                         'FBD CRAFT INT TO FLOAT', 'FBD CRAFT FLOAT TO INT']
+        for native_type in expected_pure:
+            add_from_original_preview(native_type)
+        pure = current_widgets()
+        if [widget['type'] for widget in pure] != expected_pure:
+            raise AssertionError('Original Craft pure math/conversions mapped incorrectly: '
+                                 + repr(pure))
+        for i, first in enumerate(pure):
+            for second in pure[i + 1:]:
+                intersects = (first['x'] < second['x'] + second['w']
+                              and first['x'] + first['w'] > second['x']
+                              and first['y'] < second['y'] + second['h']
+                              and first['y'] + first['h'] > second['y'])
+                if intersects:
+                    raise AssertionError('Pure original FBD blocks overlapped: '
+                                         + repr((first, second)))
+        self.capture('fast-fbd-original-craft-pure-float-operators')
+        adb('shell', 'am', 'force-stop', PACKAGE)
+        adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
+        self.tap('Загрузить проект')
+        self.tap(PROJECT)
+        self.wait_node(description='Редактор экрана')
+        if current_widgets() != pure or self.saved_connections():
+            raise AssertionError('Original Craft pure operator IDs changed after restart')
+
         # Versioned INTEGER SEL/COMPARE have different ports from BLOODSKY's
         # existing generic operators. Exercise the real extended picker.
         adb('shell', 'pm', 'clear', PACKAGE)

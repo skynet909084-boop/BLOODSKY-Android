@@ -24,7 +24,9 @@ class OriginalFbdPaletteTests(unittest.TestCase):
         self.assertIn('view.setEnabled(false)',code)
         ids={n.get(A+'id').split('/')[-1] for n in previews}
         bound=re.findall(r'bind\(dialog,R.id.(\w+),"([^"]+)"',code)
-        self.assertEqual(9,len(bound))
+        self.assertEqual(4,len(bound))
+        native=re.findall(r'bindNative\(dialog,R.id.(\w+),"([^"]+)"',code)
+        self.assertGreaterEqual(len(native),20)
         main=(ROOT/'app/src/main/java/com/bloodsky/hmi/MainActivity.java').read_text()
         for identifier,kind in bound:
             self.assertIn(identifier,ids); self.assertIn('"'+kind+'"',main)

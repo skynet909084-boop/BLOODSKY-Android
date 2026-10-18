@@ -86,7 +86,7 @@ public class OriginalFbdNativePaletteMappingTest {
     @Test public void unsupportedOriginalBlocksStayDisabledAndUnmapped() {
         for (String source : new String[]{
                 "FB_TIMER", "FB_MACRO", "MQTT_SUBSCRIBER", "Var",
-                "FB_POW", "FB_TRIGGER_ALT", "", "FB_CTU_OLD"}) {
+                "FB_TRIGGER_ALT", "", "FB_CTU_OLD"}) {
             assertNull(source, OriginalFbdPalette.nativeTypeForOriginalTag(source));
             assertNull(source, OriginalFbdPalette.nativeLabelForOriginalTag(source));
         }
@@ -137,5 +137,35 @@ public class OriginalFbdNativePaletteMappingTest {
             assertEquals("NUMBER", MainActivity.knownFbdPinType(type, "IN", false));
             assertEquals("NUMBER", MainActivity.knownFbdPinType(type, "OUT", true));
         }
+    }
+
+    @Test public void originalPureMathAndConversionsUseDistinctCraftContracts() {
+        String pow = OriginalFbdPalette.nativeTypeForOriginalTag("FB_POW");
+        assertEquals("FBD CRAFT POW", pow);
+        assertEquals("POW", OriginalFbdPalette.nativeLabelForOriginalTag("FB_POW"));
+        assertArrayEquals(new String[]{"X", "Y"}, MainActivity.knownFbdPins(pow, false));
+        assertArrayEquals(new String[]{"Q"}, MainActivity.knownFbdPins(pow, true));
+        assertEquals(0.5f, MainActivity.fbdTerminalFraction(pow, "X", false), 0.00001f);
+        assertEquals(5f/6f, MainActivity.fbdTerminalFraction(pow, "Y", false), 0.00001f);
+        assertTrue(FbdSourceCanvasSkin.shouldUse(widget(pow, "POW")));
+
+        String[] sourceTags = {"SIN", "ABS", "IntToFloat", "FloatToInt"};
+        String[] expectedTypes = {"FBD CRAFT SIN", "FBD CRAFT ABS",
+                "FBD CRAFT INT TO FLOAT", "FBD CRAFT FLOAT TO INT"};
+        String[] expectedLabels = {"SIN", "ABS", "INT->FL", "FL->INT"};
+        for (int i = 0; i < sourceTags.length; i++) {
+            assertEquals(expectedTypes[i], OriginalFbdPalette.nativeTypeForOriginalTag(sourceTags[i]));
+            assertEquals(expectedLabels[i], OriginalFbdPalette.nativeLabelForOriginalTag(sourceTags[i]));
+            assertArrayEquals(new String[]{"IN"}, MainActivity.knownFbdPins(expectedTypes[i], false));
+            assertArrayEquals(new String[]{"OUT"}, MainActivity.knownFbdPins(expectedTypes[i], true));
+            assertEquals("NUMBER", MainActivity.knownFbdPinType(expectedTypes[i], "IN", false));
+            assertEquals("NUMBER", MainActivity.knownFbdPinType(expectedTypes[i], "OUT", true));
+        }
+    }
+
+    private static MainActivity.Widget widget(String type, String label) {
+        MainActivity.Widget widget = new MainActivity.Widget();
+        widget.type = type; widget.text = label; widget.w = 120; widget.h = 60;
+        return widget;
     }
 }
