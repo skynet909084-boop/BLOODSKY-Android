@@ -18,13 +18,14 @@ public final class CraftArchiveChannels {
         boolean floating = "FLOAT".equals(recordType);
         if (words.length < readQuantity(channels, recordType))
             throw new IllegalArgumentException("Not enough register words for archive channels");
-        List<String> values = new ArrayList<>();
+        StringBuilder values = new StringBuilder();
         for (int channel = 0; channel < channels; channel++) {
+            if (channel > 0) values.append(',');
             if (floating) {
                 int bits = ((words[channel * 2] & 0xffff) << 16) | (words[channel * 2 + 1] & 0xffff);
-                values.add(Float.toString(Float.intBitsToFloat(bits)));
-            } else values.add(Integer.toString(words[channel] & 0xffff));
+                values.append(Float.toString(Float.intBitsToFloat(bits)));
+            } else values.append(words[channel] & 0xffff);
         }
-        return android.text.TextUtils.join(",", values);
+        return values.toString();
     }
 }
