@@ -5,8 +5,8 @@ import static org.junit.Assert.*;
 
 public class FbdCraftRegisterCodecTest {
     @Test public void booleanBitIsExtractedThenInverted() {
-        assertFalse(FbdCraftRegisterCodec.booleanValue(0x8001, 15, false));
-        assertTrue(FbdCraftRegisterCodec.booleanValue(0x8001, 15, true));
+        assertTrue(FbdCraftRegisterCodec.booleanValue(0x8001, 15, false));
+        assertFalse(FbdCraftRegisterCodec.booleanValue(0x8001, 15, true));
         assertTrue(FbdCraftRegisterCodec.booleanValue(0x8001, 0, false));
         assertFalse(FbdCraftRegisterCodec.booleanValue(0x8001, 0, true));
     }

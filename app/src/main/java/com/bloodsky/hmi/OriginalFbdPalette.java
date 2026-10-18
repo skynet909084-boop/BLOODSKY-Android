@@ -35,6 +35,8 @@ public final class OriginalFbdPalette {
         bindNative(dialog,R.id.kc_logic_tab_varOutInt,"VarOutInt",add);
         bindNative(dialog,R.id.kc_logic_tab_varFloat,"VarFloat",add);
         bindNative(dialog,R.id.kc_logic_tab_varOutFloat,"VarOutFloat",add);
+        bindNative(dialog,R.id.kc_logic_tab_var_name_in,"VarNameIn",add);
+        bindNative(dialog,R.id.kc_logic_tab_var_name_out,"VarNameOut",add);
         bindNative(dialog,R.id.kc_logic_tab_fb_mx,"FB_MX",add);
         bindNative(dialog,R.id.kc_logic_tab_fb_array,"FB_ARRAY",add);
         bindNative(dialog,R.id.kc_logic_tab_fb_word_to_float,"WordToFloat",add);
@@ -80,6 +82,8 @@ public final class OriginalFbdPalette {
         if ("VarOutInt".equals(tag)) return "FBD CRAFT VAR OUT INT";
         if ("VarFloat".equals(tag)) return "FBD CRAFT VAR FLOAT";
         if ("VarOutFloat".equals(tag)) return "FBD CRAFT VAR OUT FLOAT";
+        if ("VarNameIn".equals(tag)) return "FBD CRAFT VAR NAME IN INT";
+        if ("VarNameOut".equals(tag)) return "FBD CRAFT VAR NAME OUT INT";
         if ("FB_MX".equals(tag)) return "FBD CRAFT MX";
         if ("FB_ARRAY".equals(tag)) return "FBD CRAFT ARRAY";
         if ("WordToFloat".equals(tag)) return "FBD CRAFT WORD TO FLOAT";
@@ -109,6 +113,7 @@ public final class OriginalFbdPalette {
         if ("VarOut".equals(tag) || "VarOutInt".equals(tag) || "VarOutFloat".equals(tag)) return "S#";
         if ("VarInt".equals(tag)) return "VAR_INT";
         if ("VarFloat".equals(tag)) return "VAR_FLOAT";
+        if ("VarNameIn".equals(tag) || "VarNameOut".equals(tag)) return "var name";
         if ("FB_MX".equals(tag)) return "MX";
         if ("FB_ARRAY".equals(tag)) return "ARRAY";
         if ("WordToFloat".equals(tag)) return "WORD->FL";

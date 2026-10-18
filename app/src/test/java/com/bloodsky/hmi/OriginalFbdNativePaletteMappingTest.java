@@ -85,7 +85,7 @@ public class OriginalFbdNativePaletteMappingTest {
 
     @Test public void unsupportedOriginalBlocksStayDisabledAndUnmapped() {
         for (String source : new String[]{
-                "FB_MACRO", "MQTT_SUBSCRIBER", "Var",
+                "FB_MACRO", "MQTT_SUBSCRIBER", "Sensor_Light",
                 "FB_TRIGGER_ALT", "", "FB_CTU_OLD"}) {
             assertNull(source, OriginalFbdPalette.nativeTypeForOriginalTag(source));
             assertNull(source, OriginalFbdPalette.nativeLabelForOriginalTag(source));

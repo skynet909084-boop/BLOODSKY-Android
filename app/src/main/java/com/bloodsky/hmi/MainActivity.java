@@ -1259,6 +1259,7 @@ public class MainActivity extends Activity {
         // clock epoch rather than resuming an old saved elapsedRealtime value.
         if (!operatorMode) {
             FbdCraftRegisterStore.clear();
+            FbdCraftNamedVariableStore.clear();
             for (Widget value : widgets) resetFbdTimerRuntime(value);
         }
         operatorMode = !operatorMode; fbdWireMode = false; wireSource = -1;
@@ -1955,6 +1956,36 @@ public class MainActivity extends Activity {
         final EditText craftBitField;
         final android.widget.CheckBox craftSwapWordField;
         final android.widget.CheckBox craftSwapByteField;
+        final EditText craftVariableNameField;
+        final android.widget.Spinner craftVariableTypeField;
+        final android.widget.CheckBox craftNamedConstantModeField;
+        final EditText craftNamedConstantValueField;
+        if (isCraftNamedVariableSource(w.type) || isCraftNamedVariableSink(w.type)) {
+            boolean source = isCraftNamedVariableSource(w.type);
+            craftVariableNameField = propertyField(w.extraFields.optString("craftVariableName",
+                    w.extraFields.optString("name", "")), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+            craftVariableNameField.setHint("Имя общей переменной");
+            form.addView(craftVariableNameField);
+            craftVariableTypeField = new android.widget.Spinner(this);
+            craftVariableTypeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item, new String[]{"BOOL", "INT32", "FLOAT32"}));
+            int oldKind = w.extraFields.optInt("typeVar", w.type.endsWith(" BOOL") ? 1 : w.type.endsWith(" FLOAT") ? 3 : 2);
+            craftVariableTypeField.setSelection(oldKind >= 1 && oldKind <= 3 ? oldKind - 1 : 1);
+            form.addView(craftVariableTypeField);
+            craftNamedConstantModeField = source ? new android.widget.CheckBox(this) : null;
+            craftNamedConstantValueField = source ? propertyField(w.extraFields.optString("craftNamedConstant", "0"),
+                    InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL) : null;
+            if (source) {
+                craftNamedConstantModeField.setText("Использовать константу вместо имени");
+                craftNamedConstantModeField.setChecked(w.extraFields.optBoolean("craftNamedConstantMode",
+                        w.extraFields.optBoolean("isConstant", false)));
+                craftNamedConstantValueField.setHint("Значение константы");
+                form.addView(craftNamedConstantModeField); form.addView(craftNamedConstantValueField);
+            }
+        } else {
+            craftVariableNameField = null; craftVariableTypeField = null;
+            craftNamedConstantModeField = null; craftNamedConstantValueField = null;
+        }
         if (isCraftRegisterSource(w.type) || isCraftRegisterSink(w.type)) {
             boolean source = isCraftRegisterSource(w.type);
             craftConstantModeField = source ? new android.widget.CheckBox(this) : null;
@@ -2319,6 +2350,31 @@ public class MainActivity extends Activity {
                             w.extraFields.put("craftSwapWord", craftSwapWordField.isChecked());
                             w.extraFields.put("craftSwapByte", craftSwapByteField.isChecked());
                         } catch (Exception ignored) {}
+                    }
+                    if (craftVariableNameField != null) {
+                        String variableName = craftVariableNameField.getText().toString().trim();
+                        int variableKind = craftVariableTypeField.getSelectedItemPosition() + 1;
+                        boolean useConstant = craftNamedConstantModeField != null && craftNamedConstantModeField.isChecked();
+                        if (variableName.isEmpty() && !useConstant) {
+                            Toast.makeText(this, "Укажи имя общей переменной", Toast.LENGTH_LONG).show(); return;
+                        }
+                        if (craftNamedConstantValueField != null) {
+                            try {
+                                double numeric = Double.parseDouble(craftNamedConstantValueField.getText().toString().trim());
+                                if (!Double.isFinite(numeric)
+                                        || (variableKind == 1 && numeric != 0.0 && numeric != 1.0)
+                                        || (variableKind == 2 && (numeric < Integer.MIN_VALUE || numeric > Integer.MAX_VALUE || numeric != Math.rint(numeric)))
+                                        || (variableKind == 3 && Math.abs(numeric) > Float.MAX_VALUE)) throw new NumberFormatException();
+                                w.extraFields.put("craftNamedConstant", Double.toString(numeric));
+                                w.extraFields.put("craftNamedConstantMode", useConstant);
+                            } catch (Exception invalid) {
+                                Toast.makeText(this, "Константа должна соответствовать BOOL, INT32 или FLOAT32", Toast.LENGTH_LONG).show(); return;
+                            }
+                        }
+                        try { w.extraFields.put("craftVariableName", variableName); }
+                        catch (Exception ignored) {}
+                        boolean source = isCraftNamedVariableSource(w.type);
+                        w.type = craftNamedVariableType(variableKind, !source);
                     }
                     w.text = textField.getText().toString();
                     w.connectionInfo = connectionField.getText().toString().trim();
@@ -2830,6 +2886,7 @@ public class MainActivity extends Activity {
         }
         fbdWireHistory.clear();
         FbdCraftRegisterStore.clear();
+        FbdCraftNamedVariableStore.clear();
         imageCache.clear();
         widgets.clear(); screens.clear(); currentScreenIndex = 0;
         projectExtraFields = new JSONObject();
@@ -3069,6 +3126,32 @@ public class MainActivity extends Activity {
                 || "FBD CRAFT VAR FLOAT".equals(kind);
     }
 
+    public static boolean isCraftNamedVariableSource(String type) {
+        return type != null && type.startsWith("FBD CRAFT VAR NAME IN ");
+    }
+
+    public static boolean isCraftNamedVariableSink(String type) {
+        return type != null && type.startsWith("FBD CRAFT VAR NAME OUT ");
+    }
+
+    private static int craftNamedVariableKind(String type) {
+        if (type == null) return 0;
+        if (type.endsWith(" BOOL")) return 1;
+        if (type.endsWith(" INT")) return 2;
+        if (type.endsWith(" FLOAT")) return 3;
+        return 0;
+    }
+
+    private static String craftNamedVariableType(int kind, boolean output) {
+        String suffix = kind == 1 ? "BOOL" : kind == 3 ? "FLOAT" : "INT";
+        return "FBD CRAFT VAR NAME " + (output ? "OUT " : "IN ") + suffix;
+    }
+
+    private static String craftNamedVariableName(Widget widget) {
+        return widget.extraFields.optString("craftVariableName",
+                widget.extraFields.optString("name", ""));
+    }
+
     public static boolean isCraftRegisterSink(String type) {
         String kind = canonicalFbdBlockType(type);
         return "FBD CRAFT VAR OUT BOOL".equals(kind) || "FBD CRAFT VAR OUT INT".equals(kind)
@@ -3094,6 +3177,10 @@ public class MainActivity extends Activity {
             return isCraftRegisterBoolean(kind) ? "BOOL" : "NUMBER";
         if (isCraftRegisterSink(kind) && !output && "IN".equals(name))
             return isCraftRegisterBoolean(kind) ? "BOOL" : "NUMBER";
+        if (isCraftNamedVariableSource(kind) && output && "Q".equals(name))
+            return craftNamedVariableKind(kind) == 1 ? "BOOL" : "NUMBER";
+        if (isCraftNamedVariableSink(kind) && !output && "IN".equals(name))
+            return craftNamedVariableKind(kind) == 1 ? "BOOL" : "NUMBER";
         if (kind.equals("FBD AND") || kind.equals("FBD OR") || kind.equals("FBD XOR")
                 || kind.equals("FBD NAND") || kind.equals("FBD NOR")) {
             if (output && "Q".equals(name)) return "BOOL";
@@ -3335,7 +3422,8 @@ public class MainActivity extends Activity {
         if (type == null) return false;
         String canonical = canonicalFbdBlockType(type);
         return "FBD AND".equals(canonical) || "FBD OR".equals(canonical)
-                || "FBD XOR".equals(canonical) || "FBD CRAFT VAR BOOL".equals(canonical);
+                || "FBD XOR".equals(canonical) || "FBD CRAFT VAR BOOL".equals(canonical)
+                || (isCraftNamedVariableSource(canonical) && craftNamedVariableKind(canonical) == 1);
     }
 
     private static boolean hasCompleteCraftGateInputs(List<Widget> widgets,
@@ -3523,6 +3611,19 @@ public class MainActivity extends Activity {
         if (index < 0 || index >= widgetsList.size() || visiting[index]) return false;
         Widget widget = widgetsList.get(index);
         if (!isFbdWidget(widget)) return false;
+        if (isCraftNamedVariableSource(widget.type)) {
+            int kind = craftNamedVariableKind(widget.type);
+            double value = FbdCraftNamedVariableStore.read(
+                    craftNamedVariableName(widget), kind);
+            if (widget.extraFields.optBoolean("craftNamedConstantMode",
+                    widget.extraFields.optBoolean("isConstant", false))) {
+                try { value = Double.parseDouble(widget.extraFields.optString("craftNamedConstant",
+                        widget.extraFields.optString("constant", "0"))); }
+                catch (Exception ignored) { value = Double.NaN; }
+            }
+            cacheNumeric[index] = value;
+            return Double.isFinite(value) && value != 0.0;
+        }
         if (isCraftRegisterSource(widget.type)) {
             double value = Double.NaN;
             if (widget.extraFields.optBoolean("craftVarConstantMode", false)) {
@@ -3572,6 +3673,15 @@ public class MainActivity extends Activity {
             else if (isCraftRegisterBoolean(widget.type)) cacheNumeric[index] = inputs.get(0) ? 1.0 : 0.0;
             else cacheNumeric[index] = numInputs.get(0);
             return !Double.isNaN(cacheNumeric[index]) && cacheNumeric[index] != 0.0;
+        }
+        if (isCraftNamedVariableSink(widget.type)) {
+            if (inputPins.isEmpty()) cacheNumeric[index] = Double.NaN;
+            else cacheNumeric[index] = isCraftNamedVariableSink(widget.type) && craftNamedVariableKind(widget.type) == 1
+                    ? (inputs.get(0) ? 1.0 : 0.0) : numInputs.get(0);
+            if (Double.isFinite(cacheNumeric[index])) FbdCraftNamedVariableStore.write(
+                    craftNamedVariableName(widget),
+                    craftNamedVariableKind(widget.type), cacheNumeric[index]);
+            return Double.isFinite(cacheNumeric[index]) && cacheNumeric[index] != 0.0;
         }
 
         if ("FBD Сложение".equals(widget.type)) {
@@ -4455,6 +4565,8 @@ public class MainActivity extends Activity {
         if ("FBD ВХОД".equals(kind)) return output ? new String[]{"Q"} : new String[0];
         if (isCraftRegisterSource(kind)) return output ? new String[]{"Q"} : new String[0];
         if (isCraftRegisterSink(kind)) return output ? new String[0] : new String[]{"IN"};
+        if (isCraftNamedVariableSource(kind)) return output ? new String[]{"Q"} : new String[0];
+        if (isCraftNamedVariableSink(kind)) return output ? new String[0] : new String[]{"IN"};
         if ("FBD AND".equals(kind) || "FBD OR".equals(kind) || "FBD XOR".equals(kind)
                 || "FBD NAND".equals(kind) || "FBD NOR".equals(kind))
             return output ? new String[]{"Q"} : new String[]{"IN1", "IN2"};

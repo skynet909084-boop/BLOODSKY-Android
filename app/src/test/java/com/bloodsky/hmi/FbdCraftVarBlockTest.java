@@ -22,6 +22,8 @@ public class FbdCraftVarBlockTest {
         assertEquals("FBD CRAFT VAR OUT INT", OriginalFbdPalette.nativeTypeForOriginalTag("VarOutInt"));
         assertEquals("FBD CRAFT VAR FLOAT", OriginalFbdPalette.nativeTypeForOriginalTag("VarFloat"));
         assertEquals("FBD CRAFT VAR OUT FLOAT", OriginalFbdPalette.nativeTypeForOriginalTag("VarOutFloat"));
+        assertEquals("FBD CRAFT VAR NAME IN INT", OriginalFbdPalette.nativeTypeForOriginalTag("VarNameIn"));
+        assertEquals("FBD CRAFT VAR NAME OUT INT", OriginalFbdPalette.nativeTypeForOriginalTag("VarNameOut"));
     }
 
     @Test public void sourcesProvideConstantsAndDecodeRegisterWords() throws Exception {
@@ -58,5 +60,23 @@ public class FbdCraftVarBlockTest {
         assertTrue(Double.isNaN(value(nodes, null, 1)));
         assertArrayEquals(new String[]{"IN"}, MainActivity.knownFbdPins("FBD CRAFT VAR OUT FLOAT", false));
         assertArrayEquals(new String[0], MainActivity.knownFbdPins("FBD CRAFT VAR OUT FLOAT", true));
+    }
+
+    @Test public void namedVariableSourceAndSinkShareTypedTransientValue() throws Exception {
+        FbdCraftNamedVariableStore.clear();
+        MainActivity.Widget source = block("FBD CRAFT VAR NAME IN INT");
+        source.extraFields.put("craftVariableName", "pressure");
+        MainActivity.Widget constant = block("FBD CRAFT VAR INT");
+        constant.extraFields.put("craftVarConstantMode", true);
+        constant.extraFields.put("craftVarConstant", "321");
+        MainActivity.Widget sink = block("FBD CRAFT VAR NAME OUT INT");
+        sink.extraFields.put("craftVariableName", "pressure");
+        List<MainActivity.Widget> nodes = Arrays.asList(source, constant, sink);
+        List<MainActivity.FbdConnection> wires = Arrays.asList(MainActivity.pinnedFbdConnection(1, "Q", 2, "IN"));
+        assertEquals(0.0, value(nodes, wires, 0), 0.0);
+        assertEquals(321.0, value(nodes, wires, 2), 0.0);
+        assertEquals(321.0, value(nodes, wires, 0), 0.0);
+        assertEquals("BOOL", MainActivity.knownFbdPinType("FBD CRAFT VAR NAME IN BOOL", "Q", true));
+        assertEquals("NUMBER", MainActivity.knownFbdPinType("FBD CRAFT VAR NAME OUT FLOAT", "IN", false));
     }
 }
