@@ -49,6 +49,11 @@ class OriginalComponentPaletteTests(unittest.TestCase):
             ('gateway', 'Шлюз Craft'),
             ('gateway_bit', 'Шлюз битовый'),
         ]:
+            if item == 'switch':
+                self.assertIn('Добавить: Переключатель (как кнопка)', code)
+                self.assertIn('() -> add.add("Кнопка", "Кнопка")', code)
+                self.assertNotRegex(code, r'unavailable\(dialog, R.id.kc_picker_tab_' + item + r',')
+                continue
             self.assertRegex(code, r'bind\(dialog, R.id.kc_picker_tab_' + item
                              + r'\s*,\s*"' + re.escape(widget_type) + r'"')
             self.assertNotRegex(code, r'unavailable\(dialog, R.id.kc_picker_tab_' + item + r',')
