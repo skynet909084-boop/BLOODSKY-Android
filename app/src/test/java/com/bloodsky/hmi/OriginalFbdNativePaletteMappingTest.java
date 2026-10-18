@@ -53,6 +53,22 @@ public class OriginalFbdNativePaletteMappingTest {
         assertNotEquals("FBD Сравнение", compare);
     }
 
+    @Test public void originalChangeIntegerAndFloatPreviewsExposeCorrectTypedPorts() {
+        String integer = OriginalFbdPalette.nativeTypeForOriginalTag("FB_CHANGE_I");
+        String floating = OriginalFbdPalette.nativeTypeForOriginalTag("FB_CHANGE_F");
+        assertEquals("FBD CRAFT CHANGE I", integer);
+        assertEquals("FBD CRAFT CHANGE F", floating);
+        assertEquals("CH_I", OriginalFbdPalette.nativeLabelForOriginalTag("FB_CHANGE_I"));
+        assertEquals("CH_F", OriginalFbdPalette.nativeLabelForOriginalTag("FB_CHANGE_F"));
+        assertArrayEquals(new String[]{"I"}, MainActivity.knownFbdPins(integer, false));
+        assertArrayEquals(new String[]{"F"}, MainActivity.knownFbdPins(floating, false));
+        for (String type : new String[]{integer, floating}) {
+            assertEquals("BOOL", MainActivity.knownFbdPinType(type, "Q", true));
+        }
+        assertEquals("NUMBER", MainActivity.knownFbdPinType(integer, "I", false));
+        assertEquals("NUMBER", MainActivity.knownFbdPinType(floating, "F", false));
+    }
+
     @Test public void unsupportedOriginalBlocksStayDisabledAndUnmapped() {
         for (String source : new String[]{
                 "FB_MOVE", "FB_TIMER", "FB_ARRAY", "FB_MACRO",
