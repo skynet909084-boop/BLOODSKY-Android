@@ -64,7 +64,9 @@ public class MainActivity extends Activity {
     private static final int REQUEST_EXPORT_PROJECT_ZIP = 7104;
     private static final int REQUEST_IMPORT_CRAFT_MACRO = 7105;
     private static final int REQUEST_EXPORT_CRAFT_MACRO = 7106;
+    private static final int REQUEST_EXPORT_LOCAL_ARCHIVE = 7107;
     private byte[] pendingCraftMacroExport;
+    private String pendingArchiveProjectId, pendingArchiveWidgetKey, pendingArchiveTitle;
     private EditText pendingMediaField;
     private String projectName = "Мой проект";
     private JSONObject projectExtraFields = new JSONObject();
@@ -1271,6 +1273,31 @@ public class MainActivity extends Activity {
                                 || !java.util.Objects.equals(widgets.get(index).connectionInfo, snapshotBindings.get(index))) continue;
                         Widget w = widgets.get(index);
                         liveValues.put(index, entry.getValue());
+                        if ("Архив Craft".equals(w.type) && entry.getValue() != null
+                                && !entry.getValue().startsWith("ERR") && !entry.getValue().startsWith("CFG")) {
+                            try {
+                                String projectJson = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
+                                String archiveProject = ProjectMediaService.getOrGenerateProjectId(projectJson);
+                                String archiveKey = w.extraFields.optString("craftArchiveKey", "").trim();
+                                if (archiveKey.isEmpty()) {
+                                    archiveKey = java.util.UUID.randomUUID().toString();
+                                    w.extraFields.put("craftArchiveKey", archiveKey);
+                                    persistProject();
+                                }
+                                final String targetProject = archiveProject, targetWidget = archiveKey;
+                                final String sample = entry.getValue();
+                                final int interval = w.extraFields.optInt("craftArchiveIntervalSeconds", 1);
+                                final int maxRows = w.extraFields.optInt("craftArchiveMaxRows", 10000);
+                                modbusExecutor.execute(() -> {
+                                    LocalArchiveStore store = new LocalArchiveStore(MainActivity.this);
+                                    try { store.record(targetProject, targetWidget, System.currentTimeMillis(), sample, interval, maxRows); }
+                                    catch (Exception failure) { android.util.Log.e("BLOODSKY", "Archive sample failed", failure); }
+                                    finally { store.close(); }
+                                });
+                            } catch (Exception failure) {
+                                android.util.Log.e("BLOODSKY", "Archive setup failed", failure);
+                            }
+                        }
                         if (isCraftRegisterSource(w.type)) {
                             try {
                                 String[] words = entry.getValue().split(",");
@@ -1826,6 +1853,26 @@ public class MainActivity extends Activity {
         }
         if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
         Uri uri = data.getData();
+        if (requestCode == REQUEST_EXPORT_LOCAL_ARCHIVE) {
+            final String archiveProject = pendingArchiveProjectId;
+            final String archiveWidget = pendingArchiveWidgetKey;
+            pendingArchiveProjectId = pendingArchiveWidgetKey = pendingArchiveTitle = null;
+            if (archiveProject == null || archiveWidget == null) return;
+            modbusExecutor.execute(() -> {
+                try (OutputStream out = getContentResolver().openOutputStream(uri)) {
+                    if (out == null) throw new IOException("CSV output unavailable");
+                    LocalArchiveStore store = new LocalArchiveStore(this);
+                    try { store.writeCsv(archiveProject, archiveWidget, out); }
+                    finally { store.close(); }
+                    runOnUiThread(() -> { if (!isFinishing() && !isDestroyed())
+                        Toast.makeText(this, "CSV архива сохранён", Toast.LENGTH_LONG).show(); });
+                } catch (Exception failure) {
+                    runOnUiThread(() -> { if (!isFinishing() && !isDestroyed())
+                        Toast.makeText(this, "Не удалось сохранить CSV архива", Toast.LENGTH_LONG).show(); });
+                }
+            });
+            return;
+        }
         if (requestCode == REQUEST_IMPORT_CRAFT_MACRO) {
             importCraftMacro(uri);
         } else if (requestCode == REQUEST_EXPORT_CRAFT_MACRO) {
@@ -3046,6 +3093,69 @@ public class MainActivity extends Activity {
         if (dialogTitle != null) dialogTitle.setTextColor(Color.rgb(237, 176, 59));
     }
 
+    private String archiveProjectKey() {
+        String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
+        return ProjectMediaService.getOrGenerateProjectId(json);
+    }
+
+    private String archiveWidgetKey(Widget widget) throws org.json.JSONException {
+        String key = widget.extraFields.optString("craftArchiveKey", "").trim();
+        if (key.isEmpty()) {
+            key = java.util.UUID.randomUUID().toString();
+            widget.extraFields.put("craftArchiveKey", key);
+            persistProject();
+        }
+        return key;
+    }
+
+    private void showLocalArchive(Widget widget) {
+        final String projectKey, widgetKey;
+        try { projectKey = archiveProjectKey(); widgetKey = archiveWidgetKey(widget); }
+        catch (Exception failure) {
+            Toast.makeText(this, "Сначала сохрани проект, затем открой архив", Toast.LENGTH_LONG).show();
+            return;
+        }
+        StringBuilder report = new StringBuilder();
+        try {
+            LocalArchiveStore store = new LocalArchiveStore(this);
+            try {
+                List<LocalArchiveStore.Sample> rows = store.latest(projectKey, widgetKey, 40);
+                if (rows.isEmpty()) report.append("Записей пока нет. Настрой локальный TCP-канал и запусти экран в рабочем режиме.");
+                else {
+                    java.text.SimpleDateFormat format = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.ROOT);
+                    for (LocalArchiveStore.Sample row : rows)
+                        report.append(format.format(new java.util.Date(row.timestamp))).append("  ").append(row.value).append("\n");
+                }
+            } finally { store.close(); }
+        } catch (Exception failure) {
+            report.append("Не удалось прочитать локальный архив.");
+        }
+        ScrollView scroll = new ScrollView(this);
+        TextView content = new TextView(this);
+        content.setText(report.toString()); content.setTextSize(14);
+        content.setTextColor(Color.rgb(30, 41, 59)); content.setPadding(dp(16), dp(12), dp(16), dp(12));
+        scroll.addView(content);
+        new AlertDialog.Builder(this).setTitle(widget.text == null || widget.text.trim().isEmpty() ? "Архив" : widget.text)
+                .setView(scroll).setNeutralButton("Экспорт CSV", (dialog, which) -> exportLocalArchive(projectKey, widgetKey, widget.text))
+                .setPositiveButton("Закрыть", null).show();
+    }
+
+    private void exportLocalArchive(String projectKey, String widgetKey, String label) {
+        pendingArchiveProjectId = projectKey;
+        pendingArchiveWidgetKey = widgetKey;
+        String safe = (label == null || label.trim().isEmpty() ? "archive" : label.trim())
+                .replaceAll("[^A-Za-zА-Яа-я0-9._-]", "_");
+        pendingArchiveTitle = safe + ".csv";
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE); intent.setType("text/csv");
+        intent.putExtra(Intent.EXTRA_TITLE, pendingArchiveTitle);
+        try { startActivityForResult(intent, REQUEST_EXPORT_LOCAL_ARCHIVE); }
+        catch (Exception failure) {
+            pendingArchiveProjectId = pendingArchiveWidgetKey = pendingArchiveTitle = null;
+            Toast.makeText(this, "Не удалось открыть выбор файла", Toast.LENGTH_LONG).show();
+        }
+    }
+
     private void showModbusDiagnostics() {
         StringBuilder report = new StringBuilder();
         int boundCount = 0;
@@ -3307,6 +3417,14 @@ public class MainActivity extends Activity {
                 w.extraFields.put("craftListCheckNoChange", true);
             } catch (Exception ignored) { }
         }
+        if ("Архив Craft".equals(type)) {
+            w.w = dp(200); w.h = dp(72);
+            try {
+                w.extraFields.put("craftArchiveKey", java.util.UUID.randomUUID().toString());
+                w.extraFields.put("craftArchiveIntervalSeconds", 1);
+                w.extraFields.put("craftArchiveMaxRows", 10000);
+            } catch (org.json.JSONException ignored) { }
+        }
         if ("Числовой ввод Craft".equals(type)) { w.w = dp(120); w.h = dp(48); }
         if ("Линейный задатчик Craft".equals(type)) {
             w.w = dp(190); w.h = dp(62);
@@ -3426,6 +3544,17 @@ public class MainActivity extends Activity {
         EditText connectionField = propertyField(w.connectionInfo == null ? "" : w.connectionInfo, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         connectionField.setHint("tcp://192.168.1.10:502/1/40001 (FC03/FC04) или fbd://N (номер блока с 1)");
         form.addView(connectionField);
+        final EditText archiveIntervalField, archiveMaxRowsField;
+        if ("Архив Craft".equals(w.type)) {
+            connectionField.setHint("Локальный канал: tcp://192.168.1.10:502/1/40001 (holding-регистр FC03)");
+            TextView archiveHelp = new TextView(this);
+            archiveHelp.setText("Импортированная связь Craft отключена. Укажи локальный TCP holding-регистр. Записи сохраняются только на устройстве; старые SMTP/облачные отправки не запускаются.");
+            archiveHelp.setPadding(0, dp(8), 0, dp(4)); form.addView(archiveHelp);
+            archiveIntervalField = propertyField(Integer.toString(Math.max(1, w.extraFields.optInt("craftArchiveIntervalSeconds", 1))), InputType.TYPE_CLASS_NUMBER);
+            archiveIntervalField.setHint("Интервал записи, секунды (1–86400)"); form.addView(archiveIntervalField);
+            archiveMaxRowsField = propertyField(Integer.toString(Math.max(100, w.extraFields.optInt("craftArchiveMaxRows", 10000))), InputType.TYPE_CLASS_NUMBER);
+            archiveMaxRowsField.setHint("Максимум записей (100–100000)"); form.addView(archiveMaxRowsField);
+        } else { archiveIntervalField = null; archiveMaxRowsField = null; }
         final boolean craftBitList = "Список Craft".equals(w.type);
         final EditText craftBitListLabelsField;
         final android.widget.CheckBox craftBitListVisibleField, craftBitListNoChangeField;
@@ -4429,6 +4558,24 @@ public class MainActivity extends Activity {
                     }
                     w.text = textField.getText().toString();
                     w.connectionInfo = connectionField.getText().toString().trim();
+                    if (archiveIntervalField != null) {
+                        final int interval, maxRows;
+                        try {
+                            interval = Integer.parseInt(archiveIntervalField.getText().toString().trim());
+                            maxRows = Integer.parseInt(archiveMaxRowsField.getText().toString().trim());
+                        } catch (NumberFormatException invalid) {
+                            Toast.makeText(this, "Укажи интервал и лимит архива числами", Toast.LENGTH_LONG).show(); return;
+                        }
+                        if (interval < 1 || interval > 86400 || maxRows < 100 || maxRows > 100000) {
+                            Toast.makeText(this, "Интервал: 1–86400 секунд; лимит: 100–100000 записей", Toast.LENGTH_LONG).show(); return;
+                        }
+                        try {
+                            w.extraFields.put("craftArchiveIntervalSeconds", interval);
+                            w.extraFields.put("craftArchiveMaxRows", maxRows);
+                            if (w.extraFields.optString("craftArchiveKey", "").trim().isEmpty())
+                                w.extraFields.put("craftArchiveKey", java.util.UUID.randomUUID().toString());
+                        } catch (org.json.JSONException ignored) { }
+                    }
                     if(smsPhoneField!=null) {
                         String phone=smsPhoneField.getText().toString().trim();
                         if(!SmsNotificationClient.isValidPhone(phone)) {
@@ -4684,6 +4831,8 @@ public class MainActivity extends Activity {
         }
         try {
             Widget copy = widgetFromJson(widgetToJson(clipboardWidget));
+            if ("Архив Craft".equals(copy.type))
+                copy.extraFields.put("craftArchiveKey", java.util.UUID.randomUUID().toString());
             int offset = dp(24);
             float maxX = editor == null ? Math.max(0, copy.x + offset) : Math.max(0, editor.getWidth() - copy.w);
             float maxY = editor == null ? Math.max(0, copy.y + offset) : Math.max(0, editor.getHeight() - copy.h);
@@ -7862,6 +8011,13 @@ public class MainActivity extends Activity {
                     String soundLabel = (active ? "🔊 " : "🔇 ") + w.text + (active ? " [АЛАРМ]" : " [ОК]");
                     if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(32)) / Math.max(4f, soundLabel.length() * 0.58f))));
                     canvas.drawText(soundLabel, w.x + dp(28), w.y + w.h / 2 + dp(5), paint);
+                } else if ("Архив Craft".equals(w.type)) {
+                    paint.setColor(w.textColor);
+                    paint.setTextSize(dp(13));
+                    canvas.drawText("Архив: " + w.text, w.x + dp(8), w.y + dp(23), paint);
+                    paint.setTextSize(dp(11));
+                    canvas.drawText(liveValues.containsKey(i) ? "Канал 1 · " + liveValues.get(i) : "Локальная история",
+                            w.x + dp(8), w.y + w.h - dp(9), paint);
                 } else if ("Переход на экран".equals(w.type)) {
                     paint.setColor(w.textColor);
                     String navLabel = "🔗 " + w.text + " (Экран " + (w.targetScreenIndex + 1) + ")";
@@ -8278,7 +8434,9 @@ public class MainActivity extends Activity {
 
         private void activateRuntimeWidget(int index, float x, float y) {
             Widget picked = widgets.get(index);
-            if ("Числовой ввод Craft".equals(picked.type)) {
+            if ("Архив Craft".equals(picked.type)) {
+                showLocalArchive(picked);
+            } else if ("Числовой ввод Craft".equals(picked.type)) {
                 openCraftNumericInput(picked, index);
             } else if ("Задатчик".equals(picked.type) && y >= picked.y + dp(29)) {
                 adjustSetpoint(picked, x < picked.x + picked.w / 2 ? -1 : 1);
