@@ -13,20 +13,28 @@ on:
     types: [opened, reopened, synchronize, ready_for_review]
     paths:
       - 'app/**'
-      - 'tools/**'
+      - 'tools/android_ui_smoke.py'
+      - 'tools/android_ui_fbd_quick.py'
+      - 'tools/build_ui_input_driver.py'
+      - 'tools/run_android_ui_profile.sh'
+      - 'tools/prepare_craft_resources.py'
+      - 'tools/android/**'
       - '*.gradle'
       - 'gradle.properties'
       - 'settings.gradle'
-      - '.github/workflows/android-ui-smoke.yml'
   push:
     branches: [main]
     paths:
       - 'app/**'
-      - 'tools/**'
+      - 'tools/android_ui_smoke.py'
+      - 'tools/android_ui_fbd_quick.py'
+      - 'tools/build_ui_input_driver.py'
+      - 'tools/run_android_ui_profile.sh'
+      - 'tools/prepare_craft_resources.py'
+      - 'tools/android/**'
       - '*.gradle'
       - 'gradle.properties'
       - 'settings.gradle'
-      - '.github/workflows/android-ui-smoke.yml'
 
 permissions:
   contents: read
