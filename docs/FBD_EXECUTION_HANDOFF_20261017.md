@@ -1,5 +1,9 @@
 # BLOODSKY FBD — working handoff, 17 Oct 2026
 
+## Follow-up evidence for PR136
+
+Downloaded artifact 12121514401 and inspected `document-selection-ui.xml`: DocumentsUI is in LIST mode with `android:id/empty`, and the file is absent. Thus grid selection alone does not resolve the observed failure. The fixture was pushed with ADB but never indexed. Added MEDIA_SCANNER_SCAN_FILE followed by bounded MediaStore verification before opening the real picker. Failure preserves index diagnostics. Grid robustness remains useful but is not the root-cause claim. Added success/delayed-index and missing-index regressions. Document-picker fix branches explicitly run FULL UI rather than quick FBD so this scenario is exercised. Local Python tests: 139 PASS; Android build remains delegated to CI (no local Gradle).
+
 ## Continuation 18 Oct 2026 — full-suite document-picker blocker
 
 - Verified feature head `29b9bcaae2ca7c2ed6bce2d6d9bb1d4e5cde463d`: APK/JUnit 39088568857 and all three source audits PASS; full Android UI 39088568858 FAILED in `tap_document("bloodsky-custom.png")` (job 117560302627). This is not an RS/FBD assertion failure. Failure artifacts exist as 12121514401; artifact UI XML has not been inspected in this session.

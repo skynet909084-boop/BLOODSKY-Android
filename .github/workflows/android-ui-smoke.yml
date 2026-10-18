@@ -41,7 +41,7 @@ jobs:
     # Feature→feature PRs get fast FBD verification; PR→main, push→main
     # and manually dispatched default runs retain every legacy UI scenario.
     env:
-      BLOODSKY_UI_PROFILE: ${{ github.event_name == 'pull_request' && github.base_ref != 'main' && 'quick' || (github.event_name == 'workflow_dispatch' && inputs.ui_profile == 'quick' && 'quick' || 'full') }}
+      BLOODSKY_UI_PROFILE: ${{ github.event_name == 'pull_request' && !startsWith(github.head_ref, 'fix/document-picker-') && github.base_ref != 'main' && 'quick' || (github.event_name == 'workflow_dispatch' && inputs.ui_profile == 'quick' && 'quick' || 'full') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
