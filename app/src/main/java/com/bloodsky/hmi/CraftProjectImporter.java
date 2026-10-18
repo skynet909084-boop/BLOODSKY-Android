@@ -310,6 +310,15 @@ public final class CraftProjectImporter {
             widget.put("craftLinearProgressColor", color(other.opt("colorProgress"), Color.rgb(46, 236, 0)));
             widget.put("craftLinearBackgroundColor", color(other.opt("colorBackground"), Color.rgb(156, 156, 155)));
             widget.put("craftLinearEnabled", false);
+        } else if (componentId == 6 && integer(other.opt("mode"), 0) == 0) {
+            // Mode 0 is a momentary write: set the configured bit on touch-down and
+            // clear it on touch-up. Keep the source bit as a hint, but require a new
+            // explicit TCP holding-register mapping before any write can run.
+            JSONObject legacyButtonConnection = objectValue(source.opt("jsTableComponent_connectionInfo"));
+            widget.put("craftButtonMode", 0);
+            widget.put("craftButtonBit", boundedInt(legacyButtonConnection.opt("addressBit"), 0, 0, 15));
+            widget.put("craftButtonBitEnabled", false);
+            widget.put("craftButtonVisibleInWork", other.optBoolean("visibleInWork", true));
         } else if (componentId == 6 && integer(other.opt("mode"), 0) == 2) {
             // Mode 2 writes a value when pressed. Keep the source options, but require
             // a new explicit TCP target because Craft device IDs are installation-specific.
