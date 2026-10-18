@@ -43,6 +43,26 @@ jobs:
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
           curl -fsSL https://github.com/iBotPeaches/Apktool/releases/download/v3.0.3/apktool_3.0.3.jar -o /tmp/apktool.jar
           java -jar /tmp/apktool.jar --version
+      - name: Normalize invalid decoded resource names
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          root = Path("build/craft-decompiled/apktool/res")
+          for path in list(root.rglob("*")):
+              if not path.is_file():
+                  continue
+              name = path.name
+              if name.startswith("$avd_hide_password__"):
+                  path.rename(path.with_name(name.removeprefix("$")))
+              elif name.startswith("$avd_show_password__"):
+                  path.rename(path.with_name(name.removeprefix("$")))
+          for path in root.rglob("*"):
+              if path.is_file() and path.suffix.lower() in {".xml"}:
+                  data = path.read_text(encoding="utf-8")
+                  data = data.replace("$avd_hide_password__", "avd_hide_password__")
+                  data = data.replace("$avd_show_password__", "avd_show_password__")
+                  path.write_text(data, encoding="utf-8")
+          PY
       - name: Rebuild original APK
         run: |
           cp "$ANDROID_HOME/build-tools/35.0.0/aapt2" /tmp/aapt2
