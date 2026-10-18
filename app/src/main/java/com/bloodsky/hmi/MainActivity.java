@@ -3382,7 +3382,7 @@ public class MainActivity extends Activity {
             craftBitListVisibleField.setText("Показывать список в рабочем режиме");
             craftBitListVisibleField.setChecked(w.extraFields.optBoolean("craftListVisibleInWork", true)); form.addView(craftBitListVisibleField);
             craftBitListNoChangeField = new android.widget.CheckBox(this);
-            craftBitListNoChangeField.setText("Блокировать пункты без подписи");
+            craftBitListNoChangeField.setText("Не изменять биты в рабочем режиме");
             craftBitListNoChangeField.setChecked(w.extraFields.optBoolean("craftListCheckNoChange", false)); form.addView(craftBitListNoChangeField);
             TextView remapHelp = new TextView(this);
             remapHelp.setText("Импортированная связь Craft выключена. Для обмена укажи свой TCP адрес holding-регистра выше."); form.addView(remapHelp);
