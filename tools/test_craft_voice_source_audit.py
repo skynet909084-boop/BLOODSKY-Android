@@ -36,5 +36,5 @@ class CraftVoiceSourceAuditTests(unittest.TestCase):
             if line.startswith((".field ", ".method ")) or any(token in line for token in ("const-string", "setText", "speak", "TextToSpeech", "performClick", "onClick"))
         ]
         print("Craft ID 27 source:", self.path)
-        print("\\n".join(lines[:220]))
+        print("\n".join(lines[:220]))
         self.assertTrue(lines, "Located Craft ID 27 class had no inspectable members")
