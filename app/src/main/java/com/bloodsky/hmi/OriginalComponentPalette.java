@@ -30,7 +30,7 @@ public final class OriginalComponentPalette {
         unavailable(dialog, R.id.kc_picker_tab_gateway, "Шлюз");
         unavailable(dialog, R.id.kc_picker_tab_gateway_bit, "Битовый шлюз");
         unavailable(dialog, R.id.kc_picker_tab_sms_in, "Входящее SMS (SIM): пока не перенесено");
-        unavailable(dialog, R.id.kc_picker_tab_sms_out, "Исходящее SMS (SIM): пока не перенесено");
+        bind(dialog, R.id.kc_picker_tab_sms_out, "SMS-уведомление", "SMS: {value}", add);
         dialog.findViewById(R.id.kc_picker_tab_sms_in).setVisibility(View.VISIBLE);
         dialog.findViewById(R.id.kc_picker_tab_sms_out).setVisibility(View.VISIBLE);
         unavailable(dialog, R.id.kc_picker_tab_camera, "Камера");
