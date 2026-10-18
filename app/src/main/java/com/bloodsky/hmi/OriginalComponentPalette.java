@@ -21,7 +21,7 @@ public final class OriginalComponentPalette {
         // In-scope source entries stay visible; unimplemented semantics stay disabled.
         unavailable(dialog, R.id.kc_picker_tab_switch, "Переключатель");
         bind(dialog, R.id.kc_picker_tab_list, "Список Craft", "Список", add);
-        unavailable(dialog, R.id.kc_picker_tab_line_setter, "Линейный задатчик");
+        bind(dialog, R.id.kc_picker_tab_line_setter, "Линейный задатчик Craft", "Линейный задатчик", add);
         unavailable(dialog, R.id.kc_picker_tab_voice_recognition, "Распознавание речи");
         unavailable(dialog, R.id.kc_picker_tab_digital_indicator, "Цифровой индикатор");
         unavailable(dialog, R.id.kc_picker_tab_alarm, "Сигнализатор");
