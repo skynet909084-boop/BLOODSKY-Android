@@ -21,9 +21,10 @@ from PIL import Image
 OUT = Path(sys.argv[1])
 OUT.mkdir(parents=True, exist_ok=True)
 PACKAGE = "ru.kascada.modbus"
-MAX_STATES = 300
-MAX_DEPTH = 8
-WAIT = 0.8
+MAX_STATES = 180
+MAX_DEPTH = 7
+MAX_QUEUED = 900
+WAIT = 0.35
 
 
 def adb(*args: str, check: bool = True) -> str:
@@ -128,7 +129,7 @@ def fresh_start():
     ):
         adb("shell", "pm", "grant", PACKAGE, permission, check=False)
     adb("shell", "monkey", "-p", PACKAGE, "1", check=False)
-    time.sleep(4)
+    time.sleep(2.5)
 
 
 def replay(path):
@@ -176,10 +177,9 @@ while queue and len(state_rows) < MAX_STATES:
         continue
     actions = [{"kind": "tap", "node": n, "label": (n["text"] or n["description"] or n["hint"] or n["class"])[:100]}
                for n in ctrls]
-    actions.append({"kind": "back", "label": "Android Back"})
     for action in actions:
         child = path + [action]
-        if len(queue) + len(state_rows) >= MAX_STATES * 8:
+        if len(queue) + len(state_rows) >= MAX_QUEUED:
             break
         queue.append(child)
         transition_rows.append({"from": label, "action": action["label"], "depth": len(child)})
@@ -192,6 +192,7 @@ report = {
     "offline": True,
     "max_states": MAX_STATES,
     "max_path_depth": MAX_DEPTH,
+    "max_queued_paths": MAX_QUEUED,
     "states_captured": len(state_rows),
     "unique_state_signatures": len(seen),
     "transitions_queued": len(transition_rows),
@@ -201,7 +202,8 @@ report = {
     "transitions": transition_rows,
     "runtime_error_log": "android-runtime-errors.log",
     "limitations": [
-        "Traversal is bounded by state and depth limits; report lists any remaining frontier.",
+        "Traversal is bounded by state, depth and queued-path limits; report lists any remaining frontier.",
+        "Android Back is not exhaustively traversed as a branch; forward controls are explored from each captured state.",
         "Unavailable Bluetooth and USB hardware is not simulated.",
         "Generic values are entered only into visible text fields to reveal subsequent screens; they are not valid device credentials.",
     ],
