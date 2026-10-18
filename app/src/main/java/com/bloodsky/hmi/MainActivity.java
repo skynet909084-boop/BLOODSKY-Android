@@ -1899,7 +1899,8 @@ public class MainActivity extends Activity {
         final boolean timer = "FBD Таймер".equals(widget.type)
                 || "FBD TOF".equals(widget.type) || "FBD TP".equals(widget.type)
                 || "FBD CRAFT TIMER".equals(widget.type);
-        final boolean invertible = knownFbdPins(widget, true).length == 1
+        final boolean invertible = !isDynamicMacroWidget(widget)
+                && knownFbdPins(widget, true).length == 1
                 && "BOOL".equals(knownFbdPinType(widget,
                         knownFbdPins(widget, true)[0], true));
         final java.util.List<String> labels = new ArrayList<>();
@@ -3542,6 +3543,8 @@ public class MainActivity extends Activity {
         }
         if (!(parsed instanceof JSONObject)) throw new IllegalArgumentException("Project must be a JSON object or array");
         JSONObject project = (JSONObject) parsed;
+        try { FbdCraftMacroCatalog.read(project); }
+        catch (Exception invalidCatalog) { throw new IllegalArgumentException("Invalid Craft macro catalog"); }
         JSONArray screenArray = project.optJSONArray("screens");
         if (screenArray == null || screenArray.length() == 0 || screenArray.length() > 100) {
             throw new IllegalArgumentException("Invalid screen list");
@@ -3629,6 +3632,11 @@ public class MainActivity extends Activity {
             JSONObject widget = array.optJSONObject(i);
             if (widget == null) throw new IllegalArgumentException("Widget must be an object");
             String type = widget.optString("type", "Текст"), label = widget.optString("text", "Надпись");
+            if ("FBD CRAFT MACRO".equals(canonicalFbdBlockType(type))) {
+                Widget parsed = widgetFromJson(widget);
+                if (macroDefinition(parsed) == null)
+                    throw new IllegalArgumentException("FBD macro widget has no valid definition");
+            }
             if (type.length() > 100 || label.length() > 2000 || widget.optString("connectionInfo", "").length() > 2000) throw new IllegalArgumentException("Widget field too long");
             double x = widget.optDouble("x", widget.has("x") ? Double.NaN : 0), y = widget.optDouble("y", widget.has("y") ? Double.NaN : 0), w = widget.optDouble("w", widget.has("w") ? Double.NaN : 160), h = widget.optDouble("h", widget.has("h") ? Double.NaN : 58);
             if (Double.isNaN(x) || Double.isNaN(y) || Double.isNaN(w) || Double.isNaN(h)

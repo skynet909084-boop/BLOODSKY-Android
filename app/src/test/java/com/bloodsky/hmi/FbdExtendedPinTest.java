@@ -75,6 +75,18 @@ public class FbdExtendedPinTest {
         assertTrue(MainActivity.hasCompatibleKnownFbdPins(edge, numericSink, macro));
     }
 
+    @Test public void projectImportRejectsMacroWidgetsWithoutAValidatedDefinition() throws Exception {
+        JSONObject valid = new JSONObject("{\"type\":\"FBD CRAFT MACRO\",\"text\":\"Scale\","
+                + "\"craftMacroDefinition\":{\"name\":\"Scale\",\"countIn\":0,"
+                + "\"typeOut\":3,\"fbInMacros\":[]}}");
+        MainActivity.validateWidgetArrayStatic(new org.json.JSONArray().put(valid));
+        JSONObject missing = new JSONObject("{\"type\":\"FBD CRAFT MACRO\",\"text\":\"Scale\"}");
+        try {
+            MainActivity.validateWidgetArrayStatic(new org.json.JSONArray().put(missing));
+            fail("Expected missing macro definition to be rejected");
+        } catch (IllegalArgumentException expected) { }
+    }
+
     @Test public void tofTpNumericPresetRemainsBounded() {
         assertEquals(4321L, MainActivity.fbdTonPresetMs(
                 Arrays.asList(4321.0), Arrays.asList(" pT "), 500));

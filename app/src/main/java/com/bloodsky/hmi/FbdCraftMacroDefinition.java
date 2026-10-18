@@ -132,6 +132,7 @@ public final class FbdCraftMacroDefinition {
             throw new JSONException("Nested macro output pin is unknown");
         if ((outputPortType == 1) != "BOOL".equals(resultSignal))
             throw new JSONException("Nested macro output type does not match its interface");
+        java.util.HashSet<String> drivenPins = new java.util.HashSet<>();
         for (int i = 0; i < connections.length(); i++) {
             JSONObject edge = connections.optJSONObject(i);
             if (edge == null) throw new JSONException("Nested macro connection must be an object");
@@ -147,6 +148,9 @@ public final class FbdCraftMacroDefinition {
             if (!resultWidgetPinExists(sourceWidget, sourcePin, true)
                     || !resultWidgetPinExists(targetWidget, targetPin, false))
                 throw new JSONException("Nested macro connection pin is unknown");
+            String drivenPin = target + ":" + targetPin.toUpperCase(java.util.Locale.ROOT);
+            if (!drivenPins.add(drivenPin))
+                throw new JSONException("Nested macro input pin is driven more than once");
             String sourceSignal = MainActivity.knownFbdPinType(sourceWidget, sourcePin, true);
             String targetSignal = MainActivity.knownFbdPinType(targetWidget, targetPin, false);
             if (sourceSignal != null && targetSignal != null && !sourceSignal.equals(targetSignal))

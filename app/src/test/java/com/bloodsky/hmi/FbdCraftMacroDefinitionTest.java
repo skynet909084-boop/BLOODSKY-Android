@@ -85,6 +85,14 @@ public class FbdCraftMacroDefinitionTest {
                 + "\"craftMacroPortType\":1}],\"connections\":[],"
                 + "\"outputNode\":0,\"outputPin\":\"Q\",\"outputPort\":\"Result\"}";
         assertInvalid(() -> FbdCraftMacroDefinition.fromJson(macro(foreignPort)));
+
+        String duplicateTarget = "\"bloodskyGraph\":{" +
+                "\"widgets\":[{\"type\":\"FBD CRAFT MACRO IN\",\"craftMacroPortName\":\"Raw\","
+                + "\"craftMacroPortType\":2},{\"type\":\"FBD POW\"}],"
+                + "\"connections\":[{\"source\":0,\"sourcePin\":\"Q\",\"target\":1,\"targetPin\":\"BASE\"},"
+                + "{\"source\":0,\"sourcePin\":\"Q\",\"target\":1,\"targetPin\":\"BASE\"}],"
+                + "\"outputNode\":1,\"outputPin\":\"OUT\",\"outputPort\":\"Result\"}";
+        assertInvalid(() -> FbdCraftMacroDefinition.fromJson(macro(duplicateTarget)));
     }
 
     private static void assertInvalid(ThrowingRunnable action) throws Exception {
