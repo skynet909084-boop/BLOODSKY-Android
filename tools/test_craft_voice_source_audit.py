@@ -44,7 +44,7 @@ class CraftVoiceSourceAuditTests(unittest.TestCase):
                 ))
             ]
             print("\n".join(lines))
-            keys = {int(value) for value in __import__("re").findall(r'textVoice(\\d+)', text)}
+            keys = {index for index in range(16) if '"textVoice' + str(index) + '"' in text}
             print("SOURCE TEXT VOICE INDICES:", sorted(keys))
             self.assertIn(0, keys)
             self.assertIn(15, keys)
