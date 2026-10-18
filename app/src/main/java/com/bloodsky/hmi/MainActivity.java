@@ -3239,6 +3239,17 @@ public class MainActivity extends Activity {
         w.y = dp(50) + (widgets.size() % 6) * dp(22);
         w.w = OriginalIndicator.supports(type) ? dp(40) : dp(160);
         w.h = OriginalIndicator.supports(type) ? dp(40) : dp(58);
+        if ("Список Craft".equals(type)) {
+            w.w = dp(190); w.h = dp(58);
+            String[] labels = new String[16]; java.util.Arrays.fill(labels, "");
+            labels[0] = "Вариант 1"; labels[1] = "Вариант 2";
+            w.extraFields = new JSONObject();
+            try {
+                w.extraFields.put("craftListLabels", CraftBitList.toJson(labels));
+                w.extraFields.put("craftListVisibleInWork", true);
+                w.extraFields.put("craftListCheckNoChange", true);
+            } catch (Exception ignored) { }
+        }
         if (type.equals("Задатчик")) { w.w = dp(190); w.h = dp(62); }
         if (type.equals("Шкала / Стрелка") || type.equals("График / Тренд")) { w.w = dp(200); w.h = dp(110); }
         if (type.equals("Прогресс-бар") || type.equals("Битовый список")) { w.w = dp(180); w.h = dp(64); }
@@ -3353,6 +3364,29 @@ public class MainActivity extends Activity {
         EditText connectionField = propertyField(w.connectionInfo == null ? "" : w.connectionInfo, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         connectionField.setHint("tcp://192.168.1.10:502/1/40001 (FC03/FC04) или fbd://N (номер блока с 1)");
         form.addView(connectionField);
+        final boolean craftBitList = "Список Craft".equals(w.type);
+        final EditText craftBitListLabelsField;
+        final android.widget.CheckBox craftBitListVisibleField, craftBitListNoChangeField;
+        if (craftBitList) {
+            connectionField.setHint("tcp://192.168.1.10:502/1/40001 (holding-регистр, FC03)");
+            TextView labelsHelp = new TextView(this);
+            labelsHelp.setText("Подписи битов 0–15, по одной на строку. Пустая строка скрывает пункт.");
+            labelsHelp.setPadding(0, dp(10), 0, dp(4)); form.addView(labelsHelp);
+            craftBitListLabelsField = new EditText(this);
+            craftBitListLabelsField.setMinLines(5); craftBitListLabelsField.setMaxLines(10);
+            craftBitListLabelsField.setGravity(android.view.Gravity.TOP | android.view.Gravity.START);
+            craftBitListLabelsField.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+            craftBitListLabelsField.setText(CraftBitList.toEditorLines(CraftBitList.fromJson(w.extraFields.optJSONArray("craftListLabels"))));
+            craftBitListLabelsField.setHint("0: Включить\n1: Выключить\n2: ..."); form.addView(craftBitListLabelsField);
+            craftBitListVisibleField = new android.widget.CheckBox(this);
+            craftBitListVisibleField.setText("Показывать список в рабочем режиме");
+            craftBitListVisibleField.setChecked(w.extraFields.optBoolean("craftListVisibleInWork", true)); form.addView(craftBitListVisibleField);
+            craftBitListNoChangeField = new android.widget.CheckBox(this);
+            craftBitListNoChangeField.setText("Блокировать пункты без подписи");
+            craftBitListNoChangeField.setChecked(w.extraFields.optBoolean("craftListCheckNoChange", false)); form.addView(craftBitListNoChangeField);
+            TextView remapHelp = new TextView(this);
+            remapHelp.setText("Импортированная связь Craft выключена. Для обмена укажи свой TCP адрес holding-регистра выше."); form.addView(remapHelp);
+        } else { craftBitListLabelsField = null; craftBitListVisibleField = null; craftBitListNoChangeField = null; }
         final boolean craftRegisterGateway = "Шлюз Craft".equals(w.type);
         final boolean craftBitGateway = "Шлюз битовый".equals(w.type);
         if (craftRegisterGateway || craftBitGateway) {
@@ -3985,6 +4019,24 @@ public class MainActivity extends Activity {
                         } catch (Exception invalid) {
                             Toast.makeText(this, "Бит регистра должен быть от 0 до 15", Toast.LENGTH_LONG).show(); return;
                         }
+                    }
+                    if (craftBitList) {
+                        String[] labels;
+                        try { labels = CraftBitList.parseEditorLines(craftBitListLabelsField.getText().toString()); }
+                        catch (IllegalArgumentException invalid) { Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show(); return; }
+                        BindingRequest listBinding = parseBinding(-1, connectionField.getText().toString().trim());
+                        if (listBinding != null && listBinding.functionCode != 3) {
+                            Toast.makeText(this, "Список записывает битовую маску в holding-регистр FC03/FC06", Toast.LENGTH_LONG).show(); return;
+                        }
+                        if (craftBitListVisibleField.isChecked() && CraftBitList.availableMask(labels) == 0) {
+                            Toast.makeText(this, "Добавь подпись хотя бы одному пункту", Toast.LENGTH_LONG).show(); return;
+                        }
+                        try {
+                            w.extraFields.put("craftListLabels", CraftBitList.toJson(labels));
+                            w.extraFields.put("craftListVisibleInWork", craftBitListVisibleField.isChecked());
+                            w.extraFields.put("craftListCheckNoChange", craftBitListNoChangeField.isChecked());
+                            w.extraFields.put("craftListEnabled", listBinding != null);
+                        } catch (Exception ignored) { }
                     }
                     if (craftConstantModeField != null) {
                         String constant = craftConstantValueField.getText().toString().trim();
@@ -7215,7 +7267,9 @@ public class MainActivity extends Activity {
             }
             for (int i = 0; i < widgets.size(); i++) {
                 Widget w = widgets.get(i);
-                if (!w.visible || (operatorMode && isFbd(w))) continue;
+                if (!w.visible || (operatorMode && isFbd(w))
+                        || (operatorMode && "Список Craft".equals(w.type)
+                        && !w.extraFields.optBoolean("craftListVisibleInWork", true))) continue;
                 RectF rect = new RectF(w.x, w.y, w.x + w.w, w.y + w.h);
                 paint.setStyle(Paint.Style.FILL);
                 if (w.backgroundColor != 0) {
@@ -7323,6 +7377,26 @@ public class MainActivity extends Activity {
                     paint.setColor(w.textColor);
                     if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(20)) / Math.max(4f, stateText.length() * 0.58f))));
                     canvas.drawText(stateText, w.x + dp(10), w.y + w.h / 2 + dp(5), paint);
+                } else if ("Список Craft".equals(w.type)) {
+                    int mask = w.extraFields.optInt("craftListInitialMask", 0) & 0xffff;
+                    String liveMask = liveValues.get(i);
+                    if (liveMask != null) try { mask = CraftBitList.fromRegister(Integer.parseInt(liveMask)); } catch (Exception ignored) { }
+                    String[] labels = CraftBitList.fromJson(w.extraFields.optJSONArray("craftListLabels"));
+                    paint.setColor(w.textColor); paint.setTextSize(dp(12));
+                    canvas.drawText(w.text + "  " + String.format(java.util.Locale.ROOT, "0x%04X", mask), w.x + dp(8), w.y + dp(17), paint);
+                    paint.setTextSize(dp(10));
+                    StringBuilder chosen = new StringBuilder();
+                    for (int bit = 0; bit < 16; bit++) if ((mask & (1 << bit)) != 0 && labels[bit] != null && !labels[bit].isEmpty()) {
+                        if (chosen.length() > 0) chosen.append(", ");
+                        chosen.append(labels[bit]);
+                    }
+                    String summary = chosen.length() == 0 ? "Выбрать пункты" : chosen.toString();
+                    if (summary.length() > 64) summary = summary.substring(0, 61) + "…";
+                    canvas.drawText(summary, w.x + dp(8), w.y + dp(34), paint);
+                    if (liveMask != null && liveMask.startsWith("ERR:")) {
+                        paint.setColor(Color.rgb(185, 28, 28)); paint.setTextSize(dp(9));
+                        canvas.drawText("Нет связи", w.x + dp(8), w.y + w.h - dp(5), paint);
+                    }
                 } else if ("Битовый список".equals(w.type)) {
                     int bitmask = 0;
                     if (liveValues.containsKey(i)) {
@@ -7492,7 +7566,9 @@ public class MainActivity extends Activity {
         private int hitRuntimeWidget(float x, float y) {
             for (int i = widgets.size() - 1; i >= 0; i--) {
                 Widget w = widgets.get(i);
-                if (w.visible && !isFbd(w) && x >= w.x && x <= w.x + w.w && y >= w.y && y <= w.y + w.h) return i;
+                if (w.visible && !isFbd(w)
+                        && !("Список Craft".equals(w.type) && !w.extraFields.optBoolean("craftListVisibleInWork", true))
+                        && x >= w.x && x <= w.x + w.w && y >= w.y && y <= w.y + w.h) return i;
             }
             return -1;
         }
@@ -7512,10 +7588,86 @@ public class MainActivity extends Activity {
             return true;
         }
 
+        private void openCraftBitList(Widget widget, int widgetIndex) {
+            String[] allLabels = CraftBitList.fromJson(widget.extraFields.optJSONArray("craftListLabels"));
+            java.util.ArrayList<String> choices = new java.util.ArrayList<>();
+            java.util.ArrayList<Integer> bits = new java.util.ArrayList<>();
+            for (int bit = 0; bit < 16; bit++) if (allLabels[bit] != null && !allLabels[bit].trim().isEmpty()) {
+                choices.add(allLabels[bit]); bits.add(bit);
+            }
+            if (choices.isEmpty()) {
+                Toast.makeText(MainActivity.this, "У списка нет подписанных пунктов. Настрой его в редакторе.", Toast.LENGTH_LONG).show();
+                return;
+            }
+            if (widget.extraFields.optBoolean("craftListCheckNoChange", false)) {
+                int shownMask = widget.extraFields.optInt("craftListInitialMask", 0) & 0xffff;
+                String liveValue = liveValues.get(widgetIndex);
+                if (liveValue != null) try { shownMask = CraftBitList.fromRegister(Integer.parseInt(liveValue)); } catch (Exception ignored) { }
+                String[] readOnlyChoices = new String[choices.size()];
+                for (int i = 0; i < choices.size(); i++)
+                    readOnlyChoices[i] = ((shownMask & (1 << bits.get(i))) != 0 ? "✓  " : "○  ") + choices.get(i);
+                new AlertDialog.Builder(MainActivity.this).setTitle(widget.text == null ? "Список" : widget.text)
+                        .setItems(readOnlyChoices, null)
+                        .setMessage("Значения доступны только для просмотра в рабочем режиме")
+                        .setPositiveButton("Закрыть", null).show();
+                return;
+            }
+            int initialMask = widget.extraFields.optInt("craftListInitialMask", 0) & 0xffff;
+            String current = liveValues.get(widgetIndex);
+            if (current != null) try { initialMask = CraftBitList.fromRegister(Integer.parseInt(current)); } catch (Exception ignored) { }
+            final int[] mask = {initialMask};
+            boolean[] checked = new boolean[bits.size()];
+            for (int i = 0; i < bits.size(); i++) checked[i] = (mask[0] & (1 << bits.get(i))) != 0;
+            final BindingRequest binding = parseBinding(-1, widget.connectionInfo);
+            if (widget.connectionInfo != null && !widget.connectionInfo.trim().isEmpty() && binding == null) {
+                Toast.makeText(MainActivity.this, "Проверь TCP привязку битового списка", Toast.LENGTH_LONG).show(); return;
+            }
+            if (binding != null && binding.functionCode != 3) {
+                Toast.makeText(MainActivity.this, "Битовый список использует holding-регистр FC03/FC06", Toast.LENGTH_LONG).show(); return;
+            }
+            AlertDialog dialog = new AlertDialog.Builder(MainActivity.this)
+                    .setTitle(widget.text == null || widget.text.isEmpty() ? "Выбери пункты" : widget.text)
+                    .setMultiChoiceItems(choices.toArray(new String[0]), checked, (d, position, isChecked) -> {
+                        int bit = bits.get(position);
+                        int next = isChecked ? mask[0] | (1 << bit) : mask[0] & ~(1 << bit);
+                        next &= 0xffff;
+                        mask[0] = next;
+                        liveValues.put(widgetIndex, Integer.toString(next));
+                        if (binding == null) {
+                            try { widget.extraFields.put("craftListInitialMask", next); } catch (Exception ignored) { }
+                            persistProject();
+                            invalidate();
+                            return;
+                        }
+                        final int committedMask = next;
+                        modbusExecutor.execute(() -> {
+                            try {
+                                if (!operatorMode || !activityResumed || !widgets.contains(widget)) throw new IOException("Рабочий режим остановлен");
+                                new ModbusTcpClient(binding.host, binding.port).writeSingle(binding.unit, binding.address, committedMask);
+                            } catch (Exception failure) {
+                                runOnUiThread(() -> {
+                                    if (!widgets.contains(widget) || !operatorMode || widgets.indexOf(widget) != widgetIndex) return;
+                                    if (mask[0] == committedMask) {
+                                        mask[0] = committedMask ^ (1 << bit);
+                                        liveValues.put(widgetIndex, Integer.toString(mask[0]));
+                                    }
+                                    invalidate();
+                                    Toast.makeText(MainActivity.this, "Не удалось записать маску списка: " + describeModbusError(failure), Toast.LENGTH_LONG).show();
+                                });
+                            }
+                        });
+                        invalidate();
+                    })
+                    .setPositiveButton("Готово", null).setNegativeButton("Закрыть", null).create();
+            dialog.show();
+        }
+
         private void activateRuntimeWidget(int index, float x, float y) {
             Widget picked = widgets.get(index);
             if ("Задатчик".equals(picked.type) && y >= picked.y + dp(29)) {
                 adjustSetpoint(picked, x < picked.x + picked.w / 2 ? -1 : 1);
+            } else if ("Список Craft".equals(picked.type)) {
+                openCraftBitList(picked, index);
             } else if ("Кнопка".equals(picked.type)) {
                 picked.buttonState = !picked.buttonState;
                 persistProject();
