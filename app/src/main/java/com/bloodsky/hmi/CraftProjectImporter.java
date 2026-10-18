@@ -115,7 +115,10 @@ public final class CraftProjectImporter {
             String[] sourcePins = MainActivity.knownFbdPins(MainActivity.widgetFromJson(sourceWidgetJson), true);
             String[] targetPins = MainActivity.knownFbdPins(MainActivity.widgetFromJson(targetWidgetJson), false);
             int inputNumber = integer(other.opt("numOnIn"), -1);
-            if (sourcePins.length == 0 || inputNumber < 1 || inputNumber > targetPins.length) continue;
+            if (sourcePins.length == 0 || inputNumber < 1 || inputNumber > targetPins.length
+                    || sourceIndex == targetIndex || isTargetPinOccupied(screen.getJSONArray("connections"), targetIndex,
+                    targetPins[inputNumber - 1]) || wouldCreateCycle(screen.getJSONArray("connections"),
+                    sourceIndex, targetIndex, screen.getJSONArray("widgets").length())) continue;
             JSONObject edge = new JSONObject().put("source", sourceIndex).put("target", targetIndex)
                     .put("sourcePin", sourcePins[0]).put("targetPin", targetPins[inputNumber - 1]);
             try {
@@ -126,6 +129,35 @@ public final class CraftProjectImporter {
         }
         converted.put("screens", screens);
         return converted.toString();
+    }
+
+    private static boolean isTargetPinOccupied(JSONArray edges, int target, String targetPin) {
+        for (int i = 0; i < edges.length(); i++) {
+            JSONObject edge = edges.optJSONObject(i);
+            if (edge != null && edge.optInt("target", -1) == target
+                    && targetPin.equalsIgnoreCase(edge.optString("targetPin", ""))) return true;
+        }
+        return false;
+    }
+
+    private static boolean wouldCreateCycle(JSONArray edges, int source, int target, int nodeCount) {
+        boolean[] visited = new boolean[nodeCount];
+        java.util.ArrayDeque<Integer> pending = new java.util.ArrayDeque<>();
+        pending.add(target);
+        while (!pending.isEmpty()) {
+            int current = pending.removeFirst();
+            if (current == source) return true;
+            if (current < 0 || current >= nodeCount || visited[current]) continue;
+            visited[current] = true;
+            for (int i = 0; i < edges.length(); i++) {
+                JSONObject edge = edges.optJSONObject(i);
+                if (edge != null && edge.optInt("source", -1) == current) {
+                    int next = edge.optInt("target", -1);
+                    if (next >= 0 && next < nodeCount && !visited[next]) pending.addLast(next);
+                }
+            }
+        }
+        return false;
     }
 
     private static JSONObject convertComponent(JSONObject source, JSONObject other, int componentId) throws Exception {

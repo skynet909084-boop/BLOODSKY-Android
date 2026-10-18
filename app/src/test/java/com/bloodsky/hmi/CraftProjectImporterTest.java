@@ -146,4 +146,14 @@ public class CraftProjectImporterTest {
         assertTrue(widgets.getJSONObject(2).getBoolean("autoResizeText"));
         assertEquals(2, widgets.getJSONObject(2).getJSONObject("craftOther").getInt("changeScreen"));
     }
+
+    @Test public void skipsCraftFbdEdgesThatWouldCreateUnsupportedCycles() throws Exception {
+        String json = "{\"TableNameProject\":{\"name\":\"Cycle\",\"countScreen\":1},\"TableConnections\":[],\"TableComponent\":["
+                + "{\"componentId\":114,\"text\":\"T\",\"x\":0,\"y\":0,\"width\":100,\"height\":100,\"jsTableComponent_other\":{\"numScreen\":1,\"saveKey\":1,\"keyOut\":2,\"numOnIn\":1}},"
+                + "{\"componentId\":115,\"text\":\"Timer\",\"x\":120,\"y\":0,\"width\":100,\"height\":100,\"jsTableComponent_other\":{\"numScreen\":1,\"saveKey\":2,\"keyOut\":1,\"numOnIn\":1,\"type\":1,\"typeTime\":1}}]}";
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(json));
+        JSONArray edges = project.getJSONArray("screens").getJSONObject(0).getJSONArray("connections");
+        assertEquals(1, edges.length());
+        MainActivity.validateImportedProjectStatic(project.toString());
+    }
 }
