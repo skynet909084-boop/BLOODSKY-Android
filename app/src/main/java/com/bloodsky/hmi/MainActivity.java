@@ -254,13 +254,23 @@ public class MainActivity extends Activity {
     }
 
     private void playSoundAlert(String pathOrUri) {
+        playSoundAlert(pathOrUri, 0, false);
+    }
+
+    private void playSoundAlert(String pathOrUri, int craftAlarmSoundIndex, boolean loop) {
         try {
             if (mediaPlayer != null) {
                 try { mediaPlayer.stop(); } catch (Exception ignored) {}
             try { mediaPlayer.release(); } catch (Exception ignored) {}
                 mediaPlayer = null;
             }
-            if (pathOrUri != null && pathOrUri.startsWith("content://")) {
+            int alarmResource = craftAlarmResource(craftAlarmSoundIndex);
+            if (alarmResource != 0) {
+                mediaPlayer = MediaPlayer.create(this, alarmResource);
+                if (mediaPlayer == null) return;
+                mediaPlayer.setLooping(loop);
+                mediaPlayer.start();
+            } else if (pathOrUri != null && pathOrUri.startsWith("content://")) {
                 mediaPlayer = new MediaPlayer();
                 mediaPlayer.setDataSource(this, Uri.parse(pathOrUri));
                 mediaPlayer.prepare();
@@ -283,6 +293,24 @@ public class MainActivity extends Activity {
                 toneG.startTone(ToneGenerator.TONE_PROP_BEEP, 250);
             } catch (Exception ignored) {}
         }
+    }
+
+    private static int craftAlarmResource(int index) {
+        switch (index) {
+            case 1: return R.raw.kc_alarm1;
+            case 2: return R.raw.kc_alarm2;
+            case 3: return R.raw.kc_alarm3;
+            case 4: return R.raw.kc_alarm4;
+            case 5: return R.raw.kc_alarm5;
+            default: return 0;
+        }
+    }
+
+    private void stopSoundAlert() {
+        if (mediaPlayer == null) return;
+        try { mediaPlayer.stop(); } catch (Exception ignored) {}
+        try { mediaPlayer.release(); } catch (Exception ignored) {}
+        mediaPlayer = null;
     }
 
     private void speakVoiceAnnouncement(String text) {
@@ -1087,9 +1115,10 @@ public class MainActivity extends Activity {
                             }
                             if (active && !w.lastSoundState) {
                                 w.lastSoundState = true;
-                                playSoundAlert(w.soundFilePath);
+                                playSoundAlert(w.soundFilePath, w.craftAlarmSoundIndex, w.craftAlarmLoop);
                             } else if (!active) {
                                 w.lastSoundState = false;
+                                if (w.craftAlarmLoop) stopSoundAlert();
                             }
                         } else if ("Голосовое сообщение".equals(w.type)) {
                             int voiceIdx = 0;
@@ -2033,6 +2062,8 @@ public class MainActivity extends Activity {
         copy.soundThreshold = source.soundThreshold;
         copy.soundActive = source.soundActive;
         copy.soundFilePath = source.soundFilePath;
+        copy.craftAlarmSoundIndex = source.craftAlarmSoundIndex;
+        copy.craftAlarmLoop = source.craftAlarmLoop;
         copy.targetScreenIndex = source.targetScreenIndex;
         copy.targetUrl = source.targetUrl;
         copy.lastVoiceState = source.lastVoiceState;
@@ -3501,6 +3532,8 @@ public class MainActivity extends Activity {
         obj.put("soundThreshold", w.soundThreshold);
         obj.put("soundActive", w.soundActive);
         obj.put("soundFilePath", w.soundFilePath == null ? "Аларм" : w.soundFilePath);
+        obj.put("craftAlarmSoundIndex", w.craftAlarmSoundIndex);
+        obj.put("craftAlarmLoop", w.craftAlarmLoop);
         obj.put("targetScreenIndex", w.targetScreenIndex);
         obj.put("targetUrl", w.targetUrl == null ? "" : w.targetUrl);
 
@@ -3548,6 +3581,8 @@ public class MainActivity extends Activity {
         w.textSizeSp = Math.max(8, Math.min(48, obj.optInt("textSizeSp", 14)));
         w.visible = obj.optBoolean("visible", true); w.showFrame = obj.optBoolean("showFrame", true); w.autoResizeText = obj.optBoolean("autoResizeText", false);
         w.soundThreshold = obj.optDouble("soundThreshold", 1.0); w.soundActive = obj.optBoolean("soundActive", false); w.soundFilePath = obj.optString("soundFilePath", "Аларм");
+        w.craftAlarmSoundIndex = Math.max(0, Math.min(5, obj.optInt("craftAlarmSoundIndex", 0)));
+        w.craftAlarmLoop = obj.optBoolean("craftAlarmLoop", false);
         w.targetScreenIndex = obj.optInt("targetScreenIndex", 0); w.targetUrl = obj.optString("targetUrl", "");
         w.x = (float) obj.optDouble("x", 40); w.y = (float) obj.optDouble("y", 50);
         w.w = (float) obj.optDouble("w", 160); w.h = (float) obj.optDouble("h", 58);
@@ -6125,6 +6160,8 @@ public class MainActivity extends Activity {
         public double soundThreshold = 1.0;
         public boolean soundActive = false;
         public String soundFilePath = "Аларм";
+        public int craftAlarmSoundIndex = 0;
+        public boolean craftAlarmLoop = false;
         public int targetScreenIndex = 0;
         public String targetUrl = "";
         public int lastVoiceState = -1;
