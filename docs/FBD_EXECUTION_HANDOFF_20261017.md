@@ -1,5 +1,13 @@
 # BLOODSKY FBD — working handoff, 17 Oct 2026
 
+## Continuation 18 Oct 2026 — full-suite document-picker blocker
+
+- Verified feature head `29b9bcaae2ca7c2ed6bce2d6d9bb1d4e5cde463d`: APK/JUnit 39088568857 and all three source audits PASS; full Android UI 39088568858 FAILED in `tap_document("bloodsky-custom.png")` (job 117560302627). This is not an RS/FBD assertion failure. Failure artifacts exist as 12121514401; artifact UI XML has not been inspected in this session.
+- Found a concrete selector gap: `tap_document` accepted only filename text despite the existing tested `document_nodes` helper supporting Android grid accessibility descriptions. Use that helper while retaining two-snapshot bounds stability, ambiguity rejection and bounded retries. Require BLOODSKY's package to appear after selection; an empty accessibility tree no longer counts as success. This is a candidate fix, not a confirmed diagnosis of the unseen device XML.
+- Added executable mocked regressions for description-only grid rows, transient empty hierarchy, and ambiguous filenames. After pinned resource preparation, all 137 Python tests PASS. Local Android JUnit/APK NOT RUN: `gradle` is absent. Independent CI and full API30 acceptance still required.
+- PR134 head `d36a957d63a3a115ce5923dcd7a91c237650a958`: source evidence 39088329098, APK 39088329099, quick UI 39088329116 all SUCCESS. PR135 head `8f1860480ad1cbd01b8b7d4df397a6deb0f5de21`: APK 39088794373 and quick UI 39088794269 SUCCESS. Neither result proves full-suite acceptance or direct CH_I/CH_F click/restart coverage. Both remain draft, not integrated by this continuation.
+- Next: confirm this picker correction in FULL emulator profile; inspect saved picker XML on failure. Then integrate reviewed source/CHANGE work and add direct native CHANGE UI persistence coverage. Stable main unchanged; full original visual parity and hardware acceptance remain open.
+
 ## Final accepted FBD milestones on 18 October 2026 (after the earlier checkpoint)
 
 - Feature PR [#76](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/76) remains **DRAFT**, targeting unmodified stable `main`. Its latest combined functional HEAD before this documentation-only commit was `f21742da6ec7b015a3e7419b53b57e1b254f0e3e`; the full API30 and APK/JUnit of this final combined HEAD must pass before considering any stable branch integration. Do not claim they passed from older exact commits.

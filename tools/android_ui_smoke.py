@@ -137,8 +137,7 @@ class Smoke:
         attempts = 0
         while time.monotonic() < deadline:
             xml = self.dump()
-            nodes = [n for n in matching_nodes(xml, text=filename)
-                     if n.get('package') == 'com.android.documentsui']
+            nodes = document_nodes(xml, filename)
             if len(nodes) > 1:
                 raise AssertionError('Ambiguous document: ' + filename)
             bounds = nodes[0].get('bounds') if len(nodes) == 1 else None
@@ -150,8 +149,10 @@ class Smoke:
                 attempts += 1
                 for _ in range(3):
                     xml = self.dump()
-                    if not any(n.get('package') == 'com.android.documentsui'
-                               for n in ET.fromstring(xml).iter('node')):
+                    visible = list(ET.fromstring(xml).iter('node'))
+                    if (any(n.get('package') == PACKAGE for n in visible)
+                            and not any(n.get('package') == 'com.android.documentsui'
+                                        for n in visible)):
                         return
                 if attempts >= 3:
                     break
