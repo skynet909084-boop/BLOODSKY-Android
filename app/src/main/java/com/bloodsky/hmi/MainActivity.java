@@ -1623,7 +1623,9 @@ public class MainActivity extends Activity {
                 "FBD — Craft T (переключатель по фронту)",
                 "FBD — Craft BLINK (мигание)",
                 "FBD — Craft SEL (целочисленный)",
-                "FBD — Craft COMPARE (INT32)"
+                "FBD — Craft COMPARE (INT32)",
+                "FBD — Craft CH_I (изменение Integer)",
+                "FBD — Craft CH_F (изменение Float)"
         };
         final String[] types = {
                 "Текст", "Кнопка", "Индикатор", "Задатчик",
@@ -1639,7 +1641,8 @@ public class MainActivity extends Activity {
                 "FBD RS", "FBD SR", "FBD CTU",
                 "FBD CTD", "FBD R_TRIG", "FBD F_TRIG",
                 "FBD CRAFT CTU", "FBD CRAFT T", "FBD CRAFT BLINK",
-                "FBD CRAFT SEL", "FBD CRAFT COMPARE"
+                "FBD CRAFT SEL", "FBD CRAFT COMPARE",
+                "FBD CRAFT CHANGE I", "FBD CRAFT CHANGE F"
         };
         final String[] defaults = {
                 "Надпись", "Кнопка", "Индикатор", "Задатчик: 0",
@@ -1651,7 +1654,8 @@ public class MainActivity extends Activity {
                 "Float->Int", "Int->Float",
                 "MOVE", "SEL", "ABS", "MIN/MAX",
                 "RS", "SR", "CTU", "CTD", "R_TRIG", "F_TRIG",
-                "CTU 16 bit", "T", "BLINK", "SEL", ">"
+                "CTU 16 bit", "T", "BLINK", "SEL", ">",
+                "CH_I", "CH_F"
         };
         LinearLayout list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
@@ -2935,6 +2939,11 @@ public class MainActivity extends Activity {
             if (output && "Q".equals(name)) return "BOOL";
             if (!output && ("IN1".equals(name) || "IN2".equals(name))) return "NUMBER";
         }
+        if (kind.equals("FBD CRAFT CHANGE I") || kind.equals("FBD CRAFT CHANGE F")) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && ("FBD CRAFT CHANGE I".equals(kind) ? "I" : "F").equals(name))
+                return "NUMBER";
+        }
         if (kind.equals("FBD CRAFT SEL")) {
             if (output && "Q".equals(name)) return "NUMBER";
             if (!output && "IN".equals(name)) return "BOOL";
@@ -3301,6 +3310,29 @@ public class MainActivity extends Activity {
             if (Double.isNaN(minV) || Double.isInfinite(minV)) minV = 0.0;
             cacheNumeric[index] = minV;
             return minV != 0.0;
+        }
+        if ("FBD CRAFT CHANGE I".equals(widget.type)) {
+            boolean connected = false;
+            for (String p : inputPins) if ("I".equals(canonicalFbdPinName(p))) connected = true;
+            if (!connected) return false;
+            Integer value = FbdCraftIntegerSelector.exactInteger(
+                    fbdNumericPinValue(numInputs, inputPins, "I", -1, Double.NaN));
+            if (value == null) return false;
+            FbdCraftChangeTransitions.IntState next = FbdCraftChangeTransitions.nextInt(
+                    widget.craftChangeIntState, value);
+            widget.craftChangeIntState = next;
+            return next.changed;
+        }
+        if ("FBD CRAFT CHANGE F".equals(widget.type)) {
+            boolean connected = false;
+            for (String p : inputPins) if ("F".equals(canonicalFbdPinName(p))) connected = true;
+            if (!connected) return false;
+            double value = fbdNumericPinValue(numInputs, inputPins, "F", -1, Double.NaN);
+            if (!Double.isFinite(value) || !Float.isFinite((float)value)) return false;
+            FbdCraftChangeTransitions.FloatState next = FbdCraftChangeTransitions.nextFloat(
+                    widget.craftChangeFloatState, (float)value);
+            widget.craftChangeFloatState = next;
+            return next.changed;
         }
         if ("FBD CRAFT SEL".equals(widget.type)) {
             // The source returns an Integer only when all three inputs exist.
@@ -3847,6 +3879,10 @@ public class MainActivity extends Activity {
             return output ? new String[]{"Q"} : new String[]{"A", "B"};
         if ("FBD MOVE".equals(kind))
             return output ? new String[]{"OUT"} : new String[]{"IN"};
+        if ("FBD CRAFT CHANGE I".equals(kind))
+            return output ? new String[]{"Q"} : new String[]{"I"};
+        if ("FBD CRAFT CHANGE F".equals(kind))
+            return output ? new String[]{"Q"} : new String[]{"F"};
         if ("FBD CRAFT SEL".equals(kind))
             return output ? new String[]{"Q"} : new String[]{"IN", "I1", "I2"};
         if ("FBD SEL".equals(kind))
@@ -3941,6 +3977,10 @@ public class MainActivity extends Activity {
         // Do not serialize runtime latches into legacy project metadata.
         boolean craftToggleOutput = false;
         boolean craftToggleLastInput = false;
+        // Change detection runtime is transient; source starts at 0/0.0f.
+        // Saved old project state and vendor metadata remain untouched.
+        FbdCraftChangeTransitions.IntState craftChangeIntState = FbdCraftChangeTransitions.IntState.initial();
+        FbdCraftChangeTransitions.FloatState craftChangeFloatState = FbdCraftChangeTransitions.FloatState.initial();
         // Blink runtime epoch is not saved; a newly opened project starts idle.
         FbdCraftNativeTimer.State craftBlinkState = FbdCraftNativeTimer.State.initial();
         public int timerPresetMs = 1000;
