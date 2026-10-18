@@ -190,12 +190,14 @@ public class CraftProjectImporterTest {
     @Test public void rejectsCraftComponentScreensBeyondSupportedLimit() throws Exception {
         String json = "{\"TableNameProject\":{\"name\":\"Too many screens\",\"countScreen\":16},\"TableConnections\":[],\"TableComponent\":["
                 + "{\"componentId\":2,\"text\":\"Overflow\",\"jsTableComponent_other\":{\"numScreen\":129}}]}";
+        boolean rejected = false;
         try {
             CraftProjectImporter.convert(json);
-            fail("Screen references beyond the supported limit must be rejected");
         } catch (IllegalArgumentException expected) {
+            rejected = true;
             assertTrue(expected.getMessage().contains("лимита"));
         }
+        assertTrue("Screen references beyond the supported limit must be rejected", rejected);
     }
 
 }
