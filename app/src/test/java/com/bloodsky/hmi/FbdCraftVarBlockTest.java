@@ -161,7 +161,7 @@ public class FbdCraftVarBlockTest {
         MainActivity.Widget secondSource = block("FBD CRAFT VAR NAME IN INT");
         MainActivity.isolateCraftMacroVariables(secondMacro, Arrays.asList(secondSource));
         assertNotEquals(firstMacro.craftVariableNamespace, secondMacro.craftVariableNamespace);
-        assertEquals("", secondSource.craftVariableNamespace);
+        assertEquals(secondMacro.craftVariableNamespace, secondSource.craftVariableNamespace);
 
         assertEquals(firstMacro.craftVariableNamespace,
                 MainActivity.copyWidget(firstMacro).craftVariableNamespace);
