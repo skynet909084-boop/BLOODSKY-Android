@@ -5385,6 +5385,16 @@ public class MainActivity extends Activity {
         return false;
     }
 
+    static void isolateCraftMacroVariables(Widget macro, List<Widget> nested) {
+        if (macro == null || nested == null) return;
+        if (macro.craftVariableNamespace == null || macro.craftVariableNamespace.isEmpty())
+            macro.craftVariableNamespace = "craft-macro-" + java.util.UUID.randomUUID();
+        for (Widget child : nested) {
+            if (isCraftNamedVariableSource(child.type) || isCraftNamedVariableSink(child.type))
+                child.craftVariableNamespace = macro.craftVariableNamespace;
+        }
+    }
+
     /** Execute a validated, acyclic BLOODSKY macro graph in its own runtime namespace. */
     private static boolean evaluateCraftMacroBlock(List<Widget> widgetsList,
             List<FbdConnection> connectionsList, int index, boolean[] visiting,
@@ -5424,6 +5434,7 @@ public class MainActivity extends Activity {
         List<Widget> nested = macro.craftMacroRuntimeWidgets;
         List<FbdConnection> nestedEdges = macro.craftMacroRuntimeConnections;
         if (nested == null || nested.isEmpty()) { cacheNumeric[index] = Double.NaN; return false; }
+        isolateCraftMacroVariables(macro, nested);
         visiting[index] = true;
         try {
             for (Widget child : nested) if ("FBD CRAFT MACRO IN".equals(
