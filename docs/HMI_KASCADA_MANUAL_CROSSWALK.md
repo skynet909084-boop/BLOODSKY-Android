@@ -31,7 +31,7 @@ Source: `HMI-KaSCADA-v1.4-ot-08.09.19 (1).pdf` (109 pages), checked as extracted
 
 - BLOODSKY remains an independent local application. Licensing, cloud administration and remote cloud control are explicitly out of scope. Optional Yandex/Xiaomi adapters do not make the app's local Modbus/FBD runtime depend on the internet.
 - Local device transports, project editing, widgets, FBD/EL, archiving, and local web monitoring remain in scope.
-- SMS remains an optional SIM-based channel alongside Telegram. Current SMS palette entries stay visible but disabled until their runtime and permissions are implemented. Telegram notifications use the Bot API when the user configures a bot and chat.
+- SMS remains an optional SIM-based channel alongside Telegram. Outbound SMS now sends on a configured Modbus rising edge and requests SEND_SMS permission at runtime; inbound SMS remains visible but disabled. Telegram notifications use the Bot API when the user configures a bot and chat.
 - A push-to-talk assistant now offers explicit local on-device and online Android speech-recognition modes. Both use the same tested Russian command allowlist for screen navigation and confirmed project start/stop; this is not yet a general LLM or named-scenario executor.
 - A first optional Home Assistant bridge discovers entity states and confirms on/off actions for supported light, switch, fan, and input_boolean entities; it supports a local Xiaomi Home-to-Home Assistant path. The direct Yandex adapter reads device/scenario inventory and can start named Yandex scenarios after confirmation; device capability writes and native OAuth sign-in remain follow-up work.
 
