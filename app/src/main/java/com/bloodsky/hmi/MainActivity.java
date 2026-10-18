@@ -98,6 +98,7 @@ public class MainActivity extends Activity {
     private boolean fbdLocationRegistered, fbdLocationPermissionRequested;
     private static final int REQUEST_FBD_SPEED_LOCATION = 6107;
     private static final int REQUEST_VOICE_PERMISSION = 6201;
+    private static final int REQUEST_SMS_SEND_PERMISSION = 6202;
     private static final int VOICE_LOCAL = 1;
     private static final int VOICE_ONLINE = 2;
     private int pendingVoiceMode;
@@ -227,6 +228,12 @@ public class MainActivity extends Activity {
             if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED)
                 startVoiceRecognition(pendingVoiceMode);
             else Toast.makeText(this, "Для голосового управления нужен доступ к микрофону", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (requestCode == REQUEST_SMS_SEND_PERMISSION) {
+            if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED)
+                Toast.makeText(this, "Разрешение SMS включено; уведомление придёт при следующем новом событии", Toast.LENGTH_LONG).show();
+            else Toast.makeText(this, "Отправка SMS отключена без разрешения SEND_SMS", Toast.LENGTH_LONG).show();
             return;
         }
         if (requestCode != REQUEST_FBD_SPEED_LOCATION) return;
@@ -1156,6 +1163,13 @@ public class MainActivity extends Activity {
                                 boolean active = isActiveModbusValue(state);
                                 if (active && !w.lastTelegramState) sendTelegramNotification(index, w, state);
                                 w.lastTelegramState = active;
+                            }
+                        } else if ("SMS-уведомление".equals(w.type)) {
+                            String state = entry.getValue();
+                            if (state != null && !state.startsWith("ERR:") && !state.startsWith("CFG")) {
+                                boolean active = isActiveModbusValue(state);
+                                if (active && !w.lastSmsState) sendSmsNotification(w, state);
+                                w.lastSmsState = active;
                             }
                         }
                     }
@@ -2110,6 +2124,26 @@ public class MainActivity extends Activity {
                     }).show();
         });
         homeDialog.show();
+    }
+
+    private void sendSmsNotification(Widget widget,String value) {
+        String phone="";
+        try{phone=SmsRecipientStore.read(this,widget.extraFields.optString("smsRecipientId",""));}catch(Exception ignored){}
+        if(!SmsNotificationClient.isValidPhone(phone)) {
+            Toast.makeText(this,"У SMS-элемента не настроен номер получателя",Toast.LENGTH_LONG).show();return;
+        }
+        if(!getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_TELEPHONY)) {
+            Toast.makeText(this,"Это устройство не поддерживает SMS через SIM",Toast.LENGTH_LONG).show();return;
+        }
+        if(checkSelfPermission(android.Manifest.permission.SEND_SMS)!=android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.SEND_SMS},REQUEST_SMS_SEND_PERMISSION);return;
+        }
+        try {
+            SmsNotificationClient.send(this,phone,SmsNotificationClient.message(widget.text,value));
+            Toast.makeText(this,"SMS отправлено через SIM",Toast.LENGTH_SHORT).show();
+        } catch(Exception failure) {
+            Toast.makeText(this,"Не удалось отправить SMS через SIM",Toast.LENGTH_LONG).show();
+        }
     }
 
     private void showHomeAssistantDialog() {
@@ -3093,6 +3127,15 @@ public class MainActivity extends Activity {
         connectionField.setHint("tcp://192.168.1.10:502/1/40001 (FC03/FC04) или fbd://N (номер блока с 1)");
         form.addView(connectionField);
 
+        final EditText smsPhoneField;
+        if ("SMS-уведомление".equals(w.type)) {
+            String savedPhone="";
+            try{savedPhone=SmsRecipientStore.read(this,w.extraFields.optString("smsRecipientId",""));}catch(Exception ignored){}
+            smsPhoneField=propertyField(savedPhone,InputType.TYPE_CLASS_PHONE);
+            smsPhoneField.setHint("Номер получателя, например +79991234567");form.addView(smsPhoneField);
+            TextView smsHelp=new TextView(this);smsHelp.setText("Сообщение отправляется один раз при переходе сигнала 0→1. В тексте {value} подставляется значение Modbus. Номер хранится зашифрованно на устройстве и не входит в экспорт проекта.");form.addView(smsHelp);
+        } else smsPhoneField=null;
+
         final android.widget.CheckBox fbdInputField;
         if ("FBD Вход".equals(w.type)) {
             fbdInputField = new android.widget.CheckBox(this);
@@ -3655,6 +3698,16 @@ public class MainActivity extends Activity {
                     }
                     w.text = textField.getText().toString();
                     w.connectionInfo = connectionField.getText().toString().trim();
+                    if(smsPhoneField!=null) {
+                        String phone=smsPhoneField.getText().toString().trim();
+                        if(!SmsNotificationClient.isValidPhone(phone)) {
+                            Toast.makeText(this,"Укажи номер получателя в международном формате",Toast.LENGTH_LONG).show();return;
+                        }
+                        String recipientKey=w.extraFields.optString("smsRecipientId","");
+                        if(!recipientKey.matches("[A-Fa-f0-9-]{36}"))recipientKey=java.util.UUID.randomUUID().toString();
+                        try{SmsRecipientStore.save(this,recipientKey,phone);w.extraFields.put("smsRecipientId",recipientKey);}
+                        catch(Exception failure){Toast.makeText(this,"Не удалось безопасно сохранить номер SMS",Toast.LENGTH_LONG).show();return;}
+                    }
                     if (fbdInputField != null) w.inputValue = fbdInputField.isChecked();
                     if ("Динамический текст".equals(w.type)) {
                         for (int k = 0; k < 4; k++) {
@@ -6566,6 +6619,7 @@ public class MainActivity extends Activity {
         public int lastVoiceState = -1;
         public boolean lastSoundState = false;
         public boolean lastTelegramState = false;
+        transient boolean lastSmsState = false;
         public JSONObject extraFields = new JSONObject();
         transient JSONObject craftMacroDefinitionSourceCache;
         transient FbdCraftMacroDefinition craftMacroDefinitionCache;
