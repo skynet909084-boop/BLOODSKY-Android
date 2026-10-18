@@ -65,6 +65,17 @@ final class FbdCraftMacroGraphAdapter {
                 widget.put("craftTimerMode", timerMode(child.optInt("type", 1)));
                 widget.put("craftTimerUnit", timerUnit(child.optInt("typeTime", 1)));
             }
+            if ("FBD CRAFT SENSOR ORIENTATION".equals(type))
+                widget.put("craftSensorAxis", Math.max(1, Math.min(3, child.optInt("type", 1))));
+            if ("FBD CRAFT SUNRISE".equals(type))
+                widget.put("craftSunriseMode", child.optInt("type", 1) == 2 ? "SS" : "SR");
+            if (type.startsWith("FBD CRAFT MQTT ")) {
+                widget.put("craftMqttTopic", child.optString("topic", ""));
+                widget.put("craftMqttType", child.optInt("typeQ", child.optInt("typeIn", 1)));
+                widget.put("craftMqttServer", child.optInt("numMqttServer", 1));
+                if (child.has("mqttRetain"))
+                    widget.put("craftMqttRetain", child.optBoolean("mqttRetain"));
+            }
             if (type.startsWith("FBD CRAFT VAR ")) {
                 widget.put("craftVarBit", child.optInt("bit", 0));
                 if (child.has("isConstant")) widget.put("craftVarConstantMode", child.optBoolean("isConstant"));
