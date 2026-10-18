@@ -109,11 +109,16 @@ def perform(action):
             hint = (node.get("hint", "") + " " + node.get("text", "")).lower()
             if any(x in hint for x in ("парол", "password", "ключ", "token")):
                 value = "test"
-            elif any(x in hint for x in ("порт", "port", "адрес", "address", "unit", "id", "колич", "count")):
+            elif any(x in hint for x in ("имя проекта", "название проекта", "project name", "project title")):
+                value = "CraftAudit"
+            elif any(x in hint for x in ("порт", "port", "unit", "id", "колич", "count")):
                 value = "1"
-            else:
+            elif any(x in hint for x in ("адрес", "address", "host", "ip")):
                 value = "127.0.0.1"
+            else:
+                value = "1"
             adb("shell", "input", "text", value)
+            adb("shell", "input", "keyevent", "4")
     time.sleep(WAIT)
 
 
@@ -205,7 +210,7 @@ report = {
         "Traversal is bounded by state, depth and queued-path limits; report lists any remaining frontier.",
         "Android Back is not exhaustively traversed as a branch; forward controls are explored from each captured state.",
         "Unavailable Bluetooth and USB hardware is not simulated.",
-        "Generic values are entered only into visible text fields to reveal subsequent screens; they are not valid device credentials.",
+        "Generic values are entered only into visible text fields to reveal subsequent screens; they are not valid device credentials. A deterministic test project name is used when the field identifies itself as a project-name field.",
     ],
 }
 (OUT / "full-ui-audit.json").write_text(json.dumps(report, ensure_ascii=False, indent=2))
