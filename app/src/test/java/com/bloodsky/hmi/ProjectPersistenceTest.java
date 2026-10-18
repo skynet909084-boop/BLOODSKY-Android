@@ -134,4 +134,26 @@ public class ProjectPersistenceTest {
         String legacyJson = "[{\"type\":\"Текст\",\"text\":\"Привет\",\"x\":10,\"y\":10,\"w\":100,\"h\":50}]";
         MainActivity.validateImportedProjectStatic(legacyJson);
     }
+
+    @Test
+    public void importsStandaloneCraftProJsonAndReconcilesScreenCount() throws Exception {
+        String craft = "{\"TableNameProject\":{\"name\":\"Standalone Craft\",\"countScreen\":2},"
+                + "\"TableComponent\":[{\"componentId\":2,\"text\":\"Screen three\",\"x\":1,\"y\":2,\"width\":100,\"height\":30,\"jsTableComponent_other\":{\"numScreen\":3}}],"
+                + "\"TableConnections\":[]}";
+        final String[] saved = new String[1];
+        ProjectMediaService.importProjectBundle(folder.getRoot(),
+                new ByteArrayInputStream(craft.getBytes(StandardCharsets.UTF_8)), json -> {
+                    saved[0] = json;
+                    return true;
+                });
+        assertNotNull(saved[0]);
+        JSONObject project = new JSONObject(saved[0]);
+        assertEquals("Standalone Craft", project.getString("projectName"));
+        assertEquals(3, project.getJSONArray("screens").length());
+        assertEquals(2, project.getJSONObject("craftSource").getJSONObject("TableNameProject").getInt("countScreen"));
+        assertEquals("Screen three", project.getJSONArray("screens").getJSONObject(2)
+                .getJSONArray("widgets").getJSONObject(0).getString("text"));
+        assertFalse(project.has("mediaGeneration"));
+    }
+
 }
