@@ -55,3 +55,6 @@ JADX emits type-inference warnings around parts of the large factory and paste c
 
 
 Craft ID 6 mode 0 (`CustomComponents.e`) is imported as a momentary bit command. The source `addressBit` is retained as a validated 0–15 hint, but the installation-specific Craft device binding stays inactive. Operator mode requires an explicit TCP holding-register and opt-in, then uses FC22 to set the bit on touch-down and clear it on touch-up/cancel/activity pause. Native BLOODSKY buttons retain their previous toggle behavior unless explicitly configured as Craft buttons. Hardware/UI parity and release behavior during transport failure remain open.
+
+
+Craft ID 6 mode 1 (`CustomComponents.e`) is imported with the original 1-based `changeScreen` mapped to a zero-based BLOODSKY screen index. Invalid target indices are flagged and do not silently redirect. The editor offers existing screens by index/name or an external URL, validates that a destination is selected, and preserves `visibleInWork` as an operator-mode visibility setting. Screen-navigation rendering/flow still needs side-by-side UI acceptance.

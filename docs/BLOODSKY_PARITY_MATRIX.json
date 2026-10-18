@@ -71,8 +71,8 @@
           "id": "widget.button",
           "name": "Button Control (CustomComponents)",
           "status": "partial",
-          "criteria": "Craft CustomComponents.e modes: mode 0 momentary register-bit set on press and clear on release (FC22 after explicit TCP mapping), mode 1 screen navigation, and mode 2 constant write (UINT16/Float32), with operator-mode visibility.",
-          "audit_note": "Mode 0 preserves the imported bit hint but leaves the legacy endpoint inactive; explicit TCP holding-register mapping and opt-in are required. FC22 sets/clears on press/release, cancel, and activity pause; native BLOODSKY toggle behavior is preserved. Mode 2 writes FC06/FC16 after remapping. Mode 1 editor validation and device/UI acceptance remain open; see docs/BLOODSKY_EXECUTION_STATUS.md."
+          "criteria": "Craft CustomComponents.e modes: mode 0 momentary register-bit set on press and clear on release (FC22 after explicit TCP mapping), mode 1 screen navigation with visibleInWork, and mode 2 constant write (UINT16/Float32).",
+          "audit_note": "Modes 0/1/2 are imported with source metadata and inactive legacy endpoint. Mode 0 requires explicit TCP holding-register remap and opt-in, then FC22 sets/clears on press/release/cancel/pause; native BLOODSKY toggles are preserved. Mode 1 has validated screen picker/URL and preserves visibleInWork. Mode 2 writes FC06/FC16 after remap. Side-by-side UI and hardware acceptance remain open; see docs/BLOODSKY_EXECUTION_STATUS.md."
         },
         {
           "id": "widget.indicator",
