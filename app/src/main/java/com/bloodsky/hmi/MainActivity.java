@@ -2129,14 +2129,47 @@ public class MainActivity extends Activity {
                     .setMessage("Устройства не найдены или у токена нет доступа к состояниям.")
                     .setPositiveButton("ОК", null).show(); return;
         }
-        StringBuilder text = new StringBuilder();
-        int count = Math.min(200, entities.size());
-        for (int i = 0; i < count; i++) text.append(entities.get(i).toString()).append('\\n');
-        if (entities.size() > count) text.append("… и ещё ").append(entities.size() - count).append(" сущностей");
-        TextView list = new TextView(this); list.setText(text.toString()); list.setTextSize(14); list.setPadding(dp(20), dp(12), dp(20), dp(12));
-        ScrollView scroll = new ScrollView(this); scroll.addView(list);
-        new AlertDialog.Builder(this).setTitle("Home Assistant: " + entities.size() + " сущностей")
-                .setView(scroll).setPositiveButton("Готово", null).show();
+        ArrayList<HomeAssistantClient.Entity> shown = new ArrayList<>(entities.subList(0, Math.min(300, entities.size())));
+        android.widget.ListView list = new android.widget.ListView(this);
+        list.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, shown));
+        AlertDialog entityDialog = new AlertDialog.Builder(this).setTitle("Home Assistant: " + entities.size() + " сущностей")
+                .setView(list).setPositiveButton("Готово", null).create();
+        list.setOnItemClickListener((parent, view, position, id) -> {
+            HomeAssistantClient.Entity selected = shown.get(position);
+            if (!selected.canTogglePower()) {
+                Toast.makeText(this, "Для этой сущности доступен только просмотр", Toast.LENGTH_SHORT).show(); return;
+            }
+            boolean turnOn = "off".equalsIgnoreCase(selected.state);
+            String action = turnOn ? "включить" : "выключить";
+            new AlertDialog.Builder(this).setTitle("Подтвердить действие")
+                    .setMessage(action.substring(0, 1).toUpperCase(java.util.Locale.ROOT) + action.substring(1)
+                            + " «" + selected.name + "» (" + selected.entityId + ")?")
+                    .setNegativeButton("Отмена", null)
+                    .setPositiveButton("Подтвердить", (d, w) -> setHomeAssistantPower(selected, turnOn, entityDialog)).show();
+        });
+        entityDialog.show();
+    }
+
+    private void setHomeAssistantPower(HomeAssistantClient.Entity entity, boolean turnOn, AlertDialog entityDialog) {
+        String baseUrl = getSharedPreferences("bloodsky_homeassistant", MODE_PRIVATE).getString("base_url", "");
+        homeAssistantExecutor.execute(() -> {
+            String error = null; List<HomeAssistantClient.Entity> updated = null;
+            try {
+                String token = HomeAssistantTokenStore.read(this);
+                HomeAssistantClient.setPower(baseUrl, token, entity, turnOn);
+                updated = HomeAssistantClient.getEntities(baseUrl, token);
+            } catch (Exception failure) { error = failure.getMessage(); }
+            final String failureText = error; final List<HomeAssistantClient.Entity> states = updated;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                if (failureText != null) {
+                    Toast.makeText(this, "Home Assistant: " + safeHomeAssistantError(failureText), Toast.LENGTH_LONG).show(); return;
+                }
+                entityDialog.dismiss();
+                Toast.makeText(this, "Команда отправлена", Toast.LENGTH_SHORT).show();
+                showHomeAssistantEntities(states);
+            });
+        });
     }
 
     private void showVoiceModeDialog() {
