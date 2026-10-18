@@ -53,6 +53,25 @@ public class OriginalFbdNativePaletteMappingTest {
         assertNotEquals("FBD Сравнение", compare);
     }
 
+    @Test public void originalChangeDetectorsUseTheirTypedVersionedContracts() {
+        String integer = OriginalFbdPalette.nativeTypeForOriginalTag("FB_CHANGE_I");
+        String floating = OriginalFbdPalette.nativeTypeForOriginalTag("FB_CHANGE_F");
+        assertEquals("FBD CRAFT CHANGE I", integer);
+        assertEquals("FBD CRAFT CHANGE F", floating);
+        assertEquals("CH_I", OriginalFbdPalette.nativeLabelForOriginalTag("FB_CHANGE_I"));
+        assertEquals("CH_F", OriginalFbdPalette.nativeLabelForOriginalTag("FB_CHANGE_F"));
+        assertArrayEquals(new String[]{"I"}, MainActivity.knownFbdPins(integer, false));
+        assertArrayEquals(new String[]{"F"}, MainActivity.knownFbdPins(floating, false));
+        assertEquals("NUMBER", MainActivity.knownFbdPinType(integer, "I", false));
+        assertEquals("NUMBER", MainActivity.knownFbdPinType(floating, "F", false));
+        assertEquals("BOOL", MainActivity.knownFbdPinType(integer, "Q", true));
+        assertEquals("BOOL", MainActivity.knownFbdPinType(floating, "Q", true));
+        assertTrue(FbdCraftChangeTransitions.nextInt(
+                FbdCraftChangeTransitions.IntState.initial(), 1).changed);
+        assertTrue(FbdCraftChangeTransitions.nextFloat(
+                FbdCraftChangeTransitions.FloatState.initial(), 1f).changed);
+    }
+
     @Test public void unsupportedOriginalBlocksStayDisabledAndUnmapped() {
         for (String source : new String[]{
                 "FB_MOVE", "FB_TIMER", "FB_ARRAY", "FB_MACRO",

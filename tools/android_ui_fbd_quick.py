@@ -205,8 +205,8 @@ class FastFbdSmoke(Smoke):
         self.wait_node(description='Редактор экрана')
 
         # The original 1.0.7 Craft FBD palette already contains source previews
-        # for RS, T and CTU. These preview actions are now backed by verified
-        # runtimes instead of sending users to the new generic extra menu.
+        # for RS, T, CTU and the typed change detectors. These preview actions
+        # are backed by verified runtimes rather than the generic extra menu.
         def add_from_original_preview(type_id):
             self.tap(description='Добавить элемент')
             self.tap(description='Функциональные блоки и другие элементы')
@@ -243,9 +243,12 @@ class FastFbdSmoke(Smoke):
         add_from_original_preview('FBD RS')
         add_from_original_preview('FBD CRAFT T')
         add_from_original_preview('FBD CRAFT CTU')
+        add_from_original_preview('FBD CRAFT CHANGE I')
+        add_from_original_preview('FBD CRAFT CHANGE F')
         original = current_widgets()
         if [w['type'] for w in original] != [
-                'FBD RS', 'FBD CRAFT T', 'FBD CRAFT CTU']:
+                'FBD RS', 'FBD CRAFT T', 'FBD CRAFT CTU',
+                'FBD CRAFT CHANGE I', 'FBD CRAFT CHANGE F']:
             raise AssertionError('Original Craft source previews mapped incorrectly: '
                                  + repr(original))
         if original[2].get('counterValue') != 0:
@@ -260,7 +263,7 @@ class FastFbdSmoke(Smoke):
                 if intersects:
                     raise AssertionError('Native original FBD blocks overlapped: '
                                          + repr((first, second)))
-        self.capture('fast-fbd-original-craft-rs-t-ctu-palette')
+        self.capture('fast-fbd-original-craft-source-palette')
 
         adb('shell', 'am', 'force-stop', PACKAGE)
         adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')

@@ -21,11 +21,13 @@ public final class OriginalFbdPalette {
         bind(dialog,R.id.kc_logic_tab_el_and,"FBD И","И",add);
         bind(dialog,R.id.kc_logic_tab_el_or,"FBD ИЛИ","ИЛИ",add);
         bind(dialog,R.id.kc_logic_tab_fb_xor,"FBD XOR","XOR",add);
-        // These three original source previews now map to VERIFIED BLOODSKY
-        // runtime contracts. All other unsupported previews remain disabled.
+        // These original source previews now map to verified BLOODSKY
+        // runtime contracts. Unsupported previews remain disabled.
         bindNative(dialog,R.id.kc_logic_tab_fb_rs,"FB_RS",add);
         bindNative(dialog,R.id.kc_logic_tab_fb_t_trigger,"FB_TRIGGER",add);
         bindNative(dialog,R.id.kc_logic_tab_fb_ctu,"FB_CTU",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_change_i,"FB_CHANGE_I",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_change_f,"FB_CHANGE_F",add);
         bindNative(dialog,R.id.kc_logic_tab_fb_sel,"FB_SEL",add);
         bindNative(dialog,R.id.kc_logic_tab_el_compare_int,"FB_COMPARE",add);
         bindNative(dialog,R.id.kc_logic_tab_el_arithmetic_int,"FB_ARITHMETIC_INT",add);
@@ -57,6 +59,8 @@ public final class OriginalFbdPalette {
         if ("FB_RS".equals(tag)) return "FBD RS";
         if ("FB_TRIGGER".equals(tag)) return "FBD CRAFT T";
         if ("FB_CTU".equals(tag)) return "FBD CRAFT CTU";
+        if ("FB_CHANGE_I".equals(tag)) return "FBD CRAFT CHANGE I";
+        if ("FB_CHANGE_F".equals(tag)) return "FBD CRAFT CHANGE F";
         if ("FB_SEL".equals(tag)) return "FBD CRAFT SEL";
         if ("FB_COMPARE".equals(tag)) return "FBD CRAFT COMPARE";
         if ("FB_ARITHMETIC_INT".equals(tag)) return "FBD CRAFT ARITHMETIC INT";
@@ -69,6 +73,8 @@ public final class OriginalFbdPalette {
         if ("FB_RS".equals(tag)) return "RS";
         if ("FB_TRIGGER".equals(tag)) return "T";
         if ("FB_CTU".equals(tag)) return "CTU 16 bit";
+        if ("FB_CHANGE_I".equals(tag)) return "CH_I";
+        if ("FB_CHANGE_F".equals(tag)) return "CH_F";
         if ("FB_SEL".equals(tag)) return "SEL";
         if ("FB_COMPARE".equals(tag)) return ">";
         if ("FB_ARITHMETIC_INT".equals(tag) || "FB_ARITHMETIC_FLOAT".equals(tag)) return "+";
