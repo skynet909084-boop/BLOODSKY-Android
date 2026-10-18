@@ -11,6 +11,9 @@ public final class FbdCraftMacroCatalog {
     private FbdCraftMacroCatalog() {}
 
     public static JSONArray read(JSONObject project) throws JSONException {
+        if (project != null && project.has(PROJECT_KEY)
+                && !(project.opt(PROJECT_KEY) instanceof JSONArray))
+            throw new JSONException("Macro catalog must be an array");
         JSONArray raw = project == null ? null : project.optJSONArray(PROJECT_KEY);
         JSONArray checked = new JSONArray();
         if (raw == null) return checked;

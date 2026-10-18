@@ -44,4 +44,10 @@ public class FbdCraftMacroCatalogTest {
             fail("catalog overflow accepted"); }
         catch (JSONException expected) { }
     }
+
+    @Test public void rejectsMalformedProjectCatalogShape() throws Exception {
+        JSONObject project = new JSONObject().put(FbdCraftMacroCatalog.PROJECT_KEY, "not-an-array");
+        try { FbdCraftMacroCatalog.read(project); fail("invalid catalog shape accepted"); }
+        catch (JSONException expected) { }
+    }
 }
