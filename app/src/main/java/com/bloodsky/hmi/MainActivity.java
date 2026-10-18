@@ -368,11 +368,24 @@ public class MainActivity extends Activity {
         craftAlarmTones.clear();
     }
 
+    private void stopCurrentScreenAlarms() {
+        for (int index = 0; index < widgets.size(); index++) {
+            Widget widget = widgets.get(index);
+            if ("Звуковой сигнал".equals(widget.type)) {
+                widget.lastSoundState = false;
+                stopCraftAlarmAlert(currentScreenIndex + ":" + index);
+            }
+        }
+    }
+
     private void resetCraftAlarmEdges() {
         for (Screen screen : screens) {
             for (Widget widget : screen.widgets) {
                 if ("Звуковой сигнал".equals(widget.type)) widget.lastSoundState = false;
             }
+        }
+        for (Widget widget : widgets) {
+            if ("Звуковой сигнал".equals(widget.type)) widget.lastSoundState = false;
         }
     }
 
@@ -2772,6 +2785,7 @@ public class MainActivity extends Activity {
 
     private void activateScreen(int index) {
         fbdWireHistory.clear();
+        stopCurrentScreenAlarms();
         saveActiveScreen();
         if (screens.isEmpty()) screens.add(new Screen("Экран 1"));
         currentScreenIndex = Math.max(0, Math.min(index, screens.size() - 1));
