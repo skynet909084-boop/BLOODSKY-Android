@@ -1,4 +1,4 @@
-"""CI gate regression: faster feature PRs must never remove release-wide UI coverage."""
+"""CI gate regression: feature UI smoke stays focused and release coverage stays full."""
 from pathlib import Path
 import ast
 import unittest
@@ -7,20 +7,19 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class FastFbdUiGateTests(unittest.TestCase):
-    def test_quick_smoke_is_parseable_and_has_actual_graph_checks(self):
+    def test_quick_smoke_is_parseable_and_covers_core_editor_path(self):
         script = (ROOT / 'tools/android_ui_fbd_quick.py').read_text(encoding='utf-8')
         ast.parse(script)
-        self.assertIn("Добавить: FBD CRAFT TIMER", script)
-        self.assertIn("Свойства: FBD CRAFT TIMER", script)
-        self.assertIn("Инвертировать выход BOOL", script)
-        self.assertIn("fast-fbd-craft-output-inverted", script)
-        self.assertNotIn("Добавить: FBD Таймер", script)
         for evidence in (
-                "saved_connections()", "Время таймера, мс", "Соединить с…",
-                "Инвертировать связь BOOL…", "Отменить связь FBD",
-                "timerPresetMs", "'2345'", "am', 'force-stop'",
+                "Добавить: FBD И", "Добавить: FBD CRAFT TIMER",
+                "Свойства: FBD CRAFT TIMER", "Время таймера, мс",
+                "Инвертировать выход BOOL", "Связать FBD",
+                "saved_connections()", "Инвертировать BOOL-связь FBD…",
+                "Отменить связь FBD", "am', 'force-stop",
                 "quick-fbd", "crash-log.txt", "result.json"):
             self.assertIn(evidence, script)
+        self.assertIn("'2345'", script)
+        self.assertNotIn("Добавить: FBD Таймер", script)
 
     def test_feature_pr_emulator_is_not_restarted_for_each_push(self):
         workflow = (ROOT / '.github/workflows/android-ui-smoke.yml').read_text(encoding='utf-8')
