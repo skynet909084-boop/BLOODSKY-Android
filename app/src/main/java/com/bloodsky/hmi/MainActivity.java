@@ -4061,8 +4061,9 @@ public class MainActivity extends Activity {
                         try { maximum = CraftLinearSetter.requireMaximum(craftLinearMaxField.getText().toString()); }
                         catch (IllegalArgumentException invalid) { Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show(); return; }
                         BindingRequest linearBinding = parseBinding(-1, connectionField.getText().toString().trim());
-                        if (linearBinding != null && linearBinding.functionCode != 3) {
-                            Toast.makeText(this, "Линейный задатчик записывает holding-регистр FC03/FC06", Toast.LENGTH_LONG).show(); return;
+                        if (!connectionField.getText().toString().trim().isEmpty()
+                                && (linearBinding == null || linearBinding.functionCode != 3)) {
+                            Toast.makeText(this, "Линейный задатчик требует корректный holding-регистр FC03/FC06", Toast.LENGTH_LONG).show(); return;
                         }
                         try {
                             w.extraFields.put("craftLinearMax", maximum);
