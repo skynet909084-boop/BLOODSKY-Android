@@ -134,8 +134,8 @@
           "id": "widget.sound",
           "name": "Sound / Alarm Trigger (CustomSound)",
           "status": "partial",
-          "criteria": "Audio/alarm indicator with edge-triggered MediaPlayer tone and alert trigger.",
-          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
+          "criteria": "Craft ID 9 with threshold-driven edge detection, five bundled Craft alarm presets, looping playback while active, stop on clear, and optional user-selected audio file.",
+          "audit_note": "Import preserves posSound 1–5 while disabling legacy device mapping. The editor now exposes all five presets and a custom-file option; Android unit tests/APK pass in Actions #815. Runtime still uses one shared player, so simultaneous active alarm widgets replace one another. Device and visual acceptance remain open."
         },
         {
           "id": "widget.screen_link",

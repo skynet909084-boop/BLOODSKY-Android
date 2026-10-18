@@ -58,3 +58,6 @@ Craft ID 6 mode 0 (`CustomComponents.e`) is imported as a momentary bit command.
 
 
 Craft ID 6 mode 1 (`CustomComponents.e`) is imported with the original 1-based `changeScreen` mapped to a zero-based BLOODSKY screen index. Invalid target indices are flagged and do not silently redirect. The editor offers existing screens by index/name or an external URL, validates that a destination is selected, and preserves `visibleInWork` as an operator-mode visibility setting. Screen-navigation rendering/flow still needs side-by-side UI acceptance.
+
+
+Craft ID 9 (`CustomComponents.c`) preserves `posSound` 1–5 and the source's loop-while-active behavior. Its property editor now exposes the five bundled Craft alarm sounds or a custom audio file/content URI; the imported device endpoint remains inactive until explicit TCP remapping. Playback is currently shared across alarm widgets, so independent concurrent alarms and physical-device/audio acceptance remain open.
