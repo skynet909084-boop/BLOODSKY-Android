@@ -39,6 +39,13 @@ class RuntimeEvidenceTest(unittest.TestCase):
                            b"else result = in2; } }")
                 z.writestr(SOURCE_PREFIX + "FB_MOVE.java",
                            b"public class FB_MOVE { public void f() { if (en) result = input; } }")
+                z.writestr(SOURCE_PREFIX + "FB_ARITHMETIC_INT.java",
+                           b"public class FB_ARITHMETIC_INT { "
+                           b"public void f(){ if(mode == 1) out = in1 + in2; "
+                           b"else if(mode == 2) out = in1 - in2; } }")
+                z.writestr(SOURCE_PREFIX + "FB_CHANGE_F.java",
+                           b"public class FB_CHANGE_F { public void f() { if (current != last) "
+                           b"edge = true; } }")
             digest = hashlib.sha256(archive.read_bytes()).hexdigest()
             output = generate_report(archive, expected_sha256=digest)
             names = {item["path"].split("/")[-1] for item in output["classes"]}
@@ -46,11 +53,19 @@ class RuntimeEvidenceTest(unittest.TestCase):
             self.assertIn("FB_Base.java", names)
             self.assertIn("FB_SEL.java", names)
             self.assertIn("FB_MOVE.java", names)
+            self.assertIn("FB_ARITHMETIC_INT.java", names)
+            self.assertIn("FB_CHANGE_F.java", names)
             self.assertTrue(all(len(row["evidence"]) <= 96 for row in output["classes"]))
             sel = next(item for item in output["classes"]
                        if item["path"].endswith("/FB_SEL.java"))
             self.assertIn("if (sel)", sel["execution"][0]["code"])
             self.assertIn("else result", sel["execution"][0]["code"])
+            math = next(item for item in output["classes"]
+                        if item["path"].endswith("/FB_ARITHMETIC_INT.java"))
+            self.assertIn("in1 + in2", math["execution"][0]["code"])
+            changed = next(item for item in output["classes"]
+                           if item["path"].endswith("/FB_CHANGE_F.java"))
+            self.assertIn("current != last", changed["execution"][0]["code"])
             self.assertTrue(any("MOVE" in item and "SEL" in item
                                 for item in output["pending_acceptance"]))
             self.assertRaises(ValueError, generate_report, archive, "0" * 64)
