@@ -26,7 +26,7 @@ public final class OriginalComponentPalette {
         unavailable(dialog, R.id.kc_picker_tab_digital_indicator, "Цифровой индикатор");
         unavailable(dialog, R.id.kc_picker_tab_alarm, "Сигнализатор");
         unavailable(dialog, R.id.kc_picker_tab_gif, "GIF");
-        unavailable(dialog, R.id.kc_picker_tab_archive, "Архив");
+        bind(dialog, R.id.kc_picker_tab_archive, "Архив Craft", "Архив", add);
         unavailable(dialog, R.id.kc_picker_tab_gateway, "Шлюз");
         unavailable(dialog, R.id.kc_picker_tab_gateway_bit, "Битовый шлюз");
         bind(dialog, R.id.kc_picker_tab_sms_in, "Входящее SMS", "SMS: команда", add);
