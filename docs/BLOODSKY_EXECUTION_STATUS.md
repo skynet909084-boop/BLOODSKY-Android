@@ -117,3 +117,11 @@ Design an additive SQLite-backed catalog migration that imports existing SharedP
 - Decompiled `CustomComponents.e` and the `mbCanvas` touch callback: button mode 2 writes a configured constant register, with `typeRegister` selecting UINT16 or Float32; `visibleInWork` controls operator-mode visibility. The existing device association is installation-specific.
 - Import now preserves the mode, constant, type, source register and visibility while leaving the old binding disabled. The button editor can switch between bit-toggle and constant-write modes; constant mode validates the value and requires an explicit TCP holding-register. Operator presses write UINT16 with FC06 or Float32 with FC16.
 - Added integer/Float32 validation and importer regressions. Validation: 141 Python tests passed locally; Android unit tests and debug APK passed in CI run #795 on code commit `02fbeeeb013a0952b17a3205180f377bc6c419c6`. UI smoke was skipped by workflow rules. Mode 0 bit-toggle parity, screen-navigation editor parity, and hardware/UI acceptance remain open.
+
+
+## Resume checkpoint — 2026-10-18
+
+- Active work is PR #143 on branch `feat/craft-screen-navigation-import-20261018`; it remains open and unmerged. Stable `main` was not changed.
+- Completed most recently: Craft ID 13 linear setter and Craft ID 6 mode-2 constant-write button, with import preservation, explicit TCP remapping, tests, and Android build validation. The latest docs workflow, [run #799](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39134337776), completed successfully, including unit tests, debug APK build, and APK upload. UI smoke was skipped by workflow rules.
+- Resume next with Craft button mode 0: compare decoded touch-down/touch-up bit semantics against existing runtime, implement explicit safe TCP bit mapping, then finish mode-1 screen-navigation property/editor parity. Continue the remaining source-backed parity audit after those slices.
+- Product constraints: keep imported Craft device bindings inactive until explicit remapping; retain optional SMS; omit licensing and mandatory cloud control.
