@@ -123,4 +123,19 @@ public class OriginalFbdNativePaletteMappingTest {
         assertTrue(FbdSourceCanvasSkin.shouldUse(mxWidget));
         assertTrue(FbdSourceCanvasSkin.shouldUse(arrayWidget));
     }
+
+    @Test public void originalLogAndWordConversionMapToTypedSourceBlocks() {
+        String log = OriginalFbdPalette.nativeTypeForOriginalTag("LOG");
+        String wordToFloat = OriginalFbdPalette.nativeTypeForOriginalTag("WordToFloat");
+        assertEquals("FBD CRAFT LOG", log);
+        assertEquals("LN", OriginalFbdPalette.nativeLabelForOriginalTag("LOG"));
+        assertEquals("FBD CRAFT WORD TO FLOAT", wordToFloat);
+        assertEquals("WORD->FL", OriginalFbdPalette.nativeLabelForOriginalTag("WordToFloat"));
+        for (String type : new String[]{log, wordToFloat}) {
+            assertArrayEquals(new String[]{"IN"}, MainActivity.knownFbdPins(type, false));
+            assertArrayEquals(new String[]{"OUT"}, MainActivity.knownFbdPins(type, true));
+            assertEquals("NUMBER", MainActivity.knownFbdPinType(type, "IN", false));
+            assertEquals("NUMBER", MainActivity.knownFbdPinType(type, "OUT", true));
+        }
+    }
 }

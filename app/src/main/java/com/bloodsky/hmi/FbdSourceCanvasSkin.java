@@ -29,7 +29,8 @@ public final class FbdSourceCanvasSkin {
                 || "FBD CRAFT CHANGE I".equals(type)
                 || "FBD CRAFT CHANGE F".equals(type)
                 || "FBD CRAFT MOVE".equals(type)
-                || "FBD CRAFT MX".equals(type) || "FBD CRAFT ARRAY".equals(type);
+                || "FBD CRAFT MX".equals(type) || "FBD CRAFT ARRAY".equals(type)
+                || "FBD CRAFT LOG".equals(type) || "FBD CRAFT WORD TO FLOAT".equals(type);
     }
 
     public static boolean shouldUse(MainActivity.Widget w) {
@@ -50,6 +51,8 @@ public final class FbdSourceCanvasSkin {
                 : "FBD CRAFT MOVE".equals(w.type) ? "MOVE"
                 : "FBD CRAFT MX".equals(w.type) ? "MX"
                 : "FBD CRAFT ARRAY".equals(w.type) ? "ARRAY"
+                : "FBD CRAFT LOG".equals(w.type) ? "LN"
+                : "FBD CRAFT WORD TO FLOAT".equals(w.type) ? "WORD->FL"
                 : "FBD CRAFT COMPARE".equals(w.type) ? w.compareOperator
                 : "FBD CRAFT COMPARE FLOAT".equals(w.type)
                         || "FBD CRAFT ARITHMETIC INT".equals(w.type)
@@ -152,6 +155,8 @@ public final class FbdSourceCanvasSkin {
                     : "FBD CRAFT MOVE".equals(w.type) ? "MOVE"
                     : "FBD CRAFT MX".equals(w.type) ? "MX"
                     : "FBD CRAFT ARRAY".equals(w.type) ? "ARRAY"
+                    : "FBD CRAFT LOG".equals(w.type) ? "LN"
+                    : "FBD CRAFT WORD TO FLOAT".equals(w.type) ? "WORD->FL"
                     : "FBD CRAFT COMPARE".equals(w.type) ? w.compareOperator
                     : FbdDurationUnits.modeForType(w.type);
             float center = (left + right) / 2f;

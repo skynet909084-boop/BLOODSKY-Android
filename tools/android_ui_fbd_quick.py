@@ -283,11 +283,14 @@ class FastFbdSmoke(Smoke):
         add_from_original_preview('FBD CRAFT MOVE')
         add_from_original_preview('FBD CRAFT MX')
         add_from_original_preview('FBD CRAFT ARRAY')
+        add_from_original_preview('FBD CRAFT LOG')
+        add_from_original_preview('FBD CRAFT WORD TO FLOAT')
         original = current_widgets()
         if [w['type'] for w in original] != [
                 'FBD RS', 'FBD CRAFT T', 'FBD CRAFT CTU',
                 'FBD CRAFT CHANGE I', 'FBD CRAFT CHANGE F', 'FBD CRAFT MOVE',
-                'FBD CRAFT MX', 'FBD CRAFT ARRAY']:
+                'FBD CRAFT MX', 'FBD CRAFT ARRAY',
+                'FBD CRAFT LOG', 'FBD CRAFT WORD TO FLOAT']:
             raise AssertionError('Original Craft source previews mapped incorrectly: '
                                  + repr(original))
         if original[2].get('counterValue') != 0:
