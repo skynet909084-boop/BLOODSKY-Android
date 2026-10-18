@@ -213,6 +213,7 @@ public class CraftProjectImporterTest {
         JSONObject incomingSms = widgets.getJSONObject(2);
         assertEquals("Входящее SMS", incomingSms.getString("type"));
         assertFalse(incomingSms.getBoolean("smsEnabled"));
+        assertFalse(incomingSms.getBoolean("smsStrobeEnabled"));
         assertTrue(incomingSms.getJSONObject("craftOther").has("vendorSmsCommand"));
         assertFalse(incomingSms.has("craftUnsupportedComponent"));
         assertEquals(18, project.getJSONObject("craftSource").getJSONArray("TableComponent").getJSONObject(2).getInt("componentId"));
