@@ -207,6 +207,20 @@ class Smoke:
         (self.output / (name + '.png')).write_bytes(adb('exec-out', 'screencap', '-p', binary=True))
         (self.output / (name + '.xml')).write_text(self.dump())
 
+    def capture_until_pixels(self, name, color, tolerance, minimum, timeout_seconds=8):
+        deadline = time.monotonic() + timeout_seconds
+        screenshot = b''
+        count = 0
+        while True:
+            screenshot = adb('exec-out', 'screencap', '-p', binary=True)
+            count = count_matching_png_pixels(screenshot, color, tolerance=tolerance)
+            if count >= minimum or time.monotonic() >= deadline:
+                break
+            time.sleep(0.25)
+        (self.output / (name + '.png')).write_bytes(screenshot)
+        (self.output / (name + '.xml')).write_text(self.dump())
+        return count
+
     def tap_editor_menu_item(self, item):
         self.tap(description='Меню проекта')
         for attempt in range(7):
@@ -502,10 +516,8 @@ class Smoke:
         self.tap('Загрузить проект')
         self.tap(legacy['projectName'])
         self.wait_node(description='Редактор экрана')
-        self.capture('07-migrated-legacy-media')
-        visible_pixels = count_matching_png_pixels(
-            (self.output / '07-migrated-legacy-media.png').read_bytes(),
-            (235, 21, 207), tolerance=12)
+        visible_pixels = self.capture_until_pixels(
+            '07-migrated-legacy-media', (235, 21, 207), tolerance=12, minimum=800)
         if visible_pixels < 800:
             current_after_open = adb('shell', 'run-as', PACKAGE, 'cat',
                                      'shared_prefs/bloodsky_projects.xml')
@@ -543,10 +555,9 @@ class Smoke:
                                  for node in ET.fromstring(next_xml)}['active_project'])
         if next_active.get('storageId') != storage:
             raise AssertionError('Media storage identity changed across process restart')
-        self.capture('07b-migrated-legacy-media-reopened')
-        reopened_pixels = count_matching_png_pixels(
-            (self.output / '07b-migrated-legacy-media-reopened.png').read_bytes(),
-            (235, 21, 207), tolerance=12)
+        reopened_pixels = self.capture_until_pixels(
+            '07b-migrated-legacy-media-reopened',
+            (235, 21, 207), tolerance=12, minimum=800)
         if reopened_pixels < 800:
             raise AssertionError('Migrated image stopped rendering after restart: '
                                  + str(reopened_pixels) + ' magenta pixels')
