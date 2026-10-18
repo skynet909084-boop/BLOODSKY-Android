@@ -1635,6 +1635,7 @@ public class MainActivity extends Activity {
         copy.targetUrl = source.targetUrl;
         copy.lastVoiceState = source.lastVoiceState;
         copy.lastSoundState = source.lastSoundState;
+        copy.craftVariableNamespace = source.craftVariableNamespace;
         try { copy.extraFields = new JSONObject(source.extraFields.toString()); } catch (Exception ignored) { copy.extraFields = new JSONObject(); }
         copy.x = source.x; copy.y = source.y; copy.w = source.w; copy.h = source.h;
         return copy;

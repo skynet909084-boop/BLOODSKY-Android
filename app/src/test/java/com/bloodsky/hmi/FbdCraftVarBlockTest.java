@@ -140,6 +140,9 @@ public class FbdCraftVarBlockTest {
         assertTrue(FbdCraftNamedVariableStore.write("macro-beta", "state", 2, 654.0));
         assertEquals(654.0, value(nodes, null, 3), 0.0);
         assertEquals(321.0, value(nodes, null, 0), 0.0);
+        MainActivity.Widget saved = MainActivity.widgetFromJson(
+                MainActivity.widgetToJson(alphaSource));
+        assertEquals("", saved.craftVariableNamespace);
         FbdCraftNamedVariableStore.clearNamespace("macro-alpha");
         assertEquals(0.0, FbdCraftNamedVariableStore.read("macro-alpha", "state", 2), 0.0);
         assertEquals(654.0, FbdCraftNamedVariableStore.read("macro-beta", "state", 2), 0.0);
