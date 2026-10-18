@@ -238,10 +238,12 @@ class Smoke:
         self.tap(description='Добавить элемент')
         self.tap(description='Функциональные блоки и другие элементы')
         self.wait_node(description='Добавить: FBD Таймер')
-        disabled = [n for n in ET.fromstring(self.dump()).iter('node')
-                    if n.get('content-desc') == 'FB_RS: пока не перенесено']
-        if len(disabled) != 1 or disabled[0].get('enabled') != 'false':
-            raise AssertionError('Source RS with different legacy port order must stay disabled')
+        # Source RS is now versioned and mapped to a reset-dominant
+        # R/S/Q contract; its original Craft preview must be clickable.
+        enabled_rs = [n for n in ET.fromstring(self.dump()).iter('node')
+                      if n.get('content-desc') == 'Добавить: FBD RS']
+        if len(enabled_rs) != 1 or enabled_rs[0].get('enabled') != 'true':
+            raise AssertionError('Original source RS preview must expose tested FBD RS')
         if matching_nodes(self.dump(), description='Палитра компонентов'):
             self.tap(description='Палитра компонентов')
         else:

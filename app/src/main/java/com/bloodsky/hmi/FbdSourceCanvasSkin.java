@@ -21,7 +21,7 @@ public final class FbdSourceCanvasSkin {
                 || "FBD Сравнение".equals(type)
                 || "FBD CRAFT CTU".equals(type) || "FBD CRAFT T".equals(type)
                 || "FBD CRAFT BLINK".equals(type)
-                || "FBD RS".equals(type);
+                || "FBD RS".equals(type) || "FBD CRAFT SEL".equals(type);
     }
 
     public static boolean shouldUse(MainActivity.Widget w) {
@@ -35,6 +35,7 @@ public final class FbdSourceCanvasSkin {
                 : "FBD CRAFT T".equals(w.type) ? "T"
                 : "FBD RS".equals(w.type) ? "RS"
                 : "FBD CRAFT BLINK".equals(w.type) ? "BLINK"
+                : "FBD CRAFT SEL".equals(w.type) ? "SEL"
                 : isTimer(w.type) ? FbdDurationUnits.modeForType(w.type) : "XOR";
         // Preserve manually edited labels by falling back to the editable skin.
         return w.text == null || w.text.isEmpty() || defaultCaption.equals(w.text);
@@ -114,6 +115,7 @@ public final class FbdSourceCanvasSkin {
                     : "FBD CRAFT T".equals(w.type) ? "T"
                     : "FBD RS".equals(w.type) ? "RS"
                     : "FBD CRAFT BLINK".equals(w.type) ? "BLINK"
+                    : "FBD CRAFT SEL".equals(w.type) ? "SEL"
                     : FbdDurationUnits.modeForType(w.type);
             float center = (left + right) / 2f;
             if (divided) {
@@ -137,7 +139,8 @@ public final class FbdSourceCanvasSkin {
                 // New Craft-compatible source blocks retain visible port labels,
                 // including the counter's unusual original +,-,R terminals.
                 if ("FBD CRAFT CTU".equals(w.type) || "FBD CRAFT T".equals(w.type)
-                        || "FBD RS".equals(w.type)) {
+                        || "FBD RS".equals(w.type)
+                        || "FBD CRAFT SEL".equals(w.type)) {
                     brush.setTextAlign(Paint.Align.LEFT);
                     brush.setTextSize(Math.min(10f * density, Math.max(7f * density, w.h / 8f)));
                     for (String port : inputPins) {
