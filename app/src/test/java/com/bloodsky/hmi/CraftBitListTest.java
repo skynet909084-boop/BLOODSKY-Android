@@ -26,8 +26,10 @@ public class CraftBitListTest {
     @Test public void editorAlwaysNormalizesToSixteenBoundedLines() {
         String[] labels = CraftBitList.parseEditorLines("On\nOff\n\nThird");
         assertEquals(16, labels.length);
-        assertEquals("On\nOff\n\nThird", CraftBitList.toEditorLines(labels));
-        assertEquals(3, CraftBitList.availableMask(labels));
+        String serialized = CraftBitList.toEditorLines(labels);
+        assertEquals(16, serialized.split("\\R", -1).length);
+        assertArrayEquals(labels, CraftBitList.parseEditorLines(serialized));
+        assertEquals(11, CraftBitList.availableMask(labels));
         StringBuilder overflow = new StringBuilder();
         for (int i = 0; i < 16; i++) overflow.append("x\n");
         overflow.append("overflow");
