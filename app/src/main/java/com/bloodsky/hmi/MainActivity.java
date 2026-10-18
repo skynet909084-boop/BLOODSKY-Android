@@ -7705,6 +7705,11 @@ public class MainActivity extends Activity {
         private int pressedCraftButtonBit;
         private int operatorMomentaryCandidate = -1;
 
+        private boolean isCraftMomentaryButton(Widget widget) {
+            return widget != null && "Кнопка".equals(widget.type)
+                    && widget.extraFields.has("craftButtonMode");
+        }
+
         private void beginCraftBitButton(Widget widget, int index) {
             operatorMomentaryCandidate = index;
             if (!widget.extraFields.optBoolean("craftButtonBitEnabled", false)) {
@@ -7780,7 +7785,7 @@ public class MainActivity extends Activity {
                 int hit = hitRuntimeWidget(x, y);
                 operatorMomentaryCandidate = -1;
                 operatorGesture.begin(hit, x, y, SystemClock.elapsedRealtime());
-                if (hit >= 0 && "Кнопка".equals(widgets.get(hit).type)
+                if (hit >= 0 && isCraftMomentaryButton(widgets.get(hit))
                         && widgets.get(hit).extraFields.optInt("craftButtonMode", 0) == 0)
                     beginCraftBitButton(widgets.get(hit), hit);
             } else if (action == MotionEvent.ACTION_MOVE) operatorGesture.move(x, y, dp(5));
@@ -7960,7 +7965,31 @@ public class MainActivity extends Activity {
             } else if ("Константная кнопка Craft".equals(picked.type)) {
                 activateCraftConstantButton(picked, index);
             } else if ("Кнопка".equals(picked.type)) {
-                Toast.makeText(MainActivity.this, "Битовая команда работает, пока кнопку удерживают", Toast.LENGTH_SHORT).show();
+                if (isCraftMomentaryButton(picked)) {
+                    Toast.makeText(MainActivity.this, "Битовая команда работает, пока кнопку удерживают", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                picked.buttonState = !picked.buttonState;
+                persistProject();
+                BindingRequest request = parseBinding(-1, picked.connectionInfo);
+                if (request != null && request.functionCode == 3) {
+                    final boolean btnOn = picked.buttonState;
+                    modbusExecutor.execute(() -> {
+                        Exception failure = null;
+                        try {
+                            if (!writeModbusRegisterStatic(request.host, request.port, request.unit, request.address, btnOn ? 1 : 0))
+                                throw new IOException("Устройство отклонило запись регистра");
+                        } catch (Exception error) { failure = error; }
+                        final Exception result = failure;
+                        if (result != null) runOnUiThread(() -> {
+                            picked.buttonState = !btnOn;
+                            persistProject();
+                            if (editor != null) editor.invalidate();
+                            Toast.makeText(MainActivity.this, "Ошибка записи Modbus: " + describeModbusError(result), Toast.LENGTH_LONG).show();
+                        });
+                    });
+                }
+                Toast.makeText(MainActivity.this, picked.text + (picked.buttonState ? ": ВКЛ" : ": ВЫКЛ"), Toast.LENGTH_SHORT).show();
             } else if ("FBD Вход".equals(picked.type)) {
                 picked.inputValue = !picked.inputValue;
                 persistProject();
