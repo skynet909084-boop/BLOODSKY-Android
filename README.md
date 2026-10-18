@@ -21,6 +21,7 @@ The current prototype includes:
 This is still a working prototype, not yet a complete Kaskada Craft replacement. The exact original UI has not been verified pixel-for-pixel against the decompiled APK and reference screenshots. Full component/property parity, execution of opaque original Craft macro children, Modbus RTU, broader protocol compatibility, physical-device testing and a signed release build remain open work.
 
 Current accepted milestones, implementation gaps and device/release gates: [execution status](docs/BLOODSKY_EXECUTION_STATUS.md).
+The current source-backed, page-by-page functional audit and remaining implementation plan are in [Kaskada full parity audit](docs/KASCADA_FULL_PARITY_AUDIT_20261018.md); the machine-readable matrix is intentionally conservative and marks source/runtime or device parity as partial until its acceptance gate passes.
 
 ## Editor and operator controls
 
