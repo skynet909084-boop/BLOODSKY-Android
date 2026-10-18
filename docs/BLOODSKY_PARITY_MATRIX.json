@@ -119,9 +119,9 @@
         {
           "id": "widget.bitlist",
           "name": "Bit List Widget (CustomList)",
-          "status": "missing",
-          "criteria": "Displays bit state indicators driven by live Modbus register mask.",
-          "audit_note": "Not implemented in BLOODSKY yet; see the source-backed acceptance plan in docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
+          "status": "partial",
+          "criteria": "Displays Craft's sixteen labelled selections as a UINT16 Modbus register mask, including visible-in-work and read-only-in-work settings.",
+          "audit_note": "Importer and operator multi-select are implemented for explicitly remapped TCP FC03/FC06 holding registers. Automated unit/import tests added; visual and hardware acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "widget.sound",
