@@ -272,8 +272,11 @@ class Smoke:
         self.tap(description='Добавить: FBD Таймер')
         self.wait_node(description='Редактор экрана')
         widgets = saved_widgets()
-        if widgets[:-2] != baseline or [w['type'] for w in widgets[-2:]] != ['FBD И', 'FBD Таймер']:
-            raise AssertionError('Original palette did not add the requested FBD types independently')
+        actual_types = [w.get('type') for w in widgets[-2:]]
+        if widgets[:-2] != baseline or actual_types != ['FBD И', 'FBD CRAFT TIMER']:
+            raise AssertionError(
+                'Original palette did not add the requested FBD types independently: '
+                + repr(actual_types))
         # Every newly placed FBD block must be visually distinct from all other
         # visible widgets; a previously passing smoke screenshot hid its Q->IN wire
         # underneath the overlapping AND and TON rectangles.
