@@ -87,6 +87,7 @@ public class MainActivity extends Activity {
     private final ExecutorService craftSensorExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService telegramExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService homeAssistantExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService yandexExecutor = Executors.newSingleThreadExecutor();
     private FbdCraftMqttRuntime craftMqttRuntime;
     private final Map<Integer, String> liveValues = new HashMap<>();
     private boolean modbusPollingActive = false;
@@ -259,6 +260,7 @@ public class MainActivity extends Activity {
         craftSensorExecutor.shutdownNow();
         telegramExecutor.shutdownNow();
         homeAssistantExecutor.shutdownNow();
+        yandexExecutor.shutdownNow();
         if (mediaPlayer != null) {
             try { mediaPlayer.stop(); } catch (Exception ignored) {}
             try { mediaPlayer.release(); } catch (Exception ignored) {}
@@ -2049,12 +2051,65 @@ public class MainActivity extends Activity {
         menu.getMenu().add("Умный дом — Home Assistant / Xiaomi").setOnMenuItemClickListener(item -> {
             showHomeAssistantDialog(); return true;
         });
+        menu.getMenu().add("Умный дом — Яндекс").setOnMenuItemClickListener(item -> { showYandexSmartHomeDialog(); return true; });
         menu.getMenu().add("Голосовой помощник").setOnMenuItemClickListener(item -> { showVoiceModeDialog(); return true; });
         menu.getMenu().add("Modbus").setOnMenuItemClickListener(item -> { showModbusDiagnostics(); return true; });
         menu.getMenu().add("Главное меню").setOnMenuItemClickListener(item -> {
             if (persistProjectNow(true)) showHome(); return true;
         });
         menu.show();
+    }
+
+    private void showYandexSmartHomeDialog() {
+        LinearLayout form=new LinearLayout(this);form.setOrientation(LinearLayout.VERTICAL);form.setPadding(dp(20),dp(8),dp(20),dp(4));
+        TextView note=new TextView(this);
+        note.setText("Создай приложение доступа к API в Яндекс OAuth (https://oauth.yandex.ru/client/new/) с правами iot:view и iot:control, затем вставь OAuth-токен. Список устройств доступен для просмотра; запуск сценария всегда отдельно подтверждается. Токен шифруется Android Keystore и не попадает в проект.");
+        note.setAutoLinkMask(android.text.util.Linkify.WEB_URLS);form.addView(note);
+        EditText token=propertyField("",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD|InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        token.setSingleLine(true);token.setHint("OAuth-токен (пусто, если уже сохранён)");form.addView(token);
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Яндекс Умный дом")
+                .setView(form).setPositiveButton("Подключить",null).setNegativeButton("Отключить",null).setNeutralButton("Закрыть",null).create();
+        dialog.setOnShowListener(ignored->{
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+                final String entered=token.getText().toString().trim();String access=entered;
+                if(access.isEmpty())try{access=YandexTokenStore.read(this);}catch(Exception failure){Toast.makeText(this,"Не удалось прочитать токен; введи его снова",Toast.LENGTH_LONG).show();return;}
+                if(access.isEmpty()){Toast.makeText(this,"Нужен OAuth-токен Яндекс Умного дома",Toast.LENGTH_LONG).show();return;}
+                final String finalToken=access;dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
+                yandexExecutor.execute(()->{
+                    List<YandexSmartHomeClient.Item> items=null;String error=null;
+                    try{items=YandexSmartHomeClient.getHome(finalToken);}catch(Exception failure){error=failure.getMessage();}
+                    final List<YandexSmartHomeClient.Item> result=items;final String problem=error;
+                    runOnUiThread(()->{
+                        if(isFinishing()||isDestroyed())return;
+                        if(dialog.isShowing())dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
+                        if(problem!=null){Toast.makeText(this,"Яндекс: "+(problem.contains("HTTP 401")?"токен отклонён (401)":"не удалось загрузить устройства; проверь токен и интернет"),Toast.LENGTH_LONG).show();return;}
+                        try{if(!entered.isEmpty())YandexTokenStore.save(this,entered);}catch(Exception failure){Toast.makeText(this,"Токен не удалось сохранить безопасно",Toast.LENGTH_LONG).show();}
+                        dialog.dismiss();showYandexSmartHomeItems(result,finalToken);
+                    });
+                });
+            });
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(v->new AlertDialog.Builder(this)
+                    .setTitle("Отключить Яндекс?").setMessage("Удалить сохранённый токен?")
+                    .setNegativeButton("Отмена",null).setPositiveButton("Удалить",(d,w)->{YandexTokenStore.clear(this);dialog.dismiss();Toast.makeText(this,"Яндекс отключён",Toast.LENGTH_SHORT).show();}).show());
+        });
+        dialog.show();
+    }
+
+    private void showYandexSmartHomeItems(List<YandexSmartHomeClient.Item> items,String token) {
+        if(items==null||items.isEmpty()){new AlertDialog.Builder(this).setTitle("Яндекс Умный дом").setMessage("Устройства и сценарии не найдены.").setPositiveButton("ОК",null).show();return;}
+        ArrayList<YandexSmartHomeClient.Item> shown=new ArrayList<>(items.subList(0,Math.min(300,items.size())));
+        android.widget.ListView list=new android.widget.ListView(this);list.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_list_item_1,shown));
+        AlertDialog homeDialog=new AlertDialog.Builder(this).setTitle("Яндекс: устройства и сценарии").setView(list).setPositiveButton("Готово",null).create();
+        list.setOnItemClickListener((parent,view,position,id)->{
+            YandexSmartHomeClient.Item selected=shown.get(position);
+            if(!selected.scenario){Toast.makeText(this,"Устройство доступно через его capabilities; прямое управление пока не включено",Toast.LENGTH_SHORT).show();return;}
+            new AlertDialog.Builder(this).setTitle("Запустить сценарий?").setMessage("Запустить «"+selected.name+"»?")
+                    .setNegativeButton("Отмена",null).setPositiveButton("Запустить",(d,w)->{
+                        yandexExecutor.execute(()->{String error=null;try{YandexSmartHomeClient.launchScenario(token,selected.id);}catch(Exception failure){error=failure.getMessage();}
+                            final String problem=error;runOnUiThread(()->{if(isFinishing()||isDestroyed())return;if(problem!=null)Toast.makeText(this,"Яндекс: сценарий не запущен",Toast.LENGTH_LONG).show();else{homeDialog.dismiss();Toast.makeText(this,"Сценарий запущен",Toast.LENGTH_SHORT).show();}});});
+                    }).show();
+        });
+        homeDialog.show();
     }
 
     private void showHomeAssistantDialog() {
