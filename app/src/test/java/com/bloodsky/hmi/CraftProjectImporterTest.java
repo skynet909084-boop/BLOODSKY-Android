@@ -40,6 +40,25 @@ public class CraftProjectImporterTest {
                 + "\"TableConnections\":[{\"privateSetting\":\"preserved\"}]}";
     }
 
+    @Test public void archiveIdKeepsArchiveIdentityAndDisablesLegacyBinding() throws Exception {
+        JSONObject other = new JSONObject().put("numScreen", 1).put("registerArchive", 40001);
+        JSONObject component = new JSONObject().put("componentId", 15).put("text", "History")
+                .put("jsTableComponent_connectionInfo", "legacy-device-binding")
+                .put("jsTableComponent_other", other);
+        JSONObject source = new JSONObject()
+                .put("TableNameProject", new JSONObject().put("name", "Archive").put("countScreen", 1))
+                .put("TableComponent", new JSONArray().put(component))
+                .put("TableConnections", new JSONArray());
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(source.toString()));
+        JSONObject archive = project.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0);
+        assertEquals("Архив Craft", archive.getString("type"));
+        assertEquals(15, archive.getInt("craftComponentId"));
+        assertEquals("", archive.getString("connectionInfo"));
+        assertEquals("legacy-device-binding", archive.getString("craftConnectionInfo"));
+        assertEquals(40001, archive.getJSONObject("craftOther").getInt("registerArchive"));
+    }
+
     @Test public void convertsSupportedCraftRowsAndRetainsSourceMetadata() throws Exception {
         JSONObject result = new JSONObject(CraftProjectImporter.convert(sample()));
         assertEquals("Sample", result.getString("projectName"));
