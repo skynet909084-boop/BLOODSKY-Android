@@ -2219,7 +2219,15 @@ public class MainActivity extends Activity {
             if (binding == null || binding.functionCode != 3) continue;
             final String host = binding.host;
             final int port = binding.port, unit = binding.unit, address = binding.address;
-            final int value = parsed.registerValue;
+            final int[] values = parsed.registerValues.clone();
+            final boolean setStrobe = mode == SmsIncomingCommand.Mode.REGISTER_NUMBER
+                    && widget.extraFields.optBoolean("smsStrobeEnabled", false);
+            final BindingRequest strobeBinding = setStrobe
+                    ? parseBinding(-1, "tcp://" + host + ":" + port + "/" + unit + "/"
+                            + widget.extraFields.optInt("smsStrobeRegister", -1)) : null;
+            final int strobeBit = widget.extraFields.optInt("smsStrobeBit", 0);
+            if (setStrobe && (strobeBinding == null || strobeBinding.functionCode != 3
+                    || strobeBinding.unit != unit || strobeBit < 0 || strobeBit > 15)) continue;
             modbusExecutor.execute(() -> {
                 if (!pollSession.accepts(sessionToken) || !activityResumed || !operatorMode) return;
                 Exception failure = null;
@@ -2228,7 +2236,12 @@ public class MainActivity extends Activity {
                     if (parsed.mode == SmsIncomingCommand.Mode.SET_BIT) {
                         client.writeMask(unit, address, parsed.writeAndMask, parsed.writeOrMask);
                     } else {
-                        client.writeSingle(unit, address, value);
+                        if (values.length == 1) client.writeSingle(unit, address, values[0]);
+                        else client.writeMultiple(unit, address, values);
+                        if (setStrobe) {
+                            int mask = 1 << strobeBit;
+                            client.writeMask(unit, strobeBinding.address, 0xffff ^ mask, mask);
+                        }
                     }
                 } catch (Exception error) { failure = error; }
                 final Exception result = failure;
@@ -3234,6 +3247,8 @@ public class MainActivity extends Activity {
         final android.widget.CheckBox incomingSmsEnabledField;
         final EditText incomingSmsSenderField, incomingSmsCommandField, incomingSmsBitField;
         final android.widget.Spinner incomingSmsModeField;
+        final android.widget.CheckBox incomingSmsStrobeEnabledField;
+        final EditText incomingSmsStrobeRegisterField, incomingSmsStrobeBitField;
         if ("Входящее SMS".equals(w.type)) {
             incomingSmsEnabledField = new android.widget.CheckBox(this);
             incomingSmsEnabledField.setText("Разрешить управление этим регистром через SMS");
@@ -3254,12 +3269,22 @@ public class MainActivity extends Activity {
             form.addView(incomingSmsModeField);
             incomingSmsBitField = propertyField(Integer.toString(w.extraFields.optInt("smsBit", 0)), InputType.TYPE_CLASS_NUMBER);
             incomingSmsBitField.setHint("Номер бита 0–15 (для режима бит)"); form.addView(incomingSmsBitField);
+            incomingSmsStrobeEnabledField = new android.widget.CheckBox(this);
+            incomingSmsStrobeEnabledField.setText("Установить бит strobe после числовой команды");
+            incomingSmsStrobeEnabledField.setChecked(w.extraFields.optBoolean("smsStrobeEnabled", false));
+            form.addView(incomingSmsStrobeEnabledField);
+            incomingSmsStrobeRegisterField = propertyField(w.extraFields.has("smsStrobeRegister")
+                    ? Integer.toString(w.extraFields.optInt("smsStrobeRegister")) : "", InputType.TYPE_CLASS_NUMBER);
+            incomingSmsStrobeRegisterField.setHint("Holding-регистр strobe (например 40002)"); form.addView(incomingSmsStrobeRegisterField);
+            incomingSmsStrobeBitField = propertyField(Integer.toString(w.extraFields.optInt("smsStrobeBit", 0)), InputType.TYPE_CLASS_NUMBER);
+            incomingSmsStrobeBitField.setHint("Strobe бит 0–15"); form.addView(incomingSmsStrobeBitField);
             TextView smsIncomingHelp = new TextView(this);
-            smsIncomingHelp.setText("Адрес задаётся выше как tcp://хост:порт/unit/регистр; допустим только holding-регистр. Числовая команда: «команда пробел целое число» в диапазоне −32768…32767. Битовая команда должна полностью совпасть. SMS принимаются только пока открыт проект в операторском режиме; отправитель сверяется с номером из списка.");
+            smsIncomingHelp.setText("Адрес задаётся выше как tcp://хост:порт/unit/регистр; допустим только holding-регистр. Числовая команда: «команда пробел число…» (до 16 signed 16-bit значений) записывает последовательные регистры. Битовая команда должна полностью совпасть. Strobe устанавливается после успешной числовой записи и остаётся в 1 до сброса устройством/сценарием. SMS принимаются только пока открыт проект в операторском режиме.");
             form.addView(smsIncomingHelp);
         } else {
             incomingSmsEnabledField = null; incomingSmsSenderField = null;
             incomingSmsCommandField = null; incomingSmsBitField = null; incomingSmsModeField = null;
+            incomingSmsStrobeEnabledField = null; incomingSmsStrobeRegisterField = null; incomingSmsStrobeBitField = null;
         }
 
         final android.widget.CheckBox fbdInputField;
@@ -3859,6 +3884,54 @@ public class MainActivity extends Activity {
                             w.extraFields.put("smsMode", incomingSmsModeField.getSelectedItemPosition() == 1 ? "bit" : "number");
                             w.extraFields.put("smsBit", bit);
                             w.extraFields.put("smsEnabled", enabled);
+                        } catch (Exception failure) {
+                            Toast.makeText(this, "Не удалось безопасно сохранить номер отправителя SMS", Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                    }
+                    if (incomingSmsEnabledField != null) {
+                        boolean enabled = incomingSmsEnabledField.isChecked();
+                        String sender = incomingSmsSenderField.getText().toString().trim();
+                        String command = incomingSmsCommandField.getText().toString().trim();
+                        int bit;
+                        try { bit = Integer.parseInt(incomingSmsBitField.getText().toString().trim()); }
+                        catch (NumberFormatException invalid) { bit = -1; }
+                        boolean strobeEnabled = incomingSmsStrobeEnabledField.isChecked();
+                        int strobeRegister;
+                        try { strobeRegister = Integer.parseInt(incomingSmsStrobeRegisterField.getText().toString().trim()); }
+                        catch (NumberFormatException invalid) { strobeRegister = -1; }
+                        int strobeBit;
+                        try { strobeBit = Integer.parseInt(incomingSmsStrobeBitField.getText().toString().trim()); }
+                        catch (NumberFormatException invalid) { strobeBit = -1; }
+                        BindingRequest smsBinding = parseBinding(-1, w.connectionInfo);
+                        BindingRequest smsStrobeBinding = smsBinding == null || strobeRegister < 0 ? null
+                                : parseBinding(-1, "tcp://" + smsBinding.host + ":" + smsBinding.port + "/"
+                                        + smsBinding.unit + "/" + strobeRegister);
+                        if (enabled && (!SmsIncomingCommand.isValidSender(sender)
+                                || command.isEmpty() || command.length() > 80 || command.indexOf(String.valueOf((char)10)) >= 0
+                                || command.indexOf(String.valueOf((char)13)) >= 0 || bit < 0 || bit > 15
+                                || smsBinding == null || smsBinding.functionCode != 3
+                                || (strobeEnabled && (incomingSmsModeField.getSelectedItemPosition() != 0
+                                    || smsStrobeBinding == null || smsStrobeBinding.functionCode != 3
+                                    || smsStrobeBinding.unit != smsBinding.unit || strobeBit < 0 || strobeBit > 15)))) {
+                            Toast.makeText(this, "Проверь номер, команду, Modbus holding-регистр и параметры strobe", Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                        if (bit < 0 || bit > 15) bit = 0;
+                        if (strobeBit < 0 || strobeBit > 15) strobeBit = 0;
+                        try {
+                            if (SmsIncomingCommand.isValidSender(sender)) {
+                                String senderKey = java.util.UUID.randomUUID().toString();
+                                SmsRecipientStore.save(this, senderKey, sender);
+                                w.extraFields.put("smsSenderId", senderKey);
+                            }
+                            w.extraFields.put("smsCommand", command);
+                            w.extraFields.put("smsMode", incomingSmsModeField.getSelectedItemPosition() == 1 ? "bit" : "number");
+                            w.extraFields.put("smsBit", bit);
+                            w.extraFields.put("smsEnabled", enabled);
+                            w.extraFields.put("smsStrobeEnabled", strobeEnabled);
+                            w.extraFields.put("smsStrobeRegister", strobeRegister);
+                            w.extraFields.put("smsStrobeBit", strobeBit);
                         } catch (Exception failure) {
                             Toast.makeText(this, "Не удалось безопасно сохранить номер отправителя SMS", Toast.LENGTH_LONG).show();
                             return;
