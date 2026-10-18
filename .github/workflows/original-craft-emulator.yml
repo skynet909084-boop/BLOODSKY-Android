@@ -5,7 +5,7 @@ on:
     types: [opened, reopened, synchronize, ready_for_review]
     paths:
       - '.github/workflows/original-craft-emulator.yml'
-      - 'tools/original_craft_emulator_probe.py'
+      - 'tools/original_craft_emulator_audit.py'
   workflow_dispatch:
 
 permissions:
@@ -19,7 +19,7 @@ concurrency:
 jobs:
   rebuild-and-probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - name: Download pinned full Craft 1.0.7 decompilation
@@ -43,16 +43,16 @@ jobs:
           java -jar /tmp/apktool.jar --version
       - name: Rebuild original APK
         run: |
-          java -jar /tmp/apktool.jar b build/craft-decompiled/apktool --use-aapt2 -o build/KaScada-Craft-1.0.7-unsigned.apk
+          java -jar /tmp/apktool.jar b build/craft-decompiled/apktool --aapt "$ANDROID_HOME/build-tools/35.0.0/aapt2" -o build/KaScada-Craft-1.0.7-unsigned.apk
           keytool -genkeypair -keystore /tmp/craft-debug.keystore -storepass android -keypass android -alias androiddebugkey -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
-          $ANDROID_HOME/build-tools/35.0.0/apksigner sign --ks /tmp/craft-debug.keystore --ks-pass pass:android --key-pass pass:android --out build/KaScada-Craft-1.0.7.apk build/KaScada-Craft-1.0.7-unsigned.apk
-          $ANDROID_HOME/build-tools/35.0.0/apksigner verify build/KaScada-Craft-1.0.7.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign --ks /tmp/craft-debug.keystore --ks-pass pass:android --key-pass pass:android --out build/KaScada-Craft-1.0.7.apk build/KaScada-Craft-1.0.7-unsigned.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify build/KaScada-Craft-1.0.7.apk
       - name: Enable KVM access
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Install, launch and capture original UI offline
+      - name: Install, launch and traverse original UI offline
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
           api-level: 30
@@ -70,13 +70,8 @@ jobs:
             adb shell svc wifi disable || true
             adb shell svc data disable || true
             adb install -r build/KaScada-Craft-1.0.7.apk
-            adb shell monkey -p ru.kascada.modbus 1
-            sleep 12
-            adb shell uiautomator dump /sdcard/craft-window.xml
-            adb pull /sdcard/craft-window.xml build-reports/original-craft-1.0.7/initial-window.xml
-            adb exec-out screencap -p > build-reports/original-craft-1.0.7/initial-screen.png
-            python tools/original_craft_emulator_probe.py build-reports/original-craft-1.0.7
-      - name: Upload rebuilt APK and emulator evidence
+            python tools/original_craft_emulator_audit.py build-reports/original-craft-1.0.7
+      - name: Upload rebuilt APK and full UI evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
