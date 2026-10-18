@@ -2070,6 +2070,7 @@ public class MainActivity extends Activity {
                     Toast.makeText(this, "Проверь токен бота и chat_id", Toast.LENGTH_LONG).show(); return;
                 }
                 prefs.edit().putString("bot_token", token).putString("chat_id", chatId).apply();
+                rearmTelegramWidgets();
                 Toast.makeText(this, "Настройки Telegram сохранены", Toast.LENGTH_SHORT).show();
                 dialog.dismiss();
             });
@@ -2092,6 +2093,7 @@ public class MainActivity extends Activity {
                                 Toast.LENGTH_LONG).show();
                         if (result == null) {
                             prefs.edit().putString("bot_token", token).putString("chat_id", chatId).apply();
+                            rearmTelegramWidgets();
                             if (dialog.isShowing()) dialog.dismiss();
                         }
                     });
@@ -2099,6 +2101,12 @@ public class MainActivity extends Activity {
             });
         });
         dialog.show();
+    }
+
+    private void rearmTelegramWidgets() {
+        for (Widget widget : widgets) {
+            if ("Telegram-уведомление".equals(widget.type)) widget.lastTelegramState = false;
+        }
     }
 
     private void sendTelegramNotification(int widgetIndex, Widget widget, String value) {
