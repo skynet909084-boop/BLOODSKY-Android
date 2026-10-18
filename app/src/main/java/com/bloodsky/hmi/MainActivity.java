@@ -78,11 +78,28 @@ public class MainActivity extends Activity {
     private double[] fbdCacheNumeric = new double[0];
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService modbusExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService craftSensorExecutor = Executors.newSingleThreadExecutor();
     private final Map<Integer, String> liveValues = new HashMap<>();
     private boolean modbusPollingActive = false;
     private boolean activityResumed = false;
     private android.hardware.SensorManager fbdSensorManager;
     private boolean fbdSensorsRegistered;
+    private android.location.LocationManager fbdLocationManager;
+    private boolean fbdLocationRegistered, fbdLocationPermissionRequested;
+    private static final int REQUEST_FBD_SPEED_LOCATION = 6107;
+    private final android.location.LocationListener fbdLocationListener = new android.location.LocationListener() {
+        @Override public void onLocationChanged(android.location.Location location) {
+            if (location == null || !operatorMode || editor == null) return;
+            double kmh = Double.isNaN(location.getSpeed()) ? 0.0 : location.getSpeed() * 3.6;
+            for (Widget widget : widgets) if ("FBD CRAFT SENSOR SPEED".equals(widget.type)) {
+                widget.craftSensorValue = kmh; widget.craftSensorValid = true;
+            }
+            editor.invalidate();
+        }
+        @Override public void onStatusChanged(String provider, int status, android.os.Bundle extras) {}
+        @Override public void onProviderEnabled(String provider) {}
+        @Override public void onProviderDisabled(String provider) {}
+    };
     private final android.hardware.SensorEventListener fbdSensorListener = new android.hardware.SensorEventListener() {
         @Override public void onAccuracyChanged(android.hardware.Sensor sensor, int accuracy) {}
         @Override public void onSensorChanged(android.hardware.SensorEvent event) {
@@ -109,6 +126,7 @@ public class MainActivity extends Activity {
         @Override public void run() {
             if (!modbusPollingActive || editor == null) return;
             pollBoundWidgets();
+            pollCraftOdTempSources();
             mainHandler.postDelayed(this, 1000L);
         }
     };
@@ -188,6 +206,14 @@ public class MainActivity extends Activity {
         if (editor != null) { startModbusPolling(); startFbdSensors(); }
     }
 
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQUEST_FBD_SPEED_LOCATION) return;
+        fbdLocationPermissionRequested = false;
+        if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED)
+            startFbdSensors();
+    }
+
     @Override protected void onPause() {
         activityResumed = false;
         stopModbusPolling();
@@ -206,6 +232,7 @@ public class MainActivity extends Activity {
         stopFbdSensors();
         editor = null;
         modbusExecutor.shutdownNow();
+        craftSensorExecutor.shutdownNow();
         if (mediaPlayer != null) {
             try { mediaPlayer.stop(); } catch (Exception ignored) {}
             try { mediaPlayer.release(); } catch (Exception ignored) {}
@@ -754,32 +781,59 @@ public class MainActivity extends Activity {
     }
 
     private void startFbdSensors() {
-        if (!activityResumed || !operatorMode || editor == null || fbdSensorsRegistered) return;
-        if (fbdSensorManager == null)
-            fbdSensorManager = (android.hardware.SensorManager)getSystemService(SENSOR_SERVICE);
-        if (fbdSensorManager == null) return;
-        boolean neededLight = false, neededOrientation = false;
+        if (!activityResumed || !operatorMode || editor == null) return;
+        boolean neededLight = false, neededOrientation = false, neededSpeed = false;
         for (Widget widget : widgets) {
             neededLight |= "FBD CRAFT SENSOR LIGHT".equals(widget.type);
             neededOrientation |= "FBD CRAFT SENSOR ORIENTATION".equals(widget.type);
+            neededSpeed |= "FBD CRAFT SENSOR SPEED".equals(widget.type);
         }
-        boolean registered = false;
-        if (neededLight) {
-            android.hardware.Sensor sensor = fbdSensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_LIGHT);
-            if (sensor != null) registered |= fbdSensorManager.registerListener(fbdSensorListener, sensor,
-                    android.hardware.SensorManager.SENSOR_DELAY_NORMAL);
+        if (!fbdSensorsRegistered && (neededLight || neededOrientation)) {
+            if (fbdSensorManager == null)
+                fbdSensorManager = (android.hardware.SensorManager)getSystemService(SENSOR_SERVICE);
+            boolean registered = false;
+            if (fbdSensorManager != null && neededLight) {
+                android.hardware.Sensor sensor = fbdSensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_LIGHT);
+                if (sensor != null) registered |= fbdSensorManager.registerListener(fbdSensorListener, sensor,
+                        android.hardware.SensorManager.SENSOR_DELAY_NORMAL);
+            }
+            if (fbdSensorManager != null && neededOrientation) {
+                android.hardware.Sensor sensor = fbdSensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_ORIENTATION);
+                if (sensor != null) registered |= fbdSensorManager.registerListener(fbdSensorListener, sensor,
+                        android.hardware.SensorManager.SENSOR_DELAY_NORMAL);
+            }
+            fbdSensorsRegistered = registered;
         }
-        if (neededOrientation) {
-            android.hardware.Sensor sensor = fbdSensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_ORIENTATION);
-            if (sensor != null) registered |= fbdSensorManager.registerListener(fbdSensorListener, sensor,
-                    android.hardware.SensorManager.SENSOR_DELAY_NORMAL);
+        if (neededSpeed && !fbdLocationRegistered) {
+            if (android.os.Build.VERSION.SDK_INT >= 23
+                    && checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                if (!fbdLocationPermissionRequested) {
+                    fbdLocationPermissionRequested = true;
+                    requestPermissions(new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION}, REQUEST_FBD_SPEED_LOCATION);
+                }
+                return;
+            }
+            if (fbdLocationManager == null)
+                fbdLocationManager = (android.location.LocationManager)getSystemService(LOCATION_SERVICE);
+            try {
+                if (fbdLocationManager != null && fbdLocationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) {
+                    fbdLocationManager.requestLocationUpdates(android.location.LocationManager.GPS_PROVIDER,
+                            1000L, 0f, fbdLocationListener, Looper.getMainLooper());
+                    fbdLocationRegistered = true;
+                }
+            } catch (SecurityException | IllegalArgumentException ignored) {}
         }
-        fbdSensorsRegistered = registered;
     }
 
     private void stopFbdSensors() {
         if (fbdSensorManager != null && fbdSensorsRegistered) fbdSensorManager.unregisterListener(fbdSensorListener);
         fbdSensorsRegistered = false;
+        if (fbdLocationManager != null && fbdLocationRegistered) {
+            try { fbdLocationManager.removeUpdates(fbdLocationListener); } catch (SecurityException ignored) {}
+        }
+        fbdLocationRegistered = false;
+        for (Widget widget : widgets) if (isCraftFbdSensorSource(widget.type)) widget.craftSensorValid = false;
     }
 
     private BindingRequest parseBinding(int widgetIndex, String binding, int quantity) {
@@ -821,6 +875,78 @@ public class MainActivity extends Activity {
         pollSession.stop();
         modbusPollingActive = false;
         mainHandler.removeCallbacks(modbusPollRunnable);
+    }
+
+    private void pollCraftOdTempSources() {
+        if (!activityResumed || !operatorMode || editor == null) return;
+        long now = android.os.SystemClock.elapsedRealtime();
+        final EditorCanvas sessionEditor = editor;
+        for (int i = 0; i < widgets.size(); i++) {
+            Widget widget = widgets.get(i);
+            if (!isCraftOdTempSource(widget.type) || widget.craftOdTempPending
+                    || now < widget.craftOdTempNextPollAt) continue;
+            String host = widget.extraFields.optString("ip", "10.10.0.1").trim();
+            int sensorType = widget.extraFields.optInt("craftOdTempType", widget.extraFields.optInt("typeSensor", 1));
+            int responseType = widget.extraFields.optInt("craftOdTempResponse", widget.extraFields.optInt("typeResponse", 1));
+            if (!isAllowedOdTempHost(host) || (sensorType != 1 && sensorType != 2)
+                    || responseType < 1 || responseType > 2) {
+                widget.craftSensorValid = false; widget.craftOdTempNextPollAt = now + 5000L;
+                liveValues.put(i, "CFG"); continue;
+            }
+            widget.craftOdTempPending = true; widget.craftOdTempNextPollAt = now + 5000L;
+            final Widget target = widget; final int index = i;
+            final int requestedType = sensorType, requestedResponse = responseType;
+            try {
+                craftSensorExecutor.execute(() -> {
+                    Double reading = null; String error = null;
+                    try { reading = readCraftOdTemp(host, requestedType, requestedResponse); }
+                    catch (Exception failure) { error = "ERR: " + describeModbusError(failure); }
+                    final Double result = reading; final String failureText = error;
+                    runOnUiThread(() -> {
+                        target.craftOdTempPending = false;
+                        if (index >= widgets.size() || widgets.get(index) != target || !operatorMode
+                                || !activityResumed || editor != sessionEditor) return;
+                        target.craftOdTempNextPollAt = android.os.SystemClock.elapsedRealtime() + 5000L;
+                        target.craftSensorValid = result != null && Double.isFinite(result);
+                        if (target.craftSensorValid) {
+                            target.craftSensorValue = result;
+                            liveValues.put(index, Double.toString(result));
+                        } else liveValues.put(index, failureText == null ? "ERR: ответ датчика" : failureText);
+                        if (editor != null) editor.invalidate();
+                    });
+                });
+            } catch (java.util.concurrent.RejectedExecutionException ignored) { widget.craftOdTempPending = false; }
+        }
+    }
+
+    private static double readCraftOdTemp(String host, int sensorType, int responseType) throws Exception {
+        if (!isAllowedOdTempHost(host)) throw new IOException("Недопустимый адрес ODTEMP");
+        java.net.HttpURLConnection connection = null;
+        try {
+            connection = (java.net.HttpURLConnection)new java.net.URL("http://" + host + "/state.json").openConnection();
+            connection.setRequestMethod("GET"); connection.setConnectTimeout(3000); connection.setReadTimeout(3000);
+            connection.setInstanceFollowRedirects(false); connection.setUseCaches(false);
+            if (connection.getResponseCode() != 200) throw new IOException("ODTEMP HTTP " + connection.getResponseCode());
+            java.io.ByteArrayOutputStream body = new java.io.ByteArrayOutputStream();
+            try (InputStream input = connection.getInputStream()) {
+                byte[] buffer = new byte[2048]; int count;
+                while ((count = input.read(buffer)) != -1) {
+                    if (body.size() + count > 65536) throw new IOException("Ответ ODTEMP слишком большой");
+                    body.write(buffer, 0, count);
+                }
+            }
+            JSONObject json = new JSONObject(new String(body.toByteArray(), StandardCharsets.UTF_8));
+            Object raw;
+            if (sensorType == 1) raw = json.opt("value");
+            else {
+                JSONObject values = json.optJSONObject("value");
+                raw = values == null ? null : values.opt(responseType == 1 ? "t" : "h");
+            }
+            if (raw == null) throw new IOException("В ответе ODTEMP нет значения");
+            double value = raw instanceof Number ? ((Number)raw).doubleValue() : Double.parseDouble(String.valueOf(raw));
+            if (!Double.isFinite(value)) throw new IOException("ODTEMP вернуло неконечное значение");
+            return value;
+        } finally { if (connection != null) connection.disconnect(); }
     }
 
     private void pollBoundWidgets() {
@@ -1316,6 +1442,9 @@ public class MainActivity extends Activity {
             for (Widget value : widgets) resetFbdTimerRuntime(value);
         }
         operatorMode = !operatorMode; fbdWireMode = false; wireSource = -1;
+        if (!operatorMode) for (Widget value : widgets) if (isCraftOdTempSource(value.type)) {
+            value.craftSensorValid = false; value.craftOdTempNextPollAt = 0L;
+        }
         showEditor();
     }
 
@@ -2041,6 +2170,24 @@ public class MainActivity extends Activity {
         } else {
             craftSunriseLatitudeField = null; craftSunriseLongitudeField = null; craftSunriseModeField = null;
         }
+        final EditText craftOdTempHostField;
+        final android.widget.Spinner craftOdTempTypeField, craftOdTempResponseField;
+        if ("FBD CRAFT ODTEMP".equals(w.type)) {
+            craftOdTempHostField = propertyField(w.extraFields.optString("ip", "10.10.0.1"), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+            craftOdTempHostField.setHint("IP устройства (частная сеть)"); form.addView(craftOdTempHostField);
+            craftOdTempTypeField = new android.widget.Spinner(this);
+            craftOdTempTypeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item, new String[]{"DT — одиночное значение", "T / влажность"}));
+            craftOdTempTypeField.setSelection(w.extraFields.optInt("craftOdTempType", w.extraFields.optInt("typeSensor", 1)) == 2 ? 1 : 0);
+            form.addView(craftOdTempTypeField);
+            craftOdTempResponseField = new android.widget.Spinner(this);
+            craftOdTempResponseField.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item, new String[]{"Температура (t)", "Влажность (h)"}));
+            craftOdTempResponseField.setSelection(w.extraFields.optInt("craftOdTempResponse", w.extraFields.optInt("typeResponse", 1)) == 2 ? 1 : 0);
+            form.addView(craftOdTempResponseField);
+        } else {
+            craftOdTempHostField = null; craftOdTempTypeField = null; craftOdTempResponseField = null;
+        }
         if (isCraftNamedVariableSource(w.type) || isCraftNamedVariableSink(w.type)) {
             boolean source = isCraftNamedVariableSource(w.type);
             craftVariableNameField = propertyField(w.extraFields.optString("craftVariableName",
@@ -2480,6 +2627,17 @@ public class MainActivity extends Activity {
                         } catch (Exception invalid) {
                             Toast.makeText(this, "Укажи корректные координаты широты и долготы", Toast.LENGTH_LONG).show(); return;
                         }
+                    }
+                    if (craftOdTempHostField != null) {
+                        String host = craftOdTempHostField.getText().toString().trim();
+                        if (!isAllowedOdTempHost(host)) {
+                            Toast.makeText(this, "Укажи частный IPv4-адрес устройства", Toast.LENGTH_LONG).show(); return;
+                        }
+                        try {
+                            w.extraFields.put("ip", host);
+                            w.extraFields.put("craftOdTempType", craftOdTempTypeField.getSelectedItemPosition() + 1);
+                            w.extraFields.put("craftOdTempResponse", craftOdTempResponseField.getSelectedItemPosition() + 1);
+                        } catch (Exception ignored) {}
                     }
                     w.text = textField.getText().toString();
                     w.connectionInfo = connectionField.getText().toString().trim();
@@ -3227,11 +3385,33 @@ public class MainActivity extends Activity {
 
     public static boolean isCraftFbdSensorSource(String type) {
         return "FBD CRAFT SENSOR LIGHT".equals(canonicalFbdBlockType(type))
-                || "FBD CRAFT SENSOR ORIENTATION".equals(canonicalFbdBlockType(type));
+                || "FBD CRAFT SENSOR ORIENTATION".equals(canonicalFbdBlockType(type))
+                || "FBD CRAFT SENSOR SPEED".equals(canonicalFbdBlockType(type));
     }
 
     private static boolean isCraftSunriseSource(String type) {
         return "FBD CRAFT SUNRISE".equals(canonicalFbdBlockType(type));
+    }
+
+    private static boolean isCraftOdTempSource(String type) {
+        return "FBD CRAFT ODTEMP".equals(canonicalFbdBlockType(type));
+    }
+
+    public static boolean isAllowedOdTempHost(String host) {
+        if (host == null) return false;
+        String[] parts = host.trim().split("\\.", -1);
+        if (parts.length != 4) return false;
+        int[] octets = new int[4];
+        try {
+            for (int i = 0; i < 4; i++) {
+                if (parts[i].isEmpty() || (parts[i].length() > 1 && parts[i].charAt(0) == '0')) return false;
+                octets[i] = Integer.parseInt(parts[i]);
+                if (octets[i] < 0 || octets[i] > 255) return false;
+            }
+        } catch (NumberFormatException invalid) { return false; }
+        return octets[0] == 10 || octets[0] == 192 && octets[1] == 168
+                || octets[0] == 172 && octets[1] >= 16 && octets[1] <= 31
+                || octets[0] == 169 && octets[1] == 254;
     }
 
     private static String craftOrientationLabel(int axis) {
@@ -3305,7 +3485,8 @@ public class MainActivity extends Activity {
             return isCraftRegisterBoolean(kind) ? "BOOL" : "NUMBER";
         if (isCraftRegisterSink(kind) && !output && "IN".equals(name))
             return isCraftRegisterBoolean(kind) ? "BOOL" : "NUMBER";
-        if ((isCraftFbdSensorSource(kind) || isCraftSunriseSource(kind)) && output && "Q".equals(name)) return "NUMBER";
+        if ((isCraftFbdSensorSource(kind) || isCraftSunriseSource(kind) || isCraftOdTempSource(kind))
+                && output && "Q".equals(name)) return "NUMBER";
         if (isCraftNamedVariableSource(kind) && output && "Q".equals(name))
             return craftNamedVariableKind(kind) == 1 ? "BOOL" : "NUMBER";
         if (isCraftNamedVariableSink(kind) && !output && "IN".equals(name))
@@ -3740,6 +3921,11 @@ public class MainActivity extends Activity {
         if (index < 0 || index >= widgetsList.size() || visiting[index]) return false;
         Widget widget = widgetsList.get(index);
         if (!isFbdWidget(widget)) return false;
+        if (isCraftOdTempSource(widget.type)) {
+            double value = widget.craftSensorValid ? widget.craftSensorValue : Double.NaN;
+            cacheNumeric[index] = value;
+            return Double.isFinite(value) && value != 0.0;
+        }
         if (isCraftSunriseSource(widget.type)) {
             int value = FbdCraftSunrise.currentLocalHhmm(
                     widget.extraFields.optDouble("latitude", Double.NaN),
@@ -3752,7 +3938,8 @@ public class MainActivity extends Activity {
         if (isCraftFbdSensorSource(widget.type)) {
             double value = Double.NaN;
             if (widget.craftSensorValid) {
-                if ("FBD CRAFT SENSOR LIGHT".equals(widget.type)) value = widget.craftSensorValue;
+                if ("FBD CRAFT SENSOR LIGHT".equals(widget.type)
+                        || "FBD CRAFT SENSOR SPEED".equals(widget.type)) value = widget.craftSensorValue;
                 else {
                     int axis = craftOrientationAxis(widget);
                     if (axis >= 1 && axis <= 3) value = widget.craftOrientationValues[axis - 1];
@@ -4718,6 +4905,7 @@ public class MainActivity extends Activity {
         if (isCraftNamedVariableSource(kind)) return output ? new String[]{"Q"} : new String[0];
         if (isCraftNamedVariableSink(kind)) return output ? new String[0] : new String[]{"IN"};
         if (isCraftSunriseSource(kind)) return output ? new String[]{"Q"} : new String[0];
+        if (isCraftOdTempSource(kind)) return output ? new String[]{"Q"} : new String[0];
         if (isCraftFbdSensorSource(kind)) return output ? new String[]{"Q"} : new String[0];
         if ("FBD AND".equals(kind) || "FBD OR".equals(kind) || "FBD XOR".equals(kind)
                 || "FBD NAND".equals(kind) || "FBD NOR".equals(kind))
@@ -4867,6 +5055,8 @@ public class MainActivity extends Activity {
         transient double craftSensorValue = Double.NaN;
         transient double[] craftOrientationValues = new double[]{Double.NaN, Double.NaN, Double.NaN};
         transient boolean craftSensorValid;
+        transient boolean craftOdTempPending;
+        transient long craftOdTempNextPollAt;
         transient int craftRegisterWord0, craftRegisterWord1;
         transient boolean craftRegisterValid;
         transient boolean craftRegisterWritePending;

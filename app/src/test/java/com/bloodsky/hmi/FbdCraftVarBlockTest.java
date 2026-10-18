@@ -26,7 +26,9 @@ public class FbdCraftVarBlockTest {
         assertEquals("FBD CRAFT VAR NAME OUT INT", OriginalFbdPalette.nativeTypeForOriginalTag("VarNameOut"));
         assertEquals("FBD CRAFT SENSOR LIGHT", OriginalFbdPalette.nativeTypeForOriginalTag("Sensor_Light"));
         assertEquals("FBD CRAFT SENSOR ORIENTATION", OriginalFbdPalette.nativeTypeForOriginalTag("Sensor_Orientation"));
+        assertEquals("FBD CRAFT SENSOR SPEED", OriginalFbdPalette.nativeTypeForOriginalTag("Sensor_Speed"));
         assertEquals("FBD CRAFT SUNRISE", OriginalFbdPalette.nativeTypeForOriginalTag("Sunrise_GPS"));
+        assertEquals("FBD CRAFT ODTEMP", OriginalFbdPalette.nativeTypeForOriginalTag("ODTEMP"));
     }
 
     @Test public void sourcesProvideConstantsAndDecodeRegisterWords() throws Exception {
@@ -90,12 +92,28 @@ public class FbdCraftVarBlockTest {
         orientation.craftOrientationValues = new double[]{12.0, -4.0, 25.0};
         orientation.craftSensorValid = true;
         orientation.extraFields.put("craftSensorAxis", 3);
-        List<MainActivity.Widget> nodes = Arrays.asList(light, orientation);
+        MainActivity.Widget speed = block("FBD CRAFT SENSOR SPEED");
+        speed.craftSensorValue = 18.0; speed.craftSensorValid = true;
+        List<MainActivity.Widget> nodes = Arrays.asList(light, orientation, speed);
         assertEquals(250.0, value(nodes, null, 0), 0.0);
         assertEquals(25.0, value(nodes, null, 1), 0.0);
+        assertEquals(18.0, value(nodes, null, 2), 0.0);
         light.craftSensorValid = false;
         assertTrue(Double.isNaN(value(nodes, null, 0)));
         assertArrayEquals(new String[0], MainActivity.knownFbdPins("FBD CRAFT SENSOR LIGHT", false));
         assertArrayEquals(new String[]{"Q"}, MainActivity.knownFbdPins("FBD CRAFT SENSOR LIGHT", true));
+    }
+
+    @Test public void odtempAcceptsOnlyPrivateIpv4AndUsesFreshRuntimeValue() {
+        assertTrue(MainActivity.isAllowedOdTempHost("10.10.0.1"));
+        assertTrue(MainActivity.isAllowedOdTempHost("192.168.1.20"));
+        assertFalse(MainActivity.isAllowedOdTempHost("127.0.0.1"));
+        assertFalse(MainActivity.isAllowedOdTempHost("example.com"));
+        assertFalse(MainActivity.isAllowedOdTempHost("8.8.8.8"));
+        MainActivity.Widget sensor = block("FBD CRAFT ODTEMP");
+        sensor.craftSensorValue = 21.5; sensor.craftSensorValid = true;
+        assertEquals(21.5, value(Arrays.asList(sensor), null, 0), 0.0);
+        sensor.craftSensorValid = false;
+        assertTrue(Double.isNaN(value(Arrays.asList(sensor), null, 0)));
     }
 }
