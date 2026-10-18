@@ -3873,6 +3873,21 @@ public class MainActivity extends Activity {
             }
         }
 
+        final EditText[] craftVoicePhraseFields = new EditText[CraftVoiceRecognitionFields.PHRASE_COUNT];
+        if ("Распознавание речи Craft".equals(w.type)) {
+            JSONObject sourceOther = w.extraFields.optJSONObject("craftOther");
+            String[] phrases = CraftVoiceRecognitionFields.read(sourceOther);
+            TextView voiceHeader = new TextView(this);
+            voiceHeader.setText("Исходные фразы Craft (0–15); распознавание пока выключено");
+            voiceHeader.setPadding(0, dp(10), 0, 0);
+            form.addView(voiceHeader);
+            for (int k = 0; k < craftVoicePhraseFields.length; k++) {
+                craftVoicePhraseFields[k] = propertyField(phrases[k], InputType.TYPE_CLASS_TEXT);
+                craftVoicePhraseFields[k].setHint("Фраза Craft " + k);
+                form.addView(craftVoicePhraseFields[k]);
+            }
+        }
+
         final EditText timerPresetField;
         final android.widget.Spinner timerUnitSelector;
         final android.widget.Spinner timerModeSelector;
@@ -4427,6 +4442,19 @@ public class MainActivity extends Activity {
                             if (voiceMsgFields[k] != null) {
                                 w.voiceMessages[k] = voiceMsgFields[k].getText().toString();
                             }
+                        }
+                    }
+                    if ("Распознавание речи Craft".equals(w.type)) {
+                        String[] phrases = new String[craftVoicePhraseFields.length];
+                        for (int k = 0; k < craftVoicePhraseFields.length; k++)
+                            phrases[k] = craftVoicePhraseFields[k].getText().toString();
+                        try {
+                            JSONObject sourceOther = CraftVoiceRecognitionFields.write(
+                                    w.extraFields.optJSONObject("craftOther"), phrases);
+                            w.extraFields.put("craftOther", sourceOther);
+                        } catch (Exception invalid) {
+                            Toast.makeText(MainActivity.this, invalid.getMessage(), Toast.LENGTH_LONG).show();
+                            return;
                         }
                     }
                     if (timerPresetField != null) {
