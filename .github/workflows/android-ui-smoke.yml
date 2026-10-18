@@ -37,7 +37,7 @@ concurrency:
 jobs:
   emulator-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     # Feature→feature PRs get fast FBD verification; PR→main, push→main
     # and manually dispatched default runs retain every legacy UI scenario.
     env:
