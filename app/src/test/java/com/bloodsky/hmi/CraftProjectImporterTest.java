@@ -283,6 +283,27 @@ public class CraftProjectImporterTest {
         MainActivity.validateImportedProjectStatic(project.toString());
     }
 
+    @Test public void importsLinearSetterRangeOrientationAndKeepsLegacyLinkInactive() throws Exception {
+        String json = new JSONObject().put("TableNameProject", new JSONObject().put("name", "Slider").put("countScreen", 1))
+                .put("TableConnections", new org.json.JSONArray())
+                .put("TableComponent", new org.json.JSONArray().put(new JSONObject()
+                        .put("componentId", 13).put("text", "Уставка")
+                        .put("jsTableComponent_connectionInfo", new JSONObject()
+                                .put("posDeviceNetworkInList", 4).put("addressRegister", 77).put("typeRequest", 3))
+                        .put("jsTableComponent_other", new JSONObject().put("numScreen", 1).put("max", 250)
+                                .put("isTurn", true).put("colorText", 0xff123456).put("colorProgress", 0xff00ff00))))
+                .toString();
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(json));
+        JSONObject slider = project.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets").getJSONObject(0);
+        assertEquals("Линейный задатчик Craft", slider.getString("type"));
+        assertEquals(250, slider.getInt("craftLinearMax"));
+        assertEquals(0, slider.getInt("craftLinearValue"));
+        assertTrue(slider.getBoolean("craftLinearVertical"));
+        assertFalse(slider.getBoolean("craftLinearEnabled"));
+        assertEquals("", slider.getString("connectionInfo"));
+        MainActivity.validateImportedProjectStatic(project.toString());
+    }
+
     @Test public void reconcilesStaleCraftScreenCountWithReferencedScreens() throws Exception {
         String json = "{\"TableNameProject\":{\"name\":\"Legacy screen\",\"countScreen\":16},\"TableConnections\":[],\"TableComponent\":["
                 + "{\"componentId\":2,\"text\":\"On screen 20\",\"x\":1,\"y\":2,\"width\":100,\"height\":30,\"jsTableComponent_other\":{\"numScreen\":20}}]}";
