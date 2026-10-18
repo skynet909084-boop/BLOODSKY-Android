@@ -323,7 +323,7 @@ class FastFbdSmoke(Smoke):
         adb('shell', 'input', 'text', PROJECT)
         self.tap('Создать')
         self.wait_node(description='Редактор экрана')
-        expected_pure = ['FBD CRAFT POW', 'FBD CRAFT SIN', 'FBD CRAFT ABS',
+        expected_pure = ['FBD CRAFT TIMER', 'FBD CRAFT POW', 'FBD CRAFT SIN', 'FBD CRAFT ABS',
                          'FBD CRAFT INT TO FLOAT', 'FBD CRAFT FLOAT TO INT']
         for native_type in expected_pure:
             add_from_original_preview(native_type)
@@ -331,6 +331,8 @@ class FastFbdSmoke(Smoke):
         if [widget['type'] for widget in pure] != expected_pure:
             raise AssertionError('Original Craft pure math/conversions mapped incorrectly: '
                                  + repr(pure))
+        if pure[0].get('text') != 'TON':
+            raise AssertionError('Original Craft timer preview must create source TON mode')
         for i, first in enumerate(pure):
             for second in pure[i + 1:]:
                 intersects = (first['x'] < second['x'] + second['w']

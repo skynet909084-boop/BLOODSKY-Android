@@ -1430,7 +1430,8 @@ public class MainActivity extends Activity {
         if (operatorMode || blockIndex < 0 || blockIndex >= widgets.size()) return;
         final Widget widget = widgets.get(blockIndex);
         final boolean timer = "FBD Таймер".equals(widget.type)
-                || "FBD TOF".equals(widget.type) || "FBD TP".equals(widget.type);
+                || "FBD TOF".equals(widget.type) || "FBD TP".equals(widget.type)
+                || "FBD CRAFT TIMER".equals(widget.type);
         final boolean invertible = knownFbdPins(widget.type, true).length == 1
                 && "BOOL".equals(knownFbdPinType(widget.type,
                         knownFbdPins(widget.type, true)[0], true));
@@ -4078,6 +4079,8 @@ public class MainActivity extends Activity {
                     || "FBD CRAFT ARITHMETIC FLOAT".equals(kind))
                 return output ? 0.5f : (i == 0 ? 0.25f : 0.75f);
             if ("FBD CRAFT MOVE".equals(kind))
+                return output ? 0.5f : (i == 0 ? 0.5f : 5f / 6f);
+            if ("FBD CRAFT POW".equals(kind))
                 return output ? 0.5f : (i == 0 ? 0.5f : 5f / 6f);
             // Original FB_RS draw8(): header 1/3, R/S at 1/2 and 5/6,
             // output Q at 1/2. Wire anchors and drawn contacts must match.

@@ -85,7 +85,7 @@ public class OriginalFbdNativePaletteMappingTest {
 
     @Test public void unsupportedOriginalBlocksStayDisabledAndUnmapped() {
         for (String source : new String[]{
-                "FB_TIMER", "FB_MACRO", "MQTT_SUBSCRIBER", "Var",
+                "FB_MACRO", "MQTT_SUBSCRIBER", "Var",
                 "FB_TRIGGER_ALT", "", "FB_CTU_OLD"}) {
             assertNull(source, OriginalFbdPalette.nativeTypeForOriginalTag(source));
             assertNull(source, OriginalFbdPalette.nativeLabelForOriginalTag(source));
@@ -148,6 +148,15 @@ public class OriginalFbdNativePaletteMappingTest {
         assertEquals(0.5f, MainActivity.fbdTerminalFraction(pow, "X", false), 0.00001f);
         assertEquals(5f/6f, MainActivity.fbdTerminalFraction(pow, "Y", false), 0.00001f);
         assertTrue(FbdSourceCanvasSkin.shouldUse(widget(pow, "POW")));
+
+        String timer = OriginalFbdPalette.nativeTypeForOriginalTag("FB_TIMER");
+        assertEquals("FBD CRAFT TIMER", timer);
+        assertEquals("TON", OriginalFbdPalette.nativeLabelForOriginalTag("FB_TIMER"));
+        assertArrayEquals(new String[]{"IN", "PT"}, MainActivity.knownFbdPins(timer, false));
+        assertArrayEquals(new String[]{"Q"}, MainActivity.knownFbdPins(timer, true));
+        assertEquals("BOOL", MainActivity.knownFbdPinType(timer, "IN", false));
+        assertEquals("NUMBER", MainActivity.knownFbdPinType(timer, "PT", false));
+        assertEquals("BOOL", MainActivity.knownFbdPinType(timer, "Q", true));
 
         String[] sourceTags = {"SIN", "ABS", "IntToFloat", "FloatToInt"};
         String[] expectedTypes = {"FBD CRAFT SIN", "FBD CRAFT ABS",

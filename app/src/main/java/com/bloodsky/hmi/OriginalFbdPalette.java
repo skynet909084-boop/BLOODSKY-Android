@@ -38,7 +38,7 @@ public final class OriginalFbdPalette {
         bindNative(dialog,R.id.kc_logic_tab_el_arithmetic_int,"FB_ARITHMETIC_INT",add);
         bindNative(dialog,R.id.kc_logic_tab_el_arithmetic_float,"FB_ARITHMETIC_FLOAT",add);
         bindNative(dialog,R.id.kc_logic_tab_el_compare_float,"FB_COMPARE_FLOAT",add);
-        bind(dialog,R.id.kc_logic_tab_fb_timer,"FBD Таймер","TON",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_timer,"FB_TIMER",add);
         bindNative(dialog,R.id.kc_logic_tab_fb_pow,"FB_POW",add);
         bindNative(dialog,R.id.kc_logic_tab_fb_sin,"SIN",add);
         bindNative(dialog,R.id.kc_logic_tab_fb_abs,"ABS",add);
@@ -64,6 +64,7 @@ public final class OriginalFbdPalette {
         if ("FB_RS".equals(tag)) return "FBD RS";
         if ("FB_TRIGGER".equals(tag)) return "FBD CRAFT T";
         if ("FB_CTU".equals(tag)) return "FBD CRAFT CTU";
+        if ("FB_TIMER".equals(tag)) return "FBD CRAFT TIMER";
         if ("FB_CHANGE_I".equals(tag)) return "FBD CRAFT CHANGE I";
         if ("FB_CHANGE_F".equals(tag)) return "FBD CRAFT CHANGE F";
         if ("FB_MOVE".equals(tag)) return "FBD CRAFT MOVE";
@@ -88,6 +89,7 @@ public final class OriginalFbdPalette {
         if ("FB_RS".equals(tag)) return "RS";
         if ("FB_TRIGGER".equals(tag)) return "T";
         if ("FB_CTU".equals(tag)) return "CTU 16 bit";
+        if ("FB_TIMER".equals(tag)) return "TON";
         if ("FB_CHANGE_I".equals(tag)) return "CH_I";
         if ("FB_CHANGE_F".equals(tag)) return "CH_F";
         if ("FB_MOVE".equals(tag)) return "MOVE";
