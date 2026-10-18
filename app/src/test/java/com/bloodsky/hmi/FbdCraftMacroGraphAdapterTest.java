@@ -46,6 +46,22 @@ public class FbdCraftMacroGraphAdapterTest {
         assertEquals(103, expanded.toJson().getJSONArray("fbInMacros").getJSONObject(0).getInt("componentId"));
     }
 
+    @Test public void usesVerifiedOutputPinNamesForCraftConverterEdges() throws Exception {
+        JSONObject first = new JSONObject().put("componentId", 118).put("x", 0).put("y", 0)
+                .put("saveKey", 50).put("keyOut", 51).put("numOnIn", 1)
+                .put("nMcr", "Gate").put("unIdMcr", 7);
+        JSONObject second = new JSONObject().put("componentId", 121).put("x", 10).put("y", 0)
+                .put("saveKey", 51).put("keyOut", 900).put("numOnIn", 1)
+                .put("nMcr", "Gate").put("unIdMcr", 7);
+        JSONObject macro = new JSONObject().put("countIn", 1).put("nameIn1", "A").put("typeIn1", 2)
+                .put("keyOutIn1", 50).put("numOnIn1", 1).put("saveKeyOut", 900)
+                .put("fbInMacros", new JSONArray().put(first).put(second));
+        JSONObject graph = FbdCraftMacroGraphAdapter.translate(macro, macro.getJSONArray("fbInMacros"));
+        assertNotNull(graph);
+        assertEquals("OUT", graph.getJSONArray("connections").getJSONObject(1).getString("sourcePin"));
+        assertEquals("OUT", graph.getString("outputPin"));
+    }
+
     @Test public void failsClosedForUnknownIdsOrBrokenEdges() throws Exception {
         JSONObject unknown = validMacro();
         unknown.getJSONArray("fbInMacros").getJSONObject(0).put("componentId", 999);
