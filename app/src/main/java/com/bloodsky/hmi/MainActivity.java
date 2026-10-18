@@ -5280,10 +5280,8 @@ public class MainActivity extends Activity {
             for (FbdConnection edge : screens.get(currentScreenIndex).connections) {
                 if (edge.target != target || edge.source < 0 || edge.source >= widgets.size()) continue;
                 pins.add(edge.extraFields.optString("targetPin", ""));
-                booleanValues.add(evaluateFbdBlock(widgets, screens.get(currentScreenIndex).connections,
-                        edge.source, new boolean[widgets.size()]));
-                numericValues.add(evaluateFbdBlockNumeric(widgets, screens.get(currentScreenIndex).connections,
-                        edge.source, new boolean[widgets.size()]));
+                booleanValues.add(evaluateFbd(edge.source, new boolean[widgets.size()]));
+                numericValues.add(evaluateFbdNumeric(edge.source, new boolean[widgets.size()]));
             }
             boolean enabled = fbdBooleanPinValue(booleanValues, pins, "EN", 0);
             if (!enabled) { publisher.craftMqttLastEnable = false; continue; }
