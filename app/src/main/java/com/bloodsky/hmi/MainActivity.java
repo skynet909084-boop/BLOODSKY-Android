@@ -153,7 +153,8 @@ public class MainActivity extends Activity {
         }
     };
 
-    private MediaPlayer mediaPlayer;
+    private final java.util.Map<String, MediaPlayer> craftAlarmPlayers = new java.util.HashMap<>();
+    private final java.util.Map<String, ToneGenerator> craftAlarmTones = new java.util.HashMap<>();
     private TextToSpeech textToSpeech;
     private final java.util.Map<String, Bitmap> imageCache = new java.util.HashMap<>();
 
@@ -269,11 +270,8 @@ public class MainActivity extends Activity {
         stopFbdSensors();
         stopCraftMqtt();
         releaseVoiceRecognizer();
-        if (mediaPlayer != null) {
-            try { mediaPlayer.stop(); } catch (Exception ignored) {}
-            try { mediaPlayer.release(); } catch (Exception ignored) {}
-            mediaPlayer = null;
-        }
+        resetCraftAlarmEdges();
+        stopAllCraftAlarmPlayback();
         if (textToSpeech != null) try { textToSpeech.stop(); } catch (Exception ignored) {}
         super.onPause();
     }
@@ -291,11 +289,8 @@ public class MainActivity extends Activity {
         homeAssistantExecutor.shutdownNow();
         yandexExecutor.shutdownNow();
         smsExecutor.shutdownNow();
-        if (mediaPlayer != null) {
-            try { mediaPlayer.stop(); } catch (Exception ignored) {}
-            try { mediaPlayer.release(); } catch (Exception ignored) {}
-            mediaPlayer = null;
-        }
+        resetCraftAlarmEdges();
+        stopAllCraftAlarmPlayback();
         if (textToSpeech != null) {
             try { textToSpeech.stop(); textToSpeech.shutdown(); } catch (Exception ignored) {}
             textToSpeech = null;
@@ -303,45 +298,81 @@ public class MainActivity extends Activity {
         super.onDestroy();
     }
 
-    private void playSoundAlert(String pathOrUri) {
-        playSoundAlert(pathOrUri, 0, false);
-    }
-
-    private void playSoundAlert(String pathOrUri, int craftAlarmSoundIndex, boolean loop) {
+    private void playCraftAlarmAlert(String alarmKey, String pathOrUri, int craftAlarmSoundIndex, boolean loop) {
+        stopCraftAlarmAlert(alarmKey);
         try {
-            if (mediaPlayer != null) {
-                try { mediaPlayer.stop(); } catch (Exception ignored) {}
-            try { mediaPlayer.release(); } catch (Exception ignored) {}
-                mediaPlayer = null;
-            }
+            MediaPlayer player = null;
             int alarmResource = craftAlarmResource(craftAlarmSoundIndex);
             if (alarmResource != 0) {
-                mediaPlayer = MediaPlayer.create(this, alarmResource);
-                if (mediaPlayer == null) return;
-                mediaPlayer.setLooping(loop);
-                mediaPlayer.start();
+                player = MediaPlayer.create(this, alarmResource);
+                if (player == null) return;
             } else if (pathOrUri != null && pathOrUri.startsWith("content://")) {
-                mediaPlayer = new MediaPlayer();
-                mediaPlayer.setDataSource(this, Uri.parse(pathOrUri));
-                mediaPlayer.prepare();
-                mediaPlayer.start();
+                player = new MediaPlayer();
+                player.setDataSource(this, Uri.parse(pathOrUri));
+                player.prepare();
             } else if (pathOrUri != null && !pathOrUri.trim().isEmpty() && !"Аларм".equals(pathOrUri)) {
                 String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
                 java.io.File file = ProjectMediaService.resolveMediaFile(getFilesDir(), json, pathOrUri);
-                mediaPlayer = new MediaPlayer();
-                mediaPlayer.setDataSource(file.getAbsolutePath());
-                mediaPlayer.prepare();
-                mediaPlayer.start();
+                player = new MediaPlayer();
+                player.setDataSource(file.getAbsolutePath());
+                player.prepare();
             } else {
-                ToneGenerator toneG = new ToneGenerator(AudioManager.STREAM_ALARM, 80);
-                toneG.startTone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 350);
+                ToneGenerator tone = new ToneGenerator(AudioManager.STREAM_ALARM, 80);
+                tone.startTone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 350);
+                craftAlarmTones.put(alarmKey, tone);
+                return;
             }
+            player.setLooping(loop);
+            MediaPlayer activePlayer = player;
+            player.setOnCompletionListener(completed -> {
+                if (craftAlarmPlayers.get(alarmKey) == completed) {
+                    craftAlarmPlayers.remove(alarmKey);
+                    try { completed.release(); } catch (Exception ignored) { }
+                }
+            });
+            craftAlarmPlayers.put(alarmKey, activePlayer);
+            player.start();
         } catch (Exception ex) {
-            android.util.Log.e("BLOODSKY", "Sound alert error", ex);
+            android.util.Log.e("BLOODSKY", "Craft alarm error", ex);
             try {
-                ToneGenerator toneG = new ToneGenerator(AudioManager.STREAM_ALARM, 80);
-                toneG.startTone(ToneGenerator.TONE_PROP_BEEP, 250);
-            } catch (Exception ignored) {}
+                ToneGenerator tone = new ToneGenerator(AudioManager.STREAM_ALARM, 80);
+                tone.startTone(ToneGenerator.TONE_PROP_BEEP, 250);
+                craftAlarmTones.put(alarmKey, tone);
+            } catch (Exception ignored) { }
+        }
+    }
+
+    private void stopCraftAlarmAlert(String alarmKey) {
+        MediaPlayer player = craftAlarmPlayers.remove(alarmKey);
+        if (player != null) {
+            try { player.stop(); } catch (Exception ignored) { }
+            try { player.release(); } catch (Exception ignored) { }
+        }
+        ToneGenerator tone = craftAlarmTones.remove(alarmKey);
+        if (tone != null) {
+            try { tone.stopTone(); } catch (Exception ignored) { }
+            try { tone.release(); } catch (Exception ignored) { }
+        }
+    }
+
+    private void stopAllCraftAlarmPlayback() {
+        for (MediaPlayer player : new java.util.ArrayList<>(craftAlarmPlayers.values())) {
+            try { player.stop(); } catch (Exception ignored) { }
+            try { player.release(); } catch (Exception ignored) { }
+        }
+        craftAlarmPlayers.clear();
+        for (ToneGenerator tone : new java.util.ArrayList<>(craftAlarmTones.values())) {
+            try { tone.stopTone(); } catch (Exception ignored) { }
+            try { tone.release(); } catch (Exception ignored) { }
+        }
+        craftAlarmTones.clear();
+    }
+
+    private void resetCraftAlarmEdges() {
+        for (Screen screen : screens) {
+            for (Widget widget : screen.widgets) {
+                if ("Звуковой сигнал".equals(widget.type)) widget.lastSoundState = false;
+            }
         }
     }
 
@@ -1248,12 +1279,13 @@ public class MainActivity extends Activity {
                             if (entry.getValue() != null) {
                                 try { active = Double.parseDouble(entry.getValue()) >= w.soundThreshold; } catch (Exception ignored) {}
                             }
+                            String alarmKey = currentScreenIndex + ":" + index;
                             if (active && !w.lastSoundState) {
                                 w.lastSoundState = true;
-                                playSoundAlert(w.soundFilePath, w.craftAlarmSoundIndex, w.craftAlarmLoop);
+                                playCraftAlarmAlert(alarmKey, w.soundFilePath, w.craftAlarmSoundIndex, w.craftAlarmLoop);
                             } else if (!active) {
                                 w.lastSoundState = false;
-                                if (w.craftAlarmLoop) stopSoundAlert();
+                                stopCraftAlarmAlert(alarmKey);
                             }
                         } else if ("Голосовое сообщение".equals(w.type)) {
                             int voiceIdx = 0;
