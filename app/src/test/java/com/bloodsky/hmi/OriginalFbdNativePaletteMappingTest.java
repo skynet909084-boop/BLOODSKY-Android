@@ -115,6 +115,7 @@ public class OriginalFbdNativePaletteMappingTest {
         assertEquals(3f/8f, MainActivity.fbdTerminalFraction(array, "EN", false), 0.00001f);
         assertEquals(5f/8f, MainActivity.fbdTerminalFraction(array, "DT", false), 0.00001f);
         assertEquals(7f/8f, MainActivity.fbdTerminalFraction(array, "ID", false), 0.00001f);
+        assertEquals(3f/8f, MainActivity.fbdTerminalFraction(array, "Q", true), 0.00001f);
         MainActivity.Widget mxWidget = new MainActivity.Widget();
         mxWidget.type = mx; mxWidget.text = "MX"; mxWidget.w = 120; mxWidget.h = 60;
         MainActivity.Widget arrayWidget = new MainActivity.Widget();

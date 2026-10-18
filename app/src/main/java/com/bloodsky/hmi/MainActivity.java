@@ -3998,7 +3998,7 @@ public class MainActivity extends Activity {
             if ("FBD RS".equals(kind))
                 return output ? 0.5f : (i == 0 ? 0.5f : 5f / 6f);
             if ("FBD CRAFT ARRAY".equals(kind))
-                return output ? 0.5f : (2f * i + 3f) / 8f;
+                return output ? 3f / 8f : (2f * i + 3f) / 8f;
             // The original Craft AND/OR/XOR and compare drawing uses
             // quarter-height and three-quarter-height input ports.
             if (!output && pins.length == 2) {
