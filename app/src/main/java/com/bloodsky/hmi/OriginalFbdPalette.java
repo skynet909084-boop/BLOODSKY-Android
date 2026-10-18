@@ -28,6 +28,8 @@ public final class OriginalFbdPalette {
         bindNative(dialog,R.id.kc_logic_tab_fb_ctu,"FB_CTU",add);
         bindNative(dialog,R.id.kc_logic_tab_fb_sel,"FB_SEL",add);
         bindNative(dialog,R.id.kc_logic_tab_el_compare_int,"FB_COMPARE",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_change_i,"FB_CHANGE_I",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_change_f,"FB_CHANGE_F",add);
         bind(dialog,R.id.kc_logic_tab_fb_timer,"FBD Таймер","TON",add);
         bind(dialog,R.id.kc_logic_tab_fb_pow,"FBD POW","POW",add);
         bind(dialog,R.id.kc_logic_tab_fb_sin,"FBD SIN","SIN",add);
@@ -56,6 +58,8 @@ public final class OriginalFbdPalette {
         if ("FB_CTU".equals(tag)) return "FBD CRAFT CTU";
         if ("FB_SEL".equals(tag)) return "FBD CRAFT SEL";
         if ("FB_COMPARE".equals(tag)) return "FBD CRAFT COMPARE";
+        if ("FB_CHANGE_I".equals(tag)) return "FBD CRAFT CHANGE I";
+        if ("FB_CHANGE_F".equals(tag)) return "FBD CRAFT CHANGE F";
         return null; // Unverified preview remains disabled, no false affordance.
     }
 
@@ -65,6 +69,8 @@ public final class OriginalFbdPalette {
         if ("FB_CTU".equals(tag)) return "CTU 16 bit";
         if ("FB_SEL".equals(tag)) return "SEL";
         if ("FB_COMPARE".equals(tag)) return ">";
+        if ("FB_CHANGE_I".equals(tag)) return "CH_I";
+        if ("FB_CHANGE_F".equals(tag)) return "CH_F";
         return null;
     }
 
