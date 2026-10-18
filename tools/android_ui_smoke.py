@@ -117,7 +117,7 @@ class Smoke:
                 pass
             time.sleep(0.3)
         (self.output / 'last-ui.xml').write_text(last)
-        raise AssertionError('UI target not found: ' + str(text or class_name))
+        raise AssertionError('UI target not found: ' + str(text or description or class_name))
 
     def tap(self, text=None, class_name=None, description=None):
         node = self.wait_node(text, class_name, description=description)
