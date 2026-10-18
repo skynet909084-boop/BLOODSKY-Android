@@ -17,7 +17,8 @@ import static org.junit.Assert.assertTrue;
 
 public class CraftProjectImporterTest {
     private static String sample() {
-        return "{\"TableNameProject\":{\"name\":\"Sample\",\"countScreen\":2,\"vendorField\":17},"
+        return "{\"TableNameProject\":{\"name\":\"Sample\",\"countScreen\":2,\"vendorField\":17,"
+                + "\"jsTableNameProject_screenBackground\":{\"screen1IsColor\":false,\"screen1PathImage\":\"attach.png\",\"screen1Color\":-1,\"screen2IsColor\":true,\"screen2PathImage\":\"\",\"screen2Color\":123}},"
                 + "\"TableComponent\":["
                 + "{\"componentId\":\"4\",\"text\":\"Value\",\"x\":\"12.5\",\"y\":\"8\",\"width\":\"90\",\"height\":\"30\",\"textSize\":\"18\",\"colorText\":\"#112233\",\"colorBackground\":\"#00000000\",\"jsTableComponent_connectionInfo\":\"legacy-device-binding\",\"jsTableComponent_other\":{\"numScreen\":\"1\",\"digit\":2}},"
                 + "{\"componentId\":\"5\",\"text\":\"Lamp\",\"x\":\"1\",\"y\":\"2\",\"width\":\"30\",\"height\":\"30\",\"textSize\":\"14\",\"colorText\":\"#ffffff\",\"colorBackground\":\"#00000000\",\"jsTableComponent_other\":\"{\\\"numScreen\\\":2,\\\"isImageUserOn\\\":false,\\\"pathOrNameOn\\\":\\\"green\\\"}\"},"
@@ -72,5 +73,8 @@ public class CraftProjectImporterTest {
         JSONObject project = new JSONObject(imported);
         assertTrue(project.has("craftSource"));
         assertEquals(3, media.get("home/attach.png").length);
+        assertEquals("home/attach.png", project.getJSONArray("screens").getJSONObject(0).getString("backgroundImagePath"));
+        assertEquals(-1, project.getJSONArray("screens").getJSONObject(0).getInt("backgroundColor"));
+        assertEquals(123, project.getJSONArray("screens").getJSONObject(1).getInt("backgroundColor"));
     }
 }

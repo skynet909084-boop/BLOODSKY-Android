@@ -13,6 +13,7 @@ import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.GradientDrawable;
 import android.media.AudioManager;
@@ -3637,6 +3638,7 @@ public class MainActivity extends Activity {
 
     public static String importProjectFromZip(InputStream inputStream, Map<String, byte[]> extractedMedia) throws Exception {
         byte[] projectJsonBytes = null;
+        String projectEntryPath = "";
         java.util.Set<String> entryNames = new java.util.HashSet<>();
         long totalUncompressedBytes = 0;
         int entryCount = 0;
@@ -3671,6 +3673,7 @@ public class MainActivity extends Activity {
                         throw new IllegalArgumentException("Multiple project files in archive");
                     }
                     projectJsonBytes = entryBuffer.toByteArray();
+                    projectEntryPath = name;
                 } else if (extractedMedia != null && !entry.isDirectory()) {
                     String mediaPath = lowerName.startsWith("media/")
                             ? name.substring("media/".length()) : name;
@@ -3684,7 +3687,7 @@ public class MainActivity extends Activity {
         String json = new String(projectJsonBytes, StandardCharsets.UTF_8);
         JSONObject parsed = new JSONObject(json);
         if (CraftProjectImporter.isCraftProject(parsed)) {
-            json = CraftProjectImporter.convert(json);
+            json = CraftProjectImporter.convert(json, projectEntryPath, extractedMedia);
         }
         validateImportedProjectStatic(json);
         return json;
@@ -6204,7 +6207,18 @@ public class MainActivity extends Activity {
 
         @Override protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
-            canvas.drawColor(screens.isEmpty() ? Color.rgb(250, 252, 255) : screens.get(currentScreenIndex).backgroundColor);
+            Screen currentScreen = screens.isEmpty() ? null : screens.get(currentScreenIndex);
+            canvas.drawColor(currentScreen == null ? Color.rgb(250, 252, 255) : currentScreen.backgroundColor);
+            if (currentScreen != null) {
+                String backgroundImage = currentScreen.extraFields.optString("backgroundImagePath", "");
+                Bitmap bitmap = backgroundImage.isEmpty() ? null : loadCachedBitmap(backgroundImage);
+                if (bitmap != null) {
+                    paint.setStyle(Paint.Style.FILL);
+                    paint.setFilterBitmap(true);
+                    canvas.drawBitmap(bitmap, null, new Rect(0, 0, getWidth(), getHeight()), paint);
+                    paint.setFilterBitmap(false);
+                }
+            }
             paint.setColor(Color.rgb(228, 234, 241));
             paint.setStrokeWidth(1);
             int grid = dp(20);

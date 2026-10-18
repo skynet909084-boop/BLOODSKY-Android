@@ -92,6 +92,7 @@ public class PortableZipMediaTest {
         }
 
         JSONObject origJson = createTestProjectJson("proj_collision", "Collision Test", file1.getAbsolutePath(), file2.getAbsolutePath(), null);
+        origJson.getJSONArray("screens").getJSONObject(0).put("backgroundImagePath", file1.getAbsolutePath());
 
         ProjectMediaService.MediaResolver resolver = pathOrUri -> {
             File f = new File(pathOrUri);
@@ -129,6 +130,7 @@ public class PortableZipMediaTest {
         assertNotEquals(path0, path1);
         assertTrue(path0.startsWith("media/"));
         assertTrue(path1.startsWith("media/"));
+        assertEquals(path0, importedScreen.getString("backgroundImagePath"));
 
         String relKey0 = path0.substring("media/".length());
         String relKey1 = path1.substring("media/".length());

@@ -133,6 +133,9 @@ public class ProjectMediaService {
                 for (int s = 0; s < screens.length(); s++) {
                     JSONObject screenObj = screens.optJSONObject(s);
                     if (screenObj == null) continue;
+                    String backgroundPath = screenObj.optString("backgroundImagePath", "");
+                    String rewrittenBackground = processMediaReference(backgroundPath, resolver, archiveMedia, mediaPathMap);
+                    if (rewrittenBackground != null) screenObj.put("backgroundImagePath", rewrittenBackground);
                     JSONArray widgets = screenObj.optJSONArray("widgets");
                     if (widgets == null) continue;
                     for (int w = 0; w < widgets.length(); w++) {

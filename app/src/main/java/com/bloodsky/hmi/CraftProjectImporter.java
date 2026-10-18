@@ -5,6 +5,8 @@ import android.graphics.Color;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.util.Map;
+
 /** Converts the stable Craft project tables into BLOODSKY's editable screen model. */
 public final class CraftProjectImporter {
     private CraftProjectImporter() {}
@@ -15,6 +17,11 @@ public final class CraftProjectImporter {
     }
 
     public static String convert(String sourceJson) throws Exception {
+        return convert(sourceJson, "", null);
+    }
+
+    public static String convert(String sourceJson, String projectEntryPath,
+                                  Map<String, byte[]> availableMedia) throws Exception {
         JSONObject source = new JSONObject(sourceJson);
         if (!isCraftProject(source)) throw new IllegalArgumentException("Не найден формат проекта Craft");
         JSONObject craftProject = source.getJSONObject("TableNameProject");
@@ -30,12 +37,22 @@ public final class CraftProjectImporter {
         converted.put("craftImportVersion", 1);
 
         JSONArray screens = new JSONArray();
+        JSONObject backgrounds = objectValue(craftProject.opt("jsTableNameProject_screenBackground"));
+        String archiveParent = archiveParent(projectEntryPath);
         for (int i = 0; i < screenCount; i++) {
             JSONObject screen = new JSONObject();
             screen.put("name", "Экран " + (i + 1));
             screen.put("widgets", new JSONArray());
             screen.put("connections", new JSONArray());
             screen.put("craftScreenNumber", i + 1);
+            String prefix = "screen" + (i + 1);
+            screen.put("backgroundColor", integer(backgrounds.opt(prefix + "Color"), Color.rgb(250, 252, 255)));
+            String image = backgrounds.optString(prefix + "PathImage", "").trim();
+            if (!backgrounds.optBoolean(prefix + "IsColor", true) && !image.isEmpty() && !"0".equals(image)) {
+                String relativeImage = archiveRelativeImage(archiveParent, image);
+                if (relativeImage != null && availableMedia != null && availableMedia.containsKey(relativeImage))
+                    screen.put("backgroundImagePath", relativeImage);
+            }
             screens.put(screen);
         }
 
@@ -126,6 +143,32 @@ public final class CraftProjectImporter {
             try { return (int) Long.decode(text).longValue(); }
             catch (Exception alsoIgnored) { return fallback; }
         }
+    }
+
+    private static int integer(Object value, int fallback) {
+        if (value instanceof Number) return ((Number) value).intValue();
+        try { return Integer.parseInt(String.valueOf(value)); }
+        catch (Exception ignored) { return fallback; }
+    }
+
+    private static String archiveParent(String projectEntryPath) {
+        if (projectEntryPath == null) return "";
+        String normalized = projectEntryPath.replace('\\', '/');
+        int slash = normalized.lastIndexOf('/');
+        return slash < 0 ? "" : normalized.substring(0, slash);
+    }
+
+    private static String archiveRelativeImage(String parent, String image) {
+        String normalized = image.replace('\\', '/');
+        if (normalized.startsWith("/") || normalized.indexOf(':') >= 0) return null;
+        String candidate = parent.isEmpty() ? normalized : parent + "/" + normalized;
+        StringBuilder safe = new StringBuilder();
+        for (String part : candidate.split("/")) {
+            if (part.isEmpty() || ".".equals(part) || "..".equals(part)) return null;
+            if (safe.length() > 0) safe.append('/');
+            safe.append(part);
+        }
+        return safe.length() == 0 ? null : safe.toString();
     }
 
     private static String boundedString(String value, int max) {
