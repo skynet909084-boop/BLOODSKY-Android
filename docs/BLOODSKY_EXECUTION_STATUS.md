@@ -1,5 +1,12 @@
 # BLOODSKY execution status — 2026-10-17
 
+## Craft register gateway ID 19 — 2026-10-18
+
+- Added an explicit settings form for source, destination, count, mode, trigger endpoint and trigger bit. Imported device-index bindings are preserved but do not run; gateway enable is opt-in and requires replacing them with TCP endpoints.
+- Added direct Modbus TCP execution for continuous transfer, rising-edge trigger, and single-register source-change mode. Reads support FC03/FC04; writes use validated FC16 holding-register batches. All network requests run on the existing background Modbus executor and are guarded by project/operator lifecycle tokens.
+- `CraftRegisterGateway` validates address/range/count/mode constraints and owns event state. Unit tests cover 1–99 counts, FC04 source normalization, holding-only target, low→high edge behavior, source-change behavior, disabled import and no destination writes after a failed read.
+- Runtime still does not implement Craft system-register endpoints, RTU/Bluetooth transports, or bit gateway ID 22. CI and simulator/hardware acceptance for this slice are pending; no physical parity is claimed.
+
 ## Full manual/decompilation audit refresh — 2026-10-18
 
 - `KASCADA_FULL_PARITY_AUDIT_20261018.md` now cross-checks all manual chapters 2–12, the decoded component registry, the pinned decompilation, and the three supplied `.pro`/ZIP samples. It separates implemented paths from tested compatibility and device/visual proof.
