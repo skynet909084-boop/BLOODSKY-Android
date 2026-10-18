@@ -7693,10 +7693,17 @@ public class MainActivity extends Activity {
                     String value = liveValues.get(i);
                     if (value == null || value.startsWith("ERR") || value.startsWith("CFG")) value = w.text;
                     if (value == null) value = "0";
+                    android.graphics.Typeface previousTypeface = paint.getTypeface();
+                    if (!w.extraFields.optBoolean("craftNumericSystemFont", false)) {
+                        try { paint.setTypeface(android.graphics.Typeface.createFromAsset(
+                                MainActivity.this.getAssets(), "fonts/sf_digital_readout_heavy.ttf")); }
+                        catch (Exception missingFont) { /* Keep the platform fallback if the asset is unavailable. */ }
+                    }
                     paint.setColor(w.textColor); paint.setTextSize(dp(w.textSizeSp));
                     paint.setTextAlign(Paint.Align.CENTER);
                     canvas.drawText(value, w.x + w.w / 2f, w.y + w.h / 2f + dp(5), paint);
                     paint.setTextAlign(Paint.Align.LEFT);
+                    paint.setTypeface(previousTypeface);
                 } else if ("Список Craft".equals(w.type)) {
                     int mask = w.extraFields.optInt("craftListInitialMask", 0) & 0xffff;
                     String liveMask = liveValues.get(i);
