@@ -66,3 +66,12 @@ Design an additive SQLite-backed catalog migration that imports existing SharedP
 - Full original APK parity, original project database compatibility, physical-device USB/Bluetooth, and signed public release remain open. Passing this batch is not completion of the entire clone.
 
 - PR65 screenshots reviewed: compact play/stop/navigation/clock/calculator row, runtime without grid/palette/selection strip, operational button blue-to-green, and restored editor tools. All pre-existing media/calculator/geometry/clipboard/catalog UI flows still pass. README documents the new toolbar and Back behavior.
+
+
+### Uploaded project fixture review — 2026-10-18
+
+- Reviewed all three supplied `.pro` projects and ZIP exports. `home.zip` contains `home/home.pro` plus its background image (24 components, screen 1). `gitH.zip` contains `gitH/gitH.pro` plus the screen-1 background image (65 components across screens 1–3; five FBD nodes). Neither example uses user-selected ON/OFF indicator images.
+- `пож.pro` is a 124-component Craft JSON project. It declares 16 screens but has 103 components on screen 20 and 21 on screen 1. `CraftProjectImporter.convert` currently rejects any component whose screen number exceeds `countScreen`, so this real fixture cannot import until screen-count reconciliation is implemented and tested. Preserve the original declared count in `craftSource` while sizing BLOODSKY screens safely (maximum 128).
+- The paired 112-byte `пож.zip` contains only the empty `пож/` directory—no `.pro` JSON or media. `пож.pro` must be imported as standalone JSON or repackaged with its project assets before ZIP import can be verified.
+- The fire project also contains 5 Craft component-ID 9 rows and 11 ID 19 rows. Neither has a verified BLOODSKY component mapping; they must remain visibly flagged/preserved until their source behavior is identified. Existing imports preserve unknown records, but should not imply those controls execute.
+- This is a fixture review, not a new test run. Next import batch: screen-count reconciliation plus regressions using sanitized copies of all three samples, then verify unsupported-ID reporting and attached-background handling.
