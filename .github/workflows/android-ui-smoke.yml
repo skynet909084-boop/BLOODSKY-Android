@@ -52,8 +52,8 @@ jobs:
     if: github.event_name != 'pull_request' || github.base_ref == 'main' || github.base_ref == 'feat/craft-project-json-import-20261018' || github.event.action != 'synchronize'
     runs-on: ubuntu-latest
     timeout-minutes: 35
-    # Feature→feature PRs get fast FBD verification; PR→main, push→main
-    # and manually dispatched default runs retain every legacy UI scenario.
+    # Other feature→feature PRs use fast FBD verification; integration/main PRs,
+    # push→main and manually dispatched default runs use the full UI suite.
     env:
       BLOODSKY_UI_PROFILE: ${{ github.event_name == 'pull_request' && github.base_ref != 'main' && github.base_ref != 'feat/craft-project-json-import-20261018' && 'quick' || (github.event_name == 'workflow_dispatch' && inputs.ui_profile == 'quick' && 'quick' || 'full') }}
     steps:
