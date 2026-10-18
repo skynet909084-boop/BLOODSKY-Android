@@ -145,7 +145,12 @@ public final class FbdSourceCanvasSkin {
             String[] outputPins = MainActivity.knownFbdPins(w.type, true);
             for (String port : outputPins) {
                 float yy = y0 + w.h * MainActivity.fbdTerminalFraction(w.type, port, true);
-                canvas.drawLine(right, yy, x1, yy, brush);
+                if ("Q".equals(port) && MainActivity.isFbdBlockOutputInverted(w)) {
+                    float radius = 3.5f * density;
+                    float cx = right + radius;
+                    canvas.drawLine(cx + radius, yy, x1, yy, brush);
+                    canvas.drawCircle(cx, yy, radius, brush);
+                } else canvas.drawLine(right, yy, x1, yy, brush);
             }
 
             brush.setStyle(Paint.Style.FILL);

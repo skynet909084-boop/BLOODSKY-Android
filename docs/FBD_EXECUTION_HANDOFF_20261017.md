@@ -98,6 +98,12 @@ Active combined draft is [PR #139](https://github.com/skynet909084-boop/BLOODSKY
 
 - Combined Craft math and trigger-mode work with original preview activation for CH_I, CH_F and source-compatible Integer MOVE. The three blocks have named typed terminals; MOVE is kept separate from legacy generic `FBD MOVE` and fails closed on missing/invalid inputs.
 - Local Python suite: 135 passed. Smoke driver byte-compiles; `git diff --check` passes. Workspace has no Gradle wrapper/installation, so Android validation is through exact-head Actions.
+
+## Craft Boolean gate output inversion — candidate batch
+
+- Traced the original `FB_AND`, `FB_OR`, and `FB_XOR` getters and base `invertOut` field: the inverted value is a block output property, distinct from BLOODSKY's existing inverted-wire metadata. Original draw methods render an output bubble when the setting is active.
+- Added a long-press `Инвертировать выход BOOL` action only for those three source-backed Boolean gates. The toggle persists via the existing widget metadata and restores the prior value if synchronous save fails. The editor draws the output bubble; runtime applies inversion only when both inputs are wired, so an unconnected gate still fails closed.
+- Added JVM coverage for gate evaluation, missing-input behavior and JSON round-trip with unknown metadata; quick emulator smoke checks the menu action and persisted flag. These changes are local on `fix/fbd-quick-smoke-native-timer-20261018` and are **not yet accepted or pushed**; exact-head Android validation is pending.
 - On `f8f1409e...`, APK/JUnit + source audit run #599 passed; API30 smoke #264 exposed a list-scroll skip. Run #600 exposed the timer test's label fixture, fixed in `9da8daf2...`. Run #601 then found two skin tests constructing zero-sized widgets and a missing MX/ARRAY canvas title; tests and drawing are fixed in `52decaf2...`. Exact-head APK/JUnit #602 and UI #267 are running; superseded UI #266 is also still active.
 - The distinct source-native `FBD CRAFT TIMER` covers original FB_TIMER modes and typed IN/PT/Q contacts; source TP's false-initialized behavior remains documented. See `docs/FBD_CRAFT_NATIVE_TIMER_20261018.md`.
 - Source-native MX/ARRAY blocks now use a bounded, transient 2000-slot register bank, original preview bindings, typed contacts, and rising-edge ARRAY writes. Their canvas headers now show their own labels. See `docs/FBD_CRAFT_MX_ARRAY_20261018.md`.

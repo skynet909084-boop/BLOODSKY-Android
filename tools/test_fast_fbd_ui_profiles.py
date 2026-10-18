@@ -12,6 +12,8 @@ class FastFbdUiGateTests(unittest.TestCase):
         ast.parse(script)
         self.assertIn("Добавить: FBD CRAFT TIMER", script)
         self.assertIn("Свойства: FBD CRAFT TIMER", script)
+        self.assertIn("Инвертировать выход BOOL", script)
+        self.assertIn("fast-fbd-craft-output-inverted", script)
         self.assertNotIn("Добавить: FBD Таймер", script)
         for evidence in (
                 "saved_connections()", "Время таймера, мс", "Соединить с…",

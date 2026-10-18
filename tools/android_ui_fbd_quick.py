@@ -69,12 +69,22 @@ class FastFbdSmoke(Smoke):
         sx, sy = round(left + source['x'] + 9), round(top + source['y'] + 9)
         adb('shell', 'input', 'swipe', str(sx), str(sy), str(sx), str(sy), '800')
         for label in ('Соединить с…', 'Инвертировать связь BOOL…',
-                      'Отсоединить выход', 'Свойства', 'Другие действия'):
+                      'Инвертировать выход BOOL', 'Отсоединить выход',
+                      'Свойства', 'Другие действия'):
             self.wait_node(label)
         self.capture('fast-fbd-longpress-menu')
         self.tap('Отмена')
         if current_widgets() != initial or self.saved_connections():
             raise AssertionError('Cancelled FBD context menu changed the graph')
+
+        # Original FB_AND's invertOut is a block property, separate from wire inversion.
+        adb('shell', 'input', 'swipe', str(sx), str(sy), str(sx), str(sy), '800')
+        self.tap('Инвертировать выход BOOL')
+        initial = current_widgets()
+        if not initial[0].get('invertOut'):
+            raise AssertionError('Craft Boolean block output inversion did not persist')
+        source, target = initial
+        self.capture('fast-fbd-craft-output-inverted')
 
         # Save an exact, non-round 2345ms timer preset.
         tx = round(left + target['x'] + target['w'] / 2)

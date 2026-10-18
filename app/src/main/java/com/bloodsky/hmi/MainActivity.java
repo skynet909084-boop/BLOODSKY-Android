@@ -1438,6 +1438,8 @@ public class MainActivity extends Activity {
         final java.util.List<String> labels = new ArrayList<>();
         labels.add("Соединить с…");
         if (invertible) labels.add("Инвертировать связь BOOL…");
+        if (supportsFbdBlockOutputInversion(widget.type))
+            labels.add("Инвертировать выход BOOL");
         labels.add("Отсоединить выход");
         if (timer) labels.add("Режим / единицы времени");
         labels.add("Свойства");
@@ -1456,6 +1458,20 @@ public class MainActivity extends Activity {
                         Toast.makeText(this, "Выбери целевой блок FBD", Toast.LENGTH_LONG).show();
                     } else if ("Инвертировать связь BOOL…".equals(label)) {
                         showFbdInversionDialog(blockIndex);
+                    } else if ("Инвертировать выход BOOL".equals(label)) {
+                        try {
+                            Object previous = widget.extraFields.opt("invertOut");
+                            boolean existed = widget.extraFields.has("invertOut");
+                            if (!toggleFbdBlockOutputInversion(widget)) return;
+                            if (!persistProjectNow(true)) {
+                                if (existed) widget.extraFields.put("invertOut", previous);
+                                else widget.extraFields.remove("invertOut");
+                                Toast.makeText(this, "Не удалось сохранить инверсию выхода", Toast.LENGTH_LONG).show();
+                            }
+                            if (editor != null) editor.invalidate();
+                        } catch (Exception error) {
+                            Toast.makeText(this, "Не удалось сохранить инверсию выхода", Toast.LENGTH_LONG).show();
+                        }
                     } else if ("Отсоединить выход".equals(label)) {
                         showFbdDisconnectDialog(blockIndex);
                     } else if ("Режим / единицы времени".equals(label)
@@ -3195,9 +3211,60 @@ public class MainActivity extends Activity {
         if (index < 0 || index >= widgetsList.size()) return false;
         if (cacheValid[index]) return cacheValues[index];
         boolean result = evaluateFbdBlockUncached(widgetsList, connectionsList, index, visiting, cacheValid, cacheValues, cacheNumeric);
+        if (isFbdBlockOutputInverted(widgetsList.get(index))
+                && hasCompleteCraftGateInputs(widgetsList, connectionsList, index)) result = !result;
         cacheValues[index] = result;
         cacheValid[index] = true;
         return result;
+    }
+
+    /** Craft's inherited `invertOut` is source-backed for the original Boolean gates. */
+    public static boolean supportsFbdBlockOutputInversion(String type) {
+        if (type == null) return false;
+        String canonical = canonicalFbdBlockType(type);
+        return "FBD AND".equals(canonical) || "FBD OR".equals(canonical)
+                || "FBD XOR".equals(canonical);
+    }
+
+    private static boolean hasCompleteCraftGateInputs(List<Widget> widgets,
+                                                       List<FbdConnection> connections,
+                                                       int targetIndex) {
+        if (connections == null) return false;
+        java.util.Set<String> named = new java.util.HashSet<>();
+        int legacyCount = 0;
+        boolean sawNamed = false, sawLegacy = false;
+        for (FbdConnection edge : connections) {
+            if (edge == null || edge.target != targetIndex) continue;
+            if (edge.source < 0 || edge.source >= widgets.size() || edge.extraFields == null)
+                return false;
+            String sourcePin = canonicalFbdPinName(edge.extraFields.optString("sourcePin", ""));
+            String[] sourcePins = knownFbdPins(widgets.get(edge.source).type, true);
+            if (sourcePin.isEmpty()) {
+                if (sourcePins.length != 1 || !"BOOL".equals(knownFbdPinType(
+                        widgets.get(edge.source).type, sourcePins[0], true))) return false;
+            } else if (!"BOOL".equals(knownFbdPinType(
+                    widgets.get(edge.source).type, sourcePin, true)) return false;
+            String targetPin = canonicalFbdPinName(edge.extraFields.optString("targetPin", ""));
+            if (targetPin.isEmpty()) { sawLegacy = true; legacyCount++; }
+            else { sawNamed = true; named.add(targetPin); }
+        }
+        if (sawNamed && sawLegacy) return false;
+        return sawNamed ? named.size() == 2 && named.contains("IN1") && named.contains("IN2")
+                : legacyCount == 2;
+    }
+
+    public static boolean isFbdBlockOutputInverted(Widget widget) {
+        return widget != null && widget.extraFields != null
+                && supportsFbdBlockOutputInversion(widget.type)
+                && widget.extraFields.optBoolean("invertOut", false);
+    }
+
+    /** Toggle only the known Craft-compatible field, retaining every other JSON field. */
+    public static boolean toggleFbdBlockOutputInversion(Widget widget) throws Exception {
+        if (widget == null || !supportsFbdBlockOutputInversion(widget.type)) return false;
+        if (widget.extraFields == null) widget.extraFields = new JSONObject();
+        widget.extraFields.put("invertOut", !isFbdBlockOutputInverted(widget));
+        return true;
     }
 
     public static double evaluateFbdBlockNumeric(List<Widget> widgetsList, List<FbdConnection> connectionsList, int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
