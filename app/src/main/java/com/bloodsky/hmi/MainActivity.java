@@ -2154,7 +2154,7 @@ public class MainActivity extends Activity {
             labels.add("Назначить выход макроса…");
         FbdCraftMacroDefinition nestedDefinition = macroDefinition(widget);
         if (nestedMacroEdit == null && nestedDefinition != null
-                && nestedDefinition.toJson().optJSONObject("bloodskyGraph") != null)
+                && hasCraftMacroGraph(nestedDefinition))
             labels.add("Редактировать вложенный граф");
         if (timer) labels.add("Режим / единицы времени");
         labels.add("Свойства");
@@ -4444,6 +4444,12 @@ public class MainActivity extends Activity {
             widget.craftMacroDefinitionSourceCache = json;
             return null;
         }
+    }
+
+    private static boolean hasCraftMacroGraph(FbdCraftMacroDefinition definition) {
+        if (definition == null) return false;
+        try { return definition.toJson().optJSONObject("bloodskyGraph") != null; }
+        catch (Exception invalid) { return false; }
     }
 
     private static boolean isDynamicMacroWidget(Widget widget) {
