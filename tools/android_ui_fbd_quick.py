@@ -129,7 +129,8 @@ class FastFbdSmoke(Smoke):
             self.tap(description='Функциональные блоки и другие элементы')
             self.tap(description='Другие элементы BLOODSKY')
             item_text = label + '    ›'
-            for attempt in range(24):
+            direction = None
+            for attempt in range(80):
                 xml = self.dump()
                 nodes = matching_nodes(xml, text=item_text)
                 scrolls = [n for n in ET.fromstring(xml).iter('node')
@@ -140,17 +141,29 @@ class FastFbdSmoke(Smoke):
                                    for child in n.iter('node'))]
                 if len(scrolls) != 1:
                     raise AssertionError('Expected one scrolling extended FBD item list, got ' + str(len(scrolls)))
+                rows = [n.get('text', '') for n in scrolls[0].iter('node')
+                        if n.get('class') == 'android.widget.TextView' and '    ›' in n.get('text', '')]
                 left_s, top_s, right_s, bottom_s = map(
                     int, re.findall(r'\d+', scrolls[0].get('bounds')))
+                # The picker can reopen at either end. Turn around at the
+                # actual first/last row so a fast fling cannot skip Craft T.
+                if direction is None:
+                    direction = -1 if rows and rows[-1].startswith('FBD — Craft MOVE') else 1
+                if rows and rows[-1].startswith('FBD — Craft MOVE'):
+                    direction = -1
+                elif rows and rows[0].startswith('Текст / надпись'):
+                    direction = 1
                 if nodes:
                     l, t, r, b = map(int, re.findall(r'\d+', nodes[0].get('bounds')))
                     if t >= top_s and b <= bottom_s and b > t:
                         self.tap(text=item_text)
                         self.wait_node(description='Редактор экрана')
                         return
-                adb('shell', 'input', 'swipe', str((left_s + right_s)//2),
-                    str(bottom_s - 110), str((left_s + right_s)//2),
-                    str(top_s + 60), '240')
+                x_s = (left_s + right_s)//2
+                y1, y2 = ((bottom_s - 180, bottom_s - 480) if direction == 1
+                          else (top_s + 180, top_s + 480))
+                adb('shell', 'input', 'swipe', str(x_s), str(y1), str(x_s), str(y2), '260')
+                time.sleep(0.04)
             raise AssertionError('New Craft FBD block not reachable: ' + label)
 
         add_native_from_extended('FBD — Craft CTU 16 бит (+, −, R)')
@@ -184,6 +197,28 @@ class FastFbdSmoke(Smoke):
         if native[4]['type'] != 'FBD CRAFT BLINK' or native[4]['timerPresetMs'] != 3456:
             raise AssertionError('Craft BLINK type or exact 3456ms preset was lost')
         self.capture('fast-fbd-native-blink-3456ms')
+
+        add_native_from_extended('FBD — Craft TIMER (TON / TOF / TP / BLINK)')
+        native = current_widgets()
+        if len(native) != 6 or native[5]['type'] != 'FBD CRAFT TIMER':
+            raise AssertionError('Original Craft FB_TIMER must have its own versioned type: ' + repr(native))
+        if native[5].get('text') != 'TON':
+            raise AssertionError('Native Craft timer must default to source mode TON')
+        canvas = self.wait_node(description='Редактор экрана')
+        c_left, c_top, _, _ = map(int, re.findall(r'\d+', canvas.get('bounds')))
+        tx = round(c_left + native[5]['x'] + native[5]['w'] / 2)
+        ty = round(c_top + native[5]['y'] + native[5]['h'] / 2)
+        adb('shell', 'input', 'tap', str(tx), str(ty))
+        self.wait_node('Свойства: FBD CRAFT TIMER')
+        self.tap(description='Режим таймера FBD')
+        self.tap('TOF')
+        self.tap('Применить')
+        self.wait_node(description='Редактор экрана')
+        native = current_widgets()
+        if (native[5]['type'] != 'FBD CRAFT TIMER'
+                or native[5].get('extraFields', {}).get('craftTimerMode') != 'TOF'):
+            raise AssertionError('Craft source mode did not persist independently of legacy TOF: ' + repr(native[5]))
+        self.capture('fast-fbd-native-craft-timer-tof')
 
         adb('shell', 'am', 'force-stop', PACKAGE)
         adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')

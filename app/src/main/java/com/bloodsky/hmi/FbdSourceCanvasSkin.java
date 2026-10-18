@@ -20,7 +20,7 @@ public final class FbdSourceCanvasSkin {
                 || "FBD TOF".equals(type) || "FBD TP".equals(type)
                 || "FBD Сравнение".equals(type)
                 || "FBD CRAFT CTU".equals(type) || "FBD CRAFT T".equals(type)
-                || "FBD CRAFT BLINK".equals(type)
+                || "FBD CRAFT TIMER".equals(type) || "FBD CRAFT BLINK".equals(type)
                 || "FBD RS".equals(type) || "FBD CRAFT SEL".equals(type)
                 || "FBD CRAFT COMPARE".equals(type)
                 || "FBD CRAFT COMPARE FLOAT".equals(type)
@@ -40,6 +40,7 @@ public final class FbdSourceCanvasSkin {
                 : "FBD Сравнение".equals(w.type) ? "Сравнение"
                 : "FBD CRAFT CTU".equals(w.type) ? "CTU 16 bit"
                 : "FBD CRAFT T".equals(w.type) ? "T"
+                : "FBD CRAFT TIMER".equals(w.type) ? w.extraFields.optString("craftTimerMode", "TON")
                 : "FBD RS".equals(w.type) ? "RS"
                 : "FBD CRAFT BLINK".equals(w.type) ? "BLINK"
                 : "FBD CRAFT SEL".equals(w.type) ? "SEL"
@@ -71,7 +72,8 @@ public final class FbdSourceCanvasSkin {
 
     private static boolean isTimer(String type) {
         return "FBD Таймер".equals(type) || "FBD TOF".equals(type)
-                || "FBD TP".equals(type) || "FBD CRAFT BLINK".equals(type);
+                || "FBD TP".equals(type) || "FBD CRAFT BLINK".equals(type)
+                || "FBD CRAFT TIMER".equals(type);
     }
 
     /** Decompiled original FB_CTU=draw9 and FB_RS/FB_TRIGGER=draw8. */
@@ -134,7 +136,8 @@ public final class FbdSourceCanvasSkin {
                     : "FBD XOR".equals(w.type) ? "XOR"
                     : "FBD Сравнение".equals(w.type) ? w.compareOperator
                     : "FBD CRAFT CTU".equals(w.type) ? "CTU"
-                    : "FBD CRAFT T".equals(w.type) ? "T"
+                : "FBD CRAFT T".equals(w.type) ? "T"
+                : "FBD CRAFT TIMER".equals(w.type) ? w.extraFields.optString("craftTimerMode", "TON")
                     : "FBD RS".equals(w.type) ? "RS"
                     : "FBD CRAFT BLINK".equals(w.type) ? "BLINK"
                     : "FBD CRAFT SEL".equals(w.type) ? "SEL"

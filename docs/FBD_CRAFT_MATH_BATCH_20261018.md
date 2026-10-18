@@ -16,6 +16,6 @@ The three blocks are available from the original Craft palette and extended FBD 
 
 ## Verification
 
-`FbdCraftMathTest` covers integer wrap and divide-by-zero, Float32/IEEE behavior, all NaN comparison modes, source tag mappings, typed pins, source canvas geometry, named graph evaluation, and mode persistence. The exact-head CI run must pass JUnit, debug APK, source/palette audit, and quick Android UI smoke before acceptance. The local container has no `gradle` executable; local Python suite passed 135 tests before this final batch integration, and must be rerun after the final edits.
+`FbdCraftMathTest` covers integer wrap and divide-by-zero, Float32/IEEE behavior, all NaN comparison modes, source tag mappings, typed pins, source canvas geometry, named graph evaluation, and mode persistence. The final local Python suite passed 135 tests; `git diff --check` and smoke-script byte compilation passed. Local Gradle is unavailable. Exact-head APK/JUnit and quick Android UI smoke are running for combined PR #139 head `f8f1409e1614005ed2feba18a19d2f1d4c6af4ba`.
 
 This batch does not implement `FB_MX`, `FB_ARRAY`, or `FB_MACRO`: MX/ARRAY read or mutate Craft's register store, and MACRO needs a persisted nested graph model and lifecycle. Those remain disabled in the original palette until their transport and storage models are implemented and tested. This does not claim full FBD completion or pixel-perfect comparison against Craft.

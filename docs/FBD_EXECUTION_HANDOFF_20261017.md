@@ -91,3 +91,13 @@ Combined head branch: `feat/fbd-original-pin-geometry-constant-input-20261017`, 
 - #101–#105 have green exact-head APK/JUnit builds at this checkpoint, but UI smoke must finish before acceptance. Use GitHub workflows, not agent task comments, as proof.
 
 **Efficient integration:** After #105 emulator passes and this preparatory branch is reviewed, open ONE consolidated draft PR from this branch into `feat/fbd-75-pin-semantics`. This carries all app work #101–#105 + the two new improvements. Run full exact-head APK/JUnit + API30 smoke + source audit against #76's updated #100 baseline. Merge into the FBD feature branch if all pass; close stacked superseded drafts with explicit references. Do not merge to stable main or declare full original Craft parity until the unresolved source semantics/hardware/screenshot gates are satisfied.
+
+## Current continuation — 2026-10-18
+
+Active combined draft is [PR #139](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/139), branch `feat/fbd-complete-source-batch-20261018`, targeting `feat/fbd-75-pin-semantics`; stable `main` remains untouched. Latest source head: `f8f1409e1614005ed2feba18a19d2f1d4c6af4ba`.
+
+- Combined Craft math and trigger-mode work with original preview activation for CH_I, CH_F and source-compatible Integer MOVE. The three blocks have named typed terminals; MOVE is kept separate from legacy generic `FBD MOVE` and fails closed on missing/invalid inputs.
+- Local Python suite: 135 passed. Smoke driver byte-compiles; `git diff --check` passes. Workspace has no Gradle installation, so Android validation is through exact-head Actions.
+- First run on truncated remote `MainActivity.java` failed archive/source checks; the uploaded blob was compared against the local Git object and repaired. On the repaired head `f8f1409e1614005ed2feba18a19d2f1d4c6af4ba`, APK/JUnit + source audit run #599 passed; API30 UI smoke #264 failed because the long-list driver skipped the adjacent Craft T entry. The driver now reverses at list boundaries and will be rerun with this timer batch.
+- The distinct source-native `FBD CRAFT TIMER` now covers original FB_TIMER modes and named IN/PT/Q contacts; source TP's observed false-initialized behavior remains documented. See `docs/FBD_CRAFT_NATIVE_TIMER_20261018.md`.
+- Remaining true FBD blockers: MX/ARRAY access Craft's shared register store; MACRO embeds executable child components, typed input/output metadata and unique namespaces; broad native palette and same-density drawing/menu parity remains incomplete. Continue from source evidence rather than enabling lookalike previews.
