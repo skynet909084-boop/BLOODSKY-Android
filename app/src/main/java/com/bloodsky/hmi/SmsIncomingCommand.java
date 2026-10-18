@@ -8,12 +8,15 @@ public final class SmsIncomingCommand {
         public final Mode mode;
         /** 16-bit Modbus representation; negative input is encoded as two's complement. */
         public final int registerValue;
+        /** Numeric mode may update one to sixteen contiguous registers. */
+        public final int[] registerValues;
         /** FC22 masks for bit mode; other register bits are preserved atomically. */
         public final int writeAndMask;
         public final int writeOrMask;
-        private Result(Mode mode, int registerValue, int writeAndMask, int writeOrMask) {
+        private Result(Mode mode, int[] registerValues, int writeAndMask, int writeOrMask) {
             this.mode = mode;
-            this.registerValue = registerValue;
+            this.registerValues = registerValues.clone();
+            this.registerValue = registerValues.length == 0 ? 0 : registerValues[0];
             this.writeAndMask = writeAndMask;
             this.writeOrMask = writeOrMask;
         }
@@ -35,16 +38,23 @@ public final class SmsIncomingCommand {
         if (mode == Mode.SET_BIT) {
             if (!exactCommand.equals(body) || bitIndex < 0 || bitIndex > 15) return null;
             int mask = 1 << bitIndex;
-            return new Result(mode, 1, 0xffff ^ mask, mask);
+            return new Result(mode, new int[]{1}, 0xffff ^ mask, mask);
         }
         String prefix = exactCommand + " ";
         if (!body.startsWith(prefix)) return null;
-        String number = body.substring(prefix.length());
-        if (!number.matches("-?(0|[1-9][0-9]{0,4})")) return null;
+        String numericPayload = body.substring(prefix.length()).trim();
+        if (numericPayload.isEmpty()) return null;
+        String[] tokens = numericPayload.split("\\s+");
+        if (tokens.length > 16) return null;
+        int[] values = new int[tokens.length];
         try {
-            int signed = Integer.parseInt(number);
-            if (signed < -32768 || signed > 32767) return null;
-            return new Result(mode, signed & 0xffff, 0xffff, signed & 0xffff);
+            for (int i = 0; i < tokens.length; i++) {
+                if (!tokens[i].matches("-?(0|[1-9][0-9]{0,4})")) return null;
+                int signed = Integer.parseInt(tokens[i]);
+                if (signed < -32768 || signed > 32767) return null;
+                values[i] = signed & 0xffff;
+            }
+            return new Result(mode, values, 0xffff, values[0]);
         } catch (NumberFormatException invalid) {
             return null;
         }
