@@ -304,6 +304,26 @@ public class CraftProjectImporterTest {
         MainActivity.validateImportedProjectStatic(project.toString());
     }
 
+    @Test public void importsMomentaryButtonBitButDisablesLegacyDeviceLink() throws Exception {
+        String json = new JSONObject().put("TableNameProject", new JSONObject().put("name", "Momentary").put("countScreen", 1))
+                .put("TableConnections", new org.json.JSONArray())
+                .put("TableComponent", new org.json.JSONArray().put(new JSONObject()
+                        .put("componentId", 6).put("text", "Пуск")
+                        .put("jsTableComponent_connectionInfo", new JSONObject()
+                                .put("posDeviceNetworkInList", 2).put("addressRegister", 4).put("addressBit", 7))
+                        .put("jsTableComponent_other", new JSONObject().put("numScreen", 1).put("mode", 0)
+                                .put("visibleInWork", false))))
+                .toString();
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(json));
+        JSONObject button = project.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets").getJSONObject(0);
+        assertEquals("Кнопка", button.getString("type"));
+        assertEquals("", button.getString("connectionInfo"));
+        assertEquals(7, button.getInt("craftButtonBit"));
+        assertFalse(button.getBoolean("craftButtonBitEnabled"));
+        assertFalse(button.getBoolean("craftButtonVisibleInWork"));
+        MainActivity.validateImportedProjectStatic(project.toString());
+    }
+
     @Test public void importsConstantButtonValueButDisablesLegacyDeviceLink() throws Exception {
         String json = new JSONObject().put("TableNameProject", new JSONObject().put("name", "Constant").put("countScreen", 1))
                 .put("TableConnections", new org.json.JSONArray())
