@@ -90,6 +90,20 @@ class ArchiveInspectorTests(unittest.TestCase):
         self.assertTrue(any(issue.severity == "error" and "Missing Craft project table TableConnections" in issue.message
                             for issue in report.issues))
 
+    def test_recognizes_pro_json_member(self):
+        payload = json.dumps({
+            "TableNameProject": {"name": "Demo", "countScreen": 1},
+            "TableComponent": [
+                {"componentId": "4", "other": {"numScreen": 1}}
+            ],
+            "TableConnections": []
+        })
+        path = self.make_archive([("home/home.pro", payload), ("home/image.png", b"png")])
+        report = inspect_archive(path)
+        self.assertEqual(report.json_entries, 1)
+        self.assertEqual(report.project_json_entries, ["home/home.pro"])
+        self.assertFalse(any(issue.severity == "error" for issue in report.issues))
+
     def test_reports_invalid_json(self):
         path = self.make_archive([("broken.json", "{not json")])
         report = inspect_archive(path)
