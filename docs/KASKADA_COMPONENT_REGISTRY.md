@@ -1,6 +1,6 @@
 # Kaskada Craft — component registry and editor operations
 
-This note extends the first-pass editor/widget map using verified code paths in `mbCanvas.java`. Component tags below are the integer values used by the deletion dispatcher; they are stable clues for mapping saved widget types to runtime classes, but still need to be cross-checked against project serialization and the component factory.
+This note extends the first-pass editor/widget map using verified code paths in `mbCanvas.java`. Component tags below are the integer values used by the deletion dispatcher; they are not a full registry. The separate factory-to-import map, including source keys read for every ID, is in [CRAFT_COMPONENT_ID_FACTORY_MATRIX_20261018.md](CRAFT_COMPONENT_ID_FACTORY_MATRIX_20261018.md).
 
 ## Component tag registry observed in `deleteView(View)`
 
@@ -32,7 +32,7 @@ This note extends the first-pass editor/widget map using verified code paths in 
 | 27 | `CustomComponents.a0` |
 | 28 | `CustomComponents.j` |
 
-Tags 3, 16 and 17 do not appear in this particular switch. Do not infer that these values are invalid; other component families are handled by separate checks. The deletion routine removes the component from a corresponding application-level collection, removes the view from its parent, and invalidates the FBD drawing surface for logic blocks.
+Tags 3, 16 and 17 do not appear in this deletion switch. The factory `m(int, ...)` in the pinned decompilation does create ID 16 as `CustomComponents.n` (GIF) and ID 17 as `CustomComponents.h` (16-state image), so deletion-switch membership is not a reliable factory map. ID 3 is also absent from the factory method and remains unresolved; do not infer that it is invalid. The deletion routine removes the component from a corresponding application-level collection, removes the view from its parent, and invalidates the FBD drawing surface for logic blocks.
 
 ## Confirmed editor behaviors
 
