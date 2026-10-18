@@ -86,6 +86,7 @@ public class MainActivity extends Activity {
     private final ExecutorService modbusExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService craftSensorExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService telegramExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService homeAssistantExecutor = Executors.newSingleThreadExecutor();
     private FbdCraftMqttRuntime craftMqttRuntime;
     private final Map<Integer, String> liveValues = new HashMap<>();
     private boolean modbusPollingActive = false;
@@ -257,6 +258,7 @@ public class MainActivity extends Activity {
         modbusExecutor.shutdownNow();
         craftSensorExecutor.shutdownNow();
         telegramExecutor.shutdownNow();
+        homeAssistantExecutor.shutdownNow();
         if (mediaPlayer != null) {
             try { mediaPlayer.stop(); } catch (Exception ignored) {}
             try { mediaPlayer.release(); } catch (Exception ignored) {}
@@ -2044,12 +2046,97 @@ public class MainActivity extends Activity {
         menu.getMenu().add("Telegram — настройки и тест").setOnMenuItemClickListener(item -> {
             showTelegramSettingsDialog(); return true;
         });
+        menu.getMenu().add("Умный дом — Home Assistant / Xiaomi").setOnMenuItemClickListener(item -> {
+            showHomeAssistantDialog(); return true;
+        });
         menu.getMenu().add("Голосовой помощник").setOnMenuItemClickListener(item -> { showVoiceModeDialog(); return true; });
         menu.getMenu().add("Modbus").setOnMenuItemClickListener(item -> { showModbusDiagnostics(); return true; });
         menu.getMenu().add("Главное меню").setOnMenuItemClickListener(item -> {
             if (persistProjectNow(true)) showHome(); return true;
         });
         menu.show();
+    }
+
+    private void showHomeAssistantDialog() {
+        android.content.SharedPreferences prefs = getSharedPreferences("bloodsky_homeassistant", MODE_PRIVATE);
+        LinearLayout form = new LinearLayout(this); form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(dp(20), dp(8), dp(20), dp(4));
+        TextView note = new TextView(this);
+        note.setText("Локальный Home Assistant может дать доступ к Xiaomi Home и другим устройствам. В Home Assistant создай access token в профиле. Токен будет храниться зашифрованно в Android Keystore и не попадёт в проект. Сейчас подключение только читает список устройств и их состояние. HTTP используй только в доверенной домашней сети; для внешних адресов нужен HTTPS.");
+        form.addView(note);
+        EditText address = propertyField(prefs.getString("base_url", ""), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        address.setSingleLine(true); address.setHint("http://homeassistant.local:8123"); form.addView(address);
+        EditText token = propertyField("", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        token.setSingleLine(true); token.setHint("Access token (оставь пустым, если сохранён)"); form.addView(token);
+        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Home Assistant / Xiaomi")
+                .setView(form).setPositiveButton("Найти устройства", null)
+                .setNegativeButton("Отключить", null).setNeutralButton("Закрыть", null).create();
+        dialog.setOnShowListener(ignored -> {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                final String baseUrl = address.getText().toString().trim();
+                final String enteredToken = token.getText().toString().trim();
+                String accessToken = enteredToken;
+                if (accessToken.isEmpty()) try { accessToken = HomeAssistantTokenStore.read(this); }
+                catch (Exception failure) { Toast.makeText(this, "Не удалось прочитать сохранённый токен; введи его заново", Toast.LENGTH_LONG).show(); return; }
+                if (accessToken.isEmpty()) { Toast.makeText(this, "Нужен access token Home Assistant", Toast.LENGTH_LONG).show(); return; }
+                final String finalToken = accessToken;
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
+                homeAssistantExecutor.execute(() -> {
+                    List<HomeAssistantClient.Entity> entities = null; String error = null;
+                    try { entities = HomeAssistantClient.getEntities(baseUrl, finalToken); }
+                    catch (Exception failure) { error = failure.getMessage(); }
+                    final List<HomeAssistantClient.Entity> found = entities; final String failureText = error;
+                    runOnUiThread(() -> {
+                        if (isFinishing() || isDestroyed()) return;
+                        if (dialog.isShowing()) dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
+                        if (failureText != null) {
+                            Toast.makeText(this, "Home Assistant: " + safeHomeAssistantError(failureText), Toast.LENGTH_LONG).show(); return;
+                        }
+                        try {
+                            prefs.edit().putString("base_url", HomeAssistantClient.normalizeBaseUrl(baseUrl)).apply();
+                            if (!enteredToken.isEmpty()) HomeAssistantTokenStore.save(this, enteredToken);
+                        } catch (Exception storageFailure) {
+                            Toast.makeText(this, "Устройства найдены, но токен не удалось сохранить безопасно", Toast.LENGTH_LONG).show();
+                        }
+                        dialog.dismiss(); showHomeAssistantEntities(found);
+                    });
+                });
+            });
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(v -> new AlertDialog.Builder(this)
+                    .setTitle("Отключить Home Assistant?")
+                    .setMessage("Удалить сохранённый адрес и токен?")
+                    .setNegativeButton("Отмена", null)
+                    .setPositiveButton("Удалить", (d, w) -> {
+                        HomeAssistantTokenStore.clear(this); prefs.edit().clear().apply(); dialog.dismiss();
+                        Toast.makeText(this, "Home Assistant отключён", Toast.LENGTH_SHORT).show();
+                    }).show());
+        });
+        dialog.show();
+    }
+
+    private String safeHomeAssistantError(String error) {
+        if (error == null || error.trim().isEmpty()) return "не удалось подключиться; проверь адрес и сеть";
+        if (error.contains("HTTP 401")) return "токен отклонён (HTTP 401)";
+        if (error.contains("HTTP 403")) return "нет доступа (HTTP 403)";
+        if (error.contains("HTTP 404")) return "не найден API Home Assistant (HTTP 404)";
+        if (error.contains("HTTPS")) return "для внешнего адреса используй HTTPS";
+        return "не удалось подключиться; проверь адрес, сеть и токен";
+    }
+
+    private void showHomeAssistantEntities(List<HomeAssistantClient.Entity> entities) {
+        if (entities == null || entities.isEmpty()) {
+            new AlertDialog.Builder(this).setTitle("Устройства Home Assistant")
+                    .setMessage("Устройства не найдены или у токена нет доступа к состояниям.")
+                    .setPositiveButton("ОК", null).show(); return;
+        }
+        StringBuilder text = new StringBuilder();
+        int count = Math.min(200, entities.size());
+        for (int i = 0; i < count; i++) text.append(entities.get(i).toString()).append('\\n');
+        if (entities.size() > count) text.append("… и ещё ").append(entities.size() - count).append(" сущностей");
+        TextView list = new TextView(this); list.setText(text.toString()); list.setTextSize(14); list.setPadding(dp(20), dp(12), dp(20), dp(12));
+        ScrollView scroll = new ScrollView(this); scroll.addView(list);
+        new AlertDialog.Builder(this).setTitle("Home Assistant: " + entities.size() + " сущностей")
+                .setView(scroll).setPositiveButton("Готово", null).show();
     }
 
     private void showVoiceModeDialog() {
