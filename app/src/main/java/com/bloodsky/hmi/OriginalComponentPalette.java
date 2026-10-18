@@ -18,7 +18,7 @@ public final class OriginalComponentPalette {
         Dialog dialog = new Dialog(activity, android.R.style.Theme_Material_NoActionBar_Fullscreen);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         dialog.setContentView(R.layout.kc_fragment_component_bar);
-        // Every source entry stays visible; unimplemented component semantics stay disabled.
+        // In-scope source entries stay visible; unimplemented semantics stay disabled.
         unavailable(dialog, R.id.kc_picker_tab_switch, "Переключатель");
         unavailable(dialog, R.id.kc_picker_tab_list, "Список");
         unavailable(dialog, R.id.kc_picker_tab_line_setter, "Линейный задатчик");
@@ -29,10 +29,12 @@ public final class OriginalComponentPalette {
         unavailable(dialog, R.id.kc_picker_tab_archive, "Архив");
         unavailable(dialog, R.id.kc_picker_tab_gateway, "Шлюз");
         unavailable(dialog, R.id.kc_picker_tab_gateway_bit, "Битовый шлюз");
-        unavailable(dialog, R.id.kc_picker_tab_sms_in, "Входящие SMS");
-        unavailable(dialog, R.id.kc_picker_tab_sms_out, "Исходящие SMS");
+        unavailable(dialog, R.id.kc_picker_tab_sms_in, "SMS отключены — вместо них Telegram");
+        unavailable(dialog, R.id.kc_picker_tab_sms_out, "SMS отключены — вместо них Telegram");
+        dialog.findViewById(R.id.kc_picker_tab_sms_in).setVisibility(View.GONE);
+        dialog.findViewById(R.id.kc_picker_tab_sms_out).setVisibility(View.GONE);
         unavailable(dialog, R.id.kc_picker_tab_camera, "Камера");
-        unavailable(dialog, R.id.kc_picker_tab_push_notif, "Push-уведомления");
+        bind(dialog, R.id.kc_picker_tab_push_notif, "Telegram-уведомление", "Событие", add);
         unavailable(dialog, R.id.kc_picker_tab_web_view, "Веб-страница");
         bind(dialog, R.id.kc_picker_tab_button, "Кнопка", "Кнопка", add);
         bind(dialog, R.id.kc_picker_tab_digital_setters, "Задатчик", "Задатчик: 0", add);
