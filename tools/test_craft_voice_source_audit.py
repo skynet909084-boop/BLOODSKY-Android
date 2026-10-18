@@ -29,11 +29,13 @@ class CraftVoiceSourceAuditTests(unittest.TestCase):
             f"{index + 1}: {line.strip()}" for index, line in enumerate(lines)
             if line.strip().startswith(("public ", "private ", "protected "))
         ]
-        print("ID 27 METHODS\\n" + "\\n".join(method_lines))
+        print("ID 27 METHODS")
+        print("\n".join(method_lines))
         relevant = []
         for index, line in enumerate(lines):
             low = line.lower()
-            if any(token in low for token in ("textvoice", "recogn", "speech", " on", "click", "contains(\\"#\\"")):
+            if any(token in low for token in ("textvoice", "recogn", "speech", "click")) or 'contains("#")' in line:
                 start, end = max(0, index - 2), min(len(lines), index + 3)
                 relevant.extend(f"{n + 1}: {lines[n].strip()}" for n in range(start, end))
-        print("ID 27 HANDLER EVIDENCE\\n" + "\\n".join(dict.fromkeys(relevant)))
+        print("ID 27 HANDLER EVIDENCE")
+        print("\n".join(dict.fromkeys(relevant)))
