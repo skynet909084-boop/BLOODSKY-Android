@@ -79,4 +79,5 @@ P0 audit/matrix correction completed in the preceding commit. Incoming and outgo
 - Руководство: `pdftotext -layout` + визуальные листы страниц; ключевые разделы 2–12 сверены с текстом и иллюстрациями.
 - APK: код/ресурсы из pinned `craft-reference.zip`; архивный checksum проверяется `tools/prepare_craft_resources.py`.
 - Примеры: локально предоставленные `.pro` и ZIP; состав отмечен выше.
+- Full Android 11 UI smoke: Actions run [#530](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39152105436) passed on commit `c1f46d8f83e643e2a9659712fb853d7e7964966a`; APK/unit/archive checks passed in [#869](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39152105423). The smoke captured the migrated Craft PNG and alarm widget, then verified the PNG remained visible after process restart. This is an editor/media regression check, not a side-by-side visual acceptance of every Craft ID.
 - Этот файл не утверждает pixel parity, аппаратную поддержку или завершение всей KaSCADA-функциональности.
