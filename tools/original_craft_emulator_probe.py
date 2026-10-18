@@ -50,9 +50,20 @@ def dump_ui(label: str):
 
 def controls(root):
     out = []
+    permission_message = next((n.attrib.get("text", "") for n in root.iter("node")
+                               if n.attrib.get("resource-id", "").endswith("permission_message")), "")
+    safe_permission_terms = ("photo", "media", "file", "camera", "location", "microphone", "audio")
+    safe_permission = any(term in permission_message.lower() for term in safe_permission_terms)
     for node in root.iter("node"):
         package = node.attrib.get("package", "")
-        if package not in ("", PACKAGE):
+        resource_id = node.attrib.get("resource-id", "")
+        permission_button = package == "com.android.permissioncontroller" and resource_id in (
+            "com.android.permissioncontroller:id/permission_allow_button",
+            "com.android.permissioncontroller:id/permission_deny_button",
+        )
+        if package not in ("", PACKAGE) and not permission_button:
+            continue
+        if permission_button and resource_id.endswith("permission_allow_button") and not safe_permission:
             continue
         cls = node.attrib.get("class", "")
         if "InputMethod" in cls:
@@ -62,7 +73,7 @@ def controls(root):
         if not match:
             continue
         x1, y1, x2, y2 = map(int, match.groups())
-        clickable = node.attrib.get("clickable") == "true" and node.attrib.get("enabled") != "false"
+        clickable = (node.attrib.get("clickable") == "true" or permission_button) and node.attrib.get("enabled") != "false"
         field = cls.endswith("EditText") and node.attrib.get("enabled") != "false"
         if not clickable and not field:
             continue
@@ -76,6 +87,8 @@ def controls(root):
             "y": (y1 + y2) // 2,
             "field": field,
             "package": package,
+            "permission_message": permission_message if permission_button else "",
+            "system_permission": permission_button,
         })
     return out
 
@@ -106,6 +119,14 @@ def perform(action):
 def fresh_start():
     adb("shell", "am", "force-stop", PACKAGE, check=False)
     adb("shell", "pm", "clear", PACKAGE, check=False)
+    for permission in (
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+    ):
+        adb("shell", "pm", "grant", PACKAGE, permission, check=False)
     adb("shell", "monkey", "-p", PACKAGE, "1", check=False)
     time.sleep(4)
 
