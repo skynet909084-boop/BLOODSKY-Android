@@ -88,6 +88,7 @@ public class MainActivity extends Activity {
     private final ExecutorService telegramExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService homeAssistantExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService yandexExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService smsExecutor = Executors.newSingleThreadExecutor();
     private FbdCraftMqttRuntime craftMqttRuntime;
     private final Map<Integer, String> liveValues = new HashMap<>();
     private boolean modbusPollingActive = false;
@@ -283,6 +284,7 @@ public class MainActivity extends Activity {
         telegramExecutor.shutdownNow();
         homeAssistantExecutor.shutdownNow();
         yandexExecutor.shutdownNow();
+        smsExecutor.shutdownNow();
         if (mediaPlayer != null) {
             try { mediaPlayer.stop(); } catch (Exception ignored) {}
             try { mediaPlayer.release(); } catch (Exception ignored) {}
@@ -988,7 +990,7 @@ public class MainActivity extends Activity {
                 functionCode = 3;
                 address = enteredAddress - 40001;
             }
-            if (quantity < 1 || quantity > 2 || address + quantity > 65536) return null;
+            if (quantity < 1 || quantity > 8 || address + quantity > 65536) return null;
             return new BindingRequest(widgetIndex, uri.getHost(), uri.getPort(), unit, address, functionCode, quantity);
         } catch (Exception ignored) {
             return null;
@@ -2143,10 +2145,12 @@ public class MainActivity extends Activity {
     }
 
     private void sendSmsNotification(Widget widget,String value) {
-        String phone="";
-        try{phone=SmsRecipientStore.read(this,widget.extraFields.optString("smsRecipientId",""));}catch(Exception ignored){}
-        if(!SmsNotificationClient.isValidPhone(phone)) {
-            Toast.makeText(this,"У SMS-элемента не настроен номер получателя",Toast.LENGTH_LONG).show();return;
+        if (!operatorMode || !activityResumed) return;
+        String phone = "";
+        try { phone = SmsRecipientStore.read(this, widget.extraFields.optString("smsRecipientId", "")); }
+        catch (Exception ignored) {}
+        if (!SmsNotificationClient.isValidPhone(phone)) {
+            Toast.makeText(this, "У SMS-элемента не настроен номер получателя", Toast.LENGTH_LONG).show(); return;
         }
         if(!getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_TELEPHONY)) {
             Toast.makeText(this,"Это устройство не поддерживает SMS через SIM",Toast.LENGTH_LONG).show();return;
@@ -2154,104 +2158,39 @@ public class MainActivity extends Activity {
         if(checkSelfPermission(android.Manifest.permission.SEND_SMS)!=android.content.pm.PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{android.Manifest.permission.SEND_SMS},REQUEST_SMS_SEND_PERMISSION);return;
         }
-        try {
-            SmsNotificationClient.send(this,phone,SmsNotificationClient.message(widget.text,value));
-            Toast.makeText(this,"SMS отправлено через SIM",Toast.LENGTH_SHORT).show();
-        } catch(Exception failure) {
-            Toast.makeText(this,"Не удалось отправить SMS через SIM",Toast.LENGTH_LONG).show();
+        int count = widget.extraFields.optInt("smsRegisterCount", 1);
+        if (count < 1 || count > 8) { Toast.makeText(this, "Количество регистров SMS должно быть 1–8", Toast.LENGTH_LONG).show(); return; }
+        BindingRequest source = parseBinding(-1, widget.connectionInfo, count);
+        if (source == null || (source.functionCode != 3 && source.functionCode != 4)) {
+            Toast.makeText(this, "Укажи корректный адрес регистра для SMS", Toast.LENGTH_LONG).show(); return;
         }
-    }
-
-    private boolean hasConfiguredIncomingSms() {
-        if (!operatorMode || editor == null) return false;
-        for (Widget widget : widgets) {
-            if ("Входящее SMS".equals(widget.type) && widget.extraFields.optBoolean("smsEnabled", false))
-                return true;
-        }
-        return false;
-    }
-
-    private void refreshIncomingSmsReceiver() {
-        if (!activityResumed || !hasConfiguredIncomingSms()
-                || !getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_TELEPHONY)) {
-            unregisterIncomingSmsReceiver();
-            return;
-        }
-        if (checkSelfPermission(android.Manifest.permission.RECEIVE_SMS)
-                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            unregisterIncomingSmsReceiver();
-            if (!smsReceivePermissionRequested) {
-                smsReceivePermissionRequested = true;
-                requestPermissions(new String[]{android.Manifest.permission.RECEIVE_SMS}, REQUEST_SMS_RECEIVE_PERMISSION);
-            }
-            return;
-        }
-        if (incomingSmsReceiver != null) return;
-        incomingSmsReceiver = new SmsIncomingBroadcastReceiver(this::handleIncomingSms);
-        android.content.IntentFilter filter = new android.content.IntentFilter("android.provider.Telephony.SMS_RECEIVED");
-        if (android.os.Build.VERSION.SDK_INT >= 33)
-            registerReceiver(incomingSmsReceiver, filter, android.content.Context.RECEIVER_EXPORTED);
-        else registerReceiver(incomingSmsReceiver, filter);
-    }
-
-    private void unregisterIncomingSmsReceiver() {
-        if (incomingSmsReceiver == null) return;
-        try { unregisterReceiver(incomingSmsReceiver); } catch (IllegalArgumentException ignored) {}
-        incomingSmsReceiver = null;
-    }
-
-    private void handleIncomingSms(String sender, String body) {
-        if (!activityResumed || !operatorMode || editor == null || !hasConfiguredIncomingSms()) return;
+        final String destination = phone, template = widget.text, triggerValue = value;
+        final String host = source.host;
+        final int port = source.port, unit = source.unit, address = source.address;
+        final int functionCode = source.functionCode;
         final long sessionToken = pollSession.token();
-        for (Widget widget : new ArrayList<>(widgets)) {
-            if (!"Входящее SMS".equals(widget.type) || !widget.extraFields.optBoolean("smsEnabled", false)) continue;
-            final String allowedSender;
-            try { allowedSender = SmsRecipientStore.read(this, widget.extraFields.optString("smsSenderId", "")); }
-            catch (Exception invalid) { continue; }
-            String modeValue = widget.extraFields.optString("smsMode", "number");
-            SmsIncomingCommand.Mode mode = "bit".equals(modeValue)
-                    ? SmsIncomingCommand.Mode.SET_BIT : SmsIncomingCommand.Mode.REGISTER_NUMBER;
-            int bit = widget.extraFields.optInt("smsBit", 0);
-            SmsIncomingCommand.Result parsed = SmsIncomingCommand.parse(allowedSender, sender,
-                    widget.extraFields.optString("smsCommand", ""), body, mode, bit);
-            if (parsed == null) continue;
-            BindingRequest binding = parseBinding(-1, widget.connectionInfo);
-            if (binding == null || binding.functionCode != 3) continue;
-            final String host = binding.host;
-            final int port = binding.port, unit = binding.unit, address = binding.address;
-            final int[] values = parsed.registerValues.clone();
-            final boolean setStrobe = mode == SmsIncomingCommand.Mode.REGISTER_NUMBER
-                    && widget.extraFields.optBoolean("smsStrobeEnabled", false);
-            final BindingRequest strobeBinding = setStrobe
-                    ? parseBinding(-1, "tcp://" + host + ":" + port + "/" + unit + "/"
-                            + widget.extraFields.optInt("smsStrobeRegister", -1)) : null;
-            final int strobeBit = widget.extraFields.optInt("smsStrobeBit", 0);
-            if (setStrobe && (strobeBinding == null || strobeBinding.functionCode != 3
-                    || strobeBinding.unit != unit || strobeBit < 0 || strobeBit > 15)) continue;
-            modbusExecutor.execute(() -> {
+        smsExecutor.execute(() -> {
+            String message;
+            boolean readFailed = false;
+            try {
+                int[] registers = new ModbusTcpClient(host, port).read(unit, address, count, functionCode);
+                String[] values = new String[registers.length];
+                for (int i = 0; i < registers.length; i++) values[i] = Integer.toString(registers[i]);
+                message = SmsOutgoingTemplate.render(template, values, triggerValue);
+            } catch (Exception failure) {
+                message = SmsNotificationClient.message(template, triggerValue) + " !NO RESPONSE!";
+                readFailed = true;
+            }
+            boolean sent = false;
+            try { SmsNotificationClient.send(this, destination, message); sent = true; }
+            catch (Exception ignored) {}
+            final boolean success = sent, noResponse = readFailed;
+            runOnUiThread(() -> {
                 if (!pollSession.accepts(sessionToken) || !activityResumed || !operatorMode) return;
-                Exception failure = null;
-                try {
-                    ModbusTcpClient client = new ModbusTcpClient(host, port);
-                    if (parsed.mode == SmsIncomingCommand.Mode.SET_BIT) {
-                        client.writeMask(unit, address, parsed.writeAndMask, parsed.writeOrMask);
-                    } else {
-                        if (values.length == 1) client.writeSingle(unit, address, values[0]);
-                        else client.writeMultiple(unit, address, values);
-                        if (setStrobe) {
-                            int mask = 1 << strobeBit;
-                            client.writeMask(unit, strobeBinding.address, 0xffff ^ mask, mask);
-                        }
-                    }
-                } catch (Exception error) { failure = error; }
-                final Exception result = failure;
-                runOnUiThread(() -> {
-                    if (!pollSession.accepts(sessionToken) || !activityResumed || !operatorMode) return;
-                    Toast.makeText(this, result == null ? "SMS-команда выполнена: Modbus обновлён"
-                            : "SMS-команда проверена, но запись Modbus не выполнена", Toast.LENGTH_LONG).show();
-                });
+                Toast.makeText(this, success ? (noResponse ? "SMS отправлено: устройство не ответило"
+                        : "SMS отправлено через SIM") : "Не удалось отправить SMS через SIM", Toast.LENGTH_LONG).show();
             });
-        }
+        });
     }
 
     private void showHomeAssistantDialog() {
@@ -3236,13 +3175,26 @@ public class MainActivity extends Activity {
         form.addView(connectionField);
 
         final EditText smsPhoneField;
+        final android.widget.Spinner smsRegisterCountField;
         if ("SMS-уведомление".equals(w.type)) {
             String savedPhone="";
             try{savedPhone=SmsRecipientStore.read(this,w.extraFields.optString("smsRecipientId",""));}catch(Exception ignored){}
             smsPhoneField=propertyField(savedPhone,InputType.TYPE_CLASS_PHONE);
             smsPhoneField.setHint("Номер получателя, например +79991234567");form.addView(smsPhoneField);
+            smsRegisterCountField = new android.widget.Spinner(this);
+            String[] smsRegisterOptions = new String[8];
+            for (int i = 0; i < smsRegisterOptions.length; i++) smsRegisterOptions[i] = (i + 1) + " рег.";
+            smsRegisterCountField.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item, smsRegisterOptions));
+            int savedCount = Math.max(1, Math.min(8, w.extraFields.optInt("smsRegisterCount", 1)));
+            smsRegisterCountField.setSelection(savedCount - 1);
+            smsRegisterCountField.setContentDescription("Количество регистров SMS для чтения");
+            form.addView(smsRegisterCountField);
             TextView smsHelp=new TextView(this);smsHelp.setText("Сообщение отправляется один раз при переходе сигнала 0→1. В тексте {value} подставляется значение Modbus. Номер хранится зашифрованно на устройстве и не входит в экспорт проекта.");form.addView(smsHelp);
-        } else smsPhoneField=null;
+            TextView smsRegistersHelp = new TextView(this);
+            smsRegistersHelp.setText("Читаются последовательные регистры от адреса привязки. Значения подставляются в %1…%8; если номера %n не указаны и нет {value}, значения добавляются в конец через пробел.");
+            form.addView(smsRegistersHelp);
+        } else { smsPhoneField=null; smsRegisterCountField=null; }
 
         final android.widget.CheckBox incomingSmsEnabledField;
         final EditText incomingSmsSenderField, incomingSmsCommandField, incomingSmsBitField;
@@ -3854,8 +3806,16 @@ public class MainActivity extends Activity {
                         if(!SmsNotificationClient.isValidPhone(phone)) {
                             Toast.makeText(this,"Укажи номер получателя в международном формате",Toast.LENGTH_LONG).show();return;
                         }
+                        int registerCount = smsRegisterCountField.getSelectedItemPosition() + 1;
+                        String[] previewValues = new String[registerCount];
+                        java.util.Arrays.fill(previewValues, "0");
+                        try { SmsOutgoingTemplate.render(textField.getText().toString(), previewValues, "0"); }
+                        catch (IllegalArgumentException invalidTemplate) {
+                            Toast.makeText(this, "Шаблон SMS использует номер регистра выше выбранного количества", Toast.LENGTH_LONG).show(); return;
+                        }
                         String recipientKey=java.util.UUID.randomUUID().toString();
-                        try{SmsRecipientStore.save(this,recipientKey,phone);w.extraFields.put("smsRecipientId",recipientKey);}
+                        try{SmsRecipientStore.save(this,recipientKey,phone);w.extraFields.put("smsRecipientId",recipientKey);
+                            w.extraFields.put("smsRegisterCount",registerCount);}
                         catch(Exception failure){Toast.makeText(this,"Не удалось безопасно сохранить номер SMS",Toast.LENGTH_LONG).show();return;}
                     }
                     if (incomingSmsEnabledField != null) {
