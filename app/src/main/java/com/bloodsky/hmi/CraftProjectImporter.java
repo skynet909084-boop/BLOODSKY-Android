@@ -180,6 +180,7 @@ public final class CraftProjectImporter {
         else if (componentId == 9) type = "Звуковой сигнал"; // CustomComponents.c, looping alarm with five built-in sounds
         else if (componentId == 19) type = "Шлюз Craft"; // CustomComponents.k, source/receive/trigger register gateway
         else if (componentId == 22) type = "Шлюз битовый"; // CustomComponents.l, source/receive/trigger bit gateway
+        else if (componentId == 20) type = "Список Craft"; // CustomList, 16 selectable bit labels
         else if (componentId == 6 && integer(other.opt("mode"), 0) == 1)
             type = "Переход на экран"; // CustomComponents.e mode 1 calls the original screen-switch handler
         else if (componentId == 6) type = "Кнопка"; // CustomComponents.e, interactive button
@@ -297,6 +298,14 @@ public final class CraftProjectImporter {
             widget.put("craftBitGatewayRegisterMode", integer(other.opt("regMode"), 0));
             widget.put("craftBitGatewayTriggerBit", integer(other.opt("bitMode"), 0));
             widget.put("craftBitGatewayEnabled", false);
+        } else if (componentId == 20) {
+            widget.put("craftListLabels", CraftBitList.toJson(CraftBitList.labelsFromCraft(other)));
+            widget.put("craftListVisibleInWork", other.optBoolean("visibleInWork", true));
+            widget.put("craftListCheckNoChange", other.optBoolean("checkNoChange", false));
+            // Legacy device IDs are installation-specific; preserve the opaque record but
+            // require the operator to map an explicit TCP holding register in BLOODSKY.
+            widget.put("craftListEnabled", false);
+            widget.put("craftListInitialMask", 0);
         } else if (componentId == 18) {
             // Preserve the source object but require an operator to re-enter a trusted sender,
             // command, and verified holding-register binding before this component can execute.
@@ -317,7 +326,7 @@ public final class CraftProjectImporter {
     }
 
     private static boolean isSupportedComponent(int id) {
-        return id == 1 || id == 2 || id == 4 || id == 5 || id == 6 || id == 7 || id == 9 || id == 11 || id == 18 || id == 22;
+        return id == 1 || id == 2 || id == 4 || id == 5 || id == 6 || id == 7 || id == 9 || id == 11 || id == 18 || id == 20 || id == 22;
     }
 
     private static String timerMode(int mode) {
