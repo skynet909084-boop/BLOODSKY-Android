@@ -20,7 +20,7 @@ public final class OriginalComponentPalette {
         dialog.setContentView(R.layout.kc_fragment_component_bar);
         // In-scope source entries stay visible; unimplemented semantics stay disabled.
         unavailable(dialog, R.id.kc_picker_tab_switch, "Переключатель");
-        unavailable(dialog, R.id.kc_picker_tab_list, "Список");
+        bind(dialog, R.id.kc_picker_tab_list, "Список Craft", "Список", add);
         unavailable(dialog, R.id.kc_picker_tab_line_setter, "Линейный задатчик");
         unavailable(dialog, R.id.kc_picker_tab_voice_recognition, "Распознавание речи");
         unavailable(dialog, R.id.kc_picker_tab_digital_indicator, "Цифровой индикатор");
