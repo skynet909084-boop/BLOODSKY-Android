@@ -79,8 +79,12 @@ def validate_craft_project(project: dict[str, Any], entry: str, report: Report) 
             report.issues.append(Issue("error", "Craft component row must be an object", component_entry))
             continue
         component_id = component.get("componentId")
-        if isinstance(component_id, bool) or not isinstance(component_id, int):
-            report.issues.append(Issue("error", "Craft componentId must be an integer", component_entry))
+        # Craft's exporter serializes SQLite componentId values as decimal strings.
+        valid_component_id = (
+            isinstance(component_id, int) and not isinstance(component_id, bool)
+        ) or (isinstance(component_id, str) and component_id.isdecimal())
+        if not valid_component_id:
+            report.issues.append(Issue("error", "Craft componentId must be an integer or decimal string", component_entry))
 
         # Original exports store component-specific properties as a JSON string.
         # Accept an object too for newer/normalized archives, while leaving it untouched.
@@ -99,8 +103,12 @@ def validate_craft_project(project: dict[str, Any], entry: str, report: Report) 
             continue
         if "numScreen" in other:
             screen = other["numScreen"]
-            if isinstance(screen, bool) or not isinstance(screen, int) or screen < 0:
-                report.issues.append(Issue("error", "Craft component numScreen must be a non-negative integer", component_entry))
+            screen_count = name_project.get("countScreen") if isinstance(name_project, dict) else None
+            if (isinstance(screen, bool) or not isinstance(screen, int) or screen < 1):
+                report.issues.append(Issue("error", "Craft component numScreen must be a positive 1-based integer", component_entry))
+            elif (isinstance(screen_count, bool) or not isinstance(screen_count, int)
+                    or screen_count < 1 or screen > screen_count):
+                report.issues.append(Issue("error", "Craft component numScreen exceeds countScreen", component_entry))
 
 def inspect_archive(path: str) -> Report:
     report = Report(path, project_json_entries=[], issues=[])
