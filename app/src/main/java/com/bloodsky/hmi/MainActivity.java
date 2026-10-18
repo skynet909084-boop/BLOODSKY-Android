@@ -3405,6 +3405,26 @@ public class MainActivity extends Activity {
             TextView remapHelp = new TextView(this);
             remapHelp.setText("Связь из Craft отключена. Укажи TCP holding-регистр для чтения и записи."); form.addView(remapHelp);
         } else { craftLinearMaxField = null; craftLinearVerticalField = null; }
+        final boolean craftConstantButton = "Константная кнопка Craft".equals(w.type);
+        final boolean craftButtonConfig = "Кнопка".equals(w.type) || craftConstantButton;
+        final android.widget.Spinner craftButtonModeField, craftButtonConstantTypeField;
+        final EditText craftButtonConstantField;
+        if (craftButtonConfig) {
+            craftButtonModeField = new android.widget.Spinner(this);
+            craftButtonModeField.setAdapter(new android.widget.ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item,
+                    new String[]{"Битовый переключатель", "Запись константы"}));
+            craftButtonModeField.setSelection(craftConstantButton || w.extraFields.optInt("craftButtonMode", 0) == 2 ? 1 : 0);
+            form.addView(craftButtonModeField);
+            craftButtonConstantTypeField = new android.widget.Spinner(this);
+            craftButtonConstantTypeField.setAdapter(new android.widget.ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item,
+                    new String[]{"UINT16", "Float32"}));
+            craftButtonConstantTypeField.setSelection(w.extraFields.optInt("craftButtonConstantType", 0)); form.addView(craftButtonConstantTypeField);
+            craftButtonConstantField = propertyField(w.extraFields.optString("craftButtonConstant", "0"),
+                    InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            craftButtonConstantField.setHint("Значение константы"); form.addView(craftButtonConstantField);
+            TextView constantHelp = new TextView(this);
+            constantHelp.setText("Для записи константы укажи TCP holding-регистр FC03/FC06 выше."); form.addView(constantHelp);
+        } else { craftButtonModeField = null; craftButtonConstantTypeField = null; craftButtonConstantField = null; }
         final boolean craftRegisterGateway = "Шлюз Craft".equals(w.type);
         final boolean craftBitGateway = "Шлюз битовый".equals(w.type);
         if (craftRegisterGateway || craftBitGateway) {
@@ -4070,6 +4090,26 @@ public class MainActivity extends Activity {
                             w.extraFields.put("craftLinearValue", CraftLinearSetter.value(w.extraFields, null));
                             w.extraFields.put("craftLinearVertical", craftLinearVerticalField.isChecked());
                             w.extraFields.put("craftLinearEnabled", linearBinding != null);
+                        } catch (Exception ignored) { }
+                    }
+                    if (craftButtonConfig) {
+                        int mode = craftButtonModeField.getSelectedItemPosition() == 1 ? 2 : 0;
+                        int valueType = craftButtonConstantTypeField.getSelectedItemPosition();
+                        String constant = craftButtonConstantField.getText().toString().trim();
+                        BindingRequest buttonBinding = parseBinding(-1, connectionField.getText().toString().trim());
+                        if (mode == 2) {
+                            try { if (valueType == 0) CraftConstantButton.integer(constant); else CraftConstantButton.floating(constant); }
+                            catch (IllegalArgumentException invalid) { Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show(); return; }
+                            if (connectionField.getText().toString().trim().isEmpty() || buttonBinding == null || buttonBinding.functionCode != 3) {
+                                Toast.makeText(this, "Для константы нужен корректный TCP holding-регистр FC03/FC06", Toast.LENGTH_LONG).show(); return;
+                            }
+                        }
+                        try {
+                            w.extraFields.put("craftButtonMode", mode);
+                            w.extraFields.put("craftButtonConstantType", valueType);
+                            w.extraFields.put("craftButtonConstant", constant);
+                            w.extraFields.put("craftButtonConstantEnabled", mode == 2 && buttonBinding != null);
+                            w.type = mode == 2 ? "Константная кнопка Craft" : "Кнопка";
                         } catch (Exception ignored) { }
                     }
                     if (craftConstantModeField != null) {
@@ -7312,7 +7352,7 @@ public class MainActivity extends Activity {
                     paint.setColor(Color.rgb(237, 233, 254));
                 } else if ("Индикатор".equals(w.type) || "Двухпозиционный индикатор".equals(w.type)) {
                     paint.setColor(Color.rgb(220, 252, 231));
-                } else if ("Кнопка".equals(w.type)) {
+                } else if ("Кнопка".equals(w.type) || "Константная кнопка Craft".equals(w.type)) {
                     paint.setColor(w.buttonState ? Color.rgb(187, 247, 208) : Color.rgb(219, 234, 254));
                 } else if ("Задатчик".equals(w.type)) {
                     paint.setColor(Color.rgb(254, 243, 199));
@@ -7538,8 +7578,11 @@ public class MainActivity extends Activity {
                         if (warning != null) canvas.drawBitmap(warning, rect.right - warning.getWidth(),
                                 rect.bottom - warning.getHeight(), paint);
                     }
-                } else if ("Кнопка".equals(w.type)) {
-                    String buttonText = w.text + (w.buttonState ? "  [ВКЛ]" : "  [ВЫКЛ]");
+                } else if ("Кнопка".equals(w.type) || "Константная кнопка Craft".equals(w.type)) {
+                    boolean constantButton = "Константная кнопка Craft".equals(w.type);
+                    String buttonText = w.text + (constantButton
+                            ? "  → " + w.extraFields.optString("craftButtonConstant", "0")
+                            : w.buttonState ? "  [ВКЛ]" : "  [ВЫКЛ]");
                     paint.setColor(w.textColor);
                     if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(20)) / Math.max(4f, buttonText.length() * 0.58f))));
                     canvas.drawText(buttonText, w.x + dp(10), w.y + w.h / 2 + dp(5), paint);
@@ -7721,6 +7764,37 @@ public class MainActivity extends Activity {
             dialog.show();
         }
 
+        private void activateCraftConstantButton(Widget widget, int index) {
+            BindingRequest binding = parseBinding(-1, widget.connectionInfo);
+            if (!widget.extraFields.optBoolean("craftButtonConstantEnabled", false) || binding == null || binding.functionCode != 3) {
+                Toast.makeText(MainActivity.this, "Задай TCP holding-регистр для этой константной кнопки", Toast.LENGTH_LONG).show(); return;
+            }
+            boolean floating = widget.extraFields.optInt("craftButtonConstantType", 0) == 1;
+            final int integer;
+            final int[] words;
+            try {
+                if (floating) { words = FbdCraftRegisterCodec.floatRegisters(CraftConstantButton.floating(widget.extraFields.optString("craftButtonConstant", "0")), false, false); integer = 0; }
+                else { integer = CraftConstantButton.integer(widget.extraFields.optString("craftButtonConstant", "0")); words = null; }
+            } catch (IllegalArgumentException invalid) { Toast.makeText(MainActivity.this, invalid.getMessage(), Toast.LENGTH_LONG).show(); return; }
+            final boolean writeFloat = floating;
+            modbusExecutor.execute(() -> {
+                Exception failure = null;
+                try {
+                    if (!operatorMode || !activityResumed || !widgets.contains(widget)) throw new IOException("Рабочий режим остановлен");
+                    ModbusTcpClient client = new ModbusTcpClient(binding.host, binding.port);
+                    if (writeFloat) client.writeMultiple(binding.unit, binding.address, words);
+                    else client.writeSingle(binding.unit, binding.address, integer);
+                } catch (Exception error) { failure = error; }
+                final Exception result = failure;
+                runOnUiThread(() -> {
+                    if (!widgets.contains(widget) || !operatorMode || widgets.indexOf(widget) != index) return;
+                    if (result == null) liveValues.put(index, "OK"); else liveValues.put(index, "ERR: " + describeModbusError(result));
+                    Toast.makeText(MainActivity.this, result == null ? "Константа записана" : "Не удалось записать константу: " + describeModbusError(result), Toast.LENGTH_LONG).show();
+                    invalidate();
+                });
+            });
+        }
+
         private void openCraftLinearSetter(Widget widget, int widgetIndex) {
             final int maximum = CraftLinearSetter.maximum(widget.extraFields);
             final int initial = CraftLinearSetter.value(widget.extraFields, liveValues.get(widgetIndex));
@@ -7774,6 +7848,8 @@ public class MainActivity extends Activity {
                 openCraftLinearSetter(picked, index);
             } else if ("Список Craft".equals(picked.type)) {
                 openCraftBitList(picked, index);
+            } else if ("Константная кнопка Craft".equals(picked.type)) {
+                activateCraftConstantButton(picked, index);
             } else if ("Кнопка".equals(picked.type)) {
                 picked.buttonState = !picked.buttonState;
                 persistProject();
