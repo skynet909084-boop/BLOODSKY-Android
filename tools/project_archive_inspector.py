@@ -51,6 +51,57 @@ def safe_entry_name(name: str) -> bool:
         return False
     return True
 
+
+def validate_craft_project(project: dict[str, Any], entry: str, report: Report) -> None:
+    """Check the stable outer Craft export shape without rewriting source data."""
+    required = ("TableNameProject", "TableComponent", "TableConnections")
+    missing = [key for key in required if key not in project]
+    for key in missing:
+        report.issues.append(Issue("error", f"Missing Craft project table {key}", entry))
+    if missing:
+        return
+
+    name_project = project["TableNameProject"]
+    components = project["TableComponent"]
+    connections = project["TableConnections"]
+    if not isinstance(name_project, dict):
+        report.issues.append(Issue("error", "TableNameProject must be an object", entry))
+    if not isinstance(components, list):
+        report.issues.append(Issue("error", "TableComponent must be an array", entry))
+    if not isinstance(connections, list):
+        report.issues.append(Issue("error", "TableConnections must be an array", entry))
+    if not isinstance(components, list):
+        return
+
+    for index, component in enumerate(components):
+        component_entry = f"{entry}#TableComponent[{index}]"
+        if not isinstance(component, dict):
+            report.issues.append(Issue("error", "Craft component row must be an object", component_entry))
+            continue
+        component_id = component.get("componentId")
+        if isinstance(component_id, bool) or not isinstance(component_id, int):
+            report.issues.append(Issue("error", "Craft componentId must be an integer", component_entry))
+
+        # Original exports store component-specific properties as a JSON string.
+        # Accept an object too for newer/normalized archives, while leaving it untouched.
+        other = component.get("other", component.get("jsTableComponent_other"))
+        if other is None:
+            report.issues.append(Issue("warning", "Craft component has no other metadata", component_entry))
+            continue
+        if isinstance(other, str):
+            try:
+                other = json.loads(other)
+            except json.JSONDecodeError as exc:
+                report.issues.append(Issue("error", f"Invalid component other JSON: {exc}", component_entry))
+                continue
+        if not isinstance(other, dict):
+            report.issues.append(Issue("error", "Craft component other metadata must be an object", component_entry))
+            continue
+        if "numScreen" in other:
+            screen = other["numScreen"]
+            if isinstance(screen, bool) or not isinstance(screen, int) or screen < 0:
+                report.issues.append(Issue("error", "Craft component numScreen must be a non-negative integer", component_entry))
+
 def inspect_archive(path: str) -> Report:
     report = Report(path, project_json_entries=[], issues=[])
     try:
@@ -109,9 +160,7 @@ def inspect_archive(path: str) -> Report:
                 continue
             if isinstance(parsed, dict) and any(key in parsed for key in ("TableNameProject", "TableComponent", "TableConnections")):
                 report.project_json_entries.append(name)
-                for key in ("TableNameProject", "TableComponent", "TableConnections"):
-                    if key in parsed and not isinstance(parsed[key], (dict, list)):
-                        report.issues.append(Issue("warning", f"Expected object or array for {key}", name))
+                validate_craft_project(parsed, name, report)
 
     if not report.project_json_entries:
         report.issues.append(Issue("warning", "No JSON entry with recognized Kaskada project keys was found"))
