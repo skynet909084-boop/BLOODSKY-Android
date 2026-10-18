@@ -53,7 +53,7 @@ class ArchiveInspectorTests(unittest.TestCase):
         payload = json.dumps({
             "TableNameProject": {"name": "Demo", "countScreen": 1},
             "TableComponent": [
-                {"componentId": 2, "text": "Label", "other": json.dumps({"numScreen": 0})}
+                {"componentId": "2", "text": "Label", "other": {"numScreen": 1}}
             ],
             "TableConnections": []
         })
@@ -65,7 +65,9 @@ class ArchiveInspectorTests(unittest.TestCase):
         payload = json.dumps({
             "TableNameProject": {"name": "Demo"},
             "TableComponent": [
-                {"componentId": "2", "other": "{broken"},
+                {"componentId": "not-an-id", "other": "{broken"},
+                {"componentId": "4", "other": {"numScreen": 0}},
+                {"componentId": 5, "other": {"numScreen": 2}},
                 None
             ],
             "TableConnections": {}
@@ -74,9 +76,11 @@ class ArchiveInspectorTests(unittest.TestCase):
         report = inspect_archive(path)
         messages = [issue.message for issue in report.issues if issue.severity == "error"]
         self.assertTrue(any("TableConnections must be an array" in message for message in messages))
-        self.assertTrue(any("componentId must be an integer" in message for message in messages))
+        self.assertTrue(any("componentId must be an integer or decimal string" in message for message in messages))
         self.assertTrue(any("Invalid component other JSON" in message for message in messages))
         self.assertTrue(any("component row must be an object" in message for message in messages))
+        self.assertTrue(any("numScreen must be a positive 1-based integer" in message for message in messages))
+        self.assertTrue(any("numScreen exceeds countScreen" in message for message in messages))
 
     def test_requires_all_three_craft_tables(self):
         path = self.make_archive([("project.json", json.dumps({"TableComponent": []}))])
