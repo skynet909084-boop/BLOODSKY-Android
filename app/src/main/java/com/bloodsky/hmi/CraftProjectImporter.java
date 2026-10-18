@@ -262,6 +262,7 @@ public final class CraftProjectImporter {
             widget.put("showFrame", other.optBoolean("enableFrameLabel", true));
         } else if (componentId == 6) {
             widget.put("autoResizeText", other.optBoolean("autoResizeText", false));
+            widget.put("craftButtonVisibleInWork", other.optBoolean("visibleInWork", true));
             if (integer(other.opt("mode"), 0) == 1) {
                 int targetScreen = integer(other.opt("changeScreen"), -1);
                 if (targetScreen >= 1 && targetScreen <= screenCount) {
