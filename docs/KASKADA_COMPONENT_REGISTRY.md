@@ -61,3 +61,6 @@ Craft ID 6 mode 1 (`CustomComponents.e`) is imported with the original 1-based `
 
 
 Craft ID 9 (`CustomComponents.c`) preserves `posSound` 1–5 and the source's loop-while-active behavior. Its property editor now exposes the five bundled Craft alarm sounds or a custom audio file/content URI; the imported device endpoint remains inactive until explicit TCP remapping. Playback now uses separate MediaPlayer/ToneGenerator instances keyed by screen and widget; one widget's stop/completion does not clear another. `tools/test_alarm_playback_contract.py` guards start/stop/completion isolation and lifecycle cleanup. Simultaneous audio, trigger-device and visual acceptance remain open.
+
+
+Craft ID 23 (`CustomComponents.f`) is now mapped to a visible disabled placeholder during import. It preserves `craftOther` and opaque connection data, marks `craftRtspEnabled=false`, and never starts a network stream. `CraftRtspConfig` validates a separately supplied RTSP/RTSPS URL and rejects embedded URI user-info. The video editor/player and secure credential persistence/export behavior are not implemented yet.
