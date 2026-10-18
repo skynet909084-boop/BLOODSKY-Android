@@ -23,8 +23,9 @@ public class FbdCraftMacroGraphAdapterTest {
         assertEquals("FBD CRAFT TIMER", FbdCraftMacroGraphAdapter.typeForComponentId(115, null));
         assertEquals("FBD CRAFT VAR NAME IN FLOAT", FbdCraftMacroGraphAdapter.typeForComponentId(133,
                 new JSONObject().put("typeVar", 3)));
-        assertNull(FbdCraftMacroGraphAdapter.typeForComponentId(128, null));
+        assertEquals("FBD CRAFT MX", FbdCraftMacroGraphAdapter.typeForComponentId(128, null));
         assertNull(FbdCraftMacroGraphAdapter.typeForComponentId(135, null));
+        assertNull(FbdCraftMacroGraphAdapter.typeForComponentId(999, null));
     }
 
     @Test public void reconstructsInputsAndOutputFromCraftKeys() throws Exception {
