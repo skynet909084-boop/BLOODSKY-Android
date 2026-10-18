@@ -3307,6 +3307,7 @@ public class MainActivity extends Activity {
                 w.extraFields.put("craftListCheckNoChange", true);
             } catch (Exception ignored) { }
         }
+        if ("Числовой ввод Craft".equals(type)) { w.w = dp(120); w.h = dp(48); }
         if ("Линейный задатчик Craft".equals(type)) {
             w.w = dp(190); w.h = dp(62);
             try { w.extraFields.put("craftLinearMax", CraftLinearSetter.DEFAULT_MAX); w.extraFields.put("craftLinearValue", 0); } catch (Exception ignored) { }
@@ -3462,6 +3463,44 @@ public class MainActivity extends Activity {
             TextView remapHelp = new TextView(this);
             remapHelp.setText("Связь из Craft отключена. Укажи TCP holding-регистр для чтения и записи."); form.addView(remapHelp);
         } else { craftLinearMaxField = null; craftLinearVerticalField = null; }
+        final boolean craftNumericInput = "Числовой ввод Craft".equals(w.type);
+        final EditText craftNumericMinField, craftNumericMaxField, craftNumericDecimalsField, craftNumericPasswordField;
+        final Spinner craftNumericModeField, craftNumericTypeIntField;
+        final android.widget.CheckBox craftNumericFrameField, craftNumericSystemFontField, craftNumericPasswordRequiredField, craftNumericEnabledField;
+        if (craftNumericInput) {
+            connectionField.setHint("tcp://192.168.1.10:502/1/40001 (holding-регистр FC03/FC06)");
+            craftNumericMinField = propertyField(Double.toString(w.extraFields.optDouble("craftNumericMin", 0)), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            craftNumericMinField.setHint("Минимум"); form.addView(craftNumericMinField);
+            craftNumericMaxField = propertyField(Double.toString(w.extraFields.optDouble("craftNumericMax", 1000)), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            craftNumericMaxField.setHint("Максимум"); form.addView(craftNumericMaxField);
+            craftNumericModeField = new Spinner(this);
+            craftNumericModeField.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{"Целое число", "Float32"}));
+            craftNumericModeField.setSelection(w.extraFields.optInt("craftNumericMode", 0) == CraftNumericInput.FLOAT32 ? 1 : 0); form.addView(craftNumericModeField);
+            craftNumericTypeIntField = new Spinner(this);
+            craftNumericTypeIntField.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{"UINT16", "INT16"}));
+            craftNumericTypeIntField.setSelection(w.extraFields.optInt("craftNumericTypeInt", 0) == CraftNumericInput.SIGNED_16 ? 1 : 0); form.addView(craftNumericTypeIntField);
+            craftNumericDecimalsField = propertyField(Integer.toString(w.extraFields.optInt("craftNumericDecimals", 1)), InputType.TYPE_CLASS_NUMBER);
+            craftNumericDecimalsField.setHint("Цифр после точки (0–8)"); form.addView(craftNumericDecimalsField);
+            craftNumericFrameField = new android.widget.CheckBox(this); craftNumericFrameField.setText("Рамка");
+            craftNumericFrameField.setChecked(w.extraFields.optBoolean("craftNumericFrame", false)); form.addView(craftNumericFrameField);
+            craftNumericSystemFontField = new android.widget.CheckBox(this); craftNumericSystemFontField.setText("Системный шрифт");
+            craftNumericSystemFontField.setChecked(w.extraFields.optBoolean("craftNumericSystemFont", false)); form.addView(craftNumericSystemFontField);
+            craftNumericPasswordRequiredField = new android.widget.CheckBox(this); craftNumericPasswordRequiredField.setText("Запрашивать пароль оператора");
+            craftNumericPasswordRequiredField.setChecked(w.extraFields.optBoolean("craftNumericPasswordRequired", false)); form.addView(craftNumericPasswordRequiredField);
+            craftNumericPasswordField = propertyField("", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+            craftNumericPasswordField.setHint(w.extraFields.optString("craftNumericPasswordKey", "").isEmpty()
+                    ? "Новый пароль (1–10 символов; старый Craft надо задать заново)"
+                    : "Новый пароль или пусто, чтобы сохранить текущий"); form.addView(craftNumericPasswordField);
+            craftNumericEnabledField = new android.widget.CheckBox(this); craftNumericEnabledField.setText("Разрешить ввод после настройки привязки");
+            craftNumericEnabledField.setChecked(w.extraFields.optBoolean("craftNumericEnabled", false)); form.addView(craftNumericEnabledField);
+            TextView numericHelp = new TextView(this);
+            numericHelp.setText("Старая связь Craft выключена. Укажи свой TCP holding-регистр; пароль хранится в Android Keystore.");
+            form.addView(numericHelp);
+        } else {
+            craftNumericMinField = craftNumericMaxField = craftNumericDecimalsField = craftNumericPasswordField = null;
+            craftNumericModeField = craftNumericTypeIntField = null;
+            craftNumericFrameField = craftNumericSystemFontField = craftNumericPasswordRequiredField = craftNumericEnabledField = null;
+        }
         final boolean craftConstantButton = "Константная кнопка Craft".equals(w.type);
         final boolean craftButtonConfig = "Кнопка".equals(w.type) || craftConstantButton;
         final android.widget.Spinner craftButtonModeField, craftButtonConstantTypeField;
@@ -4205,6 +4244,52 @@ public class MainActivity extends Activity {
                             w.extraFields.put("craftLinearValue", CraftLinearSetter.value(w.extraFields, null));
                             w.extraFields.put("craftLinearVertical", craftLinearVerticalField.isChecked());
                             w.extraFields.put("craftLinearEnabled", linearBinding != null);
+                        } catch (Exception ignored) { }
+                    }
+                    if (craftNumericInput) {
+                        final double min, max;
+                        final int decimals;
+                        try {
+                            min = Double.parseDouble(craftNumericMinField.getText().toString().trim().replace(',', '.'));
+                            max = Double.parseDouble(craftNumericMaxField.getText().toString().trim().replace(',', '.'));
+                            CraftNumericInput.validateRange(min, max);
+                            decimals = Integer.parseInt(craftNumericDecimalsField.getText().toString().trim());
+                            if (decimals < 0 || decimals > 8) throw new IllegalArgumentException("Точность должна быть 0–8");
+                        } catch (Exception invalid) {
+                            Toast.makeText(this, invalid instanceof IllegalArgumentException ? invalid.getMessage() : "Проверь минимум, максимум и точность", Toast.LENGTH_LONG).show(); return;
+                        }
+                        String targetText = connectionField.getText().toString().trim();
+                        BindingRequest target = parseBinding(-1, targetText);
+                        if (!targetText.isEmpty() && (target == null || target.functionCode != 3
+                                || (craftNumericModeField.getSelectedItemPosition() == CraftNumericInput.FLOAT32 && target.address >= 65535))) {
+                            Toast.makeText(this, "Нужен holding-регистр FC03/FC06; Float32 занимает два регистра", Toast.LENGTH_LONG).show(); return;
+                        }
+                        boolean passwordRequired = craftNumericPasswordRequiredField.isChecked();
+                        String passwordKey = w.extraFields.optString("craftNumericPasswordKey", "");
+                        String newPassword = craftNumericPasswordField.getText().toString();
+                        if (passwordRequired) {
+                            if (!newPassword.isEmpty()) {
+                                if (newPassword.length() > 10) { Toast.makeText(this, "Пароль: максимум 10 символов", Toast.LENGTH_LONG).show(); return; }
+                                if (passwordKey.isEmpty()) passwordKey = java.util.UUID.randomUUID().toString();
+                                try { CraftNumericPasswordStore.save(this, passwordKey, newPassword); }
+                                catch (Exception failure) { Toast.makeText(this, "Не удалось безопасно сохранить пароль", Toast.LENGTH_LONG).show(); return; }
+                            } else if (passwordKey.isEmpty()) {
+                                Toast.makeText(this, "Задай новый пароль или отключи проверку для импортированного компонента", Toast.LENGTH_LONG).show(); return;
+                            }
+                        } else if (!passwordKey.isEmpty()) {
+                            CraftNumericPasswordStore.clear(this, passwordKey); passwordKey = "";
+                        }
+                        try {
+                            w.extraFields.put("craftNumericMin", min); w.extraFields.put("craftNumericMax", max);
+                            w.extraFields.put("craftNumericMode", craftNumericModeField.getSelectedItemPosition());
+                            w.extraFields.put("craftNumericTypeInt", craftNumericTypeIntField.getSelectedItemPosition());
+                            w.extraFields.put("craftNumericDecimals", decimals);
+                            w.extraFields.put("craftNumericFrame", craftNumericFrameField.isChecked());
+                            w.extraFields.put("craftNumericSystemFont", craftNumericSystemFontField.isChecked());
+                            w.extraFields.put("craftNumericPasswordRequired", passwordRequired);
+                            w.extraFields.put("craftNumericPasswordKey", passwordKey);
+                            w.extraFields.put("craftNumericEnabled", craftNumericEnabledField.isChecked());
+                            w.showFrame = craftNumericFrameField.isChecked();
                         } catch (Exception ignored) { }
                     }
                     if (craftButtonConfig) {
@@ -7604,6 +7689,14 @@ public class MainActivity extends Activity {
                     paint.setColor(w.textColor);
                     if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(20)) / Math.max(4f, stateText.length() * 0.58f))));
                     canvas.drawText(stateText, w.x + dp(10), w.y + w.h / 2 + dp(5), paint);
+                } else if ("Числовой ввод Craft".equals(w.type)) {
+                    String value = liveValues.get(i);
+                    if (value == null || value.startsWith("ERR") || value.startsWith("CFG")) value = w.text;
+                    if (value == null) value = "0";
+                    paint.setColor(w.textColor); paint.setTextSize(dp(w.textSizeSp));
+                    paint.setTextAlign(Paint.Align.CENTER);
+                    canvas.drawText(value, w.x + w.w / 2f, w.y + w.h / 2f + dp(5), paint);
+                    paint.setTextAlign(Paint.Align.LEFT);
                 } else if ("Список Craft".equals(w.type)) {
                     int mask = w.extraFields.optInt("craftListInitialMask", 0) & 0xffff;
                     String liveMask = liveValues.get(i);
@@ -8103,9 +8196,84 @@ public class MainActivity extends Activity {
                     }).show();
         }
 
+        private void openCraftNumericInput(Widget widget, int widgetIndex) {
+            if (!widget.extraFields.optBoolean("craftNumericEnabled", false)) {
+                Toast.makeText(MainActivity.this, "Открой свойства ID 8 и явно разреши ввод", Toast.LENGTH_LONG).show(); return;
+            }
+            boolean passwordRequired = widget.extraFields.optBoolean("craftNumericPasswordRequired", false);
+            String passwordKey = widget.extraFields.optString("craftNumericPasswordKey", "");
+            final String expectedPassword;
+            try { expectedPassword = passwordRequired ? CraftNumericPasswordStore.read(MainActivity.this, passwordKey) : ""; }
+            catch (Exception failure) { Toast.makeText(MainActivity.this, "Не удалось открыть сохранённый пароль", Toast.LENGTH_LONG).show(); return; }
+            if (passwordRequired && expectedPassword.isEmpty()) {
+                Toast.makeText(MainActivity.this, "Повторно задай пароль Craft в свойствах элемента", Toast.LENGTH_LONG).show(); return;
+            }
+            final BindingRequest binding = parseBinding(-1, widget.connectionInfo);
+            if (widget.connectionInfo != null && !widget.connectionInfo.trim().isEmpty()
+                    && (binding == null || binding.functionCode != 3
+                    || (CraftNumericInput.registerCount(widget.extraFields) == 2 && binding.address >= 65535))) {
+                Toast.makeText(MainActivity.this, "Проверь TCP holding-регистр FC03/FC06", Toast.LENGTH_LONG).show(); return;
+            }
+            LinearLayout form = new LinearLayout(MainActivity.this); form.setOrientation(LinearLayout.VERTICAL);
+            form.setPadding(dp(22), dp(14), dp(22), dp(4));
+            TextView range = new TextView(MainActivity.this);
+            range.setText("Диапазон: " + widget.extraFields.optDouble("craftNumericMin", 0)
+                    + " – " + widget.extraFields.optDouble("craftNumericMax", 1000)); form.addView(range);
+            String initial = liveValues.get(widgetIndex);
+            if (initial == null || initial.startsWith("ERR") || initial.startsWith("CFG")) initial = widget.text;
+            if (initial == null || initial.isEmpty()) initial = "0";
+            EditText value = propertyField(initial, InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            value.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(15)}); form.addView(value);
+            EditText password = null;
+            if (passwordRequired) {
+                password = propertyField("", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+                password.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(10)});
+                password.setHint("Пароль оператора"); form.addView(password);
+            }
+            final EditText passwordField = password;
+            AlertDialog dialog = new AlertDialog.Builder(MainActivity.this)
+                    .setTitle(widget.text == null || widget.text.isEmpty() ? "Числовой ввод" : widget.text)
+                    .setView(form).setNegativeButton("Отмена", null).setPositiveButton("Задать", null).create();
+            dialog.setOnShowListener(shown -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                if (passwordRequired && (passwordField == null || !expectedPassword.equals(passwordField.getText().toString()))) {
+                    Toast.makeText(MainActivity.this, "Неверный пароль", Toast.LENGTH_LONG).show(); return;
+                }
+                final double next;
+                try { next = CraftNumericInput.parseCommit(value.getText().toString(), widget.extraFields); }
+                catch (IllegalArgumentException invalid) { Toast.makeText(MainActivity.this, invalid.getMessage(), Toast.LENGTH_LONG).show(); return; }
+                final String formatted = widget.extraFields.optInt("craftNumericMode", CraftNumericInput.INTEGER) == CraftNumericInput.FLOAT32
+                        ? CraftNumericInput.truncateFloatDisplay((float) next, widget.extraFields) : Integer.toString((int) next);
+                if (binding == null) {
+                    widget.text = formatted; liveValues.put(widgetIndex, formatted);
+                    persistProject(); invalidate(); dialog.dismiss(); return;
+                }
+                modbusExecutor.execute(() -> {
+                    Exception failure = null;
+                    try {
+                        if (!operatorMode || !activityResumed || !widgets.contains(widget)) throw new IOException("Рабочий режим остановлен");
+                        ModbusTcpClient client = new ModbusTcpClient(binding.host, binding.port);
+                        if (CraftNumericInput.registerCount(widget.extraFields) == 2)
+                            client.writeMultiple(binding.unit, binding.address, FbdCraftRegisterCodec.floatRegisters((float) next));
+                        else client.writeSingle(binding.unit, binding.address, CraftNumericInput.integerRegister(next, widget.extraFields));
+                    } catch (Exception error) { failure = error; }
+                    final Exception result = failure;
+                    runOnUiThread(() -> {
+                        if (!widgets.contains(widget) || !operatorMode || widgets.indexOf(widget) != widgetIndex) return;
+                        if (result == null) {
+                            widget.text = formatted; liveValues.put(widgetIndex, formatted); persistProject(); dialog.dismiss();
+                        } else Toast.makeText(MainActivity.this, "Не удалось записать значение: " + describeModbusError(result), Toast.LENGTH_LONG).show();
+                        invalidate();
+                    });
+                });
+            }));
+            dialog.show(); value.requestFocus();
+        }
+
         private void activateRuntimeWidget(int index, float x, float y) {
             Widget picked = widgets.get(index);
-            if ("Задатчик".equals(picked.type) && y >= picked.y + dp(29)) {
+            if ("Числовой ввод Craft".equals(picked.type)) {
+                openCraftNumericInput(picked, index);
+            } else if ("Задатчик".equals(picked.type) && y >= picked.y + dp(29)) {
                 adjustSetpoint(picked, x < picked.x + picked.w / 2 ? -1 : 1);
             } else if ("Линейный задатчик Craft".equals(picked.type)) {
                 openCraftLinearSetter(picked, index);
