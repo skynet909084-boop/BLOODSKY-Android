@@ -191,6 +191,7 @@ public final class CraftProjectImporter {
         else if (componentId == 7) type = "Динамический текст";
         else if (componentId == 11) type = "Прогресс-бар"; // Craft progress bar
         else if (componentId == 18) type = "Входящее SMS"; // CustomComponents.x; opt-in runtime only
+        else if (componentId == 27) type = "Распознавание речи Craft"; // visible disabled placeholder; original recognition flow is not yet ported
         else {
             String fbdType = FbdCraftMacroGraphAdapter.typeForComponentId(componentId, other);
             type = fbdType == null ? "Текст" : fbdType;
@@ -355,6 +356,7 @@ public final class CraftProjectImporter {
             widget.put("craftUnsupportedComponent", true);
             widget.put("text", "Компонент Craft " + componentId + ": " + widget.optString("text"));
         }
+        if (componentId == 27) widget.put("craftVoiceRecognitionEnabled", false);
         if (componentId == 5) {
             // OriginalIndicator reads the legacy other object directly.
             widget.put("other", other);
