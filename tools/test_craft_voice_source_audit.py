@@ -34,7 +34,20 @@ class CraftVoiceSourceAuditTests(unittest.TestCase):
         print("Craft a0/CustomComponents path hints:", self.name_hints[:100])
         self.assertTrue(self.component_source, "CustomComponents/a0.java source not found")
         for name, text in self.component_source:
-            print("CRAFT ID 27 SOURCE", name, "\\n".join(text.splitlines()[:300]))
+            print("CRAFT ID 27 SOURCE", name)
+            lines = [
+                line.strip() for line in text.splitlines()
+                if any(token in line.lower() for token in (
+                    "textvoice", "custom_voice_recognition", "texttospeech", "speechrecognizer",
+                    "recognition", "startactivity", "performclick", "onclick", "dispatchtouchevent",
+                    "getjsonother", "getjsonconnectioninfo", ".method "
+                ))
+            ]
+            print("\n".join(lines))
+            keys = {int(value) for value in __import__("re").findall(r'textVoice(\\d+)', text)}
+            print("SOURCE TEXT VOICE INDICES:", sorted(keys))
+            self.assertIn(0, keys)
+            self.assertIn(15, keys)
         print("Voice/TTS source paths:", [name for name, _ in self.voice_hits[:100]])
         for name, text in self.voice_hits[:20]:
             interesting = [
