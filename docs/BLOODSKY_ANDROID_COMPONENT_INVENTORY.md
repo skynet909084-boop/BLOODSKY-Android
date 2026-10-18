@@ -48,7 +48,7 @@ The original uses many custom view classes in `CustomComponents`. The decompiler
 | `r` | `showScale`, `max`, `percentLowScale` | Progress/bar indicator |
 | `u` | `digit`, `divisor`, `typeInt`, register frame | Numeric/register display |
 | `v` | `colorProgress`, `colorBackground`, `max` | Progress/value bar |
-| `w`, `x` | phone, message, command/strobe register settings | Outbound `w` is an optional SIM event. Inbound `x` is now opt-in and fail-closed; imported entries require explicit sender/command/binding setup. Strobe behavior remains open. |
+| `w`, `x` | phone, message, command/strobe register settings | Outbound `w` is an optional SIM event. Inbound `x` is now opt-in and fail-closed; numeric mode writes 1–16 values and can set an optional strobe bit after success. Imported entries require explicit sender/command/binding setup. |
 | `y` | `imagePosition`, visibility in work mode | Image-positioned component |
 | `f` | `rtsp_url` | RTSP/video component |
 | `d` | Archive table and CSV export strings | Archive/history service logic, not necessarily a visual widget |
