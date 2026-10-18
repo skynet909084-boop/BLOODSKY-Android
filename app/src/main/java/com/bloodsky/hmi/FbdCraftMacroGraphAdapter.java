@@ -17,10 +17,26 @@ final class FbdCraftMacroGraphAdapter {
         if (root.optJSONObject("bloodskyGraph") != null) return definition;
         JSONArray children = root.optJSONArray("fbInMacros");
         if (children == null || children.length() == 0) return definition;
+        if (!supportsNestedExecution(children)) return definition;
         JSONObject graph = translate(root, children);
         if (graph == null) return definition;
         root.put("bloodskyGraph", graph);
         return FbdCraftMacroDefinition.fromJson(root.toString());
+    }
+
+    private static boolean supportsNestedExecution(JSONArray children) {
+        for (int i = 0; i < children.length(); i++) {
+            JSONObject child = children.optJSONObject(i);
+            if (child == null) return false;
+            int id = child.optInt("componentId", -1);
+            // These blocks need screen-level polling, subscription, or output scheduling.
+            if (id == 120 || id == 130 || id == 131 || id == 132 || id == 139 || id == 140
+                    || id == 102 || id == 106 || id == 109) return false;
+            // Craft register sources are executable in a nested graph only as literals.
+            if ((id == 101 || id == 105 || id == 108)
+                    && !child.optBoolean("isConstant", false)) return false;
+        }
+        return true;
     }
 
     static JSONObject translate(JSONObject root, JSONArray children) throws Exception {
