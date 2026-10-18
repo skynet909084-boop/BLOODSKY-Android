@@ -49,9 +49,15 @@ class OriginalComponentPaletteTests(unittest.TestCase):
             ('gateway', 'Шлюз Craft'),
             ('gateway_bit', 'Шлюз битовый'),
         ]:
-            if item == 'switch':
-                self.assertIn('Добавить: Переключатель (как кнопка)', code)
-                self.assertIn('() -> add.add("Кнопка", "Кнопка")', code)
+            unique_actions = {
+                'switch': ('Добавить: Переключатель (как кнопка)', '() -> add.add("Кнопка", "Кнопка")'),
+                'digital_indicator': ('Добавить: Цифровой индикатор', '() -> add.add("Текст", "Цифровой индикатор")'),
+                'alarm': ('Добавить: Сигнализатор Craft', '() -> add.add("Звуковой сигнал", "Аларм")'),
+            }
+            if item in unique_actions:
+                label, callback = unique_actions[item]
+                self.assertIn(label, code)
+                self.assertIn(callback, code)
                 self.assertNotRegex(code, r'unavailable\(dialog, R.id.kc_picker_tab_' + item + r',')
                 continue
             self.assertRegex(code, r'bind\(dialog, R.id.kc_picker_tab_' + item
