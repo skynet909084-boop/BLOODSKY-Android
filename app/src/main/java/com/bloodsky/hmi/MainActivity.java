@@ -259,6 +259,10 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onPause() {
+        if (editor != null) {
+            editor.endCraftBitButton();
+            editor.operatorMomentaryCandidate = -1;
+        }
         activityResumed = false;
         unregisterIncomingSmsReceiver();
         stopModbusPolling();
@@ -3424,7 +3428,7 @@ public class MainActivity extends Activity {
             craftButtonBitEnabledField.setChecked(w.extraFields.optBoolean("craftButtonBitEnabled", false));
             form.addView(craftButtonBitEnabledField);
             TextView bitHelp = new TextView(this);
-            bitHelp.setText("Режим Craft 0: при нажатии бит устанавливается, при отпускании сбрасывается. Нужен TCP holding-регистр FC03/FC22; импортированная привязка не используется.");
+            bitHelp.setText("Режим Craft 0: при нажатии бит устанавливается, при отпускании сбрасывается. Нужен TCP holding-регистр FC03/FC22, например tcp://192.168.1.10:502/1/40001; импортированная привязка не используется.");
             form.addView(bitHelp);
             craftButtonConstantTypeField = new android.widget.Spinner(this);
             craftButtonConstantTypeField.setAdapter(new android.widget.ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item,
