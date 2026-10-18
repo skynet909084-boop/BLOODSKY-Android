@@ -2316,8 +2316,7 @@ public class MainActivity extends Activity {
 
     private String normalizeComparisonOperator(String value) {
         String operator = value == null ? ">" : value.trim();
-        return operator.equals("+") || operator.equals("-") || operator.equals("*") || operator.equals("/")
-                || operator.equals(">") || operator.equals("<") || operator.equals(">=")
+        return operator.equals(">") || operator.equals("<") || operator.equals(">=")
                 || operator.equals("<=") || operator.equals("==") || operator.equals("!=") ? operator : ">";
     }
 
@@ -2507,7 +2506,7 @@ public class MainActivity extends Activity {
         w.timerPresetMs = Math.max(1, Math.min(3600000, obj.optInt("timerPresetMs", 1000)));
         w.timerStartedAt = obj.optLong("timerStartedAt", 0L);
         w.compareA = obj.optDouble("compareA", 0.0); w.compareB = obj.optDouble("compareB", 0.0);
-        w.compareOperator = normalizeComparisonOperatorStatic(obj.optString("compareOperator", ">"));
+        w.compareOperator = normalizeWidgetOperator(w.type, obj.optString("compareOperator", ">"));
         w.minValue = obj.optDouble("minValue", 0.0); w.maxValue = obj.optDouble("maxValue", 100.0);
         w.backgroundColor = obj.optInt("backgroundColor", 0); w.textColor = obj.optInt("textColor", Color.rgb(31, 41, 55));
         w.textSizeSp = Math.max(8, Math.min(48, obj.optInt("textSizeSp", 14)));
@@ -2534,9 +2533,17 @@ public class MainActivity extends Activity {
 
     private static String normalizeComparisonOperatorStatic(String value) {
         String operator = value == null ? ">" : value.trim();
-        return operator.equals("+") || operator.equals("-") || operator.equals("*") || operator.equals("/")
-                || operator.equals(">") || operator.equals("<") || operator.equals(">=")
+        return operator.equals(">") || operator.equals("<") || operator.equals(">=")
                 || operator.equals("<=") || operator.equals("==") || operator.equals("!=") ? operator : ">";
+    }
+
+    private static String normalizeWidgetOperator(String type, String value) {
+        String operator = value == null ? "" : value.trim();
+        if (("FBD CRAFT ARITHMETIC INT".equals(type)
+                || "FBD CRAFT ARITHMETIC FLOAT".equals(type))
+                && ("+".equals(operator) || "-".equals(operator)
+                || "*".equals(operator) || "/".equals(operator))) return operator;
+        return normalizeComparisonOperatorStatic(operator);
     }
 
     public static void saveProjectAtomic(java.io.File targetFile, String json) throws java.io.IOException {
@@ -4595,4 +4602,5 @@ public class MainActivity extends Activity {
         }
     }
 }
+
 

@@ -62,5 +62,8 @@ public class FbdCraftMathTest {
         MainActivity.Widget restored = MainActivity.widgetFromJson(MainActivity.widgetToJson(add));
         assertEquals("FBD CRAFT ARITHMETIC INT", restored.type);
         assertEquals("+", restored.compareOperator);
+        MainActivity.Widget comparison = new MainActivity.Widget();
+        comparison.type = "FBD CRAFT COMPARE"; comparison.compareOperator = "+";
+        assertEquals(">", MainActivity.widgetFromJson(MainActivity.widgetToJson(comparison)).compareOperator);
     }
 }
