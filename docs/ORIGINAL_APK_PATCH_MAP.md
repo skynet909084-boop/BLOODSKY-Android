@@ -18,7 +18,7 @@ The workflow currently expects the original APK to be attached to a GitHub Relea
 | Main screen editor | `jadx/sources/ru/himik/nightscream/kascada/mbCanvas.java` | Central editor, component construction, screen navigation, selection, resize, align, copy/cut/paste, project save and import/export paths. Large decompiled file; verify questionable branches in Smali. |
 | FBD blocks | `jadx/sources/ru/himik/nightscream/kascada/Logic/` | Original block classes and pin definitions. Existing implementations should be retained unless a specific defect or enhancement is verified. |
 | Component views | `jadx/sources/ru/himik/nightscream/kascada/CustomComponents/` | Custom widgets and property serialization; several class names are obfuscated in JADX. |
-| Network transports | `jadx/sources/ru/himik/nightscream/kascada/Connections/` | Inspect Wi-Fi/cloud/native Modbus paths, reconnection, endpoint configuration and security before changing behavior. |
+| Network transports | `jadx/sources/ru/himik/nightscream/kascada/Connections/` | Inspect Wi-Fi/native Modbus paths, reconnection, endpoint configuration and security before changing behavior. |
 | Android resources | `apktool/res/` and `apktool/AndroidManifest.xml` | Layouts, strings, styles, app label, permissions and activity declarations. |
 | Native code | `apktool/lib/*/libmodbus.so` (where present) | Preserve ABI-specific libraries during APK rebuild; Java-only builds do not replace this dependency. |
 

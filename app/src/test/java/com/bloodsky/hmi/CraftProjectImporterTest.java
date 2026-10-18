@@ -42,7 +42,9 @@ public class CraftProjectImporterTest {
 
     @Test public void archiveIdKeepsArchiveIdentityAndDisablesLegacyBinding() throws Exception {
         JSONObject other = new JSONObject().put("numScreen", 1).put("registerArchive", 40001)
-                .put("countChannel", 3).put("typeRecord", "FLOAT");
+                .put("countChannel", 3).put("typeRecord", "FLOAT")
+                .put("isSendToCloudArchive", true).put("regSendToCloudArchive", 120)
+                .put("isResetArchive", true);
         JSONObject component = new JSONObject().put("componentId", 15).put("text", "History")
                 .put("jsTableComponent_connectionInfo", "legacy-device-binding")
                 .put("jsTableComponent_other", other);
@@ -58,6 +60,13 @@ public class CraftProjectImporterTest {
         assertEquals("", archive.getString("connectionInfo"));
         assertEquals("legacy-device-binding", archive.getString("craftConnectionInfo"));
         assertEquals(40001, archive.getJSONObject("craftOther").getInt("registerArchive"));
+        assertFalse(archive.getJSONObject("craftOther").has("isSendToCloudArchive"));
+        assertFalse(archive.getJSONObject("craftOther").has("regSendToCloudArchive"));
+        JSONObject retainedSourceOther = project.getJSONObject("craftSource")
+                .getJSONArray("TableComponent").getJSONObject(0).getJSONObject("jsTableComponent_other");
+        assertFalse(retainedSourceOther.has("isSendToCloudArchive"));
+        assertFalse(retainedSourceOther.has("regSendToCloudArchive"));
+        assertTrue(retainedSourceOther.getBoolean("isResetArchive"));
         assertEquals(3, archive.getInt("craftArchiveChannelCount"));
         assertEquals("FLOAT", archive.getString("craftArchiveRecordType"));
         assertEquals("", archive.optString("craftArchiveTriggerBinding", ""));

@@ -40,6 +40,7 @@ public final class CraftProjectImporter {
             if (screenNumber > 128) throw new IllegalArgumentException("Компонент ссылается на экран Craft за пределами лимита");
             screenCount = Math.max(screenCount, screenNumber);
         }
+        removeExternalArchiveDeliverySettings(components);
 
         JSONObject converted = new JSONObject();
         converted.put("projectName", boundedString(craftProject.optString("name", "Проект Craft"), 200));
@@ -139,6 +140,23 @@ public final class CraftProjectImporter {
         }
         converted.put("screens", screens);
         return converted.toString();
+    }
+
+    private static void removeExternalArchiveDeliverySettings(JSONArray components) throws Exception {
+        for (int i = 0; i < components.length(); i++) {
+            JSONObject component = components.optJSONObject(i);
+            if (component == null || positiveInt(component.opt("componentId"), -1) != 15) continue;
+            Object rawOther = component.opt("jsTableComponent_other");
+            JSONObject other = objectValue(rawOther);
+            JSONObject retained = new JSONObject();
+            java.util.Iterator<String> keys = other.keys();
+            while (keys.hasNext()) {
+                String key = keys.next();
+                if (!key.toLowerCase(java.util.Locale.ROOT).contains("cloud"))
+                    retained.put(key, other.get(key));
+            }
+            component.put("jsTableComponent_other", rawOther instanceof String ? retained.toString() : retained);
+        }
     }
 
     private static boolean isTargetPinOccupied(JSONArray edges, int target, String targetPin) {

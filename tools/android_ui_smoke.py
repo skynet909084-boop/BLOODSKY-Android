@@ -239,7 +239,9 @@ class Smoke:
                 self.wait_node('Устройства / серверы проекта')
                 self.tap('Закрыть')
                 self.source_overflow_checked = True
-            self.tap(description='Меню проекта')
+                # Closing the endpoint dialog dismissed the source overflow.
+                # Reopen it once before selecting its nested BLOODSKY actions.
+                self.tap(description='Меню проекта')
             self.tap('Дополнительные действия BLOODSKY…')
         for attempt in range(7):
             xml = self.dump()

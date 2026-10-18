@@ -24,7 +24,8 @@ class CraftResourceBundleTests(unittest.TestCase):
             app = root / "app"
             groups = bundle(root / "decoded", app)
             self.assertEqual(groups, {"res": 501, "assets": 4})
-            out = app / "src/main/assets/kascada_original"
+            out = root / "build/craft-reference/bundled"
+            self.assertFalse((app / "src/main/assets/kascada_original").exists())
             self.assertEqual((out / "assets/fonts/digital.ttf").read_bytes(),
                              b"original-binary-contents")
             self.assertEqual((out / "res/layout/item_1.xml").read_bytes(),

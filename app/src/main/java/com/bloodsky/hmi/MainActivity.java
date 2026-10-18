@@ -3782,7 +3782,7 @@ public class MainActivity extends Activity {
         if ("Архив Craft".equals(w.type)) {
             connectionField.setHint("Локальный канал: tcp://192.168.1.10:502/1/40001 (holding-регистр FC03)");
             TextView archiveHelp = new TextView(this);
-            archiveHelp.setText("Импортированные связи Craft отключены. Укажи первый локальный TCP holding-регистр; каналы читаются подряд. INT занимает один регистр, FLOAT — два. Необязательный триггер записывает на фронте 0→1; без него действует интервал. Данные остаются на устройстве; SMTP и облако не запускаются.");
+        archiveHelp.setText("Импортированные связи Craft отключены. Укажи первый локальный TCP holding-регистр; каналы читаются подряд. INT занимает один регистр, FLOAT — два. Необязательный триггер записывает на фронте 0→1; без него действует интервал. Данные остаются на устройстве; удалённая отправка архива отключена.");
             archiveHelp.setPadding(0, dp(8), 0, dp(4)); form.addView(archiveHelp);
             archiveTriggerField = propertyField(w.extraFields.optString("craftArchiveTriggerBinding", ""),
                     InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);

@@ -147,7 +147,7 @@ Design an additive SQLite-backed catalog migration that imports existing SharedP
 - Completed slices include Craft ID 6 modes 0/1/2, ID 9 five bundled alarm presets/custom audio selection, ID 13 linear setter, and ID 20 bit list. Imported Craft device endpoints remain inactive until explicit TCP remapping.
 - Latest code validation: [Actions run #815](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39139483169) passed Android unit tests and debug APK build/upload. UI smoke was skipped by workflow rules.
 - Independent per-widget alarm players are implemented and guarded by source-contract tests. Resume with paired audio/UI/device acceptance, then continue the remaining source-backed widget and transport audit.
-- Product constraints: retain optional SMS; omit licensing and mandatory cloud control; imported Craft bindings stay inactive until explicitly remapped.
+- Product constraints: retain optional SMS; omit licensing and remote archive delivery; imported Craft bindings stay inactive until explicitly remapped.
 
 
 ## RTSP URL validation slice — 2026-10-18
