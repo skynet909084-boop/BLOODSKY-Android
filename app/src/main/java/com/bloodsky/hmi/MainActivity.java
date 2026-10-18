@@ -4080,7 +4080,7 @@ public class MainActivity extends Activity {
         propertyScroll.addView(form);
 
         AlertDialog properties = new AlertDialog.Builder(this)
-                .setTitle("Свойства: " + w.type)
+                .setTitle("Свойства: " + ("FBD CRAFT TIMER".equals(w.type) ? "FBD Таймер" : w.type))
                 .setView(propertyScroll)
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Применить", null).create();
