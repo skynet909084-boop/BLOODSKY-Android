@@ -22,6 +22,7 @@ on:
       - '*.gradle'
       - 'gradle.properties'
       - 'settings.gradle'
+      - '.github/workflows/android-ui-smoke.yml'
   push:
     branches: [main]
     paths:
@@ -35,6 +36,7 @@ on:
       - '*.gradle'
       - 'gradle.properties'
       - 'settings.gradle'
+      - '.github/workflows/android-ui-smoke.yml'
 
 permissions:
   contents: read
@@ -45,16 +47,15 @@ concurrency:
 
 jobs:
   emulator-smoke:
-    # Keep exact-head UI verification available on demand, but do not boot a
-    # fresh emulator for every intermediate feature-branch push. Stable-main
-    # PRs still get the full smoke on every synchronized source revision.
-    if: github.event_name != 'pull_request' || github.base_ref == 'main' || github.event.action != 'synchronize'
+    # Run the full emulator gate for the integration PR and stable-main PRs.
+    # Other intermediate feature PRs keep the quick profile on demand.
+    if: github.event_name != 'pull_request' || github.base_ref == 'main' || github.base_ref == 'feat/craft-project-json-import-20261018' || github.event.action != 'synchronize'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     # Feature→feature PRs get fast FBD verification; PR→main, push→main
     # and manually dispatched default runs retain every legacy UI scenario.
     env:
-      BLOODSKY_UI_PROFILE: ${{ github.event_name == 'pull_request' && github.base_ref != 'main' && 'quick' || (github.event_name == 'workflow_dispatch' && inputs.ui_profile == 'quick' && 'quick' || 'full') }}
+      BLOODSKY_UI_PROFILE: ${{ github.event_name == 'pull_request' && github.base_ref != 'main' && github.base_ref != 'feat/craft-project-json-import-20261018' && 'quick' || (github.event_name == 'workflow_dispatch' && inputs.ui_profile == 'quick' && 'quick' || 'full') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
