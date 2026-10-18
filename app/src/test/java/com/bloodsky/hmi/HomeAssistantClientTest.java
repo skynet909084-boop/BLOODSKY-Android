@@ -28,6 +28,14 @@ public class HomeAssistantClientTest {
         assertEquals("21.5", entities.get(1).state);
     }
 
+    @Test public void onlyAllowsConfirmedPowerActionsForKnownSwitchableDomains() {
+        assertTrue(HomeAssistantClient.canTogglePower("light.kitchen", "off"));
+        assertTrue(HomeAssistantClient.canTogglePower("switch.pump", "on"));
+        assertTrue(HomeAssistantClient.canTogglePower("fan.office", "off"));
+        assertFalse(HomeAssistantClient.canTogglePower("climate.house", "heat"));
+        assertFalse(HomeAssistantClient.canTogglePower("light.kitchen", "unavailable"));
+    }
+
     private static void assertInvalid(String url) {
         try { HomeAssistantClient.normalizeBaseUrl(url); fail("Expected invalid URL: " + url); }
         catch (IllegalArgumentException expected) { }
