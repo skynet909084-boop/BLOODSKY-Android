@@ -60,6 +60,9 @@ public class MainActivity extends Activity {
     private static final int REQUEST_IMPORT_PROJECT = 7102;
     private static final int REQUEST_PICK_MEDIA = 7103;
     private static final int REQUEST_EXPORT_PROJECT_ZIP = 7104;
+    private static final int REQUEST_IMPORT_CRAFT_MACRO = 7105;
+    private static final int REQUEST_EXPORT_CRAFT_MACRO = 7106;
+    private byte[] pendingCraftMacroExport;
     private EditText pendingMediaField;
     private String projectName = "Мой проект";
     private JSONObject projectExtraFields = new JSONObject();
@@ -1137,6 +1140,92 @@ public class MainActivity extends Activity {
                 }).show();
     }
 
+    private void showCraftMacroTools() {
+        new AlertDialog.Builder(this).setTitle("Макросы Craft (.mcr)")
+                .setItems(new String[]{"Импортировать .mcr в проект", "Экспортировать .mcr из проекта"},
+                        (dialog, which) -> {
+                            if (which == 0) {
+                                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                                intent.setType("*/*");
+                                try { startActivityForResult(intent, REQUEST_IMPORT_CRAFT_MACRO); }
+                                catch (Exception failure) {
+                                    Toast.makeText(this, "Не удалось открыть выбор файла", Toast.LENGTH_LONG).show();
+                                }
+                            } else exportCraftMacroFromCatalog();
+                        }).setNegativeButton("Закрыть", null).show();
+    }
+
+    private void exportCraftMacroFromCatalog() {
+        try {
+            String[] names = FbdCraftMacroCatalog.names(projectExtraFields);
+            if (names.length == 0) {
+                Toast.makeText(this, "В проекте нет импортированных макросов", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            new AlertDialog.Builder(this).setTitle("Выбери макрос")
+                    .setItems(names, (dialog, which) -> {
+                        try {
+                            FbdCraftMacroDefinition definition = FbdCraftMacroCatalog.find(
+                                    projectExtraFields, names[which]);
+                            if (definition == null) return;
+                            pendingCraftMacroExport = definition.toMcrBytes();
+                            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                            intent.addCategory(Intent.CATEGORY_OPENABLE);
+                            intent.setType("application/json");
+                            intent.putExtra(Intent.EXTRA_TITLE,
+                                    definition.getName().replaceAll("[^A-Za-zА-Яа-я0-9._-]", "_") + ".mcr");
+                            startActivityForResult(intent, REQUEST_EXPORT_CRAFT_MACRO);
+                        } catch (Exception failure) {
+                            pendingCraftMacroExport = null;
+                            Toast.makeText(this, "Не удалось подготовить макрос", Toast.LENGTH_LONG).show();
+                        }
+                    }).setNegativeButton("Отмена", null).show();
+        } catch (Exception invalidCatalog) {
+            Toast.makeText(this, "Каталог макросов повреждён", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void importCraftMacro(Uri uri) {
+        modbusExecutor.execute(() -> {
+            try {
+                byte[] bytes;
+                try (InputStream input = getContentResolver().openInputStream(uri)) {
+                    if (input == null) throw new IOException("File unavailable");
+                    ByteArrayOutputStream output = new ByteArrayOutputStream();
+                    byte[] buffer = new byte[8192];
+                    int total = 0, read;
+                    while ((read = input.read(buffer)) != -1) {
+                        total += read;
+                        if (total > FbdCraftMacroDefinition.MAX_FILE_BYTES)
+                            throw new IOException("Macro file too large");
+                        output.write(buffer, 0, read);
+                    }
+                    bytes = output.toByteArray();
+                }
+                FbdCraftMacroDefinition definition = FbdCraftMacroDefinition.fromMcrBytes(bytes);
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    try {
+                        FbdCraftMacroCatalog.upsert(projectExtraFields, definition);
+                        if (!persistProjectNow(true)) throw new IOException("Project save failed");
+                        Toast.makeText(this, "Макрос «" + definition.getName() + "» добавлен в проект",
+                                Toast.LENGTH_LONG).show();
+                    } catch (Exception failure) {
+                        Toast.makeText(this, "Макрос не сохранён: " + failure.getMessage(),
+                                Toast.LENGTH_LONG).show();
+                    }
+                });
+            } catch (Exception failure) {
+                runOnUiThread(() -> {
+                    if (!isFinishing() && !isDestroyed())
+                        Toast.makeText(this, "Импорт макроса не выполнен: " + failure.getMessage(),
+                                Toast.LENGTH_LONG).show();
+                });
+            }
+        });
+    }
+
     public byte[] readProjectMediaData(String pathOrUri) throws IOException {
         return readProjectMediaData(pathOrUri, getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}"));
     }
@@ -1236,7 +1325,24 @@ public class MainActivity extends Activity {
         }
         if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
         Uri uri = data.getData();
-        if (requestCode == REQUEST_EXPORT_PROJECT || requestCode == REQUEST_EXPORT_PROJECT_ZIP) {
+        if (requestCode == REQUEST_IMPORT_CRAFT_MACRO) {
+            importCraftMacro(uri);
+        } else if (requestCode == REQUEST_EXPORT_CRAFT_MACRO) {
+            byte[] bytes = pendingCraftMacroExport;
+            pendingCraftMacroExport = null;
+            if (bytes == null) return;
+            modbusExecutor.execute(() -> {
+                try (OutputStream out = getContentResolver().openOutputStream(uri)) {
+                    if (out == null) throw new IOException("Output stream unavailable");
+                    out.write(bytes);
+                    runOnUiThread(() -> { if (!isFinishing() && !isDestroyed())
+                        Toast.makeText(this, "Макрос экспортирован", Toast.LENGTH_SHORT).show(); });
+                } catch (Exception failure) {
+                    runOnUiThread(() -> { if (!isFinishing() && !isDestroyed())
+                        Toast.makeText(this, "Экспорт макроса не выполнен", Toast.LENGTH_LONG).show(); });
+                }
+            });
+        } else if (requestCode == REQUEST_EXPORT_PROJECT || requestCode == REQUEST_EXPORT_PROJECT_ZIP) {
             final String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
             modbusExecutor.execute(() -> {
                 try (OutputStream out = getContentResolver().openOutputStream(uri)) {
@@ -2009,6 +2115,11 @@ public class MainActivity extends Activity {
         LinearLayout list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
         list.setPadding(dp(8), dp(4), dp(8), dp(4));
+        Button macroTools = new Button(this);
+        macroTools.setText("Импорт / экспорт Craft .mcr");
+        macroTools.setAllCaps(false);
+        macroTools.setOnClickListener(v -> showCraftMacroTools());
+        list.addView(macroTools, new LinearLayout.LayoutParams(-1, -2));
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         scroll.addView(list);

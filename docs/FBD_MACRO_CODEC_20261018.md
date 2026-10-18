@@ -20,12 +20,19 @@ Export is UTF-8 JSON with the original `.mcr` text-file convention.
 `FbdCraftMacroDefinitionTest` covers typed pins, unknown-field round trips, malformed and
 oversize files, invalid types/names, foreign child records, and count limits.
 
+The extended FBD tools now import `.mcr` files into the active project and export a selected
+definition back to `.mcr`. Project-local definitions are stored under
+`craftMacroDefinitions`, so the existing project JSON unknown-field preservation keeps them
+through normal saves and reloads. `FbdCraftMacroCatalog` validates each catalog entry,
+replaces definitions case-insensitively by name, and caps the catalog at 64 entries.
+Import is bounded while reading the selected document and validates the entire definition
+before saving the project.
+
 ## Scope and remaining work
 
-This codec is an import/export and definition-model layer only. It does not yet add an
-editor for nested child graphs, evaluate child blocks in scan order, persist a project macro
-catalog, map dynamic pins into the live connection picker, or enable `FB_MACRO` in the
-original palette. Runtime namespaces already exist for named Craft variables but are not
-proof of complete macro execution. Keep the original palette entry gated until the complete
-nested graph lifecycle and exact-head Android gates pass. No visual parity or physical PLC
-behavior is claimed.
+This is an import/export and definition-model layer. It does not yet add an editor for nested
+child graphs, evaluate child blocks in scan order, map dynamic pins into the live connection
+picker, or enable `FB_MACRO` in the original palette. Runtime namespaces already exist for
+named Craft variables but are not proof of complete macro execution. Keep the original
+palette entry gated until the complete nested graph lifecycle and exact-head Android gates
+pass. No visual parity or physical PLC behavior is claimed.
