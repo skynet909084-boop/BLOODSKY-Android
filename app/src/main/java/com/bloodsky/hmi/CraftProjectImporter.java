@@ -287,6 +287,7 @@ public final class CraftProjectImporter {
             widget.put("smsEnabled", false);
             widget.put("smsMode", "number");
             widget.put("smsBit", 0);
+            widget.put("smsStrobeEnabled", false);
         } else if (!isSupportedComponent(componentId) && FbdCraftMacroGraphAdapter.typeForComponentId(componentId, other) == null) {
             widget.put("craftUnsupportedComponent", true);
             widget.put("text", "Компонент Craft " + componentId + ": " + widget.optString("text"));
