@@ -40,12 +40,14 @@ class OriginalComponentPaletteTests(unittest.TestCase):
         self.assertIn('"Фон экрана", background', code)
         self.assertNotIn('java.util.function', code) # API 23 compatibility.
 
-    def test_sms_is_hidden_and_push_entry_uses_telegram_without_sms_permissions(self):
+    def test_sms_stays_visible_as_unavailable_sim_option_and_push_uses_telegram(self):
         palette = (ROOT / 'app/src/main/java/com/bloodsky/hmi/OriginalComponentPalette.java').read_text()
         main = (ROOT / 'app/src/main/java/com/bloodsky/hmi/MainActivity.java').read_text()
         manifest = (ROOT / 'app/src/main/AndroidManifest.xml').read_text()
-        self.assertIn('R.id.kc_picker_tab_sms_in).setVisibility(View.GONE)', palette)
-        self.assertIn('R.id.kc_picker_tab_sms_out).setVisibility(View.GONE)', palette)
+        self.assertIn('Входящее SMS (SIM): пока не перенесено', palette)
+        self.assertIn('Исходящее SMS (SIM): пока не перенесено', palette)
+        self.assertIn('R.id.kc_picker_tab_sms_in).setVisibility(View.VISIBLE)', palette)
+        self.assertIn('R.id.kc_picker_tab_sms_out).setVisibility(View.VISIBLE)', palette)
         self.assertIn('"Telegram-уведомление", "Событие", add', palette)
         self.assertIn('"Telegram-уведомление".equals(w.type)', main)
         self.assertNotRegex(manifest, r'android\.permission\.(?:SEND|RECEIVE|READ)_SMS')
