@@ -257,6 +257,32 @@ public class CraftProjectImporterTest {
         MainActivity.validateImportedProjectStatic(project.toString());
     }
 
+    @Test public void importsCraftListLabelsAndLeavesLegacyLinkInactive() throws Exception {
+        JSONObject labels = new JSONObject().put("textBit0", "Пуск").put("textBit3", "Стоп").put("textBit15", "Авария");
+        String json = new JSONObject().put("TableNameProject", new JSONObject().put("name", "List").put("countScreen", 1))
+                .put("TableConnections", new org.json.JSONArray())
+                .put("TableComponent", new org.json.JSONArray().put(new JSONObject()
+                        .put("componentId", 20).put("text", "Режим")
+                        .put("jsTableComponent_connectionInfo", new JSONObject()
+                                .put("posDeviceNetworkInList", 3).put("addressRegister", 24).put("typeRequest", 3))
+                        .put("jsTableComponent_other", new JSONObject().put("numScreen", 1)
+                                .put("textBit", labels.toString()).put("visibleInWork", true).put("checkNoChange", true))))
+                .toString();
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(json));
+        JSONObject list = project.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets").getJSONObject(0);
+        assertEquals("Список Craft", list.getString("type"));
+        assertEquals("", list.getString("connectionInfo"));
+        assertFalse(list.getBoolean("craftListEnabled"));
+        assertTrue(list.getBoolean("craftListVisibleInWork"));
+        assertTrue(list.getBoolean("craftListCheckNoChange"));
+        org.json.JSONArray importedLabels = list.getJSONArray("craftListLabels");
+        assertEquals("Пуск", importedLabels.getString(0));
+        assertEquals("Стоп", importedLabels.getString(3));
+        assertEquals("Авария", importedLabels.getString(15));
+        assertTrue(list.getJSONObject("craftOther").has("textBit"));
+        MainActivity.validateImportedProjectStatic(project.toString());
+    }
+
     @Test public void reconcilesStaleCraftScreenCountWithReferencedScreens() throws Exception {
         String json = "{\"TableNameProject\":{\"name\":\"Legacy screen\",\"countScreen\":16},\"TableConnections\":[],\"TableComponent\":["
                 + "{\"componentId\":2,\"text\":\"On screen 20\",\"x\":1,\"y\":2,\"width\":100,\"height\":30,\"jsTableComponent_other\":{\"numScreen\":20}}]}";
