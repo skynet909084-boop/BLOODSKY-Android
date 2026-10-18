@@ -3639,10 +3639,12 @@ public class MainActivity extends Activity {
         byte[] projectJsonBytes = null;
         java.util.Set<String> entryNames = new java.util.HashSet<>();
         long totalUncompressedBytes = 0;
+        int entryCount = 0;
 
         try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(inputStream)) {
             java.util.zip.ZipEntry entry;
             while ((entry = zis.getNextEntry()) != null) {
+                if (++entryCount > 2048) throw new IllegalArgumentException("Too many files in ZIP archive");
                 String name = entry.getName();
                 if (name == null || name.contains("..") || name.startsWith("/") || name.startsWith("\\")) {
                     throw new IllegalArgumentException("Unsafe entry path in ZIP archive: " + name);
@@ -3661,13 +3663,18 @@ public class MainActivity extends Activity {
                     entryBuffer.write(chunk, 0, count);
                 }
                 zis.closeEntry();
-                if ("TableNameProject.json".equalsIgnoreCase(name) || (!name.startsWith("media/") && name.endsWith(".json"))) {
+                String lowerName = name.toLowerCase(java.util.Locale.ROOT);
+                boolean projectCandidate = "tablenameproject.json".equals(lowerName)
+                        || lowerName.endsWith(".json") || lowerName.endsWith(".pro");
+                if (!entry.isDirectory() && projectCandidate && !lowerName.startsWith("media/")) {
                     if (projectJsonBytes != null) {
-                        throw new IllegalArgumentException("Multiple JSON project files in archive");
+                        throw new IllegalArgumentException("Multiple project files in archive");
                     }
                     projectJsonBytes = entryBuffer.toByteArray();
-                } else if (name.startsWith("media/") && extractedMedia != null && !entry.isDirectory()) {
-                    extractedMedia.put(name.substring("media/".length()), entryBuffer.toByteArray());
+                } else if (extractedMedia != null && !entry.isDirectory()) {
+                    String mediaPath = lowerName.startsWith("media/")
+                            ? name.substring("media/".length()) : name;
+                    extractedMedia.put(mediaPath, entryBuffer.toByteArray());
                 }
             }
         }
@@ -3675,6 +3682,10 @@ public class MainActivity extends Activity {
             throw new IllegalArgumentException("No project JSON found in ZIP archive");
         }
         String json = new String(projectJsonBytes, StandardCharsets.UTF_8);
+        JSONObject parsed = new JSONObject(json);
+        if (CraftProjectImporter.isCraftProject(parsed)) {
+            json = CraftProjectImporter.convert(json);
+        }
         validateImportedProjectStatic(json);
         return json;
     }
