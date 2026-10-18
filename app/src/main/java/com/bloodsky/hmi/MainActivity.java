@@ -7416,7 +7416,7 @@ public class MainActivity extends Activity {
         EditorCanvas() {
             super(MainActivity.this);
             setBackgroundColor(Color.WHITE);
-            setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+            setWillNotDraw(false);
         }
 
         @Override protected void onDraw(Canvas canvas) {
