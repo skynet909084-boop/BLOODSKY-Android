@@ -36,6 +36,36 @@ public class FbdCraftMacroDefinitionTest {
                 .getJSONObject(0).getString("vendorTag"));
     }
 
+    @Test public void preservesNestedGraphAcrossMcrAndProjectCatalogRoundTrips() throws Exception {
+        String graph = "\"bloodskyGraph\":{" +
+                "\"widgets\":[{\"type\":\"FBD CRAFT MACRO IN\","
+                + "\"craftMacroPortName\":\"Raw\",\"craftMacroPortType\":3},"
+                + "{\"type\":\"FBD ABS\"}],"
+                + "\"connections\":[{\"source\":0,\"sourcePin\":\"Q\","
+                + "\"target\":1,\"targetPin\":\"IN\"}],"
+                + "\"outputNode\":1,\"outputPin\":\"OUT\","
+                + "\"outputPort\":\"Result\"}";
+        FbdCraftMacroDefinition original = FbdCraftMacroDefinition.fromJson(
+                "{\"name\":\"Scale\",\"countIn\":1,\"nameIn1\":\"Raw\",\"typeIn1\":3,"
+                        + "\"nameOut\":\"Result\",\"typeOut\":3,\"fbInMacros\":[]," + graph + "}");
+
+        FbdCraftMacroDefinition fromFile = FbdCraftMacroDefinition.fromMcrBytes(
+                original.toMcrBytes());
+        assertEquals(original.toJson().getJSONObject("bloodskyGraph").toString(),
+                fromFile.toJson().getJSONObject("bloodskyGraph").toString());
+
+        JSONObject savedProject = new JSONObject();
+        FbdCraftMacroCatalog.upsert(savedProject, fromFile);
+        JSONObject reloadedProject = new JSONObject(savedProject.toString());
+        FbdCraftMacroDefinition fromCatalog = FbdCraftMacroCatalog.find(
+                reloadedProject, original.getName());
+        assertNotNull(fromCatalog);
+        assertEquals(original.toJson().getJSONObject("bloodskyGraph").toString(),
+                fromCatalog.toJson().getJSONObject("bloodskyGraph").toString());
+        assertEquals("FLOAT", fromCatalog.getInputs().get(0).signalType());
+        assertEquals("FLOAT", fromCatalog.getOutput().signalType());
+    }
+
     @Test public void rejectsMalformedUtf8OversizeAndTrailingJson() throws Exception {
         assertInvalid(() -> FbdCraftMacroDefinition.fromMcrBytes(new byte[]{(byte) 0xc3, 0x28}));
         assertInvalid(() -> FbdCraftMacroDefinition.fromJson("{} {}"));
