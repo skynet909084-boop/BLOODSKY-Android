@@ -64,6 +64,29 @@ public class FbdCraftMacroDefinitionTest {
                         + children + "}"));
     }
 
+    @Test public void validatesOptionalBloodskyNestedGraphAndRejectsCycles() throws Exception {
+        String graph = "\"bloodskyGraph\":{" +
+                "\"widgets\":[{\"type\":\"FBD CRAFT MACRO IN\",\"craftMacroPortName\":\"Raw\","
+                + "\"craftMacroPortType\":2},{\"type\":\"FBD POW\"}],"
+                + "\"connections\":[{\"source\":0,\"sourcePin\":\"Q\",\"target\":1,\"targetPin\":\"BASE\"}],"
+                + "\"outputNode\":1,\"outputPin\":\"OUT\",\"outputPort\":\"Result\"}";
+        FbdCraftMacroDefinition valid = FbdCraftMacroDefinition.fromJson(macro(graph));
+        assertTrue(valid.toJson().has("bloodskyGraph"));
+
+        String cycle = "\"bloodskyGraph\":{" +
+                "\"widgets\":[{\"type\":\"FBD НЕ\"},{\"type\":\"FBD НЕ\"}],"
+                + "\"connections\":[{\"source\":0,\"sourcePin\":\"Q\",\"target\":1,\"targetPin\":\"IN\"},"
+                + "{\"source\":1,\"sourcePin\":\"Q\",\"target\":0,\"targetPin\":\"IN\"}],"
+                + "\"outputNode\":0,\"outputPin\":\"Q\",\"outputPort\":\"Result\"}";
+        assertInvalid(() -> FbdCraftMacroDefinition.fromJson(macro(cycle)));
+
+        String foreignPort = "\"bloodskyGraph\":{" +
+                "\"widgets\":[{\"type\":\"FBD CRAFT MACRO IN\",\"craftMacroPortName\":\"Missing\","
+                + "\"craftMacroPortType\":1}],\"connections\":[],"
+                + "\"outputNode\":0,\"outputPin\":\"Q\",\"outputPort\":\"Result\"}";
+        assertInvalid(() -> FbdCraftMacroDefinition.fromJson(macro(foreignPort)));
+    }
+
     private static void assertInvalid(ThrowingRunnable action) throws Exception {
         try { action.run(); fail("Expected invalid macro to be rejected"); }
         catch (JSONException expected) { /* expected */ }

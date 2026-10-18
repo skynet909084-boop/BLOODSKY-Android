@@ -1,5948 +1,5489 @@
-package com.bloodsky.hmi;
-
-import android.app.Activity;
-import android.app.AlertDialog;
-import android.content.Intent;
-import android.net.Uri;
-import android.os.Bundle;
-import android.os.SystemClock;
-import android.os.Handler;
-import android.os.Looper;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.Paint;
-import android.graphics.RectF;
-import android.graphics.drawable.GradientDrawable;
-import android.media.AudioManager;
-import android.media.MediaPlayer;
-import android.media.ToneGenerator;
-import android.speech.tts.TextToSpeech;
-import android.text.InputType;
-import android.view.Gravity;
-import android.view.MotionEvent;
-import android.view.View;
-import android.view.ViewGroup;
-import android.widget.Button;
-import android.widget.EditText;
-import android.widget.LinearLayout;
-import android.widget.TextView;
-import android.widget.ScrollView;
-import android.widget.Spinner;
-import android.widget.ArrayAdapter;
-import android.widget.Toast;
-import org.json.JSONArray;
-import org.json.JSONObject;
-import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.net.InetSocketAddress;
-import java.net.Socket;
-import java.net.URI;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.io.DataInputStream;
-import java.io.IOException;
-import java.io.DataOutputStream;
-
-public class MainActivity extends Activity {
-    private static final String PREFS = "bloodsky_projects";
-    private static final String ACTIVE_PROJECT = "active_project";
-    private static final String PROJECT_CATALOG = "project_catalog_v1";
-    private static final int REQUEST_EXPORT_PROJECT = 7101;
-    private static final int REQUEST_IMPORT_PROJECT = 7102;
-    private static final int REQUEST_PICK_MEDIA = 7103;
-    private static final int REQUEST_EXPORT_PROJECT_ZIP = 7104;
-    private static final int REQUEST_IMPORT_CRAFT_MACRO = 7105;
-    private static final int REQUEST_EXPORT_CRAFT_MACRO = 7106;
-    private byte[] pendingCraftMacroExport;
-    private EditText pendingMediaField;
-    private String projectName = "ÐœÐ¾Ð¹ Ð¿Ñ€Ð¾ÐµÐºÑ‚";
-    private JSONObject projectExtraFields = new JSONObject();
-    private LinearLayout root;
-    private EditorCanvas editor;
-    private final List<Widget> widgets = new ArrayList<>();
-    private final List<Screen> screens = new ArrayList<>();
-    private int currentScreenIndex = 0;
-    private Widget clipboardWidget;
-    private boolean operatorMode = false;
-    private boolean fbdWireMode = false;
-    private final FbdWireHistory fbdWireHistory = new FbdWireHistory();
-    private int wireSource = -1;
-    private boolean[] fbdCacheValid = new boolean[0];
-    private boolean[] fbdCacheValues = new boolean[0];
-    private double[] fbdCacheNumeric = new double[0];
-    private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private final ExecutorService modbusExecutor = Executors.newSingleThreadExecutor();
-    private final ExecutorService craftSensorExecutor = Executors.newSingleThreadExecutor();
-    private FbdCraftMqttRuntime craftMqttRuntime;
-    private final Map<Integer, String> liveValues = new HashMap<>();
-    private boolean modbusPollingActive = false;
-    private boolean activityResumed = false;
-    private android.hardware.SensorManager fbdSensorManager;
-    private boolean fbdSensorsRegistered;
-    private android.location.LocationManager fbdLocationManager;
-    private boolean fbdLocationRegistered, fbdLocationPermissionRequested;
-    private static final int REQUEST_FBD_SPEED_LOCATION = 6107;
-    private final android.location.LocationListener fbdLocationListener = new android.location.LocationListener() {
-        @Override public void onLocationChanged(android.location.Location location) {
-            if (location == null || !operatorMode || editor == null) return;
-            double kmh = Double.isNaN(location.getSpeed()) ? 0.0 : location.getSpeed() * 3.6;
-            for (Widget widget : widgets) if ("FBD CRAFT SENSOR SPEED".equals(widget.type)) {
-                widget.craftSensorValue = kmh; widget.craftSensorValid = true;
-            }
-            editor.invalidate();
-        }
-        @Override public void onStatusChanged(String provider, int status, android.os.Bundle extras) {}
-        @Override public void onProviderEnabled(String provider) {}
-        @Override public void onProviderDisabled(String provider) {}
-    };
-    private final android.hardware.SensorEventListener fbdSensorListener = new android.hardware.SensorEventListener() {
-        @Override public void onAccuracyChanged(android.hardware.Sensor sensor, int accuracy) {}
-        @Override public void onSensorChanged(android.hardware.SensorEvent event) {
-            if (!operatorMode || editor == null || event.values == null) return;
-            boolean changed = false;
-            if (event.sensor.getType() == android.hardware.Sensor.TYPE_LIGHT && event.values.length > 0) {
-                for (Widget widget : widgets) if ("FBD CRAFT SENSOR LIGHT".equals(widget.type)) {
-                    widget.craftSensorValue = Math.max(0, (int)event.values[0]); widget.craftSensorValid = true; changed = true;
-                }
-            } else if (event.sensor.getType() == android.hardware.Sensor.TYPE_ORIENTATION && event.values.length >= 3) {
-                for (Widget widget : widgets) if ("FBD CRAFT SENSOR ORIENTATION".equals(widget.type)) {
-                    widget.craftOrientationValues[0] = event.values[0];
-                    widget.craftOrientationValues[1] = event.values[1];
-                    widget.craftOrientationValues[2] = event.values[2];
-                    widget.craftSensorValid = true; changed = true;
-                }
-            }
-            if (changed) editor.invalidate();
-        }
-    };
-    private final PollSessionGuard pollSession = new PollSessionGuard();
-    private volatile boolean modbusPollInFlight = false;
-    private final Runnable modbusPollRunnable = new Runnable() {
-        @Override public void run() {
-            if (!modbusPollingActive || editor == null) return;
-            pollBoundWidgets();
-            pollCraftOdTempSources();
-            mainHandler.postDelayed(this, 1000L);
-        }
-    };
-
-    private MediaPlayer mediaPlayer;
-    private TextToSpeech textToSpeech;
-    private final java.util.Map<String, Bitmap> imageCache = new java.util.HashMap<>();
-
-    private Bitmap loadCachedBitmap(String pathOrUri) {
-        if (pathOrUri == null || pathOrUri.trim().isEmpty()) return null;
-        if (imageCache.containsKey(pathOrUri)) return imageCache.get(pathOrUri);
-        Bitmap bitmap = null;
-        try {
-            String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
-            byte[] bytes = readProjectMediaData(pathOrUri, json);
-            BitmapFactory.Options bounds = new BitmapFactory.Options(); bounds.inJustDecodeBounds = true;
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.length, bounds);
-            BitmapFactory.Options options = new BitmapFactory.Options();
-            options.inSampleSize = ProjectImageSizing.sampleSize(bounds.outWidth, bounds.outHeight);
-            bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length, options);
-        } catch (Exception ignored) {}
-        long bytesCached = 0;
-        for (Bitmap cached : imageCache.values()) if (cached != null) bytesCached += cached.getByteCount();
-        if (imageCache.size() >= 128 || (bitmap != null && bytesCached + bitmap.getByteCount() > 32L * 1024 * 1024))
-            imageCache.clear();
-        imageCache.put(pathOrUri, bitmap);
-        return bitmap;
-    }
-
-    private Bitmap originalIndicatorBitmap(Widget widget, boolean active) {
-        try {
-            JSONObject settings = OriginalIndicator.settings(widget.extraFields);
-            String value = OriginalIndicator.imageValue(settings, active);
-            if (OriginalIndicator.isUserImage(settings, active)) return loadCachedBitmap(value);
-            int resource;
-            switch (OriginalIndicator.builtinName(value)) {
-                case "lamp_green": resource = R.drawable.kc_lamp_green; break;
-                case "lamp_red": resource = R.drawable.kc_lamp_red; break;
-                case "lamp_yellow": resource = R.drawable.kc_lamp_yellow; break;
-                case "lamp_blue": resource = R.drawable.kc_lamp_blue; break;
-                case "lamp_off": resource = R.drawable.kc_lamp_off; break;
-                default: resource = R.drawable.kc_warning_32;
-            }
-            return originalBitmap(resource);
-        } catch (Exception invalid) { return null; }
-    }
-
-    private Bitmap originalBitmap(int resource) {
-        String key = "original-resource:" + resource;
-        Bitmap cached = imageCache.get(key);
-        if (cached == null) {
-            cached = BitmapFactory.decodeResource(getResources(), resource);
-            imageCache.put(key, cached);
-        }
-        return cached;
-    }
-
-    @Override public void onCreate(Bundle state) {
-        super.onCreate(state);
-        getWindow().setFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN,
-                android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        try {
-            textToSpeech = new TextToSpeech(this, status -> {
-                if (status == TextToSpeech.SUCCESS && textToSpeech != null) {
-                    try { textToSpeech.setLanguage(new java.util.Locale("ru", "RU")); } catch (Exception ignored) {}
-                }
-            });
-        } catch (Exception ex) {
-            android.util.Log.e("BLOODSKY", "TTS init error", ex);
-        }
-        showHome();
-    }
-
-    @Override protected void onResume() {
-        super.onResume();
-        activityResumed = true;
-        if (editor != null) { startModbusPolling(); startFbdSensors(); startCraftMqtt(); }
-    }
-
-    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode != REQUEST_FBD_SPEED_LOCATION) return;
-        fbdLocationPermissionRequested = false;
-        if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED)
-            startFbdSensors();
-    }
-
-    @Override protected void onPause() {
-        activityResumed = false;
-        stopModbusPolling();
-        stopFbdSensors();
-        stopCraftMqtt();
-        if (mediaPlayer != null) {
-            try { mediaPlayer.stop(); } catch (Exception ignored) {}
-            try { mediaPlayer.release(); } catch (Exception ignored) {}
-            mediaPlayer = null;
-        }
-        if (textToSpeech != null) try { textToSpeech.stop(); } catch (Exception ignored) {}
-        super.onPause();
-    }
-
-    @Override protected void onDestroy() {
-        stopModbusPolling();
-        stopFbdSensors();
-        stopCraftMqtt();
-        editor = null;
-        modbusExecutor.shutdownNow();
-        craftSensorExecutor.shutdownNow();
-        if (mediaPlayer != null) {
-            try { mediaPlayer.stop(); } catch (Exception ignored) {}
-            try { mediaPlayer.release(); } catch (Exception ignored) {}
-            mediaPlayer = null;
-        }
-        if (textToSpeech != null) {
-            try { textToSpeech.stop(); textToSpeech.shutdown(); } catch (Exception ignored) {}
-            textToSpeech = null;
-        }
-        super.onDestroy();
-    }
-
-    private void playSoundAlert(String pathOrUri) {
-        try {
-            if (mediaPlayer != null) {
-                try { mediaPlayer.stop(); } catch (Exception ignored) {}
-            try { mediaPlayer.release(); } catch (Exception ignored) {}
-                mediaPlayer = null;
-            }
-            if (pathOrUri != null && pathOrUri.startsWith("content://")) {
-                mediaPlayer = new MediaPlayer();
-                mediaPlayer.setDataSource(this, Uri.parse(pathOrUri));
-                mediaPlayer.prepare();
-                mediaPlayer.start();
-            } else if (pathOrUri != null && !pathOrUri.trim().isEmpty() && !"ÐÐ»Ð°Ñ€Ð¼".equals(pathOrUri)) {
-                String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
-                java.io.File file = ProjectMediaService.resolveMediaFile(getFilesDir(), json, pathOrUri);
-                mediaPlayer = new MediaPlayer();
-                mediaPlayer.setDataSource(file.getAbsolutePath());
-                mediaPlayer.prepare();
-                mediaPlayer.start();
-            } else {
-                ToneGenerator toneG = new ToneGenerator(AudioManager.STREAM_ALARM, 80);
-                toneG.startTone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 350);
-            }
-        } catch (Exception ex) {
-            android.util.Log.e("BLOODSKY", "Sound alert error", ex);
-            try {
-                ToneGenerator toneG = new ToneGenerator(AudioManager.STREAM_ALARM, 80);
-                toneG.startTone(ToneGenerator.TONE_PROP_BEEP, 250);
-            } catch (Exception ignored) {}
-        }
-    }
-
-    private void speakVoiceAnnouncement(String text) {
-        if (textToSpeech != null && text != null && !text.trim().isEmpty()) {
-            try {
-                textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, "bloodsky_tts_" + SystemClock.elapsedRealtime());
-            } catch (Exception ex) {
-                android.util.Log.e("BLOODSKY", "TTS speak error", ex);
-            }
-        }
-    }
-
-    private int dp(float value) {
-        return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
-    }
-
-    private int snapToGrid(float value) {
-        int step = Math.max(1, dp(20));
-        return Math.round(value / step) * step;
-    }
-
-    private TextView heading(String text) {
-        TextView view = new TextView(this);
-        view.setText(text);
-        view.setTextColor(Color.WHITE);
-        view.setTextSize(22);
-        view.setGravity(Gravity.CENTER_VERTICAL);
-        view.setPadding(dp(18), dp(12), dp(12), dp(12));
-        view.setBackgroundColor(Color.rgb(16, 36, 58));
-        return view;
-    }
-
-    private Button action(String text, Runnable task) {
-        Button button = new Button(this);
-        button.setText(text);
-        button.setAllCaps(false);
-        button.setOnClickListener(v -> task.run());
-        return button;
-    }
-
-    private Button legacyMenuButton(String text, Runnable task) {
-        Button button = new Button(this);
-        button.setText(text);
-        button.setTextSize(20);
-        button.setTextColor(Color.BLACK);
-        button.setAllCaps(true);
-        button.setGravity(Gravity.CENTER);
-        button.setBackgroundResource(R.drawable.kc_background_button);
-        button.setOnClickListener(v -> task.run());
-        return button;
-    }
-
-    private void showHome() {
-        operatorMode = false;
-        setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
-        stopModbusPolling();
-        editor = null;
-        try { readProjectCatalog(); }
-        catch (Exception error) { Toast.makeText(this, "Ð¡Ð¾Ñ…Ñ€Ð°Ð½ÐµÐ½Ð¸Ðµ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°: " + error.getMessage(), Toast.LENGTH_LONG).show(); }
-        root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setBackgroundResource(R.drawable.kc_main_background_small);
-        root.setWeightSum(1.0f);
-        TextView title = new TextView(this);
-        title.setText("BLOODSKY");
-        title.setTextColor(Color.rgb(237, 176, 59));
-        title.setTextSize(22);
-        title.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(-2, -2);
-        titleParams.topMargin = dp(8);
-        root.addView(title, titleParams);
-        // Original main_menu.xml order, 300dp width and 0.14 weights.
-        int menuWidth = Math.min(dp(300), getResources().getDisplayMetrics().widthPixels);
-        addLegacyMenuItem("Ð¡Ð¾Ð·Ð´Ð°Ñ‚ÑŒ Ð½Ð¾Ð²Ñ‹Ð¹ Ð¿Ñ€Ð¾ÐµÐºÑ‚", this::createNamedProject, menuWidth);
-        addLegacyMenuItem("Ð—Ð°Ð³Ñ€ÑƒÐ·Ð¸Ñ‚ÑŒ Ð¿Ñ€Ð¾ÐµÐºÑ‚", () -> chooseSavedProject(false), menuWidth);
-        addLegacyMenuItem("Ð£Ð´Ð°Ð»Ð¸Ñ‚ÑŒ Ð¿Ñ€Ð¾ÐµÐºÑ‚", () -> chooseSavedProject(true), menuWidth);
-        addLegacyMenuItem("Ð­ÐºÑÐ¿Ð¾Ñ€Ñ‚ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°", () -> {
-            if (getSharedPreferences(PREFS, MODE_PRIVATE).contains(ACTIVE_PROJECT)) {
-                if (loadProject()) exportProject();
-            } else Toast.makeText(this, "Ð¡Ð½Ð°Ñ‡Ð°Ð»Ð° ÑÐ¾Ð·Ð´Ð°Ð¹ Ð¸Ð»Ð¸ Ð·Ð°Ð³Ñ€ÑƒÐ·Ð¸ Ð¿Ñ€Ð¾ÐµÐºÑ‚", Toast.LENGTH_SHORT).show();
-        }, menuWidth);
-        addLegacyMenuItem("Ð˜Ð¼Ð¿Ð¾Ñ€Ñ‚ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°", this::importProject, menuWidth);
-        addLegacyMenuItem("Ð’Ñ‹Ñ…Ð¾Ð´", this::finish, menuWidth);
-        root.addView(new View(this), new LinearLayout.LayoutParams(1, 0, 0.1f));
-        TextView footer = new TextView(this);
-        footer.setText("BLOODSKY 0.1.0");
-        footer.setTextColor(Color.rgb(255, 248, 243));
-        footer.setTextSize(18);
-        footer.setGravity(Gravity.CENTER);
-        root.addView(footer, new LinearLayout.LayoutParams(-2, -2));
-        setContentView(root);
-    }
-
-    private void addLegacyMenuItem(String label, Runnable task, int width) {
-        Button button = legacyMenuButton(label, task);
-        // The source specifies dp for text rather than sp.
-        button.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 20);
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(width, 0, 0.14f);
-        params.gravity = Gravity.CENTER_HORIZONTAL;
-        params.topMargin = dp(10);
-        root.addView(button, params);
-    }
-
-    private boolean storeActiveProject(String json, boolean synchronous) throws Exception {
-        String normalized = ProjectCatalog.normalize(json);
-        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-        String oldActive = prefs.getString(ACTIVE_PROJECT, null);
-        String oldCatalog = prefs.getString(PROJECT_CATALOG, null);
-        String oldName = prefs.getString("project_name", null);
-        String catalog = ProjectCatalog.upsert(oldCatalog, normalized);
-        android.content.SharedPreferences.Editor edit = prefs.edit()
-                .putString(ACTIVE_PROJECT, normalized).putString(PROJECT_CATALOG, catalog)
-                .putString("project_name", new JSONObject(normalized).optString("projectName", "ÐœÐ¾Ð¹ Ð¿Ñ€Ð¾ÐµÐºÑ‚"));
-        if (!synchronous) { edit.apply(); return true; }
-        if (edit.commit()) return true;
-        android.content.SharedPreferences.Editor restore = prefs.edit();
-        if (oldActive == null) restore.remove(ACTIVE_PROJECT); else restore.putString(ACTIVE_PROJECT, oldActive);
-        if (oldCatalog == null) restore.remove(PROJECT_CATALOG); else restore.putString(PROJECT_CATALOG, oldCatalog);
-        if (oldName == null) restore.remove("project_name"); else restore.putString("project_name", oldName);
-        if (!restore.commit()) android.util.Log.e("BLOODSKY", "Could not persist restored project preferences");
-        return false;
-    }
-
-    /**
-     * Upgrade old project media before changing its saved identity. The save callback
-     * commits ACTIVE_PROJECT and PROJECT_CATALOG together; failed copies leave both
-     * the original saved JSON and the old files untouched.
-     */
-    private String migrateLegacyActiveProject(String stored) throws Exception {
-        return LegacyProjectMediaMigrator.migrate(getFilesDir(), stored, newJson -> {
-            try { return storeActiveProject(newJson, true); }
-            catch (Exception failure) {
-                android.util.Log.e("BLOODSKY", "Legacy project ID commit failed", failure);
-                return false;
-            }
-        });
-    }
-
-    private String readProjectCatalog() throws Exception {
-        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-        String active = prefs.getString(ACTIVE_PROJECT, null);
-        if (active != null) {
-            if (LegacyProjectMediaMigrator.needsMigration(active)) {
-                migrateLegacyActiveProject(active);
-            } else if (!storeActiveProject(active, true)) {
-                throw new IOException("ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ ÑÐ¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ñ‚ÐµÐºÑƒÑ‰Ð¸Ð¹ Ð¿Ñ€Ð¾ÐµÐºÑ‚");
-            }
-        }
-        return prefs.getString(PROJECT_CATALOG, "{}");
-    }
-
-    private void createNamedProject() {
-        EditText name = propertyField("", InputType.TYPE_CLASS_TEXT);
-        name.setHint("Ð˜Ð¼Ñ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°");
-        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Ð¡Ð¾Ð·Ð´Ð°Ñ‚ÑŒ Ð½Ð¾Ð²Ñ‹Ð¹ Ð¿Ñ€Ð¾ÐµÐºÑ‚")
-                .setView(name).setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null).setPositiveButton("Ð¡Ð¾Ð·Ð´Ð°Ñ‚ÑŒ", null).create();
-        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            try {
-                readProjectCatalog(); // Migrate/preserve the previous active project first.
-                String json = ProjectCatalog.create(name.getText().toString());
-                if (!storeActiveProject(json, true)) throw new IOException("ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ ÑÐ¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ð¿Ñ€Ð¾ÐµÐºÑ‚");
-                if (!loadProject()) throw new IOException("ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚ÑŒ Ð½Ð¾Ð²Ñ‹Ð¹ Ð¿Ñ€Ð¾ÐµÐºÑ‚");
-                dialog.dismiss(); showEditor();
-            } catch (Exception error) { name.setError(error.getMessage()); }
-        }));
-        dialog.show();
-    }
-
-    private void chooseSavedProject(boolean deleting) {
-        try {
-            List<JSONObject> projects = ProjectCatalog.list(readProjectCatalog());
-            if (projects.isEmpty()) {
-                Toast.makeText(this, "ÐÐµÑ‚ ÑÐ¾Ñ…Ñ€Ð°Ð½Ñ‘Ð½Ð½Ñ‹Ñ… Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð¾Ð²", Toast.LENGTH_SHORT).show(); return;
-            }
-            String[] labels = new String[projects.size()];
-            for (int i = 0; i < labels.length; i++) labels[i] = projects.get(i).optString("projectName", "ÐœÐ¾Ð¹ Ð¿Ñ€Ð¾ÐµÐºÑ‚");
-            new AlertDialog.Builder(this).setTitle(deleting ? "Ð£Ð´Ð°Ð»Ð¸Ñ‚ÑŒ Ð¿Ñ€Ð¾ÐµÐºÑ‚" : "Ð—Ð°Ð³Ñ€ÑƒÐ·Ð¸Ñ‚ÑŒ Ð¿Ñ€Ð¾ÐµÐºÑ‚")
-                    .setItems(labels, (dialog, which) -> {
-                        JSONObject selected = projects.get(which);
-                        if (deleting) {
-                            new AlertDialog.Builder(this).setTitle("Ð£Ð´Ð°Ð»Ð¸Ñ‚ÑŒ Ð¿Ñ€Ð¾ÐµÐºÑ‚?")
-                                    .setMessage(selected.optString("projectName", "ÐœÐ¾Ð¹ Ð¿Ñ€Ð¾ÐµÐºÑ‚"))
-                                    .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null).setPositiveButton("Ð£Ð´Ð°Ð»Ð¸Ñ‚ÑŒ", (confirm, choice) -> deleteSavedProject(selected)).show();
-                        } else try {
-                            if (!storeActiveProject(selected.toString(), true)) throw new IOException("ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚ÑŒ Ð¿Ñ€Ð¾ÐµÐºÑ‚");
-                            if (!loadProject()) throw new IOException("ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚ÑŒ Ð¿Ñ€Ð¾ÐµÐºÑ‚");
-                            showEditor();
-                        } catch (Exception error) { Toast.makeText(this, error.getMessage(), Toast.LENGTH_LONG).show(); }
-                    }).setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null).show();
-        } catch (Exception error) { Toast.makeText(this, "Ð¡Ð¿Ð¸ÑÐ¾Ðº Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð¾Ð²: " + error.getMessage(), Toast.LENGTH_LONG).show(); }
-    }
-
-    private void deleteSavedProject(JSONObject selected) {
-        try {
-            android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-            String key = ProjectMediaService.getOrGenerateProjectId(selected.toString());
-            String oldCatalog = prefs.getString(PROJECT_CATALOG, "{}");
-            String active = prefs.getString(ACTIVE_PROJECT, null);
-            String oldName = prefs.getString("project_name", null);
-            boolean deletingActive = active != null && key.equals(ProjectMediaService.getOrGenerateProjectId(active));
-            android.content.SharedPreferences.Editor edit = prefs.edit()
-                    .putString(PROJECT_CATALOG, ProjectCatalog.remove(oldCatalog, key));
-            if (deletingActive) edit.remove(ACTIVE_PROJECT).remove("project_name");
-            if (!edit.commit()) {
-                android.content.SharedPreferences.Editor restore = prefs.edit().putString(PROJECT_CATALOG, oldCatalog);
-                if (active != null) restore.putString(ACTIVE_PROJECT, active);
-                if (oldName != null) restore.putString("project_name", oldName);
-                if (!restore.commit()) android.util.Log.e("BLOODSKY", "Could not persist restored catalog");
-                throw new IOException("ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ ÑƒÐ´Ð°Ð»Ð¸Ñ‚ÑŒ Ð¿Ñ€Ð¾ÐµÐºÑ‚");
-            }
-            if (deletingActive) { widgets.clear(); screens.clear(); projectExtraFields = new JSONObject(); clipboardWidget = null; imageCache.clear(); }
-            showHome();
-        } catch (Exception error) { Toast.makeText(this, error.getMessage(), Toast.LENGTH_LONG).show(); }
-    }
-
-    private void showModbusScanner() {
-        stopModbusPolling();
-        editor = null;
-        root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.rgb(241, 245, 249));
-        root.addView(heading("BLOODSKY â€¢ Modbus TCP Scanner"), new LinearLayout.LayoutParams(-1, dp(60)));
-        root.addView(action("â€¹ ÐÐ°Ð·Ð°Ð´", this::showHome), new LinearLayout.LayoutParams(-1, dp(48)));
-
-        LinearLayout form = new LinearLayout(this);
-        form.setOrientation(LinearLayout.VERTICAL);
-        form.setPadding(dp(16), dp(8), dp(16), dp(8));
-        EditText hostField = propertyField("192.168.1.10", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        hostField.setHint("IP-Ð°Ð´Ñ€ÐµÑ ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð°");
-        form.addView(hostField);
-        EditText portField = propertyField("502", InputType.TYPE_CLASS_NUMBER);
-        portField.setHint("TCP-Ð¿Ð¾Ñ€Ñ‚ (Ð¾Ð±Ñ‹Ñ‡Ð½Ð¾ 502)");
-        form.addView(portField);
-        EditText unitField = propertyField("1", InputType.TYPE_CLASS_NUMBER);
-        unitField.setHint("Unit ID (0â€“255)");
-        form.addView(unitField);
-        Spinner functionSpinner = new Spinner(this);
-        ArrayAdapter<String> functionAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item,
-                new String[]{"Holding registers (FC03)", "Input registers (FC04)"});
-        functionAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        functionSpinner.setAdapter(functionAdapter);
-        form.addView(functionSpinner);
-        EditText addressField = propertyField("40001", InputType.TYPE_CLASS_NUMBER);
-        addressField.setHint("ÐÐ´Ñ€ÐµÑ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð°: FC03 Ð¾Ð±Ñ‹Ñ‡Ð½Ð¾ 40001, FC04 Ð¾Ð±Ñ‹Ñ‡Ð½Ð¾ 30001");
-        form.addView(addressField);
-        EditText countField = propertyField("10", InputType.TYPE_CLASS_NUMBER);
-        countField.setHint("ÐšÐ¾Ð»Ð¸Ñ‡ÐµÑÑ‚Ð²Ð¾ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð¾Ð² (1â€“125)");
-        form.addView(countField);
-
-        TextView result = new TextView(this);
-        result.setTextColor(Color.rgb(31, 41, 55));
-        result.setTextSize(14);
-        result.setPadding(dp(16), dp(10), dp(16), dp(10));
-        result.setText("Ð“Ð¾Ñ‚Ð¾Ð² Ðº Ñ‡Ñ‚ÐµÐ½Ð¸ÑŽ holding registers (FC03). Ð¡ÐºÐ°Ð½Ð¸Ñ€Ð¾Ð²Ð°Ð½Ð¸Ðµ Ð²Ñ‹Ð¿Ð¾Ð»Ð½ÑÐµÑ‚ÑÑ Ð¿Ð¾ ÑÐµÑ‚Ð¸; ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð¾ Ð´Ð¾Ð»Ð¶Ð½Ð¾ Ð±Ñ‹Ñ‚ÑŒ Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð½Ð¾.");
-        root.addView(form, new LinearLayout.LayoutParams(-1, -2));
-        root.addView(action("Ð¡Ñ‡Ð¸Ñ‚Ð°Ñ‚ÑŒ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ñ‹", () -> {
-            final String host = hostField.getText().toString().trim();
-            final int functionCode = functionSpinner.getSelectedItemPosition() == 0 ? 3 : 4;
-            final int port, unit, startAddress, count;
-            try {
-                port = Integer.parseInt(portField.getText().toString().trim());
-                unit = Integer.parseInt(unitField.getText().toString().trim());
-                int enteredAddress = Integer.parseInt(addressField.getText().toString().trim());
-                count = Integer.parseInt(countField.getText().toString().trim());
-                if (port < 1 || port > 65535 || unit < 0 || unit > 255 || count < 1 || count > 125
-                        || enteredAddress < 0 || enteredAddress > 65535) throw new IllegalArgumentException();
-                if (functionCode == 4 && enteredAddress >= 30001 && enteredAddress <= 39999) {
-                    startAddress = enteredAddress - 30001;
-                } else if (functionCode == 3 && enteredAddress >= 40001 && enteredAddress <= 49999) {
-                    startAddress = enteredAddress - 40001;
-                } else if ((functionCode == 4 && enteredAddress >= 40001 && enteredAddress <= 49999)
-                        || (functionCode == 3 && enteredAddress >= 30001 && enteredAddress <= 39999)) {
-                    throw new IllegalArgumentException("ÐÐ´Ñ€ÐµÑ Ð½Ðµ ÑÐ¾Ð¾Ñ‚Ð²ÐµÑ‚ÑÑ‚Ð²ÑƒÐµÑ‚ Ð²Ñ‹Ð±Ñ€Ð°Ð½Ð½Ð¾Ð¼Ñƒ Ñ‚Ð¸Ð¿Ñƒ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð°");
-                } else {
-                    startAddress = enteredAddress;
-                }
-                if (startAddress < 0 || startAddress > 65535 || startAddress + count > 65536) throw new IllegalArgumentException();
-                if (host.isEmpty()) throw new IllegalArgumentException();
-            } catch (Exception ex) {
-                String message = ex.getMessage();
-                result.setText(message == null || message.trim().isEmpty()
-                        ? "ÐŸÑ€Ð¾Ð²ÐµÑ€ÑŒ IP, Ð¿Ð¾Ñ€Ñ‚, Unit ID, Ð°Ð´Ñ€ÐµÑ Ð¸ ÐºÐ¾Ð»Ð¸Ñ‡ÐµÑÑ‚Ð²Ð¾ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð¾Ð²."
-                        : "ÐŸÐ°Ñ€Ð°Ð¼ÐµÑ‚Ñ€Ñ‹ Ð·Ð°Ð¿Ñ€Ð¾ÑÐ°: " + message);
-                return;
-            }
-            result.setText("ÐŸÐ¾Ð´ÐºÐ»ÑŽÑ‡Ð°ÑŽÑÑŒ Ðº " + host + ":" + port + "â€¦");
-            new Thread(() -> {
-                String report;
-                try {
-                    report = readModbusRegisters(host, port, unit, startAddress, count, functionCode);
-                } catch (Exception ex) {
-                    report = "ÐžÑˆÐ¸Ð±ÐºÐ° Modbus TCP: " + (ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage());
-                }
-                final String finalReport = report;
-                runOnUiThread(() -> result.setText(finalReport));
-            }, "bloodsky-modbus-scan").start();
-        }), new LinearLayout.LayoutParams(-1, dp(52)));
-        root.addView(result, new LinearLayout.LayoutParams(-1, 0, 1));
-        setContentView(root);
-    }
-
-    public static int calculateModbusRtuCrc(byte[] data, int length) {
-        int crc = 0xFFFF;
-        for (int pos = 0; pos < length; pos++) {
-            crc ^= (data[pos] & 0xFF);
-            for (int i = 8; i != 0; i--) {
-                if ((crc & 0x0001) != 0) {
-                    crc >>= 1;
-                    crc ^= 0xA001;
-                } else {
-                    crc >>= 1;
-                }
-            }
-        }
-        return crc & 0xFFFF;
-    }
-
-    public static byte[] buildModbusRtuFrame(int unit, int functionCode, int startAddress, int count) {
-        byte[] frame = new byte[8];
-        frame[0] = (byte) (unit & 0xFF);
-        frame[1] = (byte) (functionCode & 0xFF);
-        frame[2] = (byte) ((startAddress >> 8) & 0xFF);
-        frame[3] = (byte) (startAddress & 0xFF);
-        frame[4] = (byte) ((count >> 8) & 0xFF);
-        frame[5] = (byte) (count & 0xFF);
-        int crc = calculateModbusRtuCrc(frame, 6);
-        frame[6] = (byte) (crc & 0xFF);
-        frame[7] = (byte) ((crc >> 8) & 0xFF);
-        return frame;
-    }
-
-    public static class ModbusRtuTransport {
-        private final InputStream in;
-        private final OutputStream out;
-
-        public ModbusRtuTransport(InputStream in, OutputStream out) {
-            this.in = in;
-            this.out = out;
-        }
-
-        private void readFully(byte[] buffer, int offset, int length) throws IOException {
-            int totalRead = 0;
-            while (totalRead < length) {
-                int count = in.read(buffer, offset + totalRead, length - totalRead);
-                if (count < 0) {
-                    throw new IOException("Stream closed before reading expected " + length + " bytes (read " + totalRead + ")");
-                }
-                totalRead += count;
-            }
-        }
-
-        public byte[] sendAndReceive(int unit, int functionCode, int startAddress, int count) throws IOException {
-            byte[] frame = buildModbusRtuFrame(unit, functionCode, startAddress, count);
-            out.write(frame);
-            out.flush();
-
-            byte[] header = new byte[3];
-            readFully(header, 0, 3);
-
-            int respUnit = header[0] & 0xFF;
-            int respFunc = header[1] & 0xFF;
-
-            if (respFunc == (functionCode | 0x80)) {
-                int exceptionCode = header[2] & 0xFF;
-                byte[] crcBuf = new byte[2];
-                readFully(crcBuf, 0, 2);
-                int expectedCrc = ((crcBuf[1] & 0xFF) << 8) | (crcBuf[0] & 0xFF);
-                int calcCrc = calculateModbusRtuCrc(header, 3);
-                if (calcCrc != expectedCrc) {
-                    throw new IOException("CRC mismatch in Modbus RTU exception response (expected 0x"
-                            + String.format(java.util.Locale.ROOT, "%04X", calcCrc) + ", got 0x"
-                            + String.format(java.util.Locale.ROOT, "%04X", expectedCrc) + ")");
-                }
-                throw new IOException("Modbus RTU: " + describeModbusExceptionCodeStatic(exceptionCode) + " (ÐºÐ¾Ð´ " + exceptionCode + ")");
-            }
-
-            if (respFunc != functionCode) {
-                throw new IOException("Unexpected function code in Modbus RTU response: " + respFunc);
-            }
-
-            int byteCount = header[2] & 0xFF;
-            if (byteCount < 0 || byteCount > 252) {
-                throw new IOException("Invalid byte count in Modbus RTU response: " + byteCount);
-            }
-
-            byte[] payload = new byte[byteCount];
-            readFully(payload, 0, byteCount);
-
-            byte[] crcBuf = new byte[2];
-            readFully(crcBuf, 0, 2);
-            int expectedCrc = ((crcBuf[1] & 0xFF) << 8) | (crcBuf[0] & 0xFF);
-
-            byte[] fullPdu = new byte[3 + byteCount];
-            System.arraycopy(header, 0, fullPdu, 0, 3);
-            System.arraycopy(payload, 0, fullPdu, 3, byteCount);
-
-            int calcCrc = calculateModbusRtuCrc(fullPdu, fullPdu.length);
-            if (calcCrc != expectedCrc) {
-                throw new IOException("CRC mismatch in Modbus RTU response (expected 0x"
-                        + String.format(java.util.Locale.ROOT, "%04X", calcCrc) + ", got 0x"
-                        + String.format(java.util.Locale.ROOT, "%04X", expectedCrc) + ")");
-            }
-            return payload;
-        }
-    }
-
-    private String readModbusHoldingRegisters(String host, int port, int unit, int startAddress, int count) throws Exception {
-        return readModbusRegisters(host, port, unit, startAddress, count, 3);
-    }
-
-    public static String readModbusRegistersStatic(String host, int port, int unit, int startAddress, int count, int functionCode) throws Exception {
-        final int[] values;
-        try {
-            values = new ModbusTcpClient(host, port).read(unit, startAddress, count, functionCode);
-        } catch (ModbusTcpClient.ModbusException ex) {
-            throw describeTcpException(ex);
-        }
-        StringBuilder report = new StringBuilder();
-        String funcName = functionCode == 1 ? "coils (FC01)\n" : (functionCode == 2 ? "discrete inputs (FC02)\n" : (functionCode == 3 ? "holding registers (FC03)\n" : "input registers (FC04)\n"));
-        report.append("Ð£ÑÐ¿ÐµÑˆÐ½Ð¾: ").append(count).append(" ").append(funcName);
-        int baseAddr = functionCode == 1 ? 1 : (functionCode == 2 ? 10001 : (functionCode == 3 ? 40001 : 30001));
-        for (int i = 0; i < count; i++) {
-            report.append(baseAddr + startAddress + i).append("  |  ")
-                    .append(values[i]).append("  |  0x")
-                    .append(String.format(java.util.Locale.ROOT, "%04X", values[i])).append('\n');
-        }
-        return report.toString();
-    }
-
-    public static boolean writeModbusRegisterStatic(String host, int port, int unit, int address, int value) throws Exception {
-        try {
-            new ModbusTcpClient(host, port).writeSingle(unit, address, value);
-            return true;
-        } catch (ModbusTcpClient.ModbusException ex) {
-            throw describeTcpException(ex);
-        }
-    }
-
-    public static boolean writeModbusMultipleRegistersStatic(String host, int port, int unit, int startAddress, int[] values) throws Exception {
-        try {
-            new ModbusTcpClient(host, port).writeMultiple(unit, startAddress, values);
-            return true;
-        } catch (ModbusTcpClient.ModbusException ex) {
-            throw describeTcpException(ex);
-        }
-    }
-
-    private static IOException describeTcpException(ModbusTcpClient.ModbusException ex) {
-        return new IOException("Modbus: " + describeModbusExceptionCodeStatic(ex.exceptionCode)
-                + " (ÐºÐ¾Ð´ " + ex.exceptionCode + ")", ex);
-    }
-
-    private String readModbusRegisters(String host, int port, int unit, int startAddress, int count, int functionCode) throws Exception {
-        return readModbusRegistersStatic(host, port, unit, startAddress, count, functionCode);
-    }
-
-    public static String describeModbusExceptionCodeStatic(int code) {
-        switch (code) {
-            case 1: return "ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð¾ Ð½Ðµ Ð¿Ð¾Ð´Ð´ÐµÑ€Ð¶Ð¸Ð²Ð°ÐµÑ‚ ÑÑ‚Ñƒ Ñ„ÑƒÐ½ÐºÑ†Ð¸ÑŽ";
-            case 2: return "Ð½ÐµÐ´Ð¾Ð¿ÑƒÑÑ‚Ð¸Ð¼Ñ‹Ð¹ Ð°Ð´Ñ€ÐµÑ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð°";
-            case 3: return "Ð½ÐµÐ´Ð¾Ð¿ÑƒÑÑ‚Ð¸Ð¼Ð¾Ðµ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ Ð² Ð·Ð°Ð¿Ñ€Ð¾ÑÐµ";
-            case 4: return "Ð²Ð½ÑƒÑ‚Ñ€ÐµÐ½Ð½ÑÑ Ð¾ÑˆÐ¸Ð±ÐºÐ° ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð°";
-            case 5: return "Ð·Ð°Ð¿Ñ€Ð¾Ñ Ð¿Ñ€Ð¸Ð½ÑÑ‚, Ð¾Ð±Ñ€Ð°Ð±Ð¾Ñ‚ÐºÐ° Ð²Ñ‹Ð¿Ð¾Ð»Ð½ÑÐµÑ‚ÑÑ";
-            case 6: return "ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð¾ Ð·Ð°Ð½ÑÑ‚Ð¾, Ð¿Ð¾Ð²Ñ‚Ð¾Ñ€Ð¸Ñ‚Ðµ Ð¿Ð¾Ð·Ð¶Ðµ";
-            case 8: return "Ð¾ÑˆÐ¸Ð±ÐºÐ° Ñ‡Ñ‘Ñ‚Ð½Ð¾ÑÑ‚Ð¸ Ð¿Ð°Ð¼ÑÑ‚Ð¸";
-            case 10: return "ÑˆÐ»ÑŽÐ· Ð½Ðµ ÑÐ¼Ð¾Ð³ ÑƒÑÑ‚Ð°Ð½Ð¾Ð²Ð¸Ñ‚ÑŒ ÑÐ¾ÐµÐ´Ð¸Ð½ÐµÐ½Ð¸Ðµ";
-            case 11: return "ÑˆÐ»ÑŽÐ· Ð½Ðµ Ð¿Ð¾Ð»ÑƒÑ‡Ð¸Ð» Ð¾Ñ‚Ð²ÐµÑ‚ Ð¾Ñ‚ ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð°";
-            default: return "Ð½ÐµÐ¸Ð·Ð²ÐµÑÑ‚Ð½Ð¾Ðµ Ð¸ÑÐºÐ»ÑŽÑ‡ÐµÐ½Ð¸Ðµ Ð¿Ñ€Ð¾Ñ‚Ð¾ÐºÐ¾Ð»Ð°";
-        }
-    }
-
-    private String describeModbusExceptionCode(int code) {
-        return describeModbusExceptionCodeStatic(code);
-    }
-
-    private String describeModbusError(Exception error) {
-        if (error instanceof java.net.SocketTimeoutException) return "Ñ‚Ð°Ð¹Ð¼-Ð°ÑƒÑ‚ Ð¾Ñ‚Ð²ÐµÑ‚Ð° (3 Ñ)";
-        if (error instanceof java.net.ConnectException) return "Ð½Ðµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¿Ð¾Ð´ÐºÐ»ÑŽÑ‡Ð¸Ñ‚ÑŒÑÑ Ðº ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ñƒ";
-        if (error instanceof java.net.UnknownHostException) return "Ð½Ðµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¾Ð¿Ñ€ÐµÐ´ÐµÐ»Ð¸Ñ‚ÑŒ Ð°Ð´Ñ€ÐµÑ Ñ…Ð¾ÑÑ‚Ð°";
-        if (error instanceof java.net.NoRouteToHostException) return "Ð½ÐµÑ‚ Ð¼Ð°Ñ€ÑˆÑ€ÑƒÑ‚Ð° Ð´Ð¾ ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð°";
-        if (error instanceof java.net.SocketException) return "Ð¾ÑˆÐ¸Ð±ÐºÐ° ÑÐ¾ÐºÐµÑ‚Ð°/ÑÐ¾ÐµÐ´Ð¸Ð½ÐµÐ½Ð¸Ðµ Ð·Ð°ÐºÑ€Ñ‹Ñ‚Ð¾";
-        String message = error.getMessage();
-        if (message == null || message.trim().isEmpty()) return error.getClass().getSimpleName();
-        return message.length() > 90 ? message.substring(0, 90) : message;
-    }
-
-    private boolean isActiveModbusValue(String value) {
-        if (value == null) return false;
-        String normalized = value.trim().toLowerCase(java.util.Locale.ROOT);
-        if (normalized.isEmpty() || normalized.startsWith("err") || normalized.startsWith("cfg")
-                || "false".equals(normalized) || "off".equals(normalized)
-                || "no".equals(normalized)) return false;
-        if ("true".equals(normalized) || "on".equals(normalized) || "yes".equals(normalized)) return true;
-        try {
-            return Double.parseDouble(normalized) != 0.0d;
-        } catch (NumberFormatException ignored) {
-            return false;
-        }
-    }
-
-    private BindingRequest parseBinding(int widgetIndex, String binding) {
-        return parseBinding(widgetIndex, binding, 1);
-    }
-
-    private void startFbdSensors() {
-        if (!activityResumed || !operatorMode || editor == null) return;
-        boolean neededLight = false, neededOrientation = false, neededSpeed = false;
-        for (Widget widget : widgets) {
-            neededLight |= "FBD CRAFT SENSOR LIGHT".equals(widget.type);
-            neededOrientation |= "FBD CRAFT SENSOR ORIENTATION".equals(widget.type);
-            neededSpeed |= "FBD CRAFT SENSOR SPEED".equals(widget.type);
-        }
-        if (!fbdSensorsRegistered && (neededLight || neededOrientation)) {
-            if (fbdSensorManager == null)
-                fbdSensorManager = (android.hardware.SensorManager)getSystemService(SENSOR_SERVICE);
-            boolean registered = false;
-            if (fbdSensorManager != null && neededLight) {
-                android.hardware.Sensor sensor = fbdSensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_LIGHT);
-                if (sensor != null) registered |= fbdSensorManager.registerListener(fbdSensorListener, sensor,
-                        android.hardware.SensorManager.SENSOR_DELAY_NORMAL);
-            }
-            if (fbdSensorManager != null && neededOrientation) {
-                android.hardware.Sensor sensor = fbdSensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_ORIENTATION);
-                if (sensor != null) registered |= fbdSensorManager.registerListener(fbdSensorListener, sensor,
-                        android.hardware.SensorManager.SENSOR_DELAY_NORMAL);
-            }
-            fbdSensorsRegistered = registered;
-        }
-        if (neededSpeed && !fbdLocationRegistered) {
-            if (android.os.Build.VERSION.SDK_INT >= 23
-                    && checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
-                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                if (!fbdLocationPermissionRequested) {
-                    fbdLocationPermissionRequested = true;
-                    requestPermissions(new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION}, REQUEST_FBD_SPEED_LOCATION);
-                }
-                return;
-            }
-            if (fbdLocationManager == null)
-                fbdLocationManager = (android.location.LocationManager)getSystemService(LOCATION_SERVICE);
-            try {
-                if (fbdLocationManager != null && fbdLocationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) {
-                    fbdLocationManager.requestLocationUpdates(android.location.LocationManager.GPS_PROVIDER,
-                            1000L, 0f, fbdLocationListener, Looper.getMainLooper());
-                    fbdLocationRegistered = true;
-                }
-            } catch (SecurityException | IllegalArgumentException ignored) {}
-        }
-    }
-
-    private void stopFbdSensors() {
-        if (fbdSensorManager != null && fbdSensorsRegistered) fbdSensorManager.unregisterListener(fbdSensorListener);
-        fbdSensorsRegistered = false;
-        if (fbdLocationManager != null && fbdLocationRegistered) {
-            try { fbdLocationManager.removeUpdates(fbdLocationListener); } catch (SecurityException ignored) {}
-        }
-        fbdLocationRegistered = false;
-        for (Widget widget : widgets) if (isCraftFbdSensorSource(widget.type)) widget.craftSensorValid = false;
-    }
-
-    private void stopCraftMqtt() {
-        FbdCraftMqttRuntime active = craftMqttRuntime;
-        craftMqttRuntime = null;
-        if (active != null) active.close();
-        for (Widget widget : widgets) if (isCraftMqttSubscriber(widget.type)) widget.craftMqttValue = null;
-    }
-
-    private void startCraftMqtt() {
-        stopCraftMqtt();
-        if (!activityResumed || !operatorMode || editor == null) return;
-        FbdCraftMqttRuntime runtime = new FbdCraftMqttRuntime();
-        craftMqttRuntime = runtime;
-        final EditorCanvas sessionEditor = editor;
-        for (int server = 1; server <= 2; server++) {
-            JSONObject saved;
-            try { saved = new JSONObject(getSharedPreferences("bloodsky_mqtt", MODE_PRIVATE)
-                    .getString("server" + server, "{}")); }
-            catch (Exception invalid) { saved = new JSONObject(); }
-            FbdCraftMqttRuntime.Broker broker = new FbdCraftMqttRuntime.Broker(
-                    saved.optString("uri", ""), saved.optString("username", ""), saved.optString("password", ""));
-            Map<String, FbdCraftMqttRuntime.MessageListener> subscriptions = new LinkedHashMap<>();
-            boolean used = false;
-            for (int i = 0; i < widgets.size(); i++) {
-                Widget target = widgets.get(i);
-                if (isCraftMqttSubscriber(target.type) && mqttServer(target) == server) {
-                    used = true;
-                    String topic = target.extraFields.optString("craftMqttTopic", "").trim();
-                    int type = mqttType(target);
-                    final int targetIndex = i;
-                    if (FbdCraftMqttRuntime.validTopicFilter(topic)) {
-                        FbdCraftMqttRuntime.MessageListener nextListener = (receivedTopic, payload) -> {
-                        Double value = FbdCraftMqttRuntime.parsePayload(payload, type);
-                        runOnUiThread(() -> {
-                            if (craftMqttRuntime != runtime || !activityResumed || !operatorMode
-                                    || editor != sessionEditor || targetIndex >= widgets.size()
-                                    || widgets.get(targetIndex) != target) return;
-                            target.craftMqttValue = value;
-                            liveValues.put(targetIndex, value == null ? "ERR: MQTT payload" : Double.toString(value));
-                            if (editor != null) editor.invalidate();
-                        });
-                        };
-                        FbdCraftMqttRuntime.MessageListener previous = subscriptions.get(topic);
-                        if (previous == null) subscriptions.put(topic, nextListener);
-                        else subscriptions.put(topic, (receivedTopic, payload) -> {
-                            previous.onMessage(receivedTopic, payload);
-                            nextListener.onMessage(receivedTopic, payload);
-                        });
-                    }
-                } else if (isCraftMqttPublisher(target.type) && mqttServer(target) == server) used = true;
-            }
-            if (used && broker.isConfigured()) runtime.connect(server, broker, subscriptions);
-        }
-    }
-
-    private BindingRequest parseBinding(int widgetIndex, String binding, int quantity) {
-        if (binding == null || !binding.startsWith("tcp://")) return null;
-        try {
-            URI uri = URI.create(binding);
-            String[] path = uri.getPath().split("/", -1);
-            if (uri.getHost() == null || uri.getPort() < 1 || uri.getPort() > 65535
-                    || path.length != 3 || !path[0].isEmpty()
-                    || uri.getRawQuery() != null || uri.getRawFragment() != null) return null;
-            int unit = Integer.parseInt(path[1]);
-            int enteredAddress = Integer.parseInt(path[2]);
-            if (unit < 0 || unit > 255 || enteredAddress < 0 || enteredAddress > 65535) return null;
-            int functionCode = 3;
-            int address = enteredAddress;
-            if (enteredAddress >= 30001 && enteredAddress <= 39999) {
-                functionCode = 4;
-                address = enteredAddress - 30001;
-            } else if (enteredAddress >= 40001 && enteredAddress <= 49999) {
-                functionCode = 3;
-                address = enteredAddress - 40001;
-            }
-            if (quantity < 1 || quantity > 2 || address + quantity > 65536) return null;
-            return new BindingRequest(widgetIndex, uri.getHost(), uri.getPort(), unit, address, functionCode, quantity);
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
-    private void startModbusPolling() {
-        stopModbusPolling();
-        if (!activityResumed || editor == null) return;
-        pollSession.start();
-        modbusPollingActive = true;
-        mainHandler.postDelayed(modbusPollRunnable, 1000L);
-    }
-
-    private void stopModbusPolling() {
-        pollSession.stop();
-        modbusPollingActive = false;
-        mainHandler.removeCallbacks(modbusPollRunnable);
-    }
-
-    private void pollCraftOdTempSources() {
-        if (!activityResumed || !operatorMode || editor == null) return;
-        long now = android.os.SystemClock.elapsedRealtime();
-        final EditorCanvas sessionEditor = editor;
-        for (int i = 0; i < widgets.size(); i++) {
-            Widget widget = widgets.get(i);
-            if (!isCraftOdTempSource(widget.type) || widget.craftOdTempPending
-                    || now < widget.craftOdTempNextPollAt) continue;
-            String host = widget.extraFields.optString("ip", "10.10.0.1").trim();
-            int sensorType = widget.extraFields.optInt("craftOdTempType", widget.extraFields.optInt("typeSensor", 1));
-            int responseType = widget.extraFields.optInt("craftOdTempResponse", widget.extraFields.optInt("typeResponse", 1));
-            if (!isAllowedOdTempHost(host) || (sensorType != 1 && sensorType != 2)
-                    || responseType < 1 || responseType > 2) {
-                widget.craftSensorValid = false; widget.craftOdTempNextPollAt = now + 5000L;
-                liveValues.put(i, "CFG"); continue;
-            }
-            widget.craftOdTempPending = true; widget.craftOdTempNextPollAt = now + 5000L;
-            final Widget target = widget; final int index = i;
-            final int requestedType = sensorType, requestedResponse = responseType;
-            try {
-                craftSensorExecutor.execute(() -> {
-                    Double reading = null; String error = null;
-                    try { reading = readCraftOdTemp(host, requestedType, requestedResponse); }
-                    catch (Exception failure) { error = "ERR: " + describeModbusError(failure); }
-                    final Double result = reading; final String failureText = error;
-                    runOnUiThread(() -> {
-                        target.craftOdTempPending = false;
-                        if (index >= widgets.size() || widgets.get(index) != target || !operatorMode
-                                || !activityResumed || editor != sessionEditor) return;
-                        target.craftOdTempNextPollAt = android.os.SystemClock.elapsedRealtime() + 5000L;
-                        target.craftSensorValid = result != null && Double.isFinite(result);
-                        if (target.craftSensorValid) {
-                            target.craftSensorValue = result;
-                            liveValues.put(index, Double.toString(result));
-                        } else liveValues.put(index, failureText == null ? "ERR: Ð¾Ñ‚Ð²ÐµÑ‚ Ð´Ð°Ñ‚Ñ‡Ð¸ÐºÐ°" : failureText);
-                        if (editor != null) editor.invalidate();
-                    });
-                });
-            } catch (java.util.concurrent.RejectedExecutionException ignored) { widget.craftOdTempPending = false; }
-        }
-    }
-
-    private static double readCraftOdTemp(String host, int sensorType, int responseType) throws Exception {
-        if (!isAllowedOdTempHost(host)) throw new IOException("ÐÐµÐ´Ð¾Ð¿ÑƒÑÑ‚Ð¸Ð¼Ñ‹Ð¹ Ð°Ð´Ñ€ÐµÑ ODTEMP");
-        java.net.HttpURLConnection connection = null;
-        try {
-            connection = (java.net.HttpURLConnection)new java.net.URL("http://" + host + "/state.json").openConnection();
-            connection.setRequestMethod("GET"); connection.setConnectTimeout(3000); connection.setReadTimeout(3000);
-            connection.setInstanceFollowRedirects(false); connection.setUseCaches(false);
-            if (connection.getResponseCode() != 200) throw new IOException("ODTEMP HTTP " + connection.getResponseCode());
-            java.io.ByteArrayOutputStream body = new java.io.ByteArrayOutputStream();
-            try (InputStream input = connection.getInputStream()) {
-                byte[] buffer = new byte[2048]; int count;
-                while ((count = input.read(buffer)) != -1) {
-                    if (body.size() + count > 65536) throw new IOException("ÐžÑ‚Ð²ÐµÑ‚ ODTEMP ÑÐ»Ð¸ÑˆÐºÐ¾Ð¼ Ð±Ð¾Ð»ÑŒÑˆÐ¾Ð¹");
-                    body.write(buffer, 0, count);
-                }
-            }
-            JSONObject json = new JSONObject(new String(body.toByteArray(), StandardCharsets.UTF_8));
-            Object raw;
-            if (sensorType == 1) raw = json.opt("value");
-            else {
-                JSONObject values = json.optJSONObject("value");
-                raw = values == null ? null : values.opt(responseType == 1 ? "t" : "h");
-            }
-            if (raw == null) throw new IOException("Ð’ Ð¾Ñ‚Ð²ÐµÑ‚Ðµ ODTEMP Ð½ÐµÑ‚ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ñ");
-            double value = raw instanceof Number ? ((Number)raw).doubleValue() : Double.parseDouble(String.valueOf(raw));
-            if (!Double.isFinite(value)) throw new IOException("ODTEMP Ð²ÐµÑ€Ð½ÑƒÐ»Ð¾ Ð½ÐµÐºÐ¾Ð½ÐµÑ‡Ð½Ð¾Ðµ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ");
-            return value;
-        } finally { if (connection != null) connection.disconnect(); }
-    }
-
-    private void pollBoundWidgets() {
-        final long sessionToken = pollSession.token();
-        final EditorCanvas sessionEditor = editor;
-        if (!pollSession.accepts(sessionToken) || sessionEditor == null) return;
-        final List<Widget> snapshotWidgets = new ArrayList<>(widgets);
-        final List<String> snapshotBindings = new ArrayList<>();
-        for (Widget widget : snapshotWidgets) snapshotBindings.add(widget.connectionInfo);
-        final Map<String, BindingRequest> groupedRequests = new LinkedHashMap<>();
-        for (int i = 0; i < snapshotWidgets.size(); i++) {
-            Widget widget = snapshotWidgets.get(i);
-            if (isCraftRegisterSink(widget.type)) continue;
-            boolean craftSource = isCraftRegisterSource(widget.type);
-            if (craftSource && widget.extraFields.optBoolean("craftVarConstantMode", false)) continue;
-            BindingRequest request = parseBinding(i, widget.connectionInfo,
-                    craftSource && isCraftRegisterFloat(widget.type) ? 2 : 1);
-            if (request == null) continue;
-            String key = request.registerKey();
-            BindingRequest existing = groupedRequests.get(key);
-            if (existing == null) groupedRequests.put(key, request);
-            else existing.widgetIndices.add(i);
-        }
-        final List<BindingRequest> requests = new ArrayList<>(groupedRequests.values());
-        if (modbusPollInFlight) return;
-        final Map<Integer, String> invalidBindings = new HashMap<>();
-        for (int i = 0; i < snapshotWidgets.size(); i++) {
-            String binding = snapshotWidgets.get(i).connectionInfo;
-            if (binding != null && binding.startsWith("tcp://")
-                    && parseBinding(i, binding) == null) invalidBindings.put(i, "CFG");
-        }
-        if (requests.isEmpty() && invalidBindings.isEmpty()) return;
-        modbusPollInFlight = true;
-        try {
-            modbusExecutor.execute(() -> {
-            try {
-                final Map<Integer, String> updates = new HashMap<>(invalidBindings);
-                for (BindingRequest request : requests) {
-                    if (!pollSession.accepts(sessionToken)) return;
-                    String value;
-                    try {
-                        int[] words = new ModbusTcpClient(request.host, request.port).read(
-                                request.unit, request.address, request.quantity, request.functionCode);
-                        value = request.quantity > 1 ? words[0] + "," + words[1] : Integer.toString(words[0]);
-                    } catch (Exception e) {
-                        value = "ERR: " + describeModbusError(e);
-                    }
-                    for (int widgetIndex : request.widgetIndices) updates.put(widgetIndex, value);
-                }
-                runOnUiThread(() -> {
-                    if (!pollSession.accepts(sessionToken) || !activityResumed
-                            || editor != sessionEditor || isFinishing() || isDestroyed()) return;
-                    for (Map.Entry<Integer, String> entry : updates.entrySet()) {
-                        int index = entry.getKey();
-                        if (index < 0 || index >= widgets.size() || index >= snapshotWidgets.size()
-                                || widgets.get(index) != snapshotWidgets.get(index)
-                                || !java.util.Objects.equals(widgets.get(index).connectionInfo, snapshotBindings.get(index))) continue;
-                        Widget w = widgets.get(index);
-                        liveValues.put(index, entry.getValue());
-                        if (isCraftRegisterSource(w.type)) {
-                            try {
-                                String[] words = entry.getValue().split(",");
-                                w.craftRegisterWord0 = Integer.parseInt(words[0]);
-                                w.craftRegisterWord1 = words.length > 1 ? Integer.parseInt(words[1]) : 0;
-                                w.craftRegisterValid = true;
-                            } catch (Exception invalid) { w.craftRegisterValid = false; }
-                        }
-                        if (isCraftRegisterSource(w.type) && entry.getValue() != null
-                                && entry.getValue().startsWith("ERR:")) w.craftRegisterValid = false;
-                        if ("FBD Ð’Ñ…Ð¾Ð´".equals(w.type)) {
-                            w.inputValue = isActiveModbusValue(entry.getValue());
-                        } else if ("Ð—Ð²ÑƒÐºÐ¾Ð²Ð¾Ð¹ ÑÐ¸Ð³Ð½Ð°Ð»".equals(w.type)) {
-                            boolean active = w.soundActive;
-                            if (entry.getValue() != null) {
-                                try { active = Double.parseDouble(entry.getValue()) >= w.soundThreshold; } catch (Exception ignored) {}
-                            }
-                            if (active && !w.lastSoundState) {
-                                w.lastSoundState = true;
-                                playSoundAlert(w.soundFilePath);
-                            } else if (!active) {
-                                w.lastSoundState = false;
-                            }
-                        } else if ("Ð“Ð¾Ð»Ð¾ÑÐ¾Ð²Ð¾Ðµ ÑÐ¾Ð¾Ð±Ñ‰ÐµÐ½Ð¸Ðµ".equals(w.type)) {
-                            int voiceIdx = 0;
-                            if (entry.getValue() != null) {
-                                try { voiceIdx = (int) Math.round(Double.parseDouble(entry.getValue())); } catch (Exception ignored) {}
-                            }
-                            if (voiceIdx < 0 || voiceIdx >= 16) voiceIdx = 0;
-                            if (voiceIdx != w.lastVoiceState) {
-                                w.lastVoiceState = voiceIdx;
-                                speakVoiceAnnouncement(w.voiceMessages[voiceIdx]);
-                            }
-                        }
-                    }
-                    editor.invalidate();
-                });
-            } finally {
-                modbusPollInFlight = false;
-            }
-            });
-        } catch (java.util.concurrent.RejectedExecutionException ignored) {
-            modbusPollInFlight = false;
-        }
-    }
-
-    private static class BindingRequest {
-        final List<Integer> widgetIndices = new ArrayList<>();
-        final int port, unit, address, functionCode, quantity;
-        final String host;
-        BindingRequest(int widgetIndex, String host, int port, int unit, int address, int functionCode, int quantity) {
-            this.widgetIndices.add(widgetIndex);
-            this.host = host; this.port = port; this.unit = unit;
-            this.address = address; this.functionCode = functionCode; this.quantity = quantity;
-        }
-        String registerKey() {
-            return host.toLowerCase(java.util.Locale.ROOT) + ":" + port + "/" + unit + "/" + address + "/FC" + functionCode + "/" + quantity;
-        }
-    }
-
-    private void exportProject() {
-        persistProject();
-        new AlertDialog.Builder(this).setTitle("Ð­ÐºÑÐ¿Ð¾Ñ€Ñ‚ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°")
-                .setItems(new String[]{"ZIP â€” Ð¿Ñ€Ð¾ÐµÐºÑ‚ Ð¸ Ð¼ÐµÐ´Ð¸Ð°", "JSON â€” Ñ‚Ð¾Ð»ÑŒÐºÐ¾ Ð½Ð°ÑÑ‚Ñ€Ð¾Ð¹ÐºÐ¸"}, (dialog, which) -> {
-                    Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
-                    intent.addCategory(Intent.CATEGORY_OPENABLE);
-                    intent.setType(which == 0 ? "application/zip" : "application/json");
-                    intent.putExtra(Intent.EXTRA_TITLE, projectName.replaceAll("[^A-Za-zÐ-Ð¯Ð°-Ñ0-9._-]", "_")
-                            + (which == 0 ? ".bloodsky.zip" : ".bloodsky.json"));
-                    try { startActivityForResult(intent, which == 0 ? REQUEST_EXPORT_PROJECT_ZIP : REQUEST_EXPORT_PROJECT); }
-                    catch (Exception e) { Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚ÑŒ Ð²Ñ‹Ð±Ð¾Ñ€ Ñ„Ð°Ð¹Ð»Ð°", Toast.LENGTH_LONG).show(); }
-                }).show();
-    }
-
-    private void showCraftMacroTools() {
-        new AlertDialog.Builder(this).setTitle("ÐœÐ°ÐºÑ€Ð¾ÑÑ‹ Craft (.mcr)")
-                .setItems(new String[]{"Ð˜Ð¼Ð¿Ð¾Ñ€Ñ‚Ð¸Ñ€Ð¾Ð²Ð°Ñ‚ÑŒ .mcr Ð² Ð¿Ñ€Ð¾ÐµÐºÑ‚", "Ð­ÐºÑÐ¿Ð¾Ñ€Ñ‚Ð¸Ñ€Ð¾Ð²Ð°Ñ‚ÑŒ .mcr Ð¸Ð· Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°"},
-                        (dialog, which) -> {
-                            if (which == 0) {
-                                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-                                intent.addCategory(Intent.CATEGORY_OPENABLE);
-                                intent.setType("*/*");
-                                try { startActivityForResult(intent, REQUEST_IMPORT_CRAFT_MACRO); }
-                                catch (Exception failure) {
-                                    Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚ÑŒ Ð²Ñ‹Ð±Ð¾Ñ€ Ñ„Ð°Ð¹Ð»Ð°", Toast.LENGTH_LONG).show();
-                                }
-                            } else exportCraftMacroFromCatalog();
-                        }).setNegativeButton("Ð—Ð°ÐºÑ€Ñ‹Ñ‚ÑŒ", null).show();
-    }
-
-    private void exportCraftMacroFromCatalog() {
-        try {
-            String[] names = FbdCraftMacroCatalog.names(projectExtraFields);
-            if (names.length == 0) {
-                Toast.makeText(this, "Ð’ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ðµ Ð½ÐµÑ‚ Ð¸Ð¼Ð¿Ð¾Ñ€Ñ‚Ð¸Ñ€Ð¾Ð²Ð°Ð½Ð½Ñ‹Ñ… Ð¼Ð°ÐºÑ€Ð¾ÑÐ¾Ð²", Toast.LENGTH_SHORT).show();
-                return;
-            }
-            new AlertDialog.Builder(this).setTitle("Ð’Ñ‹Ð±ÐµÑ€Ð¸ Ð¼Ð°ÐºÑ€Ð¾Ñ")
-                    .setItems(names, (dialog, which) -> {
-                        try {
-                            FbdCraftMacroDefinition definition = FbdCraftMacroCatalog.find(
-                                    projectExtraFields, names[which]);
-                            if (definition == null) return;
-                            pendingCraftMacroExport = definition.toMcrBytes();
-                            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
-                            intent.addCategory(Intent.CATEGORY_OPENABLE);
-                            intent.setType("application/json");
-                            intent.putExtra(Intent.EXTRA_TITLE,
-                                    definition.getName().replaceAll("[^A-Za-zÐ-Ð¯Ð°-Ñ0-9._-]", "_") + ".mcr");
-                            startActivityForResult(intent, REQUEST_EXPORT_CRAFT_MACRO);
-                        } catch (Exception failure) {
-                            pendingCraftMacroExport = null;
-                            Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¿Ð¾Ð´Ð³Ð¾Ñ‚Ð¾Ð²Ð¸Ñ‚ÑŒ Ð¼Ð°ÐºÑ€Ð¾Ñ", Toast.LENGTH_LONG).show();
-                        }
-                    }).setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null).show();
-        } catch (Exception invalidCatalog) {
-            Toast.makeText(this, "ÐšÐ°Ñ‚Ð°Ð»Ð¾Ð³ Ð¼Ð°ÐºÑ€Ð¾ÑÐ¾Ð² Ð¿Ð¾Ð²Ñ€ÐµÐ¶Ð´Ñ‘Ð½", Toast.LENGTH_LONG).show();
-        }
-    }
-
-    private void importCraftMacro(Uri uri) {
-        modbusExecutor.execute(() -> {
-            try {
-                byte[] bytes;
-                try (InputStream input = getContentResolver().openInputStream(uri)) {
-                    if (input == null) throw new IOException("File unavailable");
-                    ByteArrayOutputStream output = new ByteArrayOutputStream();
-                    byte[] buffer = new byte[8192];
-                    int total = 0, read;
-                    while ((read = input.read(buffer)) != -1) {
-                        total += read;
-                        if (total > FbdCraftMacroDefinition.MAX_FILE_BYTES)
-                            throw new IOException("Macro file too large");
-                        output.write(buffer, 0, read);
-                    }
-                    bytes = output.toByteArray();
-                }
-                FbdCraftMacroDefinition definition = FbdCraftMacroDefinition.fromMcrBytes(bytes);
-                runOnUiThread(() -> {
-                    if (isFinishing() || isDestroyed()) return;
-                    try {
-                        FbdCraftMacroCatalog.upsert(projectExtraFields, definition);
-                        if (!persistProjectNow(true)) throw new IOException("Project save failed");
-                        Toast.makeText(this, "ÐœÐ°ÐºÑ€Ð¾Ñ Â«" + definition.getName() + "Â» Ð´Ð¾Ð±Ð°Ð²Ð»ÐµÐ½ Ð² Ð¿Ñ€Ð¾ÐµÐºÑ‚",
-                                Toast.LENGTH_LONG).show();
-                    } catch (Exception failure) {
-                        Toast.makeText(this, "ÐœÐ°ÐºÑ€Ð¾Ñ Ð½Ðµ ÑÐ¾Ñ…Ñ€Ð°Ð½Ñ‘Ð½: " + failure.getMessage(),
-                                Toast.LENGTH_LONG).show();
-                    }
-                });
-            } catch (Exception failure) {
-                runOnUiThread(() -> {
-                    if (!isFinishing() && !isDestroyed())
-                        Toast.makeText(this, "Ð˜Ð¼Ð¿Ð¾Ñ€Ñ‚ Ð¼Ð°ÐºÑ€Ð¾ÑÐ° Ð½Ðµ Ð²Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½: " + failure.getMessage(),
-                                Toast.LENGTH_LONG).show();
-                });
-            }
-        });
-    }
-
-    public byte[] readProjectMediaData(String pathOrUri) throws IOException {
-        return readProjectMediaData(pathOrUri, getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}"));
-    }
-
-    private byte[] readProjectMediaData(String pathOrUri, String json) throws IOException {
-        if (pathOrUri != null && pathOrUri.trim().startsWith("content://")) {
-            try (InputStream in = getContentResolver().openInputStream(Uri.parse(pathOrUri.trim()))) {
-                return ProjectMediaService.readBoundedMedia(in);
-            }
-        }
-        try (InputStream in = new java.io.FileInputStream(ProjectMediaService.resolveMediaFile(getFilesDir(), json, pathOrUri))) {
-            return ProjectMediaService.readBoundedMedia(in);
-        }
-    }
-
-    private void importProjectBundle(Uri uri) {
-        modbusExecutor.execute(() -> {
-            try (InputStream in = getContentResolver().openInputStream(uri)) {
-                if (in == null) throw new IOException("Input stream unavailable");
-                ProjectMediaService.importProjectBundle(getFilesDir(), in, json -> {
-                    try { validateImportedProject(json); }
-                    catch (Exception invalid) { throw new IllegalArgumentException("Invalid imported project", invalid); }
-                    try { return storeActiveProject(json, true); }
-                    catch (Exception error) { throw new IllegalArgumentException("Could not save project catalog", error); }
-                });
-                runOnUiThread(() -> {
-                    if (isFinishing() || isDestroyed()) return;
-                    imageCache.clear();
-                    if (loadProject()) {
-                        showEditor();
-                        Toast.makeText(this, "ÐŸÑ€Ð¾ÐµÐºÑ‚ Ð¸Ð¼Ð¿Ð¾Ñ€Ñ‚Ð¸Ñ€Ð¾Ð²Ð°Ð½", Toast.LENGTH_LONG).show();
-                    } else {
-                        Toast.makeText(this, "Ð˜Ð¼Ð¿Ð¾Ñ€Ñ‚ Ð²Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½, Ð½Ð¾ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚Ð¸Ðµ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð° Ð½Ðµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ", Toast.LENGTH_LONG).show();
-                    }
-                });
-            } catch (Exception error) {
-                android.util.Log.e("BLOODSKY", "Project import failed", error);
-                runOnUiThread(() -> { if (!isFinishing() && !isDestroyed())
-                    Toast.makeText(this, "Ð˜Ð¼Ð¿Ð¾Ñ€Ñ‚ Ð½Ðµ Ð²Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½: " + error.getMessage(), Toast.LENGTH_LONG).show(); });
-            }
-        });
-    }
-
-    private void importProject() {
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("*/*");
-        try {
-            startActivityForResult(intent, REQUEST_IMPORT_PROJECT);
-        } catch (Exception e) {
-            Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚ÑŒ Ð²Ñ‹Ð±Ð¾Ñ€ Ñ„Ð°Ð¹Ð»Ð°", Toast.LENGTH_LONG).show();
-        }
-    }
-
-    private void chooseMediaFile(EditText field, String mimeType) {
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType(mimeType);
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-        pendingMediaField = field;
-        try {
-            startActivityForResult(intent, REQUEST_PICK_MEDIA);
-        } catch (Exception ex) {
-            pendingMediaField = null;
-            Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚ÑŒ Ð²Ñ‹Ð±Ð¾Ñ€ Ñ„Ð°Ð¹Ð»Ð°", Toast.LENGTH_LONG).show();
-        }
-    }
-
-    private void addMediaPicker(LinearLayout form, EditText field, String mimeType) {
-        Button choose = new Button(this);
-        choose.setText("Ð’Ñ‹Ð±Ñ€Ð°Ñ‚ÑŒ Ñ„Ð°Ð¹Ð»â€¦");
-        choose.setAllCaps(false);
-        choose.setOnClickListener(v -> chooseMediaFile(field, mimeType));
-        form.addView(choose);
-    }
-
-    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQUEST_PICK_MEDIA) {
-            EditText target = pendingMediaField;
-            pendingMediaField = null;
-            if (resultCode != RESULT_OK || data == null || data.getData() == null || target == null) return;
-            Uri selected = data.getData();
-            try {
-                int readGrant = data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION;
-                if (readGrant == 0) throw new SecurityException("Read access not granted");
-                getContentResolver().takePersistableUriPermission(selected, readGrant);
-                try (InputStream in = getContentResolver().openInputStream(selected)) {
-                    if (in == null) throw new IOException("File unavailable");
-                }
-                target.setText(selected.toString());
-                imageCache.remove(selected.toString());
-            } catch (Exception ex) {
-                Toast.makeText(this, "ÐÐµÑ‚ Ð¿Ð¾ÑÑ‚Ð¾ÑÐ½Ð½Ð¾Ð³Ð¾ Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð° Ðº Ñ„Ð°Ð¹Ð»Ñƒ. Ð’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð´Ñ€ÑƒÐ³Ð¾Ð¹ Ñ„Ð°Ð¹Ð».", Toast.LENGTH_LONG).show();
-            }
-            return;
-        }
-        if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
-        Uri uri = data.getData();
-        if (requestCode == REQUEST_IMPORT_CRAFT_MACRO) {
-            importCraftMacro(uri);
-        } else if (requestCode == REQUEST_EXPORT_CRAFT_MACRO) {
-            byte[] bytes = pendingCraftMacroExport;
-            pendingCraftMacroExport = null;
-            if (bytes == null) return;
-            modbusExecutor.execute(() -> {
-                try (OutputStream out = getContentResolver().openOutputStream(uri)) {
-                    if (out == null) throw new IOException("Output stream unavailable");
-                    out.write(bytes);
-                    runOnUiThread(() -> { if (!isFinishing() && !isDestroyed())
-                        Toast.makeText(this, "ÐœÐ°ÐºÑ€Ð¾Ñ ÑÐºÑÐ¿Ð¾Ñ€Ñ‚Ð¸Ñ€Ð¾Ð²Ð°Ð½", Toast.LENGTH_SHORT).show(); });
-                } catch (Exception failure) {
-                    runOnUiThread(() -> { if (!isFinishing() && !isDestroyed())
-                        Toast.makeText(this, "Ð­ÐºÑÐ¿Ð¾Ñ€Ñ‚ Ð¼Ð°ÐºÑ€Ð¾ÑÐ° Ð½Ðµ Ð²Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½", Toast.LENGTH_LONG).show(); });
-                }
-            });
-        } else if (requestCode == REQUEST_EXPORT_PROJECT || requestCode == REQUEST_EXPORT_PROJECT_ZIP) {
-            final String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
-            modbusExecutor.execute(() -> {
-                try (OutputStream out = getContentResolver().openOutputStream(uri)) {
-                    if (out == null) throw new IOException("Output stream unavailable");
-                    if (requestCode == REQUEST_EXPORT_PROJECT_ZIP) {
-                        ProjectMediaService.exportProjectZipBundle(out, json, source -> readProjectMediaData(source, json));
-                    } else out.write(json.getBytes(StandardCharsets.UTF_8));
-                    runOnUiThread(() -> { if (!isFinishing() && !isDestroyed())
-                        Toast.makeText(this, "ÐŸÑ€Ð¾ÐµÐºÑ‚ ÑÐºÑÐ¿Ð¾Ñ€Ñ‚Ð¸Ñ€Ð¾Ð²Ð°Ð½", Toast.LENGTH_LONG).show(); });
-                } catch (Exception error) {
-                    android.util.Log.e("BLOODSKY", "Project export failed", error);
-                    runOnUiThread(() -> { if (!isFinishing() && !isDestroyed())
-                        Toast.makeText(this, "ÐžÑˆÐ¸Ð±ÐºÐ° ÑÐºÑÐ¿Ð¾Ñ€Ñ‚Ð°: " + error.getMessage(), Toast.LENGTH_LONG).show(); });
-                }
-            });
-        } else if (requestCode == REQUEST_IMPORT_PROJECT) {
-            importProjectBundle(uri);
-        }
-    }
-
-
-    private void editProjectName() {
-        EditText input = new EditText(this);
-        input.setSingleLine(true);
-        input.setText(projectName);
-        new AlertDialog.Builder(this)
-                .setTitle("Ð˜Ð¼Ñ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°")
-                .setView(input)
-                .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null)
-                .setPositiveButton("Ð¡Ð¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ", (dialog, which) -> {
-                    String value = input.getText().toString().trim();
-                    if (!value.isEmpty()) projectName = value;
-                    persistProject();
-                }).show();
-    }
-
-    private void alignSelectedWidget(String alignMode) {
-        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
-            Toast.makeText(this, "Ð’Ñ‹Ð±ÐµÑ€Ð¸ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚ Ð´Ð»Ñ Ð²Ñ‹Ñ€Ð°Ð²Ð½Ð¸Ð²Ð°Ð½Ð¸Ñ", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        Widget w = widgets.get(editor.selected);
-        float canvasWidth = editor.getWidth() > 0 ? editor.getWidth() : dp(360);
-        float canvasHeight = editor.getHeight() > 0 ? editor.getHeight() : dp(640);
-        switch (alignMode) {
-            case "left": w.x = 0; break;
-            case "right": w.x = Math.max(0, canvasWidth - w.w); break;
-            case "top": w.y = 0; break;
-            case "bottom": w.y = Math.max(0, canvasHeight - w.h); break;
-            case "center_h": w.x = Math.max(0, snapToGrid((canvasWidth - w.w) / 2f)); break;
-            case "center_v": w.y = Math.max(0, snapToGrid((canvasHeight - w.h) / 2f)); break;
-        }
-        persistProject();
-        if (editor != null) editor.invalidate();
-        Toast.makeText(this, "Ð­Ð»ÐµÐ¼ÐµÐ½Ñ‚ Ð²Ñ‹Ñ€Ð¾Ð²Ð½ÐµÐ½", Toast.LENGTH_SHORT).show();
-    }
-
-    private void showAlignDialog() {
-        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
-            Toast.makeText(this, "Ð’Ñ‹Ð±ÐµÑ€Ð¸ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚ Ð½Ð° ÑÐºÑ€Ð°Ð½Ðµ", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        String[] options = {"ÐŸÐ¾ Ð»ÐµÐ²Ð¾Ð¼Ñƒ ÐºÑ€Ð°ÑŽ", "ÐŸÐ¾ Ð¿Ñ€Ð°Ð²Ð¾Ð¼Ñƒ ÐºÑ€Ð°ÑŽ", "ÐŸÐ¾ Ð²ÐµÑ€Ñ…Ð½ÐµÐ¼Ñƒ ÐºÑ€Ð°ÑŽ", "ÐŸÐ¾ Ð½Ð¸Ð¶Ð½ÐµÐ¼Ñƒ ÐºÑ€Ð°ÑŽ", "ÐŸÐ¾ Ñ†ÐµÐ½Ñ‚Ñ€Ñƒ (Ð³Ð¾Ñ€Ð¸Ð·Ð¾Ð½Ñ‚.)", "ÐŸÐ¾ Ñ†ÐµÐ½Ñ‚Ñ€Ñƒ (Ð²ÐµÑ€Ñ‚Ð¸Ðº.)"};
-        String[] modes = {"left", "right", "top", "bottom", "center_h", "center_v"};
-        new AlertDialog.Builder(this)
-                .setTitle("Ð’Ñ‹Ñ€Ð°Ð²Ð½Ð¸Ð²Ð°Ð½Ð¸Ðµ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚Ð°")
-                .setItems(options, (dialog, which) -> alignSelectedWidget(modes[which]))
-                .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null)
-                .show();
-    }
-
-    private Button legacyToolbarButton(String text, Runnable task) {
-        Button button = new Button(this);
-        button.setText(text);
-        button.setTextSize(12);
-        button.setTextColor(Color.rgb(20, 20, 20));
-        button.setAllCaps(false);
-        button.setMinHeight(0);
-        button.setMinimumHeight(0);
-        button.setPadding(dp(5), 0, dp(5), 0);
-        button.setGravity(Gravity.CENTER);
-        GradientDrawable face = new GradientDrawable(
-                GradientDrawable.Orientation.LEFT_RIGHT,
-                new int[] { Color.rgb(190, 190, 190), Color.rgb(145, 145, 145), Color.rgb(190, 190, 190) });
-        face.setCornerRadius(dp(2));
-        face.setStroke(dp(1), Color.rgb(70, 70, 70));
-        button.setBackground(face);
-        button.setOnClickListener(v -> task.run());
-        return button;
-    }
-
-    public static int requireSettingInt(String text, int min, int max, String label) {
-        try {
-            if (text == null || !text.trim().matches("[0-9]+")) throw new NumberFormatException();
-            int value = Integer.parseInt(text.trim());
-            if (value < min || value > max) throw new NumberFormatException();
-            return value;
-        } catch (NumberFormatException ex) {
-            throw new IllegalArgumentException(label + ": Ð´Ð¾Ð¿ÑƒÑÑ‚Ð¸Ð¼Ð¾ " + min + "â€“" + max);
-        }
-    }
-
-    private static String legacySlaveValue(String legacy, String label, String fallback) {
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
-                "(?i)" + label + "\\s*:\\s*([0-9]+)").matcher(legacy);
-        return m.find() ? m.group(1) : fallback;
-    }
-
-    public static JSONObject validatedProjectSettings(JSONObject current, String modeText,
-            String idText, String portText, String registers) throws Exception {
-        int mode = requireSettingInt(modeText, 0, 1, "Ð ÐµÐ¶Ð¸Ð¼");
-        int id = requireSettingInt(idText, 1, 247, "Slave ID");
-        int port = requireSettingInt(portText, 1, 65535, "ÐŸÐ¾Ñ€Ñ‚");
-        JSONObject result = new JSONObject(current.toString());
-        String legacy = result.optString("modbusSlave", "");
-        if (legacy.matches("(?is).*slave id\\s*:\\s*[0-9]+.*")
-                && legacy.matches("(?is).*port\\s*:\\s*[0-9]+.*")) {
-            legacy = legacy.replaceFirst("(?i)(slave id\\s*:\\s*)[0-9]+", "Slave ID: " + id)
-                    .replaceFirst("(?i)(port\\s*:\\s*)[0-9]+", "Port: " + port);
-        } else {
-            legacy = "Slave ID: " + id + ", Port: " + port;
-        }
-        result.put("stationMode", mode);
-        result.put("modbusSlaveId", id);
-        result.put("modbusSlavePort", port);
-        result.put("modbusSlave", legacy);
-        result.put("systemRegisters", registers);
-        return result;
-    }
-
-    private void showProjectSettingsDialog() {
-        LinearLayout form = new LinearLayout(this);
-        form.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(16);
-        form.setPadding(pad, dp(4), pad, 0);
-
-        TextView note = new TextView(this);
-        note.setText("ÐŸÑ€Ð¸Ð¼ÐµÑ‡Ð°Ð½Ð¸Ðµ: ÐÐ°ÑÑ‚Ñ€Ð¾Ð¹ÐºÐ¸ ÑÑ‚Ð°Ð½Ñ†Ð¸Ð¸ Ð¸ Modbus Slave ÑÐ¾Ñ…Ñ€Ð°Ð½ÑÑŽÑ‚ÑÑ Ð² Ð¼ÐµÑ‚Ð°Ð´Ð°Ð½Ð½Ñ‹Ñ… Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°. ÐžÐ½Ð¸ Ð·Ð°Ð´Ð°ÑŽÑ‚ Ð¿Ð°Ñ€Ð°Ð¼ÐµÑ‚Ñ€Ñ‹ ÐºÐ¾Ð½Ñ„Ð¸Ð³ÑƒÑ€Ð°Ñ†Ð¸Ð¸, Ð½Ð¾ Ð½Ðµ Ð·Ð°Ð¿ÑƒÑÐºÐ°ÑŽÑ‚ Ñ„Ð¾Ð½Ð¾Ð²Ñ‹Ð¹ TCP-ÑÐµÑ€Ð²ÐµÑ€ Modbus Slave.");
-        note.setTextColor(Color.rgb(100, 116, 139));
-        note.setTextSize(12);
-        note.setPadding(0, 0, 0, dp(8));
-        form.addView(note);
-
-        TextView stationLabel = new TextView(this);
-        stationLabel.setText("Ð ÐµÐ¶Ð¸Ð¼ ÑÑ‚Ð°Ð½Ñ†Ð¸Ð¸ (0 = ÐœÐ°ÑÑ‚ÐµÑ€, 1 = Ð¡Ð»ÐµÐ¹Ð²)");
-        form.addView(stationLabel);
-        EditText stationField = propertyField(Integer.toString(projectExtraFields.optInt("stationMode", 0)), InputType.TYPE_CLASS_NUMBER);
-        form.addView(stationField);
-
-        TextView slaveLabel = new TextView(this);
-        slaveLabel.setText("ÐÐ°ÑÑ‚Ñ€Ð¾Ð¹ÐºÐ¸ Modbus Slave (ID / ÐŸÐ¾Ñ€Ñ‚)");
-        slaveLabel.setPadding(0, dp(10), 0, 0);
-        form.addView(slaveLabel);
-        String legacySlave = projectExtraFields.optString("modbusSlave", "");
-        EditText slaveIdField = propertyField(projectExtraFields.optString("modbusSlaveId",
-                legacySlaveValue(legacySlave, "Slave ID", "1")), InputType.TYPE_CLASS_NUMBER);
-        slaveIdField.setHint("Slave ID: 1â€“247");
-        form.addView(slaveIdField);
-        EditText slavePortField = propertyField(projectExtraFields.optString("modbusSlavePort",
-                legacySlaveValue(legacySlave, "Port", "502")), InputType.TYPE_CLASS_NUMBER);
-        slavePortField.setHint("ÐŸÐ¾Ñ€Ñ‚: 1â€“65535");
-        form.addView(slavePortField);
-
-        TextView sysRegLabel = new TextView(this);
-        sysRegLabel.setText("Ð¡Ð¸ÑÑ‚ÐµÐ¼Ð½Ñ‹Ðµ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ñ‹");
-        sysRegLabel.setPadding(0, dp(10), 0, 0);
-        form.addView(sysRegLabel);
-        EditText sysRegField = propertyField(projectExtraFields.optString("systemRegisters", "SYS_STATUS=0, SYS_TIME=100"), InputType.TYPE_CLASS_TEXT);
-        sysRegField.setHint("Ð¡Ð¸ÑÑ‚ÐµÐ¼Ð½Ñ‹Ðµ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ñ‹");
-        form.addView(sysRegField);
-
-        EditText[][] mqttFields = {addMqttBrokerFields(form, 1), addMqttBrokerFields(form, 2)};
-
-        ScrollView scroll = new ScrollView(this);
-        scroll.addView(form);
-
-        AlertDialog settings = new AlertDialog.Builder(this)
-                .setTitle("ÐÐ°ÑÑ‚Ñ€Ð¾Ð¹ÐºÐ¸ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°")
-                .setView(scroll)
-                .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null)
-                .setPositiveButton("Ð¡Ð¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ", null).create();
-        settings.setOnShowListener(ignored -> settings.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            try {
-                JSONObject updated = validatedProjectSettings(projectExtraFields,
-                        stationField.getText().toString(), slaveIdField.getText().toString(),
-                        slavePortField.getText().toString(), sysRegField.getText().toString().trim());
-                for (int i = 0; i < mqttFields.length; i++) {
-                    String endpoint = mqttFields[i][0].getText().toString().trim();
-                    if (!endpoint.isEmpty() && !FbdCraftMqttRuntime.validUri(endpoint))
-                        throw new IllegalArgumentException("MQTT ÑÐµÑ€Ð²ÐµÑ€ " + (i + 1) + ": tcp://Ð°Ð´Ñ€ÐµÑ:Ð¿Ð¾Ñ€Ñ‚ Ð¸Ð»Ð¸ ssl://Ð°Ð´Ñ€ÐµÑ:Ð¿Ð¾Ñ€Ñ‚");
-                    JSONObject broker = new JSONObject();
-                    broker.put("uri", endpoint);
-                    broker.put("username", mqttFields[i][1].getText().toString());
-                    broker.put("password", mqttFields[i][2].getText().toString());
-                    getSharedPreferences("bloodsky_mqtt", MODE_PRIVATE).edit()
-                            .putString("server" + (i + 1), broker.toString()).apply();
-                }
-                projectExtraFields = updated;
-                persistProject();
-                settings.dismiss();
-                Toast.makeText(this, "ÐÐ°ÑÑ‚Ñ€Ð¾Ð¹ÐºÐ¸ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð° ÑÐ¾Ñ…Ñ€Ð°Ð½ÐµÐ½Ñ‹", Toast.LENGTH_SHORT).show();
-            } catch (IllegalArgumentException ex) {
-                Toast.makeText(this, ex.getMessage(), Toast.LENGTH_LONG).show();
-            } catch (Exception ex) {
-                Toast.makeText(this, "ÐžÑˆÐ¸Ð±ÐºÐ° ÑÐ¾Ñ…Ñ€Ð°Ð½ÐµÐ½Ð¸Ñ Ð½Ð°ÑÑ‚Ñ€Ð¾ÐµÐº", Toast.LENGTH_LONG).show();
-            }
-        }));
-        settings.show();
-    }
-
-    private EditText[] addMqttBrokerFields(LinearLayout form, int number) {
-        JSONObject saved;
-        try { saved = new JSONObject(getSharedPreferences("bloodsky_mqtt", MODE_PRIVATE)
-                .getString("server" + number, "{}")); }
-        catch (Exception invalid) { saved = new JSONObject(); }
-        TextView title = new TextView(this);
-        title.setText("MQTT ÑÐµÑ€Ð²ÐµÑ€ " + number + " (Craft)");
-        title.setPadding(0, dp(12), 0, 0);
-        form.addView(title);
-        EditText uri = propertyField(saved.optString("uri", ""), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        uri.setHint("tcp://192.168.1.10:1883 Ð¸Ð»Ð¸ ssl://broker:8883"); form.addView(uri);
-        EditText username = propertyField(saved.optString("username", ""), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        username.setHint("Ð›Ð¾Ð³Ð¸Ð½ (Ð½ÐµÐ¾Ð±ÑÐ·Ð°Ñ‚ÐµÐ»ÑŒÐ½Ð¾)"); form.addView(username);
-        EditText password = propertyField(saved.optString("password", ""), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        password.setHint("ÐŸÐ°Ñ€Ð¾Ð»ÑŒ (Ð½ÐµÐ¾Ð±ÑÐ·Ð°Ñ‚ÐµÐ»ÑŒÐ½Ð¾)"); form.addView(password);
-        return new EditText[]{uri, username, password};
-    }
-
-    private void showEditor() {
-        setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-        root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.rgb(35, 35, 35));
-        android.widget.FrameLayout area = new android.widget.FrameLayout(this);
-        android.widget.ImageButton reveal = editorIcon(R.drawable.kc_menu_app_bar, "ÐŸÐ¾ÐºÐ°Ð·Ð°Ñ‚ÑŒ Ð¿Ð°Ð½ÐµÐ»ÑŒ");
-        final View[] toolbar = new View[1];
-        toolbar[0] = OriginalEditorToolbar.create(root, currentScreenName(), operatorMode, new OriginalEditorToolbar.Host() {
-            public void hide() { toolbar[0].setVisibility(View.GONE); reveal.setVisibility(View.VISIBLE); }
-            public void toggleMode() { toggleOperatorMode(); }
-            public void previous() { previousScreen(); }
-            public void next() { nextScreen(); }
-            public void renameScreen() { renameCurrentScreen(); }
-            public void calculator() { showOriginalCalculator(); }
-            public void menu(View anchor) { showEditorCommands(anchor); }
-        });
-        root.addView(toolbar[0], new LinearLayout.LayoutParams(-1, -2));
-        editor = new EditorCanvas();
-        editor.setContentDescription(operatorMode ? "Ð Ð°Ð±Ð¾Ñ‡Ð¸Ð¹ ÑÐºÑ€Ð°Ð½" : "Ð ÐµÐ´Ð°ÐºÑ‚Ð¾Ñ€ ÑÐºÑ€Ð°Ð½Ð°");
-        if (operatorMode) {
-            area.addView(editor, new android.widget.FrameLayout.LayoutParams(-1, -1));
-        } else {
-            // Keep the visible Craft-style screen viewport, but give the editor a
-            // larger scrollable design surface so dense FBD graphs are not capped
-            // by the current device dimensions.
-            android.widget.ScrollView verticalWorkspace = new android.widget.ScrollView(this);
-            verticalWorkspace.setFillViewport(true);
-            verticalWorkspace.setVerticalScrollBarEnabled(true);
-            verticalWorkspace.setSmoothScrollingEnabled(false);
-            int workspaceHeight = dp(2400);
-            // ScrollView measures a custom View's vertical axis as unspecified;
-            // keep the design surface taller than the viewport for real scroll range.
-            editor.setMinimumHeight(workspaceHeight);
-            verticalWorkspace.addView(editor,
-                    new android.widget.ScrollView.LayoutParams(-1, workspaceHeight));
-            area.addView(verticalWorkspace,
-                    new android.widget.FrameLayout.LayoutParams(-1, -1));
-        }
-        reveal.setVisibility(View.GONE);
-        reveal.setOnClickListener(v -> { reveal.setVisibility(View.GONE); toolbar[0].setVisibility(View.VISIBLE); });
-        android.widget.FrameLayout.LayoutParams revealParams = new android.widget.FrameLayout.LayoutParams(dp(40), dp(40), Gravity.TOP | Gravity.LEFT);
-        revealParams.leftMargin = dp(10); revealParams.topMargin = dp(5);
-        area.addView(reveal, revealParams);
-        if (!operatorMode) {
-            android.widget.ImageButton palette = editorIcon(R.drawable.kc_menu_bar_component, "Ð”Ð¾Ð±Ð°Ð²Ð¸Ñ‚ÑŒ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚");
-            palette.setOnClickListener(v -> showAddWidgetMenu());
-            android.widget.FrameLayout.LayoutParams paletteParams = new android.widget.FrameLayout.LayoutParams(dp(40), dp(40), Gravity.BOTTOM | Gravity.LEFT);
-            paletteParams.setMargins(dp(15), dp(15), dp(15), dp(15));
-            area.addView(palette, paletteParams);
-        }
-        root.addView(area, new LinearLayout.LayoutParams(-1, 0, 1));
-        if (!operatorMode) {
-            View actions = OriginalSelectionActions.create(root, this::cutSelectedWidget,
-                    this::copySelectedWidget, this::pasteWidget, this::showAlignDialog);
-            LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(-2, -2);
-            actionParams.gravity = Gravity.CENTER_HORIZONTAL;
-            root.addView(actions, actionParams);
-        }
-        setContentView(root); editor.invalidate(); startModbusPolling(); startFbdSensors(); startCraftMqtt();
-    }
-
-    private android.widget.ImageButton editorIcon(int drawable, String description) {
-        android.widget.ImageButton button = new android.widget.ImageButton(this);
-        button.setBackgroundColor(Color.TRANSPARENT); button.setImageResource(drawable);
-        button.setScaleType(android.widget.ImageView.ScaleType.FIT_XY); button.setPadding(0, 0, 0, 0);
-        button.setContentDescription(description); return button;
-    }
-
-    private void showOriginalCalculator() {
-        if (getFragmentManager().findFragmentByTag("original-calculator") == null)
-            new OriginalCalculatorDialog().show(getFragmentManager(), "original-calculator");
-    }
-
-    private void toggleOperatorMode() {
-        if (!persistProjectNow(true)) return;
-        // Editing must not advance timers. Re-entering runtime starts a fresh
-        // clock epoch rather than resuming an old saved elapsedRealtime value.
-        if (!operatorMode) {
-            FbdCraftRegisterStore.clear();
-            FbdCraftNamedVariableStore.clear();
-            for (Widget value : widgets) {
-                resetFbdTimerRuntime(value);
-                value.craftMqttLastEnable = false;
-                value.craftMqttValue = null;
-            }
-        }
-        operatorMode = !operatorMode; fbdWireMode = false; wireSource = -1;
-        if (!operatorMode) for (Widget value : widgets) if (isCraftOdTempSource(value.type)) {
-            value.craftSensorValid = false; value.craftOdTempNextPollAt = 0L;
-        }
-        showEditor();
-    }
-
-    private void showEditorCommands(View anchor) {
-        android.widget.PopupMenu menu = new android.widget.PopupMenu(this, anchor);
-        if (!operatorMode) {
-            menu.getMenu().add("Ð˜Ð¼Ñ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°").setOnMenuItemClickListener(item -> { editProjectName(); return true; });
-            menu.getMenu().add("ÐÐ°ÑÑ‚Ñ€Ð¾Ð¹ÐºÐ¸ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°").setOnMenuItemClickListener(item -> { showProjectSettingsDialog(); return true; });
-            menu.getMenu().add("Ð¡Ð¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ð¿Ñ€Ð¾ÐµÐºÑ‚").setOnMenuItemClickListener(item -> { persistProject(); return true; });
-            menu.getMenu().add("Ð”Ð¾Ð±Ð°Ð²Ð¸Ñ‚ÑŒ ÑÐºÑ€Ð°Ð½").setOnMenuItemClickListener(item -> { addScreen(); return true; });
-            menu.getMenu().add("Ð£Ð´Ð°Ð»Ð¸Ñ‚ÑŒ ÑÐºÑ€Ð°Ð½").setOnMenuItemClickListener(item -> { removeCurrentScreen(); return true; });
-            menu.getMenu().add("Ð¤Ð¾Ð½ ÑÐºÑ€Ð°Ð½Ð°").setOnMenuItemClickListener(item -> { editScreenBackground(); return true; });
-            menu.getMenu().add(fbdWireMode ? "Ð’Ñ‹ÐºÐ»ÑŽÑ‡Ð¸Ñ‚ÑŒ ÑÐ²ÑÐ·ÑŒ FBD" : "Ð¡Ð²ÑÐ·Ð°Ñ‚ÑŒ FBD").setOnMenuItemClickListener(item -> {
-                fbdWireMode = !fbdWireMode; wireSource = -1; showEditor(); return true;
-            });
-            menu.getMenu().add("Ð£Ð´Ð°Ð»Ð¸Ñ‚ÑŒ ÑÐ²ÑÐ·ÑŒ FBDâ€¦").setOnMenuItemClickListener(item -> {
-                showFbdDisconnectDialog(); return true;
-            });
-            menu.getMenu().add("Ð˜Ð½Ð²ÐµÑ€Ñ‚Ð¸Ñ€Ð¾Ð²Ð°Ñ‚ÑŒ BOOL-ÑÐ²ÑÐ·ÑŒ FBDâ€¦").setOnMenuItemClickListener(item -> {
-                showFbdInversionDialog(); return true;
-            });
-            if (currentScreenIndex >= 0 && currentScreenIndex < screens.size()) {
-                Screen current = screens.get(currentScreenIndex);
-                if (fbdWireHistory.canUndo(current))
-                    menu.getMenu().add("ÐžÑ‚Ð¼ÐµÐ½Ð¸Ñ‚ÑŒ ÑÐ²ÑÐ·ÑŒ FBD").setOnMenuItemClickListener(item -> {
-                        replayFbdWireEdit(false); return true;
-                    });
-                if (fbdWireHistory.canRedo(current))
-                    menu.getMenu().add("ÐŸÐ¾Ð²Ñ‚Ð¾Ñ€Ð¸Ñ‚ÑŒ ÑÐ²ÑÐ·ÑŒ FBD").setOnMenuItemClickListener(item -> {
-                        replayFbdWireEdit(true); return true;
-                    });
-            }
-        }
-        menu.getMenu().add("Modbus").setOnMenuItemClickListener(item -> { showModbusDiagnostics(); return true; });
-        menu.getMenu().add("Ð“Ð»Ð°Ð²Ð½Ð¾Ðµ Ð¼ÐµÐ½ÑŽ").setOnMenuItemClickListener(item -> {
-            if (persistProjectNow(true)) showHome(); return true;
-        });
-        menu.show();
-    }
-
-    @Override public void onBackPressed() {
-        if (editor != null) {
-            if (operatorMode) toggleOperatorMode();
-            else if (persistProjectNow(true)) showHome();
-        } else super.onBackPressed();
-    }
-
-    private String currentScreenName() {
-        if (screens.isEmpty()) return "Ð­ÐºÑ€Ð°Ð½ 1";
-        currentScreenIndex = Math.max(0, Math.min(currentScreenIndex, screens.size() - 1));
-        return screens.get(currentScreenIndex).name;
-    }
-
-    private void saveActiveScreen() {
-        if (screens.isEmpty()) screens.add(new Screen("Ð­ÐºÑ€Ð°Ð½ 1"));
-        Screen screen = screens.get(Math.max(0, Math.min(currentScreenIndex, screens.size() - 1)));
-        screen.widgets.clear();
-        for (Widget source : widgets) screen.widgets.add(copyWidget(source));
-    }
-
-    public static Widget copyWidget(Widget source) {
-        Widget copy = new Widget();
-        copy.type = source.type; copy.text = source.text; copy.connectionInfo = source.connectionInfo; copy.inputValue = source.inputValue; copy.buttonState = source.buttonState; copy.rsState = source.rsState; copy.counterPreset = source.counterPreset; copy.counterValue = source.counterValue; copy.counterLastInput = source.counterLastInput; copy.timerPresetMs = source.timerPresetMs; copy.timerStartedAt = source.timerStartedAt; copy.compareA = source.compareA; copy.compareB = source.compareB; copy.compareOperator = source.compareOperator;
-        copy.minValue = source.minValue; copy.maxValue = source.maxValue;
-        copy.backgroundColor = source.backgroundColor; copy.textColor = source.textColor; copy.textSizeSp = source.textSizeSp;
-        copy.visible = source.visible; copy.showFrame = source.showFrame; copy.autoResizeText = source.autoResizeText;
-        for (int i = 0; i < 16; i++) {
-            copy.dynTextStates[i] = source.dynTextStates[i];
-            copy.dynTextColors[i] = source.dynTextColors[i];
-            copy.bitListLabels[i] = source.bitListLabels[i];
-            copy.voiceMessages[i] = source.voiceMessages[i];
-            copy.imagePathStates[i] = source.imagePathStates[i];
-        }
-        copy.soundThreshold = source.soundThreshold;
-        copy.soundActive = source.soundActive;
-        copy.soundFilePath = source.soundFilePath;
-        copy.targetScreenIndex = source.targetScreenIndex;
-        copy.targetUrl = source.targetUrl;
-        copy.lastVoiceState = source.lastVoiceState;
-        copy.lastSoundState = source.lastSoundState;
-        copy.craftVariableNamespace = source.craftVariableNamespace;
-        try { copy.extraFields = new JSONObject(source.extraFields.toString()); } catch (Exception ignored) { copy.extraFields = new JSONObject(); }
-        copy.x = source.x; copy.y = source.y; copy.w = source.w; copy.h = source.h;
-        return copy;
-    }
-
-    private void activateScreen(int index) {
-        fbdWireHistory.clear();
-        saveActiveScreen();
-        if (screens.isEmpty()) screens.add(new Screen("Ð­ÐºÑ€Ð°Ð½ 1"));
-        currentScreenIndex = Math.max(0, Math.min(index, screens.size() - 1));
-        liveValues.clear();
-        widgets.clear();
-        for (Widget source : screens.get(currentScreenIndex).widgets) widgets.add(copyWidget(source));
-        persistProject();
-        showEditor();
-    }
-
-    private void previousScreen() {
-        if (screens.size() < 2) { Toast.makeText(this, "Ð”Ð¾Ð±Ð°Ð²ÑŒ ÐµÑ‰Ñ‘ Ð¾Ð´Ð¸Ð½ ÑÐºÑ€Ð°Ð½", Toast.LENGTH_SHORT).show(); return; }
-        activateScreen((currentScreenIndex - 1 + screens.size()) % screens.size());
-    }
-
-    private void nextScreen() {
-        if (screens.size() < 2) { Toast.makeText(this, "Ð”Ð¾Ð±Ð°Ð²ÑŒ ÐµÑ‰Ñ‘ Ð¾Ð´Ð¸Ð½ ÑÐºÑ€Ð°Ð½", Toast.LENGTH_SHORT).show(); return; }
-        activateScreen((currentScreenIndex + 1) % screens.size());
-    }
-
-    private void addScreen() {
-        fbdWireHistory.clear();
-        saveActiveScreen();
-        screens.add(new Screen("Ð­ÐºÑ€Ð°Ð½ " + (screens.size() + 1)));
-        currentScreenIndex = screens.size() - 1;
-        widgets.clear();
-        persistProject();
-        showEditor();
-    }
-
-    private void removeCurrentScreen() {
-        if (screens.size() <= 1) {
-            Toast.makeText(this, "Ð’ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ðµ Ð´Ð¾Ð»Ð¶ÐµÐ½ Ð¾ÑÑ‚Ð°Ñ‚ÑŒÑÑ Ñ…Ð¾Ñ‚Ñ Ð±Ñ‹ Ð¾Ð´Ð¸Ð½ ÑÐºÑ€Ð°Ð½", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        new AlertDialog.Builder(this)
-                .setTitle("Ð£Ð´Ð°Ð»Ð¸Ñ‚ÑŒ ÑÐºÑ€Ð°Ð½?")
-                .setMessage("Ð­ÐºÑ€Ð°Ð½ Â«" + currentScreenName() + "Â» Ð¸ Ð²ÑÐµ ÐµÐ³Ð¾ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚Ñ‹ Ð±ÑƒÐ´ÑƒÑ‚ ÑƒÐ´Ð°Ð»ÐµÐ½Ñ‹.")
-                .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null)
-                .setPositiveButton("Ð£Ð´Ð°Ð»Ð¸Ñ‚ÑŒ", (dialog, which) -> {
-                    fbdWireHistory.clear();
-                    saveActiveScreen();
-                    screens.remove(currentScreenIndex);
-                    currentScreenIndex = Math.max(0, Math.min(currentScreenIndex, screens.size() - 1));
-                    widgets.clear();
-                    for (Widget widget : screens.get(currentScreenIndex).widgets) widgets.add(copyWidget(widget));
-                    editor = null;
-                    persistProject();
-                    showEditor();
-                }).show();
-    }
-
-    private void editScreenBackground() {
-        if (screens.isEmpty()) return;
-        Screen screen = screens.get(currentScreenIndex);
-        EditText input = propertyField(String.format(java.util.Locale.ROOT, "#%06X", (0xFFFFFF & screen.backgroundColor)), InputType.TYPE_CLASS_TEXT);
-        input.setHint("#RRGGBB");
-        new AlertDialog.Builder(this).setTitle("Ð¦Ð²ÐµÑ‚ Ñ„Ð¾Ð½Ð° ÑÐºÑ€Ð°Ð½Ð°").setView(input)
-                .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null)
-                .setPositiveButton("ÐŸÑ€Ð¸Ð¼ÐµÐ½Ð¸Ñ‚ÑŒ", (dialog, which) -> {
-                    String value = input.getText().toString().trim();
-                    if (!value.startsWith("#")) value = "#" + value;
-                    if (!value.matches("#[0-9a-fA-F]{6}")) {
-                        Toast.makeText(this, "Ð£ÐºÐ°Ð¶Ð¸ Ñ†Ð²ÐµÑ‚ Ð² Ñ„Ð¾Ñ€Ð¼Ð°Ñ‚Ðµ #RRGGBB", Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-                    try { screen.backgroundColor = Color.parseColor(value); }
-                    catch (IllegalArgumentException ignored) { return; }
-                    persistProject(); if (editor != null) editor.invalidate();
-                }).show();
-    }
-
-    private void renameCurrentScreen() {
-        EditText input = propertyField(currentScreenName(), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
-        new AlertDialog.Builder(this).setTitle("Ð˜Ð¼Ñ ÑÐºÑ€Ð°Ð½Ð°").setView(input)
-                .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null)
-                .setPositiveButton("Ð¡Ð¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ", (dialog, which) -> {
-                    String name = input.getText().toString().trim();
-                    if (!name.isEmpty()) screens.get(currentScreenIndex).name = name;
-                    persistProject(); showEditor();
-                }).show();
-    }
-
-    private void showWidgetContextMenu() {
-        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) return;
-        if (isFbd(widgets.get(editor.selected))) {
-            showFbdBlockContextMenu(editor.selected);
-            return;
-        }
-        showStandardWidgetContextMenu();
-    }
-
-    /** Source-ordered FBD actions with existing typed graph guards. */
-    private void showFbdBlockContextMenu(final int blockIndex) {
-        if (operatorMode || blockIndex < 0 || blockIndex >= widgets.size()) return;
-        final Widget widget = widgets.get(blockIndex);
-        final boolean timer = "FBD Ð¢Ð°Ð¹Ð¼ÐµÑ€".equals(widget.type)
-                || "FBD TOF".equals(widget.type) || "FBD TP".equals(widget.type)
-                || "FBD CRAFT TIMER".equals(widget.type);
-        final boolean invertible = knownFbdPins(widget.type, true).length == 1
-                && "BOOL".equals(knownFbdPinType(widget.type,
-                        knownFbdPins(widget.type, true)[0], true));
-        final java.util.List<String> labels = new ArrayList<>();
-        labels.add("Ð¡Ð¾ÐµÐ´Ð¸Ð½Ð¸Ñ‚ÑŒ Ñâ€¦");
-        if (invertible) labels.add("Ð˜Ð½Ð²ÐµÑ€Ñ‚Ð¸Ñ€Ð¾Ð²Ð°Ñ‚ÑŒ ÑÐ²ÑÐ·ÑŒ BOOLâ€¦");
-        if (supportsFbdBlockOutputInversion(widget.type))
-            labels.add("Ð˜Ð½Ð²ÐµÑ€Ñ‚Ð¸Ñ€Ð¾Ð²Ð°Ñ‚ÑŒ Ð²Ñ‹Ñ…Ð¾Ð´ BOOL");
-        labels.add("ÐžÑ‚ÑÐ¾ÐµÐ´Ð¸Ð½Ð¸Ñ‚ÑŒ Ð²Ñ‹Ñ…Ð¾Ð´");
-        if (timer) labels.add("Ð ÐµÐ¶Ð¸Ð¼ / ÐµÐ´Ð¸Ð½Ð¸Ñ†Ñ‹ Ð²Ñ€ÐµÐ¼ÐµÐ½Ð¸");
-        labels.add("Ð¡Ð²Ð¾Ð¹ÑÑ‚Ð²Ð°");
-        labels.add("Ð”Ñ€ÑƒÐ³Ð¸Ðµ Ð´ÐµÐ¹ÑÑ‚Ð²Ð¸Ñ");
-        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                .setTitle(widget.text == null ? widget.type : widget.text)
-                .setItems(labels.toArray(new String[0]), (dialog, choice) -> {
-                    if (blockIndex >= widgets.size() || widgets.get(blockIndex) != widget) {
-                        Toast.makeText(this, "FBD Ð¸Ð·Ð¼ÐµÐ½Ñ‘Ð½: Ð²Ñ‹Ð±ÐµÑ€Ð¸ Ð±Ð»Ð¾Ðº Ð·Ð°Ð½Ð¾Ð²Ð¾", Toast.LENGTH_LONG).show();
-                        return;
-                    }
-                    String label = labels.get(choice);
-                    if ("Ð¡Ð¾ÐµÐ´Ð¸Ð½Ð¸Ñ‚ÑŒ Ñâ€¦".equals(label)) {
-                        fbdWireMode = true;
-                        wireSource = blockIndex;
-                        Toast.makeText(this, "Ð’Ñ‹Ð±ÐµÑ€Ð¸ Ñ†ÐµÐ»ÐµÐ²Ð¾Ð¹ Ð±Ð»Ð¾Ðº FBD", Toast.LENGTH_LONG).show();
-                    } else if ("Ð˜Ð½Ð²ÐµÑ€Ñ‚Ð¸Ñ€Ð¾Ð²Ð°Ñ‚ÑŒ ÑÐ²ÑÐ·ÑŒ BOOLâ€¦".equals(label)) {
-                        showFbdInversionDialog(blockIndex);
-                    } else if ("Ð˜Ð½Ð²ÐµÑ€Ñ‚Ð¸Ñ€Ð¾Ð²Ð°Ñ‚ÑŒ Ð²Ñ‹Ñ…Ð¾Ð´ BOOL".equals(label)) {
-                        try {
-                            Object previous = widget.extraFields.opt("invertOut");
-                            boolean existed = widget.extraFields.has("invertOut");
-                            if (!toggleFbdBlockOutputInversion(widget)) return;
-                            if (!persistProjectNow(true)) {
-                                if (existed) widget.extraFields.put("invertOut", previous);
-                                else widget.extraFields.remove("invertOut");
-                                Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ ÑÐ¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ð¸Ð½Ð²ÐµÑ€ÑÐ¸ÑŽ Ð²Ñ‹Ñ…Ð¾Ð´Ð°", Toast.LENGTH_LONG).show();
-                            }
-                            if (editor != null) editor.invalidate();
-                        } catch (Exception error) {
-                            Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ ÑÐ¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ð¸Ð½Ð²ÐµÑ€ÑÐ¸ÑŽ Ð²Ñ‹Ñ…Ð¾Ð´Ð°", Toast.LENGTH_LONG).show();
-                        }
-                    } else if ("ÐžÑ‚ÑÐ¾ÐµÐ´Ð¸Ð½Ð¸Ñ‚ÑŒ Ð²Ñ‹Ñ…Ð¾Ð´".equals(label)) {
-                        showFbdDisconnectDialog(blockIndex);
-                    } else if ("Ð ÐµÐ¶Ð¸Ð¼ / ÐµÐ´Ð¸Ð½Ð¸Ñ†Ñ‹ Ð²Ñ€ÐµÐ¼ÐµÐ½Ð¸".equals(label)
-                            || "Ð¡Ð²Ð¾Ð¹ÑÑ‚Ð²Ð°".equals(label)) {
-                        editor.selected = blockIndex;
-                        editSelectedWidget();
-                    } else {
-                        editor.selected = blockIndex;
-                        showStandardWidgetContextMenu();
-                    }
-                    if (editor != null) editor.invalidate();
-                }).setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null).show();
-    }
-
-    private void showStandardWidgetContextMenu() {
-        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) return;
-
-        Widget selectedWidget = widgets.get(editor.selected);
-        String titleText = selectedWidget.text == null || selectedWidget.text.trim().isEmpty()
-                ? selectedWidget.type : selectedWidget.text;
-
-        LinearLayout list = new LinearLayout(this);
-        list.setOrientation(LinearLayout.VERTICAL);
-        list.setPadding(dp(4), dp(4), dp(4), dp(4));
-        list.setBackgroundColor(Color.rgb(35, 35, 35));
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-        scroll.addView(list);
-
-        final AlertDialog[] menu = new AlertDialog[1];
-        final String[] labels = {"Ð¡Ð²Ð¾Ð¹ÑÑ‚Ð²Ð°", "Ð’Ñ‹Ñ€Ð°Ð²Ð½Ð¸Ð²Ð°Ð½Ð¸Ðµ", "ÐšÐ¾Ð¿Ð¸Ñ€Ð¾Ð²Ð°Ñ‚ÑŒ", "Ð£Ð´Ð°Ð»Ð¸Ñ‚ÑŒ"};
-        final String[] details = {
-                "ÐÐ°ÑÑ‚Ñ€Ð¾Ð¸Ñ‚ÑŒ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚ Ð¸ Ð¿Ñ€Ð¸Ð²ÑÐ·ÐºÑƒ",
-                "Ð’Ñ‹Ñ€Ð¾Ð²Ð½ÑÑ‚ÑŒ Ð½Ð° Ñ…Ð¾Ð»ÑÑ‚Ðµ",
-                "Ð¡Ð¾Ð·Ð´Ð°Ñ‚ÑŒ ÐºÐ¾Ð¿Ð¸ÑŽ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚Ð°",
-                "Ð£Ð´Ð°Ð»Ð¸Ñ‚ÑŒ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚ Ñ ÑÐºÑ€Ð°Ð½Ð°"
-        };
-        final int[] symbols = {0x2699, 0x21D4, 0x29C9, 0x2715};
-
-        for (int i = 0; i < labels.length; i++) {
-            final int index = i;
-            LinearLayout row = new LinearLayout(this);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(dp(10), dp(8), dp(10), dp(8));
-            row.setMinimumHeight(dp(54));
-            row.setBackgroundColor(i % 2 == 0
-                    ? Color.rgb(48, 48, 48) : Color.rgb(40, 40, 40));
-
-            TextView symbol = new TextView(this);
-            symbol.setText(new String(Character.toChars(symbols[i])));
-            symbol.setTextSize(21);
-            symbol.setGravity(Gravity.CENTER);
-            symbol.setTextColor(i == 3 ? Color.rgb(235, 105, 90) : Color.rgb(237, 176, 59));
-            row.addView(symbol, new LinearLayout.LayoutParams(dp(38), -2));
-
-            LinearLayout textColumn = new LinearLayout(this);
-            textColumn.setOrientation(LinearLayout.VERTICAL);
-            textColumn.setPadding(dp(8), 0, 0, 0);
-            TextView label = new TextView(this);
-            label.setText(labels[i]);
-            label.setTextSize(16);
-            label.setTypeface(null, android.graphics.Typeface.BOLD);
-            label.setTextColor(i == 3 ? Color.rgb(235, 105, 90) : Color.rgb(237, 176, 59));
-            textColumn.addView(label, new LinearLayout.LayoutParams(-1, -2));
-
-            TextView detail = new TextView(this);
-            detail.setText(details[i]);
-            detail.setTextSize(12);
-            detail.setTextColor(Color.rgb(187, 187, 187));
-            textColumn.addView(detail, new LinearLayout.LayoutParams(-1, -2));
-            row.addView(textColumn, new LinearLayout.LayoutParams(0, -2, 1));
-
-            row.setOnClickListener(v -> {
-                if (menu[0] != null) menu[0].dismiss();
-                if (index == 0) editSelectedWidget();
-                else if (index == 1) showAlignDialog();
-                else if (index == 2) copySelectedWidget();
-                else deleteSelectedWidget();
-            });
-            list.addView(row, new LinearLayout.LayoutParams(-1, -2));
-
-            View separator = new View(this);
-            separator.setBackgroundColor(Color.rgb(75, 75, 75));
-            list.addView(separator, new LinearLayout.LayoutParams(-1, dp(1)));
-        }
-
-        menu[0] = new AlertDialog.Builder(this)
-                .setTitle(titleText)
-                .setView(scroll)
-                .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null)
-                .create();
-        menu[0].show();
-        int titleId = getResources().getIdentifier("alertTitle", "id", "android");
-        TextView dialogTitle = menu[0].findViewById(titleId);
-        if (dialogTitle != null) dialogTitle.setTextColor(Color.rgb(237, 176, 59));
-    }
-
-    private void showModbusDiagnostics() {
-        StringBuilder report = new StringBuilder();
-        int boundCount = 0;
-        int errorCount = 0;
-        int pendingCount = 0;
-        int activeCount = 0;
-        int inactiveCount = 0;
-        for (int i = 0; i < widgets.size(); i++) {
-            Widget widget = widgets.get(i);
-            String binding = widget.connectionInfo == null ? "" : widget.connectionInfo.trim();
-            if (binding.isEmpty()) continue;
-            boundCount++;
-            String state = liveValues.get(i);
-            if (binding.startsWith("tcp://") && parseBinding(i, binding) == null) state = "CFG â€” Ð½ÐµÐ²ÐµÑ€Ð½Ñ‹Ð¹ Ð°Ð´Ñ€ÐµÑ";
-            else if (state == null) state = "ÐžÐ¶Ð¸Ð´Ð°Ð½Ð¸Ðµ Ð¾Ñ‚Ð²ÐµÑ‚Ð°";
-            if ((state != null && state.startsWith("ERR")) || (state != null && state.startsWith("CFG"))) errorCount++;
-            else if ("ÐžÐ¶Ð¸Ð´Ð°Ð½Ð¸Ðµ Ð¾Ñ‚Ð²ÐµÑ‚Ð°".equals(state)) pendingCount++;
-            else if (isActiveModbusValue(state)) activeCount++;
-            else inactiveCount++;
-            report.append(i + 1).append(". ").append(widget.text == null || widget.text.trim().isEmpty() ? widget.type : widget.text)
-                    .append("\n  ÐŸÑ€Ð¸Ð²ÑÐ·ÐºÐ°: ").append(binding)
-                    .append("\n  Ð¢ÐµÐºÑƒÑ‰ÐµÐµ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ: ").append(state)
-                    .append("\n\n");
-        }
-        if (boundCount == 0) {
-            report.append("ÐÐ° Ñ‚ÐµÐºÑƒÑ‰ÐµÐ¼ ÑÐºÑ€Ð°Ð½Ðµ Ð½ÐµÑ‚ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚Ð¾Ð² Ñ ÑƒÐºÐ°Ð·Ð°Ð½Ð½Ð¾Ð¹ Ð¿Ñ€Ð¸Ð²ÑÐ·ÐºÐ¾Ð¹.\n")
-                    .append("ÐžÑ‚ÐºÑ€Ð¾Ð¹ Â«Ð¡Ð²Ð¾Ð¹ÑÑ‚Ð²Ð°Â» ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚Ð° Ð¸ ÑƒÐºÐ°Ð¶Ð¸ Ð°Ð´Ñ€ÐµÑ Modbus, Ð½Ð°Ð¿Ñ€Ð¸Ð¼ÐµÑ€:\n")
-                    .append("tcp://192.168.1.10:502/1/40001");
-        } else {
-            report.insert(0, "ÐŸÑ€Ð¸Ð²ÑÐ·Ð¾Ðº: " + boundCount + " Â· ÐžÑˆÐ¸Ð±Ð¾Ðº: " + errorCount + " Â· ÐžÐ¶Ð¸Ð´Ð°Ð½Ð¸Ðµ: " + pendingCount + " Â· ÐÐºÑ‚Ð¸Ð²Ð½Ñ‹Ñ…: " + activeCount + " Â· ÐÐµÐ°ÐºÑ‚Ð¸Ð²Ð½Ñ‹Ñ…: " + inactiveCount + "\n\n");
-        }
-        TextView content = new TextView(this);
-        content.setText(report.toString());
-        content.setTextSize(14);
-        content.setTextColor(Color.rgb(30, 41, 59));
-        content.setPadding(dp(16), dp(12), dp(16), dp(12));
-        ScrollView scroll = new ScrollView(this);
-        scroll.addView(content);
-        new AlertDialog.Builder(this)
-                .setTitle("Ð”Ð¸Ð°Ð³Ð½Ð¾ÑÑ‚Ð¸ÐºÐ° Modbus")
-                .setView(scroll)
-                .setPositiveButton("ÐžÐ±Ð½Ð¾Ð²Ð¸Ñ‚ÑŒ", (dialog, which) -> showModbusDiagnostics())
-                .setNegativeButton("Ð—Ð°ÐºÑ€Ñ‹Ñ‚ÑŒ", null)
-                .show();
-    }
-
-    private void showAddWidgetMenu() {
-        OriginalComponentPalette.show(this, this::addWidget,
-                this::showFbdPalette, this::editScreenBackground);
-    }
-
-    private void showFbdPalette() {
-        OriginalFbdPalette.show(this, this::addWidget, this::showAddWidgetMenu, this::showExtendedWidgetMenu);
-    }
-
-    private void showExtendedWidgetMenu() {
-        final String[] labels = {
-                "Ð¢ÐµÐºÑÑ‚ / Ð½Ð°Ð´Ð¿Ð¸ÑÑŒ", "ÐšÐ½Ð¾Ð¿ÐºÐ°", "Ð˜Ð½Ð´Ð¸ÐºÐ°Ñ‚Ð¾Ñ€", "Ð—Ð°Ð´Ð°Ñ‚Ñ‡Ð¸Ðº",
-                "Ð”Ð¸Ð½Ð°Ð¼Ð¸Ñ‡ÐµÑÐºÐ¸Ð¹ Ñ‚ÐµÐºÑÑ‚", "Ð‘Ð¸Ñ‚Ð¾Ð²Ñ‹Ð¹ ÑÐ¿Ð¸ÑÐ¾Ðº", "Ð¨ÐºÐ°Ð»Ð° / Ð¡Ñ‚Ñ€ÐµÐ»ÐºÐ°", "ÐŸÑ€Ð¾Ð³Ñ€ÐµÑÑ-Ð±Ð°Ñ€", "Ð“Ñ€Ð°Ñ„Ð¸Ðº / Ð¢Ñ€ÐµÐ½Ð´", "Ð”Ð²ÑƒÑ…Ð¿Ð¾Ð·Ð¸Ñ†Ð¸Ð¾Ð½Ð½Ñ‹Ð¹ Ð¸Ð½Ð´Ð¸ÐºÐ°Ñ‚Ð¾Ñ€",
-                "Ð—Ð²ÑƒÐºÐ¾Ð²Ð¾Ð¹ ÑÐ¸Ð³Ð½Ð°Ð» / ÐÐ»Ð°Ñ€Ð¼", "ÐŸÐµÑ€ÐµÑ…Ð¾Ð´ Ð½Ð° ÑÐºÑ€Ð°Ð½ / Ð¡ÑÑ‹Ð»ÐºÐ°", "ÐœÐ½Ð¾Ð³Ð¾Ð¿Ð¾Ð·Ð¸Ñ†Ð¸Ð¾Ð½Ð½Ð¾Ðµ Ñ„Ð¾Ñ‚Ð¾", "Ð“Ð¾Ð»Ð¾ÑÐ¾Ð²Ð¾Ðµ ÑÐ¾Ð¾Ð±Ñ‰ÐµÐ½Ð¸Ðµ",
-                "FBD â€” Ð’Ñ…Ð¾Ð´", "FBD â€” Ð˜", "FBD â€” Ð˜Ð›Ð˜", "FBD â€” ÐÐ•",
-                "FBD â€” NAND", "FBD â€” NOR", "FBD â€” XOR",
-                "FBD â€” TON (Ð·Ð°Ð´ÐµÑ€Ð¶ÐºÐ° Ð²ÐºÐ»ÑŽÑ‡ÐµÐ½Ð¸Ñ)", "FBD â€” TP (Ð¸Ð¼Ð¿ÑƒÐ»ÑŒÑ)", "FBD â€” TOF (Ð·Ð°Ð´ÐµÑ€Ð¶ÐºÐ° Ð²Ñ‹ÐºÐ»ÑŽÑ‡ÐµÐ½Ð¸Ñ)",
-                "FBD â€” Ð¡Ñ€Ð°Ð²Ð½ÐµÐ½Ð¸Ðµ", "FBD â€” Ð¡Ð»Ð¾Ð¶ÐµÐ½Ð¸Ðµ (+)", "FBD â€” Ð’Ñ‹Ñ‡Ð¸Ñ‚Ð°Ð½Ð¸Ðµ (-)", "FBD â€” Ð£Ð¼Ð½Ð¾Ð¶ÐµÐ½Ð¸Ðµ (*)", "FBD â€” Ð”ÐµÐ»ÐµÐ½Ð¸Ðµ (/)",
-                "FBD â€” POW (ÑÑ‚ÐµÐ¿ÐµÐ½ÑŒ)", "FBD â€” SQRT (ÐºÐ¾Ñ€ÐµÐ½ÑŒ)", "FBD â€” SIN", "FBD â€” COS", "FBD â€” TAN",
-                "FBD â€” FloatToInt", "FBD â€” IntToFloat",
-                "FBD â€” MOVE", "FBD â€” SEL (ÑÐµÐ»ÐµÐºÑ‚Ð¾Ñ€)", "FBD â€” ABS", "FBD â€” MIN / MAX",
-                "FBD â€” RS", "FBD â€” SR", "FBD â€” CTU (ÑÑ‡Ñ‘Ñ‚ Ð²Ð²ÐµÑ€Ñ…)",
-                "FBD â€” CTD (ÑÑ‡Ñ‘Ñ‚ Ð²Ð½Ð¸Ð·)", "FBD â€” R_TRIG", "FBD â€” F_TRIG",
-                "FBD â€” Craft CTU 16 Ð±Ð¸Ñ‚ (+, âˆ’, R)",
-                "FBD â€” Craft T (Ð¿ÐµÑ€ÐµÐºÐ»ÑŽÑ‡Ð°Ñ‚ÐµÐ»ÑŒ Ð¿Ð¾ Ñ„Ñ€Ð¾Ð½Ñ‚Ñƒ)",
-                "FBD â€” Craft TIMER (TON / TOF / TP / BLINK)",
-                "FBD â€” Craft BLINK (Ð¼Ð¸Ð³Ð°Ð½Ð¸Ðµ)",
-                "FBD â€” Craft SEL (Ñ†ÐµÐ»Ð¾Ñ‡Ð¸ÑÐ»ÐµÐ½Ð½Ñ‹Ð¹)",
-                "FBD â€” Craft COMPARE (INT32)",
-                "FBD â€” Craft CH_I (Ð¸Ð·Ð¼ÐµÐ½ÐµÐ½Ð¸Ðµ Integer)",
-                "FBD â€” Craft CH_F (Ð¸Ð·Ð¼ÐµÐ½ÐµÐ½Ð¸Ðµ Float)",
-                "FBD â€” Craft Arithmetic INT (16 Ð±Ð¸Ñ‚)",
-                "FBD â€” Craft Arithmetic FLOAT32",
-                "FBD â€” Craft COMPARE FLOAT32",
-                "FBD â€” Craft MOVE (EN + Integer)",
-                "FBD â€” Craft MX (EN + Integer ID)",
-                "FBD â€” Craft ARRAY (EN + DT + ID)",
-                "FBD â€” Craft LOG (Float32)",
-                "FBD â€” Craft WordToFloat (Integer â†’ Float32)",
-                "FBD â€” Craft POW (Float32)", "FBD â€” Craft SIN (Float32)",
-                "FBD â€” Craft ABS (Float32)", "FBD â€” Craft IntToFloat (signed 16-bit)",
-                "FBD â€” Craft FloatToInt"
-        };
-        final String[] types = {
-                "Ð¢ÐµÐºÑÑ‚", "ÐšÐ½Ð¾Ð¿ÐºÐ°", "Ð˜Ð½Ð´Ð¸ÐºÐ°Ñ‚Ð¾Ñ€", "Ð—Ð°Ð´Ð°Ñ‚Ñ‡Ð¸Ðº",
-                "Ð”Ð¸Ð½Ð°Ð¼Ð¸Ñ‡ÐµÑÐºÐ¸Ð¹ Ñ‚ÐµÐºÑÑ‚", "Ð‘Ð¸Ñ‚Ð¾Ð²Ñ‹Ð¹ ÑÐ¿Ð¸ÑÐ¾Ðº", "Ð¨ÐºÐ°Ð»Ð° / Ð¡Ñ‚Ñ€ÐµÐ»ÐºÐ°", "ÐŸÑ€Ð¾Ð³Ñ€ÐµÑÑ-Ð±Ð°Ñ€", "Ð“Ñ€Ð°Ñ„Ð¸Ðº / Ð¢Ñ€ÐµÐ½Ð´", "Ð”Ð²ÑƒÑ…Ð¿Ð¾Ð·Ð¸Ñ†Ð¸Ð¾Ð½Ð½Ñ‹Ð¹ Ð¸Ð½Ð´Ð¸ÐºÐ°Ñ‚Ð¾Ñ€",
-                "Ð—Ð²ÑƒÐºÐ¾Ð²Ð¾Ð¹ ÑÐ¸Ð³Ð½Ð°Ð»", "ÐŸÐµÑ€ÐµÑ…Ð¾Ð´ Ð½Ð° ÑÐºÑ€Ð°Ð½", "ÐœÐ½Ð¾Ð³Ð¾Ð¿Ð¾Ð·Ð¸Ñ†Ð¸Ð¾Ð½Ð½Ð¾Ðµ Ñ„Ð¾Ñ‚Ð¾", "Ð“Ð¾Ð»Ð¾ÑÐ¾Ð²Ð¾Ðµ ÑÐ¾Ð¾Ð±Ñ‰ÐµÐ½Ð¸Ðµ",
-                "FBD Ð’Ñ…Ð¾Ð´", "FBD Ð˜", "FBD Ð˜Ð›Ð˜", "FBD ÐÐ•",
-                "FBD NAND", "FBD NOR", "FBD XOR",
-                "FBD Ð¢Ð°Ð¹Ð¼ÐµÑ€", "FBD TP", "FBD TOF",
-                "FBD Ð¡Ñ€Ð°Ð²Ð½ÐµÐ½Ð¸Ðµ", "FBD Ð¡Ð»Ð¾Ð¶ÐµÐ½Ð¸Ðµ", "FBD Ð’Ñ‹Ñ‡Ð¸Ñ‚Ð°Ð½Ð¸Ðµ", "FBD Ð£Ð¼Ð½Ð¾Ð¶ÐµÐ½Ð¸Ðµ", "FBD Ð”ÐµÐ»ÐµÐ½Ð¸Ðµ",
-                "FBD POW", "FBD SQRT", "FBD SIN", "FBD COS", "FBD TAN",
-                "FBD FloatToInt", "FBD IntToFloat",
-                "FBD MOVE", "FBD SEL", "FBD ABS", "FBD MIN_MAX",
-                "FBD RS", "FBD SR", "FBD CTU",
-                "FBD CTD", "FBD R_TRIG", "FBD F_TRIG",
-                "FBD CRAFT CTU", "FBD CRAFT T", "FBD CRAFT TIMER", "FBD CRAFT BLINK",
-                "FBD CRAFT SEL", "FBD CRAFT COMPARE",
-                "FBD CRAFT CHANGE I", "FBD CRAFT CHANGE F",
-                "FBD CRAFT ARITHMETIC INT", "FBD CRAFT ARITHMETIC FLOAT",
-                "FBD CRAFT COMPARE FLOAT", "FBD CRAFT MOVE",
-                "FBD CRAFT MX", "FBD CRAFT ARRAY",
-                "FBD CRAFT LOG", "FBD CRAFT WORD TO FLOAT",
-                "FBD CRAFT POW", "FBD CRAFT SIN", "FBD CRAFT ABS",
-                "FBD CRAFT INT TO FLOAT", "FBD CRAFT FLOAT TO INT"
-        };
-        final String[] defaults = {
-                "ÐÐ°Ð´Ð¿Ð¸ÑÑŒ", "ÐšÐ½Ð¾Ð¿ÐºÐ°", "Ð˜Ð½Ð´Ð¸ÐºÐ°Ñ‚Ð¾Ñ€", "Ð—Ð°Ð´Ð°Ñ‚Ñ‡Ð¸Ðº: 0",
-                "Ð”Ð¸Ð½Ð°Ð¼Ð¸Ñ‡ÐµÑÐºÐ¸Ð¹ Ñ‚ÐµÐºÑÑ‚", "Ð‘Ð¸Ñ‚Ð¾Ð²Ñ‹Ð¹ ÑÐ¿Ð¸ÑÐ¾Ðº", "Ð¨ÐºÐ°Ð»Ð°", "Ð£Ñ€Ð¾Ð²ÐµÐ½ÑŒ", "Ð¢Ñ€ÐµÐ½Ð´", "Ð¡Ð¾ÑÑ‚Ð¾ÑÐ½Ð¸Ðµ",
-                "ÐÐ»Ð°Ñ€Ð¼", "ÐŸÐµÑ€ÐµÑ…Ð¾Ð´ -> Ð­ÐºÑ€Ð°Ð½ 1", "Ð¤Ð¾Ñ‚Ð¾", "Ð“Ð¾Ð»Ð¾Ñ",
-                "Ð’Ñ…Ð¾Ð´", "Ð˜", "Ð˜Ð›Ð˜", "ÐÐ•", "NAND", "NOR", "XOR",
-                "TON", "TP", "TOF", "A > B", "A + B", "A - B", "A * B", "A / B",
-                "POW", "SQRT", "SIN", "COS", "TAN",
-                "Float->Int", "Int->Float",
-                "MOVE", "SEL", "ABS", "MIN/MAX",
-                "RS", "SR", "CTU", "CTD", "R_TRIG", "F_TRIG",
-                "CTU 16 bit", "T", "TON", "BLINK", "SEL", ">",
-                "CH_I", "CH_F", "+", "+", ">", "MOVE", "MX", "ARRAY", "LN", "WORD->FL",
-                "POW", "SIN", "ABS", "INT->FL", "FL->INT"
-        };
-        LinearLayout list = new LinearLayout(this);
-        list.setOrientation(LinearLayout.VERTICAL);
-        list.setPadding(dp(8), dp(4), dp(8), dp(4));
-        Button macroTools = new Button(this);
-        macroTools.setText("Ð˜Ð¼Ð¿Ð¾Ñ€Ñ‚ / ÑÐºÑÐ¿Ð¾Ñ€Ñ‚ Craft .mcr");
-        macroTools.setAllCaps(false);
-        macroTools.setOnClickListener(v -> showCraftMacroTools());
-        list.addView(macroTools, new LinearLayout.LayoutParams(-1, -2));
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-        scroll.addView(list);
-        final AlertDialog[] picker = new AlertDialog[1];
-
-        for (int i = 0; i < labels.length; i++) {
-            if (i == 14) {
-                TextView section = new TextView(this);
-                section.setText("Ð¤Ð£ÐÐšÐ¦Ð˜ÐžÐÐÐ›Ð¬ÐÐ«Ð• Ð‘Ð›ÐžÐšÐ˜ (FBD)");
-                section.setTextColor(Color.rgb(37, 99, 235));
-                section.setTextSize(12);
-                section.setTypeface(null, android.graphics.Typeface.BOLD);
-                section.setPadding(dp(12), dp(14), dp(12), dp(8));
-                list.addView(section, new LinearLayout.LayoutParams(-1, -2));
-            }
-            final int index = i;
-            TextView item = new TextView(this);
-            item.setText(labels[i] + "    â€º");
-            item.setTextColor(Color.rgb(30, 41, 59));
-            item.setTextSize(16);
-            item.setGravity(Gravity.CENTER_VERTICAL);
-            item.setPadding(dp(14), dp(12), dp(12), dp(12));
-            item.setBackgroundColor(i % 2 == 0
-                    ? Color.rgb(248, 250, 252) : Color.WHITE);
-            item.setMinHeight(dp(48));
-            item.setOnClickListener(v -> {
-                if (picker[0] != null) picker[0].dismiss();
-                addWidget(types[index], defaults[index]);
-            });
-            if (OriginalIndicator.supports(types[i]) || "ÐšÐ½Ð¾Ð¿ÐºÐ°".equals(types[i])) {
-                // Preview with verified original APK drawable resources.
-                // Button artwork is the same original background used by legacyMenuButton.
-                LinearLayout previewRow = new LinearLayout(this);
-                previewRow.setOrientation(LinearLayout.HORIZONTAL);
-                previewRow.setGravity(Gravity.CENTER_VERTICAL);
-                android.widget.ImageView preview = new android.widget.ImageView(this);
-                boolean buttonPreview = "ÐšÐ½Ð¾Ð¿ÐºÐ°".equals(types[i]);
-                preview.setImageResource(buttonPreview
-                        ? R.drawable.kc_background_button : R.drawable.kc_lamp_off);
-                preview.setContentDescription(buttonPreview
-                        ? "ÐšÐ½Ð¾Ð¿ÐºÐ°: Ð¾Ñ€Ð¸Ð³Ð¸Ð½Ð°Ð»ÑŒÐ½Ñ‹Ð¹ Ñ„Ð¾Ð½" : "Ð˜Ð½Ð´Ð¸ÐºÐ°Ñ‚Ð¾Ñ€: Ð²Ñ‹ÐºÐ»ÑŽÑ‡ÐµÐ½");
-                preview.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
-                LinearLayout.LayoutParams previewSize = new LinearLayout.LayoutParams(dp(40), dp(40));
-                previewSize.setMargins(dp(12), dp(4), dp(8), dp(4));
-                previewRow.addView(preview, previewSize);
-                previewRow.addView(item, new LinearLayout.LayoutParams(0, -2, 1f));
-                previewRow.setOnClickListener(v -> item.performClick());
-                previewRow.setMinimumHeight(dp(48));
-                list.addView(previewRow, new LinearLayout.LayoutParams(-1, -2));
-            } else {
-                list.addView(item, new LinearLayout.LayoutParams(-1, -2));
-            }
-            View separator = new View(this);
-            separator.setBackgroundColor(Color.rgb(226, 232, 240));
-            list.addView(separator, new LinearLayout.LayoutParams(-1, dp(1)));
-        }
-        picker[0] = new AlertDialog.Builder(this)
-                .setTitle("Ð”Ð¾Ð±Ð°Ð²Ð¸Ñ‚ÑŒ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚")
-                .setView(scroll)
-                .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null)
-                .create();
-        picker[0].show();
-    }
-
-    /**
-     * Find space for a newly created FBD block without changing existing layout.
-     * Deterministic row-major search; work in Canvas pixels (same units as Widget geometry).
-     * This is a BLOODSKY editor usability adaptation, not a copied Craft placement rule.
-     */
-    public static float[] freeFbdPlacement(List<Widget> existing, float canvasWidth,
-                                           float canvasHeight, float width, float height,
-                                           float originX, float originY, float gap) {
-        if (existing == null || !Float.isFinite(canvasWidth) || !Float.isFinite(canvasHeight)
-                || !Float.isFinite(width) || !Float.isFinite(height)
-                || !Float.isFinite(originX) || !Float.isFinite(originY)
-                || !Float.isFinite(gap) || width <= 0 || height <= 0
-                || canvasWidth <= width || canvasHeight <= height) return null;
-        float separation = Math.max(1f, gap);
-        float step = Math.max(8f, separation);
-        float startX = Math.max(0f, originX), startY = Math.max(0f, originY);
-        for (int row = 0; row < 200; row++) {
-            float y = startY + row * step;
-            if (y + height + separation > canvasHeight) break;
-            for (int col = 0; col < 200; col++) {
-                float x = startX + col * step;
-                if (x + width + separation > canvasWidth) break;
-                boolean occupied = false;
-                for (Widget old : existing) {
-                    if (old == null || !old.visible) continue;
-                    if (x < old.x + old.w + separation && x + width + separation > old.x
-                            && y < old.y + old.h + separation && y + height + separation > old.y) {
-                        occupied = true;
-                        break;
-                    }
-                }
-                if (!occupied) return new float[]{x, y};
-            }
-        }
-        return null;
-    }
-
-    private void addWidget(String type, String text) {
-        Widget w = new Widget();
-        w.type = type;
-        w.text = text;
-        if ("FBD CRAFT ARITHMETIC INT".equals(type)
-                || "FBD CRAFT ARITHMETIC FLOAT".equals(type)) w.compareOperator = "+";
-        w.x = dp(40) + (widgets.size() % 4) * dp(24);
-        w.y = dp(50) + (widgets.size() % 6) * dp(22);
-        w.w = OriginalIndicator.supports(type) ? dp(40) : dp(160);
-        w.h = OriginalIndicator.supports(type) ? dp(40) : dp(58);
-        if (type.equals("Ð—Ð°Ð´Ð°Ñ‚Ñ‡Ð¸Ðº")) { w.w = dp(190); w.h = dp(62); }
-        if (type.equals("Ð¨ÐºÐ°Ð»Ð° / Ð¡Ñ‚Ñ€ÐµÐ»ÐºÐ°") || type.equals("Ð“Ñ€Ð°Ñ„Ð¸Ðº / Ð¢Ñ€ÐµÐ½Ð´")) { w.w = dp(200); w.h = dp(110); }
-        if (type.equals("ÐŸÑ€Ð¾Ð³Ñ€ÐµÑÑ-Ð±Ð°Ñ€") || type.equals("Ð‘Ð¸Ñ‚Ð¾Ð²Ñ‹Ð¹ ÑÐ¿Ð¸ÑÐ¾Ðº")) { w.w = dp(180); w.h = dp(64); }
-        if (type.startsWith("FBD ")) {
-            w.w = dp(150); w.h = dp(76);
-            if (editor != null && editor.getWidth() > 0 && editor.getHeight() > 0) {
-                float[] empty = freeFbdPlacement(widgets, editor.getWidth(), editor.getHeight(),
-                        w.w, w.h, dp(40), dp(50), dp(18));
-                if (empty != null) { w.x = empty[0]; w.y = empty[1]; }
-                else {
-                    // The old fallback inserted the block at a hard-coded offset,
-                    // overlapping other blocks while claiming that no space was
-                    // available. Fail without changing project/history instead.
-                    Toast.makeText(this,
-                            "ÐÐµÑ‚ ÑÐ²Ð¾Ð±Ð¾Ð´Ð½Ð¾Ð³Ð¾ Ð¼ÐµÑÑ‚Ð° Ð´Ð»Ñ FBD-Ð±Ð»Ð¾ÐºÐ°: Ð¾ÑÐ²Ð¾Ð±Ð¾Ð´Ð¸ Ð¼ÐµÑÑ‚Ð¾ Ð½Ð° ÑÐºÑ€Ð°Ð½Ðµ",
-                            Toast.LENGTH_LONG).show();
-                    return;
-                }
-            }
-        }
-        if ("FBD CTD".equals(type)) w.counterValue = w.counterPreset;
-        // Only a successfully placed element may invalidate undo history and
-        // graph output caches. A rejected insert leaves the project unchanged.
-        fbdWireHistory.clear();
-        liveValues.clear();
-        widgets.add(w);
-        persistProject();
-        if (editor != null) editor.invalidate();
-    }
-
-    private EditText propertyField(String value, int inputType) {
-        EditText field = new EditText(this);
-        field.setSingleLine(true);
-        field.setInputType(inputType);
-        field.setText(value);
-        field.setSelectAllOnFocus(true);
-        field.setImeOptions(android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI);
-        return field;
-    }
-
-    private boolean selectIndicatorImage(Widget widget, boolean active, boolean user, String value) {
-        if (!widgets.contains(widget) || !OriginalIndicator.supports(widget.type)) return false;
-        JSONObject old = widget.extraFields;
-        JSONObject oldProject = projectExtraFields;
-        try {
-            widget.extraFields = OriginalIndicator.withImage(old, active, user, value);
-            if (!persistProjectNow(true)) {
-                widget.extraFields = old; projectExtraFields = oldProject; saveActiveScreen();
-                Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ ÑÐ¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ð¸Ð·Ð¾Ð±Ñ€Ð°Ð¶ÐµÐ½Ð¸Ðµ", Toast.LENGTH_LONG).show();
-                return false;
-            }
-            if (editor != null) editor.invalidate();
-            return true;
-        } catch (Exception invalid) {
-            widget.extraFields = old; projectExtraFields = oldProject;
-            Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show(); return false;
-        }
-    }
-
-    private void showIndicatorImages(Widget widget) {
-        OriginalIndicatorImages.show(this, new OriginalIndicatorImages.Host() {
-            public Bitmap preview(boolean active) { return originalIndicatorBitmap(widget, active); }
-            public boolean select(boolean active, boolean user, String value) {
-                return selectIndicatorImage(widget, active, user, value);
-            }
-            public void chooseCustom(boolean active, Runnable changed) {
-                LinearLayout form = new LinearLayout(MainActivity.this); form.setOrientation(LinearLayout.VERTICAL);
-                EditText path = propertyField("", InputType.TYPE_CLASS_TEXT);
-                path.setHint("Ð¤Ð°Ð¹Ð» / content URI"); path.setContentDescription("Ð¡Ð²Ð¾Ñ‘ Ð¸Ð·Ð¾Ð±Ñ€Ð°Ð¶ÐµÐ½Ð¸Ðµ Ð¸Ð½Ð´Ð¸ÐºÐ°Ñ‚Ð¾Ñ€Ð°");
-                form.addView(path); addMediaPicker(form, path, "image/*");
-                AlertDialog custom = new AlertDialog.Builder(MainActivity.this).setTitle("Ð¡Ð²Ð¾Ñ‘ Ð¸Ð·Ð¾Ð±Ñ€Ð°Ð¶ÐµÐ½Ð¸Ðµ")
-                        .setView(form).setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null).setPositiveButton("ÐŸÑ€Ð¸Ð¼ÐµÐ½Ð¸Ñ‚ÑŒ", null).create();
-                custom.setOnShowListener(shown -> custom.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-                    String selected = path.getText().toString().trim();
-                    imageCache.remove(selected);
-                    if (selected.isEmpty() || loadCachedBitmap(selected) == null) {
-                        Toast.makeText(MainActivity.this, "Ð’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð½Ð¾Ðµ Ð¸Ð·Ð¾Ð±Ñ€Ð°Ð¶ÐµÐ½Ð¸Ðµ", Toast.LENGTH_LONG).show(); return;
-                    }
-                    if (selectIndicatorImage(widget, active, true, selected)) {custom.dismiss();changed.run();}
-                }));
-                custom.show();
-            }
-        });
-    }
-
-    private void editSelectedWidget() {
-        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
-            Toast.makeText(this, "Ð¡Ð½Ð°Ñ‡Ð°Ð»Ð° Ð²Ñ‹Ð±ÐµÑ€Ð¸ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚ Ð½Ð° ÑÐºÑ€Ð°Ð½Ðµ", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        Widget w = widgets.get(editor.selected);
-        LinearLayout form = new LinearLayout(this);
-        form.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(16);
-        form.setPadding(pad, dp(4), pad, 0);
-
-        if (OriginalIndicator.supports(w.type)) {
-            Button images = new Button(this); images.setText("Ð¡Ð¼ÐµÐ½Ð¸Ñ‚ÑŒ Ð¸Ð·Ð¾Ð±Ñ€Ð°Ð¶ÐµÐ½Ð¸Ðµ"); images.setAllCaps(false);
-            images.setOnClickListener(v -> showIndicatorImages(w)); form.addView(images);
-        }
-
-        TextView textLabel = new TextView(this);
-        textLabel.setText("ÐŸÐ¾Ð´Ð¿Ð¸ÑÑŒ");
-        form.addView(textLabel);
-        EditText textField = propertyField(w.text, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
-        form.addView(textField);
-
-        TextView connectionLabel = new TextView(this);
-        connectionLabel.setText("ÐŸÑ€Ð¸Ð²ÑÐ·ÐºÐ° Ðº Ð´Ð°Ð½Ð½Ñ‹Ð¼ (Ð°Ð´Ñ€ÐµÑ / Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€ / ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð¾)");
-        connectionLabel.setPadding(0, dp(10), 0, 0);
-        form.addView(connectionLabel);
-        EditText connectionField = propertyField(w.connectionInfo == null ? "" : w.connectionInfo, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        connectionField.setHint("tcp://192.168.1.10:502/1/40001 (FC03/FC04) Ð¸Ð»Ð¸ fbd://N (Ð½Ð¾Ð¼ÐµÑ€ Ð±Ð»Ð¾ÐºÐ° Ñ 1)");
-        form.addView(connectionField);
-
-        final android.widget.CheckBox fbdInputField;
-        if ("FBD Ð’Ñ…Ð¾Ð´".equals(w.type)) {
-            fbdInputField = new android.widget.CheckBox(this);
-            fbdInputField.setText("ÐŸÐ¾ÑÑ‚Ð¾ÑÐ½Ð½Ð¾Ðµ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ FBD-Ð²Ñ…Ð¾Ð´Ð° (1 / 0)");
-            fbdInputField.setContentDescription("Ð—Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ Ð²Ñ…Ð¾Ð´Ð° FBD");
-            fbdInputField.setChecked(w.inputValue);
-            form.addView(fbdInputField);
-        } else fbdInputField = null;
-
-        final android.widget.CheckBox craftConstantModeField;
-        final EditText craftConstantValueField;
-        final EditText craftBitField;
-        final android.widget.CheckBox craftSwapWordField;
-        final android.widget.CheckBox craftSwapByteField;
-        final EditText craftVariableNameField;
-        final android.widget.Spinner craftVariableTypeField;
-        final android.widget.CheckBox craftNamedConstantModeField;
-        final EditText craftNamedConstantValueField;
-        final android.widget.Spinner craftOrientationAxisField;
-        if ("FBD CRAFT SENSOR ORIENTATION".equals(w.type)) {
-            craftOrientationAxisField = new android.widget.Spinner(this);
-            craftOrientationAxisField.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item, new String[]{"ORIENTATION_X", "ORIENTATION_Y", "ORIENTATION_Z"}));
-            craftOrientationAxisField.setSelection(craftOrientationAxis(w) - 1);
-            craftOrientationAxisField.setContentDescription("ÐžÑÑŒ Ð´Ð°Ñ‚Ñ‡Ð¸ÐºÐ° Ð¾Ñ€Ð¸ÐµÐ½Ñ‚Ð°Ñ†Ð¸Ð¸");
-            form.addView(craftOrientationAxisField);
-        } else craftOrientationAxisField = null;
-        final EditText craftSunriseLatitudeField, craftSunriseLongitudeField;
-        final android.widget.Spinner craftSunriseModeField;
-        if ("FBD CRAFT SUNRISE".equals(w.type)) {
-            TextView locationLabel = new TextView(this); locationLabel.setText("ÐšÐ¾Ð¾Ñ€Ð´Ð¸Ð½Ð°Ñ‚Ñ‹ Ñ‚Ð¾Ñ‡ÐºÐ¸ (ÑˆÐ¸Ñ€Ð¾Ñ‚Ð° / Ð´Ð¾Ð»Ð³Ð¾Ñ‚Ð°)");
-            form.addView(locationLabel);
-            craftSunriseLatitudeField = propertyField(w.extraFields.has("latitude")
-                    ? Double.toString(w.extraFields.optDouble("latitude")) : "", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-            craftSunriseLatitudeField.setHint("Ð¨Ð¸Ñ€Ð¾Ñ‚Ð°: âˆ’90â€¦90"); form.addView(craftSunriseLatitudeField);
-            craftSunriseLongitudeField = propertyField(w.extraFields.has("longitude")
-                    ? Double.toString(w.extraFields.optDouble("longitude")) : "", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-            craftSunriseLongitudeField.setHint("Ð”Ð¾Ð»Ð³Ð¾Ñ‚Ð°: âˆ’180â€¦180"); form.addView(craftSunriseLongitudeField);
-            craftSunriseModeField = new android.widget.Spinner(this);
-            craftSunriseModeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item, new String[]{"SR â€” Ð²Ð¾ÑÑ…Ð¾Ð´", "SS â€” Ð·Ð°ÐºÐ°Ñ‚"}));
-            craftSunriseModeField.setSelection("SS".equals(craftSunriseMode(w)) ? 1 : 0);
-            form.addView(craftSunriseModeField);
-        } else {
-            craftSunriseLatitudeField = null; craftSunriseLongitudeField = null; craftSunriseModeField = null;
-        }
-        final EditText craftOdTempHostField;
-        final android.widget.Spinner craftOdTempTypeField, craftOdTempResponseField;
-        if ("FBD CRAFT ODTEMP".equals(w.type)) {
-            craftOdTempHostField = propertyField(w.extraFields.optString("ip", "10.10.0.1"), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-            craftOdTempHostField.setHint("IP ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð° (Ñ‡Ð°ÑÑ‚Ð½Ð°Ñ ÑÐµÑ‚ÑŒ)"); form.addView(craftOdTempHostField);
-            craftOdTempTypeField = new android.widget.Spinner(this);
-            craftOdTempTypeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item, new String[]{"DT â€” Ð¾Ð´Ð¸Ð½Ð¾Ñ‡Ð½Ð¾Ðµ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ", "T / Ð²Ð»Ð°Ð¶Ð½Ð¾ÑÑ‚ÑŒ"}));
-            craftOdTempTypeField.setSelection(w.extraFields.optInt("craftOdTempType", w.extraFields.optInt("typeSensor", 1)) == 2 ? 1 : 0);
-            form.addView(craftOdTempTypeField);
-            craftOdTempResponseField = new android.widget.Spinner(this);
-            craftOdTempResponseField.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item, new String[]{"Ð¢ÐµÐ¼Ð¿ÐµÑ€Ð°Ñ‚ÑƒÑ€Ð° (t)", "Ð’Ð»Ð°Ð¶Ð½Ð¾ÑÑ‚ÑŒ (h)"}));
-            craftOdTempResponseField.setSelection(w.extraFields.optInt("craftOdTempResponse", w.extraFields.optInt("typeResponse", 1)) == 2 ? 1 : 0);
-            form.addView(craftOdTempResponseField);
-        } else {
-            craftOdTempHostField = null; craftOdTempTypeField = null; craftOdTempResponseField = null;
-        }
-        final EditText craftMqttTopicField;
-        final android.widget.Spinner craftMqttTypeField, craftMqttServerField;
-        final android.widget.CheckBox craftMqttRetainField;
-        if (isCraftMqttSubscriber(w.type) || isCraftMqttPublisher(w.type)) {
-            boolean subscriber = isCraftMqttSubscriber(w.type);
-            craftMqttTopicField = propertyField(w.extraFields.optString("craftMqttTopic", ""),
-                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-            craftMqttTopicField.setHint("MQTT topic"); form.addView(craftMqttTopicField);
-            craftMqttTypeField = new android.widget.Spinner(this);
-            craftMqttTypeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item, new String[]{"BOOL", "INT", "FLOAT"}));
-            craftMqttTypeField.setSelection(mqttType(w) - 1); form.addView(craftMqttTypeField);
-            craftMqttServerField = new android.widget.Spinner(this);
-            craftMqttServerField.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item, new String[]{"MQTT ÑÐµÑ€Ð²ÐµÑ€ 1", "MQTT ÑÐµÑ€Ð²ÐµÑ€ 2"}));
-            craftMqttServerField.setSelection(mqttServer(w) - 1); form.addView(craftMqttServerField);
-            craftMqttRetainField = subscriber ? null : new android.widget.CheckBox(this);
-            if (craftMqttRetainField != null) {
-                craftMqttRetainField.setText("Retain");
-                craftMqttRetainField.setChecked(w.extraFields.optBoolean("craftMqttRetain", false));
-                form.addView(craftMqttRetainField);
-            }
-        } else {
-            craftMqttTopicField = null; craftMqttTypeField = null;
-            craftMqttServerField = null; craftMqttRetainField = null;
-        }
-        if (isCraftNamedVariableSource(w.type) || isCraftNamedVariableSink(w.type)) {
-            boolean source = isCraftNamedVariableSource(w.type);
-            craftVariableNameField = propertyField(w.extraFields.optString("craftVariableName",
-                    w.extraFields.optString("name", "")), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-            craftVariableNameField.setHint("Ð˜Ð¼Ñ Ð¾Ð±Ñ‰ÐµÐ¹ Ð¿ÐµÑ€ÐµÐ¼ÐµÐ½Ð½Ð¾Ð¹");
-            form.addView(craftVariableNameField);
-            craftVariableTypeField = new android.widget.Spinner(this);
-            craftVariableTypeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item, new String[]{"BOOL", "INT32", "FLOAT32"}));
-            int oldKind = w.extraFields.optInt("typeVar", w.type.endsWith(" BOOL") ? 1 : w.type.endsWith(" FLOAT") ? 3 : 2);
-            craftVariableTypeField.setSelection(oldKind >= 1 && oldKind <= 3 ? oldKind - 1 : 1);
-            form.addView(craftVariableTypeField);
-            craftNamedConstantModeField = source ? new android.widget.CheckBox(this) : null;
-            craftNamedConstantValueField = source ? propertyField(w.extraFields.optString("craftNamedConstant", "0"),
-                    InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL) : null;
-            if (source) {
-                craftNamedConstantModeField.setText("Ð˜ÑÐ¿Ð¾Ð»ÑŒÐ·Ð¾Ð²Ð°Ñ‚ÑŒ ÐºÐ¾Ð½ÑÑ‚Ð°Ð½Ñ‚Ñƒ Ð²Ð¼ÐµÑÑ‚Ð¾ Ð¸Ð¼ÐµÐ½Ð¸");
-                craftNamedConstantModeField.setChecked(w.extraFields.optBoolean("craftNamedConstantMode",
-                        w.extraFields.optBoolean("isConstant", false)));
-                craftNamedConstantValueField.setHint("Ð—Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ ÐºÐ¾Ð½ÑÑ‚Ð°Ð½Ñ‚Ñ‹");
-                form.addView(craftNamedConstantModeField); form.addView(craftNamedConstantValueField);
-            }
-        } else {
-            craftVariableNameField = null; craftVariableTypeField = null;
-            craftNamedConstantModeField = null; craftNamedConstantValueField = null;
-        }
-        if (isCraftRegisterSource(w.type) || isCraftRegisterSink(w.type)) {
-            boolean source = isCraftRegisterSource(w.type);
-            craftConstantModeField = source ? new android.widget.CheckBox(this) : null;
-            craftConstantValueField = source ? propertyField(w.extraFields.optString("craftVarConstant", "0"),
-                    InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL) : null;
-            if (source) {
-                craftConstantModeField.setText("ÐŸÐ¾ÑÑ‚Ð¾ÑÐ½Ð½Ð¾Ðµ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ Ð²Ð¼ÐµÑÑ‚Ð¾ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð°");
-                craftConstantModeField.setChecked(w.extraFields.optBoolean("craftVarConstantMode", false));
-                form.addView(craftConstantModeField);
-                craftConstantValueField.setHint("Ð—Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ BOOL / INT / FLOAT");
-                form.addView(craftConstantValueField);
-            }
-            craftBitField = isCraftRegisterBoolean(w.type)
-                    ? propertyField(Integer.toString(w.extraFields.optInt("craftVarBit", 0)), InputType.TYPE_CLASS_NUMBER)
-                    : null;
-            if (craftBitField != null) {
-                craftBitField.setHint("Ð‘Ð¸Ñ‚ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð° (0â€“15)");
-                form.addView(craftBitField);
-            }
-            craftSwapWordField = isCraftRegisterFloat(w.type) && !source ? new android.widget.CheckBox(this) : null;
-            craftSwapByteField = isCraftRegisterFloat(w.type) && !source ? new android.widget.CheckBox(this) : null;
-            if (craftSwapWordField != null) {
-                craftSwapWordField.setText("ÐŸÐ¾Ð¼ÐµÐ½ÑÑ‚ÑŒ ÑÐ»Ð¾Ð²Ð° Float32");
-                craftSwapWordField.setChecked(w.extraFields.optBoolean("craftSwapWord", false));
-                craftSwapByteField.setText("ÐŸÐ¾Ð¼ÐµÐ½ÑÑ‚ÑŒ Ð±Ð°Ð¹Ñ‚Ñ‹ Ð²Ð½ÑƒÑ‚Ñ€Ð¸ ÑÐ»Ð¾Ð²");
-                craftSwapByteField.setChecked(w.extraFields.optBoolean("craftSwapByte", false));
-                form.addView(craftSwapWordField); form.addView(craftSwapByteField);
-            }
-        } else {
-            craftConstantModeField = null; craftConstantValueField = null; craftBitField = null;
-            craftSwapWordField = null; craftSwapByteField = null;
-        }
-
-        final EditText[] dynStateFields = new EditText[4];
-        if ("Ð”Ð¸Ð½Ð°Ð¼Ð¸Ñ‡ÐµÑÐºÐ¸Ð¹ Ñ‚ÐµÐºÑÑ‚".equals(w.type)) {
-            TextView dynLabel = new TextView(this);
-            dynLabel.setText("Ð¢ÐµÐºÑÑ‚Ñ‹ ÑÐ¾ÑÑ‚Ð¾ÑÐ½Ð¸Ð¹ (0â€“3)");
-            dynLabel.setPadding(0, dp(10), 0, 0);
-            form.addView(dynLabel);
-            for (int k = 0; k < 4; k++) {
-                dynStateFields[k] = propertyField(w.dynTextStates[k], InputType.TYPE_CLASS_TEXT);
-                dynStateFields[k].setHint("Ð¢ÐµÐºÑÑ‚ ÑÐ¾ÑÑ‚Ð¾ÑÐ½Ð¸Ñ " + k);
-                form.addView(dynStateFields[k]);
-            }
-        }
-
-        final EditText[] bitLabelFields = new EditText[4];
-        if ("Ð‘Ð¸Ñ‚Ð¾Ð²Ñ‹Ð¹ ÑÐ¿Ð¸ÑÐ¾Ðº".equals(w.type)) {
-            TextView bitLabelHeader = new TextView(this);
-            bitLabelHeader.setText("ÐÐ°Ð·Ð²Ð°Ð½Ð¸Ñ Ð±Ð¸Ñ‚Ð¾Ð² (0â€“3)");
-            bitLabelHeader.setPadding(0, dp(10), 0, 0);
-            form.addView(bitLabelHeader);
-            for (int k = 0; k < 4; k++) {
-                bitLabelFields[k] = propertyField(w.bitListLabels[k], InputType.TYPE_CLASS_TEXT);
-                bitLabelFields[k].setHint("ÐŸÐ¾Ð´Ð¿Ð¸ÑÑŒ Ð±Ð¸Ñ‚Ð° " + k);
-                form.addView(bitLabelFields[k]);
-            }
-        }
-
-        final EditText soundThresholdField;
-        final EditText soundFilePathField;
-        if ("Ð—Ð²ÑƒÐºÐ¾Ð²Ð¾Ð¹ ÑÐ¸Ð³Ð½Ð°Ð»".equals(w.type)) {
-            TextView soundHeader = new TextView(this);
-            soundHeader.setText("ÐŸÐ°Ñ€Ð°Ð¼ÐµÑ‚Ñ€Ñ‹ Ð·Ð²ÑƒÐºÐ° (Ð¿Ð¾Ñ€Ð¾Ð³ ÑÑ€Ð°Ð±Ð°Ñ‚Ñ‹Ð²Ð°Ð½Ð¸Ñ Ð¸ Ð¸Ð¼Ñ Ñ„Ð°Ð¹Ð»Ð°)");
-            soundHeader.setPadding(0, dp(10), 0, 0);
-            form.addView(soundHeader);
-            soundThresholdField = propertyField(Double.toString(w.soundThreshold), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-            soundThresholdField.setHint("ÐŸÐ¾Ñ€Ð¾Ð³ (Ð½Ð°Ð¿Ñ€Ð¸Ð¼ÐµÑ€ 1.0)");
-            form.addView(soundThresholdField);
-            soundFilePathField = propertyField(w.soundFilePath, InputType.TYPE_CLASS_TEXT);
-            soundFilePathField.setHint("Ð¤Ð°Ð¹Ð» / content URI Ð¸Ð»Ð¸ 'ÐÐ»Ð°Ñ€Ð¼'");
-            form.addView(soundFilePathField);
-            addMediaPicker(form, soundFilePathField, "audio/*");
-        } else { soundThresholdField = null; soundFilePathField = null; }
-
-        final EditText targetScreenIndexField;
-        final EditText targetUrlField;
-        if ("ÐŸÐµÑ€ÐµÑ…Ð¾Ð´ Ð½Ð° ÑÐºÑ€Ð°Ð½".equals(w.type)) {
-            TextView screenNavHeader = new TextView(this);
-            screenNavHeader.setText("Ð¦ÐµÐ»ÐµÐ²Ð¾Ð¹ ÑÐºÑ€Ð°Ð½ (Ð¸Ð½Ð´ÐµÐºÑ 1..N) Ð¸ URL");
-            screenNavHeader.setPadding(0, dp(10), 0, 0);
-            form.addView(screenNavHeader);
-            targetScreenIndexField = propertyField(Integer.toString(w.targetScreenIndex + 1), InputType.TYPE_CLASS_NUMBER);
-            targetScreenIndexField.setHint("ÐÐ¾Ð¼ÐµÑ€ ÑÐºÑ€Ð°Ð½Ð° (Ð½Ð°Ñ‡Ð¸Ð½Ð°Ñ Ñ 1)");
-            form.addView(targetScreenIndexField);
-            targetUrlField = propertyField(w.targetUrl, InputType.TYPE_CLASS_TEXT);
-            targetUrlField.setHint("URL Ð´Ð»Ñ Ð¿ÐµÑ€ÐµÑ…Ð¾Ð´Ð° (Ð½ÐµÐ¾Ð±ÑÐ·Ð°Ñ‚ÐµÐ»ÑŒÐ½Ð¾)");
-            form.addView(targetUrlField);
-        } else { targetScreenIndexField = null; targetUrlField = null; }
-
-        final EditText[] imagePathFields = new EditText[w.imagePathStates.length];
-        if ("ÐœÐ½Ð¾Ð³Ð¾Ð¿Ð¾Ð·Ð¸Ñ†Ð¸Ð¾Ð½Ð½Ð¾Ðµ Ñ„Ð¾Ñ‚Ð¾".equals(w.type)) {
-            TextView imgHeader = new TextView(this);
-            imgHeader.setText("ÐŸÑƒÑ‚Ð¸ Ðº Ð¸Ð·Ð¾Ð±Ñ€Ð°Ð¶ÐµÐ½Ð¸ÑÐ¼ ÑÐ¾ÑÑ‚Ð¾ÑÐ½Ð¸Ð¹ (0â€“15)");
-            imgHeader.setPadding(0, dp(10), 0, 0);
-            form.addView(imgHeader);
-            for (int k = 0; k < imagePathFields.length; k++) {
-                imagePathFields[k] = propertyField(w.imagePathStates[k], InputType.TYPE_CLASS_TEXT);
-                imagePathFields[k].setHint("Ð˜Ð·Ð¾Ð±Ñ€Ð°Ð¶ÐµÐ½Ð¸Ðµ " + k + " (Ñ„Ð°Ð¹Ð» / URI)");
-                form.addView(imagePathFields[k]);
-                addMediaPicker(form, imagePathFields[k], "image/*");
-            }
-        }
-
-        final EditText[] voiceMsgFields = new EditText[w.voiceMessages.length];
-        if ("Ð“Ð¾Ð»Ð¾ÑÐ¾Ð²Ð¾Ðµ ÑÐ¾Ð¾Ð±Ñ‰ÐµÐ½Ð¸Ðµ".equals(w.type)) {
-            TextView voiceHeader = new TextView(this);
-            voiceHeader.setText("Ð¢ÐµÐºÑÑ‚Ñ‹ Ð³Ð¾Ð»Ð¾ÑÐ¾Ð²Ñ‹Ñ… Ð¾Ð¿Ð¾Ð²ÐµÑ‰ÐµÐ½Ð¸Ð¹ (0â€“15)");
-            voiceHeader.setPadding(0, dp(10), 0, 0);
-            form.addView(voiceHeader);
-            for (int k = 0; k < voiceMsgFields.length; k++) {
-                voiceMsgFields[k] = propertyField(w.voiceMessages[k], InputType.TYPE_CLASS_TEXT);
-                voiceMsgFields[k].setHint("Ð“Ð¾Ð»Ð¾Ñ " + k);
-                form.addView(voiceMsgFields[k]);
-            }
-        }
-
-        final EditText timerPresetField;
-        final android.widget.Spinner timerUnitSelector;
-        final android.widget.Spinner timerModeSelector;
-        final android.widget.Spinner triggerModeSelector;
-        if ("FBD CRAFT T".equals(w.type)) {
-            TextView triggerLabel = new TextView(this);
-            triggerLabel.setText("Ð ÐµÐ¶Ð¸Ð¼ Ð¸ÑÑ…Ð¾Ð´Ð½Ð¾Ð³Ð¾ Craft trigger");
-            form.addView(triggerLabel);
-            triggerModeSelector = new android.widget.Spinner(this);
-            triggerModeSelector.setContentDescription("Ð ÐµÐ¶Ð¸Ð¼ Ñ‚Ñ€Ð¸Ð³Ð³ÐµÑ€Ð° Craft");
-            triggerModeSelector.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item, new String[]{"T", "R", "F"}));
-            String mode = w.extraFields.optString("craftTriggerMode", "T");
-            triggerModeSelector.setSelection("R".equals(mode) ? 1 : "F".equals(mode) ? 2 : 0);
-            form.addView(triggerModeSelector);
-        } else triggerModeSelector = null;
-        if ("FBD Ð¢Ð°Ð¹Ð¼ÐµÑ€".equals(w.type) || "FBD TP".equals(w.type)
-                || "FBD TOF".equals(w.type) || "FBD CRAFT BLINK".equals(w.type)
-                || "FBD CRAFT TIMER".equals(w.type)) {
-            TextView timerModeLabel = new TextView(this);
-            boolean originalBlink = "FBD CRAFT BLINK".equals(w.type);
-            boolean originalCraftTimer = "FBD CRAFT TIMER".equals(w.type);
-            timerModeLabel.setText(originalBlink ? "Ð ÐµÐ¶Ð¸Ð¼ Craft: BLINK"
-                    : originalCraftTimer ? "Ð ÐµÐ¶Ð¸Ð¼ Ð¸ÑÑ…Ð¾Ð´Ð½Ð¾Ð³Ð¾ Craft FB_TIMER"
-                    : "Ð ÐµÐ¶Ð¸Ð¼ Ñ‚Ð°Ð¹Ð¼ÐµÑ€Ð° (TON / TOF / TP)");
-            form.addView(timerModeLabel);
-            timerModeSelector = new android.widget.Spinner(this);
-            timerModeSelector.setContentDescription("Ð ÐµÐ¶Ð¸Ð¼ Ñ‚Ð°Ð¹Ð¼ÐµÑ€Ð° FBD");
-            timerModeSelector.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item,
-                    originalBlink ? new String[]{"BLINK"} : originalCraftTimer
-                            ? new String[]{"TON", "TOF", "TP", "BLINK"} : FbdDurationUnits.modes()));
-            String initialMode = originalCraftTimer ? w.extraFields.optString("craftTimerMode", "TON")
-                    : FbdDurationUnits.modeForType(w.type);
-            timerModeSelector.setSelection("TOF".equals(initialMode) ? 1 : "TP".equals(initialMode) ? 2 : "BLINK".equals(initialMode) && originalCraftTimer ? 3 : 0);
-            form.addView(timerModeSelector);
-
-            TextView timerLabel = new TextView(this);
-            timerLabel.setText("Ð’Ñ€ÐµÐ¼Ñ Ñ‚Ð°Ð¹Ð¼ÐµÑ€Ð° (Ð¸ÑÑ…Ð¾Ð´Ð½Ð¾Ðµ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑÑ Ñ‚Ð¾Ñ‡Ð½Ð¾ Ð² Ð¼Ñ)");
-            timerLabel.setPadding(0, dp(10), 0, 0);
-            form.addView(timerLabel);
-            String[] unitValues = {"MS", "SEK", "MIN"};
-            String initialUnit = FbdDurationUnits.normalize(w.extraFields.optString("bloodskyFbdTimeUnit", "MS"));
-            int initialUnitIndex = "SEK".equals(initialUnit) ? 1 : "MIN".equals(initialUnit) ? 2 : 0;
-            timerPresetField = propertyField(FbdDurationUnits.display(w.timerPresetMs, initialUnit),
-                    InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL
-                            | InputType.TYPE_NUMBER_FLAG_SIGNED);
-            timerPresetField.setContentDescription(initialUnitIndex == 0 ? "Ð’Ñ€ÐµÐ¼Ñ Ñ‚Ð°Ð¹Ð¼ÐµÑ€Ð°, Ð¼Ñ"
-                    : "Ð’Ñ€ÐµÐ¼Ñ Ñ‚Ð°Ð¹Ð¼ÐµÑ€Ð°, " + (initialUnitIndex == 1 ? "ÑÐµÐº" : "Ð¼Ð¸Ð½"));
-            form.addView(timerPresetField);
-            timerUnitSelector = new android.widget.Spinner(this);
-            timerUnitSelector.setContentDescription("Ð•Ð´Ð¸Ð½Ð¸Ñ†Ð° Ð²Ñ€ÐµÐ¼ÐµÐ½Ð¸ FBD");
-            timerUnitSelector.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item,
-                    new String[]{"Ð¼Ñ", "ÑÐµÐº", "Ð¼Ð¸Ð½"}));
-            timerUnitSelector.setSelection(initialUnitIndex);
-            final int[] lastUnit = {initialUnitIndex};
-            timerUnitSelector.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
-                public void onNothingSelected(android.widget.AdapterView<?> parent) {}
-                public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
-                    if (position == lastUnit[0]) return;
-                    try {
-                        int oldMilliseconds = FbdDurationUnits.parse(
-                                timerPresetField.getText().toString(), unitValues[lastUnit[0]], w.timerPresetMs);
-                        timerPresetField.setText(FbdDurationUnits.display(oldMilliseconds, unitValues[position]));
-                        timerPresetField.setContentDescription(position == 0 ? "Ð’Ñ€ÐµÐ¼Ñ Ñ‚Ð°Ð¹Ð¼ÐµÑ€Ð°, Ð¼Ñ"
-                                : "Ð’Ñ€ÐµÐ¼Ñ Ñ‚Ð°Ð¹Ð¼ÐµÑ€Ð°, " + (position == 1 ? "ÑÐµÐº" : "Ð¼Ð¸Ð½"));
-                    } catch (IllegalArgumentException ignored) {
-                        // Keep invalid text visible so Apply reports an error.
-                    }
-                    lastUnit[0] = position;
-                }
-            });
-            form.addView(timerUnitSelector);
-        } else {
-            timerPresetField = null;
-            timerUnitSelector = null;
-            timerModeSelector = null;
-        }
-        final EditText counterPresetField;
-        if ("FBD CTU".equals(w.type) || "FBD CTD".equals(w.type)) {
-            TextView counterLabel = new TextView(this);
-            counterLabel.setText("Ð£ÑÑ‚Ð°Ð²ÐºÐ° ÑÑ‡Ñ‘Ñ‚Ñ‡Ð¸ÐºÐ° " + ("FBD CTD".equals(w.type) ? "CTD" : "CTU"));
-            counterLabel.setPadding(0, dp(10), 0, 0);
-            form.addView(counterLabel);
-            counterPresetField = propertyField(Integer.toString(w.counterPreset), InputType.TYPE_CLASS_NUMBER);
-            counterPresetField.setContentDescription("Ð£ÑÑ‚Ð°Ð²ÐºÐ° ÑÑ‡Ñ‘Ñ‚Ñ‡Ð¸ÐºÐ°");
-            form.addView(counterPresetField);
-        } else {
-            counterPresetField = null;
-        }
-
-        final EditText compareLeftField;
-        final EditText compareOperatorField;
-        final EditText compareRightField;
-        if ("FBD Ð¡Ñ€Ð°Ð²Ð½ÐµÐ½Ð¸Ðµ".equals(w.type)
-                || "FBD CRAFT COMPARE".equals(w.type)
-                || "FBD CRAFT COMPARE FLOAT".equals(w.type)
-                || "FBD CRAFT ARITHMETIC INT".equals(w.type)
-                || "FBD CRAFT ARITHMETIC FLOAT".equals(w.type)) {
-            TextView compareLabel = new TextView(this);
-            compareLabel.setText("FBD CRAFT COMPARE".equals(w.type)
-                    ? "Craft INT32: Ð¾Ð¿ÐµÑ€Ð°Ñ‚Ð¾Ñ€ >, <, <=, >=, ==, !=; Ð²Ñ…Ð¾Ð´Ñ‹ IN1/IN2"
-                    : "FBD CRAFT COMPARE FLOAT".equals(w.type)
-                    ? "Craft FLOAT32: Ð¾Ð¿ÐµÑ€Ð°Ñ‚Ð¾Ñ€ >, <, <=, >=, ==, !=; Ð²Ñ…Ð¾Ð´Ñ‹ IN1/IN2"
-                    : ("FBD CRAFT ARITHMETIC INT".equals(w.type)
-                            || "FBD CRAFT ARITHMETIC FLOAT".equals(w.type))
-                    ? "Craft: Ð¾Ð¿ÐµÑ€Ð°Ñ‚Ð¾Ñ€ +, âˆ’, Ã—, Ã·; Ð²Ñ…Ð¾Ð´Ñ‹ IN1/IN2"
-                    : "Ð§Ð¸ÑÐ»Ð¾Ð²Ð¾Ðµ ÑÑ€Ð°Ð²Ð½ÐµÐ½Ð¸Ðµ A / Ð¾Ð¿ÐµÑ€Ð°Ñ‚Ð¾Ñ€ / B");
-            compareLabel.setPadding(0, dp(10), 0, 0);
-            form.addView(compareLabel);
-            compareLeftField = propertyField(Double.toString(w.compareA), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-            compareOperatorField = propertyField(w.compareOperator, InputType.TYPE_CLASS_TEXT);
-            compareRightField = propertyField(Double.toString(w.compareB), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-            compareLeftField.setContentDescription("Ð¡Ñ€Ð°Ð²Ð½ÐµÐ½Ð¸Ðµ A");
-            compareOperatorField.setContentDescription("ÐžÐ¿ÐµÑ€Ð°Ñ‚Ð¾Ñ€ ÑÑ€Ð°Ð²Ð½ÐµÐ½Ð¸Ñ");
-            compareRightField.setContentDescription("Ð¡Ñ€Ð°Ð²Ð½ÐµÐ½Ð¸Ðµ B");
-            form.addView(compareLeftField);
-            form.addView(compareOperatorField);
-            form.addView(compareRightField);
-        } else {
-            compareLeftField = null;
-            compareOperatorField = null;
-            compareRightField = null;
-        }
-
-        final EditText minValField;
-        final EditText maxValField;
-        if ("Ð¨ÐºÐ°Ð»Ð° / Ð¡Ñ‚Ñ€ÐµÐ»ÐºÐ°".equals(w.type) || "ÐŸÑ€Ð¾Ð³Ñ€ÐµÑÑ-Ð±Ð°Ñ€".equals(w.type) || "Ð“Ñ€Ð°Ñ„Ð¸Ðº / Ð¢Ñ€ÐµÐ½Ð´".equals(w.type)) {
-            TextView rangeLabel = new TextView(this);
-            rangeLabel.setText("Ð”Ð¸Ð°Ð¿Ð°Ð·Ð¾Ð½ ÑˆÐºÐ°Ð»Ñ‹ (Ð¼Ð¸Ð½Ð¸Ð¼ÑƒÐ¼ / Ð¼Ð°ÐºÑÐ¸Ð¼ÑƒÐ¼)");
-            rangeLabel.setPadding(0, dp(10), 0, 0);
-            form.addView(rangeLabel);
-            minValField = propertyField(Double.toString(w.minValue), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-            minValField.setHint("ÐœÐ¸Ð½Ð¸Ð¼ÑƒÐ¼ (Ð½Ð°Ð¿Ñ€Ð¸Ð¼ÐµÑ€ 0)");
-            form.addView(minValField);
-            maxValField = propertyField(Double.toString(w.maxValue), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-            maxValField.setHint("ÐœÐ°ÐºÑÐ¸Ð¼ÑƒÐ¼ (Ð½Ð°Ð¿Ñ€Ð¸Ð¼ÐµÑ€ 100)");
-            form.addView(maxValField);
-        } else {
-            minValField = null;
-            maxValField = null;
-        }
-
-        TextView geometryLabel = new TextView(this);
-        geometryLabel.setText("ÐŸÐ¾Ð»Ð¾Ð¶ÐµÐ½Ð¸Ðµ Ð¸ Ñ€Ð°Ð·Ð¼ÐµÑ€ (Ð¿Ð¸ÐºÑÐµÐ»Ð¸)");
-        geometryLabel.setPadding(0, dp(10), 0, 0);
-        form.addView(geometryLabel);
-
-        EditText xField = propertyField(Float.toString(w.x), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
-        xField.setHint("X");
-        xField.setContentDescription("ÐŸÐ¾Ð»Ð¾Ð¶ÐµÐ½Ð¸Ðµ X");
-        form.addView(xField);
-        EditText yField = propertyField(Float.toString(w.y), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
-        yField.setHint("Y");
-        yField.setContentDescription("ÐŸÐ¾Ð»Ð¾Ð¶ÐµÐ½Ð¸Ðµ Y");
-        form.addView(yField);
-        EditText widthField = propertyField(Float.toString(w.w), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
-        widthField.setHint("Ð¨Ð¸Ñ€Ð¸Ð½Ð°");
-        widthField.setContentDescription("Ð¨Ð¸Ñ€Ð¸Ð½Ð° ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚Ð°");
-        form.addView(widthField);
-        EditText heightField = propertyField(Float.toString(w.h), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
-        heightField.setHint("Ð’Ñ‹ÑÐ¾Ñ‚Ð°");
-        heightField.setContentDescription("Ð’Ñ‹ÑÐ¾Ñ‚Ð° ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚Ð°");
-        form.addView(heightField);
-
-        TextView styleLabel = new TextView(this);
-        styleLabel.setText("ÐžÑ„Ð¾Ñ€Ð¼Ð»ÐµÐ½Ð¸Ðµ");
-        styleLabel.setPadding(0, dp(10), 0, 0);
-        form.addView(styleLabel);
-        EditText backgroundColorField = propertyField(w.backgroundColor == 0 ? "" : String.format(java.util.Locale.ROOT, "#%06X", (0xFFFFFF & w.backgroundColor)), InputType.TYPE_CLASS_TEXT);
-        backgroundColorField.setHint("Ð¤Ð¾Ð½: #RRGGBB; Ð¿ÑƒÑÑ‚Ð¾ â€” Ñ†Ð²ÐµÑ‚ Ð¿Ð¾ Ñ‚Ð¸Ð¿Ñƒ");
-        form.addView(backgroundColorField);
-        EditText textColorField = propertyField(String.format(java.util.Locale.ROOT, "#%06X", (0xFFFFFF & w.textColor)), InputType.TYPE_CLASS_TEXT);
-        textColorField.setHint("Ð¦Ð²ÐµÑ‚ Ñ‚ÐµÐºÑÑ‚Ð°: #RRGGBB");
-        form.addView(textColorField);
-        EditText textSizeField = propertyField(Integer.toString(w.textSizeSp), InputType.TYPE_CLASS_NUMBER);
-        textSizeField.setHint("Ð Ð°Ð·Ð¼ÐµÑ€ Ñ‚ÐµÐºÑÑ‚Ð°, 8â€“48 sp");
-        form.addView(textSizeField);
-        android.widget.CheckBox visibleField = new android.widget.CheckBox(this);
-        visibleField.setText("Ð­Ð»ÐµÐ¼ÐµÐ½Ñ‚ Ð²Ð¸Ð´Ð¸Ð¼ Ð½Ð° ÑÐºÑ€Ð°Ð½Ðµ"); visibleField.setChecked(w.visible); form.addView(visibleField);
-        android.widget.CheckBox frameField = new android.widget.CheckBox(this);
-        frameField.setText("ÐŸÐ¾ÐºÐ°Ð·Ñ‹Ð²Ð°Ñ‚ÑŒ Ñ€Ð°Ð¼ÐºÑƒ"); frameField.setChecked(w.showFrame); form.addView(frameField);
-        android.widget.CheckBox autoResizeField = new android.widget.CheckBox(this);
-        autoResizeField.setText("ÐÐ²Ñ‚Ð¾Ð¿Ð¾Ð´Ð±Ð¾Ñ€ Ñ€Ð°Ð·Ð¼ÐµÑ€Ð° Ñ‚ÐµÐºÑÑ‚Ð° Ð¿Ð¾ ÑˆÐ¸Ñ€Ð¸Ð½Ðµ"); autoResizeField.setChecked(w.autoResizeText); form.addView(autoResizeField);
-
-        android.widget.ScrollView propertyScroll = new android.widget.ScrollView(this);
-        propertyScroll.setFillViewport(true);
-        propertyScroll.setClipToPadding(false);
-        propertyScroll.addView(form);
-
-        AlertDialog properties = new AlertDialog.Builder(this)
-                .setTitle("Ð¡Ð²Ð¾Ð¹ÑÑ‚Ð²Ð°: " + w.type)
-                .setView(propertyScroll)
-                .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null)
-                .setPositiveButton("ÐŸÑ€Ð¸Ð¼ÐµÐ½Ð¸Ñ‚ÑŒ", null).create();
-        properties.setOnShowListener(shown -> properties.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(clicked -> {
-                    final WidgetGeometryEdits geometry;
-                    final FbdPropertyEdits fbd;
-                    try {
-                        geometry = WidgetGeometryEdits.parse(xField.getText().toString(), yField.getText().toString(),
-                                widthField.getText().toString(), heightField.getText().toString());
-                        String timerDurationMs = null;
-                        if (timerPresetField != null) {
-                            String unit = new String[]{"MS", "SEK", "MIN"}[timerUnitSelector.getSelectedItemPosition()];
-                            timerDurationMs = Integer.toString(FbdDurationUnits.parse(
-                                    timerPresetField.getText().toString(), unit, w.timerPresetMs));
-                        }
-                        fbd = FbdPropertyEdits.parse(timerDurationMs,
-                                counterPresetField == null ? null : counterPresetField.getText().toString(),
-                                compareLeftField == null ? null : compareLeftField.getText().toString(),
-                                compareOperatorField == null ? null : compareOperatorField.getText().toString(),
-                                compareRightField == null ? null : compareRightField.getText().toString());
-                    } catch (IllegalArgumentException invalid) {
-                        Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show();
-                        return;
-                    }
-                    if (craftBitField != null) {
-                        try {
-                            int bit = Integer.parseInt(craftBitField.getText().toString().trim());
-                            if (bit < 0 || bit > 15) throw new NumberFormatException();
-                            w.extraFields.put("craftVarBit", bit);
-                        } catch (Exception invalid) {
-                            Toast.makeText(this, "Ð‘Ð¸Ñ‚ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð° Ð´Ð¾Ð»Ð¶ÐµÐ½ Ð±Ñ‹Ñ‚ÑŒ Ð¾Ñ‚ 0 Ð´Ð¾ 15", Toast.LENGTH_LONG).show(); return;
-                        }
-                    }
-                    if (craftConstantModeField != null) {
-                        String constant = craftConstantValueField.getText().toString().trim();
-                        try {
-                            double numeric = Double.parseDouble(constant);
-                            if (!Double.isFinite(numeric)) throw new NumberFormatException();
-                            if (isCraftRegisterBoolean(w.type) && numeric != 0.0 && numeric != 1.0)
-                                throw new NumberFormatException();
-                            if ("FBD CRAFT VAR INT".equals(canonicalFbdBlockType(w.type))
-                                    && (numeric < 0 || numeric > 65535 || numeric != Math.rint(numeric)))
-                                throw new NumberFormatException();
-                            w.extraFields.put("craftVarConstant", constant);
-                            w.extraFields.put("craftVarConstantMode", craftConstantModeField.isChecked());
-                        } catch (Exception invalid) {
-                            Toast.makeText(this, "Ð£ÐºÐ°Ð¶Ð¸ ÐºÐ¾Ð½ÐµÑ‡Ð½Ð¾Ðµ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ BOOL (0/1), UINT16 Ð¸Ð»Ð¸ FLOAT32", Toast.LENGTH_LONG).show(); return;
-                        }
-                    }
-                    if (craftSwapWordField != null) {
-                        try {
-                            w.extraFields.put("craftSwapWord", craftSwapWordField.isChecked());
-                            w.extraFields.put("craftSwapByte", craftSwapByteField.isChecked());
-                        } catch (Exception ignored) {}
-                    }
-                    if (craftVariableNameField != null) {
-                        String variableName = craftVariableNameField.getText().toString().trim();
-                        int variableKind = craftVariableTypeField.getSelectedItemPosition() + 1;
-                        boolean useConstant = craftNamedConstantModeField != null && craftNamedConstantModeField.isChecked();
-                        if (variableName.isEmpty() && !useConstant) {
-                            Toast.makeText(this, "Ð£ÐºÐ°Ð¶Ð¸ Ð¸Ð¼Ñ Ð¾Ð±Ñ‰ÐµÐ¹ Ð¿ÐµÑ€ÐµÐ¼ÐµÐ½Ð½Ð¾Ð¹", Toast.LENGTH_LONG).show(); return;
-                        }
-                        if (craftNamedConstantValueField != null) {
-                            try {
-                                double numeric = Double.parseDouble(craftNamedConstantValueField.getText().toString().trim());
-                                if (!Double.isFinite(numeric)
-                                        || (variableKind == 1 && numeric != 0.0 && numeric != 1.0)
-                                        || (variableKind == 2 && (numeric < Integer.MIN_VALUE || numeric > Integer.MAX_VALUE || numeric != Math.rint(numeric)))
-                                        || (variableKind == 3 && Math.abs(numeric) > Float.MAX_VALUE)) throw new NumberFormatException();
-                                w.extraFields.put("craftNamedConstant", Double.toString(numeric));
-                                w.extraFields.put("craftNamedConstantMode", useConstant);
-                            } catch (Exception invalid) {
-                                Toast.makeText(this, "ÐšÐ¾Ð½ÑÑ‚Ð°Ð½Ñ‚Ð° Ð´Ð¾Ð»Ð¶Ð½Ð° ÑÐ¾Ð¾Ñ‚Ð²ÐµÑ‚ÑÑ‚Ð²Ð¾Ð²Ð°Ñ‚ÑŒ BOOL, INT32 Ð¸Ð»Ð¸ FLOAT32", Toast.LENGTH_LONG).show(); return;
-                            }
-                        }
-                        try { w.extraFields.put("craftVariableName", variableName); }
-                        catch (Exception ignored) {}
-                        boolean source = isCraftNamedVariableSource(w.type);
-                        w.type = craftNamedVariableType(variableKind, !source);
-                    }
-                    if (craftOrientationAxisField != null) {
-                        int axis = craftOrientationAxisField.getSelectedItemPosition() + 1;
-                        int oldAxis = craftOrientationAxis(w);
-                        if (textField.getText().toString().trim().equals(craftOrientationLabel(oldAxis)))
-                            textField.setText(craftOrientationLabel(axis));
-                        try { w.extraFields.put("craftSensorAxis", axis); }
-                        catch (Exception ignored) {}
-                    }
-                    if (craftSunriseModeField != null) {
-                        try {
-                            double latitude = Double.parseDouble(craftSunriseLatitudeField.getText().toString().trim());
-                            double longitude = Double.parseDouble(craftSunriseLongitudeField.getText().toString().trim());
-                            if (!Double.isFinite(latitude) || latitude < -90 || latitude > 90
-                                    || !Double.isFinite(longitude) || longitude < -180 || longitude > 180
-                                    || (latitude == 0.0 && longitude == 0.0)) throw new NumberFormatException();
-                            String oldMode = craftSunriseMode(w);
-                            String newMode = craftSunriseModeField.getSelectedItemPosition() == 1 ? "SS" : "SR";
-                            if (textField.getText().toString().trim().equals(oldMode)) textField.setText(newMode);
-                            w.extraFields.put("latitude", latitude); w.extraFields.put("longitude", longitude);
-                            w.extraFields.put("craftSunriseMode", newMode);
-                        } catch (Exception invalid) {
-                            Toast.makeText(this, "Ð£ÐºÐ°Ð¶Ð¸ ÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ñ‹Ðµ ÐºÐ¾Ð¾Ñ€Ð´Ð¸Ð½Ð°Ñ‚Ñ‹ ÑˆÐ¸Ñ€Ð¾Ñ‚Ñ‹ Ð¸ Ð´Ð¾Ð»Ð³Ð¾Ñ‚Ñ‹", Toast.LENGTH_LONG).show(); return;
-                        }
-                    }
-                    if (craftOdTempHostField != null) {
-                        String host = craftOdTempHostField.getText().toString().trim();
-                        if (!isAllowedOdTempHost(host)) {
-                            Toast.makeText(this, "Ð£ÐºÐ°Ð¶Ð¸ Ñ‡Ð°ÑÑ‚Ð½Ñ‹Ð¹ IPv4-Ð°Ð´Ñ€ÐµÑ ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð°", Toast.LENGTH_LONG).show(); return;
-                        }
-                        try {
-                            w.extraFields.put("ip", host);
-                            w.extraFields.put("craftOdTempType", craftOdTempTypeField.getSelectedItemPosition() + 1);
-                            w.extraFields.put("craftOdTempResponse", craftOdTempResponseField.getSelectedItemPosition() + 1);
-                        } catch (Exception ignored) {}
-                    }
-                    if (craftMqttTopicField != null) {
-                        String topic = craftMqttTopicField.getText().toString().trim();
-                        boolean topicValid = isCraftMqttSubscriber(w.type)
-                                ? FbdCraftMqttRuntime.validTopicFilter(topic)
-                                : FbdCraftMqttRuntime.validTopic(topic);
-                        if (!topicValid) {
-                            Toast.makeText(this, "Ð£ÐºÐ°Ð¶Ð¸ ÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ñ‹Ð¹ MQTT topic/filter", Toast.LENGTH_LONG).show(); return;
-                        }
-                        int type = craftMqttTypeField.getSelectedItemPosition() + 1;
-                        try {
-                            w.extraFields.put("craftMqttTopic", topic);
-                            w.extraFields.put("craftMqttType", type);
-                            w.extraFields.put("craftMqttServer", craftMqttServerField.getSelectedItemPosition() + 1);
-                            if (craftMqttRetainField != null) w.extraFields.put("craftMqttRetain", craftMqttRetainField.isChecked());
-                        } catch (Exception ignored) {}
-                        String suffix = type == 1 ? "BOOL" : type == 3 ? "FLOAT" : "INT";
-                        w.type = isCraftMqttSubscriber(w.type) ? "FBD CRAFT MQTT SUB " + suffix
-                                : "FBD CRAFT MQTT PUB " + suffix;
-                    }
-                    w.text = textField.getText().toString();
-                    w.connectionInfo = connectionField.getText().toString().trim();
-                    if (fbdInputField != null) w.inputValue = fbdInputField.isChecked();
-                    if ("Ð”Ð¸Ð½Ð°Ð¼Ð¸Ñ‡ÐµÑÐºÐ¸Ð¹ Ñ‚ÐµÐºÑÑ‚".equals(w.type)) {
-                        for (int k = 0; k < 4; k++) {
-                            if (dynStateFields[k] != null) {
-                                w.dynTextStates[k] = dynStateFields[k].getText().toString();
-                            }
-                        }
-                    }
-                    if ("Ð‘Ð¸Ñ‚Ð¾Ð²Ñ‹Ð¹ ÑÐ¿Ð¸ÑÐ¾Ðº".equals(w.type)) {
-                        for (int k = 0; k < 4; k++) {
-                            if (bitLabelFields[k] != null) {
-                                w.bitListLabels[k] = bitLabelFields[k].getText().toString();
-                            }
-                        }
-                    }
-                    if (soundThresholdField != null) {
-                        w.soundThreshold = readDouble(soundThresholdField, w.soundThreshold);
-                        w.soundFilePath = soundFilePathField.getText().toString();
-                    }
-                    if (targetScreenIndexField != null) {
-                        int idx = readPositiveInt(targetScreenIndexField, w.targetScreenIndex + 1, false) - 1;
-                        w.targetScreenIndex = Math.max(0, idx);
-                        w.targetUrl = targetUrlField.getText().toString();
-                    }
-                    if ("ÐœÐ½Ð¾Ð³Ð¾Ð¿Ð¾Ð·Ð¸Ñ†Ð¸Ð¾Ð½Ð½Ð¾Ðµ Ñ„Ð¾Ñ‚Ð¾".equals(w.type)) {
-                        for (int k = 0; k < imagePathFields.length; k++) {
-                            if (imagePathFields[k] != null) {
-                                w.imagePathStates[k] = imagePathFields[k].getText().toString();
-                            }
-                        }
-                    }
-                    if ("Ð“Ð¾Ð»Ð¾ÑÐ¾Ð²Ð¾Ðµ ÑÐ¾Ð¾Ð±Ñ‰ÐµÐ½Ð¸Ðµ".equals(w.type)) {
-                        for (int k = 0; k < voiceMsgFields.length; k++) {
-                            if (voiceMsgFields[k] != null) {
-                                w.voiceMessages[k] = voiceMsgFields[k].getText().toString();
-                            }
-                        }
-                    }
-                    if (timerPresetField != null) {
-                        String oldMode = FbdDurationUnits.modeForType(w.type);
-                        String newMode = String.valueOf(timerModeSelector.getSelectedItem());
-                        w.timerPresetMs = fbd.timer;
-                        boolean originalCraftTimer = "FBD CRAFT TIMER".equals(w.type);
-                        w.type = "FBD CRAFT BLINK".equals(w.type) || originalCraftTimer ? w.type
-                                : FbdDurationUnits.typeForMode(newMode);
-                        // Keep custom labels intact, refresh only an untouched mode label.
-                        if (w.text != null && w.text.equals(oldMode)) w.text = newMode;
-                        w.timerStartedAt = 0L;
-                        w.counterLastInput = false;
-                        if ("FBD CRAFT BLINK".equals(w.type))
-                            w.craftBlinkState = FbdCraftNativeTimer.State.initial();
-                        try {
-                            String unit = new String[]{"MS", "SEK", "MIN"}[timerUnitSelector.getSelectedItemPosition()];
-                            if (originalCraftTimer) {
-                                w.extraFields.put("craftTimerMode", newMode);
-                                w.extraFields.put("craftTimerUnit", unit);
-                                w.craftTimerState = FbdCraftNativeTimer.State.initial();
-                            }
-                            // An untouched old MS project must not acquire an extra field.
-                            if (!"MS".equals(unit) || w.extraFields.has("bloodskyFbdTimeUnit"))
-                                w.extraFields.put("bloodskyFbdTimeUnit", unit);
-                        } catch (org.json.JSONException ignored) {}
-                    }
-                    if (triggerModeSelector != null) {
-                        String mode = String.valueOf(triggerModeSelector.getSelectedItem());
-                        try { w.extraFields.put("craftTriggerMode", mode); }
-                        catch (org.json.JSONException ignored) {}
-                        w.text = mode;
-                    }
-                    if (counterPresetField != null) {
-                        w.counterPreset = fbd.counter;
-                        if ("FBD CTD".equals(w.type)) w.counterValue = w.counterPreset;
-                    }
-                    if (compareLeftField != null) {
-                        w.compareA = fbd.left;
-                        w.compareB = fbd.right;
-                        w.compareOperator = fbd.operator;
-                        w.text = ("FBD CRAFT COMPARE".equals(w.type)
-                                || "FBD CRAFT COMPARE FLOAT".equals(w.type)
-                                || "FBD CRAFT ARITHMETIC INT".equals(w.type)
-                                || "FBD CRAFT ARITHMETIC FLOAT".equals(w.type))
-                                ? w.compareOperator
-                                : Double.toString(w.compareA) + " " + w.compareOperator
-                                        + " " + Double.toString(w.compareB);
-                    }
-                    if (minValField != null) {
-                        w.minValue = readDouble(minValField, w.minValue);
-                        w.maxValue = readDouble(maxValField, w.maxValue);
-                    }
-                    w.x = geometry.x; w.y = geometry.y;
-                    w.w = geometry.width; w.h = geometry.height;
-                    w.backgroundColor = parseOptionalColor(backgroundColorField.getText().toString(), 0);
-                    w.textColor = parseOptionalColor(textColorField.getText().toString(), w.textColor);
-                    w.textSizeSp = Math.max(8, Math.min(48, readPositiveInt(textSizeField, w.textSizeSp, false)));
-                    w.visible = visibleField.isChecked(); w.showFrame = frameField.isChecked(); w.autoResizeText = autoResizeField.isChecked();
-                    persistProject();
-                    editor.invalidate();
-                    properties.dismiss();
-                }));
-        properties.show();
-    }
-
-    private int parseOptionalColor(String text, int fallback) {
-        String value = text == null ? "" : text.trim();
-        if (value.isEmpty()) return fallback == 0 ? 0 : fallback;
-        if (!value.startsWith("#")) value = "#" + value;
-        if (value.matches("#[0-9a-fA-F]{6}")) {
-            try { return Color.parseColor(value); } catch (IllegalArgumentException ignored) { return fallback; }
-        }
-        Toast.makeText(this, "Ð¦Ð²ÐµÑ‚ Ð·Ð°Ð´Ð°Ñ‘Ñ‚ÑÑ Ð² Ñ„Ð¾Ñ€Ð¼Ð°Ñ‚Ðµ #RRGGBB", Toast.LENGTH_SHORT).show();
-        return fallback;
-    }
-
-    private double readDouble(EditText field, double fallback) {
-        try {
-            double value = Double.parseDouble(field.getText().toString().trim().replace(',', '.'));
-            return Double.isNaN(value) || Double.isInfinite(value) ? fallback : value;
-        } catch (NumberFormatException ignored) {
-            return fallback;
-        }
-    }
-
-    private String normalizeComparisonOperator(String value) {
-        String operator = value == null ? ">" : value.trim();
-        return operator.equals(">") || operator.equals("<") || operator.equals(">=")
-                || operator.equals("<=") || operator.equals("==") || operator.equals("!=") ? operator : ">";
-    }
-
-    private int readPositiveInt(EditText field, int fallback, boolean allowZero) {
-        try {
-            int value = Integer.parseInt(field.getText().toString().trim());
-            return allowZero ? Math.max(0, value) : Math.max(1, value);
-        } catch (NumberFormatException ignored) {
-            return fallback;
-        }
-    }
-
-    private void copySelectedWidget() {
-        if (copySelectedWidgetToClipboard())
-            Toast.makeText(this, "Ð­Ð»ÐµÐ¼ÐµÐ½Ñ‚ ÑÐºÐ¾Ð¿Ð¸Ñ€Ð¾Ð²Ð°Ð½ ÑÐ¾ Ð²ÑÐµÐ¼Ð¸ Ð½Ð°ÑÑ‚Ñ€Ð¾Ð¹ÐºÐ°Ð¼Ð¸", Toast.LENGTH_SHORT).show();
-    }
-
-    private boolean copySelectedWidgetToClipboard() {
-        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
-            Toast.makeText(this, "Ð¡Ð½Ð°Ñ‡Ð°Ð»Ð° Ð²Ñ‹Ð±ÐµÑ€Ð¸ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚ Ð½Ð° ÑÐºÑ€Ð°Ð½Ðµ", Toast.LENGTH_SHORT).show();
-            return false;
-        }
-        try {
-            clipboardWidget = widgetFromJson(widgetToJson(widgets.get(editor.selected)));
-            return true;
-        } catch (Exception error) {
-            Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ ÑÐºÐ¾Ð¿Ð¸Ñ€Ð¾Ð²Ð°Ñ‚ÑŒ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚", Toast.LENGTH_SHORT).show();
-            return false;
-        }
-    }
-
-    private void cutSelectedWidget() {
-        // Never remove the source if serializing its complete clipboard copy failed.
-        if (copySelectedWidgetToClipboard()) deleteSelectedWidget();
-    }
-
-    private void pasteWidget() {
-        if (clipboardWidget == null) {
-            Toast.makeText(this, "Ð¡Ð½Ð°Ñ‡Ð°Ð»Ð° ÑÐºÐ¾Ð¿Ð¸Ñ€ÑƒÐ¹ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        try {
-            Widget copy = widgetFromJson(widgetToJson(clipboardWidget));
-            int offset = dp(24);
-            float maxX = editor == null ? Math.max(0, copy.x + offset) : Math.max(0, editor.getWidth() - copy.w);
-            float maxY = editor == null ? Math.max(0, copy.y + offset) : Math.max(0, editor.getHeight() - copy.h);
-            copy.x = Math.max(0, Math.min(maxX, copy.x + offset));
-            copy.y = Math.max(0, Math.min(maxY, copy.y + offset));
-            fbdWireHistory.clear();
-            widgets.add(copy);
-            if (editor != null) {
-                editor.selected = widgets.size() - 1;
-                editor.invalidate();
-            }
-            persistProject();
-            Toast.makeText(this, "ÐšÐ¾Ð¿Ð¸Ñ Ð´Ð¾Ð±Ð°Ð²Ð»ÐµÐ½Ð° Ð½Ð° ÑÐºÑ€Ð°Ð½", Toast.LENGTH_SHORT).show();
-        } catch (Exception error) {
-            Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð²ÑÑ‚Ð°Ð²Ð¸Ñ‚ÑŒ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚", Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    private void adjustSetpoint(Widget widget, int delta) {
-        String current = widget.text == null ? "Ð—Ð°Ð´Ð°Ñ‚Ñ‡Ð¸Ðº: 0" : widget.text;
-        int split = current.lastIndexOf(':');
-        String prefix = split >= 0 ? current.substring(0, split + 1) + " " : "Ð—Ð°Ð´Ð°Ñ‚Ñ‡Ð¸Ðº: ";
-        String valueText = split >= 0 ? current.substring(split + 1).trim() : current.trim();
-        double newValue = delta;
-        try {
-            double value = Double.parseDouble(valueText.replace(',', '.'));
-            newValue = value + delta;
-            widget.text = prefix + newValue;
-        } catch (NumberFormatException ignored) {
-            widget.text = prefix + delta;
-        }
-        persistProject();
-        BindingRequest request = parseBinding(-1, widget.connectionInfo);
-        if (request != null && request.functionCode == 3) {
-            final double valToWrite = newValue;
-            final String oldText = current;
-            modbusExecutor.execute(() -> {
-                try {
-                    boolean ok = writeModbusRegisterStatic(request.host, request.port, request.unit, request.address, (int) valToWrite);
-                    if (!ok) throw new IOException("Ð£ÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð¾ Ð¾Ñ‚ÐºÐ»Ð¾Ð½Ð¸Ð»Ð¾ Ð·Ð°Ð¿Ð¸ÑÑŒ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð°");
-                } catch (Exception ex) {
-                    android.util.Log.e("BLOODSKY", "Modbus write failed", ex);
-                    runOnUiThread(() -> {
-                        widget.text = oldText;
-                        persistProject();
-                        if (editor != null) editor.invalidate();
-                        Toast.makeText(MainActivity.this, "ÐžÑˆÐ¸Ð±ÐºÐ° Ð·Ð°Ð¿Ð¸ÑÐ¸ Modbus: " + (ex.getMessage() != null ? ex.getMessage() : "Ð¾ÑˆÐ¸Ð±ÐºÐ° ÑÐ²ÑÐ·Ð¸"), Toast.LENGTH_LONG).show();
-                    });
-                }
-            });
-        }
-        Toast.makeText(MainActivity.this, "Ð—Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ: " + widget.text, Toast.LENGTH_SHORT).show();
-    }
-
-    private void deleteSelectedWidget() {
-        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
-            Toast.makeText(this, "Ð¡Ð½Ð°Ñ‡Ð°Ð»Ð° Ð²Ñ‹Ð±ÐµÑ€Ð¸ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚ Ð½Ð° ÑÐºÑ€Ð°Ð½Ðµ", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        int removed = editor.selected;
-        fbdWireHistory.clear();
-        widgets.remove(removed);
-        // A positional fbd://N reference must never silently switch to a
-        // different source after deletion. Missing sources render CFG.
-        for (Widget survivor : widgets) {
-            survivor.connectionInfo = FbdResultBinding.afterWidgetRemoved(
-                    survivor.connectionInfo, removed);
-        }
-        if (!screens.isEmpty()) {
-            Screen screen = screens.get(currentScreenIndex);
-            List<FbdConnection> kept = new ArrayList<>();
-            for (FbdConnection connection : screen.connections) {
-                if (connection.source == removed || connection.target == removed) continue;
-                if (connection.source > removed) connection.source--;
-                if (connection.target > removed) connection.target--;
-                kept.add(connection);
-            }
-            screen.connections.clear();
-            screen.connections.addAll(kept);
-        }
-        editor.selected = -1;
-        liveValues.clear();
-        persistProject();
-        editor.invalidate();
-    }
-
-    public static JSONObject widgetToJson(Widget w) throws Exception {
-        JSONObject obj = new JSONObject();
-        if (w.extraFields != null) {
-            java.util.Iterator<String> keys = w.extraFields.keys();
-            while (keys.hasNext()) {
-                String key = keys.next();
-                obj.put(key, w.extraFields.get(key));
-            }
-        }
-        obj.put("type", w.type); obj.put("text", w.text);
-        obj.put("connectionInfo", w.connectionInfo == null ? "" : w.connectionInfo);
-        obj.put("inputValue", w.inputValue); obj.put("buttonState", w.buttonState); obj.put("rsState", w.rsState); obj.put("counterPreset", w.counterPreset); obj.put("counterValue", w.counterValue); obj.put("counterLastInput", w.counterLastInput);
-        obj.put("timerPresetMs", w.timerPresetMs); obj.put("timerStartedAt", w.timerStartedAt);
-        obj.put("compareA", w.compareA); obj.put("compareB", w.compareB); obj.put("compareOperator", w.compareOperator);
-        obj.put("minValue", w.minValue); obj.put("maxValue", w.maxValue);
-        obj.put("backgroundColor", w.backgroundColor); obj.put("textColor", w.textColor); obj.put("textSizeSp", w.textSizeSp);
-        obj.put("visible", w.visible); obj.put("showFrame", w.showFrame); obj.put("autoResizeText", w.autoResizeText);
-        obj.put("x", w.x); obj.put("y", w.y); obj.put("w", w.w); obj.put("h", w.h);
-
-        obj.put("soundThreshold", w.soundThreshold);
-        obj.put("soundActive", w.soundActive);
-        obj.put("soundFilePath", w.soundFilePath == null ? "ÐÐ»Ð°Ñ€Ð¼" : w.soundFilePath);
-        obj.put("targetScreenIndex", w.targetScreenIndex);
-        obj.put("targetUrl", w.targetUrl == null ? "" : w.targetUrl);
-
-        JSONArray dynStatesArr = new JSONArray();
-        JSONArray dynColorsArr = new JSONArray();
-        JSONArray bitLabelsArr = new JSONArray();
-        JSONArray voiceMessagesArr = new JSONArray();
-        JSONArray imagePathStatesArr = new JSONArray();
-        for (int i = 0; i < 16; i++) {
-            dynStatesArr.put(w.dynTextStates[i] == null ? "Ð¡Ð¾ÑÑ‚Ð¾ÑÐ½Ð¸Ðµ " + i : w.dynTextStates[i]);
-            dynColorsArr.put(w.dynTextColors[i]);
-            bitLabelsArr.put(w.bitListLabels[i] == null ? "Ð‘Ð¸Ñ‚ " + i : w.bitListLabels[i]);
-            voiceMessagesArr.put(w.voiceMessages[i] == null ? "Ð¡Ð¾Ð¾Ð±Ñ‰ÐµÐ½Ð¸Ðµ " + i : w.voiceMessages[i]);
-            imagePathStatesArr.put(w.imagePathStates[i] == null ? "ÐšÐ°Ñ€Ñ‚Ð¸Ð½ÐºÐ° " + i : w.imagePathStates[i]);
-        }
-        obj.put("dynTextStates", dynStatesArr);
-        obj.put("dynTextColors", dynColorsArr);
-        obj.put("bitListLabels", bitLabelsArr);
-        obj.put("voiceMessages", voiceMessagesArr);
-        obj.put("imagePathStates", imagePathStatesArr);
-        return obj;
-    }
-
-    private JSONArray widgetsToJson(List<Widget> list) throws Exception {
-        JSONArray array = new JSONArray();
-        for (Widget w : list) array.put(widgetToJson(w));
-        return array;
-    }
-
-    public static Widget widgetFromJson(JSONObject obj) {
-        Widget w = new Widget();
-        try { w.extraFields = new JSONObject(obj.toString()); } catch (Exception ignored) { w.extraFields = new JSONObject(); }
-        w.type = obj.optString("type", "Ð¢ÐµÐºÑÑ‚"); w.text = obj.optString("text", "ÐÐ°Ð´Ð¿Ð¸ÑÑŒ");
-        w.connectionInfo = obj.optString("connectionInfo", "");
-        w.inputValue = obj.optBoolean("inputValue", false); w.buttonState = obj.optBoolean("buttonState", false); w.rsState = obj.optBoolean("rsState", false); w.counterPreset = Math.max(1, Math.min(1000000, obj.optInt("counterPreset", 1))); w.counterValue = Math.max(0, Math.min(1000000, obj.optInt("counterValue", 0))); w.counterLastInput = obj.optBoolean("counterLastInput", false);
-        w.timerPresetMs = Math.max(1, Math.min(3600000, obj.optInt("timerPresetMs", 1000)));
-        w.timerStartedAt = obj.optLong("timerStartedAt", 0L);
-        w.compareA = obj.optDouble("compareA", 0.0); w.compareB = obj.optDouble("compareB", 0.0);
-        boolean craftArithmetic = "FBD CRAFT ARITHMETIC INT".equals(w.type)
-                || "FBD CRAFT ARITHMETIC FLOAT".equals(w.type);
-        w.compareOperator = normalizeWidgetOperator(w.type,
-                obj.optString("compareOperator", craftArithmetic ? "+" : ">"));
-        w.minValue = obj.optDouble("minValue", 0.0); w.maxValue = obj.optDouble("maxValue", 100.0);
-        w.backgroundColor = obj.optInt("backgroundColor", 0); w.textColor = obj.optInt("textColor", Color.rgb(31, 41, 55));
-        w.textSizeSp = Math.max(8, Math.min(48, obj.optInt("textSizeSp", 14)));
-        w.visible = obj.optBoolean("visible", true); w.showFrame = obj.optBoolean("showFrame", true); w.autoResizeText = obj.optBoolean("autoResizeText", false);
-        w.soundThreshold = obj.optDouble("soundThreshold", 1.0); w.soundActive = obj.optBoolean("soundActive", false); w.soundFilePath = obj.optString("soundFilePath", "ÐÐ»Ð°Ñ€Ð¼");
-        w.targetScreenIndex = obj.optInt("targetScreenIndex", 0); w.targetUrl = obj.optString("targetUrl", "");
-        w.x = (float) obj.optDouble("x", 40); w.y = (float) obj.optDouble("y", 50);
-        w.w = (float) obj.optDouble("w", 160); w.h = (float) obj.optDouble("h", 58);
-
-        JSONArray dynStatesArr = obj.optJSONArray("dynTextStates");
-        JSONArray dynColorsArr = obj.optJSONArray("dynTextColors");
-        JSONArray bitLabelsArr = obj.optJSONArray("bitListLabels");
-        JSONArray voiceMessagesArr = obj.optJSONArray("voiceMessages");
-        JSONArray imagePathStatesArr = obj.optJSONArray("imagePathStates");
-        for (int i = 0; i < 16; i++) {
-            w.dynTextStates[i] = (dynStatesArr != null && i < dynStatesArr.length()) ? dynStatesArr.optString(i, "Ð¡Ð¾ÑÑ‚Ð¾ÑÐ½Ð¸Ðµ " + i) : "Ð¡Ð¾ÑÑ‚Ð¾ÑÐ½Ð¸Ðµ " + i;
-            w.dynTextColors[i] = (dynColorsArr != null && i < dynColorsArr.length()) ? dynColorsArr.optInt(i, 0) : 0;
-            w.bitListLabels[i] = (bitLabelsArr != null && i < bitLabelsArr.length()) ? bitLabelsArr.optString(i, "Ð‘Ð¸Ñ‚ " + i) : "Ð‘Ð¸Ñ‚ " + i;
-            w.voiceMessages[i] = (voiceMessagesArr != null && i < voiceMessagesArr.length()) ? voiceMessagesArr.optString(i, "Ð¡Ð¾Ð¾Ð±Ñ‰ÐµÐ½Ð¸Ðµ " + i) : "Ð¡Ð¾Ð¾Ð±Ñ‰ÐµÐ½Ð¸Ðµ " + i;
-            w.imagePathStates[i] = (imagePathStatesArr != null && i < imagePathStatesArr.length()) ? imagePathStatesArr.optString(i, "ÐšÐ°Ñ€Ñ‚Ð¸Ð½ÐºÐ° " + i) : "ÐšÐ°Ñ€Ñ‚Ð¸Ð½ÐºÐ° " + i;
-        }
-        return w;
-    }
-
-    private static String normalizeComparisonOperatorStatic(String value) {
-        String operator = value == null ? ">" : value.trim();
-        return operator.equals(">") || operator.equals("<") || operator.equals(">=")
-                || operator.equals("<=") || operator.equals("==") || operator.equals("!=") ? operator : ">";
-    }
-
-    private static String normalizeWidgetOperator(String type, String value) {
-        String operator = value == null ? "" : value.trim();
-        if (("FBD CRAFT ARITHMETIC INT".equals(type)
-                || "FBD CRAFT ARITHMETIC FLOAT".equals(type))
-                && ("+".equals(operator) || "-".equals(operator)
-                || "*".equals(operator) || "/".equals(operator))) return operator;
-        if ("FBD CRAFT ARITHMETIC INT".equals(type)
-                || "FBD CRAFT ARITHMETIC FLOAT".equals(type)) return "+";
-        return normalizeComparisonOperatorStatic(operator);
-    }
-
-    public static void saveProjectAtomic(java.io.File targetFile, String json) throws java.io.IOException {
-        java.io.File parent = targetFile.getParentFile();
-        if (parent != null && !parent.exists()) parent.mkdirs();
-        java.io.File tempFile = new java.io.File(targetFile.getAbsolutePath() + ".tmp");
-        try (java.io.FileOutputStream out = new java.io.FileOutputStream(tempFile)) {
-            out.write(json.getBytes(StandardCharsets.UTF_8));
-            out.flush();
-            out.getFD().sync();
-        }
-        if (!tempFile.renameTo(targetFile)) {
-            if (targetFile.exists() && !targetFile.delete()) {
-                throw new java.io.IOException("Could not delete target file for atomic overwrite");
-            }
-            if (!tempFile.renameTo(targetFile)) {
-                throw new java.io.IOException("Could not rename temp project file to target");
-            }
-        }
-    }
-
-    public static String loadProjectAtomic(java.io.File targetFile) throws java.io.IOException {
-        if (!targetFile.exists()) {
-            java.io.File tempFile = new java.io.File(targetFile.getAbsolutePath() + ".tmp");
-            if (tempFile.exists()) targetFile = tempFile;
-            else throw new java.io.FileNotFoundException("Project file missing: " + targetFile);
-        }
-        try (java.io.FileInputStream in = new java.io.FileInputStream(targetFile);
-             ByteArrayOutputStream buffer = new ByteArrayOutputStream()) {
-            byte[] chunk = new byte[8192];
-            int count;
-            while ((count = in.read(chunk)) != -1) {
-                if (buffer.size() + count > 8 * 1024 * 1024) throw new IllegalArgumentException("Project file too large");
-                buffer.write(chunk, 0, count);
-            }
-            return new String(buffer.toByteArray(), StandardCharsets.UTF_8);
-        }
-    }
-
-    public static void exportProjectToZip(OutputStream outputStream, String projectJson) throws java.io.IOException {
-        try (java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(outputStream)) {
-            java.util.zip.ZipEntry entry = new java.util.zip.ZipEntry("TableNameProject.json");
-            zos.putNextEntry(entry);
-            byte[] bytes = projectJson.getBytes(StandardCharsets.UTF_8);
-            zos.write(bytes, 0, bytes.length);
-            zos.closeEntry();
-            zos.finish();
-        }
-    }
-
-    public static String importProjectFromZip(InputStream inputStream) throws Exception {
-        return importProjectFromZip(inputStream, null);
-    }
-
-    public static String importProjectFromZip(InputStream inputStream, Map<String, byte[]> extractedMedia) throws Exception {
-        byte[] projectJsonBytes = null;
-        java.util.Set<String> entryNames = new java.util.HashSet<>();
-        long totalUncompressedBytes = 0;
-
-        try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(inputStream)) {
-            java.util.zip.ZipEntry entry;
-            while ((entry = zis.getNextEntry()) != null) {
-                String name = entry.getName();
-                if (name == null || name.contains("..") || name.startsWith("/") || name.startsWith("\\")) {
-                    throw new IllegalArgumentException("Unsafe entry path in ZIP archive: " + name);
-                }
-                if (!entryNames.add(name.toLowerCase(java.util.Locale.ROOT))) {
-                    throw new IllegalArgumentException("Duplicate entry name in ZIP archive: " + name);
-                }
-                ByteArrayOutputStream entryBuffer = new ByteArrayOutputStream();
-                byte[] chunk = new byte[8192];
-                int count;
-                while ((count = zis.read(chunk)) != -1) {
-                    totalUncompressedBytes += count;
-                    if (totalUncompressedBytes > 10 * 1024 * 1024) {
-                        throw new IllegalArgumentException("ZIP uncompressed size exceeds limit");
-                    }
-                    entryBuffer.write(chunk, 0, count);
-                }
-                zis.closeEntry();
-                if ("TableNameProject.json".equalsIgnoreCase(name) || (!name.startsWith("media/") && name.endsWith(".json"))) {
-                    if (projectJsonBytes != null) {
-                        throw new IllegalArgumentException("Multiple JSON project files in archive");
-                    }
-                    projectJsonBytes = entryBuffer.toByteArray();
-                } else if (name.startsWith("media/") && extractedMedia != null && !entry.isDirectory()) {
-                    extractedMedia.put(name.substring("media/".length()), entryBuffer.toByteArray());
-                }
-            }
-        }
-        if (projectJsonBytes == null) {
-            throw new IllegalArgumentException("No project JSON found in ZIP archive");
-        }
-        String json = new String(projectJsonBytes, StandardCharsets.UTF_8);
-        validateImportedProjectStatic(json);
-        return json;
-    }
-
-    private void persistProject() { persistProjectNow(false); }
-
-    private boolean persistProjectNow(boolean synchronous) {
-        try {
-            saveActiveScreen();
-            JSONObject project = new JSONObject();
-            if (projectExtraFields != null) {
-                java.util.Iterator<String> projectKeys = projectExtraFields.keys();
-                while (projectKeys.hasNext()) { String key = projectKeys.next(); project.put(key, projectExtraFields.get(key)); }
-            }
-            JSONArray screenArray = new JSONArray();
-            for (Screen screen : screens) {
-                JSONObject screenObj = new JSONObject();
-                if (screen.extraFields != null) {
-                    java.util.Iterator<String> keys = screen.extraFields.keys();
-                    while (keys.hasNext()) { String key = keys.next(); screenObj.put(key, screen.extraFields.get(key)); }
-                }
-                screenObj.put("name", screen.name);
-                screenObj.put("backgroundColor", screen.backgroundColor);
-                screenObj.put("widgets", widgetsToJson(screen.widgets));
-                JSONArray connectionArray = new JSONArray();
-                for (FbdConnection connection : screen.connections) {
-                    connectionArray.put(connectionToJson(connection));
-                }
-                screenObj.put("connections", connectionArray);
-                screenArray.put(screenObj);
-            }
-            project.put("screens", screenArray);
-            project.put("currentScreen", currentScreenIndex);
-            project.put("projectName", projectName);
-            project = new JSONObject(ProjectMediaService.ensureProjectHasId(project.toString()));
-            projectExtraFields = new JSONObject(project.toString());
-            return storeActiveProject(project.toString(), synchronous);
-        } catch (Exception ignored) {
-            Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ ÑÐ¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ð¿Ñ€Ð¾ÐµÐºÑ‚", Toast.LENGTH_SHORT).show();
-            return false;
-        }
-    }
-
-    private boolean loadProject() {
-        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-        String json = prefs.getString(ACTIVE_PROJECT, "[]");
-        try {
-            if (LegacyProjectMediaMigrator.needsMigration(json))
-                json = migrateLegacyActiveProject(json);
-        } catch (Exception failure) {
-            android.util.Log.e("BLOODSKY", "Legacy project migration failed", failure);
-            Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¿ÐµÑ€ÐµÐ½ÐµÑÑ‚Ð¸ ÑÑ‚Ð°Ñ€Ñ‹Ðµ Ñ„Ð°Ð¹Ð»Ñ‹ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°. ÐŸÑ€Ð¾ÐµÐºÑ‚ Ð½Ðµ Ð¸Ð·Ð¼ÐµÐ½Ñ‘Ð½.",
-                    Toast.LENGTH_LONG).show();
-            return false;
-        }
-        fbdWireHistory.clear();
-        FbdCraftRegisterStore.clear();
-        FbdCraftNamedVariableStore.clear();
-        imageCache.clear();
-        widgets.clear(); screens.clear(); currentScreenIndex = 0;
-        projectExtraFields = new JSONObject();
-        projectName = prefs.getString("project_name", projectName);
-        try {
-            Object parsed = new org.json.JSONTokener(json).nextValue();
-            if (parsed instanceof JSONObject) {
-                JSONObject project = (JSONObject) parsed;
-                String importedProjectName = project.optString("projectName", projectName);
-                if (importedProjectName != null && !importedProjectName.trim().isEmpty()) projectName = importedProjectName.trim();
-                try { projectExtraFields = new JSONObject(project.toString()); } catch (Exception ignored) { projectExtraFields = new JSONObject(); }
-                JSONArray screenArray = project.optJSONArray("screens");
-                if (screenArray != null) {
-                    for (int i = 0; i < screenArray.length(); i++) {
-                        JSONObject screenObj = screenArray.getJSONObject(i);
-                        Screen screen = new Screen(screenObj.optString("name", "Ð­ÐºÑ€Ð°Ð½ " + (i + 1)));
-                        screen.backgroundColor = screenObj.optInt("backgroundColor", Color.rgb(250, 252, 255));
-                        try { screen.extraFields = new JSONObject(screenObj.toString()); } catch (Exception ignored) { screen.extraFields = new JSONObject(); }
-                        JSONArray widgetArray = screenObj.optJSONArray("widgets");
-                        if (widgetArray != null) for (int j = 0; j < widgetArray.length(); j++) screen.widgets.add(widgetFromJson(widgetArray.getJSONObject(j)));
-                        JSONArray connectionArray = screenObj.optJSONArray("connections");
-                        if (connectionArray != null) for (int j = 0; j < connectionArray.length(); j++) {
-                            JSONObject connectionObj = connectionArray.optJSONObject(j);
-                            if (connectionObj == null) continue;
-                            int source = connectionObj.optInt("source", -1);
-                            int target = connectionObj.optInt("target", -1);
-                            if (canLoadFbdConnection(connectionObj)
-                                    && source < screen.widgets.size() && target < screen.widgets.size()
-                                    && isFbd(screen.widgets.get(source)) && isFbd(screen.widgets.get(target))) {
-                                screen.connections.add(connectionFromJson(connectionObj));
-                            }
-                        }
-                        screens.add(screen);
-                    }
-                    currentScreenIndex = Math.max(0, Math.min(project.optInt("currentScreen", 0), Math.max(0, screens.size() - 1)));
-                }
-            } else if (parsed instanceof JSONArray) {
-                projectExtraFields = new JSONObject();
-                Screen legacy = new Screen("Ð­ÐºÑ€Ð°Ð½ 1");
-                JSONArray legacyWidgets = (JSONArray) parsed;
-                for (int i = 0; i < legacyWidgets.length(); i++) legacy.widgets.add(widgetFromJson(legacyWidgets.getJSONObject(i)));
-                screens.add(legacy);
-            }
-        } catch (Exception ignored) {
-            screens.clear();
-        }
-        if (screens.isEmpty()) screens.add(new Screen("Ð­ÐºÑ€Ð°Ð½ 1"));
-        currentScreenIndex = Math.max(0, Math.min(currentScreenIndex, screens.size() - 1));
-        // elapsedRealtime belongs to the running device, not a saved project.
-        // Retain presets and unknown fields, discard only timer runtime epoch.
-        for (Screen loaded : screens) for (Widget saved : loaded.widgets)
-            resetFbdTimerRuntime(saved);
-        for (Widget w : screens.get(currentScreenIndex).widgets) widgets.add(copyWidget(w));
-        return true;
-    }
-
-    private void validateImportedProject(String json) throws Exception {
-        validateImportedProjectStatic(json);
-    }
-
-    private void validateWidgetArray(JSONArray array) {
-        validateWidgetArrayStatic(array);
-    }
-
-    public static void validateImportedProjectStatic(String json) throws Exception {
-        org.json.JSONTokener tokener = new org.json.JSONTokener(json);
-        Object parsed = tokener.nextValue();
-        if (tokener.nextClean() != 0) throw new IllegalArgumentException("Trailing content after JSON");
-        if (parsed instanceof JSONArray) {
-            validateWidgetArrayStatic((JSONArray) parsed);
-            return;
-        }
-        if (!(parsed instanceof JSONObject)) throw new IllegalArgumentException("Project must be a JSON object or array");
-        JSONObject project = (JSONObject) parsed;
-        JSONArray screenArray = project.optJSONArray("screens");
-        if (screenArray == null || screenArray.length() == 0 || screenArray.length() > 100) {
-            throw new IllegalArgumentException("Invalid screen list");
-        }
-        int currentScreen = project.optInt("currentScreen", 0);
-        if (currentScreen < 0 || currentScreen >= screenArray.length()) {
-            throw new IllegalArgumentException("Current screen index out of range");
-        }
-        int totalWidgets = 0;
-        for (int i = 0; i < screenArray.length(); i++) {
-            JSONObject screen = screenArray.optJSONObject(i);
-            if (screen == null) throw new IllegalArgumentException("Screen must be an object");
-            JSONArray screenWidgets = screen.optJSONArray("widgets");
-            if (screenWidgets == null) throw new IllegalArgumentException("Screen widgets must be an array");
-            validateWidgetArrayStatic(screenWidgets);
-            totalWidgets += screenWidgets.length();
-            if (totalWidgets > 2000) throw new IllegalArgumentException("Too many widgets");
-
-            JSONArray connections = screen.optJSONArray("connections");
-            if (connections == null) continue;
-            if (connections.length() > 4000) throw new IllegalArgumentException("Too many connections");
-            int nodeCount = screenWidgets.length();
-            List<List<Integer>> adjacency = new ArrayList<>();
-            int[] indegree = new int[nodeCount];
-            for (int node = 0; node < nodeCount; node++) adjacency.add(new ArrayList<>());
-            java.util.HashMap<Long, java.util.HashSet<String>> pinsByPair = new java.util.HashMap<>();
-            java.util.HashSet<String> occupiedTargetPins = new java.util.HashSet<>();
-            for (int j = 0; j < connections.length(); j++) {
-                JSONObject edge = connections.optJSONObject(j);
-                if (edge == null) throw new IllegalArgumentException("Connection must be an object");
-                if (!canLoadFbdConnection(edge)) throw new IllegalArgumentException("Invalid FBD pin metadata or endpoints");
-                int source = edge.optInt("source", -1);
-                int target = edge.optInt("target", -1);
-                if (source < 0 || target < 0 || source >= nodeCount || target >= nodeCount || source == target) {
-                    throw new IllegalArgumentException("Connection index out of range");
-                }
-                JSONObject sourceWidget = screenWidgets.optJSONObject(source);
-                JSONObject targetWidget = screenWidgets.optJSONObject(target);
-                if (sourceWidget == null || targetWidget == null
-                        || !sourceWidget.optString("type", "").startsWith("FBD ")
-                        || !targetWidget.optString("type", "").startsWith("FBD ")) {
-                    throw new IllegalArgumentException("Connections must link FBD blocks");
-                }
-                if (!hasCompatibleKnownFbdPins(edge, sourceWidget.optString("type", ""),
-                        targetWidget.optString("type", ""))) {
-                    throw new IllegalArgumentException("Invalid FBD pin direction or type");
-                }
-                String targetPin = canonicalFbdPinName(edge.optString("targetPin", ""));
-                if (!targetPin.isEmpty() && !occupiedTargetPins.add(target + ":"
-                        + targetPin)) {
-                    throw new IllegalArgumentException("Multiple FBD wires drive the same target pin");
-                }
-                long edgeKey = (((long) source) << 32) | (target & 0xffffffffL);
-                java.util.HashSet<String> pairPins = pinsByPair.get(edgeKey);
-                if (pairPins == null) {
-                    pairPins = new java.util.HashSet<>();
-                    pinsByPair.put(edgeKey, pairPins);
-                }
-                String normalizedPin = targetPin;
-                if (pairPins.contains("") || (normalizedPin.isEmpty() && !pairPins.isEmpty())
-                        || !pairPins.add(normalizedPin)) {
-                    throw new IllegalArgumentException("Duplicate FBD connection");
-                }
-                adjacency.get(source).add(target);
-                indegree[target]++;
-            }
-            java.util.ArrayDeque<Integer> ready = new java.util.ArrayDeque<>();
-            for (int node = 0; node < nodeCount; node++) if (indegree[node] == 0) ready.add(node);
-            int visitedCount = 0;
-            while (!ready.isEmpty()) {
-                int node = ready.removeFirst();
-                visitedCount++;
-                for (int next : adjacency.get(node)) {
-                    if (--indegree[next] == 0) ready.addLast(next);
-                }
-            }
-            if (visitedCount != nodeCount) throw new IllegalArgumentException("Cyclic FBD connections");
-        }
-    }
-
-    public static void validateWidgetArrayStatic(JSONArray array) {
-        if (array.length() > 2000) throw new IllegalArgumentException("Too many widgets");
-        for (int i = 0; i < array.length(); i++) {
-            JSONObject widget = array.optJSONObject(i);
-            if (widget == null) throw new IllegalArgumentException("Widget must be an object");
-            String type = widget.optString("type", "Ð¢ÐµÐºÑÑ‚"), label = widget.optString("text", "ÐÐ°Ð´Ð¿Ð¸ÑÑŒ");
-            if (type.length() > 100 || label.length() > 2000 || widget.optString("connectionInfo", "").length() > 2000) throw new IllegalArgumentException("Widget field too long");
-            double x = widget.optDouble("x", widget.has("x") ? Double.NaN : 0), y = widget.optDouble("y", widget.has("y") ? Double.NaN : 0), w = widget.optDouble("w", widget.has("w") ? Double.NaN : 160), h = widget.optDouble("h", widget.has("h") ? Double.NaN : 58);
-            if (Double.isNaN(x) || Double.isNaN(y) || Double.isNaN(w) || Double.isNaN(h)
-                    || x < -100000 || x > 100000 || y < -100000 || y > 100000 || w < 1 || w > 100000 || h < 1 || h > 100000) throw new IllegalArgumentException("Widget geometry out of range");
-        }
-    }
-
-    private static class Screen {
-        String name;
-        int backgroundColor = Color.rgb(250, 252, 255);
-        JSONObject extraFields = new JSONObject();
-        final List<Widget> widgets = new ArrayList<>();
-        final List<FbdConnection> connections = new ArrayList<>();
-        Screen(String name) { this.name = name; }
-    }
-
-    public static class FbdConnection {
-        public int source;
-        public int target;
-        private JSONObject extraFields = new JSONObject();
-        public FbdConnection(int source, int target) { this.source = source; this.target = target; }
-    }
-
-    /** Shared by the actual project loader and the round-trip regression tests. */
-    public static FbdConnection connectionFromJson(JSONObject json) throws Exception {
-        FbdConnection connection = new FbdConnection(json.optInt("source", -1), json.optInt("target", -1));
-        connection.extraFields = new JSONObject(json.toString());
-        return connection;
-    }
-
-    /** Keep unknown edge fields, but always serialize the current edited/reindexed endpoints. */
-    public static JSONObject connectionToJson(FbdConnection connection) throws Exception {
-        JSONObject json = connection.extraFields == null
-                ? new JSONObject() : new JSONObject(connection.extraFields.toString());
-        json.put("source", connection.source);
-        json.put("target", connection.target);
-        return json;
-    }
-
-    /** Optional signal types: explicit pins must agree unless either is ANY. */
-    public static boolean hasCompatibleFbdSignalTypes(FbdConnection edge) {
-        if (!hasValidFbdPinMetadata(edge)) return false;
-        JSONObject fields = edge.extraFields;
-        boolean sourcePresent = fields.has("sourceSignalType");
-        boolean targetPresent = fields.has("targetSignalType");
-        if (!sourcePresent && !targetPresent) return true;
-        if (!sourcePresent || !targetPresent) return false;
-        Object source = fields.opt("sourceSignalType");
-        Object target = fields.opt("targetSignalType");
-        if (!(source instanceof String) || !(target instanceof String)) return false;
-        String a = ((String) source).trim().toUpperCase(java.util.Locale.ROOT);
-        String b = ((String) target).trim().toUpperCase(java.util.Locale.ROOT);
-        if (!("BOOL".equals(a) || "NUMBER".equals(a) || "ANY".equals(a))) return false;
-        if (!("BOOL".equals(b) || "NUMBER".equals(b) || "ANY".equals(b))) return false;
-        return a.equals(b) || "ANY".equals(a) || "ANY".equals(b);
-    }
-
-    /** Minimal built-in FBD pin contract; unknown blocks stay untyped until sourced. */
-    /** Normalize internal Russian widget identifiers to their public FBD terminal contracts. */
-    public static String canonicalFbdBlockType(String blockType) {
-        if (blockType == null) return "";
-        String kind = blockType.trim().toUpperCase(java.util.Locale.ROOT);
-        if ("FBD Ð˜".equals(kind)) return "FBD AND";
-        if ("FBD Ð˜Ð›Ð˜".equals(kind)) return "FBD OR";
-        if ("FBD Ð¢ÐÐ™ÐœÐ•Ð ".equals(kind)) return "FBD TON";
-        return kind;
-    }
-
-    /** Compare pin identifiers consistently without rewriting imported project metadata. */
-    public static String canonicalFbdPinName(String pin) {
-        return pin == null ? "" : pin.trim().toUpperCase(java.util.Locale.ROOT);
-    }
-
-    public static boolean isCraftFbdSensorSource(String type) {
-        return "FBD CRAFT SENSOR LIGHT".equals(canonicalFbdBlockType(type))
-                || "FBD CRAFT SENSOR ORIENTATION".equals(canonicalFbdBlockType(type))
-                || "FBD CRAFT SENSOR SPEED".equals(canonicalFbdBlockType(type));
-    }
-
-    private static boolean isCraftSunriseSource(String type) {
-        return "FBD CRAFT SUNRISE".equals(canonicalFbdBlockType(type));
-    }
-
-    private static boolean isCraftOdTempSource(String type) {
-        return "FBD CRAFT ODTEMP".equals(canonicalFbdBlockType(type));
-    }
-
-    public static boolean isCraftMqttSubscriber(String type) {
-        return type != null && type.startsWith("FBD CRAFT MQTT SUB ");
-    }
-    public static boolean isCraftMqttPublisher(String type) {
-        return type != null && type.startsWith("FBD CRAFT MQTT PUB ");
-    }
-    private static int mqttType(Widget widget) {
-        int fallback = widget.type.endsWith("BOOL") ? 1 : widget.type.endsWith("FLOAT") ? 3 : 2;
-        return Math.max(1, Math.min(3, widget.extraFields.optInt("craftMqttType", fallback)));
-    }
-    private static int mqttServer(Widget widget) {
-        return Math.max(1, Math.min(2, widget.extraFields.optInt("craftMqttServer", 1)));
-    }
-
-    public static boolean isAllowedOdTempHost(String host) {
-        if (host == null) return false;
-        String[] parts = host.trim().split("\\.", -1);
-        if (parts.length != 4) return false;
-        int[] octets = new int[4];
-        try {
-            for (int i = 0; i < 4; i++) {
-                if (parts[i].isEmpty() || (parts[i].length() > 1 && parts[i].charAt(0) == '0')) return false;
-                octets[i] = Integer.parseInt(parts[i]);
-                if (octets[i] < 0 || octets[i] > 255) return false;
-            }
-        } catch (NumberFormatException invalid) { return false; }
-        return octets[0] == 10 || octets[0] == 192 && octets[1] == 168
-                || octets[0] == 172 && octets[1] >= 16 && octets[1] <= 31
-                || octets[0] == 169 && octets[1] == 254;
-    }
-
-    private static String craftOrientationLabel(int axis) {
-        return axis == 2 ? "ORIENTATION_Y" : axis == 3 ? "ORIENTATION_Z" : "ORIENTATION_X";
-    }
-
-    private static int craftOrientationAxis(Widget widget) {
-        return Math.max(1, Math.min(3, widget.extraFields.optInt("craftSensorAxis",
-                widget.extraFields.optInt("type", 1))));
-    }
-
-    private static String craftSunriseMode(Widget widget) {
-        return widget.extraFields.optString("craftSunriseMode",
-                widget.extraFields.optInt("type", 1) == 2 ? "SS" : "SR");
-    }
-
-    public static boolean isCraftRegisterSource(String type) {
-        String kind = canonicalFbdBlockType(type);
-        return "FBD CRAFT VAR BOOL".equals(kind) || "FBD CRAFT VAR INT".equals(kind)
-                || "FBD CRAFT VAR FLOAT".equals(kind);
-    }
-
-    public static boolean isCraftNamedVariableSource(String type) {
-        return type != null && type.startsWith("FBD CRAFT VAR NAME IN ");
-    }
-
-    public static boolean isCraftNamedVariableSink(String type) {
-        return type != null && type.startsWith("FBD CRAFT VAR NAME OUT ");
-    }
-
-    private static int craftNamedVariableKind(String type) {
-        if (type == null) return 0;
-        if (type.endsWith(" BOOL")) return 1;
-        if (type.endsWith(" INT")) return 2;
-        if (type.endsWith(" FLOAT")) return 3;
-        return 0;
-    }
-
-    private static String craftNamedVariableType(int kind, boolean output) {
-        String suffix = kind == 1 ? "BOOL" : kind == 3 ? "FLOAT" : "INT";
-        return "FBD CRAFT VAR NAME " + (output ? "OUT " : "IN ") + suffix;
-    }
-
-    private static String craftNamedVariableName(Widget widget) {
-        return widget.extraFields.optString("craftVariableName",
-                widget.extraFields.optString("name", ""));
-    }
-
-    public static boolean isCraftRegisterSink(String type) {
-        String kind = canonicalFbdBlockType(type);
-        return "FBD CRAFT VAR OUT BOOL".equals(kind) || "FBD CRAFT VAR OUT INT".equals(kind)
-                || "FBD CRAFT VAR OUT FLOAT".equals(kind);
-    }
-
-    private static boolean isCraftRegisterFloat(String type) {
-        String kind = canonicalFbdBlockType(type);
-        return "FBD CRAFT VAR FLOAT".equals(kind) || "FBD CRAFT VAR OUT FLOAT".equals(kind);
-    }
-
-    private static boolean isCraftRegisterBoolean(String type) {
-        String kind = canonicalFbdBlockType(type);
-        return "FBD CRAFT VAR BOOL".equals(kind) || "FBD CRAFT VAR OUT BOOL".equals(kind);
-    }
-
-    public static String knownFbdPinType(String blockType, String pin, boolean output) {
-        if (blockType == null || pin == null) return null;
-        String kind = canonicalFbdBlockType(blockType);
-        String name = canonicalFbdPinName(pin);
-        if (kind.equals("FBD Ð’Ð¥ÐžÐ”")) return output && "Q".equals(name) ? "BOOL" : null;
-        if (isCraftMqttSubscriber(kind) && output && "Q".equals(name))
-            return kind.endsWith("BOOL") ? "BOOL" : "NUMBER";
-        if (isCraftMqttPublisher(kind) && !output) {
-            if ("EN".equals(name)) return "BOOL";
-            if ("IN".equals(name)) return kind.endsWith("BOOL") ? "BOOL" : "NUMBER";
-        }
-        if (isCraftRegisterSource(kind) && output && "Q".equals(name))
-            return isCraftRegisterBoolean(kind) ? "BOOL" : "NUMBER";
-        if (isCraftRegisterSink(kind) && !output && "IN".equals(name))
-            return isCraftRegisterBoolean(kind) ? "BOOL" : "NUMBER";
-        if ((isCraftFbdSensorSource(kind) || isCraftSunriseSource(kind) || isCraftOdTempSource(kind))
-                && output && "Q".equals(name)) return "NUMBER";
-        if (isCraftNamedVariableSource(kind) && output && "Q".equals(name))
-            return craftNamedVariableKind(kind) == 1 ? "BOOL" : "NUMBER";
-        if (isCraftNamedVariableSink(kind) && !output && "IN".equals(name))
-            return craftNamedVariableKind(kind) == 1 ? "BOOL" : "NUMBER";
-        if (kind.equals("FBD AND") || kind.equals("FBD OR") || kind.equals("FBD XOR")
-                || kind.equals("FBD NAND") || kind.equals("FBD NOR")) {
-            if (output && "Q".equals(name)) return "BOOL";
-            if (!output && ("IN1".equals(name) || "IN2".equals(name))) return "BOOL";
-        }
-        if (kind.equals("FBD ÐÐ•")) {
-            if (output && "Q".equals(name)) return "BOOL";
-            if (!output && "IN".equals(name)) return "BOOL";
-        }
-        if (kind.equals("FBD RS") || kind.equals("FBD SR")) {
-            if (output && "Q".equals(name)) return "BOOL";
-            if (!output && ("S".equals(name) || "R".equals(name))) return "BOOL";
-        }
-        if (kind.equals("FBD CRAFT T")) {
-            if (output && "Q".equals(name)) return "BOOL";
-            if (!output && "IN".equals(name)) return "BOOL";
-        }
-        if (kind.equals("FBD CRAFT TIMER")) {
-            if (output && "Q".equals(name)) return "BOOL";
-            if (!output && "IN".equals(name)) return "BOOL";
-            if (!output && "PT".equals(name)) return "NUMBER";
-        }
-        if (kind.equals("FBD CRAFT ARITHMETIC INT")
-                || kind.equals("FBD CRAFT ARITHMETIC FLOAT")) {
-            if (output && "Q".equals(name)) return "NUMBER";
-            if (!output && ("IN1".equals(name) || "IN2".equals(name))) return "NUMBER";
-        }
-        if (kind.equals("FBD CRAFT COMPARE FLOAT")) {
-            if (output && "Q".equals(name)) return "BOOL";
-            if (!output && ("IN1".equals(name) || "IN2".equals(name))) return "NUMBER";
-        }
-        if (kind.equals("FBD R_TRIG") || kind.equals("FBD F_TRIG")) {
-            if (output && "Q".equals(name)) return "BOOL";
-            if (!output && "IN".equals(name)) return "BOOL";
-        }
-        if (kind.equals("FBD CRAFT CTU")) {
-            if (output && "Q".equals(name)) return "NUMBER";
-            if (!output && ("+".equals(name) || "-".equals(name) || "R".equals(name)))
-                return "BOOL";
-        }
-        if (kind.equals("FBD CTU") || kind.equals("FBD CTD")) {
-            if (output && "Q".equals(name)) return "BOOL";
-            if (!output && ("CU".equals(name) || "CD".equals(name)
-                    || "R".equals(name) || "LD".equals(name))) {
-                if (kind.equals("FBD CTU")) return ("CU".equals(name) || "R".equals(name)) ? "BOOL" : null;
-                return ("CD".equals(name) || "LD".equals(name)) ? "BOOL" : null;
-            }
-            if (!output && "PV".equals(name)) return "NUMBER";
-        }
-        if (kind.equals("FBD Ð¡Ð›ÐžÐ–Ð•ÐÐ˜Ð•") || kind.equals("FBD Ð’Ð«Ð§Ð˜Ð¢ÐÐÐ˜Ð•")
-                || kind.equals("FBD Ð£ÐœÐÐžÐ–Ð•ÐÐ˜Ð•") || kind.equals("FBD Ð”Ð•Ð›Ð•ÐÐ˜Ð•")
-                || kind.equals("FBD MIN_MAX")) {
-            if (output && "OUT".equals(name)) return "NUMBER";
-            if (!output && ("IN1".equals(name) || "IN2".equals(name))) return "NUMBER";
-        }
-        if (kind.equals("FBD Ð¡Ð ÐÐ’ÐÐ•ÐÐ˜Ð•")) {
-            if (output && "Q".equals(name)) return "BOOL";
-            if (!output && ("A".equals(name) || "B".equals(name))) return "NUMBER";
-        }
-        if (kind.equals("FBD MOVE")) {
-            if (output && "OUT".equals(name)) return "NUMBER";
-            if (!output && "IN".equals(name)) return "NUMBER";
-        }
-        if (kind.equals("FBD CRAFT COMPARE")) {
-            if (output && "Q".equals(name)) return "BOOL";
-            if (!output && ("IN1".equals(name) || "IN2".equals(name))) return "NUMBER";
-        }
-        if (kind.equals("FBD CRAFT CHANGE I") || kind.equals("FBD CRAFT CHANGE F")) {
-            if (output && "Q".equals(name)) return "BOOL";
-            if (!output && ("FBD CRAFT CHANGE I".equals(kind) ? "I" : "F").equals(name))
-                return "NUMBER";
-        }
-        if (kind.equals("FBD CRAFT MOVE")) {
-            if (output && "Q".equals(name)) return "NUMBER";
-            if (!output && "EN".equals(name)) return "BOOL";
-            if (!output && "I".equals(name)) return "NUMBER";
-        }
-        if (kind.equals("FBD CRAFT MX")) {
-            if (output && "Q".equals(name)) return "NUMBER";
-            if (!output && "EN".equals(name)) return "BOOL";
-            if (!output && "I".equals(name)) return "NUMBER";
-        }
-        if (kind.equals("FBD CRAFT ARRAY")) {
-            if (output && "Q".equals(name)) return "NUMBER";
-            if (!output && "EN".equals(name)) return "BOOL";
-            if (!output && ("DT".equals(name) || "ID".equals(name))) return "NUMBER";
-        }
-        if (kind.equals("FBD CRAFT LOG") || kind.equals("FBD CRAFT WORD TO FLOAT")
-                || kind.equals("FBD CRAFT SIN") || kind.equals("FBD CRAFT ABS")
-                || kind.equals("FBD CRAFT INT TO FLOAT") || kind.equals("FBD CRAFT FLOAT TO INT")) {
-            if (output && "OUT".equals(name)) return "NUMBER";
-            if (!output && "IN".equals(name)) return "NUMBER";
-        }
-        if (kind.equals("FBD CRAFT POW")) {
-            if (output && "Q".equals(name)) return "NUMBER";
-            if (!output && ("X".equals(name) || "Y".equals(name))) return "NUMBER";
-        }
-        if (kind.equals("FBD CRAFT SEL")) {
-            if (output && "Q".equals(name)) return "NUMBER";
-            if (!output && "IN".equals(name)) return "BOOL";
-            if (!output && ("I1".equals(name) || "I2".equals(name))) return "NUMBER";
-        }
-        if (kind.equals("FBD SEL")) {
-            if (output && "OUT".equals(name)) return "NUMBER";
-            if (!output && "G".equals(name)) return "BOOL";
-            if (!output && ("IN0".equals(name) || "IN1".equals(name))) return "NUMBER";
-        }
-        if (kind.equals("FBD POW")) {
-            if (output && "OUT".equals(name)) return "NUMBER";
-            if (!output && ("BASE".equals(name) || "EXP".equals(name))) return "NUMBER";
-        }
-        if (kind.equals("FBD SIN") || kind.equals("FBD ABS")
-                || kind.equals("FBD COS") || kind.equals("FBD TAN") || kind.equals("FBD SQRT")
-                || kind.equals("FBD FLOATTOINT") || kind.equals("FBD INTTOFLOAT")) {
-            if (output && "OUT".equals(name)) return "NUMBER";
-            if (!output && "IN".equals(name)) return "NUMBER";
-        }
-        if (kind.equals("FBD TON") || kind.equals("FBD TOF")
-                || kind.equals("FBD TP") || kind.equals("FBD CRAFT BLINK")
-                || kind.equals("FBD CRAFT TIMER")) {
-            if (output && "Q".equals(name)) return "BOOL";
-            if (!output && "IN".equals(name)) return "BOOL";
-            if (!output && "PT".equals(name)) return "NUMBER";
-        }
-        return null;
-    }
-
-    /** Enforce known pin directions and types; preserve legacy unpinned connections. */
-    public static boolean hasCompatibleKnownFbdPins(JSONObject edge, String sourceType, String targetType) throws Exception {
-        if (!canLoadFbdConnection(edge)) return false;
-        if (!edge.has("sourcePin") && !edge.has("targetPin")) return true;
-        String sourcePin = edge.optString("sourcePin", "");
-        String targetPin = edge.optString("targetPin", "");
-        String sourceKnown = knownFbdPinType(sourceType, sourcePin, true);
-        String targetKnown = knownFbdPinType(targetType, targetPin, false);
-        boolean sourceBlockKnown = knownFbdPins(sourceType, true).length > 0
-                || knownFbdPins(sourceType, false).length > 0;
-        boolean targetBlockKnown = knownFbdPins(targetType, true).length > 0
-                || knownFbdPins(targetType, false).length > 0;
-        if ((sourceBlockKnown && sourceKnown == null) || (targetBlockKnown && targetKnown == null)) return false;
-        if (sourceKnown != null && targetKnown != null && !sourceKnown.equals(targetKnown)) return false;
-        if (sourceKnown != null && edge.has("sourceSignalType")
-                && !("ANY".equalsIgnoreCase(edge.optString("sourceSignalType"))
-                || sourceKnown.equalsIgnoreCase(edge.optString("sourceSignalType")))) return false;
-        if (targetKnown != null && edge.has("targetSignalType")
-                && !("ANY".equalsIgnoreCase(edge.optString("targetSignalType"))
-                || targetKnown.equalsIgnoreCase(edge.optString("targetSignalType")))) return false;
-        return true;
-    }
-
-    /** Validate pin metadata on import while leaving legacy unpinned connections intact. */
-    public static boolean canLoadFbdConnection(JSONObject json) throws Exception {
-        if (json == null) return false;
-        FbdConnection edge = connectionFromJson(json);
-        return edge.source >= 0 && edge.target >= 0 && edge.source != edge.target
-                && hasCompatibleFbdSignalTypes(edge);
-    }
-
-    /** Create an explicitly pinned connection; reject malformed metadata before graph mutation. */
-    public static FbdConnection pinnedFbdConnection(int source, String sourcePin,
-                                                     int target, String targetPin) throws Exception {
-        if (source < 0 || target < 0 || source == target) {
-            throw new IllegalArgumentException("Invalid FBD endpoints");
-        }
-        JSONObject metadata = new JSONObject();
-        metadata.put("source", source);
-        metadata.put("target", target);
-        metadata.put("sourcePin", sourcePin);
-        metadata.put("targetPin", targetPin);
-        FbdConnection edge = connectionFromJson(metadata);
-        if (!hasValidFbdPinMetadata(edge)) {
-            throw new IllegalArgumentException("Invalid FBD pin metadata");
-        }
-        return edge;
-    }
-
-    /** Check whether an edge's explicit pin metadata is well-formed; legacy edges have no pins. */
-    public static boolean hasValidFbdPinMetadata(FbdConnection edge) {
-        if (edge == null || edge.extraFields == null) return false;
-        JSONObject json = edge.extraFields;
-        if (!json.has("sourcePin") && !json.has("targetPin")) return true;
-        if (!json.has("sourcePin") || !json.has("targetPin")) return false;
-        Object sourcePin = json.opt("sourcePin");
-        Object targetPin = json.opt("targetPin");
-        return sourcePin instanceof String && targetPin instanceof String
-                && !((String) sourcePin).trim().isEmpty()
-                && !((String) targetPin).trim().isEmpty();
-    }
-
-    /** A single source may drive distinct named pins on one target, but never twice the same pin. */
-    public static boolean duplicateFbdEndpoint(FbdConnection oldEdge, FbdConnection newEdge) {
-        if (oldEdge == null || newEdge == null || oldEdge.source != newEdge.source
-                || oldEdge.target != newEdge.target) return false;
-        String oldPin = canonicalFbdPinName(oldEdge.extraFields.optString("targetPin", ""));
-        String newPin = canonicalFbdPinName(newEdge.extraFields.optString("targetPin", ""));
-        return oldPin.isEmpty() || newPin.isEmpty() || oldPin.equals(newPin);
-    }
-
-    /** Remove a selected edge by identity, even if a legacy project contains duplicates. */
-    public static boolean disconnectFbdEdge(List<FbdConnection> connections, FbdConnection selected) {
-        return connections != null && selected != null && connections.remove(selected);
-    }
-
-    /** Remove only the selected directed edge; keep other edges and their metadata intact. */
-    public static boolean disconnectFbdEdge(List<FbdConnection> connections, int source, int target) {
-        if (connections == null || source < 0 || target < 0) return false;
-        for (int i = 0; i < connections.size(); i++) {
-            FbdConnection edge = connections.get(i);
-            if (edge != null && edge.source == source && edge.target == target) {
-                connections.remove(i);
-                return true;
-            }
-        }
-        return false;
-    }
-
-    public static boolean isFbdWidget(Widget widget) {
-        return widget != null && widget.type != null && widget.type.startsWith("FBD ");
-    }
-
-    private boolean isFbd(Widget widget) {
-        return isFbdWidget(widget);
-    }
-
-    public static boolean evaluateFbdBlock(List<Widget> widgetsList, List<FbdConnection> connectionsList, int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
-        if (index < 0 || index >= widgetsList.size()) return false;
-        if (cacheValid[index]) return cacheValues[index];
-        boolean result = evaluateFbdBlockUncached(widgetsList, connectionsList, index, visiting, cacheValid, cacheValues, cacheNumeric);
-        if (isFbdBlockOutputInverted(widgetsList.get(index))
-                && (hasCompleteCraftGateInputs(widgetsList, connectionsList, index)
-                    || isCraftRegisterBoolean(widgetsList.get(index).type))) result = !result;
-        cacheValues[index] = result;
-        cacheValid[index] = true;
-        return result;
-    }
-
-    /** Craft's inherited `invertOut` is source-backed for the original Boolean gates. */
-    public static boolean supportsFbdBlockOutputInversion(String type) {
-        if (type == null) return false;
-        String canonical = canonicalFbdBlockType(type);
-        return "FBD AND".equals(canonical) || "FBD OR".equals(canonical)
-                || "FBD XOR".equals(canonical) || "FBD CRAFT VAR BOOL".equals(canonical)
-                || (isCraftNamedVariableSource(canonical) && craftNamedVariableKind(canonical) == 1);
-    }
-
-    private static boolean hasCompleteCraftGateInputs(List<Widget> widgets,
-                                                       List<FbdConnection> connections,
-                                                       int targetIndex) {
-        if (connections == null) return false;
-        java.util.Set<String> named = new java.util.HashSet<>();
-        int legacyCount = 0;
-        boolean sawNamed = false, sawLegacy = false;
-        for (FbdConnection edge : connections) {
-            if (edge == null || edge.target != targetIndex) continue;
-            if (edge.source < 0 || edge.source >= widgets.size() || edge.extraFields == null)
-                return false;
-            String sourcePin = canonicalFbdPinName(edge.extraFields.optString("sourcePin", ""));
-            String[] sourcePins = knownFbdPins(widgets.get(edge.source).type, true);
-            if (sourcePin.isEmpty()) {
-                if (sourcePins.length != 1 || !"BOOL".equals(knownFbdPinType(
-                        widgets.get(edge.source).type, sourcePins[0], true))) return false;
-            } else if (!"BOOL".equals(knownFbdPinType(
-                    widgets.get(edge.source).type, sourcePin, true))) return false;
-            String targetPin = canonicalFbdPinName(edge.extraFields.optString("targetPin", ""));
-            if (targetPin.isEmpty()) { sawLegacy = true; legacyCount++; }
-            else { sawNamed = true; named.add(targetPin); }
-        }
-        if (sawNamed && sawLegacy) return false;
-        return sawNamed ? named.size() == 2 && named.contains("IN1") && named.contains("IN2")
-                : legacyCount == 2;
-    }
-
-    public static boolean isFbdBlockOutputInverted(Widget widget) {
-        return widget != null && widget.extraFields != null
-                && supportsFbdBlockOutputInversion(widget.type)
-                && widget.extraFields.optBoolean("invertOut", false);
-    }
-
-    /** Toggle only the known Craft-compatible field, retaining every other JSON field. */
-    public static boolean toggleFbdBlockOutputInversion(Widget widget) throws Exception {
-        if (widget == null || !supportsFbdBlockOutputInversion(widget.type)) return false;
-        if (widget.extraFields == null) widget.extraFields = new JSONObject();
-        widget.extraFields.put("invertOut", !isFbdBlockOutputInverted(widget));
-        return true;
-    }
-
-    public static double evaluateFbdBlockNumeric(List<Widget> widgetsList, List<FbdConnection> connectionsList, int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
-        if (index < 0 || index >= widgetsList.size()) return 0.0;
-        evaluateFbdBlock(widgetsList, connectionsList, index, visiting, cacheValid, cacheValues, cacheNumeric);
-        return cacheNumeric[index];
-    }
-
-    /** Pinned wires are addressed by their target terminal, never by insertion order. */
-    public static boolean fbdBooleanPinValue(List<Boolean> values, List<String> pins,
-                                             String targetPin, int legacyIndex) {
-        if (values == null || pins == null) return false;
-        String requested = canonicalFbdPinName(targetPin);
-        if (requested.isEmpty()) return false;
-        for (int i = 0; i < values.size() && i < pins.size(); i++) {
-            if (requested.equals(canonicalFbdPinName(pins.get(i)))) return Boolean.TRUE.equals(values.get(i));
-        }
-        // Old projects have no pin names; keep their original positional behavior.
-        boolean hasNamedPin = false;
-        for (String pin : pins) if (!canonicalFbdPinName(pin).isEmpty()) hasNamedPin = true;
-        return !hasNamedPin && legacyIndex >= 0 && legacyIndex < values.size()
-                && Boolean.TRUE.equals(values.get(legacyIndex));
-    }
-
-    /** Imported unnamed graphs retain positional math; new named ones use terminals. */
-    public static boolean hasNamedFbdInput(List<String> pins) {
-        if (pins == null) return false;
-        for (String pin : pins) if (!canonicalFbdPinName(pin).isEmpty()) return true;
-        return false;
-    }
-
-    /** Numeric terminal lookup; unnamed legacy connections retain their positional index. */
-    public static double fbdNumericPinValue(List<Double> values, List<String> pins,
-                                            String targetPin, int legacyIndex, double defaultValue) {
-        if (values == null || pins == null) return defaultValue;
-        String requested = canonicalFbdPinName(targetPin);
-        if (requested.isEmpty()) return defaultValue;
-        for (int i = 0; i < values.size() && i < pins.size(); i++) {
-            if (requested.equals(canonicalFbdPinName(pins.get(i)))) {
-                Double value = values.get(i);
-                return value != null && !Double.isNaN(value) && !Double.isInfinite(value)
-                        ? value : defaultValue;
-            }
-        }
-        for (String pin : pins) {
-            if (!canonicalFbdPinName(pin).isEmpty()) return defaultValue;
-        }
-        if (legacyIndex < 0 || legacyIndex >= values.size()) return defaultValue;
-        Double value = values.get(legacyIndex);
-        return value != null && !Double.isNaN(value) && !Double.isInfinite(value)
-                ? value : defaultValue;
-    }
-
-    /** Counter transition functions are deterministic and independent of the Android clock. */
-    public static int fbdCountUpStep(int current, boolean count, boolean previousCount,
-                                      boolean reset) {
-        if (reset) return 0;
-        int bounded = Math.max(0, Math.min(1000000, current));
-        return count && !previousCount && bounded < 1000000 ? bounded + 1 : bounded;
-    }
-
-    public static int fbdCountDownStep(int current, boolean count, boolean previousCount,
-                                        boolean load, int preset) {
-        if (load) return Math.max(0, Math.min(1000000, preset));
-        int bounded = Math.max(0, Math.min(1000000, current));
-        return count && !previousCount && bounded > 0 ? bounded - 1 : bounded;
-    }
-
-    /** Counter preset is a nonnegative integer; preserve saved preset for invalid PV. */
-    public static int fbdCounterPreset(List<Double> values, List<String> pins, int configured) {
-        int fallback = Math.max(0, Math.min(1000000, configured));
-        double value = fbdNumericPinValue(values, pins, "PV", -1, fallback);
-        if (value < 0 || value > 1000000 || Double.isNaN(value) || Double.isInfinite(value))
-            return fallback;
-        return (int) Math.round(value);
-    }
-
-    /** PT uses milliseconds in the current BLOODSKY runtime; original Craft parity remains under audit. */
-    public static long fbdTonPresetMs(List<Double> values, List<String> pins, int configuredMs) {
-        long fallback = Math.max(1L, Math.min(3600000L, (long) configuredMs));
-        double raw = fbdNumericPinValue(values, pins, "PT", -1, fallback);
-        if (raw < 1.0 || raw > 3600000.0 || Double.isNaN(raw) || Double.isInfinite(raw))
-            return fallback;
-        return Math.round(raw);
-    }
-
-    /** Source Craft FB_TIMER takes an Integer PT and scales it by the selected unit. */
-    public static long fbdCraftTimerPresetMs(List<Double> values, List<String> pins,
-                                             int configuredMs, String unit) {
-        double raw = fbdNumericPinValue(values, pins, "PT", -1, Double.NaN);
-        if (Double.isNaN(raw)) return Math.max(1, Math.min(3600000, configuredMs));
-        Integer exact = FbdCraftIntegerSelector.exactInteger(raw);
-        if (exact == null) return Math.max(1, Math.min(3600000, configuredMs));
-        String normalized = FbdDurationUnits.normalize(unit);
-        int code = "SEK".equals(normalized) ? 2 : "MIN".equals(normalized) ? 3 : 1;
-        try {
-            return FbdCraftNativeTimer.durationMillis(exact, code);
-        } catch (IllegalArgumentException invalid) {
-            return Math.max(1, Math.min(3600000, configuredMs));
-        }
-    }
-
-    /** Source LOG consumes and returns Float, so preserve its Float32 rounding. */
-    public static double fbdCraftLogFloat32(double value) {
-        if (Double.isNaN(value) || Double.isInfinite(value)) return Double.NaN;
-        return (float) Math.log((float) value);
-    }
-
-    /** Source WordToFloat accepts a Java Integer and returns its Float value. */
-    public static double fbdCraftWordToFloat(double value) {
-        Integer exact = FbdCraftIntegerSelector.exactInteger(value);
-        return exact == null ? Double.NaN : (float) exact.intValue();
-    }
-
-    /** Original IntToFloat narrows the signed Integer to Java short first. */
-    public static double fbdCraftIntToFloat(double value) {
-        Integer exact = FbdCraftIntegerSelector.exactInteger(value);
-        return exact == null ? Double.NaN : (float) (short) exact.intValue();
-    }
-
-    /** Original FloatToInt casts a Float to int, truncating toward zero. */
-    public static double fbdCraftFloatToInt(double value) {
-        if (!Double.isFinite(value)) return Double.NaN;
-        return (int) (float) value;
-    }
-
-    public static double fbdCraftUnaryFloat32(double value, String operation) {
-        if (!Double.isFinite(value)) return Double.NaN;
-        float input = (float) value;
-        float result;
-        if ("ABS".equals(operation)) result = Math.abs(input);
-        else if ("SIN".equals(operation)) result = (float) Math.sin(input);
-        else return Double.NaN;
-        return Float.isFinite(result) ? result : Double.NaN;
-    }
-
-    public static double fbdCraftPowFloat32(double x, double y) {
-        if (!Double.isFinite(x) || !Double.isFinite(y)) return Double.NaN;
-        float result = (float) Math.pow((float) x, (float) y);
-        return Float.isFinite(result) ? result : Double.NaN;
-    }
-
-    public static boolean evaluateFbdBlockUncached(List<Widget> widgetsList, List<FbdConnection> connectionsList, int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
-        if (index < 0 || index >= widgetsList.size() || visiting[index]) return false;
-        Widget widget = widgetsList.get(index);
-        if (!isFbdWidget(widget)) return false;
-        if (isCraftMqttSubscriber(widget.type)) {
-            double value = widget.craftMqttValue == null ? Double.NaN : widget.craftMqttValue;
-            cacheNumeric[index] = value;
-            return Double.isFinite(value) && value != 0.0;
-        }
-        if (isCraftOdTempSource(widget.type)) {
-            double value = widget.craftSensorValid ? widget.craftSensorValue : Double.NaN;
-            cacheNumeric[index] = value;
-            return Double.isFinite(value) && value != 0.0;
-        }
-        if (isCraftSunriseSource(widget.type)) {
-            int value = FbdCraftSunrise.currentLocalHhmm(
-                    widget.extraFields.optDouble("latitude", Double.NaN),
-                    widget.extraFields.optDouble("longitude", Double.NaN),
-                    "SS".equals(craftSunriseMode(widget)),
-                    System.currentTimeMillis(), java.util.TimeZone.getDefault());
-            cacheNumeric[index] = value;
-            return value != 0;
-        }
-        if (isCraftFbdSensorSource(widget.type)) {
-            double value = Double.NaN;
-            if (widget.craftSensorValid) {
-                if ("FBD CRAFT SENSOR LIGHT".equals(widget.type)
-                        || "FBD CRAFT SENSOR SPEED".equals(widget.type)) value = widget.craftSensorValue;
-                else {
-                    int axis = craftOrientationAxis(widget);
-                    if (axis >= 1 && axis <= 3) value = widget.craftOrientationValues[axis - 1];
-                }
-            }
-            cacheNumeric[index] = value;
-            return Double.isFinite(value) && value != 0.0;
-        }
-        if (isCraftNamedVariableSource(widget.type)) {
-            int kind = craftNamedVariableKind(widget.type);
-            double value = FbdCraftNamedVariableStore.read(widget.craftVariableNamespace,
-                    craftNamedVariableName(widget), kind);
-            if (widget.extraFields.optBoolean("craftNamedConstantMode",
-                    widget.extraFields.optBoolean("isConstant", false))) {
-                try { value = Double.parseDouble(widget.extraFields.optString("craftNamedConstant",
-                        widget.extraFields.optString("constant", "0"))); }
-                catch (Exception ignored) { value = Double.NaN; }
-            }
-            cacheNumeric[index] = value;
-            return Double.isFinite(value) && value != 0.0;
-        }
-        if (isCraftRegisterSource(widget.type)) {
-            double value = Double.NaN;
-            if (widget.extraFields.optBoolean("craftVarConstantMode", false)) {
-                try { value = Double.parseDouble(widget.extraFields.optString("craftVarConstant", "0")); }
-                catch (Exception ignored) { value = Double.NaN; }
-            } else if (widget.craftRegisterValid) {
-                try {
-                    if (isCraftRegisterBoolean(widget.type))
-                        value = FbdCraftRegisterCodec.booleanValue(widget.craftRegisterWord0,
-                                widget.extraFields.optInt("craftVarBit", 0), false) ? 1.0 : 0.0;
-                    else if ("FBD CRAFT VAR INT".equals(canonicalFbdBlockType(widget.type)))
-                        value = FbdCraftRegisterCodec.integerValue(widget.craftRegisterWord0);
-                    else value = FbdCraftRegisterCodec.floatValue(widget.craftRegisterWord0,
-                                widget.craftRegisterWord1);
-                } catch (Exception ignored) { value = Double.NaN; }
-            }
-            cacheNumeric[index] = value;
-            return Double.isFinite(value) && value != 0.0;
-        }
-        if ("FBD Ð’Ñ…Ð¾Ð´".equals(widget.type)) {
-            cacheNumeric[index] = widget.inputValue ? 1.0 : 0.0;
-            return widget.inputValue;
-        }
-        visiting[index] = true;
-        List<Boolean> inputs = new ArrayList<>();
-        List<Double> numInputs = new ArrayList<>();
-        List<String> inputPins = new ArrayList<>();
-        if (connectionsList != null) {
-            for (FbdConnection connection : connectionsList) {
-                if (connection.target == index) {
-                    inputPins.add(connection.extraFields.optString("targetPin", ""));
-                    boolean sourceValue = evaluateFbdBlock(widgetsList, connectionsList, connection.source,
-                            visiting, cacheValid, cacheValues, cacheNumeric);
-                    String sourceType = connection.source >= 0 && connection.source < widgetsList.size()
-                            ? widgetsList.get(connection.source).type : "";
-                    inputs.add(effectiveFbdBooleanInput(connection, sourceType, widget.type, sourceValue));
-                    numInputs.add(evaluateFbdBlockNumeric(widgetsList, connectionsList, connection.source,
-                            visiting, cacheValid, cacheValues, cacheNumeric));
-                }
-            }
-        }
-        visiting[index] = false;
-        final String canonicalType = canonicalFbdBlockType(widget.type);
-
-        if (isCraftRegisterSink(widget.type)) {
-            if (inputPins.isEmpty()) cacheNumeric[index] = Double.NaN;
-            else if (isCraftRegisterBoolean(widget.type)) cacheNumeric[index] = inputs.get(0) ? 1.0 : 0.0;
-            else cacheNumeric[index] = numInputs.get(0);
-            return !Double.isNaN(cacheNumeric[index]) && cacheNumeric[index] != 0.0;
-        }
-        if (isCraftNamedVariableSink(widget.type)) {
-            if (inputPins.isEmpty()) cacheNumeric[index] = Double.NaN;
-            else cacheNumeric[index] = isCraftNamedVariableSink(widget.type) && craftNamedVariableKind(widget.type) == 1
-                    ? (inputs.get(0) ? 1.0 : 0.0) : numInputs.get(0);
-            if (Double.isFinite(cacheNumeric[index])) FbdCraftNamedVariableStore.write(
-                    widget.craftVariableNamespace, craftNamedVariableName(widget),
-                    craftNamedVariableKind(widget.type), cacheNumeric[index]);
-            return Double.isFinite(cacheNumeric[index]) && cacheNumeric[index] != 0.0;
-        }
-
-        if ("FBD Ð¡Ð»Ð¾Ð¶ÐµÐ½Ð¸Ðµ".equals(widget.type)) {
-            double sum = 0.0;
-            if (hasNamedFbdInput(inputPins)) {
-                sum = fbdNumericPinValue(numInputs, inputPins, "IN1", 0, 0.0)
-                        + fbdNumericPinValue(numInputs, inputPins, "IN2", 1, 0.0);
-            } else for (Double v : numInputs) sum += v;
-            if (Double.isNaN(sum) || Double.isInfinite(sum)) sum = 0.0;
-            cacheNumeric[index] = sum;
-            return sum != 0.0;
-        }
-        if ("FBD Ð’Ñ‹Ñ‡Ð¸Ñ‚Ð°Ð½Ð¸Ðµ".equals(widget.type)) {
-            double diff;
-            if (hasNamedFbdInput(inputPins)) {
-                diff = fbdNumericPinValue(numInputs, inputPins, "IN1", 0, 0.0)
-                        - fbdNumericPinValue(numInputs, inputPins, "IN2", 1, 0.0);
-            } else {
-                diff = numInputs.isEmpty() ? 0.0 : numInputs.get(0);
-                for (int i = 1; i < numInputs.size(); i++) diff -= numInputs.get(i);
-            }
-            if (Double.isNaN(diff) || Double.isInfinite(diff)) diff = 0.0;
-            cacheNumeric[index] = diff;
-            return diff != 0.0;
-        }
-        if ("FBD Ð£Ð¼Ð½Ð¾Ð¶ÐµÐ½Ð¸Ðµ".equals(widget.type)) {
-            double prod;
-            if (hasNamedFbdInput(inputPins)) {
-                prod = fbdNumericPinValue(numInputs, inputPins, "IN1", 0, 0.0)
-                        * fbdNumericPinValue(numInputs, inputPins, "IN2", 1, 0.0);
-            } else {
-                prod = numInputs.isEmpty() ? 0.0 : 1.0;
-                for (Double v : numInputs) prod *= v;
-            }
-            if (Double.isNaN(prod) || Double.isInfinite(prod)) prod = 0.0;
-            cacheNumeric[index] = prod;
-            return prod != 0.0;
-        }
-        if ("FBD Ð”ÐµÐ»ÐµÐ½Ð¸Ðµ".equals(widget.type)) {
-            double div;
-            if (hasNamedFbdInput(inputPins)) {
-                double numerator = fbdNumericPinValue(numInputs, inputPins, "IN1", 0, 0.0);
-                double denominator = fbdNumericPinValue(numInputs, inputPins, "IN2", 1, 0.0);
-                div = denominator != 0.0 ? numerator / denominator : 0.0;
-            } else {
-                div = numInputs.isEmpty() ? 0.0 : numInputs.get(0);
-                for (int i = 1; i < numInputs.size(); i++) {
-                    double denom = numInputs.get(i);
-                    div = denom != 0.0 ? div / denom : 0.0;
-                }
-            }
-            if (Double.isNaN(div) || Double.isInfinite(div)) div = 0.0;
-            cacheNumeric[index] = div;
-            return div != 0.0;
-        }
-        if ("FBD ABS".equals(widget.type)) {
-            double val = Math.abs(fbdNumericPinValue(numInputs, inputPins, "IN", 0, 0.0));
-            if (Double.isNaN(val) || Double.isInfinite(val)) val = 0.0;
-            cacheNumeric[index] = val;
-            return val != 0.0;
-        }
-        if ("FBD POW".equals(widget.type)) {
-            double base = fbdNumericPinValue(numInputs, inputPins, "BASE", 0, widget.compareA);
-            double exp = fbdNumericPinValue(numInputs, inputPins, "EXP", 1, 1.0);
-            double res = Math.pow(base, exp);
-            if (Double.isNaN(res) || Double.isInfinite(res)) res = 0.0;
-            cacheNumeric[index] = res;
-            return res != 0.0;
-        }
-        if ("FBD SQRT".equals(widget.type)) {
-            double val = fbdNumericPinValue(numInputs, inputPins, "IN", 0, widget.compareA);
-            double res = Math.sqrt(Math.max(0.0, val));
-            if (Double.isNaN(res) || Double.isInfinite(res)) res = 0.0;
-            cacheNumeric[index] = res;
-            return res != 0.0;
-        }
-        if ("FBD SIN".equals(widget.type)) {
-            double val = fbdNumericPinValue(numInputs, inputPins, "IN", 0, widget.compareA);
-            double res = Math.sin(val);
-            if (Double.isNaN(res) || Double.isInfinite(res)) res = 0.0;
-            cacheNumeric[index] = res;
-            return res != 0.0;
-        }
-        if ("FBD COS".equals(widget.type)) {
-            double val = fbdNumericPinValue(numInputs, inputPins, "IN", 0, widget.compareA);
-            double res = Math.cos(val);
-            if (Double.isNaN(res) || Double.isInfinite(res)) res = 0.0;
-            cacheNumeric[index] = res;
-            return res != 0.0;
-        }
-        if ("FBD TAN".equals(widget.type)) {
-            double val = fbdNumericPinValue(numInputs, inputPins, "IN", 0, widget.compareA);
-            double res = Math.tan(val);
-            if (Double.isNaN(res) || Double.isInfinite(res)) res = 0.0;
-            cacheNumeric[index] = res;
-            return res != 0.0;
-        }
-        if ("FBD FloatToInt".equals(widget.type)) {
-            double val = fbdNumericPinValue(numInputs, inputPins, "IN", 0, widget.compareA);
-            double res = (double) ((long) val);
-            cacheNumeric[index] = res;
-            return res != 0.0;
-        }
-        if ("FBD IntToFloat".equals(widget.type)) {
-            double val = fbdNumericPinValue(numInputs, inputPins, "IN", 0, widget.compareA);
-            cacheNumeric[index] = val;
-            return val != 0.0;
-        }
-        if ("FBD CRAFT LOG".equals(widget.type) || "FBD CRAFT WORD TO FLOAT".equals(widget.type)
-                || "FBD CRAFT INT TO FLOAT".equals(widget.type)
-                || "FBD CRAFT FLOAT TO INT".equals(widget.type)
-                || "FBD CRAFT SIN".equals(widget.type) || "FBD CRAFT ABS".equals(widget.type)) {
-            if (!inputPins.contains("IN")) { cacheNumeric[index] = Double.NaN; return false; }
-            double val = fbdNumericPinValue(numInputs, inputPins, "IN", -1, Double.NaN);
-            double result;
-            if ("FBD CRAFT LOG".equals(widget.type)) result = fbdCraftLogFloat32(val);
-            else if ("FBD CRAFT WORD TO FLOAT".equals(widget.type)) result = fbdCraftWordToFloat(val);
-            else if ("FBD CRAFT INT TO FLOAT".equals(widget.type)) result = fbdCraftIntToFloat(val);
-            else if ("FBD CRAFT FLOAT TO INT".equals(widget.type)) result = fbdCraftFloatToInt(val);
-            else result = fbdCraftUnaryFloat32(val,
-                    "FBD CRAFT ABS".equals(widget.type) ? "ABS" : "SIN");
-            cacheNumeric[index] = result;
-            return !Double.isNaN(result) && !Double.isInfinite(result) && result != 0.0;
-        }
-        if ("FBD CRAFT POW".equals(widget.type)) {
-            if (!inputPins.contains("X") || !inputPins.contains("Y")) {
-                cacheNumeric[index] = Double.NaN;
-                return false;
-            }
-            double result = fbdCraftPowFloat32(
-                    fbdNumericPinValue(numInputs, inputPins, "X", -1, Double.NaN),
-                    fbdNumericPinValue(numInputs, inputPins, "Y", -1, Double.NaN));
-            cacheNumeric[index] = result;
-            return !Double.isNaN(result) && !Double.isInfinite(result) && result != 0.0;
-        }
-        if ("FBD MIN_MAX".equals(widget.type)) {
-            double minV;
-            if (hasNamedFbdInput(inputPins)) {
-                minV = Math.min(fbdNumericPinValue(numInputs, inputPins, "IN1", 0, 0.0),
-                        fbdNumericPinValue(numInputs, inputPins, "IN2", 1, 0.0));
-            } else {
-                minV = numInputs.isEmpty() ? 0.0 : numInputs.get(0);
-                for (Double v : numInputs) minV = Math.min(minV, v);
-            }
-            if (Double.isNaN(minV) || Double.isInfinite(minV)) minV = 0.0;
-            cacheNumeric[index] = minV;
-            return minV != 0.0;
-        }
-        if ("FBD CRAFT CHANGE I".equals(widget.type)) {
-            boolean connected = false;
-            for (String p : inputPins) if ("I".equals(canonicalFbdPinName(p))) connected = true;
-            if (!connected) return false;
-            Integer value = FbdCraftIntegerSelector.exactInteger(
-                    fbdNumericPinValue(numInputs, inputPins, "I", -1, Double.NaN));
-            if (value == null) return false;
-            FbdCraftChangeTransitions.IntState next = FbdCraftChangeTransitions.nextInt(
-                    widget.craftChangeIntState, value);
-            widget.craftChangeIntState = next;
-            return next.changed;
-        }
-        if ("FBD CRAFT CHANGE F".equals(widget.type)) {
-            boolean connected = false;
-            for (String p : inputPins) if ("F".equals(canonicalFbdPinName(p))) connected = true;
-            if (!connected) return false;
-            double value = fbdNumericPinValue(numInputs, inputPins, "F", -1, Double.NaN);
-            if (!Double.isFinite(value) || !Float.isFinite((float)value)) return false;
-            FbdCraftChangeTransitions.FloatState next = FbdCraftChangeTransitions.nextFloat(
-                    widget.craftChangeFloatState, (float)value);
-            widget.craftChangeFloatState = next;
-            return next.changed;
-        }
-        if ("FBD CRAFT MX".equals(canonicalType)) {
-            boolean enabled = fbdBooleanPinValue(inputs, inputPins, "EN", -1);
-            Integer id = FbdCraftIntegerSelector.exactInteger(
-                    fbdNumericPinValue(numInputs, inputPins, "I", -1, Double.NaN));
-            Integer value = enabled && id != null ? FbdCraftRegisterStore.read(id) : null;
-            if (value == null) {
-                cacheNumeric[index] = Double.NaN;
-                return false;
-            }
-            cacheNumeric[index] = value;
-            return value != 0;
-        }
-        if ("FBD CRAFT ARRAY".equals(canonicalType)) {
-            boolean hasEnable = false, hasData = false, hasId = false;
-            for (String pin : inputPins) {
-                String name = canonicalFbdPinName(pin);
-                if ("EN".equals(name)) hasEnable = true;
-                if ("DT".equals(name)) hasData = true;
-                if ("ID".equals(name)) hasId = true;
-            }
-            if (hasEnable && hasData && hasId) {
-                boolean enabled = fbdBooleanPinValue(inputs, inputPins, "EN", -1);
-                if (!enabled) widget.craftArrayLastEnable = false;
-                else if (FbdCraftRegisterStore.risingEnable(widget.craftArrayLastEnable, true)) {
-                    widget.craftArrayLastEnable = true;
-                    Integer id = FbdCraftIntegerSelector.exactInteger(
-                            fbdNumericPinValue(numInputs, inputPins, "ID", -1, Double.NaN));
-                    Integer data = FbdCraftIntegerSelector.exactInteger(
-                            fbdNumericPinValue(numInputs, inputPins, "DT", -1, Double.NaN));
-                    if (id != null && data != null) FbdCraftRegisterStore.write(id, data);
-                }
-            }
-            Integer id = hasId ? FbdCraftIntegerSelector.exactInteger(
-                    fbdNumericPinValue(numInputs, inputPins, "ID", -1, Double.NaN)) : null;
-            Integer value = id == null ? null : FbdCraftRegisterStore.read(id);
-            if (value == null) {
-                cacheNumeric[index] = Double.NaN;
-                return false;
-            }
-            cacheNumeric[index] = value;
-            return value != 0;
-        }
-        if ("FBD CRAFT MOVE".equals(widget.type)) {
-            boolean hasEnable = false, hasInput = false;
-            for (String pin : inputPins) {
-                String name = canonicalFbdPinName(pin);
-                if ("EN".equals(name)) hasEnable = true;
-                if ("I".equals(name)) hasInput = true;
-            }
-            Integer output = FbdCraftMove.output(hasEnable,
-                    fbdBooleanPinValue(inputs, inputPins, "EN", -1), hasInput,
-                    fbdNumericPinValue(numInputs, inputPins, "I", -1, Double.NaN));
-            if (output == null) {
-                cacheNumeric[index] = Double.NaN;
-                return false;
-            }
-            cacheNumeric[index] = output;
-            return output != 0;
-        }
-        if ("FBD CRAFT SEL".equals(widget.type)) {
-            // The source returns an Integer only when all three inputs exist.
-            // Carry original null-like invalidity as NaN in the transient
-            // numeric cache. Downstream native compare rejects it and HMI
-            // displays CFG. A fake zero would incorrectly satisfy comparisons.
-            boolean hasIn = false, hasI1 = false, hasI2 = false;
-            for (String pin : inputPins) {
-                String name = canonicalFbdPinName(pin);
-                if ("IN".equals(name)) hasIn = true;
-                if ("I1".equals(name)) hasI1 = true;
-                if ("I2".equals(name)) hasI2 = true;
-            }
-            if (!hasIn || !hasI1 || !hasI2) {
-                cacheNumeric[index] = Double.NaN;
-                return false;
-            }
-            boolean selector = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
-            Integer i1 = FbdCraftIntegerSelector.exactInteger(
-                    fbdNumericPinValue(numInputs, inputPins, "I1", 1, Double.NaN));
-            Integer i2 = FbdCraftIntegerSelector.exactInteger(
-                    fbdNumericPinValue(numInputs, inputPins, "I2", 2, Double.NaN));
-            if (i1 == null || i2 == null) {
-                cacheNumeric[index] = Double.NaN;
-                return false;
-            }
-            int value = FbdCraftIntegerSelector.select(selector, i1, i2);
-            cacheNumeric[index] = value;
-            return value != 0;
-        }
-        if ("FBD MOVE".equals(widget.type) || "FBD SEL".equals(widget.type)) {
-            double val;
-            if (hasNamedFbdInput(inputPins)) {
-                if ("FBD SEL".equals(widget.type)) {
-                    boolean selector = fbdBooleanPinValue(inputs, inputPins, "G", -1);
-                    val = selector ? fbdNumericPinValue(numInputs, inputPins, "IN1", -1, widget.compareA)
-                            : fbdNumericPinValue(numInputs, inputPins, "IN0", -1, widget.compareA);
-                } else val = fbdNumericPinValue(numInputs, inputPins, "IN", 0, widget.compareA);
-            } else val = numInputs.isEmpty() ? widget.compareA : numInputs.get(0);
-            if (Double.isNaN(val) || Double.isInfinite(val)) val = 0.0;
-            cacheNumeric[index] = val;
-            return val != 0.0;
-        }
-
-        if ("FBD AND".equals(canonicalType)) {
-            if (inputs.isEmpty()) return false;
-            for (Boolean value : inputs) if (!value) return false;
-            return true;
-        }
-        if ("FBD OR".equals(canonicalType)) {
-            for (Boolean value : inputs) if (value) return true;
-            return false;
-        }
-        if ("FBD NAND".equals(widget.type)) {
-            if (inputs.isEmpty()) return false;
-            for (Boolean value : inputs) if (!value) return true;
-            return false;
-        }
-        if ("FBD NOR".equals(widget.type)) {
-            if (inputs.isEmpty()) return false;
-            for (Boolean value : inputs) if (value) return false;
-            return true;
-        }
-        if ("FBD XOR".equals(widget.type)) {
-            boolean result = false;
-            for (Boolean value : inputs) result ^= value;
-            return result;
-        }
-        if ("FBD RS".equals(widget.type)) {
-            boolean set = fbdBooleanPinValue(inputs, inputPins, "S", 0);
-            boolean reset = fbdBooleanPinValue(inputs, inputPins, "R", 1);
-            if (reset) widget.rsState = false;
-            else if (set) widget.rsState = true;
-            return widget.rsState;
-        }
-        if ("FBD SR".equals(widget.type)) {
-            boolean set = fbdBooleanPinValue(inputs, inputPins, "S", 0);
-            boolean reset = fbdBooleanPinValue(inputs, inputPins, "R", 1);
-            if (set) widget.rsState = true;
-            else if (reset) widget.rsState = false;
-            return widget.rsState;
-        }
-        if ("FBD CRAFT T".equals(widget.type)) {
-            String mode = widget.extraFields == null ? "T"
-                    : widget.extraFields.optString("craftTriggerMode", "T");
-            boolean input = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
-            FbdCraftNativeTransitions.Trigger prior = new FbdCraftNativeTransitions.Trigger(
-                    widget.craftToggleOutput, widget.craftToggleLastInput);
-            FbdCraftNativeTransitions.Trigger next = "R".equals(mode)
-                    ? FbdCraftNativeTransitions.rTrig(prior, input)
-                    : "F".equals(mode) ? FbdCraftNativeTransitions.fTrig(prior, input)
-                    : FbdCraftNativeTransitions.toggleRise(prior, input);
-            widget.craftToggleOutput = next.output;
-            widget.craftToggleLastInput = next.lastInput;
-            return next.output;
-        }
-        if ("FBD R_TRIG".equals(widget.type)) {
-            boolean input = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
-            boolean risingEdge = input && !widget.counterLastInput;
-            widget.counterLastInput = input;
-            return risingEdge;
-        }
-        if ("FBD F_TRIG".equals(widget.type)) {
-            boolean input = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
-            boolean fallingEdge = !input && widget.counterLastInput;
-            widget.counterLastInput = input;
-            return fallingEdge;
-        }
-        if ("FBD CRAFT CTU".equals(widget.type)) {
-            // Source-backed Craft +,-,R: independent rising edges, reset last,
-            // unsigned (char) 16-bit count and a NUMBER Q output. This is a
-            // separate versioned block; legacy BLOODSKY CTU stays unchanged.
-            boolean plus = fbdBooleanPinValue(inputs, inputPins, "+", 0);
-            boolean minus = fbdBooleanPinValue(inputs, inputPins, "-", 1);
-            boolean reset = fbdBooleanPinValue(inputs, inputPins, "R", 2);
-            FbdCraftNativeTransitions.Counter count = FbdCraftNativeTransitions.ctu(
-                    new FbdCraftNativeTransitions.Counter(widget.counterValue,
-                            widget.craftLastPlus, widget.craftLastMinus),
-                    plus, minus, reset);
-            widget.counterValue = count.value;
-            widget.craftLastPlus = count.lastPlus;
-            widget.craftLastMinus = count.lastMinus;
-            cacheNumeric[index] = count.value;
-            return count.value != 0;
-        }
-        if ("FBD CTU".equals(widget.type)) {
-            boolean countInput = fbdBooleanPinValue(inputs, inputPins, "CU", 0);
-            boolean resetInput = fbdBooleanPinValue(inputs, inputPins, "R", 1);
-            widget.counterValue = fbdCountUpStep(widget.counterValue, countInput,
-                    widget.counterLastInput, resetInput);
-            widget.counterLastInput = countInput;
-            return widget.counterValue >= fbdCounterPreset(numInputs, inputPins, widget.counterPreset);
-        }
-        if ("FBD CTD".equals(widget.type)) {
-            boolean countInput = fbdBooleanPinValue(inputs, inputPins, "CD", 0);
-            boolean loadInput = fbdBooleanPinValue(inputs, inputPins, "LD", 1);
-            widget.counterValue = fbdCountDownStep(widget.counterValue, countInput,
-                    widget.counterLastInput, loadInput,
-                    fbdCounterPreset(numInputs, inputPins, widget.counterPreset));
-            widget.counterLastInput = countInput;
-            return widget.counterValue <= 0;
-        }
-        if ("FBD ÐÐ•".equals(canonicalType))
-            return !fbdBooleanPinValue(inputs, inputPins, "IN", 0);
-        if ("FBD CRAFT ARITHMETIC INT".equals(widget.type)
-                || "FBD CRAFT ARITHMETIC FLOAT".equals(widget.type)
-                || "FBD CRAFT COMPARE FLOAT".equals(widget.type)) {
-            boolean leftConnected = false, rightConnected = false;
-            for (String pin : inputPins) {
-                String normalized = canonicalFbdPinName(pin);
-                if ("IN1".equals(normalized)) leftConnected = true;
-                if ("IN2".equals(normalized)) rightConnected = true;
-            }
-            if (!leftConnected || !rightConnected) return false;
-            double left = fbdNumericPinValue(numInputs, inputPins, "IN1", 0, Double.NaN);
-            double right = fbdNumericPinValue(numInputs, inputPins, "IN2", 1, Double.NaN);
-            int action = FbdCraftMath.actionForOperator(widget.compareOperator,
-                    "FBD CRAFT COMPARE FLOAT".equals(widget.type));
-            if ("FBD CRAFT ARITHMETIC INT".equals(widget.type)) {
-                Integer l = FbdCraftIntegerSelector.exactInteger(left);
-                Integer r = FbdCraftIntegerSelector.exactInteger(right);
-                if (l == null || r == null) return false;
-                int result = FbdCraftMath.intArithmetic(l, r, action);
-                cacheNumeric[index] = result;
-                return result != 0;
-            }
-            float l = (float) left, r = (float) right;
-            if ("FBD CRAFT ARITHMETIC FLOAT".equals(widget.type)) {
-                float result = FbdCraftMath.floatArithmetic(l, r, action);
-                cacheNumeric[index] = result;
-                return result != 0f;
-            }
-            return FbdCraftMath.compare(l, r, action);
-        }
-        if ("FBD CRAFT COMPARE".equals(widget.type)) {
-            // Source FB_COMPARE uses signed Integer operands, never float.
-            // Invalid, disconnected or fractional operands safely return false.
-            boolean i1Connected = false, i2Connected = false;
-            for (String name : inputPins) {
-                if ("IN1".equals(canonicalFbdPinName(name))) i1Connected = true;
-                if ("IN2".equals(canonicalFbdPinName(name))) i2Connected = true;
-            }
-            if (!i1Connected || !i2Connected) return false;
-            Integer left = FbdCraftIntegerSelector.exactInteger(
-                    fbdNumericPinValue(numInputs, inputPins, "IN1", 0, Double.NaN));
-            Integer right = FbdCraftIntegerSelector.exactInteger(
-                    fbdNumericPinValue(numInputs, inputPins, "IN2", 1, Double.NaN));
-            return left != null && right != null
-                    && FbdCraftIntegerCompare.compare(
-                            left, right, normalizeComparisonOperatorStatic(widget.compareOperator));
-        }
-        if ("FBD Ð¡Ñ€Ð°Ð²Ð½ÐµÐ½Ð¸Ðµ".equals(widget.type)) {
-            double a = fbdNumericPinValue(numInputs, inputPins, "A", 0, widget.compareA);
-            double b = fbdNumericPinValue(numInputs, inputPins, "B", 1, widget.compareB);
-            switch (normalizeComparisonOperatorStatic(widget.compareOperator)) {
-                case "<": return a < b;
-                case ">=": return a >= b;
-                case "<=": return a <= b;
-                case "==": return Double.compare(a, b) == 0;
-                case "!=": return Double.compare(a, b) != 0;
-                default: return a > b;
-            }
-        }
-        if ("FBD CRAFT BLINK".equals(canonicalType)) {
-            boolean input = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
-            long presetMs = fbdTonPresetMs(numInputs, inputPins, widget.timerPresetMs);
-            FbdCraftNativeTimer.State prior = widget.craftBlinkState == null
-                    ? FbdCraftNativeTimer.State.initial() : widget.craftBlinkState;
-            FbdCraftNativeTimer.State next = FbdCraftNativeTimer.step(
-                    FbdCraftNativeTimer.BLINK, prior, input,
-                    System.currentTimeMillis(), presetMs);
-            widget.craftBlinkState = next;
-            return next.output;
-        }
-        if ("FBD CRAFT TIMER".equals(canonicalType)) {
-            boolean input = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
-            long presetMs = fbdCraftTimerPresetMs(numInputs, inputPins, widget.timerPresetMs,
-                    widget.extraFields.optString("craftTimerUnit", "MS"));
-            FbdCraftNativeTimer.State prior = widget.craftTimerState == null
-                    ? FbdCraftNativeTimer.State.initial() : widget.craftTimerState;
-            String mode = widget.extraFields.optString("craftTimerMode", "TON");
-            int modeCode = "TOF".equals(mode) ? FbdCraftNativeTimer.TOF
-                    : "TP".equals(mode) ? FbdCraftNativeTimer.TP
-                    : "BLINK".equals(mode) ? FbdCraftNativeTimer.BLINK : FbdCraftNativeTimer.TON;
-            FbdCraftNativeTimer.State next = FbdCraftNativeTimer.step(modeCode, prior, input,
-                    System.currentTimeMillis(), presetMs);
-            widget.craftTimerState = next;
-            return next.output;
-        }
-        if ("FBD TON".equals(canonicalType)
-                || "FBD TOF".equals(canonicalType)
-                || "FBD TP".equals(canonicalType)) {
-            boolean input = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
-            long preset = fbdTonPresetMs(numInputs, inputPins, widget.timerPresetMs);
-            long now = SystemClock.elapsedRealtime();
-            FbdTimerTransitions.Step step;
-            if ("FBD TON".equals(canonicalType))
-                step = FbdTimerTransitions.ton(input, now, preset, widget.timerStartedAt);
-            else if ("FBD TOF".equals(canonicalType))
-                step = FbdTimerTransitions.tof(input, now, preset,
-                        widget.timerStartedAt, widget.counterLastInput);
-            else step = FbdTimerTransitions.tp(input, now, preset,
-                        widget.timerStartedAt, widget.counterLastInput);
-            widget.timerStartedAt = step.startedAt;
-            if (!"FBD TON".equals(canonicalType))
-                widget.counterLastInput = step.lastInput;
-            return step.output;
-        }
-        return false;
-    }
-
-    private void scheduleCraftRegisterWrite(Widget widget, int widgetIndex, double value) {
-        if (!operatorMode || widget == null || widget.craftRegisterWritePending
-                || !Double.isFinite(value) || widget.connectionInfo == null) return;
-        BindingRequest request = parseBinding(widgetIndex, widget.connectionInfo,
-                isCraftRegisterFloat(widget.type) ? 2 : 1);
-        if (request == null || request.functionCode != 3) return;
-        String key = widget.connectionInfo + "|" + value + "|" + widget.extraFields.optInt("craftVarBit", 0)
-                + "|" + widget.extraFields.optBoolean("craftSwapWord", false)
-                + "|" + widget.extraFields.optBoolean("craftSwapByte", false);
-        if (key.equals(widget.craftRegisterLastWriteKey)
-                || android.os.SystemClock.elapsedRealtime() < widget.craftRegisterRetryAt) return;
-        boolean bool = isCraftRegisterBoolean(widget.type), floating = isCraftRegisterFloat(widget.type);
-        int bit = widget.extraFields.optInt("craftVarBit", 0), integer = 0;
-        int[] words = null;
-        try {
-            if (bool) FbdCraftRegisterCodec.bitWriteAndMask(bit);
-            else if (floating) {
-                if (Math.abs(value) > Float.MAX_VALUE) return;
-                words = FbdCraftRegisterCodec.floatRegisters((float)value,
-                        widget.extraFields.optBoolean("craftSwapWord", false),
-                        widget.extraFields.optBoolean("craftSwapByte", false));
-            } else {
-                if (value < 0 || value > 65535 || value != Math.rint(value)) return;
-                integer = (int)value;
-            }
-        } catch (IllegalArgumentException invalid) { return; }
-        final int[] writeWords = words;
-        final int writeInt = integer, unit = request.unit, address = request.address;
-        final boolean writeBool = bool, writeFloat = floating;
-        final String writeKey = key;
-        final Widget targetWidget = widget;
-        targetWidget.craftRegisterWritePending = true;
-        try {
-            modbusExecutor.execute(() -> {
-                String error = null;
-                try {
-                    ModbusTcpClient client = new ModbusTcpClient(request.host, request.port);
-                    if (writeBool) client.writeMask(unit, address,
-                            FbdCraftRegisterCodec.bitWriteAndMask(bit),
-                            FbdCraftRegisterCodec.bitWriteOrMask(bit, value != 0.0));
-                    else if (writeFloat) client.writeMultiple(unit, address, writeWords);
-                    else client.writeSingle(unit, address, writeInt);
-                } catch (Exception failure) { error = "ERR: " + describeModbusError(failure); }
-                final String writeError = error;
-                runOnUiThread(() -> {
-                    targetWidget.craftRegisterWritePending = false;
-                    targetWidget.craftRegisterRetryAt = android.os.SystemClock.elapsedRealtime() + 2000L;
-                    if (!operatorMode || isFinishing() || isDestroyed() || widgetIndex >= widgets.size()
-                            || widgets.get(widgetIndex) != targetWidget) return;
-                    if (writeError == null) {
-                        targetWidget.craftRegisterLastWriteKey = writeKey;
-                        liveValues.put(widgetIndex, "OK");
-                    } else liveValues.put(widgetIndex, writeError);
-                    if (editor != null) editor.invalidate();
-                });
-            });
-        } catch (java.util.concurrent.RejectedExecutionException ignored) {
-            targetWidget.craftRegisterWritePending = false;
-        }
-    }
-
-    private boolean evaluateFbd(int index, boolean[] visiting) {
-        if (screens.isEmpty()) return false;
-        if (fbdCacheValid.length != widgets.size() || fbdCacheValues.length != widgets.size()) {
-            fbdCacheValid = new boolean[widgets.size()];
-            fbdCacheValues = new boolean[widgets.size()];
-            fbdCacheNumeric = new double[widgets.size()];
-        }
-        return evaluateFbdBlock(widgets, screens.get(currentScreenIndex).connections, index, visiting, fbdCacheValid, fbdCacheValues, fbdCacheNumeric);
-    }
-
-    private boolean evaluateFbdUncached(int index, boolean[] visiting) {
-        if (screens.isEmpty()) return false;
-        return evaluateFbdBlockUncached(widgets, screens.get(currentScreenIndex).connections, index, visiting, fbdCacheValid, fbdCacheValues, fbdCacheNumeric);
-    }
-
-    private double evaluateFbdNumeric(int index, boolean[] visiting) {
-        if (screens.isEmpty()) return 0.0;
-        return evaluateFbdBlockNumeric(widgets, screens.get(currentScreenIndex).connections, index, visiting, fbdCacheValid, fbdCacheValues, fbdCacheNumeric);
-    }
-
-    private boolean reachesFbd(int current, int goal, boolean[] visited, List<FbdConnection> connections) {
-        if (current == goal) return true;
-        if (current < 0 || current >= visited.length || visited[current]) return false;
-        visited[current] = true;
-        for (FbdConnection connection : connections) {
-            if (connection.source == current && reachesFbd(connection.target, goal, visited, connections)) return true;
-        }
-        return false;
-    }
-
-    /** Explicit edge selection avoids deleting unrelated FBD connections. */
-    /** Wire history is session-local and never changes persisted legacy edge metadata. */
-    private void replayFbdWireEdit(boolean redo) {
-        if (operatorMode || currentScreenIndex < 0 || currentScreenIndex >= screens.size()) return;
-        Screen current = screens.get(currentScreenIndex);
-        try {
-            boolean changed = redo
-                    ? fbdWireHistory.redo(current, current.connections)
-                    : fbdWireHistory.undo(current, current.connections);
-            if (!changed) return;
-            persistProject();
-            if (editor != null) editor.invalidate();
-            Toast.makeText(this, redo ? "Ð¡Ð²ÑÐ·ÑŒ FBD Ð¿Ð¾Ð²Ñ‚Ð¾Ñ€ÐµÐ½Ð°" : "Ð¡Ð²ÑÐ·ÑŒ FBD Ð¾Ñ‚Ð¼ÐµÐ½ÐµÐ½Ð°",
-                    Toast.LENGTH_SHORT).show();
-        } catch (Exception e) {
-            fbdWireHistory.clear();
-            Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð²Ð¾ÑÑÑ‚Ð°Ð½Ð¾Ð²Ð¸Ñ‚ÑŒ ÑÐ²ÑÐ·ÑŒ FBD", Toast.LENGTH_LONG).show();
-        }
-    }
-
-    /** Named BOOL-only wire inversion, with undo/redo and immediate persistence. */
-    private void showFbdInversionDialog() { showFbdInversionDialog(-1); }
-
-    private void showFbdInversionDialog(int sourceFilter) {
-        if (operatorMode || screens.isEmpty() || currentScreenIndex < 0
-                || currentScreenIndex >= screens.size()) return;
-        Screen screen = screens.get(currentScreenIndex);
-        final List<FbdConnection> choices = new ArrayList<>();
-        final List<String> labels = new ArrayList<>();
-        for (FbdConnection edge : screen.connections) {
-            if (edge == null || (sourceFilter >= 0 && edge.source != sourceFilter)) continue;
-            if (edge.source < 0 || edge.target < 0
-                    || edge.source >= widgets.size() || edge.target >= widgets.size()) continue;
-            Widget from = widgets.get(edge.source);
-            Widget to = widgets.get(edge.target);
-            if (!isInvertibleFbdBoolWire(edge, from.type, to.type)) continue;
-            choices.add(edge);
-            labels.add((edge.source + 1) + ":" + edge.extraFields.optString("sourcePin", "")
-                    + " â†’ " + (edge.target + 1) + ":" + edge.extraFields.optString("targetPin", "")
-                    + (isFbdBooleanWireInverted(edge, from.type, to.type) ? "  âœ“ Ð˜ÐÐ’" : "  Ð¾Ð±Ñ‹Ñ‡Ð½Ð°Ñ"));
-        }
-        if (choices.isEmpty()) {
-            Toast.makeText(this, "ÐÐµÑ‚ Ñ‚Ð¸Ð¿Ð¸Ð·Ð¸Ñ€Ð¾Ð²Ð°Ð½Ð½Ñ‹Ñ… BOOL-ÑÐ²ÑÐ·ÐµÐ¹ Ð´Ð»Ñ Ð¸Ð½Ð²ÐµÑ€ÑÐ¸Ð¸", Toast.LENGTH_LONG).show();
-            return;
-        }
-        new AlertDialog.Builder(this).setTitle("Ð˜Ð½Ð²ÐµÑ€ÑÐ¸Ñ ÑÐ²ÑÐ·Ð¸ FBD (BOOL)")
-                .setItems(labels.toArray(new String[0]), (dialog, index) -> {
-                    FbdConnection edge = choices.get(index);
-                    if (!screen.connections.contains(edge)) return;
-                    Widget from = widgets.get(edge.source), to = widgets.get(edge.target);
-                    if (!isInvertibleFbdBoolWire(edge, from.type, to.type)) return;
-                    Object previous = edge.extraFields.opt("inverted");
-                    boolean existed = edge.extraFields.has("inverted");
-                    try {
-                        fbdWireHistory.recordBefore(screen, screen.connections);
-                        if (!toggleFbdBooleanWireInversion(edge, from.type, to.type)) return;
-                        if (!persistProjectNow(true)) {
-                            if (existed) edge.extraFields.put("inverted", previous);
-                            else edge.extraFields.remove("inverted");
-                            fbdWireHistory.clear();
-                            Toast.makeText(this, "Ð˜Ð½Ð²ÐµÑ€ÑÐ¸Ñ Ð½Ðµ ÑÐ¾Ñ…Ñ€Ð°Ð½ÐµÐ½Ð°", Toast.LENGTH_LONG).show();
-                            return;
-                        }
-                        if (editor != null) editor.invalidate();
-                    } catch (Exception failure) {
-                        try {
-                            if (existed) edge.extraFields.put("inverted", previous);
-                            else edge.extraFields.remove("inverted");
-                        } catch (Exception ignored) {}
-                        fbdWireHistory.clear();
-                        Toast.makeText(this, "ÐžÑˆÐ¸Ð±ÐºÐ° Ð¸Ð·Ð¼ÐµÐ½ÐµÐ½Ð¸Ñ BOOL-ÑÐ²ÑÐ·Ð¸", Toast.LENGTH_LONG).show();
-                    }
-                }).setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null).show();
-    }
-
-    private void showFbdDisconnectDialog() { showFbdDisconnectDialog(-1); }
-
-    private void showFbdDisconnectDialog(int sourceFilter) {
-        if (screens.isEmpty() || currentScreenIndex < 0 || currentScreenIndex >= screens.size()) return;
-        Screen screen = screens.get(currentScreenIndex);
-        if (screen.connections.isEmpty()) {
-            Toast.makeText(this, "ÐÐµÑ‚ ÑÐ²ÑÐ·ÐµÐ¹ FBD Ð´Ð»Ñ ÑƒÐ´Ð°Ð»ÐµÐ½Ð¸Ñ", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        final List<FbdConnection> candidates = new ArrayList<>();
-        final List<String> labels = new ArrayList<>();
-        for (FbdConnection edge : screen.connections) {
-            if (edge == null || (sourceFilter >= 0 && edge.source != sourceFilter)
-                    || edge.source < 0 || edge.target < 0
-                    || edge.source >= widgets.size() || edge.target >= widgets.size()) continue;
-            candidates.add(edge);
-            JSONObject metadata = edge.extraFields;
-            String pinLabel = metadata != null && metadata.has("sourcePin") && metadata.has("targetPin")
-                    ? " [" + metadata.optString("sourcePin") + " â†’ " + metadata.optString("targetPin") + "]" : "";
-            labels.add((edge.source + 1) + ": " + widgets.get(edge.source).text
-                    + " â†’ " + (edge.target + 1) + ": " + widgets.get(edge.target).text + pinLabel);
-        }
-        if (candidates.isEmpty()) {
-            Toast.makeText(this, "ÐÐµÑ‚ Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð½Ñ‹Ñ… ÑÐ²ÑÐ·ÐµÐ¹ FBD", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        new AlertDialog.Builder(this).setTitle("Ð£Ð´Ð°Ð»Ð¸Ñ‚ÑŒ ÑÐ²ÑÐ·ÑŒ FBD")
-                .setItems(labels.toArray(new String[0]), (dialog, selected) -> {
-                    FbdConnection edge = candidates.get(selected);
-                    if (!screen.connections.contains(edge)) return;
-                    try {
-                        fbdWireHistory.recordBefore(screen, screen.connections);
-                    } catch (Exception invalid) {
-                        Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ ÑÐ¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ð¸ÑÑ‚Ð¾Ñ€Ð¸ÑŽ FBD", Toast.LENGTH_LONG).show();
-                        return;
-                    }
-                    if (disconnectFbdEdge(screen.connections, edge)) {
-                        persistProject();
-                        if (editor != null) editor.invalidate();
-                        Toast.makeText(this, "Ð¡Ð²ÑÐ·ÑŒ FBD ÑƒÐ´Ð°Ð»ÐµÐ½Ð°", Toast.LENGTH_SHORT).show();
-                    }
-                }).setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null).show();
-    }
-
-    /** Offer pin-specific wiring for blocks whose pin names are confirmed in this build. */
-    private void chooseFbdPins(int source, int target) {
-        final int screenAtSelection = currentScreenIndex;
-        final Widget sourceAtSelection = widgets.get(source);
-        final Widget targetAtSelection = widgets.get(target);
-        String sourceType = widgets.get(source).type;
-        String targetType = widgets.get(target).type;
-        String[] sourcePins = knownFbdPins(sourceType, true);
-        String[] targetPins = knownFbdPins(targetType, false);
-        if (sourcePins.length == 0 || targetPins.length == 0) {
-            // A known input-only or output-only block must not fall back to an untyped wire.
-            if (!canUseUnpinnedFbdFallback(sourceType, targetType)) {
-                Toast.makeText(this, "Ð”Ð»Ñ ÑÑ‚Ð¾Ð³Ð¾ FBD-Ð±Ð»Ð¾ÐºÐ° Ð½Ðµ Ð¾Ð¿Ñ€ÐµÐ´ÐµÐ»ÐµÐ½Ñ‹ ÐºÐ¾Ð½Ñ‚Ð°ÐºÑ‚Ñ‹", Toast.LENGTH_LONG).show();
-                return;
-            }
-            addFbdConnection(source, target, new FbdConnection(source, target));
-            return;
-        }
-        new AlertDialog.Builder(this).setTitle("Ð’Ñ‹Ñ…Ð¾Ð´ FBD")
-                .setItems(sourcePins, (dialog, sourceChoice) -> {
-                    String chosenSourcePin = sourcePins[sourceChoice];
-                    String[] compatiblePins = compatibleFbdTargetPins(
-                            sourceType, chosenSourcePin, targetType);
-                    if (compatiblePins.length == 0) {
-                        Toast.makeText(this, "ÐÐµÑ‚ ÑÐ¾Ð²Ð¼ÐµÑÑ‚Ð¸Ð¼Ñ‹Ñ… Ð²Ñ…Ð¾Ð´Ð¾Ð² FBD", Toast.LENGTH_LONG).show();
-                        return;
-                    }
-                    new AlertDialog.Builder(this).setTitle("Ð’Ñ…Ð¾Ð´ FBD")
-                            .setItems(compatiblePins, (targetDialog, targetChoice) -> {
-                                try {
-                                    if (screenAtSelection != currentScreenIndex || source >= widgets.size()
-                                            || target >= widgets.size()
-                                            || widgets.get(source) != sourceAtSelection
-                                            || widgets.get(target) != targetAtSelection
-                                            || !sourceType.equals(widgets.get(source).type)
-                                            || !targetType.equals(widgets.get(target).type)) {
-                                        Toast.makeText(this, "FBD-Ð±Ð»Ð¾ÐºÐ¸ Ð¸Ð·Ð¼ÐµÐ½Ð¸Ð»Ð¸ÑÑŒ: Ð²Ñ‹Ð±ÐµÑ€Ð¸ Ð¸Ñ… Ð·Ð°Ð½Ð¾Ð²Ð¾", Toast.LENGTH_LONG).show();
-                                        return;
-                                    }
-                                    String chosenTargetPin = compatiblePins[targetChoice];
-                                    FbdConnection edge = pinnedFbdConnection(source, chosenSourcePin,
-                                            target, chosenTargetPin);
-                                    String sourceSignal = knownFbdPinType(sourceType, chosenSourcePin, true);
-                                    String targetSignal = knownFbdPinType(targetType, chosenTargetPin, false);
-                                    if (sourceSignal != null && targetSignal != null) {
-                                        edge.extraFields.put("sourceSignalType", sourceSignal);
-                                        edge.extraFields.put("targetSignalType", targetSignal);
-                                    }
-                                    JSONObject json = connectionToJson(edge);
-                                    if (!hasCompatibleKnownFbdPins(json, sourceType, targetType)) {
-                                        Toast.makeText(this, "ÐÐµÑÐ¾Ð²Ð¼ÐµÑÑ‚Ð¸Ð¼Ñ‹Ðµ ÐºÐ¾Ð½Ñ‚Ð°ÐºÑ‚Ñ‹ FBD", Toast.LENGTH_SHORT).show();
-                                        return;
-                                    }
-                                    addFbdConnection(source, target, edge);
-                                } catch (Exception error) {
-                                    Toast.makeText(this, "ÐžÑˆÐ¸Ð±ÐºÐ° ÐºÐ¾Ð½Ñ‚Ð°ÐºÑ‚Ð¾Ð² FBD", Toast.LENGTH_SHORT).show();
-                                }
-                            }).setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null).show();
-                })
-                .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null).show();
-    }
-
-    /** A named terminal's physical Y position is stable across edits and drags. */
-    public static float fbdTerminalFraction(String type, String pin, boolean output) {
-        String[] pins = knownFbdPins(type, output);
-        String name = canonicalFbdPinName(pin);
-        String kind = canonicalFbdBlockType(type);
-        for (int i = 0; i < pins.length; i++) {
-            if (!canonicalFbdPinName(pins[i]).equals(name)) continue;
-            // Original FB_CTU draw9(): header 1/4, input +,-,R at
-            // 3/8, 5/8, 7/8 and numeric Q at 3/8. Legacy CTU is unaffected.
-            if ("FBD CRAFT CTU".equals(kind)
-                    || "FBD CRAFT SEL".equals(kind))
-                return output ? 3f / 8f : (2f * i + 3f) / 8f;
-            // Original FB_COMPARE draw15(): IN1=1/4, IN2=3/4,
-            // BOOL Q=1/2; unlike the generic source-white graph fallback.
-            if ("FBD CRAFT COMPARE".equals(kind))
-                return output ? 0.5f : (i == 0 ? 0.25f : 0.75f);
-            if ("FBD CRAFT COMPARE FLOAT".equals(kind)
-                    || "FBD CRAFT ARITHMETIC INT".equals(kind)
-                    || "FBD CRAFT ARITHMETIC FLOAT".equals(kind))
-                return output ? 0.5f : (i == 0 ? 0.25f : 0.75f);
-            if ("FBD CRAFT MOVE".equals(kind))
-                return output ? 0.5f : (i == 0 ? 0.5f : 5f / 6f);
-            if ("FBD CRAFT POW".equals(kind))
-                return output ? 0.5f : (i == 0 ? 0.5f : 5f / 6f);
-            if (isCraftMqttPublisher(kind))
-                return i == 0 ? 1f / 6f : 2f / 3f;
-            // Original FB_RS draw8(): header 1/3, R/S at 1/2 and 5/6,
-            // output Q at 1/2. Wire anchors and drawn contacts must match.
-            if ("FBD RS".equals(kind))
-                return output ? 0.5f : (i == 0 ? 0.5f : 5f / 6f);
-            if ("FBD CRAFT ARRAY".equals(kind))
-                return output ? 3f / 8f : (2f * i + 3f) / 8f;
-            // The original Craft AND/OR/XOR and compare drawing uses
-            // quarter-height and three-quarter-height input ports.
-            if (!output && pins.length == 2) {
-                if ("FBD AND".equals(kind) || "FBD OR".equals(kind)
-                        || "FBD Ð¡Ð ÐÐ’ÐÐ•ÐÐ˜Ð•".equals(kind))
-                    return i == 0 ? 0.25f : 0.75f;
-                // The original split-body source FB_XOR/FB_TIMER has a
-                // one-third header. Its named contacts lie at 1/2 and 5/6.
-                if ("FBD XOR".equals(kind) || "FBD TON".equals(kind)
-                        || "FBD TP".equals(kind) || "FBD TOF".equals(kind)
-                        || "FBD CRAFT BLINK".equals(kind) || "FBD CRAFT TIMER".equals(kind)
-                        || "FBD CRAFT MX".equals(kind))
-                    return i == 0 ? 0.5f : 5f / 6f;
-            }
-            return (i + 1f) / (pins.length + 1f);
-        }
-        // Legacy unpinned graph edges have no source-confirmed pin geometry.
-        return 0.5f;
-    }
-
-    public static boolean isInvertibleFbdBoolWire(FbdConnection connection,
-                                                   String sourceType, String targetType) {
-        if (connection == null || connection.extraFields == null) return false;
-        JSONObject meta = connection.extraFields;
-        return "BOOL".equals(knownFbdPinType(sourceType, meta.optString("sourcePin", ""), true))
-                && "BOOL".equals(knownFbdPinType(targetType, meta.optString("targetPin", ""), false));
-    }
-
-    public static boolean isFbdBooleanWireInverted(FbdConnection edge,
-                                                    String sourceType, String targetType) {
-        return isInvertibleFbdBoolWire(edge, sourceType, targetType)
-                && Boolean.TRUE.equals(edge.extraFields.opt("inverted"));
-    }
-
-    public static boolean effectiveFbdBooleanInput(FbdConnection connection, String sourceType,
-                                                    String targetType, boolean sourceValue) {
-        return isFbdBooleanWireInverted(connection, sourceType, targetType)
-                ? !sourceValue : sourceValue;
-    }
-
-    /** Mutate only a known Boolean edge; other imported metadata is untouched. */
-    public static boolean toggleFbdBooleanWireInversion(FbdConnection connection, String sourceType,
-                                                         String targetType) throws Exception {
-        if (!isInvertibleFbdBoolWire(connection, sourceType, targetType)) return false;
-        connection.extraFields.put("inverted",
-                !isFbdBooleanWireInverted(connection, sourceType, targetType));
-        return true;
-    }
-
-    /** Clock epochs must never leak from saved files or editing into live execution. */
-    public static void resetFbdTimerRuntime(Widget widget) {
-        if (widget == null) return;
-        String kind = canonicalFbdBlockType(widget.type);
-        if ("FBD CRAFT BLINK".equals(kind)) {
-            widget.craftBlinkState = FbdCraftNativeTimer.State.initial();
-        }
-        if ("FBD CRAFT TIMER".equals(kind)) {
-            widget.craftTimerState = FbdCraftNativeTimer.State.initial();
-        }
-        if ("FBD CRAFT ARRAY".equals(kind)) {
-            widget.craftArrayLastEnable = false;
-        }
-        if ("FBD TON".equals(kind) || "FBD TP".equals(kind) || "FBD TOF".equals(kind)) {
-            widget.timerStartedAt = 0L;
-            if ("FBD TP".equals(kind) || "FBD TOF".equals(kind))
-                widget.counterLastInput = false;
-        }
-    }
-
-    /** Only unsupported legacy block pairs may use anonymous positional connections. */
-    public static boolean canUseUnpinnedFbdFallback(String sourceType, String targetType) {
-        if (sourceType == null || targetType == null
-                || !sourceType.trim().toUpperCase(java.util.Locale.ROOT).startsWith("FBD ")
-                || !targetType.trim().toUpperCase(java.util.Locale.ROOT).startsWith("FBD ")) return false;
-        return knownFbdPins(sourceType, true).length == 0
-                && knownFbdPins(sourceType, false).length == 0
-                && knownFbdPins(targetType, true).length == 0
-                && knownFbdPins(targetType, false).length == 0;
-    }
-
-    /** Show only type-compatible target terminals after choosing a source pin. */
-    public static String[] compatibleFbdTargetPins(String sourceType, String sourcePin, String targetType) {
-        String[] targetPins = knownFbdPins(targetType, false);
-        String sourceSignal = knownFbdPinType(sourceType, sourcePin, true);
-        if (knownFbdPins(sourceType, true).length > 0 && sourceSignal == null)
-            return new String[0];
-        List<String> compatible = new ArrayList<>();
-        for (String targetPin : targetPins) {
-            String targetSignal = knownFbdPinType(targetType, targetPin, false);
-            if (sourceSignal == null || targetSignal == null || sourceSignal.equals(targetSignal))
-                compatible.add(targetPin);
-        }
-        return compatible.toArray(new String[0]);
-    }
-
-    public static String[] knownFbdPins(String blockType, boolean output) {
-        if (blockType == null) return new String[0];
-        String kind = canonicalFbdBlockType(blockType);
-        if ("FBD Ð’Ð¥ÐžÐ”".equals(kind)) return output ? new String[]{"Q"} : new String[0];
-        if (isCraftMqttSubscriber(kind)) return output ? new String[]{"Q"} : new String[0];
-        if (isCraftMqttPublisher(kind)) return output ? new String[0] : new String[]{"EN", "IN"};
-        if (isCraftRegisterSource(kind)) return output ? new String[]{"Q"} : new String[0];
-        if (isCraftRegisterSink(kind)) return output ? new String[0] : new String[]{"IN"};
-        if (isCraftNamedVariableSource(kind)) return output ? new String[]{"Q"} : new String[0];
-        if (isCraftNamedVariableSink(kind)) return output ? new String[0] : new String[]{"IN"};
-        if (isCraftSunriseSource(kind)) return output ? new String[]{"Q"} : new String[0];
-        if (isCraftOdTempSource(kind)) return output ? new String[]{"Q"} : new String[0];
-        if (isCraftFbdSensorSource(kind)) return output ? new String[]{"Q"} : new String[0];
-        if ("FBD AND".equals(kind) || "FBD OR".equals(kind) || "FBD XOR".equals(kind)
-                || "FBD NAND".equals(kind) || "FBD NOR".equals(kind))
-            return output ? new String[]{"Q"} : new String[]{"IN1", "IN2"};
-        if ("FBD ÐÐ•".equals(kind)) return output ? new String[]{"Q"} : new String[]{"IN"};
-        if ("FBD RS".equals(kind) || "FBD SR".equals(kind)) return output ? new String[]{"Q"} : new String[]{"R", "S"};
-        if ("FBD R_TRIG".equals(kind) || "FBD F_TRIG".equals(kind)
-                || "FBD CRAFT T".equals(kind))
-            return output ? new String[]{"Q"} : new String[]{"IN"};
-        if ("FBD CRAFT CTU".equals(kind))
-            return output ? new String[]{"Q"} : new String[]{"+", "-", "R"};
-        if ("FBD CTU".equals(kind)) return output ? new String[]{"Q"} : new String[]{"CU", "R", "PV"};
-        if ("FBD CTD".equals(kind)) return output ? new String[]{"Q"} : new String[]{"CD", "LD", "PV"};
-        if ("FBD Ð¡Ð›ÐžÐ–Ð•ÐÐ˜Ð•".equals(kind) || "FBD Ð’Ð«Ð§Ð˜Ð¢ÐÐÐ˜Ð•".equals(kind)
-                || "FBD Ð£ÐœÐÐžÐ–Ð•ÐÐ˜Ð•".equals(kind) || "FBD Ð”Ð•Ð›Ð•ÐÐ˜Ð•".equals(kind)
-                || "FBD MIN_MAX".equals(kind))
-            return output ? new String[]{"OUT"} : new String[]{"IN1", "IN2"};
-        if ("FBD CRAFT COMPARE".equals(kind))
-            return output ? new String[]{"Q"} : new String[]{"IN1", "IN2"};
-        if ("FBD CRAFT COMPARE FLOAT".equals(kind)
-                || "FBD CRAFT ARITHMETIC INT".equals(kind)
-                || "FBD CRAFT ARITHMETIC FLOAT".equals(kind))
-            return output ? new String[]{"Q"} : new String[]{"IN1", "IN2"};
-        if ("FBD Ð¡Ð ÐÐ’ÐÐ•ÐÐ˜Ð•".equals(kind))
-            return output ? new String[]{"Q"} : new String[]{"A", "B"};
-        if ("FBD MOVE".equals(kind))
-            return output ? new String[]{"OUT"} : new String[]{"IN"};
-        if ("FBD CRAFT CHANGE I".equals(kind))
-            return output ? new String[]{"Q"} : new String[]{"I"};
-        if ("FBD CRAFT CHANGE F".equals(kind))
-            return output ? new String[]{"Q"} : new String[]{"F"};
-        if ("FBD CRAFT MOVE".equals(kind))
-            return output ? new String[]{"Q"} : new String[]{"EN", "I"};
-        if ("FBD CRAFT MX".equals(kind))
-            return output ? new String[]{"Q"} : new String[]{"EN", "I"};
-        if ("FBD CRAFT ARRAY".equals(kind))
-            return output ? new String[]{"Q"} : new String[]{"EN", "DT", "ID"};
-        if ("FBD CRAFT SEL".equals(kind))
-            return output ? new String[]{"Q"} : new String[]{"IN", "I1", "I2"};
-        if ("FBD SEL".equals(kind))
-            return output ? new String[]{"OUT"} : new String[]{"G", "IN0", "IN1"};
-        if ("FBD POW".equals(kind)) return output ? new String[]{"OUT"} : new String[]{"BASE", "EXP"};
-        if ("FBD SIN".equals(kind) || "FBD ABS".equals(kind)
-                || "FBD COS".equals(kind) || "FBD TAN".equals(kind) || "FBD SQRT".equals(kind)
-                || "FBD FLOATTOINT".equals(kind) || "FBD INTTOFLOAT".equals(kind))
-            return output ? new String[]{"OUT"} : new String[]{"IN"};
-        if ("FBD CRAFT LOG".equals(kind) || "FBD CRAFT WORD TO FLOAT".equals(kind)
-                || "FBD CRAFT SIN".equals(kind) || "FBD CRAFT ABS".equals(kind)
-                || "FBD CRAFT INT TO FLOAT".equals(kind) || "FBD CRAFT FLOAT TO INT".equals(kind))
-            return output ? new String[]{"OUT"} : new String[]{"IN"};
-        if ("FBD CRAFT POW".equals(kind))
-            return output ? new String[]{"Q"} : new String[]{"X", "Y"};
-        if ("FBD TON".equals(kind) || "FBD TOF".equals(kind)
-                || "FBD TP".equals(kind) || "FBD CRAFT BLINK".equals(kind)
-                || "FBD CRAFT TIMER".equals(kind))
-            return output ? new String[]{"Q"} : new String[]{"IN", "PT"};
-        return new String[0];
-    }
-
-    private void addFbdConnection(int source, int target, FbdConnection edge) {
-        if (edge == null || edge.source != source || edge.target != target
-                || currentScreenIndex < 0 || currentScreenIndex >= screens.size()
-                || source < 0 || target < 0 || source >= widgets.size() || target >= widgets.size()
-                || source == target || !isFbd(widgets.get(source)) || !isFbd(widgets.get(target))) return;
-        Screen screen = screens.get(currentScreenIndex);
-        try {
-            if (!hasCompatibleKnownFbdPins(connectionToJson(edge), widgets.get(source).type,
-                    widgets.get(target).type)) {
-                Toast.makeText(this, "ÐÐµÑÐ¾Ð²Ð¼ÐµÑÑ‚Ð¸Ð¼Ñ‹Ðµ ÐºÐ¾Ð½Ñ‚Ð°ÐºÑ‚Ñ‹ FBD", Toast.LENGTH_SHORT).show();
-                return;
-            }
-        } catch (Exception invalid) {
-            Toast.makeText(this, "ÐÐµÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ð°Ñ ÑÐ²ÑÐ·ÑŒ FBD", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        if (reachesFbd(target, source, new boolean[widgets.size()], screen.connections)) {
-            Toast.makeText(this, "Ð¡Ð²ÑÐ·ÑŒ Ð¾Ñ‚Ð¼ÐµÐ½ÐµÐ½Ð°: Ð¾Ð½Ð° ÑÐ¾Ð·Ð´Ð°Ñ‘Ñ‚ Ñ†Ð¸ÐºÐ» Ð² FBD", Toast.LENGTH_LONG).show();
-            return;
-        }
-        for (FbdConnection existing : screen.connections) {
-            String newTargetPin = canonicalFbdPinName(edge.extraFields.optString("targetPin", ""));
-            if (!newTargetPin.isEmpty() && existing.target == target
-                    && newTargetPin.equals(canonicalFbdPinName(existing.extraFields.optString("targetPin", "")))) {
-                Toast.makeText(this, "Ð’Ñ…Ð¾Ð´ FBD ÑƒÐ¶Ðµ Ð·Ð°Ð½ÑÑ‚ Ð´Ñ€ÑƒÐ³Ð¸Ð¼ Ð¿Ñ€Ð¾Ð²Ð¾Ð´Ð¾Ð¼", Toast.LENGTH_SHORT).show();
-                return;
-            }
-            if (duplicateFbdEndpoint(existing, edge)) {
-                Toast.makeText(this, "Ð¢Ð°ÐºÐ°Ñ ÑÐ²ÑÐ·ÑŒ ÑƒÐ¶Ðµ ÑÑƒÑ‰ÐµÑÑ‚Ð²ÑƒÐµÑ‚", Toast.LENGTH_SHORT).show();
-                return;
-            }
-        }
-        try {
-            fbdWireHistory.recordBefore(screen, screen.connections);
-        } catch (Exception invalid) {
-            Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ ÑÐ¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ð¸ÑÑ‚Ð¾Ñ€Ð¸ÑŽ FBD", Toast.LENGTH_LONG).show();
-            return;
-        }
-        screen.connections.add(edge);
-        persistProject();
-        if (editor != null) editor.invalidate();
-        Toast.makeText(this, "Ð¡Ð²ÑÐ·ÑŒ FBD Ð´Ð¾Ð±Ð°Ð²Ð»ÐµÐ½Ð°", Toast.LENGTH_SHORT).show();
-    }
-
-    private void connectFbdWidgets(int source, int target) {
-        if (source < 0 || target < 0 || source >= widgets.size() || target >= widgets.size() || source == target) {
-            Toast.makeText(this, "Ð’Ñ‹Ð±ÐµÑ€Ð¸ Ð´Ð²Ð° Ñ€Ð°Ð·Ð½Ñ‹Ñ… FBD-Ð±Ð»Ð¾ÐºÐ°", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        if (!isFbd(widgets.get(source)) || !isFbd(widgets.get(target))) {
-            Toast.makeText(this, "Ð¡Ð²ÑÐ·Ð¸ Ð¼Ð¾Ð¶Ð½Ð¾ ÑÐ¾Ð·Ð´Ð°Ð²Ð°Ñ‚ÑŒ Ñ‚Ð¾Ð»ÑŒÐºÐ¾ Ð¼ÐµÐ¶Ð´Ñƒ FBD-Ð±Ð»Ð¾ÐºÐ°Ð¼Ð¸", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        Screen screen = screens.get(currentScreenIndex);
-        if (reachesFbd(target, source, new boolean[widgets.size()], screen.connections)) {
-            Toast.makeText(this, "Ð¡Ð²ÑÐ·ÑŒ Ð¾Ñ‚Ð¼ÐµÐ½ÐµÐ½Ð°: Ð¾Ð½Ð° ÑÐ¾Ð·Ð´Ð°Ñ‘Ñ‚ Ñ†Ð¸ÐºÐ» Ð² FBD", Toast.LENGTH_LONG).show();
-            return;
-        }
-        chooseFbdPins(source, target);
-    }
-
-    public static class Widget {
-        public String type;
-        public String text;
-        public String connectionInfo = "";
-        public boolean inputValue = false;
-        public boolean buttonState = false;
-        public boolean rsState = false;
-        public int counterPreset = 1;
-        public int counterValue = 0;
-        public boolean counterLastInput = false;
-        // Native Craft edge flags are transient operator runtime only;
-        // their absence from JSON protects old project schemas on save/copy.
-        boolean craftLastPlus = false;
-        boolean craftLastMinus = false;
-        // Original FB_TRIGGER mode T resets to Q=false on a fresh instance.
-        // Do not serialize runtime latches into legacy project metadata.
-        boolean craftToggleOutput = false;
-        boolean craftToggleLastInput = false;
-        // Change detection runtime is transient; source starts at 0/0.0f.
-        // Saved old project state and vendor metadata remain untouched.
-        FbdCraftChangeTransitions.IntState craftChangeIntState = FbdCraftChangeTransitions.IntState.initial();
-        FbdCraftChangeTransitions.FloatState craftChangeFloatState = FbdCraftChangeTransitions.FloatState.initial();
-        // Blink runtime epoch is not saved; a newly opened project starts idle.
-        FbdCraftNativeTimer.State craftBlinkState = FbdCraftNativeTimer.State.initial();
-        FbdCraftNativeTimer.State craftTimerState = FbdCraftNativeTimer.State.initial();
-        boolean craftArrayLastEnable = false;
-        transient double craftSensorValue = Double.NaN;
-        transient Double craftMqttValue;
-        transient boolean craftMqttLastEnable;
-        transient double[] craftOrientationValues = new double[]{Double.NaN, Double.NaN, Double.NaN};
-        transient boolean craftSensorValid;
-        transient boolean craftOdTempPending;
-        transient long craftOdTempNextPollAt;
-        transient int craftRegisterWord0, craftRegisterWord1;
-        transient boolean craftRegisterValid;
-        transient boolean craftRegisterWritePending;
-        transient String craftRegisterLastWriteKey = "";
-        transient long craftRegisterRetryAt;
-        public int timerPresetMs = 1000;
-        public long timerStartedAt = 0L;
-        public double compareA = 0.0, compareB = 0.0;
-        public String compareOperator = ">";
-        public double minValue = 0.0, maxValue = 100.0;
-        public int backgroundColor = 0;
-        public int textColor = Color.rgb(31, 41, 55);
-        public int textSizeSp = 14;
-        public boolean visible = true;
-        public boolean showFrame = true;
-        public boolean autoResizeText = false;
-        public String[] dynTextStates = new String[16];
-        public int[] dynTextColors = new int[16];
-        public String[] bitListLabels = new String[16];
-        public String[] voiceMessages = new String[16];
-        public String[] imagePathStates = new String[16];
-        public double soundThreshold = 1.0;
-        public boolean soundActive = false;
-        public String soundFilePath = "ÐÐ»Ð°Ñ€Ð¼";
-        public int targetScreenIndex = 0;
-        public String targetUrl = "";
-        public int lastVoiceState = -1;
-        public boolean lastSoundState = false;
-        public JSONObject extraFields = new JSONObject();
-        // Runtime-only scope for nodes inside an FB_MACRO instance.
-        public String craftVariableNamespace = "";
-        public float x, y, w, h;
-
-        public Widget() {
-            for (int i = 0; i < 16; i++) {
-                dynTextStates[i] = "Ð¡Ð¾ÑÑ‚Ð¾ÑÐ½Ð¸Ðµ " + i;
-                dynTextColors[i] = 0;
-                bitListLabels[i] = "Ð‘Ð¸Ñ‚ " + i;
-                voiceMessages[i] = "Ð¡Ð¾Ð¾Ð±Ñ‰ÐµÐ½Ð¸Ðµ " + i;
-                imagePathStates[i] = "ÐšÐ°Ñ€Ñ‚Ð¸Ð½ÐºÐ° " + i;
-            }
-        }
-    }
-
-    private void publishCraftMqttEdges() {
-        FbdCraftMqttRuntime runtime = craftMqttRuntime;
-        if (runtime == null || !operatorMode || screens.isEmpty()
-                || currentScreenIndex < 0 || currentScreenIndex >= screens.size()) return;
-        for (int target = 0; target < widgets.size(); target++) {
-            Widget publisher = widgets.get(target);
-            if (!isCraftMqttPublisher(publisher.type)) continue;
-            List<Boolean> booleanValues = new ArrayList<>();
-            List<Double> numericValues = new ArrayList<>();
-            List<String> pins = new ArrayList<>();
-            for (FbdConnection edge : screens.get(currentScreenIndex).connections) {
-                if (edge.target != target || edge.source < 0 || edge.source >= widgets.size()) continue;
-                pins.add(edge.extraFields.optString("targetPin", ""));
-                booleanValues.add(evaluateFbd(edge.source, new boolean[widgets.size()]));
-                numericValues.add(evaluateFbdNumeric(edge.source, new boolean[widgets.size()]));
-            }
-            boolean enabled = fbdBooleanPinValue(booleanValues, pins, "EN", 0);
-            if (!enabled) { publisher.craftMqttLastEnable = false; continue; }
-            if (publisher.craftMqttLastEnable) continue;
-            publisher.craftMqttLastEnable = true;
-            int type = mqttType(publisher);
-            String payload;
-            if (type == 1) {
-                payload = Boolean.toString(fbdBooleanPinValue(booleanValues, pins, "IN", 1));
-            } else {
-                double value = fbdNumericPinValue(numericValues, pins, "IN", 1, Double.NaN);
-                if (!Double.isFinite(value)) { liveValues.put(target, "MQTT CFG"); continue; }
-                if (type == 2) {
-                    Integer exact = FbdCraftIntegerSelector.exactInteger(value);
-                    if (exact == null) { liveValues.put(target, "MQTT CFG"); continue; }
-                    payload = Integer.toString(exact);
-                } else {
-                    float narrowed = (float) value;
-                    if (!Float.isFinite(narrowed)) { liveValues.put(target, "MQTT CFG"); continue; }
-                    payload = Float.toString(narrowed);
-                }
-            }
-            String topic = publisher.extraFields.optString("craftMqttTopic", "").trim();
-            boolean sent = runtime.publish(mqttServer(publisher), topic, payload,
-                    publisher.extraFields.optBoolean("craftMqttRetain", false));
-            liveValues.put(target, sent ? "MQTT â†’ " + topic : "MQTT offline");
-        }
-    }
-
-    private class EditorCanvas extends View {
-        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        int selected = -1;
-        float downX, downY, startX, startY, startW, startH;
-        long downAt;
-        boolean dragging;
-        boolean resizing;
-
-        EditorCanvas() {
-            super(MainActivity.this);
-            setBackgroundColor(Color.WHITE);
-            setLayerType(View.LAYER_TYPE_SOFTWARE, null);
-        }
-
-        @Override protected void onDraw(Canvas canvas) {
-            super.onDraw(canvas);
-            canvas.drawColor(screens.isEmpty() ? Color.rgb(250, 252, 255) : screens.get(currentScreenIndex).backgroundColor);
-            paint.setColor(Color.rgb(228, 234, 241));
-            paint.setStrokeWidth(1);
-            int grid = dp(20);
-            if (!operatorMode) {
-                for (int x = 0; x < getWidth(); x += grid) canvas.drawLine(x, 0, x, getHeight(), paint);
-                for (int y = 0; y < getHeight(); y += grid) canvas.drawLine(0, y, getWidth(), y, paint);
-            }
-
-            if (!operatorMode && !screens.isEmpty()) {
-                Screen screen = screens.get(currentScreenIndex);
-                paint.setColor(Color.rgb(124, 58, 237));
-                paint.setStrokeWidth(dp(2));
-                paint.setStyle(Paint.Style.STROKE);
-                for (FbdConnection connection : screen.connections) {
-                    if (connection.source < 0 || connection.target < 0 || connection.source >= widgets.size() || connection.target >= widgets.size()) continue;
-                    Widget from = widgets.get(connection.source);
-                    Widget to = widgets.get(connection.target);
-                    if (!from.visible || !to.visible || !isFbd(from) || !isFbd(to)) continue;
-                    float x1 = from.x + from.w;
-                    float y1 = from.y + from.h * fbdTerminalFraction(from.type,
-                            connection.extraFields.optString("sourcePin", ""), true);
-                    float x2 = to.x;
-                    float y2 = to.y + to.h * fbdTerminalFraction(to.type,
-                            connection.extraFields.optString("targetPin", ""), false);
-                    paint.setColor(isFbdBooleanWireInverted(connection, from.type, to.type)
-                            ? Color.rgb(234, 88, 12) : Color.rgb(124, 58, 237));
-                    float mid = (x1 + x2) / 2f;
-                    canvas.drawLine(x1, y1, mid, y1, paint);
-                    canvas.drawLine(mid, y1, mid, y2, paint);
-                    canvas.drawLine(mid, y2, x2, y2, paint);
-                }
-                paint.setStyle(Paint.Style.FILL);
-            }
-            fbdCacheValid = new boolean[widgets.size()];
-            fbdCacheValues = new boolean[widgets.size()];
-            fbdCacheNumeric = new double[widgets.size()];
-            if (operatorMode) {
-                for (int i = 0; i < widgets.size(); i++)
-                    if (isFbd(widgets.get(i))) evaluateFbd(i, new boolean[widgets.size()]);
-                for (int i = 0; i < widgets.size(); i++) {
-                    Widget sink = widgets.get(i);
-                    if (isCraftRegisterSink(sink.type)) scheduleCraftRegisterWrite(sink, i, fbdCacheNumeric[i]);
-                }
-                publishCraftMqttEdges();
-            }
-            // fbd:// widget bindings remain read-only; explicit VarOut blocks write only in operator mode.
-            for (int i = 0; i < widgets.size(); i++) {
-                Widget target = widgets.get(i);
-                if (isFbd(target) || target.connectionInfo == null
-                        || !target.connectionInfo.startsWith("fbd://")) continue;
-                if (operatorMode) {
-                    String value = FbdResultBinding.resolve(target.connectionInfo, widgets,
-                            fbdCacheValid, fbdCacheValues, fbdCacheNumeric);
-                    liveValues.put(i, value == null ? "CFG" : value);
-                } else liveValues.remove(i);
-            }
-            for (int i = 0; i < widgets.size(); i++) {
-                Widget w = widgets.get(i);
-                if (!w.visible || (operatorMode && isFbd(w))) continue;
-                RectF rect = new RectF(w.x, w.y, w.x + w.w, w.y + w.h);
-                paint.setStyle(Paint.Style.FILL);
-                if (w.backgroundColor != 0) {
-                    paint.setColor(w.backgroundColor);
-                } else if (w.type != null && w.type.startsWith("FBD ")) {
-                    paint.setColor(Color.rgb(237, 233, 254));
-                } else if ("Ð˜Ð½Ð´Ð¸ÐºÐ°Ñ‚Ð¾Ñ€".equals(w.type) || "Ð”Ð²ÑƒÑ…Ð¿Ð¾Ð·Ð¸Ñ†Ð¸Ð¾Ð½Ð½Ñ‹Ð¹ Ð¸Ð½Ð´Ð¸ÐºÐ°Ñ‚Ð¾Ñ€".equals(w.type)) {
-                    paint.setColor(Color.rgb(220, 252, 231));
-                } else if ("ÐšÐ½Ð¾Ð¿ÐºÐ°".equals(w.type)) {
-                    paint.setColor(w.buttonState ? Color.rgb(187, 247, 208) : Color.rgb(219, 234, 254));
-                } else if ("Ð—Ð°Ð´Ð°Ñ‚Ñ‡Ð¸Ðº".equals(w.type)) {
-                    paint.setColor(Color.rgb(254, 243, 199));
-                } else if ("Ð¨ÐºÐ°Ð»Ð° / Ð¡Ñ‚Ñ€ÐµÐ»ÐºÐ°".equals(w.type) || "ÐŸÑ€Ð¾Ð³Ñ€ÐµÑÑ-Ð±Ð°Ñ€".equals(w.type) || "Ð‘Ð¸Ñ‚Ð¾Ð²Ñ‹Ð¹ ÑÐ¿Ð¸ÑÐ¾Ðº".equals(w.type)) {
-                    paint.setColor(Color.rgb(241, 245, 249));
-                } else if ("Ð“Ñ€Ð°Ñ„Ð¸Ðº / Ð¢Ñ€ÐµÐ½Ð´".equals(w.type)) {
-                    paint.setColor(Color.rgb(15, 23, 42));
-                } else {
-                    paint.setColor(Color.WHITE);
-                }
-                // A source-backed FBD body already paints its own square
-                // outline; never leave the former purple rounded rectangle halo.
-                boolean sourceFbdSkin = FbdSourceCanvasSkin.shouldUse(w);
-                if (!OriginalIndicator.supports(w.type) && !sourceFbdSkin)
-                    canvas.drawRoundRect(rect, dp(6), dp(6), paint);
-                if ((!OriginalIndicator.supports(w.type) && w.showFrame
-                        && !sourceFbdSkin) || i == selected) {
-                    paint.setStyle(Paint.Style.STROKE);
-                    paint.setStrokeWidth(dp(i == selected ? 2.5f : 1));
-                    paint.setColor(i == selected ? Color.rgb(21, 101, 192) : Color.rgb(148, 163, 184));
-                    canvas.drawRoundRect(rect, dp(6), dp(6), paint);
-                }
-                if (i == selected) {
-                    paint.setStyle(Paint.Style.FILL);
-                    paint.setColor(Color.rgb(21, 101, 192));
-                    float grip = dp(9);
-                    canvas.drawRect(w.x + w.w - grip, w.y + w.h - grip, w.x + w.w, w.y + w.h, paint);
-                }
-                paint.setStyle(Paint.Style.FILL);
-                paint.setColor(w.textColor);
-                paint.setTextSize(dp(w.textSizeSp));
-                if (w.type != null && w.type.startsWith("FBD ")) {
-                    if (FbdSourceCanvasSkin.shouldUse(w)) {
-                        FbdSourceCanvasSkin.draw(canvas, paint, w, getResources().getDisplayMetrics().density);
-                        if (i == selected) {
-                            paint.setStyle(Paint.Style.STROKE);
-                            paint.setStrokeWidth(dp(2.5f));
-                            paint.setColor(Color.rgb(21, 101, 192));
-                            canvas.drawRect(rect, paint);
-                            paint.setStyle(Paint.Style.FILL);
-                            float grip = dp(9);
-                            canvas.drawRect(w.x + w.w - grip, w.y + w.h - grip,
-                                    w.x + w.w, w.y + w.h, paint);
-                        }
-                    } else {
-                    paint.setColor(w.textColor);
-                    paint.setTextSize(dp(w.textSizeSp));
-                    if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(24)) / Math.max(4f, w.text.length() * 0.58f))));
-                    String blockTitle = "FBD Ð’Ñ…Ð¾Ð´".equals(w.type) ? "Ð’Ñ…Ð¾Ð´ " + (w.inputValue ? "1" : "0")
-                            : ("FBD CRAFT CTU".equals(w.type) ? "CTU16 " + w.counterValue
-                            : (("FBD CTU".equals(w.type) || "FBD CTD".equals(w.type)) ? ("FBD CTD".equals(w.type) ? "CTD " : "CTU ") + w.counterValue + "/" + w.counterPreset : w.text));
-                    if (liveValues.containsKey(i) && !"FBD Ð’Ñ…Ð¾Ð´".equals(w.type)) blockTitle += " [" + liveValues.get(i) + "]";
-                    canvas.drawText(blockTitle, w.x + dp(12), w.y + dp(23), paint);
-                    // Never evaluate stateful FBD logic from the editor's paint pass:
-                    // drawing alone must not count edges or advance TON/TOF/TP.
-                    paint.setTextSize(dp(11));
-                    paint.setColor(Color.rgb(100, 116, 139));
-                    canvas.drawText("OUT = â€”", w.x + dp(12), w.y + w.h - dp(8), paint);
-                    paint.setTextSize(dp(10));
-                    paint.setColor(Color.rgb(109, 40, 217));
-                    String[] blockInputs = knownFbdPins(w.type, false);
-                    if (blockInputs.length == 0) blockInputs = new String[]{"", ""};
-                    for (int pinIndex = 0; pinIndex < blockInputs.length; pinIndex++) {
-                        float py = w.y + w.h * (blockInputs[pinIndex].isEmpty()
-                                ? (pinIndex + 1f) / (blockInputs.length + 1f)
-                                : fbdTerminalFraction(w.type, blockInputs[pinIndex], false));
-                        canvas.drawLine(w.x, py, w.x + dp(14), py, paint);
-                        canvas.drawCircle(w.x + dp(4), py, dp(4), paint);
-                        if (!blockInputs[pinIndex].isEmpty())
-                            canvas.drawText(blockInputs[pinIndex], w.x + dp(17), py - dp(3), paint);
-                    }
-                    String[] blockOutputs = knownFbdPins(w.type, true);
-                    if (blockOutputs.length == 0) blockOutputs = new String[]{""};
-                    for (int pinIndex = 0; pinIndex < blockOutputs.length; pinIndex++) {
-                        float py = w.y + w.h * (blockOutputs[pinIndex].isEmpty()
-                                ? (pinIndex + 1f) / (blockOutputs.length + 1f)
-                                : fbdTerminalFraction(w.type, blockOutputs[pinIndex], true));
-                        canvas.drawLine(w.x + w.w - dp(14), py, w.x + w.w, py, paint);
-                        canvas.drawCircle(w.x + w.w - dp(4), py, dp(4), paint);
-                    }
-                    paint.setStyle(Paint.Style.FILL);
-                    }
-                } else if ("Ð”Ð¸Ð½Ð°Ð¼Ð¸Ñ‡ÐµÑÐºÐ¸Ð¹ Ñ‚ÐµÐºÑÑ‚".equals(w.type)) {
-                    int stateIdx = 0;
-                    if (liveValues.containsKey(i)) {
-                        try { stateIdx = (int) Math.round(Double.parseDouble(liveValues.get(i))); } catch (Exception ignored) {}
-                    }
-                    if (stateIdx < 0 || stateIdx >= 16) stateIdx = 0;
-                    String stateText = w.dynTextStates[stateIdx];
-                    if (stateText == null || stateText.isEmpty()) stateText = w.text + " [" + stateIdx + "]";
-                    int bgColor = w.dynTextColors[stateIdx];
-                    if (bgColor != 0) {
-                        paint.setColor(bgColor);
-                        canvas.drawRoundRect(rect, dp(6), dp(6), paint);
-                    }
-                    paint.setColor(w.textColor);
-                    if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(20)) / Math.max(4f, stateText.length() * 0.58f))));
-                    canvas.drawText(stateText, w.x + dp(10), w.y + w.h / 2 + dp(5), paint);
-                } else if ("Ð‘Ð¸Ñ‚Ð¾Ð²Ñ‹Ð¹ ÑÐ¿Ð¸ÑÐ¾Ðº".equals(w.type)) {
-                    int bitmask = 0;
-                    if (liveValues.containsKey(i)) {
-                        try { bitmask = Integer.parseInt(liveValues.get(i)); } catch (Exception ignored) {}
-                    }
-                    paint.setColor(w.textColor);
-                    paint.setTextSize(dp(11));
-                    float lineY = w.y + dp(16);
-                    canvas.drawText(w.text + ": 0x" + String.format(java.util.Locale.ROOT, "%04X", bitmask), w.x + dp(8), lineY, paint);
-                    lineY += dp(14);
-                    for (int b = 0; b < 3 && lineY < w.y + w.h - dp(4); b++) {
-                        boolean bitOn = (bitmask & (1 << b)) != 0;
-                        paint.setColor(bitOn ? Color.rgb(22, 163, 74) : Color.rgb(148, 163, 184));
-                        canvas.drawCircle(w.x + dp(12), lineY - dp(4), dp(4), paint);
-                        paint.setColor(w.textColor);
-                        canvas.drawText(w.bitListLabels[b] + ": " + (bitOn ? "1" : "0"), w.x + dp(22), lineY, paint);
-                        lineY += dp(14);
-                    }
-                } else if ("ÐŸÑ€Ð¾Ð³Ñ€ÐµÑÑ-Ð±Ð°Ñ€".equals(w.type)) {
-                    double val = 0.0;
-                    if (liveValues.containsKey(i)) {
-                        try { val = Double.parseDouble(liveValues.get(i)); } catch (Exception ignored) {}
-                    }
-                    double ratio = Math.max(0.0, Math.min(1.0, (val - w.minValue) / Math.max(0.001, w.maxValue - w.minValue)));
-                    paint.setColor(Color.rgb(203, 213, 225));
-                    canvas.drawRoundRect(w.x + dp(8), w.y + dp(24), w.x + w.w - dp(8), w.y + w.h - dp(8), dp(4), dp(4), paint);
-                    paint.setColor(Color.rgb(37, 99, 235));
-                    canvas.drawRoundRect(w.x + dp(8), w.y + dp(24), w.x + dp(8) + (float) ((w.w - dp(16)) * ratio), w.y + w.h - dp(8), dp(4), dp(4), paint);
-                    paint.setColor(w.textColor);
-                    paint.setTextSize(dp(12));
-                    canvas.drawText(w.text + ": " + String.format(java.util.Locale.ROOT, "%.1f", val), w.x + dp(10), w.y + dp(18), paint);
-                } else if ("Ð¨ÐºÐ°Ð»Ð° / Ð¡Ñ‚Ñ€ÐµÐ»ÐºÐ°".equals(w.type)) {
-                    double val = 0.0;
-                    if (liveValues.containsKey(i)) {
-                        try { val = Double.parseDouble(liveValues.get(i)); } catch (Exception ignored) {}
-                    }
-                    double ratio = Math.max(0.0, Math.min(1.0, (val - w.minValue) / Math.max(0.001, w.maxValue - w.minValue)));
-                    float cx = w.x + w.w / 2f, cy = w.y + w.h - dp(15);
-                    float radius = Math.min(w.w, w.h * 1.6f) * 0.42f;
-                    paint.setStyle(Paint.Style.STROKE);
-                    paint.setStrokeWidth(dp(3));
-                    paint.setColor(Color.rgb(100, 116, 139));
-                    canvas.drawArc(cx - radius, cy - radius, cx + radius, cy + radius, 180, 180, false, paint);
-                    float angleRad = (float) Math.toRadians(180 + ratio * 180);
-                    float nx = cx + (float) Math.cos(angleRad) * (radius - dp(6));
-                    float ny = cy + (float) Math.sin(angleRad) * (radius - dp(6));
-                    paint.setStrokeWidth(dp(2));
-                    paint.setColor(Color.rgb(220, 38, 38));
-                    canvas.drawLine(cx, cy, nx, ny, paint);
-                    paint.setStyle(Paint.Style.FILL);
-                    canvas.drawCircle(cx, cy, dp(4), paint);
-                    paint.setColor(w.textColor);
-                    paint.setTextSize(dp(11));
-                    canvas.drawText(w.text + " " + String.format(java.util.Locale.ROOT, "%.1f", val), w.x + dp(8), w.y + dp(16), paint);
-                } else if ("Ð“Ñ€Ð°Ñ„Ð¸Ðº / Ð¢Ñ€ÐµÐ½Ð´".equals(w.type)) {
-                    paint.setColor(Color.rgb(51, 65, 85));
-                    paint.setStyle(Paint.Style.STROKE);
-                    paint.setStrokeWidth(dp(1));
-                    canvas.drawRect(w.x + dp(8), w.y + dp(20), w.x + w.w - dp(8), w.y + w.h - dp(8), paint);
-                    paint.setColor(Color.rgb(34, 197, 94));
-                    canvas.drawLine(w.x + dp(10), w.y + w.h - dp(12), w.x + w.w / 2f, w.y + dp(28), paint);
-                    canvas.drawLine(w.x + w.w / 2f, w.y + dp(28), w.x + w.w - dp(10), w.y + w.h - dp(22), paint);
-                    paint.setStyle(Paint.Style.FILL);
-                    paint.setColor(Color.rgb(248, 250, 252));
-                    paint.setTextSize(dp(10));
-                    canvas.drawText(w.text, w.x + dp(10), w.y + dp(15), paint);
-                } else if ("Ð˜Ð½Ð´Ð¸ÐºÐ°Ñ‚Ð¾Ñ€".equals(w.type) || "Ð”Ð²ÑƒÑ…Ð¿Ð¾Ð·Ð¸Ñ†Ð¸Ð¾Ð½Ð½Ñ‹Ð¹ Ð¸Ð½Ð´Ð¸ÐºÐ°Ñ‚Ð¾Ñ€".equals(w.type)) {
-                    String indicatorValue = liveValues.get(i);
-                    Bitmap lamp = originalIndicatorBitmap(w, isActiveModbusValue(indicatorValue));
-                    paint.setAlpha(255);
-                    // Original ImageView uses FIT_XY and ten raw pixels of padding.
-                    if (lamp != null && rect.width() > 20 && rect.height() > 20) {
-                        canvas.drawBitmap(lamp, null, new RectF(rect.left + 10, rect.top + 10,
-                                rect.right - 10, rect.bottom - 10), paint);
-                    }
-                    boolean failed = lamp == null || (indicatorValue != null
-                            && (indicatorValue.startsWith("ERR") || indicatorValue.startsWith("CFG")));
-                    if (failed) {
-                        Bitmap warning = originalBitmap(R.drawable.kc_warning_32);
-                        if (warning != null) canvas.drawBitmap(warning, rect.right - warning.getWidth(),
-                                rect.bottom - warning.getHeight(), paint);
-                    }
-                } else if ("ÐšÐ½Ð¾Ð¿ÐºÐ°".equals(w.type)) {
-                    String buttonText = w.text + (w.buttonState ? "  [Ð’ÐšÐ›]" : "  [Ð’Ð«ÐšÐ›]");
-                    paint.setColor(w.textColor);
-                    if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(20)) / Math.max(4f, buttonText.length() * 0.58f))));
-                    canvas.drawText(buttonText, w.x + dp(10), w.y + w.h / 2 + dp(5), paint);
-                } else if ("Ð—Ð°Ð´Ð°Ñ‚Ñ‡Ð¸Ðº".equals(w.type)) {
-                    paint.setColor(w.textColor);
-                    if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(18)) / Math.max(4f, w.text.length() * 0.58f))));
-                    canvas.drawText(w.text, w.x + dp(9), w.y + dp(21), paint);
-                    paint.setColor(Color.rgb(255, 255, 255));
-                    canvas.drawRoundRect(new RectF(w.x + dp(8), w.y + dp(29), w.x + w.w - dp(8), w.y + w.h - dp(6)), dp(4), dp(4), paint);
-                    paint.setStyle(Paint.Style.STROKE);
-                    paint.setColor(Color.rgb(217, 119, 6));
-                    canvas.drawRoundRect(new RectF(w.x + dp(8), w.y + dp(29), w.x + w.w - dp(8), w.y + w.h - dp(6)), dp(4), dp(4), paint);
-                    paint.setStyle(Paint.Style.FILL);
-                    paint.setColor(Color.rgb(120, 80, 10));
-                    canvas.drawText("âˆ’             +", w.x + dp(18), w.y + w.h - dp(16), paint);
-                } else if ("Ð—Ð²ÑƒÐºÐ¾Ð²Ð¾Ð¹ ÑÐ¸Ð³Ð½Ð°Ð»".equals(w.type)) {
-                    boolean active = w.soundActive;
-                    if (liveValues.containsKey(i)) {
-                        try { active = Double.parseDouble(liveValues.get(i)) >= w.soundThreshold; } catch (Exception ignored) {}
-                    }
-                    paint.setColor(active ? Color.rgb(239, 68, 68) : Color.rgb(100, 116, 139));
-                    canvas.drawCircle(w.x + dp(16), w.y + w.h / 2, dp(6), paint);
-                    paint.setColor(w.textColor);
-                    String soundLabel = (active ? "ðŸ”Š " : "ðŸ”‡ ") + w.text + (active ? " [ÐÐ›ÐÐ Ðœ]" : " [ÐžÐš]");
-                    if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(32)) / Math.max(4f, soundLabel.length() * 0.58f))));
-                    canvas.drawText(soundLabel, w.x + dp(28), w.y + w.h / 2 + dp(5), paint);
-                } else if ("ÐŸÐµÑ€ÐµÑ…Ð¾Ð´ Ð½Ð° ÑÐºÑ€Ð°Ð½".equals(w.type)) {
-                    paint.setColor(w.textColor);
-                    String navLabel = "ðŸ”— " + w.text + " (Ð­ÐºÑ€Ð°Ð½ " + (w.targetScreenIndex + 1) + ")";
-                    if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(16)) / Math.max(4f, navLabel.length() * 0.58f))));
-                    canvas.drawText(navLabel, w.x + dp(8), w.y + w.h / 2 + dp(5), paint);
-                } else if ("ÐœÐ½Ð¾Ð³Ð¾Ð¿Ð¾Ð·Ð¸Ñ†Ð¸Ð¾Ð½Ð½Ð¾Ðµ Ñ„Ð¾Ñ‚Ð¾".equals(w.type)) {
-                    int imgIdx = 0;
-                    if (liveValues.containsKey(i)) {
-                        try { imgIdx = (int) Math.round(Double.parseDouble(liveValues.get(i))); } catch (Exception ignored) {}
-                    }
-                    if (imgIdx < 0 || imgIdx >= 16) imgIdx = 0;
-                    String imgPath = w.imagePathStates[imgIdx];
-                    Bitmap bitmap = loadCachedBitmap(imgPath);
-                    if (bitmap != null) {
-                        canvas.drawBitmap(bitmap, null, rect, paint);
-                    } else {
-                        String imgLabel = "ðŸ–¼ " + w.text + " [" + imgIdx + "]: " + (imgPath == null ? "" : imgPath);
-                        paint.setColor(w.textColor);
-                        if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(16)) / Math.max(4f, imgLabel.length() * 0.58f))));
-                        canvas.drawText(imgLabel, w.x + dp(8), w.y + w.h / 2 + dp(5), paint);
-                    }
-                } else if ("Ð“Ð¾Ð»Ð¾ÑÐ¾Ð²Ð¾Ðµ ÑÐ¾Ð¾Ð±Ñ‰ÐµÐ½Ð¸Ðµ".equals(w.type)) {
-                    int voiceIdx = 0;
-                    if (liveValues.containsKey(i)) {
-                        try { voiceIdx = (int) Math.round(Double.parseDouble(liveValues.get(i))); } catch (Exception ignored) {}
-                    }
-                    if (voiceIdx < 0 || voiceIdx >= 16) voiceIdx = 0;
-                    String voiceLabel = "ðŸ—£ " + w.text + " [" + voiceIdx + "]: " + w.voiceMessages[voiceIdx];
-                    paint.setColor(w.textColor);
-                    if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(16)) / Math.max(4f, voiceLabel.length() * 0.58f))));
-                    canvas.drawText(voiceLabel, w.x + dp(8), w.y + w.h / 2 + dp(5), paint);
-                } else {
-                    float tx = w.x + dp(10);
-                    float ty = w.y + w.h / 2 + dp(5);
-                    String displayText = w.text + (liveValues.containsKey(i) ? " = " + liveValues.get(i) : "");
-                    if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(20)) / Math.max(4f, displayText.length() * 0.58f))));
-                    canvas.drawText(displayText, tx, ty, paint);
-                }
-            }
-            for (Widget widget : widgets) {
-                if (("FBD Ð¢Ð°Ð¹Ð¼ÐµÑ€".equals(widget.type) || "FBD TP".equals(widget.type) || "FBD TOF".equals(widget.type)) && widget.timerStartedAt > 0L
-                        && SystemClock.elapsedRealtime() - widget.timerStartedAt < widget.timerPresetMs) {
-                    postInvalidateDelayed(100L);
-                    break;
-                }
-            }
-            if (fbdWireMode) {
-                paint.setStyle(Paint.Style.FILL);
-                paint.setColor(Color.rgb(109, 40, 217));
-                paint.setTextSize(dp(12));
-                canvas.drawText(wireSource < 0 ? "Ð Ð•Ð–Ð˜Ðœ Ð¡Ð’Ð¯Ð—Ð˜: Ð²Ñ‹Ð±ÐµÑ€Ð¸ Ð¸ÑÑ‚Ð¾Ñ‡Ð½Ð¸Ðº" : "Ð Ð•Ð–Ð˜Ðœ Ð¡Ð’Ð¯Ð—Ð˜: Ð²Ñ‹Ð±ÐµÑ€Ð¸ Ñ†ÐµÐ»ÑŒ", dp(10), dp(18), paint);
-            }
-        }
-
-        private final OperatorGesture operatorGesture = new OperatorGesture();
-
-        private int hitRuntimeWidget(float x, float y) {
-            for (int i = widgets.size() - 1; i >= 0; i--) {
-                Widget w = widgets.get(i);
-                if (w.visible && !isFbd(w) && x >= w.x && x <= w.x + w.w && y >= w.y && y <= w.y + w.h) return i;
-            }
-            return -1;
-        }
-
-        private boolean onOperatorTouch(MotionEvent event) {
-            float x = event.getX(), y = event.getY();
-            int action = event.getActionMasked();
-            if (action == MotionEvent.ACTION_DOWN)
-                operatorGesture.begin(hitRuntimeWidget(x, y), x, y, SystemClock.elapsedRealtime());
-            else if (action == MotionEvent.ACTION_MOVE) operatorGesture.move(x, y, dp(5));
-            else if (action == MotionEvent.ACTION_UP) {
-                int target = operatorGesture.end(hitRuntimeWidget(x, y), x, y, SystemClock.elapsedRealtime(), dp(5));
-                if (target >= 0 && target < widgets.size()) activateRuntimeWidget(target, x, y);
-                invalidate();
-            } else if (action == MotionEvent.ACTION_CANCEL || action == MotionEvent.ACTION_POINTER_DOWN)
-                operatorGesture.cancel();
-            return true;
-        }
-
-        private void activateRuntimeWidget(int index, float x, float y) {
-            Widget picked = widgets.get(index);
-            if ("Ð—Ð°Ð´Ð°Ñ‚Ñ‡Ð¸Ðº".equals(picked.type) && y >= picked.y + dp(29)) {
-                adjustSetpoint(picked, x < picked.x + picked.w / 2 ? -1 : 1);
-            } else if ("ÐšÐ½Ð¾Ð¿ÐºÐ°".equals(picked.type)) {
-                picked.buttonState = !picked.buttonState;
-                persistProject();
-                BindingRequest request = parseBinding(-1, picked.connectionInfo);
-                if (request != null && request.functionCode == 3) {
-                    final boolean btnOn = picked.buttonState;
-                    modbusExecutor.execute(() -> {
-                        try {
-                            boolean ok = writeModbusRegisterStatic(request.host, request.port, request.unit, request.address, btnOn ? 1 : 0);
-                            if (!ok) throw new IOException("Ð£ÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð¾ Ð¾Ñ‚ÐºÐ»Ð¾Ð½Ð¸Ð»Ð¾ Ð·Ð°Ð¿Ð¸ÑÑŒ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð°");
-                        } catch (Exception ex) {
-                            android.util.Log.e("BLOODSKY", "Modbus write failed", ex);
-                            runOnUiThread(() -> {
-                                picked.buttonState = !btnOn;
-                                persistProject();
-                                if (editor != null) editor.invalidate();
-                                Toast.makeText(MainActivity.this, "ÐžÑˆÐ¸Ð±ÐºÐ° Ð·Ð°Ð¿Ð¸ÑÐ¸ Modbus: " + (ex.getMessage() != null ? ex.getMessage() : "Ð¾ÑˆÐ¸Ð±ÐºÐ° ÑÐ²ÑÐ·Ð¸"), Toast.LENGTH_LONG).show();
-                            });
-                        }
-                    });
-                }
-                Toast.makeText(MainActivity.this, picked.text + (picked.buttonState ? ": Ð’ÐšÐ›" : ": Ð’Ð«ÐšÐ›"), Toast.LENGTH_SHORT).show();
-            } else if ("FBD Ð’Ñ…Ð¾Ð´".equals(picked.type)) {
-                picked.inputValue = !picked.inputValue;
-                persistProject();
-                Toast.makeText(MainActivity.this, "Ð’Ñ…Ð¾Ð´ FBD = " + (picked.inputValue ? "1" : "0"), Toast.LENGTH_SHORT).show();
-            } else if ("ÐŸÐµÑ€ÐµÑ…Ð¾Ð´ Ð½Ð° ÑÐºÑ€Ð°Ð½".equals(picked.type)) {
-                if (picked.targetScreenIndex >= 0 && picked.targetScreenIndex < screens.size()) {
-                    activateScreen(picked.targetScreenIndex);
-                    Toast.makeText(MainActivity.this, "ÐŸÐµÑ€ÐµÑ…Ð¾Ð´ Ð½Ð° Ð­ÐºÑ€Ð°Ð½ " + (picked.targetScreenIndex + 1), Toast.LENGTH_SHORT).show();
-                } else if (picked.targetUrl != null && !picked.targetUrl.trim().isEmpty()) {
-                    try {
-                        Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(picked.targetUrl));
-                        startActivity(browserIntent);
-                    } catch (Exception ex) {
-                        Toast.makeText(MainActivity.this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚ÑŒ URL: " + picked.targetUrl, Toast.LENGTH_SHORT).show();
-                    }
-                } else {
-                    // No properties dialogs in operator mode.
-                }
-            } else {
-                // No properties dialogs in operator mode.
-            }
-        }
-
-        @Override public boolean onTouchEvent(MotionEvent event) {
-            if (operatorMode) return onOperatorTouch(event);
-            float x = event.getX(), y = event.getY();
-            if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                downX = x; downY = y; downAt = SystemClock.elapsedRealtime(); dragging = false; resizing = false; selected = -1;
-                for (int i = widgets.size() - 1; i >= 0; i--) {
-                    Widget w = widgets.get(i);
-                    if (!w.visible) continue;
-                    if (x >= w.x && x <= w.x + w.w && y >= w.y && y <= w.y + w.h) {
-                        selected = i; startX = w.x; startY = w.y; startW = w.w; startH = w.h;
-                        float grip = dp(22);
-                        resizing = x >= w.x + w.w - grip && y >= w.y + w.h - grip;
-                        break;
-                    }
-                }
-                android.view.ViewParent parent = getParent();
-                if (parent != null) parent.requestDisallowInterceptTouchEvent(selected >= 0);
-                invalidate();
-                return true;
-            }
-            if (event.getAction() == MotionEvent.ACTION_MOVE && selected >= 0) {
-                float dx = x - downX, dy = y - downY;
-                if (Math.abs(dx) + Math.abs(dy) > dp(5)) dragging = true;
-                if (dragging) {
-                    Widget w = widgets.get(selected);
-                    if (resizing) {
-                        int minW = dp(60), minH = dp(40);
-                        float maxW = Math.max(minW, getWidth() - w.x);
-                        float maxH = Math.max(minH, getHeight() - w.y);
-                        w.w = Math.max(minW, Math.min(maxW, snapToGrid(startW + dx)));
-                        w.h = Math.max(minH, Math.min(maxH, snapToGrid(startH + dy)));
-                    } else {
-                        float maxX = Math.max(0, getWidth() - w.w);
-                        float maxY = Math.max(0, getHeight() - w.h);
-                        w.x = Math.max(0, Math.min(maxX, snapToGrid(startX + dx)));
-                        w.y = Math.max(0, Math.min(maxY, snapToGrid(startY + dy)));
-                    }
-                    invalidate();
-                }
-                return true;
-            }
-            if (event.getAction() == MotionEvent.ACTION_UP) {
-                android.view.ViewParent parent = getParent();
-                if (parent != null) parent.requestDisallowInterceptTouchEvent(false);
-                if (dragging) {
-                    persistProject();
-                } else if (selected >= 0 && SystemClock.elapsedRealtime() - downAt >= 550L) {
-                    showWidgetContextMenu();
-                } else if (selected >= 0 && fbdWireMode) {
-                    Widget picked = widgets.get(selected);
-                    if (!isFbd(picked)) {
-                        Toast.makeText(MainActivity.this, "Ð’ Ñ€ÐµÐ¶Ð¸Ð¼Ðµ ÑÐ²ÑÐ·Ð¸ Ð²Ñ‹Ð±ÐµÑ€Ð¸ FBD-Ð±Ð»Ð¾Ðº", Toast.LENGTH_SHORT).show();
-                    } else if (wireSource < 0) {
-                        wireSource = selected;
-                        Toast.makeText(MainActivity.this, "Ð˜ÑÑ‚Ð¾Ñ‡Ð½Ð¸Ðº Ð²Ñ‹Ð±Ñ€Ð°Ð½: " + picked.text + ". Ð¢ÐµÐ¿ÐµÑ€ÑŒ Ð²Ñ‹Ð±ÐµÑ€Ð¸ Ñ†ÐµÐ»ÐµÐ²Ð¾Ð¹ Ð±Ð»Ð¾Ðº", Toast.LENGTH_LONG).show();
-                    } else {
-                        int source = wireSource;
-                        wireSource = -1;
-                        connectFbdWidgets(source, selected);
-                        fbdWireMode = false;
-                    }
-                } else if (selected >= 0) {
-                    editSelectedWidget();
-                }
-                invalidate();
-                return true;
-            }
-            if (event.getAction() == MotionEvent.ACTION_CANCEL) {
-                android.view.ViewParent parent = getParent();
-                if (parent != null) parent.requestDisallowInterceptTouchEvent(false);
-                selected = -1;
-                dragging = false;
-                resizing = false;
-                invalidate();
-                return true;
-            }
-            return true;
-        }
-    }
-}
-
-
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éí×_8ëDèµ©hºÚn¶X§zÍ\XÚØYÙHÛÛK˜›ÛÙÚÞKšZNÂ‚š[\Ü[™›ÚY˜\XÝ]š]NÂš[\Ü[™›ÚY˜\[\X[ÙÎÂš[\Ü[™›ÚY˜ÛÛ[’[[Âš[\Ü[™›ÚY›™]•\šNÂš[\Ü[™›ÚY›ÜË[™NÂš[\Ü[™›ÚY›ÜË”Þ\Ý[PÛØÚÎÂš[\Ü[™›ÚY›ÜË’[™\ŽÂš[\Ü[™›ÚY›ÜË“ÛÜ\ŽÂš[\Ü[™›ÚY™Ü˜\XÜËš]X\Âš[\Ü[™›ÚY™Ü˜\XÜËš]X\˜XÝÜžNÂš[\Ü[™›ÚY™Ü˜\XÜËØ[˜\ÎÂš[\Ü[™›ÚY™Ü˜\XÜËÛÛÜŽÂš[\Ü[™›ÚY™Ü˜\XÜË”Z[Âš[\Ü[™›ÚY™Ü˜\XÜË”™XÝŽÂš[\Ü[™›ÚY™Ü˜\XÜË™˜]ØX›K‘Ü˜YY[˜]ØX›NÂš[\Ü[™›ÚY›YYXK]Y[ÓX[˜YÙ\ŽÂš[\Ü[™›ÚY›YYXK“YYXT^Y\ŽÂš[\Ü[™›ÚY›YYXK•Û™QÙ[™\˜]ÜŽÂš[\Ü[™›ÚYœÜYXÚË•^ÔÜYXÚÂš[\Ü[™›ÚY^’[œ]\NÂš[\Ü[™›ÚYšY]Ë‘Ü˜]š]NÂš[\Ü[™›ÚYšY]Ë“[Ý[Û‘]™[Âš[\Ü[™›ÚYšY]Ë•šY]ÎÂš[\Ü[™›ÚYšY]Ë•šY]ÑÜ›Ý\Âš[\Ü[™›ÚYÚYÙ]]ÛŽÂš[\Ü[™›ÚYÚYÙ]‘Y]^Âš[\Ü[™›ÚYÚYÙ]“[™X\“^[Ý]Âš[\Ü[™›ÚYÚYÙ]•^šY]ÎÂš[\Ü[™›ÚYÚYÙ]”ØÜ›ÛšY]ÎÂš[\Ü[™›ÚYÚYÙ]”Ü[›™\ŽÂš[\Ü[™›ÚYÚYÙ]\œ˜^PY\\ŽÂš[\Ü[™›ÚYÚYÙ]•Ø\ÝÂš[\ÜÜ™ËšœÛÛ‹’”ÓÓ\œ˜^NÂš[\ÜÜ™ËšœÛÛ‹’”ÓÓ“Øš™XÝÂš[\Ü˜]˜Kš[Ëž]P\œ˜^SÝ]]Ý™X[NÂš[\Ü˜]˜Kš[Ë’[œ]Ý™X[NÂš[\Ü˜]˜Kš[Ë“Ý]]Ý™X[NÂš[\Ü˜]˜K›š[Ë˜Ú\œÙ]”Ý[™\™Ú\œÙ]ÎÂš[\Ü˜]˜K][\œ˜^S\ÝÂš[\Ü˜]˜K][“[šÙY\ÚX\Âš[\Ü˜]˜K][“\ÝÂš[\Ü˜]˜K›™]’[™]ÛØÚÙ]Y™\ÜÎÂš[\Ü˜]˜K›™]”ÛØÚÙ]Âš[\Ü˜]˜K›™]•T’NÂš[\Ü˜]˜K][’\ÚX\Âš[\Ü˜]˜K][“X\Âš[\Ü˜]˜K][˜ÛÛ˜Ý\œ™[‘^XÝ]Ü”Ù\šXÙNÂš[\Ü˜]˜K][˜ÛÛ˜Ý\œ™[‘^XÝ]ÜœÎÂš[\Ü˜]˜Kš[Ë‘]R[œ]Ý™X[NÂš[\Ü˜]˜Kš[Ë’SÑ^Ù\[ÛŽÂš[\Ü˜]˜Kš[Ë‘]SÝ]]Ý™X[NÂ‚œX›XÈÛ\ÜÈXZ[XÝ]š]H^[™ÈXÝ]š]HÂˆš]˜]HÝ]XÈš[˜[Ýš[™È‘Q”ÈH˜›ÛÙÚÞWÜ›Ú™XÝÈŽÂˆš]˜]HÝ]XÈš[˜[Ýš[™ÈPÕU‘WÔ“Ò‘PÕH˜XÝ]™WÜ›Ú™XÝŽÂˆš]˜]HÝ]XÈš[˜[Ýš[™È“Ò‘PÕÐÐUSÑÈHœ›Ú™XÝØØ][Ù×ÝŒHŽÂˆš]˜]HÝ]XÈš[˜[[‘TUQTÕÑVÔ•Ô“Ò‘PÕHÌLNÂˆš]˜]HÝ]XÈš[˜[[‘TUQTÕÒSTÔ•Ô“Ò‘PÕHÌLŽÂˆš]˜]HÝ]XÈš[˜[[‘TUQTÕÔPÒ×ÓQQPHHÌLÎÂˆš]˜]HÝ]XÈš[˜[[‘TUQTÕÑVÔ•Ô“Ò‘PÕÖ’THÌLÂˆš]˜]HÝ]XÈš[˜[[‘TUQTÕÒSTÔ•ÐÔQ•ÓPPÔ“ÈHÌLNÂˆš]˜]HÝ]XÈš[˜[[‘TUQTÕÑVÔ•ÐÔQ•ÓPPÔ“ÈHÌLŽÂˆš]˜]Hž]V×H[™[™ÐÜ˜YXXÜ›Ñ^ÜÂˆš]˜]HY]^[™[™ÓYYXQšY[Âˆš]˜]HÝš[™È›Ú™XÝ˜[YHH´'4/´.H4/ô`4/´-t.´`ˆŽÂˆš]˜]H”ÓÓ“Øš™XÝ›Ú™XÝ^˜QšY[ÈH™]È”ÓÓ“Øš™XÝ
+
+NÂˆš]˜]H[™X\“^[Ý]›ÛÝÂˆš]˜]HY]ÜØ[˜\ÈY]ÜŽÂˆš]˜]Hš[˜[\ÝÚYÙ]ˆÚYÙ]ÈH™]È\œ˜^S\ÝŠ
+NÂˆš]˜]Hš[˜[\ÝØÜ™Y[ˆØÜ™Y[œÈH™]È\œ˜^S\ÝŠ
+NÂˆš]˜]H[Ý\œ™[ØÜ™Y[’[™^HÂˆš]˜]HÚYÙ]Û\›Ø\™ÚYÙ]Âˆš]˜]H›ÛÛX[ˆÜ\˜]Ü“[ÙHH˜[ÙNÂˆš]˜]H›ÛÛX[ˆ˜™Ú\™S[ÙHH˜[ÙNÂˆš]˜]Hš[˜[˜™Ú\™R\ÝÜžH˜™Ú\™R\ÝÜžHH™]È˜™Ú\™R\ÝÜžJ
+NÂˆš]˜]H[Ú\™TÛÝ\˜ÙHHLNÂˆš]˜]H›ÛÛX[–×H˜™ØXÚU˜[YH™]È›ÛÛX[–ÌNÂˆš]˜]H›ÛÛX[–×H˜™ØXÚU˜[Y\ÈH™]È›ÛÛX[–ÌNÂˆš]˜]HÝX›V×H˜™ØXÚS[Y\šXÈH™]ÈÝX›VÌNÂˆš]˜]Hš[˜[[™\ˆXZ[’[™\ˆH™]È[™\ŠÛÜ\‹™Ù]XZ[“ÛÜ\Š
+JNÂˆš]˜]Hš[˜[^XÝ]Ü”Ù\šXÙH[Ù\Ñ^XÝ]ÜˆH^XÝ]ÜœË›™]ÔÚ[™ÛU™XY^XÝ]ÜŠ
+NÂˆš]˜]Hš[˜[^XÝ]Ü”Ù\šXÙHÜ˜YÙ[œÛÜ‘^XÝ]ÜˆH^XÝ]ÜœË›™]ÔÚ[™ÛU™XY^XÝ]ÜŠ
+NÂˆš]˜]H˜™Ü˜Y\][[YHÜ˜Y\][[YNÂˆš]˜]Hš[˜[X\[YÙ\‹Ýš[™Ïˆ]™U˜[Y\ÈH™]È\ÚX\Š
+NÂˆš]˜]H›ÛÛX[ˆ[Ù\ÔÛ[™ÐXÝ]™HH˜[ÙNÂˆš]˜]H›ÛÛX[ˆXÝ]š]T™\Ý[YYH˜[ÙNÂˆš]˜]H[™›ÚYš\™Ø\™K”Ù[œÛÜ“X[˜YÙ\ˆ˜™Ù[œÛÜ“X[˜YÙ\ŽÂˆš]˜]H›ÛÛX[ˆ˜™Ù[œÛÜœÔ™YÚ\Ý\™YÂˆš]˜]H[™›ÚY›ØØ][Û‹“ØØ][Û“X[˜YÙ\ˆ˜™ØØ][Û“X[˜YÙ\ŽÂˆš]˜]H›ÛÛX[ˆ˜™ØØ][Û”™YÚ\Ý\™Y˜™ØØ][Û”\›Z\ÜÚ[Û”™\]Y\ÝYÂˆš]˜]HÝ]XÈš[˜[[‘TUQTÕÑ‘ÔÔQQÓÐÐUSÓˆHŒLÎÂˆš]˜]Hš[˜[[™›ÚY›ØØ][Û‹“ØØ][Û“\Ý[™\ˆ˜™ØØ][Û“\Ý[™\ˆH™]È[™›ÚY›ØØ][Û‹“ØØ][Û“\Ý[™\Š
+HÂˆÝ™\œšYHX›XÈ›ÚYÛ“ØØ][ÛÚ[™ÙY
+[™›ÚY›ØØ][Û‹“ØØ][ÛˆØØ][ÛŠHÂˆYˆ
+ØØ][ÛˆOH[[Ü\˜]Ü“[ÙHY]ÜˆOH[
+H™]\›ŽÂˆÝX›HÛZHÝX›Kš\Ó˜SŠØØ][Û‹™Ù]ÜYY
+
+JHÈŒˆØØ][Û‹™Ù]ÜYY
+
+H
+ˆËŽÂˆ›Üˆ
+ÚYÙ]ÚYÙ]ˆÚYÙ]ÊHYˆ
+‘‘ÔQ•ÑS”ÓÔˆÔQQ‹™\]X[ÊÚYÙ]\JJHÂˆÚYÙ]˜Ü˜YÙ[œÛÜ•˜[YHHÛZÈÚYÙ]˜Ü˜YÙ[œÛÜ•˜[YHYNÂˆBˆY]Ü‹š[˜[Y]J
+NÂˆBˆÝ™\œšYHX›XÈ›ÚYÛ”Ý]\ÐÚ[™ÙY
+Ýš[™È›ÝšY\‹[Ý]\Ë[™›ÚY›ÜË[™H^˜\ÊHßBˆÝ™\œšYHX›XÈ›ÚYÛ”›ÝšY\‘[˜X›Y
+Ýš[™È›ÝšY\ŠHßBˆÝ™\œšYHX›XÈ›ÚYÛ”›ÝšY\‘\ØX›Y
+Ýš[™È›ÝšY\ŠHßBˆNÂˆš]˜]Hš[˜[[™›ÚYš\™Ø\™K”Ù[œÛÜ‘]™[\Ý[™\ˆ˜™Ù[œÛÜ“\Ý[™\ˆH™]È[™›ÚYš\™Ø\™K”Ù[œÛÜ‘]™[\Ý[™\Š
+HÂˆÝ™\œšYHX›XÈ›ÚYÛXØÝ\˜XÞPÚ[™ÙY
+[™›ÚYš\™Ø\™K”Ù[œÛÜˆÙ[œÛÜ‹[XØÝ\˜XÞJHßBˆÝ™\œšYHX›XÈ›ÚYÛ”Ù[œÛÜÚ[™ÙY
+[™›ÚYš\™Ø\™K”Ù[œÛÜ‘]™[]™[
+HÂˆYˆ
+[Ü\˜]Ü“[ÙHY]ÜˆOH[]™[˜[Y\ÈOH[
+H™]\›ŽÂˆ›ÛÛX[ˆÚ[™ÙYH˜[ÙNÂˆYˆ
+]™[œÙ[œÛÜ‹™Ù]\J
+HOH[™›ÚYš\™Ø\™K”Ù[œÛÜ‹•TWÓQÒ	‰ˆ]™[˜[Y\Ë›[™Ýˆ
+HÂˆ›Üˆ
+ÚYÙ]ÚYÙ]ˆÚYÙ]ÊHYˆ
+‘‘ÔQ•ÑS”ÓÔˆQÒ‹™\]X[ÊÚYÙ]\JJHÂˆÚYÙ]˜Ü˜YÙ[œÛÜ•˜[YHHX]›X^
+
+[
+Y]™[˜[Y\ÖÌJNÈÚYÙ]˜Ü˜YÙ[œÛÜ•˜[YHYNÈÚ[™ÙYHYNÂˆBˆH[ÙHYˆ
+]™[œÙ[œÛÜ‹™Ù]\J
+HOH[™›ÚYš\™Ø\™K”Ù[œÛÜ‹•TWÓÔ’QS•USÓˆ	‰ˆ]™[˜[Y\Ë›[™ÝHÊHÂˆ›Üˆ
+ÚYÙ]ÚYÙ]ˆÚYÙ]ÊHYˆ
+‘‘ÔQ•ÑS”ÓÔˆÔ’QS•USÓˆ‹™\]X[ÊÚYÙ]\JJHÂˆÚYÙ]˜Ü˜YÜšY[][Û•˜[Y\ÖÌHH]™[˜[Y\ÖÌNÂˆÚYÙ]˜Ü˜YÜšY[][Û•˜[Y\ÖÌWHH]™[˜[Y\ÖÌWNÂˆÚYÙ]˜Ü˜YÜšY[][Û•˜[Y\ÖÌ—HH]™[˜[Y\ÖÌ—NÂˆÚYÙ]˜Ü˜YÙ[œÛÜ•˜[YHYNÈÚ[™ÙYHYNÂˆBˆBˆYˆ
+Ú[™ÙY
+HY]Ü‹š[˜[Y]J
+NÂˆBˆNÂˆš]˜]Hš[˜[ÛÙ\ÜÚ[Û‘ÝX\™ÛÙ\ÜÚ[ÛˆH™]ÈÛÙ\ÜÚ[Û‘ÝX\™
+
+NÂˆš]˜]H›Û][H›ÛÛX[ˆ[Ù\ÔÛ[‘›YÚH˜[ÙNÂˆš]˜]Hš[˜[[›˜X›H[Ù\ÔÛ[›˜X›HH™]È[›˜X›J
+HÂˆÝ™\œšYHX›XÈ›ÚY[Š
+HÂˆYˆ
+[[Ù\ÔÛ[™ÐXÝ]™HY]ÜˆOH[
+H™]\›ŽÂˆÛ›Ý[™ÚYÙ]Ê
+NÂˆÛÜ˜YÙ[\ÛÝ\˜Ù\Ê
+NÂˆXZ[’[™\‹œÜÝ[^YY
+\ËL
+NÂˆBˆNÂ‚ˆš]˜]HYYXT^Y\ˆYYXT^Y\ŽÂˆš]˜]H^ÔÜYXÚ^ÔÜYXÚÂˆš]˜]Hš[˜[˜]˜K][“X\Ýš[™Ëš]X\ˆ[XYÙPØXÚHH™]È˜]˜K][’\ÚX\Š
+NÂ‚ˆš]˜]Hš]X\ØYØXÚYš]X\
+Ýš[™È]Ü•\šJHÂˆYˆ
+]Ü•\šHOH[]Ü•\šKš[J
+Kš\Ñ[\J
+JH™]\›ˆ[ÂˆYˆ
+[XYÙPØXÚK˜ÛÛZ[œÒÙ^J]Ü•\šJJH™]\›ˆ[XYÙPØXÚK™Ù]
+]Ü•\šJNÂˆš]X\š]X\H[ÂˆžHÂˆÝš[™ÈœÛÛˆHÙ]Ú\™Y™Y™\™[˜Ù\Ê‘Q”ËSÑWÔ’UUJK™Ù]Ýš[™ÊPÕU‘WÔ“Ò‘PÕžßHŠNÂˆž]V×Hž]\ÈH™XY›Ú™XÝYYXQ]J]Ü•\šKœÛÛŠNÂˆš]X\˜XÝÜžK“Ü[ÛœÈ›Ý[™ÈH™]Èš]X\˜XÝÜžK“Ü[ÛœÊ
+NÈ›Ý[™Ëš[’\ÝXÛÙP›Ý[™ÈHYNÂˆš]X\˜XÝÜžK™XÛÙPž]P\œ˜^Jž]\Ëž]\Ë›[™Ý›Ý[™ÊNÂˆš]X\˜XÝÜžK“Ü[ÛœÈÜ[ÛœÈH™]Èš]X\˜XÝÜžK“Ü[ÛœÊ
+NÂˆÜ[ÛœËš[”Ø[\TÚ^™HH›Ú™XÝ[XYÙTÚ^š[™ËœØ[\TÚ^™J›Ý[™Ë›Ý]ÚY›Ý[™Ë›Ý]ZYÚ
+NÂˆš]X\Hš]X\˜XÝÜžK™XÛÙPž]P\œ˜^Jž]\Ëž]\Ë›[™ÝÜ[ÛœÊNÂˆHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HßBˆÛ™Èž]\ÐØXÚYHÂˆ›Üˆ
+š]X\ØXÚYˆ[XYÙPØXÚK˜[Y\Ê
+JHYˆ
+ØXÚYOH[
+Hž]\ÐØXÚY
+ÏHØXÚY™Ù]ž]PÛÝ[
+
+NÂˆYˆ
+[XYÙPØXÚKœÚ^™J
+HHLŽ
+š]X\OH[	‰ˆž]\ÐØXÚY
+Èš]X\™Ù]ž]PÛÝ[
+
+HˆÌ“
+ˆL
+ˆL
+JBˆ[XYÙPØXÚK˜ÛX\Š
+NÂˆ[XYÙPØXÚKœ]
+]Ü•\šKš]X\
+NÂˆ™]\›ˆš]X\ÂˆB‚ˆš]˜]Hš]X\ÜšYÚ[˜[[™XØ]Üš]X\
+ÚYÙ]ÚYÙ]›ÛÛX[ˆXÝ]™JHÂˆžHÂˆ”ÓÓ“Øš™XÝÙ][™ÜÈHÜšYÚ[˜[[™XØ]Ü‹œÙ][™ÜÊÚYÙ]™^˜QšY[ÊNÂˆÝš[™È˜[YHHÜšYÚ[˜[[™XØ]Ü‹š[XYÙU˜[YJÙ][™ÜËXÝ]™JNÂˆYˆ
+ÜšYÚ[˜[[™XØ]Ü‹š\Õ\Ù\’[XYÙJÙ][™ÜËXÝ]™JJH™]\›ˆØYØXÚYš]X\
+˜[YJNÂˆ[™\ÛÝ\˜ÙNÂˆÝÚ]Ú
+ÜšYÚ[˜[[™XØ]Ü‹˜Z[[“˜[YJ˜[YJJHÂˆØ\ÙH›[\ÙÜ™Y[ˆŽˆ™\ÛÝ\˜ÙHH‹™˜]ØX›KšØ×Û[\ÙÜ™Y[ŽÈœ™XZÎÂˆØ\ÙH›[\Ü™YŽˆ™\ÛÝ\˜ÙHH‹™˜]ØX›KšØ×Û[\Ü™YÈœ™XZÎÂˆØ\ÙH›[\ÞY[ÝÈŽˆ™\ÛÝ\˜ÙHH‹™˜]ØX›KšØ×Û[\ÞY[ÝÎÈœ™XZÎÂˆØ\ÙH›[\Ø›YHŽˆ™\ÛÝ\˜ÙHH‹™˜]ØX›KšØ×Û[\Ø›YNÈœ™XZÎÂˆØ\ÙH›[\ÛÙ™ˆŽˆ™\ÛÝ\˜ÙHH‹™˜]ØX›KšØ×Û[\ÛÙ™ŽÈœ™XZÎÂˆY˜][ˆ™\ÛÝ\˜ÙHH‹™˜]ØX›KšØ×ÝØ\›š[™×ÌÌŽÂˆBˆ™]\›ˆÜšYÚ[˜[š]X\
+™\ÛÝ\˜ÙJNÂˆHØ]Ú
+^Ù\[Ûˆ[˜[Y
+HÈ™]\›ˆ[ÈBˆB‚ˆš]˜]Hš]X\ÜšYÚ[˜[š]X\
+[™\ÛÝ\˜ÙJHÂˆÝš[™ÈÙ^HH›ÜšYÚ[˜[\™\ÛÝ\˜ÙNˆˆ
+È™\ÛÝ\˜ÙNÂˆš]X\ØXÚYH[XYÙPØXÚK™Ù]
+Ù^JNÂˆYˆ
+ØXÚYOH[
+HÂˆØXÚYHš]X\˜XÝÜžK™XÛÙT™\ÛÝ\˜ÙJÙ]™\ÛÝ\˜Ù\Ê
+K™\ÛÝ\˜ÙJNÂˆ[XYÙPØXÚKœ]
+Ù^KØXÚY
+NÂˆBˆ™]\›ˆØXÚYÂˆB‚ˆÝ™\œšYHX›XÈ›ÚYÛÜ™X]J[™HÝ]JHÂˆÝ\\‹›ÛÜ™X]JÝ]JNÂˆÙ]Ú[™ÝÊ
+KœÙ]›YÜÊ[™›ÚYšY]Ë•Ú[™ÝÓX[˜YÙ\‹“^[Ý]\˜[\Ë‘“Q×Ñ•SÐÔ‘QS‹ˆ[™›ÚYšY]Ë•Ú[™ÝÓX[˜YÙ\‹“^[Ý]\˜[\Ë‘“Q×Ñ•SÐÔ‘QSŠNÂˆžHÂˆ^ÔÜYXÚH™]È^ÔÜYXÚ
+\ËÝ]\ÈOˆÂˆYˆ
+Ý]\ÈOH^ÔÜYXÚ”ÕPÐÑTÔÈ	‰ˆ^ÔÜYXÚOH[
+HÂˆžHÈ^ÔÜYXÚœÙ][™ÝXYÙJ™]È˜]˜K][“ØØ[JœH‹”•HŠJNÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HßBˆBˆJNÂˆHØ]Ú
+^Ù\[Ûˆ^
+HÂˆ[™›ÚY][“ÙË™J“ÓÑÒÖH‹•È[š]\œ›Üˆ‹^
+NÂˆBˆÚÝÒÛYJ
+NÂˆB‚ˆÝ™\œšYH›ÝXÝY›ÚYÛ”™\Ý[YJ
+HÂˆÝ\\‹›Û”™\Ý[YJ
+NÂˆXÝ]š]T™\Ý[YYHYNÂˆYˆ
+Y]ÜˆOH[
+HÈÝ\[Ù\ÔÛ[™Ê
+NÈÝ\˜™Ù[œÛÜœÊ
+NÈÝ\Ü˜Y\]
+
+NÈBˆB‚ˆÝ™\œšYHX›XÈ›ÚYÛ”™\]Y\Ý\›Z\ÜÚ[ÛœÔ™\Ý[
+[™\]Y\ÝÛÙKÝš[™Ö×H\›Z\ÜÚ[ÛœË[×HÜ˜[™\Ý[ÊHÂˆÝ\\‹›Û”™\]Y\Ý\›Z\ÜÚ[ÛœÔ™\Ý[
+™\]Y\ÝÛÙK\›Z\ÜÚ[ÛœËÜ˜[™\Ý[ÊNÂˆYˆ
+™\]Y\ÝÛÙHOH‘TUQTÕÑ‘ÔÔQQÓÐÐUSÓŠH™]\›ŽÂˆ˜™ØØ][Û”\›Z\ÜÚ[Û”™\]Y\ÝYH˜[ÙNÂˆYˆ
+Ü˜[™\Ý[Ë›[™Ýˆ	‰ˆÜ˜[™\Ý[ÖÌHOH[™›ÚY˜ÛÛ[œK”XÚØYÙSX[˜YÙ\‹”T“RTÔÒSÓ—ÑÔS•Q
+BˆÝ\˜™Ù[œÛÜœÊ
+NÂˆB‚ˆÝ™\œšYH›ÝXÝY›ÚYÛ”]\ÙJ
+HÂˆXÝ]š]T™\Ý[YYH˜[ÙNÂˆÝÜ[Ù\ÔÛ[™Ê
+NÂˆÝÜ˜™Ù[œÛÜœÊ
+NÂˆÝÜÜ˜Y\]
+
+NÂˆYˆ
+YYXT^Y\ˆOH[
+HÂˆžHÈYYXT^Y\‹œÝÜ
+
+NÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HßBˆžHÈYYXT^Y\‹œ™[X\ÙJ
+NÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HßBˆYYXT^Y\ˆH[ÂˆBˆYˆ
+^ÔÜYXÚOH[
+HžHÈ^ÔÜYXÚœÝÜ
+
+NÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HßBˆÝ\\‹›Û”]\ÙJ
+NÂˆB‚ˆÝ™\œšYH›ÝXÝY›ÚYÛ‘\Ý›ÞJ
+HÂˆÝÜ[Ù\ÔÛ[™Ê
+NÂˆÝÜ˜™Ù[œÛÜœÊ
+NÂˆÝÜÜ˜Y\]
+
+NÂˆY]ÜˆH[Âˆ[Ù\Ñ^XÝ]Ü‹œÚ]ÝÛ“›ÝÊ
+NÂˆÜ˜YÙ[œÛÜ‘^XÝ]Ü‹œÚ]ÝÛ“›ÝÊ
+NÂˆYˆ
+YYXT^Y\ˆOH[
+HÂˆžHÈYYXT^Y\‹œÝÜ
+
+NÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HßBˆžHÈYYXT^Y\‹œ™[X\ÙJ
+NÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HßBˆYYXT^Y\ˆH[ÂˆBˆYˆ
+^ÔÜYXÚOH[
+HÂˆžHÈ^ÔÜYXÚœÝÜ
+
+NÈ^ÔÜYXÚœÚ]ÝÛŠ
+NÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HßBˆ^ÔÜYXÚH[ÂˆBˆÝ\\‹›Û‘\Ý›ÞJ
+NÂˆB‚ˆš]˜]H›ÚY^TÛÝ[™[\
+Ýš[™È]Ü•\šJHÂˆžHÂˆYˆ
+YYXT^Y\ˆOH[
+HÂˆžHÈYYXT^Y\‹œÝÜ
+
+NÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HßBˆžHÈYYXT^Y\‹œ™[X\ÙJ
+NÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HßBˆYYXT^Y\ˆH[ÂˆBˆYˆ
+]Ü•\šHOH[	‰ˆ]Ü•\šKœÝ\ÕÚ]
+˜ÛÛ[‹ËÈŠJHÂˆYYXT^Y\ˆH™]ÈYYXT^Y\Š
+NÂˆYYXT^Y\‹œÙ]]TÛÝ\˜ÙJ\Ë\šKœ\œÙJ]Ü•\šJJNÂˆYYXT^Y\‹œ™\\™J
+NÂˆYYXT^Y\‹œÝ\
+
+NÂˆH[ÙHYˆ
+]Ü•\šHOH[	‰ˆ\]Ü•\šKš[J
+Kš\Ñ[\J
+H	‰ˆH´$4.ô,4`4/‹™\]X[Ê]Ü•\šJJHÂˆÝš[™ÈœÛÛˆHÙ]Ú\™Y™Y™\™[˜Ù\Ê‘Q”ËSÑWÔ’UUJK™Ù]Ýš[™ÊPÕU‘WÔ“Ò‘PÕžßHŠNÂˆ˜]˜Kš[Ë‘š[Hš[HH›Ú™XÝYYXTÙ\šXÙKœ™\ÛÛ™SYYXQš[JÙ]š[\Ñ\Š
+KœÛÛ‹]Ü•\šJNÂˆYYXT^Y\ˆH™]ÈYYXT^Y\Š
+NÂˆYYXT^Y\‹œÙ]]TÛÝ\˜ÙJš[K™Ù]XœÛÛ]T]
+
+JNÂˆYYXT^Y\‹œ™\\™J
+NÂˆYYXT^Y\‹œÝ\
+
+NÂˆH[ÙHÂˆÛ™QÙ[™\˜]ÜˆÛ™QÈH™]ÈÛ™QÙ[™\˜]ÜŠ]Y[ÓX[˜YÙ\‹”Õ‘PSWÐST“K
+NÂˆÛ™QËœÝ\Û™JÛ™QÙ[™\˜]Ü‹•Ó‘WÐÑPWÐST•ÐÐSÑÕPT‘ÍL
+NÂˆBˆHØ]Ú
+^Ù\[Ûˆ^
+HÂˆ[™›ÚY][“ÙË™J“ÓÑÒÖH‹”ÛÝ[™[\\œ›Üˆ‹^
+NÂˆžHÂˆÛ™QÙ[™\˜]ÜˆÛ™QÈH™]ÈÛ™QÙ[™\˜]ÜŠ]Y[ÓX[˜YÙ\‹”Õ‘PSWÐST“K
+NÂˆÛ™QËœÝ\Û™JÛ™QÙ[™\˜]Ü‹•Ó‘WÔ“ÔÐ‘QTL
+NÂˆHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HßBˆBˆB‚ˆš]˜]H›ÚYÜXZÕ›ÚXÙP[››Ý[˜Ù[Y[
+Ýš[™È^
+HÂˆYˆ
+^ÔÜYXÚOH[	‰ˆ^OH[	‰ˆ]^š[J
+Kš\Ñ[\J
+JHÂˆžHÂˆ^ÔÜYXÚœÜXZÊ^^ÔÜYXÚ”UQUQWÑ“TÒ[˜›ÛÙÚÞWÝ×Èˆ
+ÈÞ\Ý[PÛØÚË™[\ÙY™X[[YJ
+JNÂˆHØ]Ú
+^Ù\[Ûˆ^
+HÂˆ[™›ÚY][“ÙË™J“ÓÑÒÖH‹•ÈÜXZÈ\œ›Üˆ‹^
+NÂˆBˆBˆB‚ˆš]˜]H[
+›Ø]˜[YJHÂˆ™]\›ˆ
+[
+H
+˜[YH
+ˆÙ]™\ÛÝ\˜Ù\Ê
+K™Ù]\Ü^SY]šXÜÊ
+K™[œÚ]H
+ÈYŠNÂˆB‚ˆš]˜]H[Û˜\ÑÜšY
+›Ø]˜[YJHÂˆ[Ý\HX]›X^
+K
+Œ
+JNÂˆ™]\›ˆX]œ›Ý[™
+˜[YHÈÝ\
+H
+ˆÝ\ÂˆB‚ˆš]˜]H^šY]ÈXY[™ÊÝš[™È^
+HÂˆ^šY]ÈšY]ÈH™]È^šY]Ê\ÊNÂˆšY]ËœÙ]^
+^
+NÂˆšY]ËœÙ]^ÛÛÜŠÛÛÜ‹•ÒUJNÂˆšY]ËœÙ]^Ú^™JŒŠNÂˆšY]ËœÙ]Ü˜]š]JÜ˜]š]KÑS•T—Õ‘T•PÐS
+NÂˆšY]ËœÙ]Y[™Ê
+N
+K
+LŠK
+LŠK
+LŠJNÂˆšY]ËœÙ]˜XÚÙÜ›Ý[™ÛÛÜŠÛÛÜ‹œ™ØŠM‹Í‹N
+JNÂˆ™]\›ˆšY]ÎÂˆB‚ˆš]˜]H]ÛˆXÝ[ÛŠÝš[™È^[›˜X›H\ÚÊHÂˆ]Ûˆ]ÛˆH™]È]ÛŠ\ÊNÂˆ]Û‹œÙ]^
+^
+NÂˆ]Û‹œÙ][Ø\Ê˜[ÙJNÂˆ]Û‹œÙ]ÛÛXÚÓ\Ý[™\ŠˆOˆ\ÚËœ[Š
+JNÂˆ™]\›ˆ]ÛŽÂˆB‚ˆš]˜]H]ÛˆYØXÞSY[P]ÛŠÝš[™È^[›˜X›H\ÚÊHÂˆ]Ûˆ]ÛˆH™]È]ÛŠ\ÊNÂˆ]Û‹œÙ]^
+^
+NÂˆ]Û‹œÙ]^Ú^™JŒ
+NÂˆ]Û‹œÙ]^ÛÛÜŠÛÛÜ‹“PÒÊNÂˆ]Û‹œÙ][Ø\ÊYJNÂˆ]Û‹œÙ]Ü˜]š]JÜ˜]š]KÑS•TŠNÂˆ]Û‹œÙ]˜XÚÙÜ›Ý[™™\ÛÝ\˜ÙJ‹™˜]ØX›KšØ×Ø˜XÚÙÜ›Ý[™Ø]ÛŠNÂˆ]Û‹œÙ]ÛÛXÚÓ\Ý[™\ŠˆOˆ\ÚËœ[Š
+JNÂˆ™]\›ˆ]ÛŽÂˆB‚ˆš]˜]H›ÚYÚÝÒÛYJ
+HÂˆÜ\˜]Ü“[ÙHH˜[ÙNÂˆÙ]™\]Y\ÝYÜšY[][ÛŠ[™›ÚY˜ÛÛ[œKXÝ]š]R[™›Ë”ÐÔ‘QS—ÓÔ’QS•USÓ—ÕS”ÔPÒQ’QQ
+NÂˆÝÜ[Ù\ÔÛ[™Ê
+NÂˆY]ÜˆH[ÂˆžHÈ™XY›Ú™XÝØ][ÙÊ
+NÈBˆØ]Ú
+^Ù\[Ûˆ\œ›ÜŠHÈØ\Ý›XZÙU^
+\Ë´(t/´at`4,4/t-t/t.4-H4/ô`4/´-t.´`´,ˆˆ
+È\œ›Ü‹™Ù]Y\ÜØYÙJ
+KØ\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÈBˆ›ÛÝH™]È[™X\“^[Ý]
+\ÊNÂˆ›ÛÝœÙ]ÜšY[][ÛŠ[™X\“^[Ý]•‘T•PÐS
+NÂˆ›ÛÝœÙ]Ü˜]š]JÜ˜]š]KÑS•T—ÒÔ’V“Ó•S
+NÂˆ›ÛÝœÙ]˜XÚÙÜ›Ý[™™\ÛÝ\˜ÙJ‹™˜]ØX›KšØ×ÛXZ[—Ø˜XÚÙÜ›Ý[™ÜÛX[
+NÂˆ›ÛÝœÙ]ÙZYÚÝ[JKŒŠNÂˆ^šY]È]HH™]È^šY]Ê\ÊNÂˆ]KœÙ]^
+“ÓÑÒÖHŠNÂˆ]KœÙ]^ÛÛÜŠÛÛÜ‹œ™ØŠŒÍËMÍ‹NJJNÂˆ]KœÙ]^Ú^™JŒŠNÂˆ]KœÙ]Ü˜]š]JÜ˜]š]KÑS•TŠNÂˆ[™X\“^[Ý]“^[Ý]\˜[\È]T\˜[\ÈH™]È[™X\“^[Ý]“^[Ý]\˜[\ÊL‹LŠNÂˆ]T\˜[\ËÜX\™Ú[ˆH
+
+NÂˆ›ÛÝ˜YšY]Ê]K]T\˜[\ÊNÂˆËÈÜšYÚ[˜[XZ[—ÛY[Kž[Ü™\‹ÌÚY[™ŒMÙZYÚË‚ˆ[Y[UÚYHX]›Z[Š
+Ì
+KÙ]™\ÛÝ\˜Ù\Ê
+K™Ù]\Ü^SY]šXÜÊ
+KÚY^[ÊNÂˆYYØXÞSY[R][J´(t/´-ô-4,4`´c4/t/´,´bô.H4/ô`4/´-t.´`ˆ‹\ÎŽ˜Ü™X]S˜[YY›Ú™XÝY[UÚY
+NÂˆYYØXÞSY[R][J´%ô,4,ô`4`ô-ô.4`´c4/ô`4/´-t.´`ˆ‹
+
+HOˆÚÛÜÙTØ]™Y›Ú™XÝ
+˜[ÙJKY[UÚY
+NÂˆYYØXÞSY[R][J´(ô-4,4.ô.4`´c4/ô`4/´-t.´`ˆ‹
+
+HOˆÚÛÜÙTØ]™Y›Ú™XÝ
+YJKY[UÚY
+NÂˆYYØXÞSY[R][J´+t.´`t/ô/´`4`ˆ4/ô`4/´-t.´`´,‹
+
+HOˆÂˆYˆ
+Ù]Ú\™Y™Y™\™[˜Ù\Ê‘Q”ËSÑWÔ’UUJK˜ÛÛZ[œÊPÕU‘WÔ“Ò‘PÕ
+JHÂˆYˆ
+ØY›Ú™XÝ
+
+JH^Ü›Ú™XÝ
+
+NÂˆH[ÙHØ\Ý›XZÙU^
+\Ë´(t/t,4aô,4.ô,4`t/´-ô-4,4.H4.4.ô.4-ô,4,ô`4`ô-ô.4/ô`4/´-t.´`ˆ‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆKY[UÚY
+NÂˆYYØXÞSY[R][J´&4/4/ô/´`4`ˆ4/ô`4/´-t.´`´,‹\ÎŽš[\Ü›Ú™XÝY[UÚY
+NÂˆYYØXÞSY[R][J´$´bôat/´-‹\ÎŽ™š[š\ÚY[UÚY
+NÂˆ›ÛÝ˜YšY]Ê™]ÈšY]Ê\ÊK™]È[™X\“^[Ý]“^[Ý]\˜[\ÊKŒYŠJNÂˆ^šY]È›ÛÝ\ˆH™]È^šY]Ê\ÊNÂˆ›ÛÝ\‹œÙ]^
+“ÓÑÒÖHŒKŒŠNÂˆ›ÛÝ\‹œÙ]^ÛÛÜŠÛÛÜ‹œ™ØŠMKÊJNÂˆ›ÛÝ\‹œÙ]^Ú^™JN
+NÂˆ›ÛÝ\‹œÙ]Ü˜]š]JÜ˜]š]KÑS•TŠNÂˆ›ÛÝ˜YšY]Ê›ÛÝ\‹™]È[™X\“^[Ý]“^[Ý]\˜[\ÊL‹LŠJNÂˆÙ]ÛÛ[šY]Ê›ÛÝ
+NÂˆB‚ˆš]˜]H›ÚYYYØXÞSY[R][JÝš[™ÈX™[[›˜X›H\ÚË[ÚY
+HÂˆ]Ûˆ]ÛˆHYØXÞSY[P]ÛŠX™[\ÚÊNÂˆËÈHÛÝ\˜ÙHÜXÚYšY\È›Üˆ^˜]\ˆ[ˆÜ‚ˆ]Û‹œÙ]^Ú^™J[™›ÚY][•\Y˜[YKÓÓTVÕS’UÑTŒ
+NÂˆ[™X\“^[Ý]“^[Ý]\˜[\È\˜[\ÈH™]È[™X\“^[Ý]“^[Ý]\˜[\ÊÚYŒMŠNÂˆ\˜[\Ë™Ü˜]š]HHÜ˜]š]KÑS•T—ÒÔ’V“Ó•SÂˆ\˜[\ËÜX\™Ú[ˆH
+L
+NÂˆ›ÛÝ˜YšY]Ê]Û‹\˜[\ÊNÂˆB‚ˆš]˜]H›ÛÛX[ˆÝÜ™PXÝ]™T›Ú™XÝ
+Ýš[™ÈœÛÛ‹›ÛÛX[ˆÞ[˜Ú›Û›Ý\ÊH›ÝÜÈ^Ù\[ÛˆÂˆÝš[™È›Ü›X[^™YH›Ú™XÝØ][ÙË››Ü›X[^™JœÛÛŠNÂˆ[™›ÚY˜ÛÛ[”Ú\™Y™Y™\™[˜Ù\È™YœÈHÙ]Ú\™Y™Y™\™[˜Ù\Ê‘Q”ËSÑWÔ’UUJNÂˆÝš[™ÈÛXÝ]™HH™YœË™Ù]Ýš[™ÊPÕU‘WÔ“Ò‘PÕ[
+NÂˆÝš[™ÈÛØ][ÙÈH™YœË™Ù]Ýš[™Ê“Ò‘PÕÐÐUSÑË[
+NÂˆÝš[™ÈÛ˜[YHH™YœË™Ù]Ýš[™Êœ›Ú™XÝÛ˜[YH‹[
+NÂˆÝš[™ÈØ][ÙÈH›Ú™XÝØ][ÙË\Ù\
+ÛØ][ÙË›Ü›X[^™Y
+NÂˆ[™›ÚY˜ÛÛ[”Ú\™Y™Y™\™[˜Ù\Ë‘Y]ÜˆY]H™YœË™Y]
+
+Bˆœ]Ýš[™ÊPÕU‘WÔ“Ò‘PÕ›Ü›X[^™Y
+Kœ]Ýš[™Ê“Ò‘PÕÐÐUSÑËØ][ÙÊBˆœ]Ýš[™Êœ›Ú™XÝÛ˜[YH‹™]È”ÓÓ“Øš™XÝ
+›Ü›X[^™Y
+K›ÜÝš[™Êœ›Ú™XÝ˜[YH‹´'4/´.H4/ô`4/´-t.´`ˆŠJNÂˆYˆ
+\Þ[˜Ú›Û›Ý\ÊHÈY]˜\J
+NÈ™]\›ˆYNÈBˆYˆ
+Y]˜ÛÛ[Z]
+
+JH™]\›ˆYNÂˆ[™›ÚY˜ÛÛ[”Ú\™Y™Y™\™[˜Ù\Ë‘Y]Üˆ™\ÝÜ™HH™YœË™Y]
+
+NÂˆYˆ
+ÛXÝ]™HOH[
+H™\ÝÜ™Kœ™[[Ý™JPÕU‘WÔ“Ò‘PÕ
+NÈ[ÙH™\ÝÜ™Kœ]Ýš[™ÊPÕU‘WÔ“Ò‘PÕÛXÝ]™JNÂˆYˆ
+ÛØ][ÙÈOH[
+H™\ÝÜ™Kœ™[[Ý™J“Ò‘PÕÐÐUSÑÊNÈ[ÙH™\ÝÜ™Kœ]Ýš[™Ê“Ò‘PÕÐÐUSÑËÛØ][ÙÊNÂˆYˆ
+Û˜[YHOH[
+H™\ÝÜ™Kœ™[[Ý™Jœ›Ú™XÝÛ˜[YHŠNÈ[ÙH™\ÝÜ™Kœ]Ýš[™Êœ›Ú™XÝÛ˜[YH‹Û˜[YJNÂˆYˆ
+\™\ÝÜ™K˜ÛÛ[Z]
+
+JH[™›ÚY][“ÙË™J“ÓÑÒÖH‹ÛÝ[›Ý\œÚ\Ý™\ÝÜ™Y›Ú™XÝ™Y™\™[˜Ù\ÈŠNÂˆ™]\›ˆ˜[ÙNÂˆB‚ˆÊŠ‚ˆ
+ˆ\Ü˜YHÛ›Ú™XÝYYXH™Y›Ü™HÚ[™Ú[™È]ÈØ]™YY[]KˆHØ]™HØ[˜XÚÂˆ
+ˆÛÛ[Z]ÈPÕU‘WÔ“Ò‘PÕ[™“Ò‘PÕÐÐUSÑÈÙÙ]\ŽÈ˜Z[YÛÜY\ÈX]™H›Ýˆ
+ˆHÜšYÚ[˜[Ø]™Y”ÓÓˆ[™HÛš[\È[ÝXÚY‚ˆ
+‹Âˆš]˜]HÝš[™ÈZYÜ˜]SYØXÞPXÝ]™T›Ú™XÝ
+Ýš[™ÈÝÜ™Y
+H›ÝÜÈ^Ù\[ÛˆÂˆ™]\›ˆYØXÞT›Ú™XÝYYXSZYÜ˜]Ü‹›ZYÜ˜]JÙ]š[\Ñ\Š
+KÝÜ™Y™]ÒœÛÛˆOˆÂˆžHÈ™]\›ˆÝÜ™PXÝ]™T›Ú™XÝ
+™]ÒœÛÛ‹YJNÈBˆØ]Ú
+^Ù\[Ûˆ˜Z[\™JHÂˆ[™›ÚY][“ÙË™J“ÓÑÒÖH‹“YØXÞH›Ú™XÝQÛÛ[Z]˜Z[Y‹˜Z[\™JNÂˆ™]\›ˆ˜[ÙNÂˆBˆJNÂˆB‚ˆš]˜]HÝš[™È™XY›Ú™XÝØ][ÙÊ
+H›ÝÜÈ^Ù\[ÛˆÂˆ[™›ÚY˜ÛÛ[”Ú\™Y™Y™\™[˜Ù\È™YœÈHÙ]Ú\™Y™Y™\™[˜Ù\Ê‘Q”ËSÑWÔ’UUJNÂˆÝš[™ÈXÝ]™HH™YœË™Ù]Ýš[™ÊPÕU‘WÔ“Ò‘PÕ[
+NÂˆYˆ
+XÝ]™HOH[
+HÂˆYˆ
+YØXÞT›Ú™XÝYYXSZYÜ˜]Ü‹›™YYÓZYÜ˜][ÛŠXÝ]™JJHÂˆZYÜ˜]SYØXÞPXÝ]™T›Ú™XÝ
+XÝ]™JNÂˆH[ÙHYˆ
+\ÝÜ™PXÝ]™T›Ú™XÝ
+XÝ]™KYJJHÂˆ›ÝÈ™]ÈSÑ^Ù\[ÛŠ´'t-H4`ô-4,4.ô/´`tc4`t/´at`4,4/t.4`´c4`´-t.´`ôbt.4.H4/ô`4/´-t.´`ˆŠNÂˆBˆBˆ™]\›ˆ™YœË™Ù]Ýš[™Ê“Ò‘PÕÐÐUSÑËžßHŠNÂˆB‚ˆš]˜]H›ÚYÜ™X]S˜[YY›Ú™XÝ
+
+HÂˆY]^˜[YHH›Ü\QšY[
+ˆ‹[œ]\K•TWÐÓTÔ×ÕV
+NÂˆ˜[YKœÙ][
+´&4/4cÈ4/ô`4/´-t.´`´,ŠNÂˆ[\X[ÙÈX[ÙÈH™]È[\X[ÙËZ[\Š\ÊKœÙ]]J´(t/´-ô-4,4`´c4/t/´,´bô.H4/ô`4/´-t.´`ˆŠBˆœÙ]šY]Ê˜[YJKœÙ]™YØ]]™P]ÛŠ´'´`´/4-t/t,‹[
+KœÙ]ÜÚ]]™P]ÛŠ´(t/´-ô-4,4`´c‹[
+K˜Ü™X]J
+NÂˆX[ÙËœÙ]Û”ÚÝÓ\Ý[™\ŠYÛ›Ü™YOˆX[ÙË™Ù]]ÛŠ[\X[ÙË•UÓ—ÔÔÒUU‘JKœÙ]ÛÛXÚÓ\Ý[™\ŠˆOˆÂˆžHÂˆ™XY›Ú™XÝØ][ÙÊ
+NÈËÈZYÜ˜]KÜ™\Ù\™HH™]š[Ý\ÈXÝ]™H›Ú™XÝš\œÝ‚ˆÝš[™ÈœÛÛˆH›Ú™XÝØ][ÙË˜Ü™X]J˜[YK™Ù]^
+
+KÔÝš[™Ê
+JNÂˆYˆ
+\ÝÜ™PXÝ]™T›Ú™XÝ
+œÛÛ‹YJJH›ÝÈ™]ÈSÑ^Ù\[ÛŠ´'t-H4`ô-4,4.ô/´`tc4`t/´at`4,4/t.4`´c4/ô`4/´-t.´`ˆŠNÂˆYˆ
+[ØY›Ú™XÝ
+
+JH›ÝÈ™]ÈSÑ^Ù\[ÛŠ´'t-H4`ô-4,4.ô/´`tc4/´`´.´`4bô`´c4/t/´,´bô.H4/ô`4/´-t.´`ˆŠNÂˆX[ÙË™\ÛZ\ÜÊ
+NÈÚÝÑY]ÜŠ
+NÂˆHØ]Ú
+^Ù\[Ûˆ\œ›ÜŠHÈ˜[YKœÙ]\œ›ÜŠ\œ›Ü‹™Ù]Y\ÜØYÙJ
+JNÈBˆJJNÂˆX[ÙËœÚÝÊ
+NÂˆB‚ˆš]˜]H›ÚYÚÛÜÙTØ]™Y›Ú™XÝ
+›ÛÛX[ˆ[][™ÊHÂˆžHÂˆ\Ý”ÓÓ“Øš™XÝˆ›Ú™XÝÈH›Ú™XÝØ][ÙË›\Ý
+™XY›Ú™XÝØ][ÙÊ
+JNÂˆYˆ
+›Ú™XÝËš\Ñ[\J
+JHÂˆØ\Ý›XZÙU^
+\Ë´'t-t`ˆ4`t/´at`4,4/tdt/t/tbôaH4/ô`4/´-t.´`´/´,ˆ‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÈ™]\›ŽÂˆBˆÝš[™Ö×HX™[ÈH™]ÈÝš[™ÖÜ›Ú™XÝËœÚ^™J
+WNÂˆ›Üˆ
+[HHÈHX™[Ë›[™ÝÈJÊÊHX™[ÖÚWHH›Ú™XÝË™Ù]
+JK›ÜÝš[™Êœ›Ú™XÝ˜[YH‹´'4/´.H4/ô`4/´-t.´`ˆŠNÂˆ™]È[\X[ÙËZ[\Š\ÊKœÙ]]J[][™ÈÈ´(ô-4,4.ô.4`´c4/ô`4/´-t.´`ˆˆˆ´%ô,4,ô`4`ô-ô.4`´c4/ô`4/´-t.´`ˆŠBˆœÙ]][\ÊX™[Ë
+X[ÙËÚXÚ
+HOˆÂˆ”ÓÓ“Øš™XÝÙ[XÝYH›Ú™XÝË™Ù]
+ÚXÚ
+NÂˆYˆ
+[][™ÊHÂˆ™]È[\X[ÙËZ[\Š\ÊKœÙ]]J´(ô-4,4.ô.4`´c4/ô`4/´-t.´`ÈŠBˆœÙ]Y\ÜØYÙJÙ[XÝY›ÜÝš[™Êœ›Ú™XÝ˜[YH‹´'4/´.H4/ô`4/´-t.´`ˆŠJBˆœÙ]™YØ]]™P]ÛŠ´'´`´/4-t/t,‹[
+KœÙ]ÜÚ]]™P]ÛŠ´(ô-4,4.ô.4`´c‹
+ÛÛ™š\›KÚÚXÙJHOˆ[]TØ]™Y›Ú™XÝ
+Ù[XÝY
+JKœÚÝÊ
+NÂˆH[ÙHžHÂˆYˆ
+\ÝÜ™PXÝ]™T›Ú™XÝ
+Ù[XÝYÔÝš[™Ê
+KYJJH›ÝÈ™]ÈSÑ^Ù\[ÛŠ´'t-H4`ô-4,4.ô/´`tc4/´`´.´`4bô`´c4/ô`4/´-t.´`ˆŠNÂˆYˆ
+[ØY›Ú™XÝ
+
+JH›ÝÈ™]ÈSÑ^Ù\[ÛŠ´'t-H4`ô-4,4.ô/´`tc4/´`´.´`4bô`´c4/ô`4/´-t.´`ˆŠNÂˆÚÝÑY]ÜŠ
+NÂˆHØ]Ú
+^Ù\[Ûˆ\œ›ÜŠHÈØ\Ý›XZÙU^
+\Ë\œ›Ü‹™Ù]Y\ÜØYÙJ
+KØ\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÈBˆJKœÙ]™YØ]]™P]ÛŠ´'´`´/4-t/t,‹[
+KœÚÝÊ
+NÂˆHØ]Ú
+^Ù\[Ûˆ\œ›ÜŠHÈØ\Ý›XZÙU^
+\Ë´(t/ô.4`t/´.ˆ4/ô`4/´-t.´`´/´,Žˆˆ
+È\œ›Ü‹™Ù]Y\ÜØYÙJ
+KØ\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÈBˆB‚ˆš]˜]H›ÚY[]TØ]™Y›Ú™XÝ
+”ÓÓ“Øš™XÝÙ[XÝY
+HÂˆžHÂˆ[™›ÚY˜ÛÛ[”Ú\™Y™Y™\™[˜Ù\È™YœÈHÙ]Ú\™Y™Y™\™[˜Ù\Ê‘Q”ËSÑWÔ’UUJNÂˆÝš[™ÈÙ^HH›Ú™XÝYYXTÙ\šXÙK™Ù]Ü‘Ù[™\˜]T›Ú™XÝY
+Ù[XÝYÔÝš[™Ê
+JNÂˆÝš[™ÈÛØ][ÙÈH™YœË™Ù]Ýš[™Ê“Ò‘PÕÐÐUSÑËžßHŠNÂˆÝš[™ÈXÝ]™HH™YœË™Ù]Ýš[™ÊPÕU‘WÔ“Ò‘PÕ[
+NÂˆÝš[™ÈÛ˜[YHH™YœË™Ù]Ýš[™Êœ›Ú™XÝÛ˜[YH‹[
+NÂˆ›ÛÛX[ˆ[][™ÐXÝ]™HHXÝ]™HOH[	‰ˆÙ^K™\]X[Ê›Ú™XÝYYXTÙ\šXÙK™Ù]Ü‘Ù[™\˜]T›Ú™XÝY
+XÝ]™JJNÂˆ[™›ÚY˜ÛÛ[”Ú\™Y™Y™\™[˜Ù\Ë‘Y]ÜˆY]H™YœË™Y]
+
+Bˆœ]Ýš[™Ê“Ò‘PÕÐÐUSÑË›Ú™XÝØ][ÙËœ™[[Ý™JÛØ][ÙËÙ^JJNÂˆYˆ
+[][™ÐXÝ]™JHY]œ™[[Ý™JPÕU‘WÔ“Ò‘PÕ
+Kœ™[[Ý™Jœ›Ú™XÝÛ˜[YHŠNÂˆYˆ
+YY]˜ÛÛ[Z]
+
+JHÂˆ[™›ÚY˜ÛÛ[”Ú\™Y™Y™\™[˜Ù\Ë‘Y]Üˆ™\ÝÜ™HH™YœË™Y]
+
+Kœ]Ýš[™Ê“Ò‘PÕÐÐUSÑËÛØ][ÙÊNÂˆYˆ
+XÝ]™HOH[
+H™\ÝÜ™Kœ]Ýš[™ÊPÕU‘WÔ“Ò‘PÕXÝ]™JNÂˆYˆ
+Û˜[YHOH[
+H™\ÝÜ™Kœ]Ýš[™Êœ›Ú™XÝÛ˜[YH‹Û˜[YJNÂˆYˆ
+\™\ÝÜ™K˜ÛÛ[Z]
+
+JH[™›ÚY][“ÙË™J“ÓÑÒÖH‹ÛÝ[›Ý\œÚ\Ý™\ÝÜ™YØ][ÙÈŠNÂˆ›ÝÈ™]ÈSÑ^Ù\[ÛŠ´'t-H4`ô-4,4.ô/´`tc4`ô-4,4.ô.4`´c4/ô`4/´-t.´`ˆŠNÂˆBˆYˆ
+[][™ÐXÝ]™JHÈÚYÙ]Ë˜ÛX\Š
+NÈØÜ™Y[œË˜ÛX\Š
+NÈ›Ú™XÝ^˜QšY[ÈH™]È”ÓÓ“Øš™XÝ
+
+NÈÛ\›Ø\™ÚYÙ]H[È[XYÙPØXÚK˜ÛX\Š
+NÈBˆÚÝÒÛYJ
+NÂˆHØ]Ú
+^Ù\[Ûˆ\œ›ÜŠHÈØ\Ý›XZÙU^
+\Ë\œ›Ü‹™Ù]Y\ÜØYÙJ
+KØ\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÈBˆB‚ˆš]˜]H›ÚYÚÝÓ[Ù\ÔØØ[›™\Š
+HÂˆÝÜ[Ù\ÔÛ[™Ê
+NÂˆY]ÜˆH[Âˆ›ÛÝH™]È[™X\“^[Ý]
+\ÊNÂˆ›ÛÝœÙ]ÜšY[][ÛŠ[™X\“^[Ý]•‘T•PÐS
+NÂˆ›ÛÝœÙ]˜XÚÙÜ›Ý[™ÛÛÜŠÛÛÜ‹œ™ØŠKKJJNÂˆ›ÛÝ˜YšY]ÊXY[™Ê“ÓÑÒÖH8 (ˆ[Ù\ÈÔØØ[›™\ˆŠK™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLK
+Œ
+JJNÂˆ›ÛÝ˜YšY]ÊXÝ[ÛŠ¸ .H4't,4-ô,4-‹\ÎŽœÚÝÒÛYJK™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLK
+
+JJNÂ‚ˆ[™X\“^[Ý]›Ü›HH™]È[™X\“^[Ý]
+\ÊNÂˆ›Ü›KœÙ]ÜšY[][ÛŠ[™X\“^[Ý]•‘T•PÐS
+NÂˆ›Ü›KœÙ]Y[™Ê
+MŠK
+
+K
+MŠK
+
+JNÂˆY]^ÜÝšY[H›Ü\QšY[
+ŒNL‹ŒMŽŒKŒL‹[œ]\K•TWÐÓTÔ×ÕV[œ]\K•TWÕVÕT’PUSÓ—ÕT’JNÂˆÜÝšY[œÙ][
+’Tt,4-4`4-t`H4`ô`t`´`4/´.t`t`´,´,ŠNÂˆ›Ü›K˜YšY]ÊÜÝšY[
+NÂˆY]^ÜšY[H›Ü\QšY[
+Lˆ‹[œ]\K•TWÐÓTÔ×Ó•SP‘TŠNÂˆÜšY[œÙ][
+•Ôt/ô/´`4`ˆ
+4/´,tbôaô/t/ˆLŠHŠNÂˆ›Ü›K˜YšY]ÊÜšY[
+NÂˆY]^[š]šY[H›Ü\QšY[
+ŒH‹[œ]\K•TWÐÓTÔ×Ó•SP‘TŠNÂˆ[š]šY[œÙ][
+•[š]Q
+8 $ÌMJHŠNÂˆ›Ü›K˜YšY]Ê[š]šY[
+NÂˆÜ[›™\ˆ[˜Ý[Û”Ü[›™\ˆH™]ÈÜ[›™\Š\ÊNÂˆ\œ˜^PY\\Ýš[™Ïˆ[˜Ý[ÛY\\ˆH™]È\œ˜^PY\\Š\Ë[™›ÚY”‹›^[Ý]œÚ[\WÜÜ[›™\—Ú][Kˆ™]ÈÝš[™Ö×^È’Û[™È™YÚ\Ý\œÈ
+ÌÊH‹’[œ]™YÚ\Ý\œÈ
+Ì
+HŸJNÂˆ[˜Ý[ÛY\\‹œÙ]›ÜÝÛ•šY]Ô™\ÛÝ\˜ÙJ[™›ÚY”‹›^[Ý]œÚ[\WÜÜ[›™\—Ù›ÜÝÛ—Ú][JNÂˆ[˜Ý[Û”Ü[›™\‹œÙ]Y\\Š[˜Ý[ÛY\\ŠNÂˆ›Ü›K˜YšY]Ê[˜Ý[Û”Ü[›™\ŠNÂˆY]^Y™\ÜÑšY[H›Ü\QšY[
+H‹[œ]\K•TWÐÓTÔ×Ó•SP‘TŠNÂˆY™\ÜÑšY[œÙ][
+´$4-4`4-t`H4`4-t,ô.4`t`´`4,ˆÌÈ4/´,tbôaô/t/ˆKÌ4/´,tbôaô/t/ˆÌHŠNÂˆ›Ü›K˜YšY]ÊY™\ÜÑšY[
+NÂˆY]^ÛÝ[šY[H›Ü\QšY[
+ŒL‹[œ]\K•TWÐÓTÔ×Ó•SP‘TŠNÂˆÛÝ[šY[œÙ][
+´&´/´.ô.4aô-t`t`´,´/ˆ4`4-t,ô.4`t`´`4/´,ˆ
+x $ÌLJHŠNÂˆ›Ü›K˜YšY]ÊÛÝ[šY[
+NÂ‚ˆ^šY]È™\Ý[H™]È^šY]Ê\ÊNÂˆ™\Ý[œÙ]^ÛÛÜŠÛÛÜ‹œ™ØŠÌKKMJJNÂˆ™\Ý[œÙ]^Ú^™JM
+NÂˆ™\Ý[œÙ]Y[™Ê
+MŠK
+L
+K
+MŠK
+L
+JNÂˆ™\Ý[œÙ]^
+´$ô/´`´/´,ˆ4.ˆ4aô`´-t/t.4cˆÛ[™È™YÚ\Ý\œÈ
+ÌÊKˆ4(t.´,4/t.4`4/´,´,4/t.4-H4,´bô/ô/´.ô/tcô-t`´`tcÈ4/ô/ˆ4`t-t`´.È4`ô`t`´`4/´.t`t`´,´/ˆ4-4/´.ô-´/t/ˆ4,tbô`´c4-4/´`t`´`ô/ô/t/‹ˆŠNÂˆ›ÛÝ˜YšY]Ê›Ü›K™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLKLŠJNÂˆ›ÛÝ˜YšY]ÊXÝ[ÛŠ´(taô.4`´,4`´c4`4-t,ô.4`t`´`4bÈ‹
+
+HOˆÂˆš[˜[Ýš[™ÈÜÝHÜÝšY[™Ù]^
+
+KÔÝš[™Ê
+Kš[J
+NÂˆš[˜[[[˜Ý[ÛÛÙHH[˜Ý[Û”Ü[›™\‹™Ù]Ù[XÝY][TÜÚ][ÛŠ
+HOHÈÈˆÂˆš[˜[[Ü[š]Ý\Y™\ÜËÛÝ[ÂˆžHÂˆÜH[YÙ\‹œ\œÙR[
+ÜšY[™Ù]^
+
+KÔÝš[™Ê
+Kš[J
+JNÂˆ[š]H[YÙ\‹œ\œÙR[
+[š]šY[™Ù]^
+
+KÔÝš[™Ê
+Kš[J
+JNÂˆ[[\™YY™\ÜÈH[YÙ\‹œ\œÙR[
+Y™\ÜÑšY[™Ù]^
+
+KÔÝš[™Ê
+Kš[J
+JNÂˆÛÝ[H[YÙ\‹œ\œÙR[
+ÛÝ[šY[™Ù]^
+
+KÔÝš[™Ê
+Kš[J
+JNÂˆYˆ
+ÜHÜˆMLÍH[š][š]ˆMHÛÝ[HÛÝ[ˆLBˆ[\™YY™\ÜÈ[\™YY™\ÜÈˆMLÍJH›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ
+NÂˆYˆ
+[˜Ý[ÛÛÙHOH	‰ˆ[\™YY™\ÜÈHÌH	‰ˆ[\™YY™\ÜÈHÎNNNJHÂˆÝ\Y™\ÜÈH[\™YY™\ÜÈHÌNÂˆH[ÙHYˆ
+[˜Ý[ÛÛÙHOHÈ	‰ˆ[\™YY™\ÜÈHH	‰ˆ[\™YY™\ÜÈHNNNJHÂˆÝ\Y™\ÜÈH[\™YY™\ÜÈHNÂˆH[ÙHYˆ
+
+[˜Ý[ÛÛÙHOH	‰ˆ[\™YY™\ÜÈHH	‰ˆ[\™YY™\ÜÈHNNNJBˆ
+[˜Ý[ÛÛÙHOHÈ	‰ˆ[\™YY™\ÜÈHÌH	‰ˆ[\™YY™\ÜÈHÎNNNJJHÂˆ›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ´$4-4`4-t`H4/t-H4`t/´/´`´,´-t`´`t`´,´`ô-t`ˆ4,´bô,t`4,4/t/t/´/4`È4`´.4/ô`È4`4-t,ô.4`t`´`4,ŠNÂˆH[ÙHÂˆÝ\Y™\ÜÈH[\™YY™\ÜÎÂˆBˆYˆ
+Ý\Y™\ÜÈÝ\Y™\ÜÈˆMLÍHÝ\Y™\ÜÈ
+ÈÛÝ[ˆMLÍŠH›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ
+NÂˆYˆ
+ÜÝš\Ñ[\J
+JH›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ
+NÂˆHØ]Ú
+^Ù\[Ûˆ^
+HÂˆÝš[™ÈY\ÜØYÙHH^™Ù]Y\ÜØYÙJ
+NÂˆ™\Ý[œÙ]^
+Y\ÜØYÙHOH[Y\ÜØYÙKš[J
+Kš\Ñ[\J
+BˆÈ´'ô`4/´,´-t`4cT4/ô/´`4`‹[š]Q4,4-4`4-t`H4.4.´/´.ô.4aô-t`t`´,´/ˆ4`4-t,ô.4`t`´`4/´,‹ˆ‚ˆˆ´'ô,4`4,4/4-t`´`4bÈ4-ô,4/ô`4/´`t,ˆˆ
+ÈY\ÜØYÙJNÂˆ™]\›ŽÂˆBˆ™\Ý[œÙ]^
+´'ô/´-4.´.ôc´aô,4c´`tc4.ˆˆ
+ÈÜÝ
+ÈŽˆˆ
+ÈÜ
+È¸ )ˆŠNÂˆ™]È™XY
+
+
+HOˆÂˆÝš[™È™\ÜÂˆžHÂˆ™\ÜH™XY[Ù\Ô™YÚ\Ý\œÊÜÝÜ[š]Ý\Y™\ÜËÛÝ[[˜Ý[ÛÛÙJNÂˆHØ]Ú
+^Ù\[Ûˆ^
+HÂˆ™\ÜH´'´b4.4,t.´,[Ù\ÈÔˆˆ
+È
+^™Ù]Y\ÜØYÙJ
+HOH[È^™Ù]Û\ÜÊ
+K™Ù]Ú[\S˜[YJ
+Hˆ^™Ù]Y\ÜØYÙJ
+JNÂˆBˆš[˜[Ýš[™Èš[˜[™\ÜH™\ÜÂˆ[“Û•ZU™XY
+
+
+HOˆ™\Ý[œÙ]^
+š[˜[™\Ü
+JNÂˆK˜›ÛÙÚÞK[[Ù\Ë\ØØ[ˆŠKœÝ\
+
+NÂˆJK™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLK
+LŠJJNÂˆ›ÛÝ˜YšY]Ê™\Ý[™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLKJJNÂˆÙ]ÛÛ[šY]Ê›ÛÝ
+NÂˆB‚ˆX›XÈÝ]XÈ[Ø[Ý[]S[Ù\ÔPÜ˜Êž]V×H]K[[™Ý
+HÂˆ[Ü˜ÈH‘‘‘ŽÂˆ›Üˆ
+[ÜÈHÈÜÈ[™ÝÈÜÊÊÊHÂˆÜ˜ÈH
+]VÜÜ×H	ˆ‘ŠNÂˆ›Üˆ
+[HHÈHOHÈKKJHÂˆYˆ
+
+Ü˜È	ˆJHOH
+HÂˆÜ˜ÈHNÂˆÜ˜ÈHLNÂˆH[ÙHÂˆÜ˜ÈHNÂˆBˆBˆBˆ™]\›ˆÜ˜È	ˆ‘‘‘ŽÂˆB‚ˆX›XÈÝ]XÈž]V×HZ[[Ù\ÔQœ˜[YJ[[š][[˜Ý[ÛÛÙK[Ý\Y™\ÜË[ÛÝ[
+HÂˆž]V×Hœ˜[YHH™]Èž]VÎNÂˆœ˜[YVÌHH
+ž]JH
+[š]	ˆ‘ŠNÂˆœ˜[YVÌWHH
+ž]JH
+[˜Ý[ÛÛÙH	ˆ‘ŠNÂˆœ˜[YVÌ—HH
+ž]JH
+
+Ý\Y™\ÜÈˆ
+H	ˆ‘ŠNÂˆœ˜[YVÌ×HH
+ž]JH
+Ý\Y™\ÜÈ	ˆ‘ŠNÂˆœ˜[YVÍHH
+ž]JH
+
+ÛÝ[ˆ
+H	ˆ‘ŠNÂˆœ˜[YVÍWHH
+ž]JH
+ÛÝ[	ˆ‘ŠNÂˆ[Ü˜ÈHØ[Ý[]S[Ù\ÔPÜ˜Êœ˜[YKŠNÂˆœ˜[YVÍ—HH
+ž]JH
+Ü˜È	ˆ‘ŠNÂˆœ˜[YVÍ×HH
+ž]JH
+
+Ü˜Èˆ
+H	ˆ‘ŠNÂˆ™]\›ˆœ˜[YNÂˆB‚ˆX›XÈÝ]XÈÛ\ÜÈ[Ù\ÔU˜[œÜÜÂˆš]˜]Hš[˜[[œ]Ý™X[H[ŽÂˆš]˜]Hš[˜[Ý]]Ý™X[HÝ]Â‚ˆX›XÈ[Ù\ÔU˜[œÜÜ
+[œ]Ý™X[H[‹Ý]]Ý™X[HÝ]
+HÂˆ\Ëš[ˆH[ŽÂˆ\Ë›Ý]HÝ]ÂˆB‚ˆš]˜]H›ÚY™XY[Jž]V×HY™™\‹[Ù™œÙ][[™Ý
+H›ÝÜÈSÑ^Ù\[ÛˆÂˆ[Ý[™XYHÂˆÚ[H
+Ý[™XY[™Ý
+HÂˆ[ÛÝ[H[‹œ™XY
+Y™™\‹Ù™œÙ]
+ÈÝ[™XY[™ÝHÝ[™XY
+NÂˆYˆ
+ÛÝ[
+HÂˆ›ÝÈ™]ÈSÑ^Ù\[ÛŠ”Ý™X[HÛÜÙY™Y›Ü™H™XY[™È^XÝYˆ
+È[™Ý
+Èˆž]\È
+™XYˆ
+ÈÝ[™XY
+ÈŠHŠNÂˆBˆÝ[™XY
+ÏHÛÝ[ÂˆBˆB‚ˆX›XÈž]V×HÙ[™[™™XÙZ]™J[[š][[˜Ý[ÛÛÙK[Ý\Y™\ÜË[ÛÝ[
+H›ÝÜÈSÑ^Ù\[ÛˆÂˆž]V×Hœ˜[YHHZ[[Ù\ÔQœ˜[YJ[š][˜Ý[ÛÛÙKÝ\Y™\ÜËÛÝ[
+NÂˆÝ]Üš]Jœ˜[YJNÂˆÝ]™›\Ú
+
+NÂ‚ˆž]V×HXY\ˆH™]Èž]VÌ×NÂˆ™XY[JXY\‹ÊNÂ‚ˆ[™\Ü[š]HXY\–ÌH	ˆ‘ŽÂˆ[™\Ü[˜ÈHXY\–ÌWH	ˆ‘ŽÂ‚ˆYˆ
+™\Ü[˜ÈOH
+[˜Ý[ÛÛÙH
+JHÂˆ[^Ù\[ÛÛÙHHXY\–Ì—H	ˆ‘ŽÂˆž]V×HÜ˜ÐYˆH™]Èž]VÌ—NÂˆ™XY[JÜ˜ÐY‹ŠNÂˆ[^XÝYÜ˜ÈH
+
+Ü˜ÐY–ÌWH	ˆ‘ŠH
+H
+Ü˜ÐY–ÌH	ˆ‘ŠNÂˆ[Ø[ÐÜ˜ÈHØ[Ý[]S[Ù\ÔPÜ˜ÊXY\‹ÊNÂˆYˆ
+Ø[ÐÜ˜ÈOH^XÝYÜ˜ÊHÂˆ›ÝÈ™]ÈSÑ^Ù\[ÛŠÔÈZ\ÛX]Ú[ˆ[Ù\È•H^Ù\[Ûˆ™\ÜÛœÙH
+^XÝY‚ˆ
+ÈÝš[™Ë™›Ü›X]
+˜]˜K][“ØØ[K”“ÓÕ‰L‹Ø[ÐÜ˜ÊH
+È‹ÛÝ‚ˆ
+ÈÝš[™Ë™›Ü›X]
+˜]˜K][“ØØ[K”“ÓÕ‰L‹^XÝYÜ˜ÊH
+ÈŠHŠNÂˆBˆ›ÝÈ™]ÈSÑ^Ù\[ÛŠ“[Ù\È•Nˆˆ
+È\ØÜšX™S[Ù\Ñ^Ù\[ÛÛÙTÝ]XÊ^Ù\[ÛÛÙJH
+Èˆ
+4.´/´-ˆ
+È^Ù\[ÛÛÙH
+ÈŠHŠNÂˆB‚ˆYˆ
+™\Ü[˜ÈOH[˜Ý[ÛÛÙJHÂˆ›ÝÈ™]ÈSÑ^Ù\[ÛŠ•[™^XÝY[˜Ý[ÛˆÛÙH[ˆ[Ù\È•H™\ÜÛœÙNˆˆ
+È™\Ü[˜ÊNÂˆB‚ˆ[ž]PÛÝ[HXY\–Ì—H	ˆ‘ŽÂˆYˆ
+ž]PÛÝ[ž]PÛÝ[ˆLŠHÂˆ›ÝÈ™]ÈSÑ^Ù\[ÛŠ’[˜[Yž]HÛÝ[[ˆ[Ù\È•H™\ÜÛœÙNˆˆ
+Èž]PÛÝ[
+NÂˆB‚ˆž]V×H^[ØYH™]Èž]VØž]PÛÝ[NÂˆ™XY[J^[ØYž]PÛÝ[
+NÂ‚ˆž]V×HÜ˜ÐYˆH™]Èž]VÌ—NÂˆ™XY[JÜ˜ÐY‹ŠNÂˆ[^XÝYÜ˜ÈH
+
+Ü˜ÐY–ÌWH	ˆ‘ŠH
+H
+Ü˜ÐY–ÌH	ˆ‘ŠNÂ‚ˆž]V×H[HH™]Èž]VÌÈ
+Èž]PÛÝ[NÂˆÞ\Ý[K˜\œ˜^XÛÜJXY\‹[KÊNÂˆÞ\Ý[K˜\œ˜^XÛÜJ^[ØY[KËž]PÛÝ[
+NÂ‚ˆ[Ø[ÐÜ˜ÈHØ[Ý[]S[Ù\ÔPÜ˜Ê[K[K›[™Ý
+NÂˆYˆ
+Ø[ÐÜ˜ÈOH^XÝYÜ˜ÊHÂˆ›ÝÈ™]ÈSÑ^Ù\[ÛŠÔÈZ\ÛX]Ú[ˆ[Ù\È•H™\ÜÛœÙH
+^XÝY‚ˆ
+ÈÝš[™Ë™›Ü›X]
+˜]˜K][“ØØ[K”“ÓÕ‰L‹Ø[ÐÜ˜ÊH
+È‹ÛÝ‚ˆ
+ÈÝš[™Ë™›Ü›X]
+˜]˜K][“ØØ[K”“ÓÕ‰L‹^XÝYÜ˜ÊH
+ÈŠHŠNÂˆBˆ™]\›ˆ^[ØYÂˆBˆB‚ˆš]˜]HÝš[™È™XY[Ù\ÒÛ[™Ô™YÚ\Ý\œÊÝš[™ÈÜÝ[Ü[[š][Ý\Y™\ÜË[ÛÝ[
+H›ÝÜÈ^Ù\[ÛˆÂˆ™]\›ˆ™XY[Ù\Ô™YÚ\Ý\œÊÜÝÜ[š]Ý\Y™\ÜËÛÝ[ÊNÂˆB‚ˆX›XÈÝ]XÈÝš[™È™XY[Ù\Ô™YÚ\Ý\œÔÝ]XÊÝš[™ÈÜÝ[Ü[[š][Ý\Y™\ÜË[ÛÝ[[[˜Ý[ÛÛÙJH›ÝÜÈ^Ù\[ÛˆÂˆš[˜[[×H˜[Y\ÎÂˆžHÂˆ˜[Y\ÈH™]È[Ù\ÕÜÛY[
+ÜÝÜ
+Kœ™XY
+[š]Ý\Y™\ÜËÛÝ[[˜Ý[ÛÛÙJNÂˆHØ]Ú
+[Ù\ÕÜÛY[“[Ù\Ñ^Ù\[Ûˆ^
+HÂˆ›ÝÈ\ØÜšX™UÜ^Ù\[ÛŠ^
+NÂˆBˆÝš[™ÐZ[\ˆ™\ÜH™]ÈÝš[™ÐZ[\Š
+NÂˆÝš[™È[˜Ó˜[YHH[˜Ý[ÛÛÙHOHHÈ˜ÛÚ[È
+ÌJWˆˆˆ
+[˜Ý[ÛÛÙHOHˆÈ™\ØÜ™]H[œ]È
+ÌŠWˆˆˆ
+[˜Ý[ÛÛÙHOHÈÈšÛ[™È™YÚ\Ý\œÈ
+ÌÊWˆˆˆš[œ]™YÚ\Ý\œÈ
+Ì
+WˆŠJNÂˆ™\Ü˜\[™
+´(ô`t/ô-tb4/t/ŽˆŠK˜\[™
+ÛÝ[
+K˜\[™
+ˆŠK˜\[™
+[˜Ó˜[YJNÂˆ[˜\ÙPYˆH[˜Ý[ÛÛÙHOHHÈHˆ
+[˜Ý[ÛÛÙHOHˆÈLHˆ
+[˜Ý[ÛÛÙHOHÈÈHˆÌJJNÂˆ›Üˆ
+[HHÈHÛÝ[ÈJÊÊHÂˆ™\Ü˜\[™
+˜\ÙPYˆ
+ÈÝ\Y™\ÜÈ
+ÈJK˜\[™
+ˆŠBˆ˜\[™
+˜[Y\ÖÚWJK˜\[™
+ˆŠBˆ˜\[™
+Ýš[™Ë™›Ü›X]
+˜]˜K][“ØØ[K”“ÓÕ‰L‹˜[Y\ÖÚWJJK˜\[™
+	×‰ÊNÂˆBˆ™]\›ˆ™\ÜÔÝš[™Ê
+NÂˆB‚ˆX›XÈÝ]XÈ›ÛÛX[ˆÜš]S[Ù\Ô™YÚ\Ý\”Ý]XÊÝš[™ÈÜÝ[Ü[[š][Y™\ÜË[˜[YJH›ÝÜÈ^Ù\[ÛˆÂˆžHÂˆ™]È[Ù\ÕÜÛY[
+ÜÝÜ
+KÜš]TÚ[™ÛJ[š]Y™\ÜË˜[YJNÂˆ™]\›ˆYNÂˆHØ]Ú
+[Ù\ÕÜÛY[“[Ù\Ñ^Ù\[Ûˆ^
+HÂˆ›ÝÈ\ØÜšX™UÜ^Ù\[ÛŠ^
+NÂˆBˆB‚ˆX›XÈÝ]XÈ›ÛÛX[ˆÜš]S[Ù\Ó][\T™YÚ\Ý\œÔÝ]XÊÝš[™ÈÜÝ[Ü[[š][Ý\Y™\ÜË[×H˜[Y\ÊH›ÝÜÈ^Ù\[ÛˆÂˆžHÂˆ™]È[Ù\ÕÜÛY[
+ÜÝÜ
+KÜš]S][\J[š]Ý\Y™\ÜË˜[Y\ÊNÂˆ™]\›ˆYNÂˆHØ]Ú
+[Ù\ÕÜÛY[“[Ù\Ñ^Ù\[Ûˆ^
+HÂˆ›ÝÈ\ØÜšX™UÜ^Ù\[ÛŠ^
+NÂˆBˆB‚ˆš]˜]HÝ]XÈSÑ^Ù\[Ûˆ\ØÜšX™UÜ^Ù\[ÛŠ[Ù\ÕÜÛY[“[Ù\Ñ^Ù\[Ûˆ^
+HÂˆ™]\›ˆ™]ÈSÑ^Ù\[ÛŠ“[Ù\Îˆˆ
+È\ØÜšX™S[Ù\Ñ^Ù\[ÛÛÙTÝ]XÊ^™^Ù\[ÛÛÙJBˆ
+Èˆ
+4.´/´-ˆ
+È^™^Ù\[ÛÛÙH
+ÈŠH‹^
+NÂˆB‚ˆš]˜]HÝš[™È™XY[Ù\Ô™YÚ\Ý\œÊÝš[™ÈÜÝ[Ü[[š][Ý\Y™\ÜË[ÛÝ[[[˜Ý[ÛÛÙJH›ÝÜÈ^Ù\[ÛˆÂˆ™]\›ˆ™XY[Ù\Ô™YÚ\Ý\œÔÝ]XÊÜÝÜ[š]Ý\Y™\ÜËÛÝ[[˜Ý[ÛÛÙJNÂˆB‚ˆX›XÈÝ]XÈÝš[™È\ØÜšX™S[Ù\Ñ^Ù\[ÛÛÙTÝ]XÊ[ÛÙJHÂˆÝÚ]Ú
+ÛÙJHÂˆØ\ÙHNˆ™]\›ˆ´`ô`t`´`4/´.t`t`´,´/ˆ4/t-H4/ô/´-4-4-t`4-´.4,´,4-t`ˆ4ct`´`È4a4`ô/t.´a´.4cˆŽÂˆØ\ÙHŽˆ™]\›ˆ´/t-t-4/´/ô`ô`t`´.4/4bô.H4,4-4`4-t`H4`4-t,ô.4`t`´`4,ŽÂˆØ\ÙHÎˆ™]\›ˆ´/t-t-4/´/ô`ô`t`´.4/4/´-H4-ô/t,4aô-t/t.4-H4,ˆ4-ô,4/ô`4/´`t-HŽÂˆØ\ÙHˆ™]\›ˆ´,´/t`ô`´`4-t/t/tcôcÈ4/´b4.4,t.´,4`ô`t`´`4/´.t`t`´,´,ŽÂˆØ\ÙHNˆ™]\›ˆ´-ô,4/ô`4/´`H4/ô`4.4/tcô`‹4/´,t`4,4,t/´`´.´,4,´bô/ô/´.ô/tcô-t`´`tcÈŽÂˆØ\ÙHŽˆ™]\›ˆ´`ô`t`´`4/´.t`t`´,´/ˆ4-ô,4/tcô`´/‹4/ô/´,´`´/´`4.4`´-H4/ô/´-ô-´-HŽÂˆØ\ÙHˆ™]\›ˆ´/´b4.4,t.´,4aôdt`´/t/´`t`´.4/ô,4/4cô`´.ŽÂˆØ\ÙHLˆ™]\›ˆ´b4.ôc´-È4/t-H4`t/4/´,È4`ô`t`´,4/t/´,´.4`´c4`t/´-t-4.4/t-t/t.4-HŽÂˆØ\ÙHLNˆ™]\›ˆ´b4.ôc´-È4/t-H4/ô/´.ô`ôaô.4.È4/´`´,´-t`ˆ4/´`ˆ4`ô`t`´`4/´.t`t`´,´,ŽÂˆY˜][ˆ™]\›ˆ´/t-t.4-ô,´-t`t`´/t/´-H4.4`t.´.ôc´aô-t/t.4-H4/ô`4/´`´/´.´/´.ô,ŽÂˆBˆB‚ˆš]˜]HÝš[™È\ØÜšX™S[Ù\Ñ^Ù\[ÛÛÙJ[ÛÙJHÂˆ™]\›ˆ\ØÜšX™S[Ù\Ñ^Ù\[ÛÛÙTÝ]XÊÛÙJNÂˆB‚ˆš]˜]HÝš[™È\ØÜšX™S[Ù\Ñ\œ›ÜŠ^Ù\[Ûˆ\œ›ÜŠHÂˆYˆ
+\œ›Üˆ[œÝ[˜Ù[Ùˆ˜]˜K›™]”ÛØÚÙ][Y[Ý]^Ù\[ÛŠH™]\›ˆ´`´,4.t/t,4`ô`ˆ4/´`´,´-t`´,
+È4`JHŽÂˆYˆ
+\œ›Üˆ[œÝ[˜Ù[Ùˆ˜]˜K›™]ÛÛ›™XÝ^Ù\[ÛŠH™]\›ˆ´/t-H4`ô-4,4.ô/´`tc4/ô/´-4.´.ôc´aô.4`´c4`tcÈ4.ˆ4`ô`t`´`4/´.t`t`´,´`ÈŽÂˆYˆ
+\œ›Üˆ[œÝ[˜Ù[Ùˆ˜]˜K›™]•[šÛ›ÝÛ’ÜÝ^Ù\[ÛŠH™]\›ˆ´/t-H4`ô-4,4.ô/´`tc4/´/ô`4-t-4-t.ô.4`´c4,4-4`4-t`H4at/´`t`´,ŽÂˆYˆ
+\œ›Üˆ[œÝ[˜Ù[Ùˆ˜]˜K›™]“›Ô›Ý]UÒÜÝ^Ù\[ÛŠH™]\›ˆ´/t-t`ˆ4/4,4`4b4`4`ô`´,4-4/ˆ4`ô`t`´`4/´.t`t`´,´,ŽÂˆYˆ
+\œ›Üˆ[œÝ[˜Ù[Ùˆ˜]˜K›™]”ÛØÚÙ]^Ù\[ÛŠH™]\›ˆ´/´b4.4,t.´,4`t/´.´-t`´,ô`t/´-t-4.4/t-t/t.4-H4-ô,4.´`4bô`´/ˆŽÂˆÝš[™ÈY\ÜØYÙHH\œ›Ü‹™Ù]Y\ÜØYÙJ
+NÂˆYˆ
+Y\ÜØYÙHOH[Y\ÜØYÙKš[J
+Kš\Ñ[\J
+JH™]\›ˆ\œ›Ü‹™Ù]Û\ÜÊ
+K™Ù]Ú[\S˜[YJ
+NÂˆ™]\›ˆY\ÜØYÙK›[™Ý
+
+HˆLÈY\ÜØYÙKœÝXœÝš[™ÊL
+HˆY\ÜØYÙNÂˆB‚ˆš]˜]H›ÛÛX[ˆ\ÐXÝ]™S[Ù\Õ˜[YJÝš[™È˜[YJHÂˆYˆ
+˜[YHOH[
+H™]\›ˆ˜[ÙNÂˆÝš[™È›Ü›X[^™YH˜[YKš[J
+KÓÝÙ\Ø\ÙJ˜]˜K][“ØØ[K”“ÓÕ
+NÂˆYˆ
+›Ü›X[^™Yš\Ñ[\J
+H›Ü›X[^™YœÝ\ÕÚ]
+™\œˆŠH›Ü›X[^™YœÝ\ÕÚ]
+˜Ù™ÈŠBˆ™˜[ÙH‹™\]X[Ê›Ü›X[^™Y
+H›Ù™ˆ‹™\]X[Ê›Ü›X[^™Y
+Bˆ››È‹™\]X[Ê›Ü›X[^™Y
+JH™]\›ˆ˜[ÙNÂˆYˆ
+YH‹™\]X[Ê›Ü›X[^™Y
+H›Ûˆ‹™\]X[Ê›Ü›X[^™Y
+HžY\È‹™\]X[Ê›Ü›X[^™Y
+JH™]\›ˆYNÂˆžHÂˆ™]\›ˆÝX›Kœ\œÙQÝX›J›Ü›X[^™Y
+HOHŒÂˆHØ]Ú
+[X™\‘›Ü›X]^Ù\[ÛˆYÛ›Ü™Y
+HÂˆ™]\›ˆ˜[ÙNÂˆBˆB‚ˆš]˜]Hš[™[™Ô™\]Y\Ý\œÙPš[™[™Ê[ÚYÙ][™^Ýš[™Èš[™[™ÊHÂˆ™]\›ˆ\œÙPš[™[™ÊÚYÙ][™^š[™[™ËJNÂˆB‚ˆš]˜]H›ÚYÝ\˜™Ù[œÛÜœÊ
+HÂˆYˆ
+XXÝ]š]T™\Ý[YY[Ü\˜]Ü“[ÙHY]ÜˆOH[
+H™]\›ŽÂˆ›ÛÛX[ˆ™YYYYÚH˜[ÙK™YYYÜšY[][ÛˆH˜[ÙK™YYYÜYYH˜[ÙNÂˆ›Üˆ
+ÚYÙ]ÚYÙ]ˆÚYÙ]ÊHÂˆ™YYYYÚH‘‘ÔQ•ÑS”ÓÔˆQÒ‹™\]X[ÊÚYÙ]\JNÂˆ™YYYÜšY[][ÛˆH‘‘ÔQ•ÑS”ÓÔˆÔ’QS•USÓˆ‹™\]X[ÊÚYÙ]\JNÂˆ™YYYÜYYH‘‘ÔQ•ÑS”ÓÔˆÔQQ‹™\]X[ÊÚYÙ]\JNÂˆBˆYˆ
+Y˜™Ù[œÛÜœÔ™YÚ\Ý\™Y	‰ˆ
+™YYYYÚ™YYYÜšY[][ÛŠJHÂˆYˆ
+˜™Ù[œÛÜ“X[˜YÙ\ˆOH[
+Bˆ˜™Ù[œÛÜ“X[˜YÙ\ˆH
+[™›ÚYš\™Ø\™K”Ù[œÛÜ“X[˜YÙ\ŠYÙ]Þ\Ý[TÙ\šXÙJÑS”ÓÔ—ÔÑT•’PÑJNÂˆ›ÛÛX[ˆ™YÚ\Ý\™YH˜[ÙNÂˆYˆ
+˜™Ù[œÛÜ“X[˜YÙ\ˆOH[	‰ˆ™YYYYÚ
+HÂˆ[™›ÚYš\™Ø\™K”Ù[œÛÜˆÙ[œÛÜˆH˜™Ù[œÛÜ“X[˜YÙ\‹™Ù]Y˜][Ù[œÛÜŠ[™›ÚYš\™Ø\™K”Ù[œÛÜ‹•TWÓQÒ
+NÂˆYˆ
+Ù[œÛÜˆOH[
+H™YÚ\Ý\™YH˜™Ù[œÛÜ“X[˜YÙ\‹œ™YÚ\Ý\“\Ý[™\Š˜™Ù[œÛÜ“\Ý[™\‹Ù[œÛÜ‹ˆ[™›ÚYš\™Ø\™K”Ù[œÛÜ“X[˜YÙ\‹”ÑS”ÓÔ—ÑSVWÓ“Ô“PS
+NÂˆBˆYˆ
+˜™Ù[œÛÜ“X[˜YÙ\ˆOH[	‰ˆ™YYYÜšY[][ÛŠHÂˆ[™›ÚYš\™Ø\™K”Ù[œÛÜˆÙ[œÛÜˆH˜™Ù[œÛÜ“X[˜YÙ\‹™Ù]Y˜][Ù[œÛÜŠ[™›ÚYš\™Ø\™K”Ù[œÛÜ‹•TWÓÔ’QS•USÓŠNÂˆYˆ
+Ù[œÛÜˆOH[
+H™YÚ\Ý\™YH˜™Ù[œÛÜ“X[˜YÙ\‹œ™YÚ\Ý\“\Ý[™\Š˜™Ù[œÛÜ“\Ý[™\‹Ù[œÛÜ‹ˆ[™›ÚYš\™Ø\™K”Ù[œÛÜ“X[˜YÙ\‹”ÑS”ÓÔ—ÑSVWÓ“Ô“PS
+NÂˆBˆ˜™Ù[œÛÜœÔ™YÚ\Ý\™YH™YÚ\Ý\™YÂˆBˆYˆ
+™YYYÜYY	‰ˆY˜™ØØ][Û”™YÚ\Ý\™Y
+HÂˆYˆ
+[™›ÚY›ÜËZ[•‘T”ÒSÓ‹”Ñ×ÒS•HŒÂˆ	‰ˆÚXÚÔÙ[”\›Z\ÜÚ[ÛŠ[™›ÚY“X[šY™\Ýœ\›Z\ÜÚ[Û‹PÐÑTÔ×Ñ’S‘WÓÐÐUSÓŠBˆOH[™›ÚY˜ÛÛ[œK”XÚØYÙSX[˜YÙ\‹”T“RTÔÒSÓ—ÑÔS•Q
+HÂˆYˆ
+Y˜™ØØ][Û”\›Z\ÜÚ[Û”™\]Y\ÝY
+HÂˆ˜™ØØ][Û”\›Z\ÜÚ[Û”™\]Y\ÝYHYNÂˆ™\]Y\Ý\›Z\ÜÚ[ÛœÊ™]ÈÝš[™Ö×^Ø[™›ÚY“X[šY™\Ýœ\›Z\ÜÚ[Û‹PÐÑTÔ×Ñ’S‘WÓÐÐUSÓŸK‘TUQTÕÑ‘ÔÔQQÓÐÐUSÓŠNÂˆBˆ™]\›ŽÂˆBˆYˆ
+˜™ØØ][Û“X[˜YÙ\ˆOH[
+Bˆ˜™ØØ][Û“X[˜YÙ\ˆH
+[™›ÚY›ØØ][Û‹“ØØ][Û“X[˜YÙ\ŠYÙ]Þ\Ý[TÙ\šXÙJÐÐUSÓ—ÔÑT•’PÑJNÂˆžHÂˆYˆ
+˜™ØØ][Û“X[˜YÙ\ˆOH[	‰ˆ˜™ØØ][Û“X[˜YÙ\‹š\Ô›ÝšY\‘[˜X›Y
+[™›ÚY›ØØ][Û‹“ØØ][Û“X[˜YÙ\‹‘Ô×Ô“Õ’QTŠJHÂˆ˜™ØØ][Û“X[˜YÙ\‹œ™\]Y\ÝØØ][Û•\]\Ê[™›ÚY›ØØ][Û‹“ØØ][Û“X[˜YÙ\‹‘Ô×Ô“Õ’QT‹ˆL‹˜™ØØ][Û“\Ý[™\‹ÛÜ\‹™Ù]XZ[“ÛÜ\Š
+JNÂˆ˜™ØØ][Û”™YÚ\Ý\™YHYNÂˆBˆHØ]Ú
+ÙXÝ\š]Q^Ù\[Ûˆ[YØ[\™Ý[Y[^Ù\[ÛˆYÛ›Ü™Y
+HßBˆBˆB‚ˆš]˜]H›ÚYÝÜ˜™Ù[œÛÜœÊ
+HÂˆYˆ
+˜™Ù[œÛÜ“X[˜YÙ\ˆOH[	‰ˆ˜™Ù[œÛÜœÔ™YÚ\Ý\™Y
+H˜™Ù[œÛÜ“X[˜YÙ\‹[œ™YÚ\Ý\“\Ý[™\Š˜™Ù[œÛÜ“\Ý[™\ŠNÂˆ˜™Ù[œÛÜœÔ™YÚ\Ý\™YH˜[ÙNÂˆYˆ
+˜™ØØ][Û“X[˜YÙ\ˆOH[	‰ˆ˜™ØØ][Û”™YÚ\Ý\™Y
+HÂˆžHÈ˜™ØØ][Û“X[˜YÙ\‹œ™[[Ý™U\]\Ê˜™ØØ][Û“\Ý[™\ŠNÈHØ]Ú
+ÙXÝ\š]Q^Ù\[ÛˆYÛ›Ü™Y
+HßBˆBˆ˜™ØØ][Û”™YÚ\Ý\™YH˜[ÙNÂˆ›Üˆ
+ÚYÙ]ÚYÙ]ˆÚYÙ]ÊHYˆ
+\ÐÜ˜Y˜™Ù[œÛÜ”ÛÝ\˜ÙJÚYÙ]\JJHÚYÙ]˜Ü˜YÙ[œÛÜ•˜[YH˜[ÙNÂˆB‚ˆš]˜]H›ÚYÝÜÜ˜Y\]
+
+HÂˆ˜™Ü˜Y\][[YHXÝ]™HHÜ˜Y\][[YNÂˆÜ˜Y\][[YHH[ÂˆYˆ
+XÝ]™HOH[
+HXÝ]™K˜ÛÜÙJ
+NÂˆ›Üˆ
+ÚYÙ]ÚYÙ]ˆÚYÙ]ÊHYˆ
+\ÐÜ˜Y\]ÝXœØÜšX™\ŠÚYÙ]\JJHÚYÙ]˜Ü˜Y\]˜[YHH[ÂˆB‚ˆš]˜]H›ÚYÝ\Ü˜Y\]
+
+HÂˆÝÜÜ˜Y\]
+
+NÂˆYˆ
+XXÝ]š]T™\Ý[YY[Ü\˜]Ü“[ÙHY]ÜˆOH[
+H™]\›ŽÂˆ˜™Ü˜Y\][[YH[[YHH™]È˜™Ü˜Y\][[YJ
+NÂˆÜ˜Y\][[YHH[[YNÂˆš[˜[Y]ÜØ[˜\ÈÙ\ÜÚ[Û‘Y]ÜˆHY]ÜŽÂˆ›Üˆ
+[Ù\™\ˆHNÈÙ\™\ˆHŽÈÙ\™\ŠÊÊHÂˆ”ÓÓ“Øš™XÝØ]™YÂˆžHÈØ]™YH™]È”ÓÓ“Øš™XÝ
+Ù]Ú\™Y™Y™\™[˜Ù\Ê˜›ÛÙÚÞWÛ\]‹SÑWÔ’UUJBˆ™Ù]Ýš[™ÊœÙ\™\ˆˆ
+ÈÙ\™\‹žßHŠJNÈBˆØ]Ú
+^Ù\[Ûˆ[˜[Y
+HÈØ]™YH™]È”ÓÓ“Øš™XÝ
+
+NÈBˆ˜™Ü˜Y\][[YKœ›ÚÙ\ˆœ›ÚÙ\ˆH™]È˜™Ü˜Y\][[YKœ›ÚÙ\ŠˆØ]™Y›ÜÝš[™Ê\šH‹ˆŠKØ]™Y›ÜÝš[™Ê\Ù\›˜[YH‹ˆŠKØ]™Y›ÜÝš[™Êœ\ÜÝÛÜ™‹ˆŠJNÂˆX\Ýš[™Ë˜™Ü˜Y\][[YK“Y\ÜØYÙS\Ý[™\ˆÝXœØÜš\[ÛœÈH™]È[šÙY\ÚX\Š
+NÂˆ›ÛÛX[ˆ\ÙYH˜[ÙNÂˆ›Üˆ
+[HHÈHÚYÙ]ËœÚ^™J
+NÈJÊÊHÂˆÚYÙ]\™Ù]HÚYÙ]Ë™Ù]
+JNÂˆYˆ
+\ÐÜ˜Y\]ÝXœØÜšX™\Š\™Ù]\JH	‰ˆ\]Ù\™\Š\™Ù]
+HOHÙ\™\ŠHÂˆ\ÙYHYNÂˆÝš[™ÈÜXÈH\™Ù]™^˜QšY[Ë›ÜÝš[™Ê˜Ü˜Y\]ÜXÈ‹ˆŠKš[J
+NÂˆ[\HH\]\J\™Ù]
+NÂˆš[˜[[\™Ù][™^HNÂˆYˆ
+˜™Ü˜Y\][[YK˜[YÜXÑš[\ŠÜXÊJHÂˆ˜™Ü˜Y\][[YK“Y\ÜØYÙS\Ý[™\ˆ™^\Ý[™\ˆH
+™XÙZ]™YÜXË^[ØY
+HOˆÂˆÝX›H˜[YHH˜™Ü˜Y\][[YKœ\œÙT^[ØY
+^[ØY\JNÂˆ[“Û•ZU™XY
+
+
+HOˆÂˆYˆ
+Ü˜Y\][[YHOH[[YHXXÝ]š]T™\Ý[YY[Ü\˜]Ü“[ÙBˆY]ÜˆOHÙ\ÜÚ[Û‘Y]Üˆ\™Ù][™^HÚYÙ]ËœÚ^™J
+BˆÚYÙ]Ë™Ù]
+\™Ù][™^
+HOH\™Ù]
+H™]\›ŽÂˆ\™Ù]˜Ü˜Y\]˜[YHH˜[YNÂˆ]™U˜[Y\Ëœ]
+\™Ù][™^˜[YHOH[È‘T”ŽˆTU^[ØYˆˆÝX›KÔÝš[™Ê˜[YJJNÂˆYˆ
+Y]ÜˆOH[
+HY]Ü‹š[˜[Y]J
+NÂˆJNÂˆNÂˆ˜™Ü˜Y\][[YK“Y\ÜØYÙS\Ý[™\ˆ™]š[Ý\ÈHÝXœØÜš\[ÛœË™Ù]
+ÜXÊNÂˆYˆ
+™]š[Ý\ÈOH[
+HÝXœØÜš\[ÛœËœ]
+ÜXË™^\Ý[™\ŠNÂˆ[ÙHÝXœØÜš\[ÛœËœ]
+ÜXË
+™XÙZ]™YÜXË^[ØY
+HOˆÂˆ™]š[Ý\Ë›Û“Y\ÜØYÙJ™XÙZ]™YÜXË^[ØY
+NÂˆ™^\Ý[™\‹›Û“Y\ÜØYÙJ™XÙZ]™YÜXË^[ØY
+NÂˆJNÂˆBˆH[ÙHYˆ
+\ÐÜ˜Y\]X›\Ú\Š\™Ù]\JH	‰ˆ\]Ù\™\Š\™Ù]
+HOHÙ\™\ŠH\ÙYHYNÂˆBˆYˆ
+\ÙY	‰ˆœ›ÚÙ\‹š\ÐÛÛ™šYÝ\™Y
+
+JH[[YK˜ÛÛ›™XÝ
+Ù\™\‹œ›ÚÙ\‹ÝXœØÜš\[ÛœÊNÂˆBˆB‚ˆš]˜]Hš[™[™Ô™\]Y\Ý\œÙPš[™[™Ê[ÚYÙ][™^Ýš[™Èš[™[™Ë[]X[]JHÂˆYˆ
+š[™[™ÈOH[Xš[™[™ËœÝ\ÕÚ]
+Ü‹ËÈŠJH™]\›ˆ[ÂˆžHÂˆT’H\šHHT’K˜Ü™X]Jš[™[™ÊNÂˆÝš[™Ö×H]H\šK™Ù]]
+
+KœÜ]
+‹È‹LJNÂˆYˆ
+\šK™Ù]ÜÝ
+
+HOH[\šK™Ù]Ü
+
+HH\šK™Ù]Ü
+
+HˆMLÍBˆ]›[™ÝOHÈ\]ÌKš\Ñ[\J
+Bˆ\šK™Ù]˜]Ô]Y\žJ
+HOH[\šK™Ù]˜]Ñœ˜YÛY[
+
+HOH[
+H™]\›ˆ[Âˆ[[š]H[YÙ\‹œ\œÙR[
+]ÌWJNÂˆ[[\™YY™\ÜÈH[YÙ\‹œ\œÙR[
+]Ì—JNÂˆYˆ
+[š][š]ˆMH[\™YY™\ÜÈ[\™YY™\ÜÈˆMLÍJH™]\›ˆ[Âˆ[[˜Ý[ÛÛÙHHÎÂˆ[Y™\ÜÈH[\™YY™\ÜÎÂˆYˆ
+[\™YY™\ÜÈHÌH	‰ˆ[\™YY™\ÜÈHÎNNNJHÂˆ[˜Ý[ÛÛÙHHÂˆY™\ÜÈH[\™YY™\ÜÈHÌNÂˆH[ÙHYˆ
+[\™YY™\ÜÈHH	‰ˆ[\™YY™\ÜÈHNNNJHÂˆ[˜Ý[ÛÛÙHHÎÂˆY™\ÜÈH[\™YY™\ÜÈHNÂˆBˆYˆ
+]X[]HH]X[]HˆˆY™\ÜÈ
+È]X[]HˆMLÍŠH™]\›ˆ[Âˆ™]\›ˆ™]Èš[™[™Ô™\]Y\Ý
+ÚYÙ][™^\šK™Ù]ÜÝ
+
+K\šK™Ù]Ü
+
+K[š]Y™\ÜË[˜Ý[ÛÛÙK]X[]JNÂˆHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HÂˆ™]\›ˆ[ÂˆBˆB‚ˆš]˜]H›ÚYÝ\[Ù\ÔÛ[™Ê
+HÂˆÝÜ[Ù\ÔÛ[™Ê
+NÂˆYˆ
+XXÝ]š]T™\Ý[YYY]ÜˆOH[
+H™]\›ŽÂˆÛÙ\ÜÚ[Û‹œÝ\
+
+NÂˆ[Ù\ÔÛ[™ÐXÝ]™HHYNÂˆXZ[’[™\‹œÜÝ[^YY
+[Ù\ÔÛ[›˜X›KL
+NÂˆB‚ˆš]˜]H›ÚYÝÜ[Ù\ÔÛ[™Ê
+HÂˆÛÙ\ÜÚ[Û‹œÝÜ
+
+NÂˆ[Ù\ÔÛ[™ÐXÝ]™HH˜[ÙNÂˆXZ[’[™\‹œ™[[Ý™PØ[˜XÚÜÊ[Ù\ÔÛ[›˜X›JNÂˆB‚ˆš]˜]H›ÚYÛÜ˜YÙ[\ÛÝ\˜Ù\Ê
+HÂˆYˆ
+XXÝ]š]T™\Ý[YY[Ü\˜]Ü“[ÙHY]ÜˆOH[
+H™]\›ŽÂˆÛ™È›ÝÈH[™›ÚY›ÜË”Þ\Ý[PÛØÚË™[\ÙY™X[[YJ
+NÂˆš[˜[Y]ÜØ[˜\ÈÙ\ÜÚ[Û‘Y]ÜˆHY]ÜŽÂˆ›Üˆ
+[HHÈHÚYÙ]ËœÚ^™J
+NÈJÊÊHÂˆÚYÙ]ÚYÙ]HÚYÙ]Ë™Ù]
+JNÂˆYˆ
+Z\ÐÜ˜YÙ[\ÛÝ\˜ÙJÚYÙ]\JHÚYÙ]˜Ü˜YÙ[\[™[™Âˆ›ÝÈÚYÙ]˜Ü˜YÙ[\™^Û]
+HÛÛ[YNÂˆÝš[™ÈÜÝHÚYÙ]™^˜QšY[Ë›ÜÝš[™Êš\‹ŒLŒLŒŒHŠKš[J
+NÂˆ[Ù[œÛÜ•\HHÚYÙ]™^˜QšY[Ë›Ü[
+˜Ü˜YÙ[\\H‹ÚYÙ]™^˜QšY[Ë›Ü[
+\TÙ[œÛÜˆ‹JJNÂˆ[™\ÜÛœÙU\HHÚYÙ]™^˜QšY[Ë›Ü[
+˜Ü˜YÙ[\™\ÜÛœÙH‹ÚYÙ]™^˜QšY[Ë›Ü[
+\T™\ÜÛœÙH‹JJNÂˆYˆ
+Z\Ð[ÝÙYÙ[\ÜÝ
+ÜÝ
+H
+Ù[œÛÜ•\HOHH	‰ˆÙ[œÛÜ•\HOHŠBˆ™\ÜÛœÙU\HH™\ÜÛœÙU\HˆŠHÂˆÚYÙ]˜Ü˜YÙ[œÛÜ•˜[YH˜[ÙNÈÚYÙ]˜Ü˜YÙ[\™^Û]H›ÝÈ
+ÈLÂˆ]™U˜[Y\Ëœ]
+KÑ‘ÈŠNÈÛÛ[YNÂˆBˆÚYÙ]˜Ü˜YÙ[\[™[™ÈHYNÈÚYÙ]˜Ü˜YÙ[\™^Û]H›ÝÈ
+ÈLÂˆš[˜[ÚYÙ]\™Ù]HÚYÙ]Èš[˜[[[™^HNÂˆš[˜[[™\]Y\ÝY\HHÙ[œÛÜ•\K™\]Y\ÝY™\ÜÛœÙHH™\ÜÛœÙU\NÂˆžHÂˆÜ˜YÙ[œÛÜ‘^XÝ]Ü‹™^XÝ]J
+
+HOˆÂˆÝX›H™XY[™ÈH[ÈÝš[™È\œ›ÜˆH[ÂˆžHÈ™XY[™ÈH™XYÜ˜YÙ[\
+ÜÝ™\]Y\ÝY\K™\]Y\ÝY™\ÜÛœÙJNÈBˆØ]Ú
+^Ù\[Ûˆ˜Z[\™JHÈ\œ›ÜˆH‘T”Žˆˆ
+È\ØÜšX™S[Ù\Ñ\œ›ÜŠ˜Z[\™JNÈBˆš[˜[ÝX›H™\Ý[H™XY[™ÎÈš[˜[Ýš[™È˜Z[\™U^H\œ›ÜŽÂˆ[“Û•ZU™XY
+
+
+HOˆÂˆ\™Ù]˜Ü˜YÙ[\[™[™ÈH˜[ÙNÂˆYˆ
+[™^HÚYÙ]ËœÚ^™J
+HÚYÙ]Ë™Ù]
+[™^
+HOH\™Ù][Ü\˜]Ü“[ÙBˆXXÝ]š]T™\Ý[YYY]ÜˆOHÙ\ÜÚ[Û‘Y]ÜŠH™]\›ŽÂˆ\™Ù]˜Ü˜YÙ[\™^Û]H[™›ÚY›ÜË”Þ\Ý[PÛØÚË™[\ÙY™X[[YJ
+H
+ÈLÂˆ\™Ù]˜Ü˜YÙ[œÛÜ•˜[YH™\Ý[OH[	‰ˆÝX›Kš\Ñš[š]J™\Ý[
+NÂˆYˆ
+\™Ù]˜Ü˜YÙ[œÛÜ•˜[Y
+HÂˆ\™Ù]˜Ü˜YÙ[œÛÜ•˜[YHH™\Ý[Âˆ]™U˜[Y\Ëœ]
+[™^ÝX›KÔÝš[™Ê™\Ý[
+JNÂˆH[ÙH]™U˜[Y\Ëœ]
+[™^˜Z[\™U^OH[È‘T”Žˆ4/´`´,´-t`ˆ4-4,4`´aô.4.´,ˆˆ˜Z[\™U^
+NÂˆYˆ
+Y]ÜˆOH[
+HY]Ü‹š[˜[Y]J
+NÂˆJNÂˆJNÂˆHØ]Ú
+˜]˜K][˜ÛÛ˜Ý\œ™[”™Z™XÝY^XÝ][Û‘^Ù\[ÛˆYÛ›Ü™Y
+HÈÚYÙ]˜Ü˜YÙ[\[™[™ÈH˜[ÙNÈBˆBˆB‚ˆš]˜]HÝ]XÈÝX›H™XYÜ˜YÙ[\
+Ýš[™ÈÜÝ[Ù[œÛÜ•\K[™\ÜÛœÙU\JH›ÝÜÈ^Ù\[ÛˆÂˆYˆ
+Z\Ð[ÝÙYÙ[\ÜÝ
+ÜÝ
+JH›ÝÈ™]ÈSÑ^Ù\[ÛŠ´'t-t-4/´/ô`ô`t`´.4/4bô.H4,4-4`4-t`HÑSTŠNÂˆ˜]˜K›™]’T“ÛÛ›™XÝ[ÛˆÛÛ›™XÝ[ÛˆH[ÂˆžHÂˆÛÛ›™XÝ[ÛˆH
+˜]˜K›™]’T“ÛÛ›™XÝ[ÛŠ[™]È˜]˜K›™]•T“
+š‹ËÈˆ
+ÈÜÝ
+È‹ÜÝ]KšœÛÛˆŠK›Ü[ÛÛ›™XÝ[ÛŠ
+NÂˆÛÛ›™XÝ[Û‹œÙ]™\]Y\ÝY]Ù
+‘ÑUŠNÈÛÛ›™XÝ[Û‹œÙ]ÛÛ›™XÝ[Y[Ý]
+Ì
+NÈÛÛ›™XÝ[Û‹œÙ]™XY[Y[Ý]
+Ì
+NÂˆÛÛ›™XÝ[Û‹œÙ][œÝ[˜ÙQ›ÛÝÔ™Y\™XÝÊ˜[ÙJNÈÛÛ›™XÝ[Û‹œÙ]\ÙPØXÚ\Ê˜[ÙJNÂˆYˆ
+ÛÛ›™XÝ[Û‹™Ù]™\ÜÛœÙPÛÙJ
+HOHŒ
+H›ÝÈ™]ÈSÑ^Ù\[ÛŠ“ÑSTˆ
+ÈÛÛ›™XÝ[Û‹™Ù]™\ÜÛœÙPÛÙJ
+JNÂˆ˜]˜Kš[Ëž]P\œ˜^SÝ]]Ý™X[H›ÙHH™]È˜]˜Kš[Ëž]P\œ˜^SÝ]]Ý™X[J
+NÂˆžH
+[œ]Ý™X[H[œ]HÛÛ›™XÝ[Û‹™Ù][œ]Ý™X[J
+JHÂˆž]V×HY™™\ˆH™]Èž]VÌŒNÈ[ÛÝ[ÂˆÚ[H
+
+ÛÝ[H[œ]œ™XY
+Y™™\ŠJHOHLJHÂˆYˆ
+›ÙKœÚ^™J
+H
+ÈÛÝ[ˆMLÍŠH›ÝÈ™]ÈSÑ^Ù\[ÛŠ´'´`´,´-t`ˆÑST4`t.ô.4b4.´/´/4,t/´.ôc4b4/´.HŠNÂˆ›ÙKÜš]JY™™\‹ÛÝ[
+NÂˆBˆBˆ”ÓÓ“Øš™XÝœÛÛˆH™]È”ÓÓ“Øš™XÝ
+™]ÈÝš[™Ê›ÙKÐž]P\œ˜^J
+KÝ[™\™Ú\œÙ]Ë•U—Î
+JNÂˆØš™XÝ˜]ÎÂˆYˆ
+Ù[œÛÜ•\HOHJH˜]ÈHœÛÛ‹›Ü
+˜[YHŠNÂˆ[ÙHÂˆ”ÓÓ“Øš™XÝ˜[Y\ÈHœÛÛ‹›Ü”ÓÓ“Øš™XÝ
+˜[YHŠNÂˆ˜]ÈH˜[Y\ÈOH[È[ˆ˜[Y\Ë›Ü
+™\ÜÛœÙU\HOHHÈˆˆšŠNÂˆBˆYˆ
+˜]ÈOH[
+H›ÝÈ™]ÈSÑ^Ù\[ÛŠ´$ˆ4/´`´,´-t`´-HÑST4/t-t`ˆ4-ô/t,4aô-t/t.4cÈŠNÂˆÝX›H˜[YHH˜]È[œÝ[˜Ù[Ùˆ[X™\ˆÈ
+
+[X™\Š\˜]ÊK™ÝX›U˜[YJ
+HˆÝX›Kœ\œÙQÝX›JÝš[™Ë˜[YSÙŠ˜]ÊJNÂˆYˆ
+QÝX›Kš\Ñš[š]J˜[YJJH›ÝÈ™]ÈSÑ^Ù\[ÛŠ“ÑST4,´-t`4/t`ô.ô/ˆ4/t-t.´/´/t-taô/t/´-H4-ô/t,4aô-t/t.4-HŠNÂˆ™]\›ˆ˜[YNÂˆHš[˜[HÈYˆ
+ÛÛ›™XÝ[ÛˆOH[
+HÛÛ›™XÝ[Û‹™\ØÛÛ›™XÝ
+
+NÈBˆB‚ˆš]˜]H›ÚYÛ›Ý[™ÚYÙ]Ê
+HÂˆš[˜[Û™ÈÙ\ÜÚ[Û•ÚÙ[ˆHÛÙ\ÜÚ[Û‹ÚÙ[Š
+NÂˆš[˜[Y]ÜØ[˜\ÈÙ\ÜÚ[Û‘Y]ÜˆHY]ÜŽÂˆYˆ
+\ÛÙ\ÜÚ[Û‹˜XØÙ\ÊÙ\ÜÚ[Û•ÚÙ[ŠHÙ\ÜÚ[Û‘Y]ÜˆOH[
+H™]\›ŽÂˆš[˜[\ÝÚYÙ]ˆÛ˜\ÚÝÚYÙ]ÈH™]È\œ˜^S\ÝŠÚYÙ]ÊNÂˆš[˜[\ÝÝš[™ÏˆÛ˜\ÚÝš[™[™ÜÈH™]È\œ˜^S\ÝŠ
+NÂˆ›Üˆ
+ÚYÙ]ÚYÙ]ˆÛ˜\ÚÝÚYÙ]ÊHÛ˜\ÚÝš[™[™ÜË˜Y
+ÚYÙ]˜ÛÛ›™XÝ[Û’[™›ÊNÂˆš[˜[X\Ýš[™Ëš[™[™Ô™\]Y\ÝˆÜ›Ý\Y™\]Y\ÝÈH™]È[šÙY\ÚX\Š
+NÂˆ›Üˆ
+[HHÈHÛ˜\ÚÝÚYÙ]ËœÚ^™J
+NÈJÊÊHÂˆÚYÙ]ÚYÙ]HÛ˜\ÚÝÚYÙ]Ë™Ù]
+JNÂˆYˆ
+\ÐÜ˜Y™YÚ\Ý\”Ú[šÊÚYÙ]\JJHÛÛ[YNÂˆ›ÛÛX[ˆÜ˜YÛÝ\˜ÙHH\ÐÜ˜Y™YÚ\Ý\”ÛÝ\˜ÙJÚYÙ]\JNÂˆYˆ
+Ü˜YÛÝ\˜ÙH	‰ˆÚYÙ]™^˜QšY[Ë›Ü›ÛÛX[Š˜Ü˜Y˜\ÛÛœÝ[[ÙH‹˜[ÙJJHÛÛ[YNÂˆš[™[™Ô™\]Y\Ý™\]Y\ÝH\œÙPš[™[™ÊKÚYÙ]˜ÛÛ›™XÝ[Û’[™›ËˆÜ˜YÛÝ\˜ÙH	‰ˆ\ÐÜ˜Y™YÚ\Ý\‘›Ø]
+ÚYÙ]\JHÈˆˆJNÂˆYˆ
+™\]Y\ÝOH[
+HÛÛ[YNÂˆÝš[™ÈÙ^HH™\]Y\Ýœ™YÚ\Ý\’Ù^J
+NÂˆš[™[™Ô™\]Y\Ý^\Ý[™ÈHÜ›Ý\Y™\]Y\ÝË™Ù]
+Ù^JNÂˆYˆ
+^\Ý[™ÈOH[
+HÜ›Ý\Y™\]Y\ÝËœ]
+Ù^K™\]Y\Ý
+NÂˆ[ÙH^\Ý[™ËÚYÙ][™XÙ\Ë˜Y
+JNÂˆBˆš[˜[\Ýš[™[™Ô™\]Y\Ýˆ™\]Y\ÝÈH™]È\œ˜^S\ÝŠÜ›Ý\Y™\]Y\ÝË˜[Y\Ê
+JNÂˆYˆ
+[Ù\ÔÛ[‘›YÚ
+H™]\›ŽÂˆš[˜[X\[YÙ\‹Ýš[™Ïˆ[˜[Yš[™[™ÜÈH™]È\ÚX\Š
+NÂˆ›Üˆ
+[HHÈHÛ˜\ÚÝÚYÙ]ËœÚ^™J
+NÈJÊÊHÂˆÝš[™Èš[™[™ÈHÛ˜\ÚÝÚYÙ]Ë™Ù]
+JK˜ÛÛ›™XÝ[Û’[™›ÎÂˆYˆ
+š[™[™ÈOH[	‰ˆš[™[™ËœÝ\ÕÚ]
+Ü‹ËÈŠBˆ	‰ˆ\œÙPš[™[™ÊKš[™[™ÊHOH[
+H[˜[Yš[™[™ÜËœ]
+KÑ‘ÈŠNÂˆBˆYˆ
+™\]Y\ÝËš\Ñ[\J
+H	‰ˆ[˜[Yš[™[™ÜËš\Ñ[\J
+JH™]\›ŽÂˆ[Ù\ÔÛ[‘›YÚHYNÂˆžHÂˆ[Ù\Ñ^XÝ]Ü‹™^XÝ]J
+
+HOˆÂˆžHÂˆš[˜[X\[YÙ\‹Ýš[™Ïˆ\]\ÈH™]È\ÚX\Š[˜[Yš[™[™ÜÊNÂˆ›Üˆ
+š[™[™Ô™\]Y\Ý™\]Y\Ýˆ™\]Y\ÝÊHÂˆYˆ
+\ÛÙ\ÜÚ[Û‹˜XØÙ\ÊÙ\ÜÚ[Û•ÚÙ[ŠJH™]\›ŽÂˆÝš[™È˜[YNÂˆžHÂˆ[×HÛÜ™ÈH™]È[Ù\ÕÜÛY[
+™\]Y\ÝšÜÝ™\]Y\ÝœÜ
+Kœ™XY
+ˆ™\]Y\Ý[š]™\]Y\Ý˜Y™\ÜË™\]Y\Ýœ]X[]K™\]Y\Ý™[˜Ý[ÛÛÙJNÂˆ˜[YHH™\]Y\Ýœ]X[]HˆHÈÛÜ™ÖÌH
+È‹ˆ
+ÈÛÜ™ÖÌWHˆ[YÙ\‹ÔÝš[™ÊÛÜ™ÖÌJNÂˆHØ]Ú
+^Ù\[ÛˆJHÂˆ˜[YHH‘T”Žˆˆ
+È\ØÜšX™S[Ù\Ñ\œ›ÜŠJNÂˆBˆ›Üˆ
+[ÚYÙ][™^ˆ™\]Y\ÝÚYÙ][™XÙ\ÊH\]\Ëœ]
+ÚYÙ][™^˜[YJNÂˆBˆ[“Û•ZU™XY
+
+
+HOˆÂˆYˆ
+\ÛÙ\ÜÚ[Û‹˜XØÙ\ÊÙ\ÜÚ[Û•ÚÙ[ŠHXXÝ]š]T™\Ý[YYˆY]ÜˆOHÙ\ÜÚ[Û‘Y]Üˆ\Ñš[š\Ú[™Ê
+H\Ñ\Ý›ÞYY
+
+JH™]\›ŽÂˆ›Üˆ
+X\‘[žO[YÙ\‹Ýš[™Ïˆ[žHˆ\]\Ë™[žTÙ]
+
+JHÂˆ[[™^H[žK™Ù]Ù^J
+NÂˆYˆ
+[™^[™^HÚYÙ]ËœÚ^™J
+H[™^HÛ˜\ÚÝÚYÙ]ËœÚ^™J
+BˆÚYÙ]Ë™Ù]
+[™^
+HOHÛ˜\ÚÝÚYÙ]Ë™Ù]
+[™^
+BˆZ˜]˜K][“Øš™XÝË™\]X[ÊÚYÙ]Ë™Ù]
+[™^
+K˜ÛÛ›™XÝ[Û’[™›ËÛ˜\ÚÝš[™[™ÜË™Ù]
+[™^
+JJHÛÛ[YNÂˆÚYÙ]ÈHÚYÙ]Ë™Ù]
+[™^
+NÂˆ]™U˜[Y\Ëœ]
+[™^[žK™Ù]˜[YJ
+JNÂˆYˆ
+\ÐÜ˜Y™YÚ\Ý\”ÛÝ\˜ÙJË\JJHÂˆžHÂˆÝš[™Ö×HÛÜ™ÈH[žK™Ù]˜[YJ
+KœÜ]
+‹ŠNÂˆË˜Ü˜Y™YÚ\Ý\•ÛÜ™H[YÙ\‹œ\œÙR[
+ÛÜ™ÖÌJNÂˆË˜Ü˜Y™YÚ\Ý\•ÛÜ™HHÛÜ™Ë›[™ÝˆHÈ[YÙ\‹œ\œÙR[
+ÛÜ™ÖÌWJHˆÂˆË˜Ü˜Y™YÚ\Ý\•˜[YHYNÂˆHØ]Ú
+^Ù\[Ûˆ[˜[Y
+HÈË˜Ü˜Y™YÚ\Ý\•˜[YH˜[ÙNÈBˆBˆYˆ
+\ÐÜ˜Y™YÚ\Ý\”ÛÝ\˜ÙJË\JH	‰ˆ[žK™Ù]˜[YJ
+HOH[ˆ	‰ˆ[žK™Ù]˜[YJ
+KœÝ\ÕÚ]
+‘T”ŽˆŠJHË˜Ü˜Y™YÚ\Ý\•˜[YH˜[ÙNÂˆYˆ
+‘‘4$´at/´-‹™\]X[ÊË\JJHÂˆËš[œ]˜[YHH\ÐXÝ]™S[Ù\Õ˜[YJ[žK™Ù]˜[YJ
+JNÂˆH[ÙHYˆ
+´%ô,´`ô.´/´,´/´.H4`t.4,ô/t,4.È‹™\]X[ÊË\JJHÂˆ›ÛÛX[ˆXÝ]™HHËœÛÝ[™XÝ]™NÂˆYˆ
+[žK™Ù]˜[YJ
+HOH[
+HÂˆžHÈXÝ]™HHÝX›Kœ\œÙQÝX›J[žK™Ù]˜[YJ
+JHHËœÛÝ[™™\ÚÛÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HßBˆBˆYˆ
+XÝ]™H	‰ˆ]Ë›\ÝÛÝ[™Ý]JHÂˆË›\ÝÛÝ[™Ý]HHYNÂˆ^TÛÝ[™[\
+ËœÛÝ[™š[T]
+NÂˆH[ÙHYˆ
+XXÝ]™JHÂˆË›\ÝÛÝ[™Ý]HH˜[ÙNÂˆBˆH[ÙHYˆ
+´$ô/´.ô/´`t/´,´/´-H4`t/´/´,tbt-t/t.4-H‹™\]X[ÊË\JJHÂˆ[›ÚXÙRYHÂˆYˆ
+[žK™Ù]˜[YJ
+HOH[
+HÂˆžHÈ›ÚXÙRYH
+[
+HX]œ›Ý[™
+ÝX›Kœ\œÙQÝX›J[žK™Ù]˜[YJ
+JJNÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HßBˆBˆYˆ
+›ÚXÙRY›ÚXÙRYHMŠH›ÚXÙRYHÂˆYˆ
+›ÚXÙRYOHË›\Ý›ÚXÙTÝ]JHÂˆË›\Ý›ÚXÙTÝ]HH›ÚXÙRYÂˆÜXZÕ›ÚXÙP[››Ý[˜Ù[Y[
+Ë›ÚXÙSY\ÜØYÙ\ÖÝ›ÚXÙRYJNÂˆBˆBˆBˆY]Ü‹š[˜[Y]J
+NÂˆJNÂˆHš[˜[HÂˆ[Ù\ÔÛ[‘›YÚH˜[ÙNÂˆBˆJNÂˆHØ]Ú
+˜]˜K][˜ÛÛ˜Ý\œ™[”™Z™XÝY^XÝ][Û‘^Ù\[ÛˆYÛ›Ü™Y
+HÂˆ[Ù\ÔÛ[‘›YÚH˜[ÙNÂˆBˆB‚ˆš]˜]HÝ]XÈÛ\ÜÈš[™[™Ô™\]Y\ÝÂˆš[˜[\Ý[YÙ\ˆÚYÙ][™XÙ\ÈH™]È\œ˜^S\ÝŠ
+NÂˆš[˜[[Ü[š]Y™\ÜË[˜Ý[ÛÛÙK]X[]NÂˆš[˜[Ýš[™ÈÜÝÂˆš[™[™Ô™\]Y\Ý
+[ÚYÙ][™^Ýš[™ÈÜÝ[Ü[[š][Y™\ÜË[[˜Ý[ÛÛÙK[]X[]JHÂˆ\ËÚYÙ][™XÙ\Ë˜Y
+ÚYÙ][™^
+NÂˆ\ËšÜÝHÜÝÈ\ËœÜHÜÈ\Ë[š]H[š]Âˆ\Ë˜Y™\ÜÈHY™\ÜÎÈ\Ë™[˜Ý[ÛÛÙHH[˜Ý[ÛÛÙNÈ\Ëœ]X[]HH]X[]NÂˆBˆÝš[™È™YÚ\Ý\’Ù^J
+HÂˆ™]\›ˆÜÝÓÝÙ\Ø\ÙJ˜]˜K][“ØØ[K”“ÓÕ
+H
+ÈŽˆˆ
+ÈÜ
+È‹Èˆ
+È[š]
+È‹Èˆ
+ÈY™\ÜÈ
+È‹ÑÈˆ
+È[˜Ý[ÛÛÙH
+È‹Èˆ
+È]X[]NÂˆBˆB‚ˆš]˜]H›ÚY^Ü›Ú™XÝ
+
+HÂˆ\œÚ\Ý›Ú™XÝ
+
+NÂˆ™]È[\X[ÙËZ[\Š\ÊKœÙ]]J´+t.´`t/ô/´`4`ˆ4/ô`4/´-t.´`´,ŠBˆœÙ]][\Ê™]ÈÝš[™Ö×^È–’T8 %4/ô`4/´-t.´`ˆ4.4/4-t-4.4,‹’”ÓÓˆ8 %4`´/´.ôc4.´/ˆ4/t,4`t`´`4/´.t.´.ŸK
+X[ÙËÚXÚ
+HOˆÂˆ[[[[H™]È[[
+[[PÕSÓ—ÐÔ‘PUWÑÐÕSQS•
+NÂˆ[[˜YØ]YÛÜžJ[[ÐUQÓÔ–WÓÔSP“JNÂˆ[[œÙ]\JÚXÚOHÈ˜\XØ][Û‹Þš\ˆˆ˜\XØ][Û‹ÚœÛÛˆŠNÂˆ[[œ]^˜J[[‘VWÕUK›Ú™XÝ˜[YKœ™\XÙP[
+–×KV˜K^´$t+ô,tcÌNK—ËWH‹—ÈŠBˆ
+È
+ÚXÚOHÈ‹˜›ÛÙÚÞKžš\ˆˆ‹˜›ÛÙÚÞKšœÛÛˆŠJNÂˆžHÈÝ\XÝ]š]Q›Ü”™\Ý[
+[[ÚXÚOHÈ‘TUQTÕÑVÔ•Ô“Ò‘PÕÖ’Tˆ‘TUQTÕÑVÔ•Ô“Ò‘PÕ
+NÈBˆØ]Ú
+^Ù\[ÛˆJHÈØ\Ý›XZÙU^
+\Ë´'t-H4`ô-4,4.ô/´`tc4/´`´.´`4bô`´c4,´bô,t/´`4a4,4.t.ô,‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÈBˆJKœÚÝÊ
+NÂˆB‚ˆš]˜]H›ÚYÚÝÐÜ˜YXXÜ›ÕÛÛÊ
+HÂˆ™]È[\X[ÙËZ[\Š\ÊKœÙ]]J´'4,4.´`4/´`tbÈÜ˜Y
+›XÜŠHŠBˆœÙ]][\Ê™]ÈÝš[™Ö×^È´&4/4/ô/´`4`´.4`4/´,´,4`´c›XÜˆ4,ˆ4/ô`4/´-t.´`ˆ‹´+t.´`t/ô/´`4`´.4`4/´,´,4`´c›XÜˆ4.4-È4/ô`4/´-t.´`´,‹ˆ´%4/´,t,4,´.4`´c4/4,4.´`4/´`H4/t,4`tat-t/4`ÈŸKˆ
+X[ÙËÚXÚ
+HOˆÂˆYˆ
+ÚXÚOH
+HÂˆ[[[[H™]È[[
+[[PÕSÓ—ÓÔS—ÑÐÕSQS•
+NÂˆ[[˜YØ]YÛÜžJ[[ÐUQÓÔ–WÓÔSP“JNÂˆ[[œÙ]\JŠ‹ÊˆŠNÂˆžHÈÝ\XÝ]š]Q›Ü”™\Ý[
+[[‘TUQTÕÒSTÔ•ÐÔQ•ÓPPÔ“ÊNÈBˆØ]Ú
+^Ù\[Ûˆ˜Z[\™JHÂˆØ\Ý›XZÙU^
+\Ë´'t-H4`ô-4,4.ô/´`tc4/´`´.´`4bô`´c4,´bô,t/´`4a4,4.t.ô,‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆBˆH[ÙHYˆ
+ÚXÚOHJH^ÜÜ˜YXXÜ›Ñœ›ÛPØ][ÙÊ
+NÂˆ[ÙHYÜ˜YXXÜ›Ñœ›ÛPØ][ÙÊ
+NÂˆJKœÙ]™YØ]]™P]ÛŠ´%ô,4.´`4bô`´c‹[
+KœÚÝÊ
+NÂˆB‚ˆš]˜]H›ÚYYÜ˜YXXÜ›Ñœ›ÛPØ][ÙÊ
+HÂˆžHÂˆÝš[™Ö×H˜[Y\ÈH˜™Ü˜YXXÜ›ÐØ][ÙË›˜[Y\Ê›Ú™XÝ^˜QšY[ÊNÂˆYˆ
+˜[Y\Ë›[™ÝOH
+HÂˆØ\Ý›XZÙU^
+\Ë´(t/t,4aô,4.ô,4.4/4/ô/´`4`´.4`4`ô.H›XÜˆ4,ˆ4/ô`4/´-t.´`ˆ‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆ™]È[\X[ÙËZ[\Š\ÊKœÙ]]J´%4/´,t,4,´.4`´c4/4,4.´`4/´`HŠBˆœÙ]][\Ê˜[Y\Ë
+X[ÙËÚXÚ
+HOˆÂˆžHÂˆ˜™Ü˜YXXÜ›ÑYš[š][ÛˆYš[š][ÛˆH˜™Ü˜YXXÜ›ÐØ][ÙË™š[™
+ˆ›Ú™XÝ^˜QšY[Ë˜[Y\ÖÝÚXÚJNÂˆYˆ
+Yš[š][ÛˆOH[
+HYÜ˜YXXÜ›ÕÚYÙ]
+Yš[š][ÛŠNÂˆHØ]Ú
+^Ù\[Ûˆ[˜[Y
+HÂˆØ\Ý›XZÙU^
+\Ë´'t-H4`ô-4,4.ô/´`tc4-4/´,t,4,´.4`´c4/4,4.´`4/´`H‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆBˆJKœÙ]™YØ]]™P]ÛŠ´'´`´/4-t/t,‹[
+KœÚÝÊ
+NÂˆHØ]Ú
+^Ù\[Ûˆ[˜[YØ][ÙÊHÂˆØ\Ý›XZÙU^
+\Ë´&´,4`´,4.ô/´,È4/4,4.´`4/´`t/´,ˆ4/ô/´,´`4-t-´-4dt/H‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆBˆB‚ˆš]˜]H›ÚYYÜ˜YXXÜ›ÕÚYÙ]
+˜™Ü˜YXXÜ›ÑYš[š][ÛˆYš[š][ÛŠH›ÝÜÈ^Ù\[ÛˆÂˆÚYÙ]ÚYÙ]H™]ÈÚYÙ]
+
+NÂˆÚYÙ]\HH‘‘ÔQ•PPÔ“ÈŽÂˆÚYÙ]^HYš[š][Û‹™Ù]˜[YJ
+NÂˆÚYÙ]™^˜QšY[Ëœ]
+˜Ü˜YXXÜ›ÑYš[š][Ûˆ‹Yš[š][Û‹ÒœÛÛŠ
+JNÂˆÚYÙ]ÈH
+MÌ
+NÂˆÚYÙ]šHX]›X^
+
+ÍŠK
+ŒŠH
+ˆX]›X^
+‹Yš[š][Û‹™Ù][œ]Ê
+KœÚ^™J
+JJNÂˆYˆ
+Y]ÜˆOH[	‰ˆY]Ü‹™Ù]ÚY
+
+Hˆ	‰ˆY]Ü‹™Ù]ZYÚ
+
+Hˆ
+HÂˆ›Ø]×H[\HHœ™YQ˜™XÙ[Y[
+ÚYÙ]ËY]Ü‹™Ù]ÚY
+
+KY]Ü‹™Ù]ZYÚ
+
+KˆÚYÙ]ËÚYÙ]š
+
+K
+L
+K
+N
+JNÂˆYˆ
+[\HOH[
+HÂˆØ\Ý›XZÙU^
+\Ë´'t-t`ˆ4`t,´/´,t/´-4/t/´,ô/ˆ4/4-t`t`´,4-4.ôcÈ‘t/4,4.´`4/´`t,‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆÚYÙ]žH[\VÌNÂˆÚYÙ]žHH[\VÌWNÂˆH[ÙHÂˆÚYÙ]žH
+
+H
+È
+ÚYÙ]ËœÚ^™J
+H	H
+H
+ˆ
+
+NÂˆÚYÙ]žHH
+L
+H
+È
+ÚYÙ]ËœÚ^™J
+H	HŠH
+ˆ
+ŒŠNÂˆBˆ˜™Ú\™R\ÝÜžK˜ÛX\Š
+NÂˆ]™U˜[Y\Ë˜ÛX\Š
+NÂˆÚYÙ]Ë˜Y
+ÚYÙ]
+NÂˆ\œÚ\Ý›Ú™XÝ
+
+NÂˆYˆ
+Y]ÜˆOH[
+HY]Ü‹š[˜[Y]J
+NÂˆB‚ˆš]˜]H›ÚY^ÜÜ˜YXXÜ›Ñœ›ÛPØ][ÙÊ
+HÂˆžHÂˆÝš[™Ö×H˜[Y\ÈH˜™Ü˜YXXÜ›ÐØ][ÙË›˜[Y\Ê›Ú™XÝ^˜QšY[ÊNÂˆYˆ
+˜[Y\Ë›[™ÝOH
+HÂˆØ\Ý›XZÙU^
+\Ë´$ˆ4/ô`4/´-t.´`´-H4/t-t`ˆ4.4/4/ô/´`4`´.4`4/´,´,4/t/tbôaH4/4,4.´`4/´`t/´,ˆ‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆ™]È[\X[ÙËZ[\Š\ÊKœÙ]]J´$´bô,t-t`4.4/4,4.´`4/´`HŠBˆœÙ]][\Ê˜[Y\Ë
+X[ÙËÚXÚ
+HOˆÂˆžHÂˆ˜™Ü˜YXXÜ›ÑYš[š][ÛˆYš[š][ÛˆH˜™Ü˜YXXÜ›ÐØ][ÙË™š[™
+ˆ›Ú™XÝ^˜QšY[Ë˜[Y\ÖÝÚXÚJNÂˆYˆ
+Yš[š][ÛˆOH[
+H™]\›ŽÂˆ[™[™ÐÜ˜YXXÜ›Ñ^ÜHYš[š][Û‹ÓXÜž]\Ê
+NÂˆ[[[[H™]È[[
+[[PÕSÓ—ÐÔ‘PUWÑÐÕSQS•
+NÂˆ[[˜YØ]YÛÜžJ[[ÐUQÓÔ–WÓÔSP“JNÂˆ[[œÙ]\J˜\XØ][Û‹ÚœÛÛˆŠNÂˆ[[œ]^˜J[[‘VWÕUKˆYš[š][Û‹™Ù]˜[YJ
+Kœ™\XÙP[
+–×KV˜K^´$t+ô,tcÌNK—ËWH‹—ÈŠH
+È‹›XÜˆŠNÂˆÝ\XÝ]š]Q›Ü”™\Ý[
+[[‘TUQTÕÑVÔ•ÐÔQ•ÓPPÔ“ÊNÂˆHØ]Ú
+^Ù\[Ûˆ˜Z[\™JHÂˆ[™[™ÐÜ˜YXXÜ›Ñ^ÜH[ÂˆØ\Ý›XZÙU^
+\Ë´'t-H4`ô-4,4.ô/´`tc4/ô/´-4,ô/´`´/´,´.4`´c4/4,4.´`4/´`H‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆBˆJKœÙ]™YØ]]™P]ÛŠ´'´`´/4-t/t,‹[
+KœÚÝÊ
+NÂˆHØ]Ú
+^Ù\[Ûˆ[˜[YØ][ÙÊHÂˆØ\Ý›XZÙU^
+\Ë´&´,4`´,4.ô/´,È4/4,4.´`4/´`t/´,ˆ4/ô/´,´`4-t-´-4dt/H‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆBˆB‚ˆš]˜]H›ÚY[\ÜÜ˜YXXÜ›Ê\šH\šJHÂˆ[Ù\Ñ^XÝ]Ü‹™^XÝ]J
+
+HOˆÂˆžHÂˆž]V×Hž]\ÎÂˆžH
+[œ]Ý™X[H[œ]HÙ]ÛÛ[™\ÛÛ™\Š
+K›Ü[’[œ]Ý™X[J\šJJHÂˆYˆ
+[œ]OH[
+H›ÝÈ™]ÈSÑ^Ù\[ÛŠ‘š[H[˜]˜Z[X›HŠNÂˆž]P\œ˜^SÝ]]Ý™X[HÝ]]H™]Èž]P\œ˜^SÝ]]Ý™X[J
+NÂˆž]V×HY™™\ˆH™]Èž]VÎNL—NÂˆ[Ý[H™XYÂˆÚ[H
+
+™XYH[œ]œ™XY
+Y™™\ŠJHOHLJHÂˆÝ[
+ÏH™XYÂˆYˆ
+Ý[ˆ˜™Ü˜YXXÜ›ÑYš[š][Û‹“PVÑ’SWÐ–UTÊBˆ›ÝÈ™]ÈSÑ^Ù\[ÛŠ“XXÜ›Èš[HÛÈ\™ÙHŠNÂˆÝ]]Üš]JY™™\‹™XY
+NÂˆBˆž]\ÈHÝ]]Ðž]P\œ˜^J
+NÂˆBˆ˜™Ü˜YXXÜ›ÑYš[š][ÛˆYš[š][ÛˆH˜™Ü˜YXXÜ›ÑYš[š][Û‹™œ›ÛSXÜž]\Êž]\ÊNÂˆ[“Û•ZU™XY
+
+
+HOˆÂˆYˆ
+\Ñš[š\Ú[™Ê
+H\Ñ\Ý›ÞYY
+
+JH™]\›ŽÂˆžHÂˆ˜™Ü˜YXXÜ›ÐØ][ÙË\Ù\
+›Ú™XÝ^˜QšY[ËYš[š][ÛŠNÂˆYˆ
+\\œÚ\Ý›Ú™XÝ›ÝÊYJJH›ÝÈ™]ÈSÑ^Ù\[ÛŠ”›Ú™XÝØ]™H˜Z[YŠNÂˆØ\Ý›XZÙU^
+\Ë´'4,4.´`4/´`H0ªÈˆ
+ÈYš[š][Û‹™Ù]˜[YJ
+H
+È°®È4-4/´,t,4,´.ô-t/H4,ˆ4/ô`4/´-t.´`ˆ‹ˆØ\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆHØ]Ú
+^Ù\[Ûˆ˜Z[\™JHÂˆØ\Ý›XZÙU^
+\Ë´'4,4.´`4/´`H4/t-H4`t/´at`4,4/tdt/Nˆˆ
+È˜Z[\™K™Ù]Y\ÜØYÙJ
+KˆØ\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆBˆJNÂˆHØ]Ú
+^Ù\[Ûˆ˜Z[\™JHÂˆ[“Û•ZU™XY
+
+
+HOˆÂˆYˆ
+Z\Ñš[š\Ú[™Ê
+H	‰ˆZ\Ñ\Ý›ÞYY
+
+JBˆØ\Ý›XZÙU^
+\Ë´&4/4/ô/´`4`ˆ4/4,4.´`4/´`t,4/t-H4,´bô/ô/´.ô/t-t/Nˆˆ
+È˜Z[\™K™Ù]Y\ÜØYÙJ
+KˆØ\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆJNÂˆBˆJNÂˆB‚ˆX›XÈž]V×H™XY›Ú™XÝYYXQ]JÝš[™È]Ü•\šJH›ÝÜÈSÑ^Ù\[ÛˆÂˆ™]\›ˆ™XY›Ú™XÝYYXQ]J]Ü•\šKÙ]Ú\™Y™Y™\™[˜Ù\Ê‘Q”ËSÑWÔ’UUJK™Ù]Ýš[™ÊPÕU‘WÔ“Ò‘PÕžßHŠJNÂˆB‚ˆš]˜]Hž]V×H™XY›Ú™XÝYYXQ]JÝš[™È]Ü•\šKÝš[™ÈœÛÛŠH›ÝÜÈSÑ^Ù\[ÛˆÂˆYˆ
+]Ü•\šHOH[	‰ˆ]Ü•\šKš[J
+KœÝ\ÕÚ]
+˜ÛÛ[‹ËÈŠJHÂˆžH
+[œ]Ý™X[H[ˆHÙ]ÛÛ[™\ÛÛ™\Š
+K›Ü[’[œ]Ý™X[J\šKœ\œÙJ]Ü•\šKš[J
+JJJHÂˆ™]\›ˆ›Ú™XÝYYXTÙ\šXÙKœ™XY›Ý[™YYYXJ[ŠNÂˆBˆBˆžH
+[œ]Ý™X[H[ˆH™]È˜]˜Kš[Ë‘š[R[œ]Ý™X[J›Ú™XÝYYXTÙ\šXÙKœ™\ÛÛ™SYYXQš[JÙ]š[\Ñ\Š
+KœÛÛ‹]Ü•\šJJJHÂˆ™]\›ˆ›Ú™XÝYYXTÙ\šXÙKœ™XY›Ý[™YYYXJ[ŠNÂˆBˆB‚ˆš]˜]H›ÚY[\Ü›Ú™XÝ[™J\šH\šJHÂˆ[Ù\Ñ^XÝ]Ü‹™^XÝ]J
+
+HOˆÂˆžH
+[œ]Ý™X[H[ˆHÙ]ÛÛ[™\ÛÛ™\Š
+K›Ü[’[œ]Ý™X[J\šJJHÂˆYˆ
+[ˆOH[
+H›ÝÈ™]ÈSÑ^Ù\[ÛŠ’[œ]Ý™X[H[˜]˜Z[X›HŠNÂˆ›Ú™XÝYYXTÙ\šXÙKš[\Ü›Ú™XÝ[™JÙ]š[\Ñ\Š
+K[‹œÛÛˆOˆÂˆžHÈ˜[Y]R[\ÜY›Ú™XÝ
+œÛÛŠNÈBˆØ]Ú
+^Ù\[Ûˆ[˜[Y
+HÈ›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ’[˜[Y[\ÜY›Ú™XÝ‹[˜[Y
+NÈBˆžHÈ™]\›ˆÝÜ™PXÝ]™T›Ú™XÝ
+œÛÛ‹YJNÈBˆØ]Ú
+^Ù\[Ûˆ\œ›ÜŠHÈ›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠÛÝ[›ÝØ]™H›Ú™XÝØ][ÙÈ‹\œ›ÜŠNÈBˆJNÂˆ[“Û•ZU™XY
+
+
+HOˆÂˆYˆ
+\Ñš[š\Ú[™Ê
+H\Ñ\Ý›ÞYY
+
+JH™]\›ŽÂˆ[XYÙPØXÚK˜ÛX\Š
+NÂˆYˆ
+ØY›Ú™XÝ
+
+JHÂˆÚÝÑY]ÜŠ
+NÂˆØ\Ý›XZÙU^
+\Ë´'ô`4/´-t.´`ˆ4.4/4/ô/´`4`´.4`4/´,´,4/H‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆH[ÙHÂˆØ\Ý›XZÙU^
+\Ë´&4/4/ô/´`4`ˆ4,´bô/ô/´.ô/t-t/K4/t/ˆ4/´`´.´`4bô`´.4-H4/ô`4/´-t.´`´,4/t-H4`ô-4,4.ô/´`tc‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆBˆJNÂˆHØ]Ú
+^Ù\[Ûˆ\œ›ÜŠHÂˆ[™›ÚY][“ÙË™J“ÓÑÒÖH‹”›Ú™XÝ[\Ü˜Z[Y‹\œ›ÜŠNÂˆ[“Û•ZU™XY
+
+
+HOˆÈYˆ
+Z\Ñš[š\Ú[™Ê
+H	‰ˆZ\Ñ\Ý›ÞYY
+
+JBˆØ\Ý›XZÙU^
+\Ë´&4/4/ô/´`4`ˆ4/t-H4,´bô/ô/´.ô/t-t/Nˆˆ
+È\œ›Ü‹™Ù]Y\ÜØYÙJ
+KØ\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÈJNÂˆBˆJNÂˆB‚ˆš]˜]H›ÚY[\Ü›Ú™XÝ
+
+HÂˆ[[[[H™]È[[
+[[PÕSÓ—ÓÔS—ÑÐÕSQS•
+NÂˆ[[˜YØ]YÛÜžJ[[ÐUQÓÔ–WÓÔSP“JNÂˆ[[œÙ]\JŠ‹ÊˆŠNÂˆžHÂˆÝ\XÝ]š]Q›Ü”™\Ý[
+[[‘TUQTÕÒSTÔ•Ô“Ò‘PÕ
+NÂˆHØ]Ú
+^Ù\[ÛˆJHÂˆØ\Ý›XZÙU^
+\Ë´'t-H4`ô-4,4.ô/´`tc4/´`´.´`4bô`´c4,´bô,t/´`4a4,4.t.ô,‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆBˆB‚ˆš]˜]H›ÚYÚÛÜÙSYYXQš[JY]^šY[Ýš[™ÈZ[YU\JHÂˆ[[[[H™]È[[
+[[PÕSÓ—ÓÔS—ÑÐÕSQS•
+NÂˆ[[˜YØ]YÛÜžJ[[ÐUQÓÔ–WÓÔSP“JNÂˆ[[œÙ]\JZ[YU\JNÂˆ[[˜Y›YÜÊ[[‘“Q×ÑÔS•Ô‘PQÕT’WÔT“RTÔÒSÓˆ[[‘“Q×ÑÔS•ÔT”ÒTÕP“WÕT’WÔT“RTÔÒSÓŠNÂˆ[™[™ÓYYXQšY[HšY[ÂˆžHÂˆÝ\XÝ]š]Q›Ü”™\Ý[
+[[‘TUQTÕÔPÒ×ÓQQPJNÂˆHØ]Ú
+^Ù\[Ûˆ^
+HÂˆ[™[™ÓYYXQšY[H[ÂˆØ\Ý›XZÙU^
+\Ë´'t-H4`ô-4,4.ô/´`tc4/´`´.´`4bô`´c4,´bô,t/´`4a4,4.t.ô,‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆBˆB‚ˆš]˜]H›ÚYYYYXTXÚÙ\Š[™X\“^[Ý]›Ü›KY]^šY[Ýš[™ÈZ[YU\JHÂˆ]ÛˆÚÛÜÙHH™]È]ÛŠ\ÊNÂˆÚÛÜÙKœÙ]^
+´$´bô,t`4,4`´c4a4,4.t.ø )ˆŠNÂˆÚÛÜÙKœÙ][Ø\Ê˜[ÙJNÂˆÚÛÜÙKœÙ]ÛÛXÚÓ\Ý[™\ŠˆOˆÚÛÜÙSYYXQš[JšY[Z[YU\JJNÂˆ›Ü›K˜YšY]ÊÚÛÜÙJNÂˆB‚ˆÝ™\œšYH›ÝXÝY›ÚYÛXÝ]š]T™\Ý[
+[™\]Y\ÝÛÙK[™\Ý[ÛÙK[[]JHÂˆÝ\\‹›ÛXÝ]š]T™\Ý[
+™\]Y\ÝÛÙK™\Ý[ÛÙK]JNÂˆYˆ
+™\]Y\ÝÛÙHOH‘TUQTÕÔPÒ×ÓQQPJHÂˆY]^\™Ù]H[™[™ÓYYXQšY[Âˆ[™[™ÓYYXQšY[H[ÂˆYˆ
+™\Ý[ÛÙHOH‘TÕSÓÒÈ]HOH[]K™Ù]]J
+HOH[\™Ù]OH[
+H™]\›ŽÂˆ\šHÙ[XÝYH]K™Ù]]J
+NÂˆžHÂˆ[™XYÜ˜[H]K™Ù]›YÜÊ
+H	ˆ[[‘“Q×ÑÔS•Ô‘PQÕT’WÔT“RTÔÒSÓŽÂˆYˆ
+™XYÜ˜[OH
+H›ÝÈ™]ÈÙXÝ\š]Q^Ù\[ÛŠ”™XYXØÙ\ÜÈ›ÝÜ˜[YŠNÂˆÙ]ÛÛ[™\ÛÛ™\Š
+KZÙT\œÚ\ÝX›U\šT\›Z\ÜÚ[ÛŠÙ[XÝY™XYÜ˜[
+NÂˆžH
+[œ]Ý™X[H[ˆHÙ]ÛÛ[™\ÛÛ™\Š
+K›Ü[’[œ]Ý™X[JÙ[XÝY
+JHÂˆYˆ
+[ˆOH[
+H›ÝÈ™]ÈSÑ^Ù\[ÛŠ‘š[H[˜]˜Z[X›HŠNÂˆBˆ\™Ù]œÙ]^
+Ù[XÝYÔÝš[™Ê
+JNÂˆ[XYÙPØXÚKœ™[[Ý™JÙ[XÝYÔÝš[™Ê
+JNÂˆHØ]Ú
+^Ù\[Ûˆ^
+HÂˆØ\Ý›XZÙU^
+\Ë´'t-t`ˆ4/ô/´`t`´/´cô/t/t/´,ô/ˆ4-4/´`t`´`ô/ô,4.ˆ4a4,4.t.ô`Ëˆ4$´bô,t-t`4.4`´-H4-4`4`ô,ô/´.H4a4,4.t.Ëˆ‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆBˆ™]\›ŽÂˆBˆYˆ
+™\Ý[ÛÙHOH‘TÕSÓÒÈ]HOH[]K™Ù]]J
+HOH[
+H™]\›ŽÂˆ\šH\šHH]K™Ù]]J
+NÂˆYˆ
+™\]Y\ÝÛÙHOH‘TUQTÕÒSTÔ•ÐÔQ•ÓPPÔ“ÊHÂˆ[\ÜÜ˜YXXÜ›Ê\šJNÂˆH[ÙHYˆ
+™\]Y\ÝÛÙHOH‘TUQTÕÑVÔ•ÐÔQ•ÓPPÔ“ÊHÂˆž]V×Hž]\ÈH[™[™ÐÜ˜YXXÜ›Ñ^ÜÂˆ[™[™ÐÜ˜YXXÜ›Ñ^ÜH[ÂˆYˆ
+ž]\ÈOH[
+H™]\›ŽÂˆ[Ù\Ñ^XÝ]Ü‹™^XÝ]J
+
+HOˆÂˆžH
+Ý]]Ý™X[HÝ]HÙ]ÛÛ[™\ÛÛ™\Š
+K›Ü[“Ý]]Ý™X[J\šJJHÂˆYˆ
+Ý]OH[
+H›ÝÈ™]ÈSÑ^Ù\[ÛŠ“Ý]]Ý™X[H[˜]˜Z[X›HŠNÂˆÝ]Üš]Jž]\ÊNÂˆ[“Û•ZU™XY
+
+
+HOˆÈYˆ
+Z\Ñš[š\Ú[™Ê
+H	‰ˆZ\Ñ\Ý›ÞYY
+
+JBˆØ\Ý›XZÙU^
+\Ë´'4,4.´`4/´`H4ct.´`t/ô/´`4`´.4`4/´,´,4/H‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÈJNÂˆHØ]Ú
+^Ù\[Ûˆ˜Z[\™JHÂˆ[“Û•ZU™XY
+
+
+HOˆÈYˆ
+Z\Ñš[š\Ú[™Ê
+H	‰ˆZ\Ñ\Ý›ÞYY
+
+JBˆØ\Ý›XZÙU^
+\Ë´+t.´`t/ô/´`4`ˆ4/4,4.´`4/´`t,4/t-H4,´bô/ô/´.ô/t-t/H‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÈJNÂˆBˆJNÂˆH[ÙHYˆ
+™\]Y\ÝÛÙHOH‘TUQTÕÑVÔ•Ô“Ò‘PÕ™\]Y\ÝÛÙHOH‘TUQTÕÑVÔ•Ô“Ò‘PÕÖ’T
+HÂˆš[˜[Ýš[™ÈœÛÛˆHÙ]Ú\™Y™Y™\™[˜Ù\Ê‘Q”ËSÑWÔ’UUJK™Ù]Ýš[™ÊPÕU‘WÔ“Ò‘PÕžßHŠNÂˆ[Ù\Ñ^XÝ]Ü‹™^XÝ]J
+
+HOˆÂˆžH
+Ý]]Ý™X[HÝ]HÙ]ÛÛ[™\ÛÛ™\Š
+K›Ü[“Ý]]Ý™X[J\šJJHÂˆYˆ
+Ý]OH[
+H›ÝÈ™]ÈSÑ^Ù\[ÛŠ“Ý]]Ý™X[H[˜]˜Z[X›HŠNÂˆYˆ
+™\]Y\ÝÛÙHOH‘TUQTÕÑVÔ•Ô“Ò‘PÕÖ’T
+HÂˆ›Ú™XÝYYXTÙ\šXÙK™^Ü›Ú™XÝš\[™JÝ]œÛÛ‹ÛÝ\˜ÙHOˆ™XY›Ú™XÝYYXQ]JÛÝ\˜ÙKœÛÛŠJNÂˆH[ÙHÝ]Üš]JœÛÛ‹™Ù]ž]\ÊÝ[™\™Ú\œÙ]Ë•U—Î
+JNÂˆ[“Û•ZU™XY
+
+
+HOˆÈYˆ
+Z\Ñš[š\Ú[™Ê
+H	‰ˆZ\Ñ\Ý›ÞYY
+
+JBˆØ\Ý›XZÙU^
+\Ë´'ô`4/´-t.´`ˆ4ct.´`t/ô/´`4`´.4`4/´,´,4/H‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÈJNÂˆHØ]Ú
+^Ù\[Ûˆ\œ›ÜŠHÂˆ[™›ÚY][“ÙË™J“ÓÑÒÖH‹”›Ú™XÝ^Ü˜Z[Y‹\œ›ÜŠNÂˆ[“Û•ZU™XY
+
+
+HOˆÈYˆ
+Z\Ñš[š\Ú[™Ê
+H	‰ˆZ\Ñ\Ý›ÞYY
+
+JBˆØ\Ý›XZÙU^
+\Ë´'´b4.4,t.´,4ct.´`t/ô/´`4`´,ˆˆ
+È\œ›Ü‹™Ù]Y\ÜØYÙJ
+KØ\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÈJNÂˆBˆJNÂˆH[ÙHYˆ
+™\]Y\ÝÛÙHOH‘TUQTÕÒSTÔ•Ô“Ò‘PÕ
+HÂˆ[\Ü›Ú™XÝ[™J\šJNÂˆBˆB‚‚ˆš]˜]H›ÚYY]›Ú™XÝ˜[YJ
+HÂˆY]^[œ]H™]ÈY]^
+\ÊNÂˆ[œ]œÙ]Ú[™ÛS[™JYJNÂˆ[œ]œÙ]^
+›Ú™XÝ˜[YJNÂˆ™]È[\X[ÙËZ[\Š\ÊBˆœÙ]]J´&4/4cÈ4/ô`4/´-t.´`´,ŠBˆœÙ]šY]Ê[œ]
+BˆœÙ]™YØ]]™P]ÛŠ´'´`´/4-t/t,‹[
+BˆœÙ]ÜÚ]]™P]ÛŠ´(t/´at`4,4/t.4`´c‹
+X[ÙËÚXÚ
+HOˆÂˆÝš[™È˜[YHH[œ]™Ù]^
+
+KÔÝš[™Ê
+Kš[J
+NÂˆYˆ
+]˜[YKš\Ñ[\J
+JH›Ú™XÝ˜[YHH˜[YNÂˆ\œÚ\Ý›Ú™XÝ
+
+NÂˆJKœÚÝÊ
+NÂˆB‚ˆš]˜]H›ÚY[YÛ”Ù[XÝYÚYÙ]
+Ýš[™È[YÛ“[ÙJHÂˆYˆ
+Y]ÜˆOH[Y]Ü‹œÙ[XÝYY]Ü‹œÙ[XÝYHÚYÙ]ËœÚ^™J
+JHÂˆØ\Ý›XZÙU^
+\Ë´$´bô,t-t`4.4ct.ô-t/4-t/t`ˆ4-4.ôcÈ4,´bô`4,4,´/t.4,´,4/t.4cÈ‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆÚYÙ]ÈHÚYÙ]Ë™Ù]
+Y]Ü‹œÙ[XÝY
+NÂˆ›Ø]Ø[˜\ÕÚYHY]Ü‹™Ù]ÚY
+
+HˆÈY]Ü‹™Ù]ÚY
+
+Hˆ
+ÍŒ
+NÂˆ›Ø]Ø[˜\ÒZYÚHY]Ü‹™Ù]ZYÚ
+
+HˆÈY]Ü‹™Ù]ZYÚ
+
+Hˆ
+
+NÂˆÝÚ]Ú
+[YÛ“[ÙJHÂˆØ\ÙH›YŽˆËžHÈœ™XZÎÂˆØ\ÙHœšYÚŽˆËžHX]›X^
+Ø[˜\ÕÚYHËÊNÈœ™XZÎÂˆØ\ÙHÜŽˆËžHHÈœ™XZÎÂˆØ\ÙH˜›ÝÛHŽˆËžHHX]›X^
+Ø[˜\ÒZYÚHËš
+NÈœ™XZÎÂˆØ\ÙH˜Ù[\—ÚŽˆËžHX]›X^
+Û˜\ÑÜšY
+
+Ø[˜\ÕÚYHËÊHÈ™ŠJNÈœ™XZÎÂˆØ\ÙH˜Ù[\—ÝˆŽˆËžHHX]›X^
+Û˜\ÑÜšY
+
+Ø[˜\ÒZYÚHËš
+HÈ™ŠJNÈœ™XZÎÂˆBˆ\œÚ\Ý›Ú™XÝ
+
+NÂˆYˆ
+Y]ÜˆOH[
+HY]Ü‹š[˜[Y]J
+NÂˆØ\Ý›XZÙU^
+\Ë´+t.ô-t/4-t/t`ˆ4,´bô`4/´,´/t-t/H‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆB‚ˆš]˜]H›ÚYÚÝÐ[YÛ‘X[ÙÊ
+HÂˆYˆ
+Y]ÜˆOH[Y]Ü‹œÙ[XÝYY]Ü‹œÙ[XÝYHÚYÙ]ËœÚ^™J
+JHÂˆØ\Ý›XZÙU^
+\Ë´$´bô,t-t`4.4ct.ô-t/4-t/t`ˆ4/t,4ct.´`4,4/t-H‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆÝš[™Ö×HÜ[ÛœÈHÈ´'ô/ˆ4.ô-t,´/´/4`È4.´`4,4cˆ‹´'ô/ˆ4/ô`4,4,´/´/4`È4.´`4,4cˆ‹´'ô/ˆ4,´-t`4at/t-t/4`È4.´`4,4cˆ‹´'ô/ˆ4/t.4-´/t-t/4`È4.´`4,4cˆ‹´'ô/ˆ4a´-t/t`´`4`È
+4,ô/´`4.4-ô/´/t`‹ŠH‹´'ô/ˆ4a´-t/t`´`4`È
+4,´-t`4`´.4.‹ŠHŸNÂˆÝš[™Ö×H[Ù\ÈHÈ›Y‹œšYÚ‹Ü‹˜›ÝÛH‹˜Ù[\—Ú‹˜Ù[\—ÝˆŸNÂˆ™]È[\X[ÙËZ[\Š\ÊBˆœÙ]]J´$´bô`4,4,´/t.4,´,4/t.4-H4ct.ô-t/4-t/t`´,ŠBˆœÙ]][\ÊÜ[ÛœË
+X[ÙËÚXÚ
+HOˆ[YÛ”Ù[XÝYÚYÙ]
+[Ù\ÖÝÚXÚJJBˆœÙ]™YØ]]™P]ÛŠ´'´`´/4-t/t,‹[
+BˆœÚÝÊ
+NÂˆB‚ˆš]˜]H]ÛˆYØXÞUÛÛ˜\]ÛŠÝš[™È^[›˜X›H\ÚÊHÂˆ]Ûˆ]ÛˆH™]È]ÛŠ\ÊNÂˆ]Û‹œÙ]^
+^
+NÂˆ]Û‹œÙ]^Ú^™JLŠNÂˆ]Û‹œÙ]^ÛÛÜŠÛÛÜ‹œ™ØŠŒŒŒ
+JNÂˆ]Û‹œÙ][Ø\Ê˜[ÙJNÂˆ]Û‹œÙ]Z[’ZYÚ
+
+NÂˆ]Û‹œÙ]Z[š[][RZYÚ
+
+NÂˆ]Û‹œÙ]Y[™Ê
+JK
+JK
+NÂˆ]Û‹œÙ]Ü˜]š]JÜ˜]š]KÑS•TŠNÂˆÜ˜YY[˜]ØX›H˜XÙHH™]ÈÜ˜YY[˜]ØX›JˆÜ˜YY[˜]ØX›K“ÜšY[][Û‹“Q•Ô’QÒˆ™]È[×HÈÛÛÜ‹œ™ØŠNLNLNL
+KÛÛÜ‹œ™ØŠMKMKMJKÛÛÜ‹œ™ØŠNLNLNL
+HJNÂˆ˜XÙKœÙ]ÛÜ›™\”˜Y]\Ê
+ŠJNÂˆ˜XÙKœÙ]Ý›ÚÙJ
+JKÛÛÜ‹œ™ØŠÌÌÌ
+JNÂˆ]Û‹œÙ]˜XÚÙÜ›Ý[™
+˜XÙJNÂˆ]Û‹œÙ]ÛÛXÚÓ\Ý[™\ŠˆOˆ\ÚËœ[Š
+JNÂˆ™]\›ˆ]ÛŽÂˆB‚ˆX›XÈÝ]XÈ[™\]Z\™TÙ][™Ò[
+Ýš[™È^[Z[‹[X^Ýš[™ÈX™[
+HÂˆžHÂˆYˆ
+^OH[]^š[J
+K›X]Ú\Ê–ÌNWJÈŠJH›ÝÈ™]È[X™\‘›Ü›X]^Ù\[ÛŠ
+NÂˆ[˜[YHH[YÙ\‹œ\œÙR[
+^š[J
+JNÂˆYˆ
+˜[YHZ[ˆ˜[YHˆX^
+H›ÝÈ™]È[X™\‘›Ü›X]^Ù\[ÛŠ
+NÂˆ™]\›ˆ˜[YNÂˆHØ]Ú
+[X™\‘›Ü›X]^Ù\[Ûˆ^
+HÂˆ›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠX™[
+ÈŽˆ4-4/´/ô`ô`t`´.4/4/ˆˆ
+ÈZ[ˆ
+È¸ $Èˆ
+ÈX^
+NÂˆBˆB‚ˆš]˜]HÝ]XÈÝš[™ÈYØXÞTÛ]™U˜[YJÝš[™ÈYØXÞKÝš[™ÈX™[Ýš[™È˜[˜XÚÊHÂˆ˜]˜K][œ™YÙ^“X]Ú\ˆHH˜]˜K][œ™YÙ^”]\›‹˜ÛÛ\[JˆŠÚJHˆ
+ÈX™[
+È—ÊŽ—ÊŠÌNWJÊHŠK›X]Ú\ŠYØXÞJNÂˆ™]\›ˆK™š[™
+
+HÈK™Ü›Ý\
+JHˆ˜[˜XÚÎÂˆB‚ˆX›XÈÝ]XÈ”ÓÓ“Øš™XÝ˜[Y]Y›Ú™XÝÙ][™ÜÊ”ÓÓ“Øš™XÝÝ\œ™[Ýš[™È[ÙU^ˆÝš[™ÈY^Ýš[™ÈÜ^Ýš[™È™YÚ\Ý\œÊH›ÝÜÈ^Ù\[ÛˆÂˆ[[ÙHH™\]Z\™TÙ][™Ò[
+[ÙU^K´(4-t-´.4/ŠNÂˆ[YH™\]Z\™TÙ][™Ò[
+Y^KË”Û]™HQŠNÂˆ[ÜH™\]Z\™TÙ][™Ò[
+Ü^KMLÍK´'ô/´`4`ˆŠNÂˆ”ÓÓ“Øš™XÝ™\Ý[H™]È”ÓÓ“Øš™XÝ
+Ý\œ™[ÔÝš[™Ê
+JNÂˆÝš[™ÈYØXÞHH™\Ý[›ÜÝš[™Ê›[Ù\ÔÛ]™H‹ˆŠNÂˆYˆ
+YØXÞK›X]Ú\ÊŠÚ\ÊKŠœÛ]™HYÊŽ—Ê–ÌNWJËŠˆŠBˆ	‰ˆYØXÞK›X]Ú\ÊŠÚ\ÊKŠœÜÊŽ—Ê–ÌNWJËŠˆŠJHÂˆYØXÞHHYØXÞKœ™\XÙQš\œÝ
+ŠÚJJÛ]™HYÊŽ—ÊŠVÌNWJÈ‹”Û]™HQˆˆ
+ÈY
+Bˆœ™\XÙQš\œÝ
+ŠÚJJÜÊŽ—ÊŠVÌNWJÈ‹”Üˆˆ
+ÈÜ
+NÂˆH[ÙHÂˆYØXÞHH”Û]™HQˆˆ
+ÈY
+È‹Üˆˆ
+ÈÜÂˆBˆ™\Ý[œ]
+œÝ][Û“[ÙH‹[ÙJNÂˆ™\Ý[œ]
+›[Ù\ÔÛ]™RY‹Y
+NÂˆ™\Ý[œ]
+›[Ù\ÔÛ]™TÜ‹Ü
+NÂˆ™\Ý[œ]
+›[Ù\ÔÛ]™H‹YØXÞJNÂˆ™\Ý[œ]
+œÞ\Ý[T™YÚ\Ý\œÈ‹™YÚ\Ý\œÊNÂˆ™]\›ˆ™\Ý[ÂˆB‚ˆš]˜]H›ÚYÚÝÔ›Ú™XÝÙ][™ÜÑX[ÙÊ
+HÂˆ[™X\“^[Ý]›Ü›HH™]È[™X\“^[Ý]
+\ÊNÂˆ›Ü›KœÙ]ÜšY[][ÛŠ[™X\“^[Ý]•‘T•PÐS
+NÂˆ[YH
+MŠNÂˆ›Ü›KœÙ]Y[™ÊY
+
+KY
+NÂ‚ˆ^šY]È›ÝHH™]È^šY]Ê\ÊNÂˆ›ÝKœÙ]^
+´'ô`4.4/4-taô,4/t.4-Nˆ4't,4`t`´`4/´.t.´.4`t`´,4/ta´.4.4.[Ù\ÈÛ]™H4`t/´at`4,4/tcôc´`´`tcÈ4,ˆ4/4-t`´,4-4,4/t/tbôaH4/ô`4/´-t.´`´,ˆ4'´/t.4-ô,4-4,4c´`ˆ4/ô,4`4,4/4-t`´`4bÈ4.´/´/ta4.4,ô`ô`4,4a´.4.4/t/ˆ4/t-H4-ô,4/ô`ô`t.´,4c´`ˆ4a4/´/t/´,´bô.HÔt`t-t`4,´-t`[Ù\ÈÛ]™KˆŠNÂˆ›ÝKœÙ]^ÛÛÜŠÛÛÜ‹œ™ØŠLLM‹LÎJJNÂˆ›ÝKœÙ]^Ú^™JLŠNÂˆ›ÝKœÙ]Y[™Ê
+
+JNÂˆ›Ü›K˜YšY]Ê›ÝJNÂ‚ˆ^šY]ÈÝ][Û“X™[H™]È^šY]Ê\ÊNÂˆÝ][Û“X™[œÙ]^
+´(4-t-´.4/4`t`´,4/ta´.4.
+H4'4,4`t`´-t`HH4(t.ô-t.t,ŠHŠNÂˆ›Ü›K˜YšY]ÊÝ][Û“X™[
+NÂˆY]^Ý][Û‘šY[H›Ü\QšY[
+[YÙ\‹ÔÝš[™Ê›Ú™XÝ^˜QšY[Ë›Ü[
+œÝ][Û“[ÙH‹
+JK[œ]\K•TWÐÓTÔ×Ó•SP‘TŠNÂˆ›Ü›K˜YšY]ÊÝ][Û‘šY[
+NÂ‚ˆ^šY]ÈÛ]™SX™[H™]È^šY]Ê\ÊNÂˆÛ]™SX™[œÙ]^
+´'t,4`t`´`4/´.t.´.[Ù\ÈÛ]™H
+QÈ4'ô/´`4`ŠHŠNÂˆÛ]™SX™[œÙ]Y[™Ê
+L
+K
+NÂˆ›Ü›K˜YšY]ÊÛ]™SX™[
+NÂˆÝš[™ÈYØXÞTÛ]™HH›Ú™XÝ^˜QšY[Ë›ÜÝš[™Ê›[Ù\ÔÛ]™H‹ˆŠNÂˆY]^Û]™RYšY[H›Ü\QšY[
+›Ú™XÝ^˜QšY[Ë›ÜÝš[™Ê›[Ù\ÔÛ]™RY‹ˆYØXÞTÛ]™U˜[YJYØXÞTÛ]™K”Û]™HQ‹ŒHŠJK[œ]\K•TWÐÓTÔ×Ó•SP‘TŠNÂˆÛ]™RYšY[œÙ][
+”Û]™HQˆx $ÌÈŠNÂˆ›Ü›K˜YšY]ÊÛ]™RYšY[
+NÂˆY]^Û]™TÜšY[H›Ü\QšY[
+›Ú™XÝ^˜QšY[Ë›ÜÝš[™Ê›[Ù\ÔÛ]™TÜ‹ˆYØXÞTÛ]™U˜[YJYØXÞTÛ]™K”Ü‹LˆŠJK[œ]\K•TWÐÓTÔ×Ó•SP‘TŠNÂˆÛ]™TÜšY[œÙ][
+´'ô/´`4`Žˆx $ÍMLÍHŠNÂˆ›Ü›K˜YšY]ÊÛ]™TÜšY[
+NÂ‚ˆ^šY]ÈÞ\Ô™YÓX™[H™]È^šY]Ê\ÊNÂˆÞ\Ô™YÓX™[œÙ]^
+´(t.4`t`´-t/4/tbô-H4`4-t,ô.4`t`´`4bÈŠNÂˆÞ\Ô™YÓX™[œÙ]Y[™Ê
+L
+K
+NÂˆ›Ü›K˜YšY]ÊÞ\Ô™YÓX™[
+NÂˆY]^Þ\Ô™YÑšY[H›Ü\QšY[
+›Ú™XÝ^˜QšY[Ë›ÜÝš[™ÊœÞ\Ý[T™YÚ\Ý\œÈ‹”ÖT×ÔÕUTÏLÖT×ÕSQOLLŠK[œ]\K•TWÐÓTÔ×ÕV
+NÂˆÞ\Ô™YÑšY[œÙ][
+´(t.4`t`´-t/4/tbô-H4`4-t,ô.4`t`´`4bÈŠNÂˆ›Ü›K˜YšY]ÊÞ\Ô™YÑšY[
+NÂ‚ˆY]^×V×H\]šY[ÈHØY\]œ›ÚÙ\‘šY[Ê›Ü›KJKY\]œ›ÚÙ\‘šY[Ê›Ü›KŠ_NÂ‚ˆØÜ›ÛšY]ÈØÜ›ÛH™]ÈØÜ›ÛšY]Ê\ÊNÂˆØÜ›Û˜YšY]Ê›Ü›JNÂ‚ˆ[\X[ÙÈÙ][™ÜÈH™]È[\X[ÙËZ[\Š\ÊBˆœÙ]]J´'t,4`t`´`4/´.t.´.4/ô`4/´-t.´`´,ŠBˆœÙ]šY]ÊØÜ›Û
+BˆœÙ]™YØ]]™P]ÛŠ´'´`´/4-t/t,‹[
+BˆœÙ]ÜÚ]]™P]ÛŠ´(t/´at`4,4/t.4`´c‹[
+K˜Ü™X]J
+NÂˆÙ][™ÜËœÙ]Û”ÚÝÓ\Ý[™\ŠYÛ›Ü™YOˆÙ][™ÜË™Ù]]ÛŠ[\X[ÙË•UÓ—ÔÔÒUU‘JKœÙ]ÛÛXÚÓ\Ý[™\ŠˆOˆÂˆžHÂˆ”ÓÓ“Øš™XÝ\]YH˜[Y]Y›Ú™XÝÙ][™ÜÊ›Ú™XÝ^˜QšY[ËˆÝ][Û‘šY[™Ù]^
+
+KÔÝš[™Ê
+KÛ]™RYšY[™Ù]^
+
+KÔÝš[™Ê
+KˆÛ]™TÜšY[™Ù]^
+
+KÔÝš[™Ê
+KÞ\Ô™YÑšY[™Ù]^
+
+KÔÝš[™Ê
+Kš[J
+JNÂˆ›Üˆ
+[HHÈH\]šY[Ë›[™ÝÈJÊÊHÂˆÝš[™È[™Ú[H\]šY[ÖÚWVÌK™Ù]^
+
+KÔÝš[™Ê
+Kš[J
+NÂˆYˆ
+Y[™Ú[š\Ñ[\J
+H	‰ˆQ˜™Ü˜Y\][[YK˜[Y\šJ[™Ú[
+JBˆ›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ“TU4`t-t`4,´-t`ˆ
+È
+H
+ÈJH
+ÈŽˆÜ‹Ëô,4-4`4-t`N´/ô/´`4`ˆ4.4.ô.ÜÛ‹Ëô,4-4`4-t`N´/ô/´`4`ˆŠNÂˆ”ÓÓ“Øš™XÝœ›ÚÙ\ˆH™]È”ÓÓ“Øš™XÝ
+
+NÂˆœ›ÚÙ\‹œ]
+\šH‹[™Ú[
+NÂˆœ›ÚÙ\‹œ]
+\Ù\›˜[YH‹\]šY[ÖÚWVÌWK™Ù]^
+
+KÔÝš[™Ê
+JNÂˆœ›ÚÙ\‹œ]
+œ\ÜÝÛÜ™‹\]šY[ÖÚWVÌ—K™Ù]^
+
+KÔÝš[™Ê
+JNÂˆÙ]Ú\™Y™Y™\™[˜Ù\Ê˜›ÛÙÚÞWÛ\]‹SÑWÔ’UUJK™Y]
+
+Bˆœ]Ýš[™ÊœÙ\™\ˆˆ
+È
+H
+ÈJKœ›ÚÙ\‹ÔÝš[™Ê
+JK˜\J
+NÂˆBˆ›Ú™XÝ^˜QšY[ÈH\]YÂˆ\œÚ\Ý›Ú™XÝ
+
+NÂˆÙ][™ÜË™\ÛZ\ÜÊ
+NÂˆØ\Ý›XZÙU^
+\Ë´'t,4`t`´`4/´.t.´.4/ô`4/´-t.´`´,4`t/´at`4,4/t-t/tbÈ‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆHØ]Ú
+[YØ[\™Ý[Y[^Ù\[Ûˆ^
+HÂˆØ\Ý›XZÙU^
+\Ë^™Ù]Y\ÜØYÙJ
+KØ\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆHØ]Ú
+^Ù\[Ûˆ^
+HÂˆØ\Ý›XZÙU^
+\Ë´'´b4.4,t.´,4`t/´at`4,4/t-t/t.4cÈ4/t,4`t`´`4/´-t.ˆ‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆBˆJJNÂˆÙ][™ÜËœÚÝÊ
+NÂˆB‚ˆš]˜]HY]^×HY\]œ›ÚÙ\‘šY[Ê[™X\“^[Ý]›Ü›K[[X™\ŠHÂˆ”ÓÓ“Øš™XÝØ]™YÂˆžHÈØ]™YH™]È”ÓÓ“Øš™XÝ
+Ù]Ú\™Y™Y™\™[˜Ù\Ê˜›ÛÙÚÞWÛ\]‹SÑWÔ’UUJBˆ™Ù]Ýš[™ÊœÙ\™\ˆˆ
+È[X™\‹žßHŠJNÈBˆØ]Ú
+^Ù\[Ûˆ[˜[Y
+HÈØ]™YH™]È”ÓÓ“Øš™XÝ
+
+NÈBˆ^šY]È]HH™]È^šY]Ê\ÊNÂˆ]KœÙ]^
+“TU4`t-t`4,´-t`ˆ
+È[X™\ˆ
+Èˆ
+Ü˜Y
+HŠNÂˆ]KœÙ]Y[™Ê
+LŠK
+NÂˆ›Ü›K˜YšY]Ê]JNÂˆY]^\šHH›Ü\QšY[
+Ø]™Y›ÜÝš[™Ê\šH‹ˆŠK[œ]\K•TWÐÓTÔ×ÕV[œ]\K•TWÕVÑ“Q×Ó“×ÔÕQÑÑTÕSÓ”ÊNÂˆ\šKœÙ][
+Ü‹ËÌNL‹ŒMŽŒKŒLŒNÈ4.4.ô.ÜÛ‹ËØœ›ÚÙ\ŽŽÈŠNÈ›Ü›K˜YšY]Ê\šJNÂˆY]^\Ù\›˜[YHH›Ü\QšY[
+Ø]™Y›ÜÝš[™Ê\Ù\›˜[YH‹ˆŠK[œ]\K•TWÐÓTÔ×ÕV[œ]\K•TWÕVÑ“Q×Ó“×ÔÕQÑÑTÕSÓ”ÊNÂˆ\Ù\›˜[YKœÙ][
+´&ô/´,ô.4/H
+4/t-t/´,tcô-ô,4`´-t.ôc4/t/ŠHŠNÈ›Ü›K˜YšY]Ê\Ù\›˜[YJNÂˆY]^\ÜÝÛÜ™H›Ü\QšY[
+Ø]™Y›ÜÝš[™Êœ\ÜÝÛÜ™‹ˆŠK[œ]\K•TWÐÓTÔ×ÕV[œ]\K•TWÕVÕT’PUSÓ—ÔTÔÕÓÔ‘
+NÂˆ\ÜÝÛÜ™œÙ][
+´'ô,4`4/´.ôc
+4/t-t/´,tcô-ô,4`´-t.ôc4/t/ŠHŠNÈ›Ü›K˜YšY]Ê\ÜÝÛÜ™
+NÂˆ™]\›ˆ™]ÈY]^×^Ý\šK\Ù\›˜[YK\ÜÝÛÜ™NÂˆB‚ˆš]˜]H›ÚYÚÝÑY]ÜŠ
+HÂˆÙ]™\]Y\ÝYÜšY[][ÛŠ[™›ÚY˜ÛÛ[œKXÝ]š]R[™›Ë”ÐÔ‘QS—ÓÔ’QS•USÓ—ÓS‘ÐÐTJNÂˆ›ÛÝH™]È[™X\“^[Ý]
+\ÊNÈ›ÛÝœÙ]ÜšY[][ÛŠ[™X\“^[Ý]•‘T•PÐS
+NÂˆ›ÛÝœÙ]˜XÚÙÜ›Ý[™ÛÛÜŠÛÛÜ‹œ™ØŠÍKÍKÍJJNÂˆ[™›ÚYÚYÙ]‘œ˜[YS^[Ý]\™XHH™]È[™›ÚYÚYÙ]‘œ˜[YS^[Ý]
+\ÊNÂˆ[™›ÚYÚYÙ]’[XYÙP]Ûˆ™]™X[HY]Ü’XÛÛŠ‹™˜]ØX›KšØ×ÛY[WØ\Ø˜\‹´'ô/´.´,4-ô,4`´c4/ô,4/t-t.ôcŠNÂˆš[˜[šY]Ö×HÛÛ˜\ˆH™]ÈšY]ÖÌWNÂˆÛÛ˜\–ÌHHÜšYÚ[˜[Y]Ü•ÛÛ˜\‹˜Ü™X]J›ÛÝÝ\œ™[ØÜ™Y[“˜[YJ
+KÜ\˜]Ü“[ÙK™]ÈÜšYÚ[˜[Y]Ü•ÛÛ˜\‹’ÜÝ
+
+HÂˆX›XÈ›ÚYYJ
+HÈÛÛ˜\–ÌKœÙ]š\ÚXš[]JšY]Ë‘ÓÓ‘JNÈ™]™X[œÙ]š\ÚXš[]JšY]Ë•’TÒP“JNÈBˆX›XÈ›ÚYÙÙÛS[ÙJ
+HÈÙÙÛSÜ\˜]Ü“[ÙJ
+NÈBˆX›XÈ›ÚY™]š[Ý\Ê
+HÈ™]š[Ý\ÔØÜ™Y[Š
+NÈBˆX›XÈ›ÚY™^
+
+HÈ™^ØÜ™Y[Š
+NÈBˆX›XÈ›ÚY™[˜[YTØÜ™Y[Š
+HÈ™[˜[YPÝ\œ™[ØÜ™Y[Š
+NÈBˆX›XÈ›ÚYØ[Ý[]ÜŠ
+HÈÚÝÓÜšYÚ[˜[Ø[Ý[]ÜŠ
+NÈBˆX›XÈ›ÚYY[JšY]È[˜ÚÜŠHÈÚÝÑY]ÜÛÛ[X[™Ê[˜ÚÜŠNÈBˆJNÂˆ›ÛÝ˜YšY]ÊÛÛ˜\–ÌK™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLKLŠJNÂˆY]ÜˆH™]ÈY]ÜØ[˜\Ê
+NÂˆY]Ü‹œÙ]ÛÛ[\ØÜš\[ÛŠÜ\˜]Ü“[ÙHÈ´(4,4,t/´aô.4.H4ct.´`4,4/Hˆˆ´(4-t-4,4.´`´/´`4ct.´`4,4/t,ŠNÂˆYˆ
+Ü\˜]Ü“[ÙJHÂˆ\™XK˜YšY]ÊY]Ü‹™]È[™›ÚYÚYÙ]‘œ˜[YS^[Ý]“^[Ý]\˜[\ÊLKLJJNÂˆH[ÙHÂˆËÈÙY\Hš\ÚX›HÜ˜Y\Ý[HØÜ™Y[ˆšY]ÜÜ]Ú]™HHY]ÜˆBˆËÈ\™Ù\ˆØÜ›ÛX›H\ÚYÛˆÝ\™˜XÙHÛÈ[œÙH‘Ü˜\È\™H›ÝØ\YˆËÈžHHÝ\œ™[]šXÙH[Y[œÚ[ÛœË‚ˆ[™›ÚYÚYÙ]”ØÜ›ÛšY]È™\XØ[ÛÜšÜÜXÙHH™]È[™›ÚYÚYÙ]”ØÜ›ÛšY]Ê\ÊNÂˆ™\XØ[ÛÜšÜÜXÙKœÙ]š[šY]ÜÜ
+YJNÂˆ™\XØ[ÛÜšÜÜXÙKœÙ]™\XØ[ØÜ›Û˜\‘[˜X›Y
+YJNÂˆ™\XØ[ÛÜšÜÜXÙKœÙ]Û[ÛÝØÜ›Û[™Ñ[˜X›Y
+˜[ÙJNÂˆ[ÛÜšÜÜXÙRZYÚH
+
+NÂˆËÈØÜ›ÛšY]ÈYX\Ý\™\ÈHÝ\ÝÛHšY]ÉÜÈ™\XØ[^\È\È[œÜXÚYšYYÂˆËÈÙY\H\ÚYÛˆÝ\™˜XÙH[\ˆ[ˆHšY]ÜÜ›Üˆ™X[ØÜ›Û˜[™ÙK‚ˆY]Ü‹œÙ]Z[š[][RZYÚ
+ÛÜšÜÜXÙRZYÚ
+NÂˆ™\XØ[ÛÜšÜÜXÙK˜YšY]ÊY]Ü‹ˆ™]È[™›ÚYÚYÙ]”ØÜ›ÛšY]Ë“^[Ý]\˜[\ÊLKÛÜšÜÜXÙRZYÚ
+JNÂˆ\™XK˜YšY]Ê™\XØ[ÛÜšÜÜXÙKˆ™]È[™›ÚYÚYÙ]‘œ˜[YS^[Ý]“^[Ý]\˜[\ÊLKLJJNÂˆBˆ™]™X[œÙ]š\ÚXš[]JšY]Ë‘ÓÓ‘JNÂˆ™]™X[œÙ]ÛÛXÚÓ\Ý[™\ŠˆOˆÈ™]™X[œÙ]š\ÚXš[]JšY]Ë‘ÓÓ‘JNÈÛÛ˜\–ÌKœÙ]š\ÚXš[]JšY]Ë•’TÒP“JNÈJNÂˆ[™›ÚYÚYÙ]‘œ˜[YS^[Ý]“^[Ý]\˜[\È™]™X[\˜[\ÈH™]È[™›ÚYÚYÙ]‘œ˜[YS^[Ý]“^[Ý]\˜[\Ê
+
+K
+
+KÜ˜]š]K•ÔÜ˜]š]K“Q•
+NÂˆ™]™X[\˜[\Ë›YX\™Ú[ˆH
+L
+NÈ™]™X[\˜[\ËÜX\™Ú[ˆH
+JNÂˆ\™XK˜YšY]Ê™]™X[™]™X[\˜[\ÊNÂˆYˆ
+[Ü\˜]Ü“[ÙJHÂˆ[™›ÚYÚYÙ]’[XYÙP]Ûˆ[]HHY]Ü’XÛÛŠ‹™˜]ØX›KšØ×ÛY[WØ˜\—ØÛÛ\Û™[´%4/´,t,4,´.4`´c4ct.ô-t/4-t/t`ˆŠNÂˆ[]KœÙ]ÛÛXÚÓ\Ý[™\ŠˆOˆÚÝÐYÚYÙ]Y[J
+JNÂˆ[™›ÚYÚYÙ]‘œ˜[YS^[Ý]“^[Ý]\˜[\È[]T\˜[\ÈH™]È[™›ÚYÚYÙ]‘œ˜[YS^[Ý]“^[Ý]\˜[\Ê
+
+K
+
+KÜ˜]š]K“ÕÓHÜ˜]š]K“Q•
+NÂˆ[]T\˜[\ËœÙ]X\™Ú[œÊ
+MJK
+MJK
+MJK
+MJJNÂˆ\™XK˜YšY]Ê[]K[]T\˜[\ÊNÂˆBˆ›ÛÝ˜YšY]Ê\™XK™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLKJJNÂˆYˆ
+[Ü\˜]Ü“[ÙJHÂˆšY]ÈXÝ[ÛœÈHÜšYÚ[˜[Ù[XÝ[ÛXÝ[ÛœË˜Ü™X]J›ÛÝ\ÎŽ˜Ý]Ù[XÝYÚYÙ]ˆ\ÎŽ˜ÛÜTÙ[XÝYÚYÙ]\ÎŽœ\ÝUÚYÙ]\ÎŽœÚÝÐ[YÛ‘X[ÙÊNÂˆ[™X\“^[Ý]“^[Ý]\˜[\ÈXÝ[Û”\˜[\ÈH™]È[™X\“^[Ý]“^[Ý]\˜[\ÊL‹LŠNÂˆXÝ[Û”\˜[\Ë™Ü˜]š]HHÜ˜]š]KÑS•T—ÒÔ’V“Ó•SÂˆ›ÛÝ˜YšY]ÊXÝ[ÛœËXÝ[Û”\˜[\ÊNÂˆBˆÙ]ÛÛ[šY]Ê›ÛÝ
+NÈY]Ü‹š[˜[Y]J
+NÈÝ\[Ù\ÔÛ[™Ê
+NÈÝ\˜™Ù[œÛÜœÊ
+NÈÝ\Ü˜Y\]
+
+NÂˆB‚ˆš]˜]H[™›ÚYÚYÙ]’[XYÙP]ÛˆY]Ü’XÛÛŠ[˜]ØX›KÝš[™È\ØÜš\[ÛŠHÂˆ[™›ÚYÚYÙ]’[XYÙP]Ûˆ]ÛˆH™]È[™›ÚYÚYÙ]’[XYÙP]ÛŠ\ÊNÂˆ]Û‹œÙ]˜XÚÙÜ›Ý[™ÛÛÜŠÛÛÜ‹•S”ÔT‘S•
+NÈ]Û‹œÙ][XYÙT™\ÛÝ\˜ÙJ˜]ØX›JNÂˆ]Û‹œÙ]ØØ[U\J[™›ÚYÚYÙ]’[XYÙUšY]Ë”ØØ[U\K‘’UÖJNÈ]Û‹œÙ]Y[™Ê
+NÂˆ]Û‹œÙ]ÛÛ[\ØÜš\[ÛŠ\ØÜš\[ÛŠNÈ™]\›ˆ]ÛŽÂˆB‚ˆš]˜]H›ÚYÚÝÓÜšYÚ[˜[Ø[Ý[]ÜŠ
+HÂˆYˆ
+Ù]œ˜YÛY[X[˜YÙ\Š
+K™š[™œ˜YÛY[žUYÊ›ÜšYÚ[˜[XØ[Ý[]ÜˆŠHOH[
+Bˆ™]ÈÜšYÚ[˜[Ø[Ý[]Ü‘X[ÙÊ
+KœÚÝÊÙ]œ˜YÛY[X[˜YÙ\Š
+K›ÜšYÚ[˜[XØ[Ý[]ÜˆŠNÂˆB‚ˆš]˜]H›ÚYÙÙÛSÜ\˜]Ü“[ÙJ
+HÂˆYˆ
+\\œÚ\Ý›Ú™XÝ›ÝÊYJJH™]\›ŽÂˆËÈY][™È]\Ý›ÝY˜[˜ÙH[Y\œËˆ™KY[\š[™È[[YHÝ\ÈHœ™\ÚˆËÈÛØÚÈ\ØÚ˜]\ˆ[ˆ™\Ý[Z[™È[ˆÛØ]™Y[\ÙY™X[[YH˜[YK‚ˆYˆ
+[Ü\˜]Ü“[ÙJHÂˆ˜™Ü˜Y™YÚ\Ý\”ÝÜ™K˜ÛX\Š
+NÂˆ˜™Ü˜Y˜[YY˜\šXX›TÝÜ™K˜ÛX\Š
+NÂˆ›Üˆ
+ÚYÙ]˜[YHˆÚYÙ]ÊHÂˆ™\Ù]˜™[Y\”[[YJ˜[YJNÂˆ˜[YK˜Ü˜Y\]\Ý[˜X›HH˜[ÙNÂˆ˜[YK˜Ü˜Y\]˜[YHH[ÂˆBˆBˆÜ\˜]Ü“[ÙHH[Ü\˜]Ü“[ÙNÈ˜™Ú\™S[ÙHH˜[ÙNÈÚ\™TÛÝ\˜ÙHHLNÂˆYˆ
+[Ü\˜]Ü“[ÙJH›Üˆ
+ÚYÙ]˜[YHˆÚYÙ]ÊHYˆ
+\ÐÜ˜YÙ[\ÛÝ\˜ÙJ˜[YK\JJHÂˆ˜[YK˜Ü˜YÙ[œÛÜ•˜[YH˜[ÙNÈ˜[YK˜Ü˜YÙ[\™^Û]HÂˆBˆÚÝÑY]ÜŠ
+NÂˆB‚ˆš]˜]H›ÚYÚÝÑY]ÜÛÛ[X[™ÊšY]È[˜ÚÜŠHÂˆ[™›ÚYÚYÙ]”Ü\Y[HY[HH™]È[™›ÚYÚYÙ]”Ü\Y[J\Ë[˜ÚÜŠNÂˆYˆ
+[Ü\˜]Ü“[ÙJHÂˆY[K™Ù]Y[J
+K˜Y
+´&4/4cÈ4/ô`4/´-t.´`´,ŠKœÙ]Û“Y[R][PÛXÚÓ\Ý[™\Š][HOˆÈY]›Ú™XÝ˜[YJ
+NÈ™]\›ˆYNÈJNÂˆY[K™Ù]Y[J
+K˜Y
+´'t,4`t`´`4/´.t.´.4/ô`4/´-t.´`´,ŠKœÙ]Û“Y[R][PÛXÚÓ\Ý[™\Š][HOˆÈÚÝÔ›Ú™XÝÙ][™ÜÑX[ÙÊ
+NÈ™]\›ˆYNÈJNÂˆY[K™Ù]Y[J
+K˜Y
+´(t/´at`4,4/t.4`´c4/ô`4/´-t.´`ˆŠKœÙ]Û“Y[R][PÛXÚÓ\Ý[™\Š][HOˆÈ\œÚ\Ý›Ú™XÝ
+
+NÈ™]\›ˆYNÈJNÂˆY[K™Ù]Y[J
+K˜Y
+´%4/´,t,4,´.4`´c4ct.´`4,4/HŠKœÙ]Û“Y[R][PÛXÚÓ\Ý[™\Š][HOˆÈYØÜ™Y[Š
+NÈ™]\›ˆYNÈJNÂˆY[K™Ù]Y[J
+K˜Y
+´(ô-4,4.ô.4`´c4ct.´`4,4/HŠKœÙ]Û“Y[R][PÛXÚÓ\Ý[™\Š][HOˆÈ™[[Ý™PÝ\œ™[ØÜ™Y[Š
+NÈ™]\›ˆYNÈJNÂˆY[K™Ù]Y[J
+K˜Y
+´)4/´/H4ct.´`4,4/t,ŠKœÙ]Û“Y[R][PÛXÚÓ\Ý[™\Š][HOˆÈY]ØÜ™Y[˜XÚÙÜ›Ý[™
+
+NÈ™]\›ˆYNÈJNÂˆY[K™Ù]Y[J
+K˜Y
+˜™Ú\™S[ÙHÈ´$´bô.´.ôc´aô.4`´c4`t,´cô-ôc‘ˆˆ´(t,´cô-ô,4`´c‘ŠKœÙ]Û“Y[R][PÛXÚÓ\Ý[™\Š][HOˆÂˆ˜™Ú\™S[ÙHHY˜™Ú\™S[ÙNÈÚ\™TÛÝ\˜ÙHHLNÈÚÝÑY]ÜŠ
+NÈ™]\›ˆYNÂˆJNÂˆY[K™Ù]Y[J
+K˜Y
+´(ô-4,4.ô.4`´c4`t,´cô-ôc‘8 )ˆŠKœÙ]Û“Y[R][PÛXÚÓ\Ý[™\Š][HOˆÂˆÚÝÑ˜™\ØÛÛ›™XÝX[ÙÊ
+NÈ™]\›ˆYNÂˆJNÂˆY[K™Ù]Y[J
+K˜Y
+´&4/t,´-t`4`´.4`4/´,´,4`´c“ÓÓt`t,´cô-ôc‘8 )ˆŠKœÙ]Û“Y[R][PÛXÚÓ\Ý[™\Š][HOˆÂˆÚÝÑ˜™[™\œÚ[Û‘X[ÙÊ
+NÈ™]\›ˆYNÂˆJNÂˆYˆ
+Ý\œ™[ØÜ™Y[’[™^H	‰ˆÝ\œ™[ØÜ™Y[’[™^ØÜ™Y[œËœÚ^™J
+JHÂˆØÜ™Y[ˆÝ\œ™[HØÜ™Y[œË™Ù]
+Ý\œ™[ØÜ™Y[’[™^
+NÂˆYˆ
+˜™Ú\™R\ÝÜžK˜Ø[•[™ÊÝ\œ™[
+JBˆY[K™Ù]Y[J
+K˜Y
+´'´`´/4-t/t.4`´c4`t,´cô-ôc‘ŠKœÙ]Û“Y[R][PÛXÚÓ\Ý[™\Š][HOˆÂˆ™\^Q˜™Ú\™QY]
+˜[ÙJNÈ™]\›ˆYNÂˆJNÂˆYˆ
+˜™Ú\™R\ÝÜžK˜Ø[”™YÊÝ\œ™[
+JBˆY[K™Ù]Y[J
+K˜Y
+´'ô/´,´`´/´`4.4`´c4`t,´cô-ôc‘ŠKœÙ]Û“Y[R][PÛXÚÓ\Ý[™\Š][HOˆÂˆ™\^Q˜™Ú\™QY]
+YJNÈ™]\›ˆYNÂˆJNÂˆBˆBˆY[K™Ù]Y[J
+K˜Y
+“[Ù\ÈŠKœÙ]Û“Y[R][PÛXÚÓ\Ý[™\Š][HOˆÈÚÝÓ[Ù\ÑXYÛ›ÜÝXÜÊ
+NÈ™]\›ˆYNÈJNÂˆY[K™Ù]Y[J
+K˜Y
+´$ô.ô,4,´/t/´-H4/4-t/tcˆŠKœÙ]Û“Y[R][PÛXÚÓ\Ý[™\Š][HOˆÂˆYˆ
+\œÚ\Ý›Ú™XÝ›ÝÊYJJHÚÝÒÛYJ
+NÈ™]\›ˆYNÂˆJNÂˆY[KœÚÝÊ
+NÂˆB‚ˆÝ™\œšYHX›XÈ›ÚYÛ˜XÚÔ™\ÜÙY
+
+HÂˆYˆ
+Y]ÜˆOH[
+HÂˆYˆ
+Ü\˜]Ü“[ÙJHÙÙÛSÜ\˜]Ü“[ÙJ
+NÂˆ[ÙHYˆ
+\œÚ\Ý›Ú™XÝ›ÝÊYJJHÚÝÒÛYJ
+NÂˆH[ÙHÝ\\‹›Û˜XÚÔ™\ÜÙY
+
+NÂˆB‚ˆš]˜]HÝš[™ÈÝ\œ™[ØÜ™Y[“˜[YJ
+HÂˆYˆ
+ØÜ™Y[œËš\Ñ[\J
+JH™]\›ˆ´+t.´`4,4/HHŽÂˆÝ\œ™[ØÜ™Y[’[™^HX]›X^
+X]›Z[ŠÝ\œ™[ØÜ™Y[’[™^ØÜ™Y[œËœÚ^™J
+HHJJNÂˆ™]\›ˆØÜ™Y[œË™Ù]
+Ý\œ™[ØÜ™Y[’[™^
+K›˜[YNÂˆB‚ˆš]˜]H›ÚYØ]™PXÝ]™TØÜ™Y[Š
+HÂˆYˆ
+ØÜ™Y[œËš\Ñ[\J
+JHØÜ™Y[œË˜Y
+™]ÈØÜ™Y[Š´+t.´`4,4/HHŠJNÂˆØÜ™Y[ˆØÜ™Y[ˆHØÜ™Y[œË™Ù]
+X]›X^
+X]›Z[ŠÝ\œ™[ØÜ™Y[’[™^ØÜ™Y[œËœÚ^™J
+HHJJJNÂˆØÜ™Y[‹ÚYÙ]Ë˜ÛX\Š
+NÂˆ›Üˆ
+ÚYÙ]ÛÝ\˜ÙHˆÚYÙ]ÊHØÜ™Y[‹ÚYÙ]Ë˜Y
+ÛÜUÚYÙ]
+ÛÝ\˜ÙJJNÂˆB‚ˆX›XÈÝ]XÈÚYÙ]ÛÜUÚYÙ]
+ÚYÙ]ÛÝ\˜ÙJHÂˆÚYÙ]ÛÜHH™]ÈÚYÙ]
+
+NÂˆÛÜK\HHÛÝ\˜ÙK\NÈÛÜK^HÛÝ\˜ÙK^ÈÛÜK˜ÛÛ›™XÝ[Û’[™›ÈHÛÝ\˜ÙK˜ÛÛ›™XÝ[Û’[™›ÎÈÛÜKš[œ]˜[YHHÛÝ\˜ÙKš[œ]˜[YNÈÛÜK˜]Û”Ý]HHÛÝ\˜ÙK˜]Û”Ý]NÈÛÜKœœÔÝ]HHÛÝ\˜ÙKœœÔÝ]NÈÛÜK˜ÛÝ[\”™\Ù]HÛÝ\˜ÙK˜ÛÝ[\”™\Ù]ÈÛÜK˜ÛÝ[\•˜[YHHÛÝ\˜ÙK˜ÛÝ[\•˜[YNÈÛÜK˜ÛÝ[\“\Ý[œ]HÛÝ\˜ÙK˜ÛÝ[\“\Ý[œ]ÈÛÜK[Y\”™\Ù]\ÈHÛÝ\˜ÙK[Y\”™\Ù]\ÎÈÛÜK[Y\”Ý\Y]HÛÝ\˜ÙK[Y\”Ý\Y]ÈÛÜK˜ÛÛ\\™PHHÛÝ\˜ÙK˜ÛÛ\\™PNÈÛÜK˜ÛÛ\\™PˆHÛÝ\˜ÙK˜ÛÛ\\™PŽÈÛÜK˜ÛÛ\\™SÜ\˜]ÜˆHÛÝ\˜ÙK˜ÛÛ\\™SÜ\˜]ÜŽÂˆÛÜK›Z[•˜[YHHÛÝ\˜ÙK›Z[•˜[YNÈÛÜK›X^˜[YHHÛÝ\˜ÙK›X^˜[YNÂˆÛÜK˜˜XÚÙÜ›Ý[™ÛÛÜˆHÛÝ\˜ÙK˜˜XÚÙÜ›Ý[™ÛÛÜŽÈÛÜK^ÛÛÜˆHÛÝ\˜ÙK^ÛÛÜŽÈÛÜK^Ú^™TÜHÛÝ\˜ÙK^Ú^™TÜÂˆÛÜKš\ÚX›HHÛÝ\˜ÙKš\ÚX›NÈÛÜKœÚÝÑœ˜[YHHÛÝ\˜ÙKœÚÝÑœ˜[YNÈÛÜK˜]]Ô™\Ú^™U^HÛÝ\˜ÙK˜]]Ô™\Ú^™U^Âˆ›Üˆ
+[HHÈHMŽÈJÊÊHÂˆÛÜK™[•^Ý]\ÖÚWHHÛÝ\˜ÙK™[•^Ý]\ÖÚWNÂˆÛÜK™[•^ÛÛÜœÖÚWHHÛÝ\˜ÙK™[•^ÛÛÜœÖÚWNÂˆÛÜK˜š]\ÝX™[ÖÚWHHÛÝ\˜ÙK˜š]\ÝX™[ÖÚWNÂˆÛÜK›ÚXÙSY\ÜØYÙ\ÖÚWHHÛÝ\˜ÙK›ÚXÙSY\ÜØYÙ\ÖÚWNÂˆÛÜKš[XYÙT]Ý]\ÖÚWHHÛÝ\˜ÙKš[XYÙT]Ý]\ÖÚWNÂˆBˆÛÜKœÛÝ[™™\ÚÛHÛÝ\˜ÙKœÛÝ[™™\ÚÛÂˆÛÜKœÛÝ[™XÝ]™HHÛÝ\˜ÙKœÛÝ[™XÝ]™NÂˆÛÜKœÛÝ[™š[T]HÛÝ\˜ÙKœÛÝ[™š[T]ÂˆÛÜK\™Ù]ØÜ™Y[’[™^HÛÝ\˜ÙK\™Ù]ØÜ™Y[’[™^ÂˆÛÜK\™Ù]\›HÛÝ\˜ÙK\™Ù]\›ÂˆÛÜK›\Ý›ÚXÙTÝ]HHÛÝ\˜ÙK›\Ý›ÚXÙTÝ]NÂˆÛÜK›\ÝÛÝ[™Ý]HHÛÝ\˜ÙK›\ÝÛÝ[™Ý]NÂˆÛÜK˜Ü˜Y˜\šXX›S˜[Y\ÜXÙHHÛÝ\˜ÙK˜Ü˜Y˜\šXX›S˜[Y\ÜXÙNÂˆžHÈÛÜK™^˜QšY[ÈH™]È”ÓÓ“Øš™XÝ
+ÛÝ\˜ÙK™^˜QšY[ËÔÝš[™Ê
+JNÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HÈÛÜK™^˜QšY[ÈH™]È”ÓÓ“Øš™XÝ
+
+NÈBˆÛÜKžHÛÝ\˜ÙKžÈÛÜKžHHÛÝ\˜ÙKžNÈÛÜKÈHÛÝ\˜ÙKÎÈÛÜKšHÛÝ\˜ÙKšÂˆ™]\›ˆÛÜNÂˆB‚ˆš]˜]H›ÚYXÝ]˜]TØÜ™Y[Š[[™^
+HÂˆ˜™Ú\™R\ÝÜžK˜ÛX\Š
+NÂˆØ]™PXÝ]™TØÜ™Y[Š
+NÂˆYˆ
+ØÜ™Y[œËš\Ñ[\J
+JHØÜ™Y[œË˜Y
+™]ÈØÜ™Y[Š´+t.´`4,4/HHŠJNÂˆÝ\œ™[ØÜ™Y[’[™^HX]›X^
+X]›Z[Š[™^ØÜ™Y[œËœÚ^™J
+HHJJNÂˆ]™U˜[Y\Ë˜ÛX\Š
+NÂˆÚYÙ]Ë˜ÛX\Š
+NÂˆ›Üˆ
+ÚYÙ]ÛÝ\˜ÙHˆØÜ™Y[œË™Ù]
+Ý\œ™[ØÜ™Y[’[™^
+KÚYÙ]ÊHÚYÙ]Ë˜Y
+ÛÜUÚYÙ]
+ÛÝ\˜ÙJJNÂˆ\œÚ\Ý›Ú™XÝ
+
+NÂˆÚÝÑY]ÜŠ
+NÂˆB‚ˆš]˜]H›ÚY™]š[Ý\ÔØÜ™Y[Š
+HÂˆYˆ
+ØÜ™Y[œËœÚ^™J
+HŠHÈØ\Ý›XZÙU^
+\Ë´%4/´,t,4,´c4-tbtdH4/´-4.4/H4ct.´`4,4/H‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÈ™]\›ŽÈBˆXÝ]˜]TØÜ™Y[Š
+Ý\œ™[ØÜ™Y[’[™^HH
+ÈØÜ™Y[œËœÚ^™J
+JH	HØÜ™Y[œËœÚ^™J
+JNÂˆB‚ˆš]˜]H›ÚY™^ØÜ™Y[Š
+HÂˆYˆ
+ØÜ™Y[œËœÚ^™J
+HŠHÈØ\Ý›XZÙU^
+\Ë´%4/´,t,4,´c4-tbtdH4/´-4.4/H4ct.´`4,4/H‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÈ™]\›ŽÈBˆXÝ]˜]TØÜ™Y[Š
+Ý\œ™[ØÜ™Y[’[™^
+ÈJH	HØÜ™Y[œËœÚ^™J
+JNÂˆB‚ˆš]˜]H›ÚYYØÜ™Y[Š
+HÂˆ˜™Ú\™R\ÝÜžK˜ÛX\Š
+NÂˆØ]™PXÝ]™TØÜ™Y[Š
+NÂˆØÜ™Y[œË˜Y
+™]ÈØÜ™Y[Š´+t.´`4,4/Hˆ
+È
+ØÜ™Y[œËœÚ^™J
+H
+ÈJJJNÂˆÝ\œ™[ØÜ™Y[’[™^HØÜ™Y[œËœÚ^™J
+HHNÂˆÚYÙ]Ë˜ÛX\Š
+NÂˆ\œÚ\Ý›Ú™XÝ
+
+NÂˆÚÝÑY]ÜŠ
+NÂˆB‚ˆš]˜]H›ÚY™[[Ý™PÝ\œ™[ØÜ™Y[Š
+HÂˆYˆ
+ØÜ™Y[œËœÚ^™J
+HHJHÂˆØ\Ý›XZÙU^
+\Ë´$ˆ4/ô`4/´-t.´`´-H4-4/´.ô-´-t/H4/´`t`´,4`´c4`tcÈ4at/´`´cÈ4,tbÈ4/´-4.4/H4ct.´`4,4/H‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆ™]È[\X[ÙËZ[\Š\ÊBˆœÙ]]J´(ô-4,4.ô.4`´c4ct.´`4,4/OÈŠBˆœÙ]Y\ÜØYÙJ´+t.´`4,4/H0ªÈˆ
+ÈÝ\œ™[ØÜ™Y[“˜[YJ
+H
+È°®È4.4,´`t-H4-t,ô/ˆ4ct.ô-t/4-t/t`´bÈ4,t`ô-4`ô`ˆ4`ô-4,4.ô-t/tbËˆŠBˆœÙ]™YØ]]™P]ÛŠ´'´`´/4-t/t,‹[
+BˆœÙ]ÜÚ]]™P]ÛŠ´(ô-4,4.ô.4`´c‹
+X[ÙËÚXÚ
+HOˆÂˆ˜™Ú\™R\ÝÜžK˜ÛX\Š
+NÂˆØ]™PXÝ]™TØÜ™Y[Š
+NÂˆØÜ™Y[œËœ™[[Ý™JÝ\œ™[ØÜ™Y[’[™^
+NÂˆÝ\œ™[ØÜ™Y[’[™^HX]›X^
+X]›Z[ŠÝ\œ™[ØÜ™Y[’[™^ØÜ™Y[œËœÚ^™J
+HHJJNÂˆÚYÙ]Ë˜ÛX\Š
+NÂˆ›Üˆ
+ÚYÙ]ÚYÙ]ˆØÜ™Y[œË™Ù]
+Ý\œ™[ØÜ™Y[’[™^
+KÚYÙ]ÊHÚYÙ]Ë˜Y
+ÛÜUÚYÙ]
+ÚYÙ]
+JNÂˆY]ÜˆH[Âˆ\œÚ\Ý›Ú™XÝ
+
+NÂˆÚÝÑY]ÜŠ
+NÂˆJKœÚÝÊ
+NÂˆB‚ˆš]˜]H›ÚYY]ØÜ™Y[˜XÚÙÜ›Ý[™
+
+HÂˆYˆ
+ØÜ™Y[œËš\Ñ[\J
+JH™]\›ŽÂˆØÜ™Y[ˆØÜ™Y[ˆHØÜ™Y[œË™Ù]
+Ý\œ™[ØÜ™Y[’[™^
+NÂˆY]^[œ]H›Ü\QšY[
+Ýš[™Ë™›Ü›X]
+˜]˜K][“ØØ[K”“ÓÕˆÉL–‹
+‘‘‘‘‘ˆ	ˆØÜ™Y[‹˜˜XÚÙÜ›Ý[™ÛÛÜŠJK[œ]\K•TWÐÓTÔ×ÕV
+NÂˆ[œ]œÙ][
+ˆÔ”‘ÑÐˆŠNÂˆ™]È[\X[ÙËZ[\Š\ÊKœÙ]]J´)´,´-t`ˆ4a4/´/t,4ct.´`4,4/t,ŠKœÙ]šY]Ê[œ]
+BˆœÙ]™YØ]]™P]ÛŠ´'´`´/4-t/t,‹[
+BˆœÙ]ÜÚ]]™P]ÛŠ´'ô`4.4/4-t/t.4`´c‹
+X[ÙËÚXÚ
+HOˆÂˆÝš[™È˜[YHH[œ]™Ù]^
+
+KÔÝš[™Ê
+Kš[J
+NÂˆYˆ
+]˜[YKœÝ\ÕÚ]
+ˆÈŠJH˜[YHHˆÈˆ
+È˜[YNÂˆYˆ
+]˜[YK›X]Ú\ÊˆÖÌNXKYKQ—^ÍŸHŠJHÂˆØ\Ý›XZÙU^
+\Ë´(ô.´,4-´.4a´,´-t`ˆ4,ˆ4a4/´`4/4,4`´-HÔ”‘ÑÐˆ‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆžHÈØÜ™Y[‹˜˜XÚÙÜ›Ý[™ÛÛÜˆHÛÛÜ‹œ\œÙPÛÛÜŠ˜[YJNÈBˆØ]Ú
+[YØ[\™Ý[Y[^Ù\[ÛˆYÛ›Ü™Y
+HÈ™]\›ŽÈBˆ\œÚ\Ý›Ú™XÝ
+
+NÈYˆ
+Y]ÜˆOH[
+HY]Ü‹š[˜[Y]J
+NÂˆJKœÚÝÊ
+NÂˆB‚ˆš]˜]H›ÚY™[˜[YPÝ\œ™[ØÜ™Y[Š
+HÂˆY]^[œ]H›Ü\QšY[
+Ý\œ™[ØÜ™Y[“˜[YJ
+K[œ]\K•TWÐÓTÔ×ÕV[œ]\K•TWÕVÑ“Q×ÐÐTÔÑS•SÑTÊNÂˆ™]È[\X[ÙËZ[\Š\ÊKœÙ]]J´&4/4cÈ4ct.´`4,4/t,ŠKœÙ]šY]Ê[œ]
+BˆœÙ]™YØ]]™P]ÛŠ´'´`´/4-t/t,‹[
+BˆœÙ]ÜÚ]]™P]ÛŠ´(t/´at`4,4/t.4`´c‹
+X[ÙËÚXÚ
+HOˆÂˆÝš[™È˜[YHH[œ]™Ù]^
+
+KÔÝš[™Ê
+Kš[J
+NÂˆYˆ
+[˜[YKš\Ñ[\J
+JHØÜ™Y[œË™Ù]
+Ý\œ™[ØÜ™Y[’[™^
+K›˜[YHH˜[YNÂˆ\œÚ\Ý›Ú™XÝ
+
+NÈÚÝÑY]ÜŠ
+NÂˆJKœÚÝÊ
+NÂˆB‚ˆš]˜]H›ÚYÚÝÕÚYÙ]ÛÛ^Y[J
+HÂˆYˆ
+Y]ÜˆOH[Y]Ü‹œÙ[XÝYY]Ü‹œÙ[XÝYHÚYÙ]ËœÚ^™J
+JH™]\›ŽÂˆYˆ
+\Ñ˜™
+ÚYÙ]Ë™Ù]
+Y]Ü‹œÙ[XÝY
+JJHÂˆÚÝÑ˜™›ØÚÐÛÛ^Y[JY]Ü‹œÙ[XÝY
+NÂˆ™]\›ŽÂˆBˆÚÝÔÝ[™\™ÚYÙ]ÛÛ^Y[J
+NÂˆB‚ˆÊŠˆÛÝ\˜ÙK[Ü™\™Y‘XÝ[ÛœÈÚ]^\Ý[™È\YÜ˜\ÝX\™Ëˆ
+‹Âˆš]˜]H›ÚYÚÝÑ˜™›ØÚÐÛÛ^Y[Jš[˜[[›ØÚÒ[™^
+HÂˆYˆ
+Ü\˜]Ü“[ÙH›ØÚÒ[™^›ØÚÒ[™^HÚYÙ]ËœÚ^™J
+JH™]\›ŽÂˆš[˜[ÚYÙ]ÚYÙ]HÚYÙ]Ë™Ù]
+›ØÚÒ[™^
+NÂˆš[˜[›ÛÛX[ˆ[Y\ˆH‘‘4(´,4.t/4-t`‹™\]X[ÊÚYÙ]\JBˆ‘‘Ñˆ‹™\]X[ÊÚYÙ]\JH‘‘‹™\]X[ÊÚYÙ]\JBˆ‘‘ÔQ•SQTˆ‹™\]X[ÊÚYÙ]\JNÂˆš[˜[›ÛÛX[ˆ[™\X›HHÛ›ÝÛ‘˜™[œÊÚYÙ]YJK›[™ÝOHBˆ	‰ˆ“ÓÓ‹™\]X[ÊÛ›ÝÛ‘˜™[•\JÚYÙ]ˆÛ›ÝÛ‘˜™[œÊÚYÙ]YJVÌKYJJNÂˆš[˜[˜]˜K][“\ÝÝš[™ÏˆX™[ÈH™]È\œ˜^S\ÝŠ
+NÂˆX™[Ë˜Y
+´(t/´-t-4.4/t.4`´c4`x )ˆŠNÂˆYˆ
+[™\X›JHX™[Ë˜Y
+´&4/t,´-t`4`´.4`4/´,´,4`´c4`t,´cô-ôc“ÓÓ8 )ˆŠNÂˆYˆ
+Ý\ÜÑ˜™›ØÚÓÝ]][™\œÚ[ÛŠÚYÙ]\JJBˆX™[Ë˜Y
+´&4/t,´-t`4`´.4`4/´,´,4`´c4,´bôat/´-“ÓÓŠNÂˆX™[Ë˜Y
+´'´`´`t/´-t-4.4/t.4`´c4,´bôat/´-ŠNÂˆYˆ
+[Y\ŠHX™[Ë˜Y
+´(4-t-´.4/È4-t-4.4/t.4a´bÈ4,´`4-t/4-t/t.ŠNÂˆX™[Ë˜Y
+´(t,´/´.t`t`´,´,ŠNÂˆX™[Ë˜Y
+´%4`4`ô,ô.4-H4-4-t.t`t`´,´.4cÈŠNÂˆ™]È[\X[ÙËZ[\Š\Ë[™›ÚY”‹œÝ[K•[YWÓX]\šX[ÑX[Ù×Ð[\
+BˆœÙ]]JÚYÙ]^OH[ÈÚYÙ]\HˆÚYÙ]^
+BˆœÙ]][\ÊX™[ËÐ\œ˜^J™]ÈÝš[™ÖÌJK
+X[ÙËÚÚXÙJHOˆÂˆYˆ
+›ØÚÒ[™^HÚYÙ]ËœÚ^™J
+HÚYÙ]Ë™Ù]
+›ØÚÒ[™^
+HOHÚYÙ]
+HÂˆØ\Ý›XZÙU^
+\Ë‘‘4.4-ô/4-t/tdt/Nˆ4,´bô,t-t`4.4,t.ô/´.ˆ4-ô,4/t/´,´/ˆ‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆÝš[™ÈX™[HX™[Ë™Ù]
+ÚÚXÙJNÂˆYˆ
+´(t/´-t-4.4/t.4`´c4`x )ˆ‹™\]X[ÊX™[
+JHÂˆ˜™Ú\™S[ÙHHYNÂˆÚ\™TÛÝ\˜ÙHH›ØÚÒ[™^ÂˆØ\Ý›XZÙU^
+\Ë´$´bô,t-t`4.4a´-t.ô-t,´/´.H4,t.ô/´.ˆ‘‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆH[ÙHYˆ
+´&4/t,´-t`4`´.4`4/´,´,4`´c4`t,´cô-ôc“ÓÓ8 )ˆ‹™\]X[ÊX™[
+JHÂˆÚÝÑ˜™[™\œÚ[Û‘X[ÙÊ›ØÚÒ[™^
+NÂˆH[ÙHYˆ
+´&4/t,´-t`4`´.4`4/´,´,4`´c4,´bôat/´-“ÓÓ‹™\]X[ÊX™[
+JHÂˆžHÂˆØš™XÝ™]š[Ý\ÈHÚYÙ]™^˜QšY[Ë›Ü
+š[™\Ý]ŠNÂˆ›ÛÛX[ˆ^\ÝYHÚYÙ]™^˜QšY[Ëš\Êš[™\Ý]ŠNÂˆYˆ
+]ÙÙÛQ˜™›ØÚÓÝ]][™\œÚ[ÛŠÚYÙ]
+JH™]\›ŽÂˆYˆ
+\\œÚ\Ý›Ú™XÝ›ÝÊYJJHÂˆYˆ
+^\ÝY
+HÚYÙ]™^˜QšY[Ëœ]
+š[™\Ý]‹™]š[Ý\ÊNÂˆ[ÙHÚYÙ]™^˜QšY[Ëœ™[[Ý™Jš[™\Ý]ŠNÂˆØ\Ý›XZÙU^
+\Ë´'t-H4`ô-4,4.ô/´`tc4`t/´at`4,4/t.4`´c4.4/t,´-t`4`t.4cˆ4,´bôat/´-4,‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆBˆYˆ
+Y]ÜˆOH[
+HY]Ü‹š[˜[Y]J
+NÂˆHØ]Ú
+^Ù\[Ûˆ\œ›ÜŠHÂˆØ\Ý›XZÙU^
+\Ë´'t-H4`ô-4,4.ô/´`tc4`t/´at`4,4/t.4`´c4.4/t,´-t`4`t.4cˆ4,´bôat/´-4,‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆBˆH[ÙHYˆ
+´'´`´`t/´-t-4.4/t.4`´c4,´bôat/´-‹™\]X[ÊX™[
+JHÂˆÚÝÑ˜™\ØÛÛ›™XÝX[ÙÊ›ØÚÒ[™^
+NÂˆH[ÙHYˆ
+´(4-t-´.4/È4-t-4.4/t.4a´bÈ4,´`4-t/4-t/t.‹™\]X[ÊX™[
+Bˆ´(t,´/´.t`t`´,´,‹™\]X[ÊX™[
+JHÂˆY]Ü‹œÙ[XÝYH›ØÚÒ[™^ÂˆY]Ù[XÝYÚYÙ]
+
+NÂˆH[ÙHÂˆY]Ü‹œÙ[XÝYH›ØÚÒ[™^ÂˆÚÝÔÝ[™\™ÚYÙ]ÛÛ^Y[J
+NÂˆBˆYˆ
+Y]ÜˆOH[
+HY]Ü‹š[˜[Y]J
+NÂˆJKœÙ]™YØ]]™P]ÛŠ´'´`´/4-t/t,‹[
+KœÚÝÊ
+NÂˆB‚ˆš]˜]H›ÚYÚÝÔÝ[™\™ÚYÙ]ÛÛ^Y[J
+HÂˆYˆ
+Y]ÜˆOH[Y]Ü‹œÙ[XÝYY]Ü‹œÙ[XÝYHÚYÙ]ËœÚ^™J
+JH™]\›ŽÂ‚ˆÚYÙ]Ù[XÝYÚYÙ]HÚYÙ]Ë™Ù]
+Y]Ü‹œÙ[XÝY
+NÂˆÝš[™È]U^HÙ[XÝYÚYÙ]^OH[Ù[XÝYÚYÙ]^š[J
+Kš\Ñ[\J
+BˆÈÙ[XÝYÚYÙ]\HˆÙ[XÝYÚYÙ]^Â‚ˆ[™X\“^[Ý]\ÝH™]È[™X\“^[Ý]
+\ÊNÂˆ\ÝœÙ]ÜšY[][ÛŠ[™X\“^[Ý]•‘T•PÐS
+NÂˆ\ÝœÙ]Y[™Ê
+
+K
+
+K
+
+K
+
+JNÂˆ\ÝœÙ]˜XÚÙÜ›Ý[™ÛÛÜŠÛÛÜ‹œ™ØŠÍKÍKÍJJNÂˆØÜ›ÛšY]ÈØÜ›ÛH™]ÈØÜ›ÛšY]Ê\ÊNÂˆØÜ›ÛœÙ]š[šY]ÜÜ
+YJNÂˆØÜ›Û˜YšY]Ê\Ý
+NÂ‚ˆš[˜[[\X[ÙÖ×HY[HH™]È[\X[ÙÖÌWNÂˆš[˜[Ýš[™Ö×HX™[ÈHÈ´(t,´/´.t`t`´,´,‹´$´bô`4,4,´/t.4,´,4/t.4-H‹´&´/´/ô.4`4/´,´,4`´c‹´(ô-4,4.ô.4`´cŸNÂˆš[˜[Ýš[™Ö×H]Z[ÈHÂˆ´'t,4`t`´`4/´.4`´c4ct.ô-t/4-t/t`ˆ4.4/ô`4.4,´cô-ô.´`È‹ˆ´$´bô`4/´,´/tcô`´c4/t,4at/´.ô`t`´-H‹ˆ´(t/´-ô-4,4`´c4.´/´/ô.4cˆ4ct.ô-t/4-t/t`´,‹ˆ´(ô-4,4.ô.4`´c4ct.ô-t/4-t/t`ˆ4`H4ct.´`4,4/t,‚ˆNÂˆš[˜[[×HÞ[X›ÛÈHÌŽNKŒQŽPÎKÌM_NÂ‚ˆ›Üˆ
+[HHÈHX™[Ë›[™ÝÈJÊÊHÂˆš[˜[[[™^HNÂˆ[™X\“^[Ý]›ÝÈH™]È[™X\“^[Ý]
+\ÊNÂˆ›ÝËœÙ]ÜšY[][ÛŠ[™X\“^[Ý]’Ô’V“Ó•S
+NÂˆ›ÝËœÙ]Ü˜]š]JÜ˜]š]KÑS•T—Õ‘T•PÐS
+NÂˆ›ÝËœÙ]Y[™Ê
+L
+K
+
+K
+L
+K
+
+JNÂˆ›ÝËœÙ]Z[š[][RZYÚ
+
+M
+JNÂˆ›ÝËœÙ]˜XÚÙÜ›Ý[™ÛÛÜŠH	HˆOHˆÈÛÛÜ‹œ™ØŠ
+HˆÛÛÜ‹œ™ØŠ
+JNÂ‚ˆ^šY]ÈÞ[X›ÛH™]È^šY]Ê\ÊNÂˆÞ[X›ÛœÙ]^
+™]ÈÝš[™ÊÚ\˜XÝ\‹ÐÚ\œÊÞ[X›ÛÖÚWJJJNÂˆÞ[X›ÛœÙ]^Ú^™JŒJNÂˆÞ[X›ÛœÙ]Ü˜]š]JÜ˜]š]KÑS•TŠNÂˆÞ[X›ÛœÙ]^ÛÛÜŠHOHÈÈÛÛÜ‹œ™ØŠŒÍKLKL
+HˆÛÛÜ‹œ™ØŠŒÍËMÍ‹NJJNÂˆ›ÝË˜YšY]ÊÞ[X›Û™]È[™X\“^[Ý]“^[Ý]\˜[\Ê
+Î
+KLŠJNÂ‚ˆ[™X\“^[Ý]^ÛÛ[[ˆH™]È[™X\“^[Ý]
+\ÊNÂˆ^ÛÛ[[‹œÙ]ÜšY[][ÛŠ[™X\“^[Ý]•‘T•PÐS
+NÂˆ^ÛÛ[[‹œÙ]Y[™Ê
+
+K
+NÂˆ^šY]ÈX™[H™]È^šY]Ê\ÊNÂˆX™[œÙ]^
+X™[ÖÚWJNÂˆX™[œÙ]^Ú^™JMŠNÂˆX™[œÙ]\Y˜XÙJ[[™›ÚY™Ü˜\XÜË•\Y˜XÙK“Ó
+NÂˆX™[œÙ]^ÛÛÜŠHOHÈÈÛÛÜ‹œ™ØŠŒÍKLKL
+HˆÛÛÜ‹œ™ØŠŒÍËMÍ‹NJJNÂˆ^ÛÛ[[‹˜YšY]ÊX™[™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLKLŠJNÂ‚ˆ^šY]È]Z[H™]È^šY]Ê\ÊNÂˆ]Z[œÙ]^
+]Z[ÖÚWJNÂˆ]Z[œÙ]^Ú^™JLŠNÂˆ]Z[œÙ]^ÛÛÜŠÛÛÜ‹œ™ØŠNËNËNÊJNÂˆ^ÛÛ[[‹˜YšY]Ê]Z[™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLKLŠJNÂˆ›ÝË˜YšY]Ê^ÛÛ[[‹™]È[™X\“^[Ý]“^[Ý]\˜[\ÊL‹JJNÂ‚ˆ›ÝËœÙ]ÛÛXÚÓ\Ý[™\ŠˆOˆÂˆYˆ
+Y[VÌHOH[
+HY[VÌK™\ÛZ\ÜÊ
+NÂˆYˆ
+[™^OH
+HY]Ù[XÝYÚYÙ]
+
+NÂˆ[ÙHYˆ
+[™^OHJHÚÝÐ[YÛ‘X[ÙÊ
+NÂˆ[ÙHYˆ
+[™^OHŠHÛÜTÙ[XÝYÚYÙ]
+
+NÂˆ[ÙH[]TÙ[XÝYÚYÙ]
+
+NÂˆJNÂˆ\Ý˜YšY]Ê›ÝË™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLKLŠJNÂ‚ˆšY]ÈÙ\\˜]ÜˆH™]ÈšY]Ê\ÊNÂˆÙ\\˜]Ü‹œÙ]˜XÚÙÜ›Ý[™ÛÛÜŠÛÛÜ‹œ™ØŠÍKÍKÍJJNÂˆ\Ý˜YšY]ÊÙ\\˜]Ü‹™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLK
+JJJNÂˆB‚ˆY[VÌHH™]È[\X[ÙËZ[\Š\ÊBˆœÙ]]J]U^
+BˆœÙ]šY]ÊØÜ›Û
+BˆœÙ]™YØ]]™P]ÛŠ´'´`´/4-t/t,‹[
+Bˆ˜Ü™X]J
+NÂˆY[VÌKœÚÝÊ
+NÂˆ[]RYHÙ]™\ÛÝ\˜Ù\Ê
+K™Ù]Y[YšY\Š˜[\]H‹šY‹˜[™›ÚYŠNÂˆ^šY]ÈX[ÙÕ]HHY[VÌK™š[™šY]ÐžRY
+]RY
+NÂˆYˆ
+X[ÙÕ]HOH[
+HX[ÙÕ]KœÙ]^ÛÛÜŠÛÛÜ‹œ™ØŠŒÍËMÍ‹NJJNÂˆB‚ˆš]˜]H›ÚYÚÝÓ[Ù\ÑXYÛ›ÜÝXÜÊ
+HÂˆÝš[™ÐZ[\ˆ™\ÜH™]ÈÝš[™ÐZ[\Š
+NÂˆ[›Ý[™ÛÝ[HÂˆ[\œ›ÜÛÝ[HÂˆ[[™[™ÐÛÝ[HÂˆ[XÝ]™PÛÝ[HÂˆ[[˜XÝ]™PÛÝ[HÂˆ›Üˆ
+[HHÈHÚYÙ]ËœÚ^™J
+NÈJÊÊHÂˆÚYÙ]ÚYÙ]HÚYÙ]Ë™Ù]
+JNÂˆÝš[™Èš[™[™ÈHÚYÙ]˜ÛÛ›™XÝ[Û’[™›ÈOH[ÈˆˆˆÚYÙ]˜ÛÛ›™XÝ[Û’[™›Ëš[J
+NÂˆYˆ
+š[™[™Ëš\Ñ[\J
+JHÛÛ[YNÂˆ›Ý[™ÛÝ[
+ÊÎÂˆÝš[™ÈÝ]HH]™U˜[Y\Ë™Ù]
+JNÂˆYˆ
+š[™[™ËœÝ\ÕÚ]
+Ü‹ËÈŠH	‰ˆ\œÙPš[™[™ÊKš[™[™ÊHOH[
+HÝ]HHÑ‘È8 %4/t-t,´-t`4/tbô.H4,4-4`4-t`HŽÂˆ[ÙHYˆ
+Ý]HOH[
+HÝ]HH´'´-´.4-4,4/t.4-H4/´`´,´-t`´,ŽÂˆYˆ
+
+Ý]HOH[	‰ˆÝ]KœÝ\ÕÚ]
+‘T”ˆŠJH
+Ý]HOH[	‰ˆÝ]KœÝ\ÕÚ]
+Ñ‘ÈŠJJH\œ›ÜÛÝ[
+ÊÎÂˆ[ÙHYˆ
+´'´-´.4-4,4/t.4-H4/´`´,´-t`´,‹™\]X[ÊÝ]JJH[™[™ÐÛÝ[
+ÊÎÂˆ[ÙHYˆ
+\ÐXÝ]™S[Ù\Õ˜[YJÝ]JJHXÝ]™PÛÝ[
+ÊÎÂˆ[ÙH[˜XÝ]™PÛÝ[
+ÊÎÂˆ™\Ü˜\[™
+H
+ÈJK˜\[™
+‹ˆŠK˜\[™
+ÚYÙ]^OH[ÚYÙ]^š[J
+Kš\Ñ[\J
+HÈÚYÙ]\HˆÚYÙ]^
+Bˆ˜\[™
+—ˆ4'ô`4.4,´cô-ô.´,ˆŠK˜\[™
+š[™[™ÊBˆ˜\[™
+—ˆ4(´-t.´`ôbt-t-H4-ô/t,4aô-t/t.4-NˆŠK˜\[™
+Ý]JBˆ˜\[™
+——ˆŠNÂˆBˆYˆ
+›Ý[™ÛÝ[OH
+HÂˆ™\Ü˜\[™
+´'t,4`´-t.´`ôbt-t/4ct.´`4,4/t-H4/t-t`ˆ4ct.ô-t/4-t/t`´/´,ˆ4`H4`ô.´,4-ô,4/t/t/´.H4/ô`4.4,´cô-ô.´/´.K—ˆŠBˆ˜\[™
+´'´`´.´`4/´.H0ªô(t,´/´.t`t`´,´,0®È4ct.ô-t/4-t/t`´,4.4`ô.´,4-´.4,4-4`4-t`H[Ù\Ë4/t,4/ô`4.4/4-t`—ˆŠBˆ˜\[™
+Ü‹ËÌNL‹ŒMŽŒKŒLL‹ÌKÍHŠNÂˆH[ÙHÂˆ™\Üš[œÙ\
+´'ô`4.4,´cô-ô/´.Žˆˆ
+È›Ý[™ÛÝ[
+Èˆ0­È4'´b4.4,t/´.Žˆˆ
+È\œ›ÜÛÝ[
+Èˆ0­È4'´-´.4-4,4/t.4-Nˆˆ
+È[™[™ÐÛÝ[
+Èˆ0­È4$4.´`´.4,´/tbôaNˆˆ
+ÈXÝ]™PÛÝ[
+Èˆ0­È4't-t,4.´`´.4,´/tbôaNˆˆ
+È[˜XÝ]™PÛÝ[
+È——ˆŠNÂˆBˆ^šY]ÈÛÛ[H™]È^šY]Ê\ÊNÂˆÛÛ[œÙ]^
+™\ÜÔÝš[™Ê
+JNÂˆÛÛ[œÙ]^Ú^™JM
+NÂˆÛÛ[œÙ]^ÛÛÜŠÛÛÜ‹œ™ØŠÌKNJJNÂˆÛÛ[œÙ]Y[™Ê
+MŠK
+LŠK
+MŠK
+LŠJNÂˆØÜ›ÛšY]ÈØÜ›ÛH™]ÈØÜ›ÛšY]Ê\ÊNÂˆØÜ›Û˜YšY]ÊÛÛ[
+NÂˆ™]È[\X[ÙËZ[\Š\ÊBˆœÙ]]J´%4.4,4,ô/t/´`t`´.4.´,[Ù\ÈŠBˆœÙ]šY]ÊØÜ›Û
+BˆœÙ]ÜÚ]]™P]ÛŠ´'´,t/t/´,´.4`´c‹
+X[ÙËÚXÚ
+HOˆÚÝÓ[Ù\ÑXYÛ›ÜÝXÜÊ
+JBˆœÙ]™YØ]]™P]ÛŠ´%ô,4.´`4bô`´c‹[
+BˆœÚÝÊ
+NÂˆB‚ˆš]˜]H›ÚYÚÝÐYÚYÙ]Y[J
+HÂˆÜšYÚ[˜[ÛÛ\Û™[[]KœÚÝÊ\Ë\ÎŽ˜YÚYÙ]ˆ\ÎŽœÚÝÑ˜™[]K\ÎŽ™Y]ØÜ™Y[˜XÚÙÜ›Ý[™
+NÂˆB‚ˆš]˜]H›ÚYÚÝÑ˜™[]J
+HÂˆÜšYÚ[˜[˜™[]KœÚÝÊ\Ë\ÎŽ˜YÚYÙ]\ÎŽœÚÝÐYÚYÙ]Y[K\ÎŽœÚÝÑ^[™YÚYÙ]Y[JNÂˆB‚ˆš]˜]H›ÚYÚÝÑ^[™YÚYÙ]Y[J
+HÂˆš[˜[Ýš[™Ö×HX™[ÈHÂˆ´(´-t.´`t`ˆÈ4/t,4-4/ô.4`tc‹´&´/t/´/ô.´,‹´&4/t-4.4.´,4`´/´`‹´%ô,4-4,4`´aô.4.ˆ‹ˆ´%4.4/t,4/4.4aô-t`t.´.4.H4`´-t.´`t`ˆ‹´$t.4`´/´,´bô.H4`t/ô.4`t/´.ˆ‹´*4.´,4.ô,È4(t`´`4-t.ô.´,‹´'ô`4/´,ô`4-t`t`Kt,t,4`‹´$ô`4,4a4.4.ˆÈ4(´`4-t/t-‹´%4,´`ôat/ô/´-ô.4a´.4/´/t/tbô.H4.4/t-4.4.´,4`´/´`‹ˆ´%ô,´`ô.´/´,´/´.H4`t.4,ô/t,4.ÈÈ4$4.ô,4`4/‹´'ô-t`4-tat/´-4/t,4ct.´`4,4/HÈ4(t`tbô.ô.´,‹´'4/t/´,ô/´/ô/´-ô.4a´.4/´/t/t/´-H4a4/´`´/ˆ‹´$ô/´.ô/´`t/´,´/´-H4`t/´/´,tbt-t/t.4-H‹ˆ‘‘8 %4$´at/´-‹‘‘8 %4&‹‘‘8 %4&4&ô&‹‘‘8 %4't%H‹ˆ‘‘8 %S‘‹‘‘8 %“Ôˆ‹‘‘8 %Ôˆ‹ˆ‘‘8 %Óˆ
+4-ô,4-4-t`4-´.´,4,´.´.ôc´aô-t/t.4cÊH‹‘‘8 %
+4.4/4/ô`ô.ôc4`JH‹‘‘8 %Ñˆ
+4-ô,4-4-t`4-´.´,4,´bô.´.ôc´aô-t/t.4cÊH‹ˆ‘‘8 %4(t`4,4,´/t-t/t.4-H‹‘‘8 %4(t.ô/´-´-t/t.4-H
+
+ÊH‹‘‘8 %4$´bôaô.4`´,4/t.4-H
+JH‹‘‘8 %4(ô/4/t/´-´-t/t.4-H
+
+ŠH‹‘‘8 %4%4-t.ô-t/t.4-H
+ÊH‹ˆ‘‘8 %ÕÈ
+4`t`´-t/ô-t/tc
+H‹‘‘8 %ÔT•
+4.´/´`4-t/tc
+H‹‘‘8 %ÒSˆ‹‘‘8 %ÓÔÈ‹‘‘8 %Sˆ‹ˆ‘‘8 %›Ø]Ò[‹‘‘8 %[Ñ›Ø]‹ˆ‘‘8 %SÕ‘H‹‘‘8 %ÑS
+4`t-t.ô-t.´`´/´`
+H‹‘‘8 %P”È‹‘‘8 %RSˆÈPV‹ˆ‘‘8 %”È‹‘‘8 %Ôˆ‹‘‘8 %ÕH
+4`taôdt`ˆ4,´,´-t`4aJH‹ˆ‘‘8 %Õ
+4`taôdt`ˆ4,´/t.4-ÊH‹‘‘8 %—Õ’QÈ‹‘‘8 %—Õ’QÈ‹ˆ‘‘8 %Ü˜YÕHMˆ4,t.4`ˆ
+
+Ë8¢$‹ŠH‹ˆ‘‘8 %Ü˜Y
+4/ô-t`4-t.´.ôc´aô,4`´-t.ôc4/ô/ˆ4a4`4/´/t`´`ÊH‹ˆ‘‘8 %Ü˜YSQTˆ
+ÓˆÈÑˆÈÈ“S’ÊH‹ˆ‘‘8 %Ü˜Y“S’È
+4/4.4,ô,4/t.4-JH‹ˆ‘‘8 %Ü˜YÑS
+4a´-t.ô/´aô.4`t.ô-t/t/tbô.JH‹ˆ‘‘8 %Ü˜YÓÓTT‘H
+S•ÌŠH‹ˆ‘‘8 %Ü˜YÒÒH
+4.4-ô/4-t/t-t/t.4-H[YÙ\ŠH‹ˆ‘‘8 %Ü˜YÒÑˆ
+4.4-ô/4-t/t-t/t.4-H›Ø]
+H‹ˆ‘‘8 %Ü˜Y\š]Y]XÈS•
+Mˆ4,t.4`ŠH‹ˆ‘‘8 %Ü˜Y\š]Y]XÈ“ÐUÌˆ‹ˆ‘‘8 %Ü˜YÓÓTT‘H“ÐUÌˆ‹ˆ‘‘8 %Ü˜YSÕ‘H
+Sˆ
+È[YÙ\ŠH‹ˆ‘‘8 %Ü˜YV
+Sˆ
+È[YÙ\ˆQ
+H‹ˆ‘‘8 %Ü˜YT”VH
+Sˆ
+È
+ÈQ
+H‹ˆ‘‘8 %Ü˜YÑÈ
+›Ø]ÌŠH‹ˆ‘‘8 %Ü˜YÛÜ™Ñ›Ø]
+[YÙ\ˆ8¡¤ˆ›Ø]ÌŠH‹ˆ‘‘8 %Ü˜YÕÈ
+›Ø]ÌŠH‹‘‘8 %Ü˜YÒSˆ
+›Ø]ÌŠH‹ˆ‘‘8 %Ü˜YP”È
+›Ø]ÌŠH‹‘‘8 %Ü˜Y[Ñ›Ø]
+ÚYÛ™YM‹Xš]
+H‹ˆ‘‘8 %Ü˜Y›Ø]Ò[‚ˆNÂˆš[˜[Ýš[™Ö×H\\ÈHÂˆ´(´-t.´`t`ˆ‹´&´/t/´/ô.´,‹´&4/t-4.4.´,4`´/´`‹´%ô,4-4,4`´aô.4.ˆ‹ˆ´%4.4/t,4/4.4aô-t`t.´.4.H4`´-t.´`t`ˆ‹´$t.4`´/´,´bô.H4`t/ô.4`t/´.ˆ‹´*4.´,4.ô,È4(t`´`4-t.ô.´,‹´'ô`4/´,ô`4-t`t`Kt,t,4`‹´$ô`4,4a4.4.ˆÈ4(´`4-t/t-‹´%4,´`ôat/ô/´-ô.4a´.4/´/t/tbô.H4.4/t-4.4.´,4`´/´`‹ˆ´%ô,´`ô.´/´,´/´.H4`t.4,ô/t,4.È‹´'ô-t`4-tat/´-4/t,4ct.´`4,4/H‹´'4/t/´,ô/´/ô/´-ô.4a´.4/´/t/t/´-H4a4/´`´/ˆ‹´$ô/´.ô/´`t/´,´/´-H4`t/´/´,tbt-t/t.4-H‹ˆ‘‘4$´at/´-‹‘‘4&‹‘‘4&4&ô&‹‘‘4't%H‹ˆ‘‘S‘‹‘‘“Ôˆ‹‘‘Ôˆ‹ˆ‘‘4(´,4.t/4-t`‹‘‘‹‘‘Ñˆ‹ˆ‘‘4(t`4,4,´/t-t/t.4-H‹‘‘4(t.ô/´-´-t/t.4-H‹‘‘4$´bôaô.4`´,4/t.4-H‹‘‘4(ô/4/t/´-´-t/t.4-H‹‘‘4%4-t.ô-t/t.4-H‹ˆ‘‘ÕÈ‹‘‘ÔT•‹‘‘ÒSˆ‹‘‘ÓÔÈ‹‘‘Sˆ‹ˆ‘‘›Ø]Ò[‹‘‘[Ñ›Ø]‹ˆ‘‘SÕ‘H‹‘‘ÑS‹‘‘P”È‹‘‘RS—ÓPV‹ˆ‘‘”È‹‘‘Ôˆ‹‘‘ÕH‹ˆ‘‘Õ‹‘‘—Õ’QÈ‹‘‘—Õ’QÈ‹ˆ‘‘ÔQ•ÕH‹‘‘ÔQ•‹‘‘ÔQ•SQTˆ‹‘‘ÔQ•“S’È‹ˆ‘‘ÔQ•ÑS‹‘‘ÔQ•ÓÓTT‘H‹ˆ‘‘ÔQ•ÒS‘ÑHH‹‘‘ÔQ•ÒS‘ÑHˆ‹ˆ‘‘ÔQ•T’UQUPÈS•‹‘‘ÔQ•T’UQUPÈ“ÐU‹ˆ‘‘ÔQ•ÓÓTT‘H“ÐU‹‘‘ÔQ•SÕ‘H‹ˆ‘‘ÔQ•V‹‘‘ÔQ•T”VH‹ˆ‘‘ÔQ•ÑÈ‹‘‘ÔQ•ÓÔ‘È“ÐU‹ˆ‘‘ÔQ•ÕÈ‹‘‘ÔQ•ÒSˆ‹‘‘ÔQ•P”È‹ˆ‘‘ÔQ•S•È“ÐU‹‘‘ÔQ•“ÐUÈS•‚ˆNÂˆš[˜[Ýš[™Ö×HY˜][ÈHÂˆ´'t,4-4/ô.4`tc‹´&´/t/´/ô.´,‹´&4/t-4.4.´,4`´/´`‹´%ô,4-4,4`´aô.4.Žˆ‹ˆ´%4.4/t,4/4.4aô-t`t.´.4.H4`´-t.´`t`ˆ‹´$t.4`´/´,´bô.H4`t/ô.4`t/´.ˆ‹´*4.´,4.ô,‹´(ô`4/´,´-t/tc‹´(´`4-t/t-‹´(t/´`t`´/´cô/t.4-H‹ˆ´$4.ô,4`4/‹´'ô-t`4-tat/´-Oˆ4+t.´`4,4/HH‹´)4/´`´/ˆ‹´$ô/´.ô/´`H‹ˆ´$´at/´-‹´&‹´&4&ô&‹´'t%H‹“S‘‹““Ôˆ‹–Ôˆ‹ˆ•Óˆ‹•‹•Ñˆ‹Hˆˆ‹H
+Èˆ‹HHˆ‹H
+ˆˆ‹HÈˆ‹ˆ”ÕÈ‹”ÔT•‹”ÒSˆ‹ÓÔÈ‹•Sˆ‹ˆ‘›Ø]O’[‹’[O‘›Ø]‹ˆ“SÕ‘H‹”ÑS‹P”È‹“RS‹ÓPV‹ˆ””È‹”Ôˆ‹ÕH‹Õ‹”—Õ’QÈ‹‘—Õ’QÈ‹ˆÕHMˆš]‹•‹•Óˆ‹“S’È‹”ÑS‹ˆ‹ˆÒÒH‹ÒÑˆ‹ŠÈ‹ŠÈ‹ˆ‹“SÕ‘H‹“V‹T”VH‹“ˆ‹•ÓÔ‘O‘“‹ˆ”ÕÈ‹”ÒSˆ‹P”È‹’S•O‘“‹‘“O’S•‚ˆNÂˆ[™X\“^[Ý]\ÝH™]È[™X\“^[Ý]
+\ÊNÂˆ\ÝœÙ]ÜšY[][ÛŠ[™X\“^[Ý]•‘T•PÐS
+NÂˆ\ÝœÙ]Y[™Ê
+
+K
+
+K
+
+K
+
+JNÂˆ]ÛˆXXÜ›ÕÛÛÈH™]È]ÛŠ\ÊNÂˆXXÜ›ÕÛÛËœÙ]^
+´&4/4/ô/´`4`ˆÈ4ct.´`t/ô/´`4`ˆÜ˜Y›XÜˆŠNÂˆXXÜ›ÕÛÛËœÙ][Ø\Ê˜[ÙJNÂˆXXÜ›ÕÛÛËœÙ]ÛÛXÚÓ\Ý[™\ŠˆOˆÚÝÐÜ˜YXXÜ›ÕÛÛÊ
+JNÂˆ\Ý˜YšY]ÊXXÜ›ÕÛÛË™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLKLŠJNÂˆØÜ›ÛšY]ÈØÜ›ÛH™]ÈØÜ›ÛšY]Ê\ÊNÂˆØÜ›ÛœÙ]š[šY]ÜÜ
+YJNÂˆØÜ›Û˜YšY]Ê\Ý
+NÂˆš[˜[[\X[ÙÖ×HXÚÙ\ˆH™]È[\X[ÙÖÌWNÂ‚ˆ›Üˆ
+[HHÈHX™[Ë›[™ÝÈJÊÊHÂˆYˆ
+HOHM
+HÂˆ^šY]ÈÙXÝ[ÛˆH™]È^šY]Ê\ÊNÂˆÙXÝ[Û‹œÙ]^
+´)4(ô't&´)´&4'´'t$4&ô+4't*ô%H4$t&ô'´&´&
+‘
+HŠNÂˆÙXÝ[Û‹œÙ]^ÛÛÜŠÛÛÜ‹œ™ØŠÍËNKŒÍJJNÂˆÙXÝ[Û‹œÙ]^Ú^™JLŠNÂˆÙXÝ[Û‹œÙ]\Y˜XÙJ[[™›ÚY™Ü˜\XÜË•\Y˜XÙK“Ó
+NÂˆÙXÝ[Û‹œÙ]Y[™Ê
+LŠK
+M
+K
+LŠK
+
+JNÂˆ\Ý˜YšY]ÊÙXÝ[Û‹™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLKLŠJNÂˆBˆš[˜[[[™^HNÂˆ^šY]È][HH™]È^šY]Ê\ÊNÂˆ][KœÙ]^
+X™[ÖÚWH
+Èˆ8 .ˆŠNÂˆ][KœÙ]^ÛÛÜŠÛÛÜ‹œ™ØŠÌKNJJNÂˆ][KœÙ]^Ú^™JMŠNÂˆ][KœÙ]Ü˜]š]JÜ˜]š]KÑS•T—Õ‘T•PÐS
+NÂˆ][KœÙ]Y[™Ê
+M
+K
+LŠK
+LŠK
+LŠJNÂˆ][KœÙ]˜XÚÙÜ›Ý[™ÛÛÜŠH	HˆOHˆÈÛÛÜ‹œ™ØŠLLŠHˆÛÛÜ‹•ÒUJNÂˆ][KœÙ]Z[’ZYÚ
+
+
+JNÂˆ][KœÙ]ÛÛXÚÓ\Ý[™\ŠˆOˆÂˆYˆ
+XÚÙ\–ÌHOH[
+HXÚÙ\–ÌK™\ÛZ\ÜÊ
+NÂˆYÚYÙ]
+\\ÖÚ[™^KY˜][ÖÚ[™^JNÂˆJNÂˆYˆ
+ÜšYÚ[˜[[™XØ]Ü‹œÝ\ÜÊ\\ÖÚWJH´&´/t/´/ô.´,‹™\]X[Ê\\ÖÚWJJHÂˆËÈ™]šY]ÈÚ]™\šYšYYÜšYÚ[˜[TÈ˜]ØX›H™\ÛÝ\˜Ù\Ë‚ˆËÈ]Ûˆ\ÛÜšÈ\ÈHØ[YHÜšYÚ[˜[˜XÚÙÜ›Ý[™\ÙYžHYØXÞSY[P]Û‹‚ˆ[™X\“^[Ý]™]šY]Ô›ÝÈH™]È[™X\“^[Ý]
+\ÊNÂˆ™]šY]Ô›ÝËœÙ]ÜšY[][ÛŠ[™X\“^[Ý]’Ô’V“Ó•S
+NÂˆ™]šY]Ô›ÝËœÙ]Ü˜]š]JÜ˜]š]KÑS•T—Õ‘T•PÐS
+NÂˆ[™›ÚYÚYÙ]’[XYÙUšY]È™]šY]ÈH™]È[™›ÚYÚYÙ]’[XYÙUšY]Ê\ÊNÂˆ›ÛÛX[ˆ]Û”™]šY]ÈH´&´/t/´/ô.´,‹™\]X[Ê\\ÖÚWJNÂˆ™]šY]ËœÙ][XYÙT™\ÛÝ\˜ÙJ]Û”™]šY]ÂˆÈ‹™˜]ØX›KšØ×Ø˜XÚÙÜ›Ý[™Ø]Ûˆˆ‹™˜]ØX›KšØ×Û[\ÛÙ™ŠNÂˆ™]šY]ËœÙ]ÛÛ[\ØÜš\[ÛŠ]Û”™]šY]ÂˆÈ´&´/t/´/ô.´,ˆ4/´`4.4,ô.4/t,4.ôc4/tbô.H4a4/´/Hˆˆ´&4/t-4.4.´,4`´/´`ˆ4,´bô.´.ôc´aô-t/HŠNÂˆ™]šY]ËœÙ]ØØ[U\J[™›ÚYÚYÙ]’[XYÙUšY]Ë”ØØ[U\K‘’UÐÑS•TŠNÂˆ[™X\“^[Ý]“^[Ý]\˜[\È™]šY]ÔÚ^™HH™]È[™X\“^[Ý]“^[Ý]\˜[\Ê
+
+K
+
+JNÂˆ™]šY]ÔÚ^™KœÙ]X\™Ú[œÊ
+LŠK
+
+K
+
+K
+
+JNÂˆ™]šY]Ô›ÝË˜YšY]Ê™]šY]Ë™]šY]ÔÚ^™JNÂˆ™]šY]Ô›ÝË˜YšY]Ê][K™]È[™X\“^[Ý]“^[Ý]\˜[\ÊL‹YŠJNÂˆ™]šY]Ô›ÝËœÙ]ÛÛXÚÓ\Ý[™\ŠˆOˆ][Kœ\™›Ü›PÛXÚÊ
+JNÂˆ™]šY]Ô›ÝËœÙ]Z[š[][RZYÚ
+
+
+JNÂˆ\Ý˜YšY]Ê™]šY]Ô›ÝË™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLKLŠJNÂˆH[ÙHÂˆ\Ý˜YšY]Ê][K™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLKLŠJNÂˆBˆšY]ÈÙ\\˜]ÜˆH™]ÈšY]Ê\ÊNÂˆÙ\\˜]Ü‹œÙ]˜XÚÙÜ›Ý[™ÛÛÜŠÛÛÜ‹œ™ØŠŒ‹ŒÌ‹
+JNÂˆ\Ý˜YšY]ÊÙ\\˜]Ü‹™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLK
+JJJNÂˆBˆXÚÙ\–ÌHH™]È[\X[ÙËZ[\Š\ÊBˆœÙ]]J´%4/´,t,4,´.4`´c4ct.ô-t/4-t/t`ˆŠBˆœÙ]šY]ÊØÜ›Û
+BˆœÙ]™YØ]]™P]ÛŠ´'´`´/4-t/t,‹[
+Bˆ˜Ü™X]J
+NÂˆXÚÙ\–ÌKœÚÝÊ
+NÂˆB‚ˆÊŠ‚ˆ
+ˆš[™ÜXÙH›ÜˆH™]ÛHÜ™X]Y‘›ØÚÈÚ]Ý]Ú[™Ú[™È^\Ý[™È^[Ý]‚ˆ
+ˆ]\›Z[š\ÝXÈ›ÝË[XZ›ÜˆÙX\˜ÚÈÛÜšÈ[ˆØ[˜\È^[È
+Ø[YH[š]È\ÈÚYÙ]Ù[ÛY]žJK‚ˆ
+ˆ\È\ÈH“ÓÑÒÖHY]Üˆ\ØXš[]HY\][Û‹›ÝHÛÜYYÜ˜YXÙ[Y[[K‚ˆ
+‹ÂˆX›XÈÝ]XÈ›Ø]×Hœ™YQ˜™XÙ[Y[
+\ÝÚYÙ]ˆ^\Ý[™Ë›Ø]Ø[˜\ÕÚYˆ›Ø]Ø[˜\ÒZYÚ›Ø]ÚY›Ø]ZYÚˆ›Ø]ÜšYÚ[–›Ø]ÜšYÚ[–K›Ø]Ø\
+HÂˆYˆ
+^\Ý[™ÈOH[Q›Ø]š\Ñš[š]JØ[˜\ÕÚY
+HQ›Ø]š\Ñš[š]JØ[˜\ÒZYÚ
+BˆQ›Ø]š\Ñš[š]JÚY
+HQ›Ø]š\Ñš[š]JZYÚ
+BˆQ›Ø]š\Ñš[š]JÜšYÚ[–
+HQ›Ø]š\Ñš[š]JÜšYÚ[–JBˆQ›Ø]š\Ñš[š]JØ\
+HÚYHZYÚHˆØ[˜\ÕÚYHÚYØ[˜\ÒZYÚHZYÚ
+H™]\›ˆ[Âˆ›Ø]Ù\\˜][ÛˆHX]›X^
+Y‹Ø\
+NÂˆ›Ø]Ý\HX]›X^
+‹Ù\\˜][ÛŠNÂˆ›Ø]Ý\HX]›X^
+‹ÜšYÚ[–
+KÝ\HHX]›X^
+‹ÜšYÚ[–JNÂˆ›Üˆ
+[›ÝÈHÈ›ÝÈŒÈ›ÝÊÊÊHÂˆ›Ø]HHÝ\H
+È›ÝÈ
+ˆÝ\ÂˆYˆ
+H
+ÈZYÚ
+ÈÙ\\˜][ÛˆˆØ[˜\ÒZYÚ
+Hœ™XZÎÂˆ›Üˆ
+[ÛÛHÈÛÛŒÈÛÛ
+ÊÊHÂˆ›Ø]HÝ\
+ÈÛÛ
+ˆÝ\ÂˆYˆ
+
+ÈÚY
+ÈÙ\\˜][ÛˆˆØ[˜\ÕÚY
+Hœ™XZÎÂˆ›ÛÛX[ˆØØÝ\YYH˜[ÙNÂˆ›Üˆ
+ÚYÙ]Ûˆ^\Ý[™ÊHÂˆYˆ
+ÛOH[[Ûš\ÚX›JHÛÛ[YNÂˆYˆ
+Ûž
+ÈÛÈ
+ÈÙ\\˜][Ûˆ	‰ˆ
+ÈÚY
+ÈÙ\\˜][ÛˆˆÛžˆ	‰ˆHÛžH
+ÈÛš
+ÈÙ\\˜][Ûˆ	‰ˆH
+ÈZYÚ
+ÈÙ\\˜][ÛˆˆÛžJHÂˆØØÝ\YYHYNÂˆœ™XZÎÂˆBˆBˆYˆ
+[ØØÝ\YY
+H™]\›ˆ™]È›Ø]×^Þ_NÂˆBˆBˆ™]\›ˆ[ÂˆB‚ˆš]˜]H›ÚYYÚYÙ]
+Ýš[™È\KÝš[™È^
+HÂˆÚYÙ]ÈH™]ÈÚYÙ]
+
+NÂˆË\HH\NÂˆË^H^ÂˆYˆ
+‘‘ÔQ•T’UQUPÈS•‹™\]X[Ê\JBˆ‘‘ÔQ•T’UQUPÈ“ÐU‹™\]X[Ê\JJHË˜ÛÛ\\™SÜ\˜]ÜˆHŠÈŽÂˆËžH
+
+H
+È
+ÚYÙ]ËœÚ^™J
+H	H
+H
+ˆ
+
+NÂˆËžHH
+L
+H
+È
+ÚYÙ]ËœÚ^™J
+H	HŠH
+ˆ
+ŒŠNÂˆËÈHÜšYÚ[˜[[™XØ]Ü‹œÝ\ÜÊ\JHÈ
+
+Hˆ
+MŒ
+NÂˆËšHÜšYÚ[˜[[™XØ]Ü‹œÝ\ÜÊ\JHÈ
+
+Hˆ
+N
+NÂˆYˆ
+\K™\]X[Ê´%ô,4-4,4`´aô.4.ˆŠJHÈËÈH
+NL
+NÈËšH
+ŒŠNÈBˆYˆ
+\K™\]X[Ê´*4.´,4.ô,È4(t`´`4-t.ô.´,ŠH\K™\]X[Ê´$ô`4,4a4.4.ˆÈ4(´`4-t/t-ŠJHÈËÈH
+Œ
+NÈËšH
+LL
+NÈBˆYˆ
+\K™\]X[Ê´'ô`4/´,ô`4-t`t`Kt,t,4`ŠH\K™\]X[Ê´$t.4`´/´,´bô.H4`t/ô.4`t/´.ˆŠJHÈËÈH
+N
+NÈËšH
+
+NÈBˆYˆ
+\KœÝ\ÕÚ]
+‘‘ŠJHÂˆËÈH
+ML
+NÈËšH
+ÍŠNÂˆYˆ
+Y]ÜˆOH[	‰ˆY]Ü‹™Ù]ÚY
+
+Hˆ	‰ˆY]Ü‹™Ù]ZYÚ
+
+Hˆ
+HÂˆ›Ø]×H[\HHœ™YQ˜™XÙ[Y[
+ÚYÙ]ËY]Ü‹™Ù]ÚY
+
+KY]Ü‹™Ù]ZYÚ
+
+KˆËËËš
+
+K
+L
+K
+N
+JNÂˆYˆ
+[\HOH[
+HÈËžH[\VÌNÈËžHH[\VÌWNÈBˆ[ÙHÂˆËÈHÛ˜[˜XÚÈ[œÙ\YH›ØÚÈ]H\™XÛÙYÙ™œÙ]ˆËÈÝ™\›\[™ÈÝ\ˆ›ØÚÜÈÚ[HÛZ[Z[™È]›ÈÜXÙHØ\ÂˆËÈ]˜Z[X›Kˆ˜Z[Ú]Ý]Ú[™Ú[™È›Ú™XÝÚ\ÝÜžH[œÝXY‚ˆØ\Ý›XZÙU^
+\Ëˆ´'t-t`ˆ4`t,´/´,t/´-4/t/´,ô/ˆ4/4-t`t`´,4-4.ôcÈ‘t,t.ô/´.´,ˆ4/´`t,´/´,t/´-4.4/4-t`t`´/ˆ4/t,4ct.´`4,4/t-H‹ˆØ\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆBˆBˆYˆ
+‘‘Õ‹™\]X[Ê\JJHË˜ÛÝ[\•˜[YHHË˜ÛÝ[\”™\Ù]ÂˆËÈÛ›HHÝXØÙ\ÜÙ[HXÙY[[Y[X^H[˜[Y]H[™È\ÝÜžH[™ˆËÈÜ˜\Ý]]ØXÚ\ËˆH™Z™XÝY[œÙ\X]™\ÈH›Ú™XÝ[˜Ú[™ÙY‚ˆ˜™Ú\™R\ÝÜžK˜ÛX\Š
+NÂˆ]™U˜[Y\Ë˜ÛX\Š
+NÂˆÚYÙ]Ë˜Y
+ÊNÂˆ\œÚ\Ý›Ú™XÝ
+
+NÂˆYˆ
+Y]ÜˆOH[
+HY]Ü‹š[˜[Y]J
+NÂˆB‚ˆš]˜]HY]^›Ü\QšY[
+Ýš[™È˜[YK[[œ]\JHÂˆY]^šY[H™]ÈY]^
+\ÊNÂˆšY[œÙ]Ú[™ÛS[™JYJNÂˆšY[œÙ][œ]\J[œ]\JNÂˆšY[œÙ]^
+˜[YJNÂˆšY[œÙ]Ù[XÝ[Û‘›ØÝ\ÊYJNÂˆšY[œÙ][YSÜ[ÛœÊ[™›ÚYšY]Ëš[œ]Y]Ù‘Y]Ü’[™›Ë’SQWÑ“Q×Ó“×ÑVPÕÕRJNÂˆ™]\›ˆšY[ÂˆB‚ˆš]˜]H›ÛÛX[ˆÙ[XÝ[™XØ]Ü’[XYÙJÚYÙ]ÚYÙ]›ÛÛX[ˆXÝ]™K›ÛÛX[ˆ\Ù\‹Ýš[™È˜[YJHÂˆYˆ
+]ÚYÙ]Ë˜ÛÛZ[œÊÚYÙ]
+HSÜšYÚ[˜[[™XØ]Ü‹œÝ\ÜÊÚYÙ]\JJH™]\›ˆ˜[ÙNÂˆ”ÓÓ“Øš™XÝÛHÚYÙ]™^˜QšY[ÎÂˆ”ÓÓ“Øš™XÝÛ›Ú™XÝH›Ú™XÝ^˜QšY[ÎÂˆžHÂˆÚYÙ]™^˜QšY[ÈHÜšYÚ[˜[[™XØ]Ü‹Ú][XYÙJÛXÝ]™K\Ù\‹˜[YJNÂˆYˆ
+\\œÚ\Ý›Ú™XÝ›ÝÊYJJHÂˆÚYÙ]™^˜QšY[ÈHÛÈ›Ú™XÝ^˜QšY[ÈHÛ›Ú™XÝÈØ]™PXÝ]™TØÜ™Y[Š
+NÂˆØ\Ý›XZÙU^
+\Ë´'t-H4`ô-4,4.ô/´`tc4`t/´at`4,4/t.4`´c4.4-ô/´,t`4,4-´-t/t.4-H‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆ™]\›ˆ˜[ÙNÂˆBˆYˆ
+Y]ÜˆOH[
+HY]Ü‹š[˜[Y]J
+NÂˆ™]\›ˆYNÂˆHØ]Ú
+^Ù\[Ûˆ[˜[Y
+HÂˆÚYÙ]™^˜QšY[ÈHÛÈ›Ú™XÝ^˜QšY[ÈHÛ›Ú™XÝÂˆØ\Ý›XZÙU^
+\Ë[˜[Y™Ù]Y\ÜØYÙJ
+KØ\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÈ™]\›ˆ˜[ÙNÂˆBˆB‚ˆš]˜]H›ÚYÚÝÒ[™XØ]Ü’[XYÙ\ÊÚYÙ]ÚYÙ]
+HÂˆÜšYÚ[˜[[™XØ]Ü’[XYÙ\ËœÚÝÊ\Ë™]ÈÜšYÚ[˜[[™XØ]Ü’[XYÙ\Ë’ÜÝ
+
+HÂˆX›XÈš]X\™]šY]Ê›ÛÛX[ˆXÝ]™JHÈ™]\›ˆÜšYÚ[˜[[™XØ]Üš]X\
+ÚYÙ]XÝ]™JNÈBˆX›XÈ›ÛÛX[ˆÙ[XÝ
+›ÛÛX[ˆXÝ]™K›ÛÛX[ˆ\Ù\‹Ýš[™È˜[YJHÂˆ™]\›ˆÙ[XÝ[™XØ]Ü’[XYÙJÚYÙ]XÝ]™K\Ù\‹˜[YJNÂˆBˆX›XÈ›ÚYÚÛÜÙPÝ\ÝÛJ›ÛÛX[ˆXÝ]™K[›˜X›HÚ[™ÙY
+HÂˆ[™X\“^[Ý]›Ü›HH™]È[™X\“^[Ý]
+XZ[XÝ]š]K\ÊNÈ›Ü›KœÙ]ÜšY[][ÛŠ[™X\“^[Ý]•‘T•PÐS
+NÂˆY]^]H›Ü\QšY[
+ˆ‹[œ]\K•TWÐÓTÔ×ÕV
+NÂˆ]œÙ][
+´)4,4.t.ÈÈÛÛ[T’HŠNÈ]œÙ]ÛÛ[\ØÜš\[ÛŠ´(t,´/´dH4.4-ô/´,t`4,4-´-t/t.4-H4.4/t-4.4.´,4`´/´`4,ŠNÂˆ›Ü›K˜YšY]Ê]
+NÈYYYXTXÚÙ\Š›Ü›K]š[XYÙKÊˆŠNÂˆ[\X[ÙÈÝ\ÝÛHH™]È[\X[ÙËZ[\ŠXZ[XÝ]š]K\ÊKœÙ]]J´(t,´/´dH4.4-ô/´,t`4,4-´-t/t.4-HŠBˆœÙ]šY]Ê›Ü›JKœÙ]™YØ]]™P]ÛŠ´'´`´/4-t/t,‹[
+KœÙ]ÜÚ]]™P]ÛŠ´'ô`4.4/4-t/t.4`´c‹[
+K˜Ü™X]J
+NÂˆÝ\ÝÛKœÙ]Û”ÚÝÓ\Ý[™\ŠÚÝÛˆOˆÝ\ÝÛK™Ù]]ÛŠ[\X[ÙË•UÓ—ÔÔÒUU‘JKœÙ]ÛÛXÚÓ\Ý[™\ŠˆOˆÂˆÝš[™ÈÙ[XÝYH]™Ù]^
+
+KÔÝš[™Ê
+Kš[J
+NÂˆ[XYÙPØXÚKœ™[[Ý™JÙ[XÝY
+NÂˆYˆ
+Ù[XÝYš\Ñ[\J
+HØYØXÚYš]X\
+Ù[XÝY
+HOH[
+HÂˆØ\Ý›XZÙU^
+XZ[XÝ]š]K\Ë´$´bô,t-t`4.4`´-H4-4/´`t`´`ô/ô/t/´-H4.4-ô/´,t`4,4-´-t/t.4-H‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÈ™]\›ŽÂˆBˆYˆ
+Ù[XÝ[™XØ]Ü’[XYÙJÚYÙ]XÝ]™KYKÙ[XÝY
+JHØÝ\ÝÛK™\ÛZ\ÜÊ
+NØÚ[™ÙYœ[Š
+NßBˆJJNÂˆÝ\ÝÛKœÚÝÊ
+NÂˆBˆJNÂˆB‚ˆš]˜]H›ÚYY]Ù[XÝYÚYÙ]
+
+HÂˆYˆ
+Y]ÜˆOH[Y]Ü‹œÙ[XÝYY]Ü‹œÙ[XÝYHÚYÙ]ËœÚ^™J
+JHÂˆØ\Ý›XZÙU^
+\Ë´(t/t,4aô,4.ô,4,´bô,t-t`4.4ct.ô-t/4-t/t`ˆ4/t,4ct.´`4,4/t-H‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆÚYÙ]ÈHÚYÙ]Ë™Ù]
+Y]Ü‹œÙ[XÝY
+NÂˆ[™X\“^[Ý]›Ü›HH™]È[™X\“^[Ý]
+\ÊNÂˆ›Ü›KœÙ]ÜšY[][ÛŠ[™X\“^[Ý]•‘T•PÐS
+NÂˆ[YH
+MŠNÂˆ›Ü›KœÙ]Y[™ÊY
+
+KY
+NÂ‚ˆYˆ
+ÜšYÚ[˜[[™XØ]Ü‹œÝ\ÜÊË\JJHÂˆ]Ûˆ[XYÙ\ÈH™]È]ÛŠ\ÊNÈ[XYÙ\ËœÙ]^
+´(t/4-t/t.4`´c4.4-ô/´,t`4,4-´-t/t.4-HŠNÈ[XYÙ\ËœÙ][Ø\Ê˜[ÙJNÂˆ[XYÙ\ËœÙ]ÛÛXÚÓ\Ý[™\ŠˆOˆÚÝÒ[™XØ]Ü’[XYÙ\ÊÊJNÈ›Ü›K˜YšY]Ê[XYÙ\ÊNÂˆB‚ˆ^šY]È^X™[H™]È^šY]Ê\ÊNÂˆ^X™[œÙ]^
+´'ô/´-4/ô.4`tcŠNÂˆ›Ü›K˜YšY]Ê^X™[
+NÂˆY]^^šY[H›Ü\QšY[
+Ë^[œ]\K•TWÐÓTÔ×ÕV[œ]\K•TWÕVÑ“Q×ÐÐTÔÑS•SÑTÊNÂˆ›Ü›K˜YšY]Ê^šY[
+NÂ‚ˆ^šY]ÈÛÛ›™XÝ[Û“X™[H™]È^šY]Ê\ÊNÂˆÛÛ›™XÝ[Û“X™[œÙ]^
+´'ô`4.4,´cô-ô.´,4.ˆ4-4,4/t/tbô/
+4,4-4`4-t`HÈ4`4-t,ô.4`t`´`È4`ô`t`´`4/´.t`t`´,´/ŠHŠNÂˆÛÛ›™XÝ[Û“X™[œÙ]Y[™Ê
+L
+K
+NÂˆ›Ü›K˜YšY]ÊÛÛ›™XÝ[Û“X™[
+NÂˆY]^ÛÛ›™XÝ[Û‘šY[H›Ü\QšY[
+Ë˜ÛÛ›™XÝ[Û’[™›ÈOH[ÈˆˆˆË˜ÛÛ›™XÝ[Û’[™›Ë[œ]\K•TWÐÓTÔ×ÕV[œ]\K•TWÕVÑ“Q×Ó“×ÔÕQÑÑTÕSÓ”ÊNÂˆÛÛ›™XÝ[Û‘šY[œÙ][
+Ü‹ËÌNL‹ŒMŽŒKŒLL‹ÌKÍH
+ÌËÑÌ
+H4.4.ô.˜™‹ËÓˆ
+4/t/´/4-t`4,t.ô/´.´,4`HJHŠNÂˆ›Ü›K˜YšY]ÊÛÛ›™XÝ[Û‘šY[
+NÂ‚ˆš[˜[[™›ÚYÚYÙ]ÚXÚÐ›Þ˜™[œ]šY[ÂˆYˆ
+‘‘4$´at/´-‹™\]X[ÊË\JJHÂˆ˜™[œ]šY[H™]È[™›ÚYÚYÙ]ÚXÚÐ›Þ
+\ÊNÂˆ˜™[œ]šY[œÙ]^
+´'ô/´`t`´/´cô/t/t/´-H4-ô/t,4aô-t/t.4-H‘t,´at/´-4,
+HÈ
+HŠNÂˆ˜™[œ]šY[œÙ]ÛÛ[\ØÜš\[ÛŠ´%ô/t,4aô-t/t.4-H4,´at/´-4,‘ŠNÂˆ˜™[œ]šY[œÙ]ÚXÚÙY
+Ëš[œ]˜[YJNÂˆ›Ü›K˜YšY]Ê˜™[œ]šY[
+NÂˆH[ÙH˜™[œ]šY[H[Â‚ˆš[˜[[™›ÚYÚYÙ]ÚXÚÐ›ÞÜ˜YÛÛœÝ[[ÙQšY[Âˆš[˜[Y]^Ü˜YÛÛœÝ[˜[YQšY[Âˆš[˜[Y]^Ü˜Yš]šY[Âˆš[˜[[™›ÚYÚYÙ]ÚXÚÐ›ÞÜ˜YÝØ\ÛÜ™šY[Âˆš[˜[[™›ÚYÚYÙ]ÚXÚÐ›ÞÜ˜YÝØ\ž]QšY[Âˆš[˜[Y]^Ü˜Y˜\šXX›S˜[YQšY[Âˆš[˜[[™›ÚYÚYÙ]”Ü[›™\ˆÜ˜Y˜\šXX›U\QšY[Âˆš[˜[[™›ÚYÚYÙ]ÚXÚÐ›ÞÜ˜Y˜[YYÛÛœÝ[[ÙQšY[Âˆš[˜[Y]^Ü˜Y˜[YYÛÛœÝ[˜[YQšY[Âˆš[˜[[™›ÚYÚYÙ]”Ü[›™\ˆÜ˜YÜšY[][Û^\ÑšY[ÂˆYˆ
+‘‘ÔQ•ÑS”ÓÔˆÔ’QS•USÓˆ‹™\]X[ÊË\JJHÂˆÜ˜YÜšY[][Û^\ÑšY[H™]È[™›ÚYÚYÙ]”Ü[›™\Š\ÊNÂˆÜ˜YÜšY[][Û^\ÑšY[œÙ]Y\\Š™]È[™›ÚYÚYÙ]\œ˜^PY\\Ýš[™ÏŠ\Ëˆ[™›ÚY”‹›^[Ý]œÚ[\WÜÜ[›™\—Ù›ÜÝÛ—Ú][K™]ÈÝš[™Ö×^È“Ô’QS•USÓ—Ö‹“Ô’QS•USÓ—ÖH‹“Ô’QS•USÓ—ÖˆŸJJNÂˆÜ˜YÜšY[][Û^\ÑšY[œÙ]Ù[XÝ[ÛŠÜ˜YÜšY[][Û^\ÊÊHHJNÂˆÜ˜YÜšY[][Û^\ÑšY[œÙ]ÛÛ[\ØÜš\[ÛŠ´'´`tc4-4,4`´aô.4.´,4/´`4.4-t/t`´,4a´.4.ŠNÂˆ›Ü›K˜YšY]ÊÜ˜YÜšY[][Û^\ÑšY[
+NÂˆH[ÙHÜ˜YÜšY[][Û^\ÑšY[H[Âˆš[˜[Y]^Ü˜YÝ[œš\ÙS]]YQšY[Ü˜YÝ[œš\ÙSÛ™Ú]YQšY[Âˆš[˜[[™›ÚYÚYÙ]”Ü[›™\ˆÜ˜YÝ[œš\ÙS[ÙQšY[ÂˆYˆ
+‘‘ÔQ•ÕS”’TÑH‹™\]X[ÊË\JJHÂˆ^šY]ÈØØ][Û“X™[H™]È^šY]Ê\ÊNÈØØ][Û“X™[œÙ]^
+´&´/´/´`4-4.4/t,4`´bÈ4`´/´aô.´.
+4b4.4`4/´`´,È4-4/´.ô,ô/´`´,
+HŠNÂˆ›Ü›K˜YšY]ÊØØ][Û“X™[
+NÂˆÜ˜YÝ[œš\ÙS]]YQšY[H›Ü\QšY[
+Ë™^˜QšY[Ëš\Ê›]]YHŠBˆÈÝX›KÔÝš[™ÊË™^˜QšY[Ë›ÜÝX›J›]]YHŠJHˆˆ‹[œ]\K•TWÐÓTÔ×Ó•SP‘Tˆ[œ]\K•TWÓ•SP‘T—Ñ“Q×ÔÒQÓ‘Q[œ]\K•TWÓ•SP‘T—Ñ“Q×ÑPÒSPS
+NÂˆÜ˜YÝ[œš\ÙS]]YQšY[œÙ][
+´*4.4`4/´`´,ˆ8¢$ŽL8 )ŽLŠNÈ›Ü›K˜YšY]ÊÜ˜YÝ[œš\ÙS]]YQšY[
+NÂˆÜ˜YÝ[œš\ÙSÛ™Ú]YQšY[H›Ü\QšY[
+Ë™^˜QšY[Ëš\Ê›Û™Ú]YHŠBˆÈÝX›KÔÝš[™ÊË™^˜QšY[Ë›ÜÝX›J›Û™Ú]YHŠJHˆˆ‹[œ]\K•TWÐÓTÔ×Ó•SP‘Tˆ[œ]\K•TWÓ•SP‘T—Ñ“Q×ÔÒQÓ‘Q[œ]\K•TWÓ•SP‘T—Ñ“Q×ÑPÒSPS
+NÂˆÜ˜YÝ[œš\ÙSÛ™Ú]YQšY[œÙ][
+´%4/´.ô,ô/´`´,ˆ8¢$ŒN8 )ŒNŠNÈ›Ü›K˜YšY]ÊÜ˜YÝ[œš\ÙSÛ™Ú]YQšY[
+NÂˆÜ˜YÝ[œš\ÙS[ÙQšY[H™]È[™›ÚYÚYÙ]”Ü[›™\Š\ÊNÂˆÜ˜YÝ[œš\ÙS[ÙQšY[œÙ]Y\\Š™]È[™›ÚYÚYÙ]\œ˜^PY\\Ýš[™ÏŠ\Ëˆ[™›ÚY”‹›^[Ý]œÚ[\WÜÜ[›™\—Ù›ÜÝÛ—Ú][K™]ÈÝš[™Ö×^È”Ôˆ8 %4,´/´`tat/´-‹”ÔÈ8 %4-ô,4.´,4`ˆŸJJNÂˆÜ˜YÝ[œš\ÙS[ÙQšY[œÙ]Ù[XÝ[ÛŠ”ÔÈ‹™\]X[ÊÜ˜YÝ[œš\ÙS[ÙJÊJHÈHˆ
+NÂˆ›Ü›K˜YšY]ÊÜ˜YÝ[œš\ÙS[ÙQšY[
+NÂˆH[ÙHÂˆÜ˜YÝ[œš\ÙS]]YQšY[H[ÈÜ˜YÝ[œš\ÙSÛ™Ú]YQšY[H[ÈÜ˜YÝ[œš\ÙS[ÙQšY[H[ÂˆBˆš[˜[Y]^Ü˜YÙ[\ÜÝšY[Âˆš[˜[[™›ÚYÚYÙ]”Ü[›™\ˆÜ˜YÙ[\\QšY[Ü˜YÙ[\™\ÜÛœÙQšY[ÂˆYˆ
+‘‘ÔQ•ÑST‹™\]X[ÊË\JJHÂˆÜ˜YÙ[\ÜÝšY[H›Ü\QšY[
+Ë™^˜QšY[Ë›ÜÝš[™Êš\‹ŒLŒLŒŒHŠK[œ]\K•TWÐÓTÔ×ÕV[œ]\K•TWÕVÑ“Q×Ó“×ÔÕQÑÑTÕSÓ”ÊNÂˆÜ˜YÙ[\ÜÝšY[œÙ][
+’T4`ô`t`´`4/´.t`t`´,´,
+4aô,4`t`´/t,4cÈ4`t-t`´c
+HŠNÈ›Ü›K˜YšY]ÊÜ˜YÙ[\ÜÝšY[
+NÂˆÜ˜YÙ[\\QšY[H™]È[™›ÚYÚYÙ]”Ü[›™\Š\ÊNÂˆÜ˜YÙ[\\QšY[œÙ]Y\\Š™]È[™›ÚYÚYÙ]\œ˜^PY\\Ýš[™ÏŠ\Ëˆ[™›ÚY”‹›^[Ý]œÚ[\WÜÜ[›™\—Ù›ÜÝÛ—Ú][K™]ÈÝš[™Ö×^È‘8 %4/´-4.4/t/´aô/t/´-H4-ô/t,4aô-t/t.4-H‹•È4,´.ô,4-´/t/´`t`´cŸJJNÂˆÜ˜YÙ[\\QšY[œÙ]Ù[XÝ[ÛŠË™^˜QšY[Ë›Ü[
+˜Ü˜YÙ[\\H‹Ë™^˜QšY[Ë›Ü[
+\TÙ[œÛÜˆ‹JJHOHˆÈHˆ
+NÂˆ›Ü›K˜YšY]ÊÜ˜YÙ[\\QšY[
+NÂˆÜ˜YÙ[\™\ÜÛœÙQšY[H™]È[™›ÚYÚYÙ]”Ü[›™\Š\ÊNÂˆÜ˜YÙ[\™\ÜÛœÙQšY[œÙ]Y\\Š™]È[™›ÚYÚYÙ]\œ˜^PY\\Ýš[™ÏŠ\Ëˆ[™›ÚY”‹›^[Ý]œÚ[\WÜÜ[›™\—Ù›ÜÝÛ—Ú][K™]ÈÝš[™Ö×^È´(´-t/4/ô-t`4,4`´`ô`4,
+
+H‹´$´.ô,4-´/t/´`t`´c
+
+HŸJJNÂˆÜ˜YÙ[\™\ÜÛœÙQšY[œÙ]Ù[XÝ[ÛŠË™^˜QšY[Ë›Ü[
+˜Ü˜YÙ[\™\ÜÛœÙH‹Ë™^˜QšY[Ë›Ü[
+\T™\ÜÛœÙH‹JJHOHˆÈHˆ
+NÂˆ›Ü›K˜YšY]ÊÜ˜YÙ[\™\ÜÛœÙQšY[
+NÂˆH[ÙHÂˆÜ˜YÙ[\ÜÝšY[H[ÈÜ˜YÙ[\\QšY[H[ÈÜ˜YÙ[\™\ÜÛœÙQšY[H[ÂˆBˆš[˜[Y]^Ü˜Y\]ÜXÑšY[Âˆš[˜[[™›ÚYÚYÙ]”Ü[›™\ˆÜ˜Y\]\QšY[Ü˜Y\]Ù\™\‘šY[Âˆš[˜[[™›ÚYÚYÙ]ÚXÚÐ›ÞÜ˜Y\]™]Z[‘šY[ÂˆYˆ
+\ÐÜ˜Y\]ÝXœØÜšX™\ŠË\JH\ÐÜ˜Y\]X›\Ú\ŠË\JJHÂˆ›ÛÛX[ˆÝXœØÜšX™\ˆH\ÐÜ˜Y\]ÝXœØÜšX™\ŠË\JNÂˆÜ˜Y\]ÜXÑšY[H›Ü\QšY[
+Ë™^˜QšY[Ë›ÜÝš[™Ê˜Ü˜Y\]ÜXÈ‹ˆŠKˆ[œ]\K•TWÐÓTÔ×ÕV[œ]\K•TWÕVÑ“Q×Ó“×ÔÕQÑÑTÕSÓ”ÊNÂˆÜ˜Y\]ÜXÑšY[œÙ][
+“TUÜXÈŠNÈ›Ü›K˜YšY]ÊÜ˜Y\]ÜXÑšY[
+NÂˆÜ˜Y\]\QšY[H™]È[™›ÚYÚYÙ]”Ü[›™\Š\ÊNÂˆÜ˜Y\]\QšY[œÙ]Y\\Š™]È[™›ÚYÚYÙ]\œ˜^PY\\Ýš[™ÏŠ\Ëˆ[™›ÚY”‹›^[Ý]œÚ[\WÜÜ[›™\—Ù›ÜÝÛ—Ú][K™]ÈÝš[™Ö×^È“ÓÓ‹’S•‹‘“ÐUŸJJNÂˆÜ˜Y\]\QšY[œÙ]Ù[XÝ[ÛŠ\]\JÊHHJNÈ›Ü›K˜YšY]ÊÜ˜Y\]\QšY[
+NÂˆÜ˜Y\]Ù\™\‘šY[H™]È[™›ÚYÚYÙ]”Ü[›™\Š\ÊNÂˆÜ˜Y\]Ù\™\‘šY[œÙ]Y\\Š™]È[™›ÚYÚYÙ]\œ˜^PY\\Ýš[™ÏŠ\Ëˆ[™›ÚY”‹›^[Ý]œÚ[\WÜÜ[›™\—Ù›ÜÝÛ—Ú][K™]ÈÝš[™Ö×^È“TU4`t-t`4,´-t`H‹“TU4`t-t`4,´-t`ˆŸJJNÂˆÜ˜Y\]Ù\™\‘šY[œÙ]Ù[XÝ[ÛŠ\]Ù\™\ŠÊHHJNÈ›Ü›K˜YšY]ÊÜ˜Y\]Ù\™\‘šY[
+NÂˆÜ˜Y\]™]Z[‘šY[HÝXœØÜšX™\ˆÈ[ˆ™]È[™›ÚYÚYÙ]ÚXÚÐ›Þ
+\ÊNÂˆYˆ
+Ü˜Y\]™]Z[‘šY[OH[
+HÂˆÜ˜Y\]™]Z[‘šY[œÙ]^
+”™]Z[ˆŠNÂˆÜ˜Y\]™]Z[‘šY[œÙ]ÚXÚÙY
+Ë™^˜QšY[Ë›Ü›ÛÛX[Š˜Ü˜Y\]™]Z[ˆ‹˜[ÙJJNÂˆ›Ü›K˜YšY]ÊÜ˜Y\]™]Z[‘šY[
+NÂˆBˆH[ÙHÂˆÜ˜Y\]ÜXÑšY[H[ÈÜ˜Y\]\QšY[H[ÂˆÜ˜Y\]Ù\™\‘šY[H[ÈÜ˜Y\]™]Z[‘šY[H[ÂˆBˆYˆ
+\ÐÜ˜Y˜[YY˜\šXX›TÛÝ\˜ÙJË\JH\ÐÜ˜Y˜[YY˜\šXX›TÚ[šÊË\JJHÂˆ›ÛÛX[ˆÛÝ\˜ÙHH\ÐÜ˜Y˜[YY˜\šXX›TÛÝ\˜ÙJË\JNÂˆÜ˜Y˜\šXX›S˜[YQšY[H›Ü\QšY[
+Ë™^˜QšY[Ë›ÜÝš[™Ê˜Ü˜Y˜\šXX›S˜[YH‹ˆË™^˜QšY[Ë›ÜÝš[™Ê›˜[YH‹ˆŠJK[œ]\K•TWÐÓTÔ×ÕV[œ]\K•TWÕVÑ“Q×Ó“×ÔÕQÑÑTÕSÓ”ÊNÂˆÜ˜Y˜\šXX›S˜[YQšY[œÙ][
+´&4/4cÈ4/´,tbt-t.H4/ô-t`4-t/4-t/t/t/´.HŠNÂˆ›Ü›K˜YšY]ÊÜ˜Y˜\šXX›S˜[YQšY[
+NÂˆÜ˜Y˜\šXX›U\QšY[H™]È[™›ÚYÚYÙ]”Ü[›™\Š\ÊNÂˆÜ˜Y˜\šXX›U\QšY[œÙ]Y\\Š™]È[™›ÚYÚYÙ]\œ˜^PY\\Ýš[™ÏŠ\Ëˆ[™›ÚY”‹›^[Ý]œÚ[\WÜÜ[›™\—Ù›ÜÝÛ—Ú][K™]ÈÝš[™Ö×^È“ÓÓ‹’S•Ìˆ‹‘“ÐUÌˆŸJJNÂˆ[ÛÚ[™HË™^˜QšY[Ë›Ü[
+\U˜\ˆ‹Ë\K™[™ÕÚ]
+ˆ“ÓÓŠHÈHˆË\K™[™ÕÚ]
+ˆ“ÐUŠHÈÈˆŠNÂˆÜ˜Y˜\šXX›U\QšY[œÙ]Ù[XÝ[ÛŠÛÚ[™HH	‰ˆÛÚ[™HÈÈÛÚ[™HHˆJNÂˆ›Ü›K˜YšY]ÊÜ˜Y˜\šXX›U\QšY[
+NÂˆÜ˜Y˜[YYÛÛœÝ[[ÙQšY[HÛÝ\˜ÙHÈ™]È[™›ÚYÚYÙ]ÚXÚÐ›Þ
+\ÊHˆ[ÂˆÜ˜Y˜[YYÛÛœÝ[˜[YQšY[HÛÝ\˜ÙHÈ›Ü\QšY[
+Ë™^˜QšY[Ë›ÜÝš[™Ê˜Ü˜Y˜[YYÛÛœÝ[‹ŒŠKˆ[œ]\K•TWÐÓTÔ×Ó•SP‘Tˆ[œ]\K•TWÓ•SP‘T—Ñ“Q×ÔÒQÓ‘Q[œ]\K•TWÓ•SP‘T—Ñ“Q×ÑPÒSPS
+Hˆ[ÂˆYˆ
+ÛÝ\˜ÙJHÂˆÜ˜Y˜[YYÛÛœÝ[[ÙQšY[œÙ]^
+´&4`t/ô/´.ôc4-ô/´,´,4`´c4.´/´/t`t`´,4/t`´`È4,´/4-t`t`´/ˆ4.4/4-t/t.ŠNÂˆÜ˜Y˜[YYÛÛœÝ[[ÙQšY[œÙ]ÚXÚÙY
+Ë™^˜QšY[Ë›Ü›ÛÛX[Š˜Ü˜Y˜[YYÛÛœÝ[[ÙH‹ˆË™^˜QšY[Ë›Ü›ÛÛX[Šš\ÐÛÛœÝ[‹˜[ÙJJJNÂˆÜ˜Y˜[YYÛÛœÝ[˜[YQšY[œÙ][
+´%ô/t,4aô-t/t.4-H4.´/´/t`t`´,4/t`´bÈŠNÂˆ›Ü›K˜YšY]ÊÜ˜Y˜[YYÛÛœÝ[[ÙQšY[
+NÈ›Ü›K˜YšY]ÊÜ˜Y˜[YYÛÛœÝ[˜[YQšY[
+NÂˆBˆH[ÙHÂˆÜ˜Y˜\šXX›S˜[YQšY[H[ÈÜ˜Y˜\šXX›U\QšY[H[ÂˆÜ˜Y˜[YYÛÛœÝ[[ÙQšY[H[ÈÜ˜Y˜[YYÛÛœÝ[˜[YQšY[H[ÂˆBˆYˆ
+\ÐÜ˜Y™YÚ\Ý\”ÛÝ\˜ÙJË\JH\ÐÜ˜Y™YÚ\Ý\”Ú[šÊË\JJHÂˆ›ÛÛX[ˆÛÝ\˜ÙHH\ÐÜ˜Y™YÚ\Ý\”ÛÝ\˜ÙJË\JNÂˆÜ˜YÛÛœÝ[[ÙQšY[HÛÝ\˜ÙHÈ™]È[™›ÚYÚYÙ]ÚXÚÐ›Þ
+\ÊHˆ[ÂˆÜ˜YÛÛœÝ[˜[YQšY[HÛÝ\˜ÙHÈ›Ü\QšY[
+Ë™^˜QšY[Ë›ÜÝš[™Ê˜Ü˜Y˜\ÛÛœÝ[‹ŒŠKˆ[œ]\K•TWÐÓTÔ×Ó•SP‘Tˆ[œ]\K•TWÓ•SP‘T—Ñ“Q×ÔÒQÓ‘Q[œ]\K•TWÓ•SP‘T—Ñ“Q×ÑPÒSPS
+Hˆ[ÂˆYˆ
+ÛÝ\˜ÙJHÂˆÜ˜YÛÛœÝ[[ÙQšY[œÙ]^
+´'ô/´`t`´/´cô/t/t/´-H4-ô/t,4aô-t/t.4-H4,´/4-t`t`´/ˆ4`4-t,ô.4`t`´`4,ŠNÂˆÜ˜YÛÛœÝ[[ÙQšY[œÙ]ÚXÚÙY
+Ë™^˜QšY[Ë›Ü›ÛÛX[Š˜Ü˜Y˜\ÛÛœÝ[[ÙH‹˜[ÙJJNÂˆ›Ü›K˜YšY]ÊÜ˜YÛÛœÝ[[ÙQšY[
+NÂˆÜ˜YÛÛœÝ[˜[YQšY[œÙ][
+´%ô/t,4aô-t/t.4-H“ÓÓÈS•È“ÐUŠNÂˆ›Ü›K˜YšY]ÊÜ˜YÛÛœÝ[˜[YQšY[
+NÂˆBˆÜ˜Yš]šY[H\ÐÜ˜Y™YÚ\Ý\›ÛÛX[ŠË\JBˆÈ›Ü\QšY[
+[YÙ\‹ÔÝš[™ÊË™^˜QšY[Ë›Ü[
+˜Ü˜Y˜\š]‹
+JK[œ]\K•TWÐÓTÔ×Ó•SP‘TŠBˆˆ[ÂˆYˆ
+Ü˜Yš]šY[OH[
+HÂˆÜ˜Yš]šY[œÙ][
+´$t.4`ˆ4`4-t,ô.4`t`´`4,
+8 $ÌMJHŠNÂˆ›Ü›K˜YšY]ÊÜ˜Yš]šY[
+NÂˆBˆÜ˜YÝØ\ÛÜ™šY[H\ÐÜ˜Y™YÚ\Ý\‘›Ø]
+Ë\JH	‰ˆ\ÛÝ\˜ÙHÈ™]È[™›ÚYÚYÙ]ÚXÚÐ›Þ
+\ÊHˆ[ÂˆÜ˜YÝØ\ž]QšY[H\ÐÜ˜Y™YÚ\Ý\‘›Ø]
+Ë\JH	‰ˆ\ÛÝ\˜ÙHÈ™]È[™›ÚYÚYÙ]ÚXÚÐ›Þ
+\ÊHˆ[ÂˆYˆ
+Ü˜YÝØ\ÛÜ™šY[OH[
+HÂˆÜ˜YÝØ\ÛÜ™šY[œÙ]^
+´'ô/´/4-t/tcô`´c4`t.ô/´,´,›Ø]ÌˆŠNÂˆÜ˜YÝØ\ÛÜ™šY[œÙ]ÚXÚÙY
+Ë™^˜QšY[Ë›Ü›ÛÛX[Š˜Ü˜YÝØ\ÛÜ™‹˜[ÙJJNÂˆÜ˜YÝØ\ž]QšY[œÙ]^
+´'ô/´/4-t/tcô`´c4,t,4.t`´bÈ4,´/t`ô`´`4.4`t.ô/´,ˆŠNÂˆÜ˜YÝØ\ž]QšY[œÙ]ÚXÚÙY
+Ë™^˜QšY[Ë›Ü›ÛÛX[Š˜Ü˜YÝØ\ž]H‹˜[ÙJJNÂˆ›Ü›K˜YšY]ÊÜ˜YÝØ\ÛÜ™šY[
+NÈ›Ü›K˜YšY]ÊÜ˜YÝØ\ž]QšY[
+NÂˆBˆH[ÙHÂˆÜ˜YÛÛœÝ[[ÙQšY[H[ÈÜ˜YÛÛœÝ[˜[YQšY[H[ÈÜ˜Yš]šY[H[ÂˆÜ˜YÝØ\ÛÜ™šY[H[ÈÜ˜YÝØ\ž]QšY[H[ÂˆB‚ˆš[˜[Y]^×H[”Ý]QšY[ÈH™]ÈY]^ÍNÂˆYˆ
+´%4.4/t,4/4.4aô-t`t.´.4.H4`´-t.´`t`ˆ‹™\]X[ÊË\JJHÂˆ^šY]È[“X™[H™]È^šY]Ê\ÊNÂˆ[“X™[œÙ]^
+´(´-t.´`t`´bÈ4`t/´`t`´/´cô/t.4.H
+8 $ÌÊHŠNÂˆ[“X™[œÙ]Y[™Ê
+L
+K
+NÂˆ›Ü›K˜YšY]Ê[“X™[
+NÂˆ›Üˆ
+[ÈHÈÈÈÊÊÊHÂˆ[”Ý]QšY[ÖÚ×HH›Ü\QšY[
+Ë™[•^Ý]\ÖÚ×K[œ]\K•TWÐÓTÔ×ÕV
+NÂˆ[”Ý]QšY[ÖÚ×KœÙ][
+´(´-t.´`t`ˆ4`t/´`t`´/´cô/t.4cÈˆ
+ÈÊNÂˆ›Ü›K˜YšY]Ê[”Ý]QšY[ÖÚ×JNÂˆBˆB‚ˆš[˜[Y]^×Hš]X™[šY[ÈH™]ÈY]^ÍNÂˆYˆ
+´$t.4`´/´,´bô.H4`t/ô.4`t/´.ˆ‹™\]X[ÊË\JJHÂˆ^šY]Èš]X™[XY\ˆH™]È^šY]Ê\ÊNÂˆš]X™[XY\‹œÙ]^
+´'t,4-ô,´,4/t.4cÈ4,t.4`´/´,ˆ
+8 $ÌÊHŠNÂˆš]X™[XY\‹œÙ]Y[™Ê
+L
+K
+NÂˆ›Ü›K˜YšY]Êš]X™[XY\ŠNÂˆ›Üˆ
+[ÈHÈÈÈÊÊÊHÂˆš]X™[šY[ÖÚ×HH›Ü\QšY[
+Ë˜š]\ÝX™[ÖÚ×K[œ]\K•TWÐÓTÔ×ÕV
+NÂˆš]X™[šY[ÖÚ×KœÙ][
+´'ô/´-4/ô.4`tc4,t.4`´,ˆ
+ÈÊNÂˆ›Ü›K˜YšY]Êš]X™[šY[ÖÚ×JNÂˆBˆB‚ˆš[˜[Y]^ÛÝ[™™\ÚÛšY[Âˆš[˜[Y]^ÛÝ[™š[T]šY[ÂˆYˆ
+´%ô,´`ô.´/´,´/´.H4`t.4,ô/t,4.È‹™\]X[ÊË\JJHÂˆ^šY]ÈÛÝ[™XY\ˆH™]È^šY]Ê\ÊNÂˆÛÝ[™XY\‹œÙ]^
+´'ô,4`4,4/4-t`´`4bÈ4-ô,´`ô.´,
+4/ô/´`4/´,È4`t`4,4,t,4`´bô,´,4/t.4cÈ4.4.4/4cÈ4a4,4.t.ô,
+HŠNÂˆÛÝ[™XY\‹œÙ]Y[™Ê
+L
+K
+NÂˆ›Ü›K˜YšY]ÊÛÝ[™XY\ŠNÂˆÛÝ[™™\ÚÛšY[H›Ü\QšY[
+ÝX›KÔÝš[™ÊËœÛÝ[™™\ÚÛ
+K[œ]\K•TWÐÓTÔ×Ó•SP‘Tˆ[œ]\K•TWÓ•SP‘T—Ñ“Q×ÑPÒSPS
+NÂˆÛÝ[™™\ÚÛšY[œÙ][
+´'ô/´`4/´,È
+4/t,4/ô`4.4/4-t`KŒ
+HŠNÂˆ›Ü›K˜YšY]ÊÛÝ[™™\ÚÛšY[
+NÂˆÛÝ[™š[T]šY[H›Ü\QšY[
+ËœÛÝ[™š[T][œ]\K•TWÐÓTÔ×ÕV
+NÂˆÛÝ[™š[T]šY[œÙ][
+´)4,4.t.ÈÈÛÛ[T’H4.4.ô.	ô$4.ô,4`4/	ÈŠNÂˆ›Ü›K˜YšY]ÊÛÝ[™š[T]šY[
+NÂˆYYYXTXÚÙ\Š›Ü›KÛÝ[™š[T]šY[˜]Y[ËÊˆŠNÂˆH[ÙHÈÛÝ[™™\ÚÛšY[H[ÈÛÝ[™š[T]šY[H[ÈB‚ˆš[˜[Y]^\™Ù]ØÜ™Y[’[™^šY[Âˆš[˜[Y]^\™Ù]\›šY[ÂˆYˆ
+´'ô-t`4-tat/´-4/t,4ct.´`4,4/H‹™\]X[ÊË\JJHÂˆ^šY]ÈØÜ™Y[“˜]’XY\ˆH™]È^šY]Ê\ÊNÂˆØÜ™Y[“˜]’XY\‹œÙ]^
+´)´-t.ô-t,´/´.H4ct.´`4,4/H
+4.4/t-4-t.´`HK‹“ŠH4.T“ŠNÂˆØÜ™Y[“˜]’XY\‹œÙ]Y[™Ê
+L
+K
+NÂˆ›Ü›K˜YšY]ÊØÜ™Y[“˜]’XY\ŠNÂˆ\™Ù]ØÜ™Y[’[™^šY[H›Ü\QšY[
+[YÙ\‹ÔÝš[™ÊË\™Ù]ØÜ™Y[’[™^
+ÈJK[œ]\K•TWÐÓTÔ×Ó•SP‘TŠNÂˆ\™Ù]ØÜ™Y[’[™^šY[œÙ][
+´'t/´/4-t`4ct.´`4,4/t,
+4/t,4aô.4/t,4cÈ4`HJHŠNÂˆ›Ü›K˜YšY]Ê\™Ù]ØÜ™Y[’[™^šY[
+NÂˆ\™Ù]\›šY[H›Ü\QšY[
+Ë\™Ù]\›[œ]\K•TWÐÓTÔ×ÕV
+NÂˆ\™Ù]\›šY[œÙ][
+•T“4-4.ôcÈ4/ô-t`4-tat/´-4,
+4/t-t/´,tcô-ô,4`´-t.ôc4/t/ŠHŠNÂˆ›Ü›K˜YšY]Ê\™Ù]\›šY[
+NÂˆH[ÙHÈ\™Ù]ØÜ™Y[’[™^šY[H[È\™Ù]\›šY[H[ÈB‚ˆš[˜[Y]^×H[XYÙT]šY[ÈH™]ÈY]^ÝËš[XYÙT]Ý]\Ë›[™ÝNÂˆYˆ
+´'4/t/´,ô/´/ô/´-ô.4a´.4/´/t/t/´-H4a4/´`´/ˆ‹™\]X[ÊË\JJHÂˆ^šY]È[YÒXY\ˆH™]È^šY]Ê\ÊNÂˆ[YÒXY\‹œÙ]^
+´'ô`ô`´.4.ˆ4.4-ô/´,t`4,4-´-t/t.4cô/4`t/´`t`´/´cô/t.4.H
+8 $ÌMJHŠNÂˆ[YÒXY\‹œÙ]Y[™Ê
+L
+K
+NÂˆ›Ü›K˜YšY]Ê[YÒXY\ŠNÂˆ›Üˆ
+[ÈHÈÈ[XYÙT]šY[Ë›[™ÝÈÊÊÊHÂˆ[XYÙT]šY[ÖÚ×HH›Ü\QšY[
+Ëš[XYÙT]Ý]\ÖÚ×K[œ]\K•TWÐÓTÔ×ÕV
+NÂˆ[XYÙT]šY[ÖÚ×KœÙ][
+´&4-ô/´,t`4,4-´-t/t.4-Hˆ
+ÈÈ
+Èˆ
+4a4,4.t.ÈÈT’JHŠNÂˆ›Ü›K˜YšY]Ê[XYÙT]šY[ÖÚ×JNÂˆYYYXTXÚÙ\Š›Ü›K[XYÙT]šY[ÖÚ×Kš[XYÙKÊˆŠNÂˆBˆB‚ˆš[˜[Y]^×H›ÚXÙS\ÙÑšY[ÈH™]ÈY]^ÝË›ÚXÙSY\ÜØYÙ\Ë›[™ÝNÂˆYˆ
+´$ô/´.ô/´`t/´,´/´-H4`t/´/´,tbt-t/t.4-H‹™\]X[ÊË\JJHÂˆ^šY]È›ÚXÙRXY\ˆH™]È^šY]Ê\ÊNÂˆ›ÚXÙRXY\‹œÙ]^
+´(´-t.´`t`´bÈ4,ô/´.ô/´`t/´,´bôaH4/´/ô/´,´-tbt-t/t.4.H
+8 $ÌMJHŠNÂˆ›ÚXÙRXY\‹œÙ]Y[™Ê
+L
+K
+NÂˆ›Ü›K˜YšY]Ê›ÚXÙRXY\ŠNÂˆ›Üˆ
+[ÈHÈÈ›ÚXÙS\ÙÑšY[Ë›[™ÝÈÊÊÊHÂˆ›ÚXÙS\ÙÑšY[ÖÚ×HH›Ü\QšY[
+Ë›ÚXÙSY\ÜØYÙ\ÖÚ×K[œ]\K•TWÐÓTÔ×ÕV
+NÂˆ›ÚXÙS\ÙÑšY[ÖÚ×KœÙ][
+´$ô/´.ô/´`Hˆ
+ÈÊNÂˆ›Ü›K˜YšY]Ê›ÚXÙS\ÙÑšY[ÖÚ×JNÂˆBˆB‚ˆš[˜[Y]^[Y\”™\Ù]šY[Âˆš[˜[[™›ÚYÚYÙ]”Ü[›™\ˆ[Y\•[š]Ù[XÝÜŽÂˆš[˜[[™›ÚYÚYÙ]”Ü[›™\ˆ[Y\“[ÙTÙ[XÝÜŽÂˆš[˜[[™›ÚYÚYÙ]”Ü[›™\ˆšYÙÙ\“[ÙTÙ[XÝÜŽÂˆYˆ
+‘‘ÔQ•‹™\]X[ÊË\JJHÂˆ^šY]ÈšYÙÙ\“X™[H™]È^šY]Ê\ÊNÂˆšYÙÙ\“X™[œÙ]^
+´(4-t-´.4/5óŽ´¶‰žËkºwµç[YH\ØÚ‚ˆ›Üˆ
+ØÜ™Y[ˆØYYˆØÜ™Y[œÊH›Üˆ
+ÚYÙ]Ø]™YˆØYYÚYÙ]ÊBˆ™\Ù]˜™[Y\”[[YJØ]™Y
+NÂˆ›Üˆ
+ÚYÙ]ÈˆØÜ™Y[œË™Ù]
+Ý\œ™[ØÜ™Y[’[™^
+KÚYÙ]ÊHÚYÙ]Ë˜Y
+ÛÜUÚYÙ]
+ÊJNÂˆ™]\›ˆYNÂˆB‚ˆš]˜]H›ÚY˜[Y]R[\ÜY›Ú™XÝ
+Ýš[™ÈœÛÛŠH›ÝÜÈ^Ù\[ÛˆÂˆ˜[Y]R[\ÜY›Ú™XÝÝ]XÊœÛÛŠNÂˆB‚ˆš]˜]H›ÚY˜[Y]UÚYÙ]\œ˜^J”ÓÓ\œ˜^H\œ˜^JHÂˆ˜[Y]UÚYÙ]\œ˜^TÝ]XÊ\œ˜^JNÂˆB‚ˆX›XÈÝ]XÈ›ÚY˜[Y]R[\ÜY›Ú™XÝÝ]XÊÝš[™ÈœÛÛŠH›ÝÜÈ^Ù\[ÛˆÂˆÜ™ËšœÛÛ‹’”ÓÓ•ÚÙ[™\ˆÚÙ[™\ˆH™]ÈÜ™ËšœÛÛ‹’”ÓÓ•ÚÙ[™\ŠœÛÛŠNÂˆØš™XÝ\œÙYHÚÙ[™\‹›™^˜[YJ
+NÂˆYˆ
+ÚÙ[™\‹›™^ÛX[Š
+HOH
+H›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ•˜Z[[™ÈÛÛ[Y\ˆ”ÓÓˆŠNÂˆYˆ
+\œÙY[œÝ[˜Ù[Ùˆ”ÓÓ\œ˜^JHÂˆ˜[Y]UÚYÙ]\œ˜^TÝ]XÊ
+”ÓÓ\œ˜^JH\œÙY
+NÂˆ™]\›ŽÂˆBˆYˆ
+J\œÙY[œÝ[˜Ù[Ùˆ”ÓÓ“Øš™XÝ
+JH›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ”›Ú™XÝ]\Ý™HH”ÓÓˆØš™XÝÜˆ\œ˜^HŠNÂˆ”ÓÓ“Øš™XÝ›Ú™XÝH
+”ÓÓ“Øš™XÝ
+H\œÙYÂˆ”ÓÓ\œ˜^HØÜ™Y[\œ˜^HH›Ú™XÝ›Ü”ÓÓ\œ˜^JœØÜ™Y[œÈŠNÂˆYˆ
+ØÜ™Y[\œ˜^HOH[ØÜ™Y[\œ˜^K›[™Ý
+
+HOHØÜ™Y[\œ˜^K›[™Ý
+
+HˆL
+HÂˆ›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ’[˜[YØÜ™Y[ˆ\ÝŠNÂˆBˆ[Ý\œ™[ØÜ™Y[ˆH›Ú™XÝ›Ü[
+˜Ý\œ™[ØÜ™Y[ˆ‹
+NÂˆYˆ
+Ý\œ™[ØÜ™Y[ˆÝ\œ™[ØÜ™Y[ˆHØÜ™Y[\œ˜^K›[™Ý
+
+JHÂˆ›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠÝ\œ™[ØÜ™Y[ˆ[™^Ý]Ùˆ˜[™ÙHŠNÂˆBˆ[Ý[ÚYÙ]ÈHÂˆ›Üˆ
+[HHÈHØÜ™Y[\œ˜^K›[™Ý
+
+NÈJÊÊHÂˆ”ÓÓ“Øš™XÝØÜ™Y[ˆHØÜ™Y[\œ˜^K›Ü”ÓÓ“Øš™XÝ
+JNÂˆYˆ
+ØÜ™Y[ˆOH[
+H›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ”ØÜ™Y[ˆ]\Ý™H[ˆØš™XÝŠNÂˆ”ÓÓ\œ˜^HØÜ™Y[•ÚYÙ]ÈHØÜ™Y[‹›Ü”ÓÓ\œ˜^JÚYÙ]ÈŠNÂˆYˆ
+ØÜ™Y[•ÚYÙ]ÈOH[
+H›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ”ØÜ™Y[ˆÚYÙ]È]\Ý™H[ˆ\œ˜^HŠNÂˆ˜[Y]UÚYÙ]\œ˜^TÝ]XÊØÜ™Y[•ÚYÙ]ÊNÂˆÝ[ÚYÙ]È
+ÏHØÜ™Y[•ÚYÙ]Ë›[™Ý
+
+NÂˆYˆ
+Ý[ÚYÙ]ÈˆŒ
+H›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ•ÛÈX[žHÚYÙ]ÈŠNÂ‚ˆ”ÓÓ\œ˜^HÛÛ›™XÝ[ÛœÈHØÜ™Y[‹›Ü”ÓÓ\œ˜^J˜ÛÛ›™XÝ[ÛœÈŠNÂˆYˆ
+ÛÛ›™XÝ[ÛœÈOH[
+HÛÛ[YNÂˆYˆ
+ÛÛ›™XÝ[ÛœË›[™Ý
+
+Hˆ
+H›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ•ÛÈX[žHÛÛ›™XÝ[ÛœÈŠNÂˆ[›ÙPÛÝ[HØÜ™Y[•ÚYÙ]Ë›[™Ý
+
+NÂˆ\Ý\Ý[YÙ\ˆY˜XÙ[˜ÞHH™]È\œ˜^S\ÝŠ
+NÂˆ[×H[™YÜ™YHH™]È[Û›ÙPÛÝ[NÂˆ›Üˆ
+[›ÙHHÈ›ÙH›ÙPÛÝ[È›ÙJÊÊHY˜XÙ[˜ÞK˜Y
+™]È\œ˜^S\ÝŠ
+JNÂˆ˜]˜K][’\ÚX\Û™Ë˜]˜K][’\ÚÙ]Ýš[™Ïˆ[œÐžTZ\ˆH™]È˜]˜K][’\ÚX\Š
+NÂˆ˜]˜K][’\ÚÙ]Ýš[™ÏˆØØÝ\YY\™Ù][œÈH™]È˜]˜K][’\ÚÙ]Š
+NÂˆ›Üˆ
+[ˆHÈˆÛÛ›™XÝ[ÛœË›[™Ý
+
+NÈŠÊÊHÂˆ”ÓÓ“Øš™XÝYÙHHÛÛ›™XÝ[ÛœË›Ü”ÓÓ“Øš™XÝ
+ŠNÂˆYˆ
+YÙHOH[
+H›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠÛÛ›™XÝ[Ûˆ]\Ý™H[ˆØš™XÝŠNÂˆYˆ
+XØ[“ØY˜™ÛÛ›™XÝ[ÛŠYÙJJH›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ’[˜[Y‘[ˆY]Y]HÜˆ[™Ú[ÈŠNÂˆ[ÛÝ\˜ÙHHYÙK›Ü[
+œÛÝ\˜ÙH‹LJNÂˆ[\™Ù]HYÙK›Ü[
+\™Ù]‹LJNÂˆYˆ
+ÛÝ\˜ÙH\™Ù]ÛÝ\˜ÙHH›ÙPÛÝ[\™Ù]H›ÙPÛÝ[ÛÝ\˜ÙHOH\™Ù]
+HÂˆ›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠÛÛ›™XÝ[Ûˆ[™^Ý]Ùˆ˜[™ÙHŠNÂˆBˆ”ÓÓ“Øš™XÝÛÝ\˜ÙUÚYÙ]HØÜ™Y[•ÚYÙ]Ë›Ü”ÓÓ“Øš™XÝ
+ÛÝ\˜ÙJNÂˆ”ÓÓ“Øš™XÝ\™Ù]ÚYÙ]HØÜ™Y[•ÚYÙ]Ë›Ü”ÓÓ“Øš™XÝ
+\™Ù]
+NÂˆYˆ
+ÛÝ\˜ÙUÚYÙ]OH[\™Ù]ÚYÙ]OH[ˆ\ÛÝ\˜ÙUÚYÙ]›ÜÝš[™Ê\H‹ˆŠKœÝ\ÕÚ]
+‘‘ŠBˆ]\™Ù]ÚYÙ]›ÜÝš[™Ê\H‹ˆŠKœÝ\ÕÚ]
+‘‘ŠJHÂˆ›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠÛÛ›™XÝ[ÛœÈ]\Ý[šÈ‘›ØÚÜÈŠNÂˆBˆÚYÙ]ÛÝ\˜ÙQ›Ü”[œÈHÚYÙ]œ›ÛRœÛÛŠÛÝ\˜ÙUÚYÙ]
+NÂˆÚYÙ]\™Ù]›Ü”[œÈHÚYÙ]œ›ÛRœÛÛŠ\™Ù]ÚYÙ]
+NÂˆYˆ
+Z\ÐÛÛ\]X›RÛ›ÝÛ‘˜™[œÊYÙKÛÝ\˜ÙQ›Ü”[œË\™Ù]›Ü”[œÊJHÂˆ›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ’[˜[Y‘[ˆ\™XÝ[ÛˆÜˆ\HŠNÂˆBˆÝš[™È\™Ù][ˆHØ[›ÛšXØ[˜™[“˜[YJYÙK›ÜÝš[™Ê\™Ù][ˆ‹ˆŠJNÂˆYˆ
+]\™Ù][‹š\Ñ[\J
+H	‰ˆ[ØØÝ\YY\™Ù][œË˜Y
+\™Ù]
+ÈŽˆ‚ˆ
+È\™Ù][ŠJHÂˆ›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ“][\H‘Ú\™\Èš]™HHØ[YH\™Ù][ˆŠNÂˆBˆÛ™ÈYÙRÙ^HH
+
+
+Û™ÊHÛÝ\˜ÙJHÌŠH
+\™Ù]	ˆ™™™™™™™“
+NÂˆ˜]˜K][’\ÚÙ]Ýš[™ÏˆZ\”[œÈH[œÐžTZ\‹™Ù]
+YÙRÙ^JNÂˆYˆ
+Z\”[œÈOH[
+HÂˆZ\”[œÈH™]È˜]˜K][’\ÚÙ]Š
+NÂˆ[œÐžTZ\‹œ]
+YÙRÙ^KZ\”[œÊNÂˆBˆÝš[™È›Ü›X[^™Y[ˆH\™Ù][ŽÂˆYˆ
+Z\”[œË˜ÛÛZ[œÊˆŠH
+›Ü›X[^™Y[‹š\Ñ[\J
+H	‰ˆ\Z\”[œËš\Ñ[\J
+JBˆ\Z\”[œË˜Y
+›Ü›X[^™Y[ŠJHÂˆ›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ‘\XØ]H‘ÛÛ›™XÝ[ÛˆŠNÂˆBˆY˜XÙ[˜ÞK™Ù]
+ÛÝ\˜ÙJK˜Y
+\™Ù]
+NÂˆ[™YÜ™YVÝ\™Ù]JÊÎÂˆBˆ˜]˜K][\œ˜^Q\]YO[YÙ\ˆ™XYHH™]È˜]˜K][\œ˜^Q\]YOŠ
+NÂˆ›Üˆ
+[›ÙHHÈ›ÙH›ÙPÛÝ[È›ÙJÊÊHYˆ
+[™YÜ™YVÛ›ÙWHOH
+H™XYK˜Y
+›ÙJNÂˆ[š\Ú]YÛÝ[HÂˆÚ[H
+\™XYKš\Ñ[\J
+JHÂˆ[›ÙHH™XYKœ™[[Ý™Qš\œÝ
+
+NÂˆš\Ú]YÛÝ[
+ÊÎÂˆ›Üˆ
+[™^ˆY˜XÙ[˜ÞK™Ù]
+›ÙJJHÂˆYˆ
+KZ[™YÜ™YVÛ™^HOH
+H™XYK˜Y\Ý
+™^
+NÂˆBˆBˆYˆ
+š\Ú]YÛÝ[OH›ÙPÛÝ[
+H›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠÞXÛXÈ‘ÛÛ›™XÝ[ÛœÈŠNÂˆBˆB‚ˆX›XÈÝ]XÈ›ÚY˜[Y]UÚYÙ]\œ˜^TÝ]XÊ”ÓÓ\œ˜^H\œ˜^JHÂˆYˆ
+\œ˜^K›[™Ý
+
+HˆŒ
+H›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ•ÛÈX[žHÚYÙ]ÈŠNÂˆ›Üˆ
+[HHÈH\œ˜^K›[™Ý
+
+NÈJÊÊHÂˆ”ÓÓ“Øš™XÝÚYÙ]H\œ˜^K›Ü”ÓÓ“Øš™XÝ
+JNÂˆYˆ
+ÚYÙ]OH[
+H›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ•ÚYÙ]]\Ý™H[ˆØš™XÝŠNÂˆÝš[™È\HHÚYÙ]›ÜÝš[™Ê\H‹´(´-t.´`t`ˆŠKX™[HÚYÙ]›ÜÝš[™Ê^‹´'t,4-4/ô.4`tcŠNÂˆYˆ
+\K›[™Ý
+
+HˆLX™[›[™Ý
+
+HˆŒÚYÙ]›ÜÝš[™Ê˜ÛÛ›™XÝ[Û’[™›È‹ˆŠK›[™Ý
+
+HˆŒ
+H›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ•ÚYÙ]šY[ÛÈÛ™ÈŠNÂˆÝX›HHÚYÙ]›ÜÝX›Jž‹ÚYÙ]š\ÊžŠHÈÝX›K“˜Sˆˆ
+KHHÚYÙ]›ÜÝX›JžH‹ÚYÙ]š\ÊžHŠHÈÝX›K“˜Sˆˆ
+KÈHÚYÙ]›ÜÝX›JÈ‹ÚYÙ]š\ÊÈŠHÈÝX›K“˜SˆˆMŒ
+KHÚYÙ]›ÜÝX›Jš‹ÚYÙ]š\ÊšŠHÈÝX›K“˜SˆˆN
+NÂˆYˆ
+ÝX›Kš\Ó˜SŠ
+HÝX›Kš\Ó˜SŠJHÝX›Kš\Ó˜SŠÊHÝX›Kš\Ó˜SŠ
+BˆLLˆLHLLHˆLÈHÈˆLHˆL
+H›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ•ÚYÙ]Ù[ÛY]žHÝ]Ùˆ˜[™ÙHŠNÂˆBˆB‚ˆš]˜]HÝ]XÈÛ\ÜÈØÜ™Y[ˆÂˆÝš[™È˜[YNÂˆ[˜XÚÙÜ›Ý[™ÛÛÜˆHÛÛÜ‹œ™ØŠLL‹MJNÂˆ”ÓÓ“Øš™XÝ^˜QšY[ÈH™]È”ÓÓ“Øš™XÝ
+
+NÂˆš[˜[\ÝÚYÙ]ˆÚYÙ]ÈH™]È\œ˜^S\ÝŠ
+NÂˆš[˜[\Ý˜™ÛÛ›™XÝ[ÛˆÛÛ›™XÝ[ÛœÈH™]È\œ˜^S\ÝŠ
+NÂˆØÜ™Y[ŠÝš[™È˜[YJHÈ\Ë›˜[YHH˜[YNÈBˆB‚ˆX›XÈÝ]XÈÛ\ÜÈ˜™ÛÛ›™XÝ[ÛˆÂˆX›XÈ[ÛÝ\˜ÙNÂˆX›XÈ[\™Ù]Âˆš]˜]H”ÓÓ“Øš™XÝ^˜QšY[ÈH™]È”ÓÓ“Øš™XÝ
+
+NÂˆX›XÈ˜™ÛÛ›™XÝ[ÛŠ[ÛÝ\˜ÙK[\™Ù]
+HÈ\ËœÛÝ\˜ÙHHÛÝ\˜ÙNÈ\Ë\™Ù]H\™Ù]ÈBˆB‚ˆÊŠˆÚ\™YžHHXÝX[›Ú™XÝØY\ˆ[™H›Ý[™]š\™YÜ™\ÜÚ[Ûˆ\ÝËˆ
+‹ÂˆX›XÈÝ]XÈ˜™ÛÛ›™XÝ[ÛˆÛÛ›™XÝ[Û‘œ›ÛRœÛÛŠ”ÓÓ“Øš™XÝœÛÛŠH›ÝÜÈ^Ù\[ÛˆÂˆ˜™ÛÛ›™XÝ[ÛˆÛÛ›™XÝ[ÛˆH™]È˜™ÛÛ›™XÝ[ÛŠœÛÛ‹›Ü[
+œÛÝ\˜ÙH‹LJKœÛÛ‹›Ü[
+\™Ù]‹LJJNÂˆÛÛ›™XÝ[Û‹™^˜QšY[ÈH™]È”ÓÓ“Øš™XÝ
+œÛÛ‹ÔÝš[™Ê
+JNÂˆ™]\›ˆÛÛ›™XÝ[ÛŽÂˆB‚ˆÊŠˆÙY\[šÛ›ÝÛˆYÙHšY[Ë][Ø^\ÈÙ\šX[^™HHÝ\œ™[Y]YÜ™Z[™^Y[™Ú[Ëˆ
+‹ÂˆX›XÈÝ]XÈ”ÓÓ“Øš™XÝÛÛ›™XÝ[Û•ÒœÛÛŠ˜™ÛÛ›™XÝ[ÛˆÛÛ›™XÝ[ÛŠH›ÝÜÈ^Ù\[ÛˆÂˆ”ÓÓ“Øš™XÝœÛÛˆHÛÛ›™XÝ[Û‹™^˜QšY[ÈOH[ˆÈ™]È”ÓÓ“Øš™XÝ
+
+Hˆ™]È”ÓÓ“Øš™XÝ
+ÛÛ›™XÝ[Û‹™^˜QšY[ËÔÝš[™Ê
+JNÂˆœÛÛ‹œ]
+œÛÝ\˜ÙH‹ÛÛ›™XÝ[Û‹œÛÝ\˜ÙJNÂˆœÛÛ‹œ]
+\™Ù]‹ÛÛ›™XÝ[Û‹\™Ù]
+NÂˆ™]\›ˆœÛÛŽÂˆB‚ˆÊŠˆÜ[Û˜[ÚYÛ˜[\\Îˆ^XÚ][œÈ]\ÝYÜ™YH[›\ÜÈZ]\ˆ\ÈS–Kˆ
+‹ÂˆX›XÈÝ]XÈ›ÛÛX[ˆ\ÐÛÛ\]X›Q˜™ÚYÛ˜[\\Ê˜™ÛÛ›™XÝ[ÛˆYÙJHÂˆYˆ
+Z\Õ˜[Y˜™[“Y]Y]JYÙJJH™]\›ˆ˜[ÙNÂˆ”ÓÓ“Øš™XÝšY[ÈHYÙK™^˜QšY[ÎÂˆ›ÛÛX[ˆÛÝ\˜ÙT™\Ù[HšY[Ëš\ÊœÛÝ\˜ÙTÚYÛ˜[\HŠNÂˆ›ÛÛX[ˆ\™Ù]™\Ù[HšY[Ëš\Ê\™Ù]ÚYÛ˜[\HŠNÂˆYˆ
+\ÛÝ\˜ÙT™\Ù[	‰ˆ]\™Ù]™\Ù[
+H™]\›ˆYNÂˆYˆ
+\ÛÝ\˜ÙT™\Ù[]\™Ù]™\Ù[
+H™]\›ˆ˜[ÙNÂˆØš™XÝÛÝ\˜ÙHHšY[Ë›Ü
+œÛÝ\˜ÙTÚYÛ˜[\HŠNÂˆØš™XÝ\™Ù]HšY[Ë›Ü
+\™Ù]ÚYÛ˜[\HŠNÂˆYˆ
+JÛÝ\˜ÙH[œÝ[˜Ù[ÙˆÝš[™ÊHJ\™Ù][œÝ[˜Ù[ÙˆÝš[™ÊJH™]\›ˆ˜[ÙNÂˆÝš[™ÈHH
+
+Ýš[™ÊHÛÝ\˜ÙJKš[J
+KÕ\\Ø\ÙJ˜]˜K][“ØØ[K”“ÓÕ
+NÂˆÝš[™ÈˆH
+
+Ýš[™ÊH\™Ù]
+Kš[J
+KÕ\\Ø\ÙJ˜]˜K][“ØØ[K”“ÓÕ
+NÂˆYˆ
+J“ÓÓ‹™\]X[ÊJH“•SP‘Tˆ‹™\]X[ÊJHS–H‹™\]X[ÊJJJH™]\›ˆ˜[ÙNÂˆYˆ
+J“ÓÓ‹™\]X[ÊŠH“•SP‘Tˆ‹™\]X[ÊŠHS–H‹™\]X[ÊŠJJH™]\›ˆ˜[ÙNÂˆ™]\›ˆK™\]X[ÊŠHS–H‹™\]X[ÊJHS–H‹™\]X[ÊŠNÂˆB‚ˆÊŠˆZ[š[X[Z[Z[ˆ‘[ˆÛÛ˜XÝÈ[šÛ›ÝÛˆ›ØÚÜÈÝ^H[\Y[[ÛÝ\˜ÙYˆ
+‹ÂˆÊŠˆ›Ü›X[^™H[\›˜[\ÜÚX[ˆÚYÙ]Y[YšY\œÈÈZ\ˆX›XÈ‘\›Z[˜[ÛÛ˜XÝËˆ
+‹ÂˆX›XÈÝ]XÈÝš[™ÈØ[›ÛšXØ[˜™›ØÚÕ\JÝš[™È›ØÚÕ\JHÂˆYˆ
+›ØÚÕ\HOH[
+H™]\›ˆˆŽÂˆÝš[™ÈÚ[™H›ØÚÕ\Kš[J
+KÕ\\Ø\ÙJ˜]˜K][“ØØ[K”“ÓÕ
+NÂˆYˆ
+‘‘4&‹™\]X[ÊÚ[™
+JH™]\›ˆ‘‘S‘ŽÂˆYˆ
+‘‘4&4&ô&‹™\]X[ÊÚ[™
+JH™]\›ˆ‘‘ÔˆŽÂˆYˆ
+‘‘4(´$4&t'4%t(‹™\]X[ÊÚ[™
+JH™]\›ˆ‘‘ÓˆŽÂˆ™]\›ˆÚ[™ÂˆB‚ˆÊŠˆÛÛ\\™H[ˆY[YšY\œÈÛÛœÚ\Ý[HÚ]Ý]™]Üš][™È[\ÜY›Ú™XÝY]Y]Kˆ
+‹ÂˆX›XÈÝ]XÈÝš[™ÈØ[›ÛšXØ[˜™[“˜[YJÝš[™È[ŠHÂˆ™]\›ˆ[ˆOH[Èˆˆˆ[‹š[J
+KÕ\\Ø\ÙJ˜]˜K][“ØØ[K”“ÓÕ
+NÂˆB‚ˆX›XÈÝ]XÈ›ÛÛX[ˆ\ÐÜ˜Y˜™Ù[œÛÜ”ÛÝ\˜ÙJÝš[™È\JHÂˆ™]\›ˆ‘‘ÔQ•ÑS”ÓÔˆQÒ‹™\]X[ÊØ[›ÛšXØ[˜™›ØÚÕ\J\JJBˆ‘‘ÔQ•ÑS”ÓÔˆÔ’QS•USÓˆ‹™\]X[ÊØ[›ÛšXØ[˜™›ØÚÕ\J\JJBˆ‘‘ÔQ•ÑS”ÓÔˆÔQQ‹™\]X[ÊØ[›ÛšXØ[˜™›ØÚÕ\J\JJNÂˆB‚ˆš]˜]HÝ]XÈ›ÛÛX[ˆ\ÐÜ˜YÝ[œš\ÙTÛÝ\˜ÙJÝš[™È\JHÂˆ™]\›ˆ‘‘ÔQ•ÕS”’TÑH‹™\]X[ÊØ[›ÛšXØ[˜™›ØÚÕ\J\JJNÂˆB‚ˆš]˜]HÝ]XÈ›ÛÛX[ˆ\ÐÜ˜YÙ[\ÛÝ\˜ÙJÝš[™È\JHÂˆ™]\›ˆ‘‘ÔQ•ÑST‹™\]X[ÊØ[›ÛšXØ[˜™›ØÚÕ\J\JJNÂˆB‚ˆX›XÈÝ]XÈ›ÛÛX[ˆ\ÐÜ˜Y\]ÝXœØÜšX™\ŠÝš[™È\JHÂˆ™]\›ˆ\HOH[	‰ˆ\KœÝ\ÕÚ]
+‘‘ÔQ•TUÕPˆŠNÂˆBˆX›XÈÝ]XÈ›ÛÛX[ˆ\ÐÜ˜Y\]X›\Ú\ŠÝš[™È\JHÂˆ™]\›ˆ\HOH[	‰ˆ\KœÝ\ÕÚ]
+‘‘ÔQ•TUPˆŠNÂˆBˆš]˜]HÝ]XÈ[\]\JÚYÙ]ÚYÙ]
+HÂˆ[˜[˜XÚÈHÚYÙ]\K™[™ÕÚ]
+“ÓÓŠHÈHˆÚYÙ]\K™[™ÕÚ]
+‘“ÐUŠHÈÈˆŽÂˆ™]\›ˆX]›X^
+KX]›Z[ŠËÚYÙ]™^˜QšY[Ë›Ü[
+˜Ü˜Y\]\H‹˜[˜XÚÊJJNÂˆBˆš]˜]HÝ]XÈ[\]Ù\™\ŠÚYÙ]ÚYÙ]
+HÂˆ™]\›ˆX]›X^
+KX]›Z[Š‹ÚYÙ]™^˜QšY[Ë›Ü[
+˜Ü˜Y\]Ù\™\ˆ‹JJJNÂˆB‚ˆX›XÈÝ]XÈ›ÛÛX[ˆ\Ð[ÝÙYÙ[\ÜÝ
+Ýš[™ÈÜÝ
+HÂˆYˆ
+ÜÝOH[
+H™]\›ˆ˜[ÙNÂˆÝš[™Ö×H\ÈHÜÝš[J
+KœÜ]
+—ˆ‹LJNÂˆYˆ
+\Ë›[™ÝOH
+H™]\›ˆ˜[ÙNÂˆ[×HØÝ]ÈH™]È[ÍNÂˆžHÂˆ›Üˆ
+[HHÈHÈJÊÊHÂˆYˆ
+\ÖÚWKš\Ñ[\J
+H
+\ÖÚWK›[™Ý
+
+HˆH	‰ˆ\ÖÚWK˜Ú\]
+
+HOH	Ì	ÊJH™]\›ˆ˜[ÙNÂˆØÝ]ÖÚWHH[YÙ\‹œ\œÙR[
+\ÖÚWJNÂˆYˆ
+ØÝ]ÖÚWHØÝ]ÖÚWHˆMJH™]\›ˆ˜[ÙNÂˆBˆHØ]Ú
+[X™\‘›Ü›X]^Ù\[Ûˆ[˜[Y
+HÈ™]\›ˆ˜[ÙNÈBˆ™]\›ˆØÝ]ÖÌHOHLØÝ]ÖÌHOHNLˆ	‰ˆØÝ]ÖÌWHOHMŽˆØÝ]ÖÌHOHMÌˆ	‰ˆØÝ]ÖÌWHHMˆ	‰ˆØÝ]ÖÌWHHÌBˆØÝ]ÖÌHOHMŽH	‰ˆØÝ]ÖÌWHOHMÂˆB‚ˆš]˜]HÝ]XÈÝš[™ÈÜ˜YÜšY[][Û“X™[
+[^\ÊHÂˆ™]\›ˆ^\ÈOHˆÈ“Ô’QS•USÓ—ÖHˆˆ^\ÈOHÈÈ“Ô’QS•USÓ—Öˆˆˆ“Ô’QS•USÓ—ÖŽÂˆB‚ˆš]˜]HÝ]XÈ[Ü˜YÜšY[][Û^\ÊÚYÙ]ÚYÙ]
+HÂˆ™]\›ˆX]›X^
+KX]›Z[ŠËÚYÙ]™^˜QšY[Ë›Ü[
+˜Ü˜YÙ[œÛÜ^\È‹ˆÚYÙ]™^˜QšY[Ë›Ü[
+\H‹JJJJNÂˆB‚ˆš]˜]HÝ]XÈÝš[™ÈÜ˜YÝ[œš\ÙS[ÙJÚYÙ]ÚYÙ]
+HÂˆ™]\›ˆÚYÙ]™^˜QšY[Ë›ÜÝš[™Ê˜Ü˜YÝ[œš\ÙS[ÙH‹ˆÚYÙ]™^˜QšY[Ë›Ü[
+\H‹JHOHˆÈ”ÔÈˆˆ”ÔˆŠNÂˆB‚ˆX›XÈÝ]XÈ›ÛÛX[ˆ\ÐÜ˜Y™YÚ\Ý\”ÛÝ\˜ÙJÝš[™È\JHÂˆÝš[™ÈÚ[™HØ[›ÛšXØ[˜™›ØÚÕ\J\JNÂˆ™]\›ˆ‘‘ÔQ•Tˆ“ÓÓ‹™\]X[ÊÚ[™
+H‘‘ÔQ•TˆS•‹™\]X[ÊÚ[™
+Bˆ‘‘ÔQ•Tˆ“ÐU‹™\]X[ÊÚ[™
+NÂˆB‚ˆX›XÈÝ]XÈ›ÛÛX[ˆ\ÐÜ˜Y˜[YY˜\šXX›TÛÝ\˜ÙJÝš[™È\JHÂˆ™]\›ˆ\HOH[	‰ˆ\KœÝ\ÕÚ]
+‘‘ÔQ•TˆSQHSˆŠNÂˆB‚ˆX›XÈÝ]XÈ›ÛÛX[ˆ\ÐÜ˜Y˜[YY˜\šXX›TÚ[šÊÝš[™È\JHÂˆ™]\›ˆ\HOH[	‰ˆ\KœÝ\ÕÚ]
+‘‘ÔQ•TˆSQHÕUŠNÂˆB‚ˆš]˜]HÝ]XÈ[Ü˜Y˜[YY˜\šXX›RÚ[™
+Ýš[™È\JHÂˆYˆ
+\HOH[
+H™]\›ˆÂˆYˆ
+\K™[™ÕÚ]
+ˆ“ÓÓŠJH™]\›ˆNÂˆYˆ
+\K™[™ÕÚ]
+ˆS•ŠJH™]\›ˆŽÂˆYˆ
+\K™[™ÕÚ]
+ˆ“ÐUŠJH™]\›ˆÎÂˆ™]\›ˆÂˆB‚ˆš]˜]HÝ]XÈÝš[™ÈÜ˜Y˜[YY˜\šXX›U\J[Ú[™›ÛÛX[ˆÝ]]
+HÂˆÝš[™ÈÝY™š^HÚ[™OHHÈ“ÓÓˆˆÚ[™OHÈÈ‘“ÐUˆˆ’S•ŽÂˆ™]\›ˆ‘‘ÔQ•TˆSQHˆ
+È
+Ý]]È“ÕUˆˆ’SˆŠH
+ÈÝY™š^ÂˆB‚ˆš]˜]HÝ]XÈÝš[™ÈÜ˜Y˜[YY˜\šXX›S˜[YJÚYÙ]ÚYÙ]
+HÂˆ™]\›ˆÚYÙ]™^˜QšY[Ë›ÜÝš[™Ê˜Ü˜Y˜\šXX›S˜[YH‹ˆÚYÙ]™^˜QšY[Ë›ÜÝš[™Ê›˜[YH‹ˆŠJNÂˆB‚ˆX›XÈÝ]XÈ›ÛÛX[ˆ\ÐÜ˜Y™YÚ\Ý\”Ú[šÊÝš[™È\JHÂˆÝš[™ÈÚ[™HØ[›ÛšXØ[˜™›ØÚÕ\J\JNÂˆ™]\›ˆ‘‘ÔQ•TˆÕU“ÓÓ‹™\]X[ÊÚ[™
+H‘‘ÔQ•TˆÕUS•‹™\]X[ÊÚ[™
+Bˆ‘‘ÔQ•TˆÕU“ÐU‹™\]X[ÊÚ[™
+NÂˆB‚ˆš]˜]HÝ]XÈ›ÛÛX[ˆ\ÐÜ˜Y™YÚ\Ý\‘›Ø]
+Ýš[™È\JHÂˆÝš[™ÈÚ[™HØ[›ÛšXØ[˜™›ØÚÕ\J\JNÂˆ™]\›ˆ‘‘ÔQ•Tˆ“ÐU‹™\]X[ÊÚ[™
+H‘‘ÔQ•TˆÕU“ÐU‹™\]X[ÊÚ[™
+NÂˆB‚ˆš]˜]HÝ]XÈ›ÛÛX[ˆ\ÐÜ˜Y™YÚ\Ý\›ÛÛX[ŠÝš[™È\JHÂˆÝš[™ÈÚ[™HØ[›ÛšXØ[˜™›ØÚÕ\J\JNÂˆ™]\›ˆ‘‘ÔQ•Tˆ“ÓÓ‹™\]X[ÊÚ[™
+H‘‘ÔQ•TˆÕU“ÓÓ‹™\]X[ÊÚ[™
+NÂˆB‚ˆX›XÈÝ]XÈÝš[™ÈÛ›ÝÛ‘˜™[•\JÝš[™È›ØÚÕ\KÝš[™È[‹›ÛÛX[ˆÝ]]
+HÂˆYˆ
+›ØÚÕ\HOH[[ˆOH[
+H™]\›ˆ[ÂˆÝš[™ÈÚ[™HØ[›ÛšXØ[˜™›ØÚÕ\J›ØÚÕ\JNÂˆÝš[™È˜[YHHØ[›ÛšXØ[˜™[“˜[YJ[ŠNÂˆYˆ
+Ú[™™\]X[Ê‘‘4$´)t'´%ŠJH™]\›ˆÝ]]	‰ˆ”H‹™\]X[Ê˜[YJHÈ“ÓÓˆˆ[ÂˆYˆ
+\ÐÜ˜Y\]ÝXœØÜšX™\ŠÚ[™
+H	‰ˆÝ]]	‰ˆ”H‹™\]X[Ê˜[YJJBˆ™]\›ˆÚ[™™[™ÕÚ]
+“ÓÓŠHÈ“ÓÓˆˆ“•SP‘TˆŽÂˆYˆ
+\ÐÜ˜Y\]X›\Ú\ŠÚ[™
+H	‰ˆ[Ý]]
+HÂˆYˆ
+‘Sˆ‹™\]X[Ê˜[YJJH™]\›ˆ“ÓÓŽÂˆYˆ
+’Sˆ‹™\]X[Ê˜[YJJH™]\›ˆÚ[™™[™ÕÚ]
+“ÓÓŠHÈ“ÓÓˆˆ“•SP‘TˆŽÂˆBˆYˆ
+\ÐÜ˜Y™YÚ\Ý\”ÛÝ\˜ÙJÚ[™
+H	‰ˆÝ]]	‰ˆ”H‹™\]X[Ê˜[YJJBˆ™]\›ˆ\ÐÜ˜Y™YÚ\Ý\›ÛÛX[ŠÚ[™
+HÈ“ÓÓˆˆ“•SP‘TˆŽÂˆYˆ
+\ÐÜ˜Y™YÚ\Ý\”Ú[šÊÚ[™
+H	‰ˆ[Ý]]	‰ˆ’Sˆ‹™\]X[Ê˜[YJJBˆ™]\›ˆ\ÐÜ˜Y™YÚ\Ý\›ÛÛX[ŠÚ[™
+HÈ“ÓÓˆˆ“•SP‘TˆŽÂˆYˆ
+
+\ÐÜ˜Y˜™Ù[œÛÜ”ÛÝ\˜ÙJÚ[™
+H\ÐÜ˜YÝ[œš\ÙTÛÝ\˜ÙJÚ[™
+H\ÐÜ˜YÙ[\ÛÝ\˜ÙJÚ[™
+JBˆ	‰ˆÝ]]	‰ˆ”H‹™\]X[Ê˜[YJJH™]\›ˆ“•SP‘TˆŽÂˆYˆ
+\ÐÜ˜Y˜[YY˜\šXX›TÛÝ\˜ÙJÚ[™
+H	‰ˆÝ]]	‰ˆ”H‹™\]X[Ê˜[YJJBˆ™]\›ˆÜ˜Y˜[YY˜\šXX›RÚ[™
+Ú[™
+HOHHÈ“ÓÓˆˆ“•SP‘TˆŽÂˆYˆ
+\ÐÜ˜Y˜[YY˜\šXX›TÚ[šÊÚ[™
+H	‰ˆ[Ý]]	‰ˆ’Sˆ‹™\]X[Ê˜[YJJBˆ™]\›ˆÜ˜Y˜[YY˜\šXX›RÚ[™
+Ú[™
+HOHHÈ“ÓÓˆˆ“•SP‘TˆŽÂˆYˆ
+Ú[™™\]X[Ê‘‘S‘ŠHÚ[™™\]X[Ê‘‘ÔˆŠHÚ[™™\]X[Ê‘‘ÔˆŠBˆÚ[™™\]X[Ê‘‘S‘ŠHÚ[™™\]X[Ê‘‘“ÔˆŠJHÂˆYˆ
+Ý]]	‰ˆ”H‹™\]X[Ê˜[YJJH™]\›ˆ“ÓÓŽÂˆYˆ
+[Ý]]	‰ˆ
+’SŒH‹™\]X[Ê˜[YJH’SŒˆ‹™\]X[Ê˜[YJJJH™]\›ˆ“ÓÓŽÂˆBˆYˆ
+Ú[™™\]X[Ê‘‘4't%HŠJHÂˆYˆ
+Ý]]	‰ˆ”H‹™\]X[Ê˜[YJJH™]\›ˆ“ÓÓŽÂˆYˆ
+[Ý]]	‰ˆ’Sˆ‹™\]X[Ê˜[YJJH™]\›ˆ“ÓÓŽÂˆBˆYˆ
+Ú[™™\]X[Ê‘‘”ÈŠHÚ[™™\]X[Ê‘‘ÔˆŠJHÂˆYˆ
+Ý]]	‰ˆ”H‹™\]X[Ê˜[YJJH™]\›ˆ“ÓÓŽÂˆYˆ
+[Ý]]	‰ˆ
+”È‹™\]X[Ê˜[YJH”ˆ‹™\]X[Ê˜[YJJJH™]\›ˆ“ÓÓŽÂˆBˆYˆ
+Ú[™™\]X[Ê‘‘ÔQ•ŠJHÂˆYˆ
+Ý]]	‰ˆ”H‹™\]X[Ê˜[YJJH™]\›ˆ“ÓÓŽÂˆYˆ
+[Ý]]	‰ˆ’Sˆ‹™\]X[Ê˜[YJJH™]\›ˆ“ÓÓŽÂˆBˆYˆ
+Ú[™™\]X[Ê‘‘ÔQ•SQTˆŠJHÂˆYˆ
+Ý]]	‰ˆ”H‹™\]X[Ê˜[YJJH™]\›ˆ“ÓÓŽÂˆYˆ
+[Ý]]	‰ˆ’Sˆ‹™\]X[Ê˜[YJJH™]\›ˆ“ÓÓŽÂˆYˆ
+[Ý]]	‰ˆ”‹™\]X[Ê˜[YJJH™]\›ˆ“•SP‘TˆŽÂˆBˆYˆ
+Ú[™™\]X[Ê‘‘ÔQ•T’UQUPÈS•ŠBˆÚ[™™\]X[Ê‘‘ÔQ•T’UQUPÈ“ÐUŠJHÂˆYˆ
+Ý]]	‰ˆ”H‹™\]X[Ê˜[YJJH™]\›ˆ“•SP‘TˆŽÂˆYˆ
+[Ý]]	‰ˆ
+’SŒH‹™\]X[Ê˜[YJH’SŒˆ‹™\]X[Ê˜[YJJJH™]\›ˆ“•SP‘TˆŽÂˆBˆYˆ
+Ú[™™\]X[Ê‘‘ÔQ•ÓÓTT‘H“ÐUŠJHÂˆYˆ
+Ý]]	‰ˆ”H‹™\]X[Ê˜[YJJH™]\›ˆ“ÓÓŽÂˆYˆ
+[Ý]]	‰ˆ
+’SŒH‹™\]X[Ê˜[YJH’SŒˆ‹™\]X[Ê˜[YJJJH™]\›ˆ“•SP‘TˆŽÂˆBˆYˆ
+Ú[™™\]X[Ê‘‘—Õ’QÈŠHÚ[™™\]X[Ê‘‘—Õ’QÈŠJHÂˆYˆ
+Ý]]	‰ˆ”H‹™\]X[Ê˜[YJJH™]\›ˆ“ÓÓŽÂˆYˆ
+[Ý]]	‰ˆ’Sˆ‹™\]X[Ê˜[YJJH™]\›ˆ“ÓÓŽÂˆBˆYˆ
+Ú[™™\]X[Ê‘‘ÔQ•ÕHŠJHÂˆYˆ
+Ý]]	‰ˆ”H‹™\]X[Ê˜[YJJH™]\›ˆ“•SP‘TˆŽÂˆYˆ
+[Ý]]	‰ˆ
+ŠÈ‹™\]X[Ê˜[YJH‹H‹™\]X[Ê˜[YJH”ˆ‹™\]X[Ê˜[YJJJBˆ™]\›ˆ“ÓÓŽÂˆBˆYˆ
+Ú[™™\]X[Ê‘‘ÕHŠHÚ[™™\]X[Ê‘‘ÕŠJHÂˆYˆ
+Ý]]	‰ˆ”H‹™\]X[Ê˜[YJJH™]\›ˆ“ÓÓŽÂˆYˆ
+[Ý]]	‰ˆ
+ÕH‹™\]X[Ê˜[YJHÑ‹™\]X[Ê˜[YJBˆ”ˆ‹™\]X[Ê˜[YJH“‹™\]X[Ê˜[YJJJHÂˆYˆ
+Ú[™™\]X[Ê‘‘ÕHŠJH™]\›ˆ
+ÕH‹™\]X[Ê˜[YJH”ˆ‹™\]X[Ê˜[YJJHÈ“ÓÓˆˆ[Âˆ™]\›ˆ
+Ñ‹™\]X[Ê˜[YJH“‹™\]X[Ê˜[YJJHÈ“ÓÓˆˆ[ÂˆBˆYˆ
+[Ý]]	‰ˆ”ˆ‹™\]X[Ê˜[YJJH™]\›ˆ“•SP‘TˆŽÂˆBˆYˆ
+Ú[™™\]X[Ê‘‘4(t&ô'´%´%t't&4%HŠHÚ[™™\]X[Ê‘‘4$´*ô)ô&4(´$4't&4%HŠBˆÚ[™™\]X[Ê‘‘4(ô'4't'´%´%t't&4%HŠHÚ[™™\]X[Ê‘‘4%4%t&ô%t't&4%HŠBˆÚ[™™\]X[Ê‘‘RS—ÓPVŠJHÂˆYˆ
+Ý]]	‰ˆ“ÕU‹™\]X[Ê˜[YJJH™]\›ˆ“•SP‘TˆŽÂˆYˆ
+[Ý]]	‰ˆ
+’SŒH‹™\]X[Ê˜[YJH’SŒˆ‹™\]X[Ê˜[YJJJH™]\›ˆ“•SP‘TˆŽÂˆBˆYˆ
+Ú[™™\]X[Ê‘‘4(t(4$4$´'t%t't&4%HŠJHÂˆYˆ
+Ý]]	‰ˆ”H‹™\]X[Ê˜[YJJH™]\›ˆ“ÓÓŽÂˆYˆ
+[Ý]]	‰ˆ
+H‹™\]X[Ê˜[YJHˆ‹™\]X[Ê˜[YJJJH™]\›ˆ“•SP‘TˆŽÂˆBˆYˆ
+Ú[™™\]X[Ê‘‘SÕ‘HŠJHÂˆYˆ
+Ý]]	‰ˆ“ÕU‹™\]X[Ê˜[YJJH™]\›ˆ“•SP‘TˆŽÂˆYˆ
+[Ý]]	‰ˆ’Sˆ‹™\]X[Ê˜[YJJH™]\›ˆ“•SP‘TˆŽÂˆBˆYˆ
+Ú[™™\]X[Ê‘‘ÔQ•ÓÓTT‘HŠJHÂˆYˆ
+Ý]]	‰ˆ”H‹™\]X[Ê˜[YJJH™]\›ˆ“ÓÓŽÂˆYˆ
+[Ý]]	‰ˆ
+’SŒH‹™\]X[Ê˜[YJH’SŒˆ‹™\]X[Ê˜[YJJJH™]\›ˆ“•SP‘TˆŽÂˆBˆYˆ
+Ú[™™\]X[Ê‘‘ÔQ•ÒS‘ÑHHŠHÚ[™™\]X[Ê‘‘ÔQ•ÒS‘ÑHˆŠJHÂˆYˆ
+Ý]]	‰ˆ”H‹™\]X[Ê˜[YJJH™]\›ˆ“ÓÓŽÂˆYˆ
+[Ý]]	‰ˆ
+‘‘ÔQ•ÒS‘ÑHH‹™\]X[ÊÚ[™
+HÈ’Hˆˆ‘ˆŠK™\]X[Ê˜[YJJBˆ™]\›ˆ“•SP‘TˆŽÂˆBˆYˆ
+Ú[™™\]X[Ê‘‘ÔQ•SÕ‘HŠJHÂˆYˆ
+Ý]]	‰ˆ”H‹™\]X[Ê˜[YJJH™]\›ˆ“•SP‘TˆŽÂˆYˆ
+[Ý]]	‰ˆ‘Sˆ‹™\]X[Ê˜[YJJH™]\›ˆ“ÓÓŽÂˆYˆ
+[Ý]]	‰ˆ’H‹™\]X[Ê˜[YJJH™]\›ˆ“•SP‘TˆŽÂˆBˆYˆ
+Ú[™™\]X[Ê‘‘ÔQ•VŠJHÂˆYˆ
+Ý]]	‰ˆ”H‹™\]X[Ê˜[YJJH™]\›ˆ“•SP‘TˆŽÂˆYˆ
+[Ý]]	‰ˆ‘Sˆ‹™\]X[Ê˜[YJJH™]\›ˆ“ÓÓŽÂˆYˆ
+[Ý]]	‰ˆ’H‹™\]X[Ê˜[YJJH™]\›ˆ“•SP‘TˆŽÂˆBˆYˆ
+Ú[™™\]X[Ê‘‘ÔQ•T”VHŠJHÂˆYˆ
+Ý]]	‰ˆ”H‹™\]X[Ê˜[YJJH™]\›ˆ“•SP‘TˆŽÂˆYˆ
+[Ý]]	‰ˆ‘Sˆ‹™\]X[Ê˜[YJJH™]\›ˆ“ÓÓŽÂˆYˆ
+[Ý]]	‰ˆ
+‘‹™\]X[Ê˜[YJH’Q‹™\]X[Ê˜[YJJJH™]\›ˆ“•SP‘TˆŽÂˆBˆYˆ
+Ú[™™\]X[Ê‘‘ÔQ•ÑÈŠHÚ[™™\]X[Ê‘‘ÔQ•ÓÔ‘È“ÐUŠBˆÚ[™™\]X[Ê‘‘ÔQ•ÒSˆŠHÚ[™™\]X[Ê‘‘ÔQ•P”ÈŠBˆÚ[™™\]X[Ê‘‘ÔQ•S•È“ÐUŠHÚ[™™\]X[Ê‘‘ÔQ•“ÐUÈS•ŠJHÂˆYˆ
+Ý]]	‰ˆ“ÕU‹™\]X[Ê˜[YJJH™]\›ˆ“•SP‘TˆŽÂˆYˆ
+[Ý]]	‰ˆ’Sˆ‹™\]X[Ê˜[YJJH™]\›ˆ“•SP‘TˆŽÂˆBˆYˆ
+Ú[™™\]X[Ê‘‘ÔQ•ÕÈŠJHÂˆYˆ
+Ý]]	‰ˆ”H‹™\]X[Ê˜[YJJH™]\›ˆ“•SP‘TˆŽÂˆYˆ
+[Ý]]	‰ˆ
+–‹™\]X[Ê˜[YJH–H‹™\]X[Ê˜[YJJJH™]\›ˆ“•SP‘TˆŽÂˆBˆYˆ
+Ú[™™\]X[Ê‘‘ÔQ•ÑSŠJHÂˆYˆ
+Ý]]	‰ˆ”H‹™\]X[Ê˜[YJJH™]\›ˆ“•SP‘TˆŽÂˆYˆ
+[Ý]]	‰ˆ’Sˆ‹™\]X[Ê˜[YJJH™]\›ˆ“ÓÓŽÂˆYˆ
+[Ý]]	‰ˆ
+’LH‹™\]X[Ê˜[YJH’Lˆ‹™\]X[Ê˜[YJJJH™]\›ˆ“•SP‘TˆŽÂˆBˆYˆ
+Ú[™™\]X[Ê‘‘ÑSŠJHÂˆYˆ
+Ý]]	‰ˆ“ÕU‹™\]X[Ê˜[YJJH™]\›ˆ“•SP‘TˆŽÂˆYˆ
+[Ý]]	‰ˆ‘È‹™\]X[Ê˜[YJJH™]\›ˆ“ÓÓŽÂˆYˆ
+[Ý]]	‰ˆ
+’SŒ‹™\]X[Ê˜[YJH’SŒH‹™\]X[Ê˜[YJJJH™]\›ˆ“•SP‘TˆŽÂˆBˆYˆ
+Ú[™™\]X[Ê‘‘ÕÈŠJHÂˆYˆ
+Ý]]	‰ˆ“ÕU‹™\]X[Ê˜[YJJH™]\›ˆ“•SP‘TˆŽÂˆYˆ
+[Ý]]	‰ˆ
+TÑH‹™\]X[Ê˜[YJH‘V‹™\]X[Ê˜[YJJJH™]\›ˆ“•SP‘TˆŽÂˆBˆYˆ
+Ú[™™\]X[Ê‘‘ÒSˆŠHÚ[™™\]X[Ê‘‘P”ÈŠBˆÚ[™™\]X[Ê‘‘ÓÔÈŠHÚ[™™\]X[Ê‘‘SˆŠHÚ[™™\]X[Ê‘‘ÔT•ŠBˆÚ[™™\]X[Ê‘‘“ÐUÒS•ŠHÚ[™™\]X[Ê‘‘S•Ñ“ÐUŠJHÂˆYˆ
+Ý]]	‰ˆ“ÕU‹™\]X[Ê˜[YJJH™]\›ˆ“•SP‘TˆŽÂˆYˆ
+[Ý]]	‰ˆ’Sˆ‹™\]X[Ê˜[YJJH™]\›ˆ“•SP‘TˆŽÂˆBˆYˆ
+Ú[™™\]X[Ê‘‘ÓˆŠHÚ[™™\]X[Ê‘‘ÑˆŠBˆÚ[™™\]X[Ê‘‘ŠHÚ[™™\]X[Ê‘‘ÔQ•“S’ÈŠBˆÚ[™™\]X[Ê‘‘ÔQ•SQTˆŠJHÂˆYˆ
+Ý]]	‰ˆ”H‹™\]X[Ê˜[YJJH™]\›ˆ“ÓÓŽÂˆYˆ
+[Ý]]	‰ˆ’Sˆ‹™\]X[Ê˜[YJJH™]\›ˆ“ÓÓŽÂˆYˆ
+[Ý]]	‰ˆ”‹™\]X[Ê˜[YJJH™]\›ˆ“•SP‘TˆŽÂˆBˆ™]\›ˆ[ÂˆB‚ˆX›XÈÝ]XÈÝš[™Ö×HÛ›ÝÛ‘˜™[œÊÚYÙ]ÚYÙ]›ÛÛX[ˆÝ]]
+HÂˆYˆ
+ÚYÙ]OH[
+H™]\›ˆ™]ÈÝš[™ÖÌNÂˆYˆ
+‘‘ÔQ•PPÔ“È‹™\]X[ÊØ[›ÛšXØ[˜™›ØÚÕ\JÚYÙ]\JJJHÂˆ˜™Ü˜YXXÜ›ÑYš[š][ÛˆYš[š][ÛˆHXXÜ›ÑYš[š][ÛŠÚYÙ]
+NÂˆYˆ
+Yš[š][ÛˆOH[
+H™]\›ˆ™]ÈÝš[™ÖÌNÂˆYˆ
+Ý]]
+H™]\›ˆ™]ÈÝš[™Ö×^ÙYš[š][Û‹™Ù]Ý]]
+
+K›˜[Y_NÂˆÝš[™Ö×H[œÈH™]ÈÝš[™ÖÙYš[š][Û‹™Ù][œ]Ê
+KœÚ^™J
+WNÂˆ›Üˆ
+[HHÈH[œË›[™ÝÈJÊÊH[œÖÚWHHYš[š][Û‹™Ù][œ]Ê
+K™Ù]
+JK›˜[YNÂˆ™]\›ˆ[œÎÂˆBˆYˆ
+‘‘ÔQ•PPÔ“ÈSˆ‹™\]X[ÊØ[›ÛšXØ[˜™›ØÚÕ\JÚYÙ]\JJJBˆ™]\›ˆÝ]]È™]ÈÝš[™Ö×^È”HŸHˆ™]ÈÝš[™ÖÌNÂˆ™]\›ˆÛ›ÝÛ‘˜™[œÊÚYÙ]\KÝ]]
+NÂˆB‚ˆX›XÈÝ]XÈÝš[™ÈÛ›ÝÛ‘˜™[•\JÚYÙ]ÚYÙ]Ýš[™È[‹›ÛÛX[ˆÝ]]
+HÂˆYˆ
+ÚYÙ]OH[[ˆOH[
+H™]\›ˆ[ÂˆÝš[™ÈÚ[™HØ[›ÛšXØ[˜™›ØÚÕ\JÚYÙ]\JNÂˆÝš[™ÈØ[›ÛšXØ[[ˆHØ[›ÛšXØ[˜™[“˜[YJ[ŠNÂˆYˆ
+‘‘ÔQ•PPÔ“È‹™\]X[ÊÚ[™
+JHÂˆ˜™Ü˜YXXÜ›ÑYš[š][ÛˆYš[š][ÛˆHXXÜ›ÑYš[š][ÛŠÚYÙ]
+NÂˆYˆ
+Yš[š][ÛˆOH[
+H™]\›ˆ[Âˆ˜™Ü˜YXXÜ›ÑYš[š][Û‹”ÜÜHÝ]]ÈYš[š][Û‹™Ù]Ý]]
+
+Hˆ[ÂˆYˆ
+Ý]]	‰ˆØ[›ÛšXØ[˜™[“˜[YJÜ›˜[YJK™\]X[ÊØ[›ÛšXØ[[ŠJBˆ™]\›ˆÜ\HOHHÈ“ÓÓˆˆ“•SP‘TˆŽÂˆYˆ
+[Ý]]
+H›Üˆ
+˜™Ü˜YXXÜ›ÑYš[š][Û‹”Ü[œ]ˆYš[š][Û‹™Ù][œ]Ê
+JBˆYˆ
+Ø[›ÛšXØ[˜™[“˜[YJ[œ]›˜[YJK™\]X[ÊØ[›ÛšXØ[[ŠJBˆ™]\›ˆ[œ]\HOHHÈ“ÓÓˆˆ“•SP‘TˆŽÂˆ™]\›ˆ[ÂˆBˆYˆ
+‘‘ÔQ•PPÔ“ÈSˆ‹™\]X[ÊÚ[™
+H	‰ˆÝ]]	‰ˆ”H‹™\]X[ÊØ[›ÛšXØ[[ŠJHÂˆ[\HHÚYÙ]™^˜QšY[Ë›Ü[
+˜Ü˜YXXÜ›ÔÜ\H‹LJNÂˆ™]\›ˆ\HOHHÈ“ÓÓˆˆ
+\HOHˆ\HOHÈÈ“•SP‘Tˆˆˆ[
+NÂˆBˆ™]\›ˆÛ›ÝÛ‘˜™[•\JÚYÙ]\K[‹Ý]]
+NÂˆB‚ˆš]˜]HÝ]XÈ˜™Ü˜YXXÜ›ÑYš[š][ÛˆXXÜ›ÑYš[š][ÛŠÚYÙ]ÚYÙ]
+HÂˆYˆ
+ÚYÙ]OH[ÚYÙ]™^˜QšY[ÈOH[
+H™]\›ˆ[Âˆ”ÓÓ“Øš™XÝœÛÛˆHÚYÙ]™^˜QšY[Ë›Ü”ÓÓ“Øš™XÝ
+˜Ü˜YXXÜ›ÑYš[š][ÛˆŠNÂˆYˆ
+œÛÛˆOH[
+H™]\›ˆ[ÂˆYˆ
+œÛÛˆOHÚYÙ]˜Ü˜YXXÜ›ÑYš[š][Û”ÛÝ\˜ÙPØXÚJBˆ™]\›ˆÚYÙ]˜Ü˜YXXÜ›ÑYš[š][ÛØXÚNÂˆžHÂˆÚYÙ]˜Ü˜YXXÜ›ÑYš[š][ÛØXÚHH˜™Ü˜YXXÜ›ÑYš[š][Û‹™œ›ÛRœÛÛŠœÛÛ‹ÔÝš[™Ê
+JNÂˆÚYÙ]˜Ü˜YXXÜ›ÑYš[š][Û”ÛÝ\˜ÙPØXÚHHœÛÛŽÂˆ™]\›ˆÚYÙ]˜Ü˜YXXÜ›ÑYš[š][ÛØXÚNÂˆHØ]Ú
+^Ù\[Ûˆ[˜[Y
+HÂˆÚYÙ]˜Ü˜YXXÜ›ÑYš[š][ÛØXÚHH[ÂˆÚYÙ]˜Ü˜YXXÜ›ÑYš[š][Û”ÛÝ\˜ÙPØXÚHHœÛÛŽÂˆ™]\›ˆ[ÂˆBˆB‚ˆš]˜]HÝ]XÈ›ÛÛX[ˆ\Ñ[˜[ZXÓXXÜ›ÕÚYÙ]
+ÚYÙ]ÚYÙ]
+HÂˆÝš[™ÈÚ[™HÚYÙ]OH[ÈˆˆˆØ[›ÛšXØ[˜™›ØÚÕ\JÚYÙ]\JNÂˆ™]\›ˆ‘‘ÔQ•PPÔ“È‹™\]X[ÊÚ[™
+H‘‘ÔQ•PPÔ“ÈSˆ‹™\]X[ÊÚ[™
+NÂˆB‚ˆÊŠˆ[™›Ü˜ÙHÛ›ÝÛˆ[ˆ\™XÝ[ÛœÈ[™\\ÎÈ™\Ù\™HYØXÞH[œ[›™YÛÛ›™XÝ[ÛœËˆ
+‹ÂˆX›XÈÝ]XÈ›ÛÛX[ˆ\ÐÛÛ\]X›RÛ›ÝÛ‘˜™[œÊ”ÓÓ“Øš™XÝYÙKÝš[™ÈÛÝ\˜ÙU\KÝš[™È\™Ù]\JH›ÝÜÈ^Ù\[ÛˆÂˆYˆ
+XØ[“ØY˜™ÛÛ›™XÝ[ÛŠYÙJJH™]\›ˆ˜[ÙNÂˆYˆ
+YYÙKš\ÊœÛÝ\˜ÙT[ˆŠH	‰ˆYYÙKš\Ê\™Ù][ˆŠJH™]\›ˆYNÂˆÝš[™ÈÛÝ\˜ÙT[ˆHYÙK›ÜÝš[™ÊœÛÝ\˜ÙT[ˆ‹ˆŠNÂˆÝš[™È\™Ù][ˆHYÙK›ÜÝš[™Ê\™Ù][ˆ‹ˆŠNÂˆÝš[™ÈÛÝ\˜ÙRÛ›ÝÛˆHÛ›ÝÛ‘˜™[•\JÛÝ\˜ÙU\KÛÝ\˜ÙT[‹YJNÂˆÝš[™È\™Ù]Û›ÝÛˆHÛ›ÝÛ‘˜™[•\J\™Ù]\K\™Ù][‹˜[ÙJNÂˆ›ÛÛX[ˆÛÝ\˜ÙP›ØÚÒÛ›ÝÛˆHÛ›ÝÛ‘˜™[œÊÛÝ\˜ÙU\KYJK›[™ÝˆˆÛ›ÝÛ‘˜™[œÊÛÝ\˜ÙU\K˜[ÙJK›[™ÝˆÂˆ›ÛÛX[ˆ\™Ù]›ØÚÒÛ›ÝÛˆHÛ›ÝÛ‘˜™[œÊ\™Ù]\KYJK›[™ÝˆˆÛ›ÝÛ‘˜™[œÊ\™Ù]\K˜[ÙJK›[™ÝˆÂˆYˆ
+
+ÛÝ\˜ÙP›ØÚÒÛ›ÝÛˆ	‰ˆÛÝ\˜ÙRÛ›ÝÛˆOH[
+H
+\™Ù]›ØÚÒÛ›ÝÛˆ	‰ˆ\™Ù]Û›ÝÛˆOH[
+JH™]\›ˆ˜[ÙNÂˆYˆ
+ÛÝ\˜ÙRÛ›ÝÛˆOH[	‰ˆ\™Ù]Û›ÝÛˆOH[	‰ˆ\ÛÝ\˜ÙRÛ›ÝÛ‹™\]X[Ê\™Ù]Û›ÝÛŠJH™]\›ˆ˜[ÙNÂˆYˆ
+ÛÝ\˜ÙRÛ›ÝÛˆOH[	‰ˆYÙKš\ÊœÛÝ\˜ÙTÚYÛ˜[\HŠBˆ	‰ˆJS–H‹™\]X[ÒYÛ›Ü™PØ\ÙJYÙK›ÜÝš[™ÊœÛÝ\˜ÙTÚYÛ˜[\HŠJBˆÛÝ\˜ÙRÛ›ÝÛ‹™\]X[ÒYÛ›Ü™PØ\ÙJYÙK›ÜÝš[™ÊœÛÝ\˜ÙTÚYÛ˜[\HŠJJJH™]\›ˆ˜[ÙNÂˆYˆ
+\™Ù]Û›ÝÛˆOH[	‰ˆYÙKš\Ê\™Ù]ÚYÛ˜[\HŠBˆ	‰ˆJS–H‹™\]X[ÒYÛ›Ü™PØ\ÙJYÙK›ÜÝš[™Ê\™Ù]ÚYÛ˜[\HŠJBˆ\™Ù]Û›ÝÛ‹™\]X[ÒYÛ›Ü™PØ\ÙJYÙK›ÜÝš[™Ê\™Ù]ÚYÛ˜[\HŠJJJH™]\›ˆ˜[ÙNÂˆ™]\›ˆYNÂˆB‚ˆX›XÈÝ]XÈ›ÛÛX[ˆ\ÐÛÛ\]X›RÛ›ÝÛ‘˜™[œÊ”ÓÓ“Øš™XÝYÙKÚYÙ]ÛÝ\˜ÙUÚYÙ]ˆÚYÙ]\™Ù]ÚYÙ]
+H›ÝÜÈ^Ù\[ÛˆÂˆYˆ
+ÛÝ\˜ÙUÚYÙ]OH[\™Ù]ÚYÙ]OH[XØ[“ØY˜™ÛÛ›™XÝ[ÛŠYÙJJH™]\›ˆ˜[ÙNÂˆYˆ
+YYÙKš\ÊœÛÝ\˜ÙT[ˆŠH	‰ˆYYÙKš\Ê\™Ù][ˆŠJH™]\›ˆYNÂˆÝš[™ÈÛÝ\˜ÙT[ˆHYÙK›ÜÝš[™ÊœÛÝ\˜ÙT[ˆ‹ˆŠNÂˆÝš[™È\™Ù][ˆHYÙK›ÜÝš[™Ê\™Ù][ˆ‹ˆŠNÂˆÝš[™ÈÛÝ\˜ÙRÛ›ÝÛˆHÛ›ÝÛ‘˜™[•\JÛÝ\˜ÙUÚYÙ]ÛÝ\˜ÙT[‹YJNÂˆÝš[™È\™Ù]Û›ÝÛˆHÛ›ÝÛ‘˜™[•\J\™Ù]ÚYÙ]\™Ù][‹˜[ÙJNÂˆ›ÛÛX[ˆÛÝ\˜ÙP›ØÚÒÛ›ÝÛˆHÛ›ÝÛ‘˜™[œÊÛÝ\˜ÙUÚYÙ]YJK›[™ÝˆˆÛ›ÝÛ‘˜™[œÊÛÝ\˜ÙUÚYÙ]˜[ÙJK›[™ÝˆÂˆ›ÛÛX[ˆ\™Ù]›ØÚÒÛ›ÝÛˆHÛ›ÝÛ‘˜™[œÊ\™Ù]ÚYÙ]YJK›[™ÝˆˆÛ›ÝÛ‘˜™[œÊ\™Ù]ÚYÙ]˜[ÙJK›[™ÝˆÂˆYˆ
+
+ÛÝ\˜ÙP›ØÚÒÛ›ÝÛˆ	‰ˆÛÝ\˜ÙRÛ›ÝÛˆOH[
+H
+\™Ù]›ØÚÒÛ›ÝÛˆ	‰ˆ\™Ù]Û›ÝÛˆOH[
+JH™]\›ˆ˜[ÙNÂˆYˆ
+ÛÝ\˜ÙRÛ›ÝÛˆOH[	‰ˆ\™Ù]Û›ÝÛˆOH[	‰ˆ\ÛÝ\˜ÙRÛ›ÝÛ‹™\]X[Ê\™Ù]Û›ÝÛŠJH™]\›ˆ˜[ÙNÂˆYˆ
+ÛÝ\˜ÙRÛ›ÝÛˆOH[	‰ˆYÙKš\ÊœÛÝ\˜ÙTÚYÛ˜[\HŠBˆ	‰ˆJS–H‹™\]X[ÒYÛ›Ü™PØ\ÙJYÙK›ÜÝš[™ÊœÛÝ\˜ÙTÚYÛ˜[\HŠJBˆÛÝ\˜ÙRÛ›ÝÛ‹™\]X[ÒYÛ›Ü™PØ\ÙJYÙK›ÜÝš[™ÊœÛÝ\˜ÙTÚYÛ˜[\HŠJJJH™]\›ˆ˜[ÙNÂˆYˆ
+\™Ù]Û›ÝÛˆOH[	‰ˆYÙKš\Ê\™Ù]ÚYÛ˜[\HŠBˆ	‰ˆJS–H‹™\]X[ÒYÛ›Ü™PØ\ÙJYÙK›ÜÝš[™Ê\™Ù]ÚYÛ˜[\HŠJBˆ\™Ù]Û›ÝÛ‹™\]X[ÒYÛ›Ü™PØ\ÙJYÙK›ÜÝš[™Ê\™Ù]ÚYÛ˜[\HŠJJJH™]\›ˆ˜[ÙNÂˆ™]\›ˆYNÂˆB‚ˆÊŠˆ˜[Y]H[ˆY]Y]HÛˆ[\ÜÚ[HX]š[™ÈYØXÞH[œ[›™YÛÛ›™XÝ[ÛœÈ[XÝˆ
+‹ÂˆX›XÈÝ]XÈ›ÛÛX[ˆØ[“ØY˜™ÛÛ›™XÝ[ÛŠ”ÓÓ“Øš™XÝœÛÛŠH›ÝÜÈ^Ù\[ÛˆÂˆYˆ
+œÛÛˆOH[
+H™]\›ˆ˜[ÙNÂˆ˜™ÛÛ›™XÝ[ÛˆYÙHHÛÛ›™XÝ[Û‘œ›ÛRœÛÛŠœÛÛŠNÂˆ™]\›ˆYÙKœÛÝ\˜ÙHH	‰ˆYÙK\™Ù]H	‰ˆYÙKœÛÝ\˜ÙHOHYÙK\™Ù]ˆ	‰ˆ\ÐÛÛ\]X›Q˜™ÚYÛ˜[\\ÊYÙJNÂˆB‚ˆÊŠˆÜ™X]H[ˆ^XÚ]H[›™YÛÛ›™XÝ[ÛŽÈ™Z™XÝX[›Ü›YYY]Y]H™Y›Ü™HÜ˜\]]][Û‹ˆ
+‹ÂˆX›XÈÝ]XÈ˜™ÛÛ›™XÝ[Ûˆ[›™Y˜™ÛÛ›™XÝ[ÛŠ[ÛÝ\˜ÙKÝš[™ÈÛÝ\˜ÙT[‹ˆ[\™Ù]Ýš[™È\™Ù][ŠH›ÝÜÈ^Ù\[ÛˆÂˆYˆ
+ÛÝ\˜ÙH\™Ù]ÛÝ\˜ÙHOH\™Ù]
+HÂˆ›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ’[˜[Y‘[™Ú[ÈŠNÂˆBˆ”ÓÓ“Øš™XÝY]Y]HH™]È”ÓÓ“Øš™XÝ
+
+NÂˆY]Y]Kœ]
+œÛÝ\˜ÙH‹ÛÝ\˜ÙJNÂˆY]Y]Kœ]
+\™Ù]‹\™Ù]
+NÂˆY]Y]Kœ]
+œÛÝ\˜ÙT[ˆ‹ÛÝ\˜ÙT[ŠNÂˆY]Y]Kœ]
+\™Ù][ˆ‹\™Ù][ŠNÂˆ˜™ÛÛ›™XÝ[ÛˆYÙHHÛÛ›™XÝ[Û‘œ›ÛRœÛÛŠY]Y]JNÂˆYˆ
+Z\Õ˜[Y˜™[“Y]Y]JYÙJJHÂˆ›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ’[˜[Y‘[ˆY]Y]HŠNÂˆBˆ™]\›ˆYÙNÂˆB‚ˆÊŠˆÚXÚÈÚ]\ˆ[ˆYÙIÜÈ^XÚ][ˆY]Y]H\ÈÙ[Y›Ü›YYÈYØXÞHYÙ\È]™H›È[œËˆ
+‹ÂˆX›XÈÝ]XÈ›ÛÛX[ˆ\Õ˜[Y˜™[“Y]Y]J˜™ÛÛ›™XÝ[ÛˆYÙJHÂˆYˆ
+YÙHOH[YÙK™^˜QšY[ÈOH[
+H™]\›ˆ˜[ÙNÂˆ”ÓÓ“Øš™XÝœÛÛˆHYÙK™^˜QšY[ÎÂˆYˆ
+ZœÛÛ‹š\ÊœÛÝ\˜ÙT[ˆŠH	‰ˆZœÛÛ‹š\Ê\™Ù][ˆŠJH™]\›ˆYNÂˆYˆ
+ZœÛÛ‹š\ÊœÛÝ\˜ÙT[ˆŠHZœÛÛ‹š\Ê\™Ù][ˆŠJH™]\›ˆ˜[ÙNÂˆØš™XÝÛÝ\˜ÙT[ˆHœÛÛ‹›Ü
+œÛÝ\˜ÙT[ˆŠNÂˆØš™XÝ\™Ù][ˆHœÛÛ‹›Ü
+\™Ù][ˆŠNÂˆ™]\›ˆÛÝ\˜ÙT[ˆ[œÝ[˜Ù[ÙˆÝš[™È	‰ˆ\™Ù][ˆ[œÝ[˜Ù[ÙˆÝš[™Âˆ	‰ˆJ
+Ýš[™ÊHÛÝ\˜ÙT[ŠKš[J
+Kš\Ñ[\J
+Bˆ	‰ˆJ
+Ýš[™ÊH\™Ù][ŠKš[J
+Kš\Ñ[\J
+NÂˆB‚ˆÊŠˆHÚ[™ÛHÛÝ\˜ÙHX^Hš]™H\Ý[˜Ý˜[YY[œÈÛˆÛ™H\™Ù]]™]™\ˆÚXÙHHØ[YH[‹ˆ
+‹ÂˆX›XÈÝ]XÈ›ÛÛX[ˆ\XØ]Q˜™[™Ú[
+˜™ÛÛ›™XÝ[ÛˆÛYÙK˜™ÛÛ›™XÝ[Ûˆ™]ÑYÙJHÂˆYˆ
+ÛYÙHOH[™]ÑYÙHOH[ÛYÙKœÛÝ\˜ÙHOH™]ÑYÙKœÛÝ\˜ÙBˆÛYÙK\™Ù]OH™]ÑYÙK\™Ù]
+H™]\›ˆ˜[ÙNÂˆÝš[™ÈÛ[ˆHØ[›ÛšXØ[˜™[“˜[YJÛYÙK™^˜QšY[Ë›ÜÝš[™Ê\™Ù][ˆ‹ˆŠJNÂˆÝš[™È™]Ô[ˆHØ[›ÛšXØ[˜™[“˜[YJ™]ÑYÙK™^˜QšY[Ë›ÜÝš[™Ê\™Ù][ˆ‹ˆŠJNÂˆ™]\›ˆÛ[‹š\Ñ[\J
+H™]Ô[‹š\Ñ[\J
+HÛ[‹™\]X[Ê™]Ô[ŠNÂˆB‚ˆÊŠˆ™[[Ý™HHÙ[XÝYYÙHžHY[]K]™[ˆYˆHYØXÞH›Ú™XÝÛÛZ[œÈ\XØ]\Ëˆ
+‹ÂˆX›XÈÝ]XÈ›ÛÛX[ˆ\ØÛÛ›™XÝ˜™YÙJ\Ý˜™ÛÛ›™XÝ[ÛˆÛÛ›™XÝ[ÛœË˜™ÛÛ›™XÝ[ÛˆÙ[XÝY
+HÂˆ™]\›ˆÛÛ›™XÝ[ÛœÈOH[	‰ˆÙ[XÝYOH[	‰ˆÛÛ›™XÝ[ÛœËœ™[[Ý™JÙ[XÝY
+NÂˆB‚ˆÊŠˆ™[[Ý™HÛ›HHÙ[XÝY\™XÝYYÙNÈÙY\Ý\ˆYÙ\È[™Z\ˆY]Y]H[XÝˆ
+‹ÂˆX›XÈÝ]XÈ›ÛÛX[ˆ\ØÛÛ›™XÝ˜™YÙJ\Ý˜™ÛÛ›™XÝ[ÛˆÛÛ›™XÝ[ÛœË[ÛÝ\˜ÙK[\™Ù]
+HÂˆYˆ
+ÛÛ›™XÝ[ÛœÈOH[ÛÝ\˜ÙH\™Ù]
+H™]\›ˆ˜[ÙNÂˆ›Üˆ
+[HHÈHÛÛ›™XÝ[ÛœËœÚ^™J
+NÈJÊÊHÂˆ˜™ÛÛ›™XÝ[ÛˆYÙHHÛÛ›™XÝ[ÛœË™Ù]
+JNÂˆYˆ
+YÙHOH[	‰ˆYÙKœÛÝ\˜ÙHOHÛÝ\˜ÙH	‰ˆYÙK\™Ù]OH\™Ù]
+HÂˆÛÛ›™XÝ[ÛœËœ™[[Ý™JJNÂˆ™]\›ˆYNÂˆBˆBˆ™]\›ˆ˜[ÙNÂˆB‚ˆX›XÈÝ]XÈ›ÛÛX[ˆ\Ñ˜™ÚYÙ]
+ÚYÙ]ÚYÙ]
+HÂˆ™]\›ˆÚYÙ]OH[	‰ˆÚYÙ]\HOH[	‰ˆÚYÙ]\KœÝ\ÕÚ]
+‘‘ŠNÂˆB‚ˆš]˜]H›ÛÛX[ˆ\Ñ˜™
+ÚYÙ]ÚYÙ]
+HÂˆ™]\›ˆ\Ñ˜™ÚYÙ]
+ÚYÙ]
+NÂˆB‚ˆX›XÈÝ]XÈ›ÛÛX[ˆ]˜[X]Q˜™›ØÚÊ\ÝÚYÙ]ˆÚYÙ]Ó\Ý\Ý˜™ÛÛ›™XÝ[ÛˆÛÛ›™XÝ[ÛœÓ\Ý[[™^›ÛÛX[–×Hš\Ú][™Ë›ÛÛX[–×HØXÚU˜[Y›ÛÛX[–×HØXÚU˜[Y\ËÝX›V×HØXÚS[Y\šXÊHÂˆYˆ
+[™^[™^HÚYÙ]Ó\ÝœÚ^™J
+JH™]\›ˆ˜[ÙNÂˆYˆ
+ØXÚU˜[YÚ[™^JH™]\›ˆØXÚU˜[Y\ÖÚ[™^NÂˆ›ÛÛX[ˆ™\Ý[H]˜[X]Q˜™›ØÚÕ[˜ØXÚY
+ÚYÙ]Ó\ÝÛÛ›™XÝ[ÛœÓ\Ý[™^š\Ú][™ËØXÚU˜[YØXÚU˜[Y\ËØXÚS[Y\šXÊNÂˆYˆ
+\Ñ˜™›ØÚÓÝ]][™\Y
+ÚYÙ]Ó\Ý™Ù]
+[™^
+JBˆ	‰ˆ
+\ÐÛÛ\]PÜ˜YØ]R[œ]ÊÚYÙ]Ó\ÝÛÛ›™XÝ[ÛœÓ\Ý[™^
+Bˆ\ÐÜ˜Y™YÚ\Ý\›ÛÛX[ŠÚYÙ]Ó\Ý™Ù]
+[™^
+K\JJJH™\Ý[H\™\Ý[ÂˆØXÚU˜[Y\ÖÚ[™^HH™\Ý[ÂˆØXÚU˜[YÚ[™^HHYNÂˆ™]\›ˆ™\Ý[ÂˆB‚ˆÊŠˆÜ˜Y	ÜÈ[š\š]Y[™\Ý]\ÈÛÝ\˜ÙKX˜XÚÙY›ÜˆHÜšYÚ[˜[›ÛÛX[ˆØ]\Ëˆ
+‹ÂˆX›XÈÝ]XÈ›ÛÛX[ˆÝ\ÜÑ˜™›ØÚÓÝ]][™\œÚ[ÛŠÝš[™È\JHÂˆYˆ
+\HOH[
+H™]\›ˆ˜[ÙNÂˆÝš[™ÈØ[›ÛšXØ[HØ[›ÛšXØ[˜™›ØÚÕ\J\JNÂˆ™]\›ˆ‘‘S‘‹™\]X[ÊØ[›ÛšXØ[
+H‘‘Ôˆ‹™\]X[ÊØ[›ÛšXØ[
+Bˆ‘‘Ôˆ‹™\]X[ÊØ[›ÛšXØ[
+H‘‘ÔQ•Tˆ“ÓÓ‹™\]X[ÊØ[›ÛšXØ[
+Bˆ
+\ÐÜ˜Y˜[YY˜\šXX›TÛÝ\˜ÙJØ[›ÛšXØ[
+H	‰ˆÜ˜Y˜[YY˜\šXX›RÚ[™
+Ø[›ÛšXØ[
+HOHJNÂˆB‚ˆš]˜]HÝ]XÈ›ÛÛX[ˆ\ÐÛÛ\]PÜ˜YØ]R[œ]Ê\ÝÚYÙ]ˆÚYÙ]Ëˆ\Ý˜™ÛÛ›™XÝ[ÛˆÛÛ›™XÝ[ÛœËˆ[\™Ù][™^
+HÂˆYˆ
+ÛÛ›™XÝ[ÛœÈOH[
+H™]\›ˆ˜[ÙNÂˆ˜]˜K][”Ù]Ýš[™Ïˆ˜[YYH™]È˜]˜K][’\ÚÙ]Š
+NÂˆ[YØXÞPÛÝ[HÂˆ›ÛÛX[ˆØ]Ó˜[YYH˜[ÙKØ]ÓYØXÞHH˜[ÙNÂˆ›Üˆ
+˜™ÛÛ›™XÝ[ÛˆYÙHˆÛÛ›™XÝ[ÛœÊHÂˆYˆ
+YÙHOH[YÙK\™Ù]OH\™Ù][™^
+HÛÛ[YNÂˆYˆ
+YÙKœÛÝ\˜ÙHYÙKœÛÝ\˜ÙHHÚYÙ]ËœÚ^™J
+HYÙK™^˜QšY[ÈOH[
+Bˆ™]\›ˆ˜[ÙNÂˆÝš[™ÈÛÝ\˜ÙT[ˆHØ[›ÛšXØ[˜™[“˜[YJYÙK™^˜QšY[Ë›ÜÝš[™ÊœÛÝ\˜ÙT[ˆ‹ˆŠJNÂˆÝš[™Ö×HÛÝ\˜ÙT[œÈHÛ›ÝÛ‘˜™[œÊÚYÙ]Ë™Ù]
+YÙKœÛÝ\˜ÙJK\KYJNÂˆYˆ
+ÛÝ\˜ÙT[‹š\Ñ[\J
+JHÂˆYˆ
+ÛÝ\˜ÙT[œË›[™ÝOHHH“ÓÓ‹™\]X[ÊÛ›ÝÛ‘˜™[•\JˆÚYÙ]Ë™Ù]
+YÙKœÛÝ\˜ÙJK\KÛÝ\˜ÙT[œÖÌKYJJJH™]\›ˆ˜[ÙNÂˆH[ÙHYˆ
+H“ÓÓ‹™\]X[ÊÛ›ÝÛ‘˜™[•\JˆÚYÙ]Ë™Ù]
+YÙKœÛÝ\˜ÙJK\KÛÝ\˜ÙT[‹YJJJH™]\›ˆ˜[ÙNÂˆÝš[™È\™Ù][ˆHØ[›ÛšXØ[˜™[“˜[YJYÙK™^˜QšY[Ë›ÜÝš[™Ê\™Ù][ˆ‹ˆŠJNÂˆYˆ
+\™Ù][‹š\Ñ[\J
+JHÈØ]ÓYØXÞHHYNÈYØXÞPÛÝ[
+ÊÎÈBˆ[ÙHÈØ]Ó˜[YYHYNÈ˜[YY˜Y
+\™Ù][ŠNÈBˆBˆYˆ
+Ø]Ó˜[YY	‰ˆØ]ÓYØXÞJH™]\›ˆ˜[ÙNÂˆ™]\›ˆØ]Ó˜[YYÈ˜[YYœÚ^™J
+HOHˆ	‰ˆ˜[YY˜ÛÛZ[œÊ’SŒHŠH	‰ˆ˜[YY˜ÛÛZ[œÊ’SŒˆŠBˆˆYØXÞPÛÝ[OHŽÂˆB‚ˆX›XÈÝ]XÈ›ÛÛX[ˆ\Ñ˜™›ØÚÓÝ]][™\Y
+ÚYÙ]ÚYÙ]
+HÂˆ™]\›ˆÚYÙ]OH[	‰ˆÚYÙ]™^˜QšY[ÈOH[ˆ	‰ˆÝ\ÜÑ˜™›ØÚÓÝ]][™\œÚ[ÛŠÚYÙ]\JBˆ	‰ˆÚYÙ]™^˜QšY[Ë›Ü›ÛÛX[Šš[™\Ý]‹˜[ÙJNÂˆB‚ˆÊŠˆÙÙÛHÛ›HHÛ›ÝÛˆÜ˜YXÛÛ\]X›HšY[™]Z[š[™È]™\žHÝ\ˆ”ÓÓˆšY[ˆ
+‹ÂˆX›XÈÝ]XÈ›ÛÛX[ˆÙÙÛQ˜™›ØÚÓÝ]][™\œÚ[ÛŠÚYÙ]ÚYÙ]
+H›ÝÜÈ^Ù\[ÛˆÂˆYˆ
+ÚYÙ]OH[\Ý\ÜÑ˜™›ØÚÓÝ]][™\œÚ[ÛŠÚYÙ]\JJH™]\›ˆ˜[ÙNÂˆYˆ
+ÚYÙ]™^˜QšY[ÈOH[
+HÚYÙ]™^˜QšY[ÈH™]È”ÓÓ“Øš™XÝ
+
+NÂˆÚYÙ]™^˜QšY[Ëœ]
+š[™\Ý]‹Z\Ñ˜™›ØÚÓÝ]][™\Y
+ÚYÙ]
+JNÂˆ™]\›ˆYNÂˆB‚ˆX›XÈÝ]XÈÝX›H]˜[X]Q˜™›ØÚÓ[Y\šXÊ\ÝÚYÙ]ˆÚYÙ]Ó\Ý\Ý˜™ÛÛ›™XÝ[ÛˆÛÛ›™XÝ[ÛœÓ\Ý[[™^›ÛÛX[–×Hš\Ú][™Ë›ÛÛX[–×HØXÚU˜[Y›ÛÛX[–×HØXÚU˜[Y\ËÝX›V×HØXÚS[Y\šXÊHÂˆYˆ
+[™^[™^HÚYÙ]Ó\ÝœÚ^™J
+JH™]\›ˆŒÂˆ]˜[X]Q˜™›ØÚÊÚYÙ]Ó\ÝÛÛ›™XÝ[ÛœÓ\Ý[™^š\Ú][™ËØXÚU˜[YØXÚU˜[Y\ËØXÚS[Y\šXÊNÂˆ™]\›ˆØXÚS[Y\šXÖÚ[™^NÂˆB‚ˆÊŠˆ[›™YÚ\™\È\™HY™\ÜÙYžHZ\ˆ\™Ù]\›Z[˜[™]™\ˆžH[œÙ\[ÛˆÜ™\‹ˆ
+‹ÂˆX›XÈÝ]XÈ›ÛÛX[ˆ˜™›ÛÛX[”[•˜[YJ\Ý›ÛÛX[ˆ˜[Y\Ë\ÝÝš[™Ïˆ[œËˆÝš[™È\™Ù][‹[YØXÞR[™^
+HÂˆYˆ
+˜[Y\ÈOH[[œÈOH[
+H™]\›ˆ˜[ÙNÂˆÝš[™È™\]Y\ÝYHØ[›ÛšXØ[˜™[“˜[YJ\™Ù][ŠNÂˆYˆ
+™\]Y\ÝYš\Ñ[\J
+JH™]\›ˆ˜[ÙNÂˆ›Üˆ
+[HHÈH˜[Y\ËœÚ^™J
+H	‰ˆH[œËœÚ^™J
+NÈJÊÊHÂˆYˆ
+™\]Y\ÝY™\]X[ÊØ[›ÛšXØ[˜™[“˜[YJ[œË™Ù]
+JJJJH™]\›ˆ›ÛÛX[‹••QK™\]X[Ê˜[Y\Ë™Ù]
+JJNÂˆBˆËÈÛ›Ú™XÝÈ]™H›È[ˆ˜[Y\ÎÈÙY\Z\ˆÜšYÚ[˜[ÜÚ][Û˜[™Z]š[Ü‹‚ˆ›ÛÛX[ˆ\Ó˜[YY[ˆH˜[ÙNÂˆ›Üˆ
+Ýš[™È[ˆˆ[œÊHYˆ
+XØ[›ÛšXØ[˜™[“˜[YJ[ŠKš\Ñ[\J
+JH\Ó˜[YY[ˆHYNÂˆ™]\›ˆZ\Ó˜[YY[ˆ	‰ˆYØXÞR[™^H	‰ˆYØXÞR[™^˜[Y\ËœÚ^™J
+Bˆ	‰ˆ›ÛÛX[‹••QK™\]X[Ê˜[Y\Ë™Ù]
+YØXÞR[™^
+JNÂˆB‚ˆÊŠˆ[\ÜY[›˜[YYÜ˜\È™]Z[ˆÜÚ][Û˜[X]È™]È˜[YYÛ™\È\ÙH\›Z[˜[Ëˆ
+‹ÂˆX›XÈÝ]XÈ›ÛÛX[ˆ\Ó˜[YY˜™[œ]
+\ÝÝš[™Ïˆ[œÊHÂˆYˆ
+[œÈOH[
+H™]\›ˆ˜[ÙNÂˆ›Üˆ
+Ýš[™È[ˆˆ[œÊHYˆ
+XØ[›ÛšXØ[˜™[“˜[YJ[ŠKš\Ñ[\J
+JH™]\›ˆYNÂˆ™]\›ˆ˜[ÙNÂˆB‚ˆÊŠˆ[Y\šXÈ\›Z[˜[ÛÚÝ\È[›˜[YYYØXÞHÛÛ›™XÝ[ÛœÈ™]Z[ˆZ\ˆÜÚ][Û˜[[™^ˆ
+‹ÂˆX›XÈÝ]XÈÝX›H˜™[Y\šXÔ[•˜[YJ\ÝÝX›Oˆ˜[Y\Ë\ÝÝš[™Ïˆ[œËˆÝš[™È\™Ù][‹[YØXÞR[™^ÝX›HY˜][˜[YJHÂˆYˆ
+˜[Y\ÈOH[[œÈOH[
+H™]\›ˆY˜][˜[YNÂˆÝš[™È™\]Y\ÝYHØ[›ÛšXØ[˜™[“˜[YJ\™Ù][ŠNÂˆYˆ
+™\]Y\ÝYš\Ñ[\J
+JH™]\›ˆY˜][˜[YNÂˆ›Üˆ
+[HHÈH˜[Y\ËœÚ^™J
+H	‰ˆH[œËœÚ^™J
+NÈJÊÊHÂˆYˆ
+™\]Y\ÝY™\]X[ÊØ[›ÛšXØ[˜™[“˜[YJ[œË™Ù]
+JJJJHÂˆÝX›H˜[YHH˜[Y\Ë™Ù]
+JNÂˆ™]\›ˆ˜[YHOH[	‰ˆQÝX›Kš\Ó˜SŠ˜[YJH	‰ˆQÝX›Kš\Ò[™š[š]J˜[YJBˆÈ˜[YHˆY˜][˜[YNÂˆBˆBˆ›Üˆ
+Ýš[™È[ˆˆ[œÊHÂˆYˆ
+XØ[›ÛšXØ[˜™[“˜[YJ[ŠKš\Ñ[\J
+JH™]\›ˆY˜][˜[YNÂˆBˆYˆ
+YØXÞR[™^YØXÞR[™^H˜[Y\ËœÚ^™J
+JH™]\›ˆY˜][˜[YNÂˆÝX›H˜[YHH˜[Y\Ë™Ù]
+YØXÞR[™^
+NÂˆ™]\›ˆ˜[YHOH[	‰ˆQÝX›Kš\Ó˜SŠ˜[YJH	‰ˆQÝX›Kš\Ò[™š[š]J˜[YJBˆÈ˜[YHˆY˜][˜[YNÂˆB‚ˆÊŠˆÛÝ[\ˆ˜[œÚ][Ûˆ[˜Ý[ÛœÈ\™H]\›Z[š\ÝXÈ[™[™\[™[ÙˆH[™›ÚYÛØÚËˆ
+‹ÂˆX›XÈÝ]XÈ[˜™ÛÝ[\Ý\
+[Ý\œ™[›ÛÛX[ˆÛÝ[›ÛÛX[ˆ™]š[Ý\ÐÛÝ[ˆ›ÛÛX[ˆ™\Ù]
+HÂˆYˆ
+™\Ù]
+H™]\›ˆÂˆ[›Ý[™YHX]›X^
+X]›Z[ŠLÝ\œ™[
+JNÂˆ™]\›ˆÛÝ[	‰ˆ\™]š[Ý\ÐÛÝ[	‰ˆ›Ý[™YLÈ›Ý[™Y
+ÈHˆ›Ý[™YÂˆB‚ˆX›XÈÝ]XÈ[˜™ÛÝ[ÝÛ”Ý\
+[Ý\œ™[›ÛÛX[ˆÛÝ[›ÛÛX[ˆ™]š[Ý\ÐÛÝ[ˆ›ÛÛX[ˆØY[™\Ù]
+HÂˆYˆ
+ØY
+H™]\›ˆX]›X^
+X]›Z[ŠL™\Ù]
+JNÂˆ[›Ý[™YHX]›X^
+X]›Z[ŠLÝ\œ™[
+JNÂˆ™]\›ˆÛÝ[	‰ˆ\™]š[Ý\ÐÛÝ[	‰ˆ›Ý[™YˆÈ›Ý[™YHHˆ›Ý[™YÂˆB‚ˆÊŠˆÛÝ[\ˆ™\Ù]\ÈH›Û›™YØ]]™H[YÙ\ŽÈ™\Ù\™HØ]™Y™\Ù]›Üˆ[˜[Y‹ˆ
+‹ÂˆX›XÈÝ]XÈ[˜™ÛÝ[\”™\Ù]
+\ÝÝX›Oˆ˜[Y\Ë\ÝÝš[™Ïˆ[œË[ÛÛ™šYÝ\™Y
+HÂˆ[˜[˜XÚÈHX]›X^
+X]›Z[ŠLÛÛ™šYÝ\™Y
+JNÂˆÝX›H˜[YHH˜™[Y\šXÔ[•˜[YJ˜[Y\Ë[œË”ˆ‹LK˜[˜XÚÊNÂˆYˆ
+˜[YH˜[YHˆLÝX›Kš\Ó˜SŠ˜[YJHÝX›Kš\Ò[™š[š]J˜[YJJBˆ™]\›ˆ˜[˜XÚÎÂˆ™]\›ˆ
+[
+HX]œ›Ý[™
+˜[YJNÂˆB‚ˆÊŠˆ\Ù\ÈZ[\ÙXÛÛ™È[ˆHÝ\œ™[“ÓÑÒÖH[[YNÈÜšYÚ[˜[Ü˜Y\š]H™[XZ[œÈ[™\ˆ]Y]ˆ
+‹ÂˆX›XÈÝ]XÈÛ™È˜™Û”™\Ù]\Ê\ÝÝX›Oˆ˜[Y\Ë\ÝÝš[™Ïˆ[œË[ÛÛ™šYÝ\™Y\ÊHÂˆÛ™È˜[˜XÚÈHX]›X^
+SX]›Z[ŠÍŒ
+Û™ÊHÛÛ™šYÝ\™Y\ÊJNÂˆÝX›H˜]ÈH˜™[Y\šXÔ[•˜[YJ˜[Y\Ë[œË”‹LK˜[˜XÚÊNÂˆYˆ
+˜]ÈKŒ˜]ÈˆÍŒŒÝX›Kš\Ó˜SŠ˜]ÊHÝX›Kš\Ò[™š[š]J˜]ÊJBˆ™]\›ˆ˜[˜XÚÎÂˆ™]\›ˆX]œ›Ý[™
+˜]ÊNÂˆB‚ˆÊŠˆÛÝ\˜ÙHÜ˜Y—ÕSQTˆZÙ\È[ˆ[YÙ\ˆ[™ØØ[\È]žHHÙ[XÝY[š]ˆ
+‹ÂˆX›XÈÝ]XÈÛ™È˜™Ü˜Y[Y\”™\Ù]\Ê\ÝÝX›Oˆ˜[Y\Ë\ÝÝš[™Ïˆ[œËˆ[ÛÛ™šYÝ\™Y\ËÝš[™È[š]
+HÂˆÝX›H˜]ÈH˜™[Y\šXÔ[•˜[YJ˜[Y\Ë[œË”‹LKÝX›K“˜SŠNÂˆYˆ
+ÝX›Kš\Ó˜SŠ˜]ÊJH™]\›ˆX]›X^
+KX]›Z[ŠÍŒÛÛ™šYÝ\™Y\ÊJNÂˆ[YÙ\ˆ^XÝH˜™Ü˜Y[YÙ\”Ù[XÝÜ‹™^XÝ[YÙ\Š˜]ÊNÂˆYˆ
+^XÝOH[
+H™]\›ˆX]›X^
+KX]›Z[ŠÍŒÛÛ™šYÝ\™Y\ÊJNÂˆÝš[™È›Ü›X[^™YH˜™\˜][Û•[š]Ë››Ü›X[^™J[š]
+NÂˆ[ÛÙHH”ÑRÈ‹™\]X[Ê›Ü›X[^™Y
+HÈˆˆ“RSˆ‹™\]X[Ê›Ü›X[^™Y
+HÈÈˆNÂˆžHÂˆ™]\›ˆ˜™Ü˜Y˜]]™U[Y\‹™\˜][Û“Z[\Ê^XÝÛÙJNÂˆHØ]Ú
+[YØ[\™Ý[Y[^Ù\[Ûˆ[˜[Y
+HÂˆ™]\›ˆX]›X^
+KX]›Z[ŠÍŒÛÛ™šYÝ\™Y\ÊJNÂˆBˆB‚ˆÊŠˆÛÝ\˜ÙHÑÈÛÛœÝ[Y\È[™™]\›œÈ›Ø]ÛÈ™\Ù\™H]È›Ø]Ìˆ›Ý[™[™Ëˆ
+‹ÂˆX›XÈÝ]XÈÝX›H˜™Ü˜YÙÑ›Ø]ÌŠÝX›H˜[YJHÂˆYˆ
+ÝX›Kš\Ó˜SŠ˜[YJHÝX›Kš\Ò[™š[š]J˜[YJJH™]\›ˆÝX›K“˜SŽÂˆ™]\›ˆ
+›Ø]
+HX]›ÙÊ
+›Ø]
+H˜[YJNÂˆB‚ˆÊŠˆÛÝ\˜ÙHÛÜ™Ñ›Ø]XØÙ\ÈH˜]˜H[YÙ\ˆ[™™]\›œÈ]È›Ø]˜[YKˆ
+‹ÂˆX›XÈÝ]XÈÝX›H˜™Ü˜YÛÜ™Ñ›Ø]
+ÝX›H˜[YJHÂˆ[YÙ\ˆ^XÝH˜™Ü˜Y[YÙ\”Ù[XÝÜ‹™^XÝ[YÙ\Š˜[YJNÂˆ™]\›ˆ^XÝOH[ÈÝX›K“˜Sˆˆ
+›Ø]
+H^XÝš[˜[YJ
+NÂˆB‚ˆÊŠˆÜšYÚ[˜[[Ñ›Ø]˜\œ›ÝÜÈHÚYÛ™Y[YÙ\ˆÈ˜]˜HÚÜš\œÝˆ
+‹ÂˆX›XÈÝ]XÈÝX›H˜™Ü˜Y[Ñ›Ø]
+ÝX›H˜[YJHÂˆ[YÙ\ˆ^XÝH˜™Ü˜Y[YÙ\”Ù[XÝÜ‹™^XÝ[YÙ\Š˜[YJNÂˆ™]\›ˆ^XÝOH[ÈÝX›K“˜Sˆˆ
+›Ø]
+H
+ÚÜ
+H^XÝš[˜[YJ
+NÂˆB‚ˆÊŠˆÜšYÚ[˜[›Ø]Ò[Ø\ÝÈH›Ø]È[[˜Ø][™ÈÝØ\™™\›Ëˆ
+‹ÂˆX›XÈÝ]XÈÝX›H˜™Ü˜Y›Ø]Ò[
+ÝX›H˜[YJHÂˆYˆ
+QÝX›Kš\Ñš[š]J˜[YJJH™]\›ˆÝX›K“˜SŽÂˆ™]\›ˆ
+[
+H
+›Ø]
+H˜[YNÂˆB‚ˆX›XÈÝ]XÈÝX›H˜™Ü˜Y[˜\žQ›Ø]ÌŠÝX›H˜[YKÝš[™ÈÜ\˜][ÛŠHÂˆYˆ
+QÝX›Kš\Ñš[š]J˜[YJJH™]\›ˆÝX›K“˜SŽÂˆ›Ø][œ]H
+›Ø]
+H˜[YNÂˆ›Ø]™\Ý[ÂˆYˆ
+P”È‹™\]X[ÊÜ\˜][ÛŠJH™\Ý[HX]˜XœÊ[œ]
+NÂˆ[ÙHYˆ
+”ÒSˆ‹™\]X[ÊÜ\˜][ÛŠJH™\Ý[H
+›Ø]
+HX]œÚ[Š[œ]
+NÂˆ[ÙH™]\›ˆÝX›K“˜SŽÂˆ™]\›ˆ›Ø]š\Ñš[š]J™\Ý[
+HÈ™\Ý[ˆÝX›K“˜SŽÂˆB‚ˆX›XÈÝ]XÈÝX›H˜™Ü˜YÝÑ›Ø]ÌŠÝX›HÝX›HJHÂˆYˆ
+QÝX›Kš\Ñš[š]J
+HQÝX›Kš\Ñš[š]JJJH™]\›ˆÝX›K“˜SŽÂˆ›Ø]™\Ý[H
+›Ø]
+HX]œÝÊ
+›Ø]
+H
+›Ø]
+HJNÂˆ™]\›ˆ›Ø]š\Ñš[š]J™\Ý[
+HÈ™\Ý[ˆÝX›K“˜SŽÂˆB‚ˆX›XÈÝ]XÈ›ÛÛX[ˆ]˜[X]Q˜™›ØÚÕ[˜ØXÚY
+\ÝÚYÙ]ˆÚYÙ]Ó\Ý\Ý˜™ÛÛ›™XÝ[ÛˆÛÛ›™XÝ[ÛœÓ\Ý[[™^›ÛÛX[–×Hš\Ú][™Ë›ÛÛX[–×HØXÚU˜[Y›ÛÛX[–×HØXÚU˜[Y\ËÝX›V×HØXÚS[Y\šXÊHÂˆYˆ
+[™^[™^HÚYÙ]Ó\ÝœÚ^™J
+Hš\Ú][™ÖÚ[™^JH™]\›ˆ˜[ÙNÂˆÚYÙ]ÚYÙ]HÚYÙ]Ó\Ý™Ù]
+[™^
+NÂˆYˆ
+Z\Ñ˜™ÚYÙ]
+ÚYÙ]
+JH™]\›ˆ˜[ÙNÂˆYˆ
+\ÐÜ˜Y\]ÝXœØÜšX™\ŠÚYÙ]\JJHÂˆÝX›H˜[YHHÚYÙ]˜Ü˜Y\]˜[YHOH[ÈÝX›K“˜SˆˆÚYÙ]˜Ü˜Y\]˜[YNÂˆØXÚS[Y\šXÖÚ[™^HH˜[YNÂˆ™]\›ˆÝX›Kš\Ñš[š]J˜[YJH	‰ˆ˜[YHOHŒÂˆBˆYˆ
+\ÐÜ˜YÙ[\ÛÝ\˜ÙJÚYÙ]\JJHÂˆÝX›H˜[YHHÚYÙ]˜Ü˜YÙ[œÛÜ•˜[YÈÚYÙ]˜Ü˜YÙ[œÛÜ•˜[YHˆÝX›K“˜SŽÂˆØXÚS[Y\šXÖÚ[™^HH˜[YNÂˆ™]\›ˆÝX›Kš\Ñš[š]J˜[YJH	‰ˆ˜[YHOHŒÂˆBˆYˆ
+\ÐÜ˜YÝ[œš\ÙTÛÝ\˜ÙJÚYÙ]\JJHÂˆ[˜[YHH˜™Ü˜YÝ[œš\ÙK˜Ý\œ™[ØØ[[JˆÚYÙ]™^˜QšY[Ë›ÜÝX›J›]]YH‹ÝX›K“˜SŠKˆÚYÙ]™^˜QšY[Ë›ÜÝX›J›Û™Ú]YH‹ÝX›K“˜SŠKˆ”ÔÈ‹™\]X[ÊÜ˜YÝ[œš\ÙS[ÙJÚYÙ]
+JKˆÞ\Ý[K˜Ý\œ™[[YSZ[\Ê
+K˜]˜K][•[YV›Û™K™Ù]Y˜][
+
+JNÂˆØXÚS[Y\šXÖÚ[™^HH˜[YNÂˆ™]\›ˆ˜[YHOHÂˆBˆYˆ
+\ÐÜ˜Y˜™Ù[œÛÜ”ÛÝ\˜ÙJÚYÙ]\JJHÂˆÝX›H˜[YHHÝX›K“˜SŽÂˆYˆ
+ÚYÙ]˜Ü˜YÙ[œÛÜ•˜[Y
+HÂˆYˆ
+‘‘ÔQ•ÑS”ÓÔˆQÒ‹™\]X[ÊÚYÙ]\JBˆ‘‘ÔQ•ÑS”ÓÔˆÔQQ‹™\]X[ÊÚYÙ]\JJH˜[YHHÚYÙ]˜Ü˜YÙ[œÛÜ•˜[YNÂˆ[ÙHÂˆ[^\ÈHÜ˜YÜšY[][Û^\ÊÚYÙ]
+NÂˆYˆ
+^\ÈHH	‰ˆ^\ÈHÊH˜[YHHÚYÙ]˜Ü˜YÜšY[][Û•˜[Y\ÖØ^\ÈHWNÂˆBˆBˆØXÚS[Y\šXÖÚ[™^HH˜[YNÂˆ™]\›ˆÝX›Kš\Ñš[š]J˜[YJH	‰ˆ˜[YHOHŒÂˆBˆYˆ
+\ÐÜ˜Y˜[YY˜\šXX›TÛÝ\˜ÙJÚYÙ]\JJHÂˆ[Ú[™HÜ˜Y˜[YY˜\šXX›RÚ[™
+ÚYÙ]\JNÂˆÝX›H˜[YHH˜™Ü˜Y˜[YY˜\šXX›TÝÜ™Kœ™XY
+ÚYÙ]˜Ü˜Y˜\šXX›S˜[Y\ÜXÙKˆÜ˜Y˜[YY˜\šXX›S˜[YJÚYÙ]
+KÚ[™
+NÂˆYˆ
+ÚYÙ]™^˜QšY[Ë›Ü›ÛÛX[Š˜Ü˜Y˜[YYÛÛœÝ[[ÙH‹ˆÚYÙ]™^˜QšY[Ë›Ü›ÛÛX[Šš\ÐÛÛœÝ[‹˜[ÙJJJHÂˆžHÈ˜[YHHÝX›Kœ\œÙQÝX›JÚYÙ]™^˜QšY[Ë›ÜÝš[™Ê˜Ü˜Y˜[YYÛÛœÝ[‹ˆÚYÙ]™^˜QšY[Ë›ÜÝš[™Ê˜ÛÛœÝ[‹ŒŠJJNÈBˆØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HÈ˜[YHHÝX›K“˜SŽÈBˆBˆØXÚS[Y\šXÖÚ[™^HH˜[YNÂˆ™]\›ˆÝX›Kš\Ñš[š]J˜[YJH	‰ˆ˜[YHOHŒÂˆBˆYˆ
+\ÐÜ˜Y™YÚ\Ý\”ÛÝ\˜ÙJÚYÙ]\JJHÂˆÝX›H˜[YHHÝX›K“˜SŽÂˆYˆ
+ÚYÙ]™^˜QšY[Ë›Ü›ÛÛX[Š˜Ü˜Y˜\ÛÛœÝ[[ÙH‹˜[ÙJJHÂˆžHÈ˜[YHHÝX›Kœ\œÙQÝX›JÚYÙ]™^˜QšY[Ë›ÜÝš[™Ê˜Ü˜Y˜\ÛÛœÝ[‹ŒŠJNÈBˆØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HÈ˜[YHHÝX›K“˜SŽÈBˆH[ÙHYˆ
+ÚYÙ]˜Ü˜Y™YÚ\Ý\•˜[Y
+HÂˆžHÂˆYˆ
+\ÐÜ˜Y™YÚ\Ý\›ÛÛX[ŠÚYÙ]\JJBˆ˜[YHH˜™Ü˜Y™YÚ\Ý\ÛÙXË˜›ÛÛX[•˜[YJÚYÙ]˜Ü˜Y™YÚ\Ý\•ÛÜ™ˆÚYÙ]™^˜QšY[Ë›Ü[
+˜Ü˜Y˜\š]‹
+K˜[ÙJHÈKŒˆŒÂˆ[ÙHYˆ
+‘‘ÔQ•TˆS•‹™\]X[ÊØ[›ÛšXØ[˜™›ØÚÕ\JÚYÙ]\JJJBˆ˜[YHH˜™Ü˜Y™YÚ\Ý\ÛÙXËš[YÙ\•˜[YJÚYÙ]˜Ü˜Y™YÚ\Ý\•ÛÜ™
+NÂˆ[ÙH˜[YHH˜™Ü˜Y™YÚ\Ý\ÛÙXË™›Ø]˜[YJÚYÙ]˜Ü˜Y™YÚ\Ý\•ÛÜ™ˆÚYÙ]˜Ü˜Y™YÚ\Ý\•ÛÜ™JNÂˆHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HÈ˜[YHHÝX›K“˜SŽÈBˆBˆØXÚS[Y\šXÖÚ[™^HH˜[YNÂˆ™]\›ˆÝX›Kš\Ñš[š]J˜[YJH	‰ˆ˜[YHOHŒÂˆBˆYˆ
+‘‘4$´at/´-‹™\]X[ÊÚYÙ]\JJHÂˆØXÚS[Y\šXÖÚ[™^HHÚYÙ]š[œ]˜[YHÈKŒˆŒÂˆ™]\›ˆÚYÙ]š[œ]˜[YNÂˆBˆš\Ú][™ÖÚ[™^HHYNÂˆ\Ý›ÛÛX[ˆ[œ]ÈH™]È\œ˜^S\ÝŠ
+NÂˆ\ÝÝX›Oˆ[R[œ]ÈH™]È\œ˜^S\ÝŠ
+NÂˆ\ÝÝš[™Ïˆ[œ][œÈH™]È\œ˜^S\ÝŠ
+NÂˆYˆ
+ÛÛ›™XÝ[ÛœÓ\ÝOH[
+HÂˆ›Üˆ
+˜™ÛÛ›™XÝ[ÛˆÛÛ›™XÝ[ÛˆˆÛÛ›™XÝ[ÛœÓ\Ý
+HÂˆYˆ
+ÛÛ›™XÝ[Û‹\™Ù]OH[™^
+HÂˆ[œ][œË˜Y
+ÛÛ›™XÝ[Û‹™^˜QšY[Ë›ÜÝš[™Ê\™Ù][ˆ‹ˆŠJNÂˆ›ÛÛX[ˆÛÝ\˜ÙU˜[YHH]˜[X]Q˜™›ØÚÊÚYÙ]Ó\ÝÛÛ›™XÝ[ÛœÓ\ÝÛÛ›™XÝ[Û‹œÛÝ\˜ÙKˆš\Ú][™ËØXÚU˜[YØXÚU˜[Y\ËØXÚS[Y\šXÊNÂˆÝš[™ÈÛÝ\˜ÙU\HHÛÛ›™XÝ[Û‹œÛÝ\˜ÙHH	‰ˆÛÛ›™XÝ[Û‹œÛÝ\˜ÙHÚYÙ]Ó\ÝœÚ^™J
+BˆÈÚYÙ]Ó\Ý™Ù]
+ÛÛ›™XÝ[Û‹œÛÝ\˜ÙJK\HˆˆŽÂˆ[œ]Ë˜Y
+Y™™XÝ]™Q˜™›ÛÛX[’[œ]
+ÛÛ›™XÝ[Û‹ÛÝ\˜ÙU\KÚYÙ]\KÛÝ\˜ÙU˜[YJJNÂˆ[R[œ]Ë˜Y
+]˜[X]Q˜™›ØÚÓ[Y\šXÊÚYÙ]Ó\ÝÛÛ›™XÝ[ÛœÓ\ÝÛÛ›™XÝ[Û‹œÛÝ\˜ÙKˆš\Ú][™ËØXÚU˜[YØXÚU˜[Y\ËØXÚS[Y\šXÊJNÂˆBˆBˆBˆš\Ú][™ÖÚ[™^HH˜[ÙNÂˆš[˜[Ýš[™ÈØ[›ÛšXØ[\HHØ[›ÛšXØ[˜™›ØÚÕ\JÚYÙ]\JNÂ‚ˆYˆ
+\ÐÜ˜Y™YÚ\Ý\”Ú[šÊÚYÙ]\JJHÂˆYˆ
+[œ][œËš\Ñ[\J
+JHØXÚS[Y\šXÖÚ[™^HHÝX›K“˜SŽÂˆ[ÙHYˆ
+\ÐÜ˜Y™YÚ\Ý\›ÛÛX[ŠÚYÙ]\JJHØXÚS[Y\šXÖÚ[™^HH[œ]Ë™Ù]
+
+HÈKŒˆŒÂˆ[ÙHØXÚS[Y\šXÖÚ[™^HH[R[œ]Ë™Ù]
+
+NÂˆ™]\›ˆQÝX›Kš\Ó˜SŠØXÚS[Y\šXÖÚ[™^JH	‰ˆØXÚS[Y\šXÖÚ[™^HOHŒÂˆBˆYˆ
+\ÐÜ˜Y˜[YY˜\šXX›TÚ[šÊÚYÙ]\JJHÂˆYˆ
+[œ][œËš\Ñ[\J
+JHØXÚS[Y\šXÖÚ[™^HHÝX›K“˜SŽÂˆ[ÙHØXÚS[Y\šXÖÚ[™^HH\ÐÜ˜Y˜[YY˜\šXX›TÚ[šÊÚYÙ]\JH	‰ˆÜ˜Y˜[YY˜\šXX›RÚ[™
+ÚYÙ]\JHOHBˆÈ
+[œ]Ë™Ù]
+
+HÈKŒˆŒ
+Hˆ[R[œ]Ë™Ù]
+
+NÂˆYˆ
+ÝX›Kš\Ñš[š]JØXÚS[Y\šXÖÚ[™^JJH˜™Ü˜Y˜[YY˜\šXX›TÝÜ™KÜš]JˆÚYÙ]˜Ü˜Y˜\šXX›S˜[Y\ÜXÙKÜ˜Y˜[YY˜\šXX›S˜[YJÚYÙ]
+KˆÜ˜Y˜[YY˜\šXX›RÚ[™
+ÚYÙ]\JKØXÚS[Y\šXÖÚ[™^JNÂˆ™]\›ˆÝX›Kš\Ñš[š]JØXÚS[Y\šXÖÚ[™^JH	‰ˆØXÚS[Y\šXÖÚ[™^HOHŒÂˆB‚ˆYˆ
+‘‘4(t.ô/´-´-t/t.4-H‹™\]X[ÊÚYÙ]\JJHÂˆÝX›HÝ[HHŒÂˆYˆ
+\Ó˜[YY˜™[œ]
+[œ][œÊJHÂˆÝ[HH˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’SŒH‹Œ
+Bˆ
+È˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’SŒˆ‹KŒ
+NÂˆH[ÙH›Üˆ
+ÝX›Hˆˆ[R[œ]ÊHÝ[H
+ÏHŽÂˆYˆ
+ÝX›Kš\Ó˜SŠÝ[JHÝX›Kš\Ò[™š[š]JÝ[JJHÝ[HHŒÂˆØXÚS[Y\šXÖÚ[™^HHÝ[NÂˆ™]\›ˆÝ[HOHŒÂˆBˆYˆ
+‘‘4$´bôaô.4`´,4/t.4-H‹™\]X[ÊÚYÙ]\JJHÂˆÝX›HY™ŽÂˆYˆ
+\Ó˜[YY˜™[œ]
+[œ][œÊJHÂˆY™ˆH˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’SŒH‹Œ
+BˆH˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’SŒˆ‹KŒ
+NÂˆH[ÙHÂˆY™ˆH[R[œ]Ëš\Ñ[\J
+HÈŒˆ[R[œ]Ë™Ù]
+
+NÂˆ›Üˆ
+[HHNÈH[R[œ]ËœÚ^™J
+NÈJÊÊHY™ˆOH[R[œ]Ë™Ù]
+JNÂˆBˆYˆ
+ÝX›Kš\Ó˜SŠY™ŠHÝX›Kš\Ò[™š[š]JY™ŠJHY™ˆHŒÂˆØXÚS[Y\šXÖÚ[™^HHY™ŽÂˆ™]\›ˆY™ˆOHŒÂˆBˆYˆ
+‘‘4(ô/4/t/´-´-t/t.4-H‹™\]X[ÊÚYÙ]\JJHÂˆÝX›H›ÙÂˆYˆ
+\Ó˜[YY˜™[œ]
+[œ][œÊJHÂˆ›ÙH˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’SŒH‹Œ
+Bˆ
+ˆ˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’SŒˆ‹KŒ
+NÂˆH[ÙHÂˆ›ÙH[R[œ]Ëš\Ñ[\J
+HÈŒˆKŒÂˆ›Üˆ
+ÝX›Hˆˆ[R[œ]ÊH›Ù
+HŽÂˆBˆYˆ
+ÝX›Kš\Ó˜SŠ›Ù
+HÝX›Kš\Ò[™š[š]J›Ù
+JH›ÙHŒÂˆØXÚS[Y\šXÖÚ[™^HH›ÙÂˆ™]\›ˆ›ÙOHŒÂˆBˆYˆ
+‘‘4%4-t.ô-t/t.4-H‹™\]X[ÊÚYÙ]\JJHÂˆÝX›H]ŽÂˆYˆ
+\Ó˜[YY˜™[œ]
+[œ][œÊJHÂˆÝX›H[Y\˜]ÜˆH˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’SŒH‹Œ
+NÂˆÝX›H[›ÛZ[˜]ÜˆH˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’SŒˆ‹KŒ
+NÂˆ]ˆH[›ÛZ[˜]ÜˆOHŒÈ[Y\˜]ÜˆÈ[›ÛZ[˜]ÜˆˆŒÂˆH[ÙHÂˆ]ˆH[R[œ]Ëš\Ñ[\J
+HÈŒˆ[R[œ]Ë™Ù]
+
+NÂˆ›Üˆ
+[HHNÈH[R[œ]ËœÚ^™J
+NÈJÊÊHÂˆÝX›H[›ÛHH[R[œ]Ë™Ù]
+JNÂˆ]ˆH[›ÛHOHŒÈ]ˆÈ[›ÛHˆŒÂˆBˆBˆYˆ
+ÝX›Kš\Ó˜SŠ]ŠHÝX›Kš\Ò[™š[š]J]ŠJH]ˆHŒÂˆØXÚS[Y\šXÖÚ[™^HH]ŽÂˆ™]\›ˆ]ˆOHŒÂˆBˆYˆ
+‘‘P”È‹™\]X[ÊÚYÙ]\JJHÂˆÝX›H˜[HX]˜XœÊ˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’Sˆ‹Œ
+JNÂˆYˆ
+ÝX›Kš\Ó˜SŠ˜[
+HÝX›Kš\Ò[™š[š]J˜[
+JH˜[HŒÂˆØXÚS[Y\šXÖÚ[™^HH˜[Âˆ™]\›ˆ˜[OHŒÂˆBˆYˆ
+‘‘ÕÈ‹™\]X[ÊÚYÙ]\JJHÂˆÝX›H˜\ÙHH˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œËTÑH‹ÚYÙ]˜ÛÛ\\™PJNÂˆÝX›H^H˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË‘V‹KKŒ
+NÂˆÝX›H™\ÈHX]œÝÊ˜\ÙK^
+NÂˆYˆ
+ÝX›Kš\Ó˜SŠ™\ÊHÝX›Kš\Ò[™š[š]J™\ÊJH™\ÈHŒÂˆØXÚS[Y\šXÖÚ[™^HH™\ÎÂˆ™]\›ˆ™\ÈOHŒÂˆBˆYˆ
+‘‘ÔT•‹™\]X[ÊÚYÙ]\JJHÂˆÝX›H˜[H˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’Sˆ‹ÚYÙ]˜ÛÛ\\™PJNÂˆÝX›H™\ÈHX]œÜ\
+X]›X^
+Œ˜[
+JNÂˆYˆ
+ÝX›Kš\Ó˜SŠ™\ÊHÝX›Kš\Ò[™š[š]J™\ÊJH™\ÈHŒÂˆØXÚS[Y\šXÖÚ[™^HH™\ÎÂˆ™]\›ˆ™\ÈOHŒÂˆBˆYˆ
+‘‘ÒSˆ‹™\]X[ÊÚYÙ]\JJHÂˆÝX›H˜[H˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’Sˆ‹ÚYÙ]˜ÛÛ\\™PJNÂˆÝX›H™\ÈHX]œÚ[Š˜[
+NÂˆYˆ
+ÝX›Kš\Ó˜SŠ™\ÊHÝX›Kš\Ò[™š[š]J™\ÊJH™\ÈHŒÂˆØXÚS[Y\šXÖÚ[™^HH™\ÎÂˆ™]\›ˆ™\ÈOHŒÂˆBˆYˆ
+‘‘ÓÔÈ‹™\]X[ÊÚYÙ]\JJHÂˆÝX›H˜[H˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’Sˆ‹ÚYÙ]˜ÛÛ\\™PJNÂˆÝX›H™\ÈHX]˜ÛÜÊ˜[
+NÂˆYˆ
+ÝX›Kš\Ó˜SŠ™\ÊHÝX›Kš\Ò[™š[š]J™\ÊJH™\ÈHŒÂˆØXÚS[Y\šXÖÚ[™^HH™\ÎÂˆ™]\›ˆ™\ÈOHŒÂˆBˆYˆ
+‘‘Sˆ‹™\]X[ÊÚYÙ]\JJHÂˆÝX›H˜[H˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’Sˆ‹ÚYÙ]˜ÛÛ\\™PJNÂˆÝX›H™\ÈHX][Š˜[
+NÂˆYˆ
+ÝX›Kš\Ó˜SŠ™\ÊHÝX›Kš\Ò[™š[š]J™\ÊJH™\ÈHŒÂˆØXÚS[Y\šXÖÚ[™^HH™\ÎÂˆ™]\›ˆ™\ÈOHŒÂˆBˆYˆ
+‘‘›Ø]Ò[‹™\]X[ÊÚYÙ]\JJHÂˆÝX›H˜[H˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’Sˆ‹ÚYÙ]˜ÛÛ\\™PJNÂˆÝX›H™\ÈH
+ÝX›JH
+
+Û™ÊH˜[
+NÂˆØXÚS[Y\šXÖÚ[™^HH™\ÎÂˆ™]\›ˆ™\ÈOHŒÂˆBˆYˆ
+‘‘[Ñ›Ø]‹™\]X[ÊÚYÙ]\JJHÂˆÝX›H˜[H˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’Sˆ‹ÚYÙ]˜ÛÛ\\™PJNÂˆØXÚS[Y\šXÖÚ[™^HH˜[Âˆ™]\›ˆ˜[OHŒÂˆBˆYˆ
+‘‘ÔQ•ÑÈ‹™\]X[ÊÚYÙ]\JH‘‘ÔQ•ÓÔ‘È“ÐU‹™\]X[ÊÚYÙ]\JBˆ‘‘ÔQ•S•È“ÐU‹™\]X[ÊÚYÙ]\JBˆ‘‘ÔQ•“ÐUÈS•‹™\]X[ÊÚYÙ]\JBˆ‘‘ÔQ•ÒSˆ‹™\]X[ÊÚYÙ]\JH‘‘ÔQ•P”È‹™\]X[ÊÚYÙ]\JJHÂˆYˆ
+Z[œ][œË˜ÛÛZ[œÊ’SˆŠJHÈØXÚS[Y\šXÖÚ[™^HHÝX›K“˜SŽÈ™]\›ˆ˜[ÙNÈBˆÝX›H˜[H˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’Sˆ‹LKÝX›K“˜SŠNÂˆÝX›H™\Ý[ÂˆYˆ
+‘‘ÔQ•ÑÈ‹™\]X[ÊÚYÙ]\JJH™\Ý[H˜™Ü˜YÙÑ›Ø]ÌŠ˜[
+NÂˆ[ÙHYˆ
+‘‘ÔQ•ÓÔ‘È“ÐU‹™\]X[ÊÚYÙ]\JJH™\Ý[H˜™Ü˜YÛÜ™Ñ›Ø]
+˜[
+NÂˆ[ÙHYˆ
+‘‘ÔQ•S•È“ÐU‹™\]X[ÊÚYÙ]\JJH™\Ý[H˜™Ü˜Y[Ñ›Ø]
+˜[
+NÂˆ[ÙHYˆ
+‘‘ÔQ•“ÐUÈS•‹™\]X[ÊÚYÙ]\JJH™\Ý[H˜™Ü˜Y›Ø]Ò[
+˜[
+NÂˆ[ÙH™\Ý[H˜™Ü˜Y[˜\žQ›Ø]ÌŠ˜[ˆ‘‘ÔQ•P”È‹™\]X[ÊÚYÙ]\JHÈP”Èˆˆ”ÒSˆŠNÂˆØXÚS[Y\šXÖÚ[™^HH™\Ý[Âˆ™]\›ˆQÝX›Kš\Ó˜SŠ™\Ý[
+H	‰ˆQÝX›Kš\Ò[™š[š]J™\Ý[
+H	‰ˆ™\Ý[OHŒÂˆBˆYˆ
+‘‘ÔQ•ÕÈ‹™\]X[ÊÚYÙ]\JJHÂˆYˆ
+Z[œ][œË˜ÛÛZ[œÊ–ŠHZ[œ][œË˜ÛÛZ[œÊ–HŠJHÂˆØXÚS[Y\šXÖÚ[™^HHÝX›K“˜SŽÂˆ™]\›ˆ˜[ÙNÂˆBˆÝX›H™\Ý[H˜™Ü˜YÝÑ›Ø]ÌŠˆ˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË–‹LKÝX›K“˜SŠKˆ˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË–H‹LKÝX›K“˜SŠJNÂˆØXÚS[Y\šXÖÚ[™^HH™\Ý[Âˆ™]\›ˆQÝX›Kš\Ó˜SŠ™\Ý[
+H	‰ˆQÝX›Kš\Ò[™š[š]J™\Ý[
+H	‰ˆ™\Ý[OHŒÂˆBˆYˆ
+‘‘RS—ÓPV‹™\]X[ÊÚYÙ]\JJHÂˆÝX›HZ[•ŽÂˆYˆ
+\Ó˜[YY˜™[œ]
+[œ][œÊJHÂˆZ[•ˆHX]›Z[Š˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’SŒH‹Œ
+Kˆ˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’SŒˆ‹KŒ
+JNÂˆH[ÙHÂˆZ[•ˆH[R[œ]Ëš\Ñ[\J
+HÈŒˆ[R[œ]Ë™Ù]
+
+NÂˆ›Üˆ
+ÝX›Hˆˆ[R[œ]ÊHZ[•ˆHX]›Z[ŠZ[•‹ŠNÂˆBˆYˆ
+ÝX›Kš\Ó˜SŠZ[•ŠHÝX›Kš\Ò[™š[š]JZ[•ŠJHZ[•ˆHŒÂˆØXÚS[Y\šXÖÚ[™^HHZ[•ŽÂˆ™]\›ˆZ[•ˆOHŒÂˆBˆYˆ
+‘‘ÔQ•ÒS‘ÑHH‹™\]X[ÊÚYÙ]\JJHÂˆ›ÛÛX[ˆÛÛ›™XÝYH˜[ÙNÂˆ›Üˆ
+Ýš[™Èˆ[œ][œÊHYˆ
+’H‹™\]X[ÊØ[›ÛšXØ[˜™[“˜[YJ
+JJHÛÛ›™XÝYHYNÂˆYˆ
+XÛÛ›™XÝY
+H™]\›ˆ˜[ÙNÂˆ[YÙ\ˆ˜[YHH˜™Ü˜Y[YÙ\”Ù[XÝÜ‹™^XÝ[YÙ\Šˆ˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’H‹LKÝX›K“˜SŠJNÂˆYˆ
+˜[YHOH[
+H™]\›ˆ˜[ÙNÂˆ˜™Ü˜YÚ[™ÙU˜[œÚ][ÛœË’[Ý]H™^H˜™Ü˜YÚ[™ÙU˜[œÚ][ÛœË›™^[
+ˆÚYÙ]˜Ü˜YÚ[™ÙR[Ý]K˜[YJNÂˆÚYÙ]˜Ü˜YÚ[™ÙR[Ý]HH™^Âˆ™]\›ˆ™^˜Ú[™ÙYÂˆBˆYˆ
+‘‘ÔQ•ÒS‘ÑHˆ‹™\]X[ÊÚYÙ]\JJHÂˆ›ÛÛX[ˆÛÛ›™XÝYH˜[ÙNÂˆ›Üˆ
+Ýš[™Èˆ[œ][œÊHYˆ
+‘ˆ‹™\]X[ÊØ[›ÛšXØ[˜™[“˜[YJ
+JJHÛÛ›™XÝYHYNÂˆYˆ
+XÛÛ›™XÝY
+H™]\›ˆ˜[ÙNÂˆÝX›H˜[YHH˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË‘ˆ‹LKÝX›K“˜SŠNÂˆYˆ
+QÝX›Kš\Ñš[š]J˜[YJHQ›Ø]š\Ñš[š]J
+›Ø]
+]˜[YJJH™]\›ˆ˜[ÙNÂˆ˜™Ü˜YÚ[™ÙU˜[œÚ][ÛœË‘›Ø]Ý]H™^H˜™Ü˜YÚ[™ÙU˜[œÚ][ÛœË›™^›Ø]
+ˆÚYÙ]˜Ü˜YÚ[™ÙQ›Ø]Ý]K
+›Ø]
+]˜[YJNÂˆÚYÙ]˜Ü˜YÚ[™ÙQ›Ø]Ý]HH™^Âˆ™]\›ˆ™^˜Ú[™ÙYÂˆBˆYˆ
+‘‘ÔQ•V‹™\]X[ÊØ[›ÛšXØ[\JJHÂˆ›ÛÛX[ˆ[˜X›YH˜™›ÛÛX[”[•˜[YJ[œ]Ë[œ][œË‘Sˆ‹LJNÂˆ[YÙ\ˆYH˜™Ü˜Y[YÙ\”Ù[XÝÜ‹™^XÝ[YÙ\Šˆ˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’H‹LKÝX›K“˜SŠJNÂˆ[YÙ\ˆ˜[YHH[˜X›Y	‰ˆYOH[È˜™Ü˜Y™YÚ\Ý\”ÝÜ™Kœ™XY
+Y
+Hˆ[ÂˆYˆ
+˜[YHOH[
+HÂˆØXÚS[Y\šXÖÚ[™^HHÝX›K“˜SŽÂˆ™]\›ˆ˜[ÙNÂˆBˆØXÚS[Y\šXÖÚ[™^HH˜[YNÂˆ™]\›ˆ˜[YHOHÂˆBˆYˆ
+‘‘ÔQ•T”VH‹™\]X[ÊØ[›ÛšXØ[\JJHÂˆ›ÛÛX[ˆ\Ñ[˜X›HH˜[ÙK\Ñ]HH˜[ÙK\ÒYH˜[ÙNÂˆ›Üˆ
+Ýš[™È[ˆˆ[œ][œÊHÂˆÝš[™È˜[YHHØ[›ÛšXØ[˜™[“˜[YJ[ŠNÂˆYˆ
+‘Sˆ‹™\]X[Ê˜[YJJH\Ñ[˜X›HHYNÂˆYˆ
+‘‹™\]X[Ê˜[YJJH\Ñ]HHYNÂˆYˆ
+’Q‹™\]X[Ê˜[YJJH\ÒYHYNÂˆBˆYˆ
+\Ñ[˜X›H	‰ˆ\Ñ]H	‰ˆ\ÒY
+HÂˆ›ÛÛX[ˆ[˜X›YH˜™›ÛÛX[”[•˜[YJ[œ]Ë[œ][œË‘Sˆ‹LJNÂˆYˆ
+Y[˜X›Y
+HÚYÙ]˜Ü˜Y\œ˜^S\Ý[˜X›HH˜[ÙNÂˆ[ÙHYˆ
+˜™Ü˜Y™YÚ\Ý\”ÝÜ™Kœš\Ú[™Ñ[˜X›JÚYÙ]˜Ü˜Y\œ˜^S\Ý[˜X›KYJJHÂˆÚYÙ]˜Ü˜Y\œ˜^S\Ý[˜X›HHYNÂˆ[YÙ\ˆYH˜™Ü˜Y[YÙ\”Ù[XÝÜ‹™^XÝ[YÙ\Šˆ˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’Q‹LKÝX›K“˜SŠJNÂˆ[YÙ\ˆ]HH˜™Ü˜Y[YÙ\”Ù[XÝÜ‹™^XÝ[YÙ\Šˆ˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË‘‹LKÝX›K“˜SŠJNÂˆYˆ
+YOH[	‰ˆ]HOH[
+H˜™Ü˜Y™YÚ\Ý\”ÝÜ™KÜš]JY]JNÂˆBˆBˆ[YÙ\ˆYH\ÒYÈ˜™Ü˜Y[YÙ\”Ù[XÝÜ‹™^XÝ[YÙ\Šˆ˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’Q‹LKÝX›K“˜SŠJHˆ[Âˆ[YÙ\ˆ˜[YHHYOH[È[ˆ˜™Ü˜Y™YÚ\Ý\”ÝÜ™Kœ™XY
+Y
+NÂˆYˆ
+˜[YHOH[
+HÂˆØXÚS[Y\šXÖÚ[™^HHÝX›K“˜SŽÂˆ™]\›ˆ˜[ÙNÂˆBˆØXÚS[Y\šXÖÚ[™^HH˜[YNÂˆ™]\›ˆ˜[YHOHÂˆBˆYˆ
+‘‘ÔQ•SÕ‘H‹™\]X[ÊÚYÙ]\JJHÂˆ›ÛÛX[ˆ\Ñ[˜X›HH˜[ÙK\Ò[œ]H˜[ÙNÂˆ›Üˆ
+Ýš[™È[ˆˆ[œ][œÊHÂˆÝš[™È˜[YHHØ[›ÛšXØ[˜™[“˜[YJ[ŠNÂˆYˆ
+‘Sˆ‹™\]X[Ê˜[YJJH\Ñ[˜X›HHYNÂˆYˆ
+’H‹™\]X[Ê˜[YJJH\Ò[œ]HYNÂˆBˆ[YÙ\ˆÝ]]H˜™Ü˜Y[Ý™K›Ý]]
+\Ñ[˜X›Kˆ˜™›ÛÛX[”[•˜[YJ[œ]Ë[œ][œË‘Sˆ‹LJK\Ò[œ]ˆ˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’H‹LKÝX›K“˜SŠJNÂˆYˆ
+Ý]]OH[
+HÂˆØXÚS[Y\šXÖÚ[™^HHÝX›K“˜SŽÂˆ™]\›ˆ˜[ÙNÂˆBˆØXÚS[Y\šXÖÚ[™^HHÝ]]Âˆ™]\›ˆÝ]]OHÂˆBˆYˆ
+‘‘ÔQ•ÑS‹™\]X[ÊÚYÙ]\JJHÂˆËÈHÛÝ\˜ÙH™]\›œÈ[ˆ[YÙ\ˆÛ›HÚ[ˆ[™YH[œ]È^\Ý‚ˆËÈØ\œžHÜšYÚ[˜[[[ZÙH[˜[Y]H\È˜Sˆ[ˆH˜[œÚY[ˆËÈ[Y\šXÈØXÚKˆÝÛœÝ™X[H˜]]™HÛÛ\\™H™Z™XÝÈ][™RBˆËÈ\Ü^\ÈÑ‘ËˆH˜ZÙH™\›ÈÛÝ[[˜ÛÜœ™XÝHØ]\ÙžHÛÛ\\š\ÛÛœË‚ˆ›ÛÛX[ˆ\Ò[ˆH˜[ÙK\ÒLHH˜[ÙK\ÒLˆH˜[ÙNÂˆ›Üˆ
+Ýš[™È[ˆˆ[œ][œÊHÂˆÝš[™È˜[YHHØ[›ÛšXØ[˜™[“˜[YJ[ŠNÂˆYˆ
+’Sˆ‹™\]X[Ê˜[YJJH\Ò[ˆHYNÂˆYˆ
+’LH‹™\]X[Ê˜[YJJH\ÒLHHYNÂˆYˆ
+’Lˆ‹™\]X[Ê˜[YJJH\ÒLˆHYNÂˆBˆYˆ
+Z\Ò[ˆZ\ÒLHZ\ÒLŠHÂˆØXÚS[Y\šXÖÚ[™^HHÝX›K“˜SŽÂˆ™]\›ˆ˜[ÙNÂˆBˆ›ÛÛX[ˆÙ[XÝÜˆH˜™›ÛÛX[”[•˜[YJ[œ]Ë[œ][œË’Sˆ‹
+NÂˆ[YÙ\ˆLHH˜™Ü˜Y[YÙ\”Ù[XÝÜ‹™^XÝ[YÙ\Šˆ˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’LH‹KÝX›K“˜SŠJNÂˆ[YÙ\ˆLˆH˜™Ü˜Y[YÙ\”Ù[XÝÜ‹™^XÝ[YÙ\Šˆ˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’Lˆ‹‹ÝX›K“˜SŠJNÂˆYˆ
+LHOH[LˆOH[
+HÂˆØXÚS[Y\šXÖÚ[™^HHÝX›K“˜SŽÂˆ™]\›ˆ˜[ÙNÂˆBˆ[˜[YHH˜™Ü˜Y[YÙ\”Ù[XÝÜ‹œÙ[XÝ
+Ù[XÝÜ‹LKLŠNÂˆØXÚS[Y\šXÖÚ[™^HH˜[YNÂˆ™]\›ˆ˜[YHOHÂˆBˆYˆ
+‘‘SÕ‘H‹™\]X[ÊÚYÙ]\JH‘‘ÑS‹™\]X[ÊÚYÙ]\JJHÂˆÝX›H˜[ÂˆYˆ
+\Ó˜[YY˜™[œ]
+[œ][œÊJHÂˆYˆ
+‘‘ÑS‹™\]X[ÊÚYÙ]\JJHÂˆ›ÛÛX[ˆÙ[XÝÜˆH˜™›ÛÛX[”[•˜[YJ[œ]Ë[œ][œË‘È‹LJNÂˆ˜[HÙ[XÝÜˆÈ˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’SŒH‹LKÚYÙ]˜ÛÛ\\™PJBˆˆ˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’SŒ‹LKÚYÙ]˜ÛÛ\\™PJNÂˆH[ÙH˜[H˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’Sˆ‹ÚYÙ]˜ÛÛ\\™PJNÂˆH[ÙH˜[H[R[œ]Ëš\Ñ[\J
+HÈÚYÙ]˜ÛÛ\\™PHˆ[R[œ]Ë™Ù]
+
+NÂˆYˆ
+ÝX›Kš\Ó˜SŠ˜[
+HÝX›Kš\Ò[™š[š]J˜[
+JH˜[HŒÂˆØXÚS[Y\šXÖÚ[™^HH˜[Âˆ™]\›ˆ˜[OHŒÂˆB‚ˆYˆ
+‘‘S‘‹™\]X[ÊØ[›ÛšXØ[\JJHÂˆYˆ
+[œ]Ëš\Ñ[\J
+JH™]\›ˆ˜[ÙNÂˆ›Üˆ
+›ÛÛX[ˆ˜[YHˆ[œ]ÊHYˆ
+]˜[YJH™]\›ˆ˜[ÙNÂˆ™]\›ˆYNÂˆBˆYˆ
+‘‘Ôˆ‹™\]X[ÊØ[›ÛšXØ[\JJHÂˆ›Üˆ
+›ÛÛX[ˆ˜[YHˆ[œ]ÊHYˆ
+˜[YJH™]\›ˆYNÂˆ™]\›ˆ˜[ÙNÂˆBˆYˆ
+‘‘S‘‹™\]X[ÊÚYÙ]\JJHÂˆYˆ
+[œ]Ëš\Ñ[\J
+JH™]\›ˆ˜[ÙNÂˆ›Üˆ
+›ÛÛX[ˆ˜[YHˆ[œ]ÊHYˆ
+]˜[YJH™]\›ˆYNÂˆ™]\›ˆ˜[ÙNÂˆBˆYˆ
+‘‘“Ôˆ‹™\]X[ÊÚYÙ]\JJHÂˆYˆ
+[œ]Ëš\Ñ[\J
+JH™]\›ˆ˜[ÙNÂˆ›Üˆ
+›ÛÛX[ˆ˜[YHˆ[œ]ÊHYˆ
+˜[YJH™]\›ˆ˜[ÙNÂˆ™]\›ˆYNÂˆBˆYˆ
+‘‘Ôˆ‹™\]X[ÊÚYÙ]\JJHÂˆ›ÛÛX[ˆ™\Ý[H˜[ÙNÂˆ›Üˆ
+›ÛÛX[ˆ˜[YHˆ[œ]ÊH™\Ý[H˜[YNÂˆ™]\›ˆ™\Ý[ÂˆBˆYˆ
+‘‘”È‹™\]X[ÊÚYÙ]\JJHÂˆ›ÛÛX[ˆÙ]H˜™›ÛÛX[”[•˜[YJ[œ]Ë[œ][œË”È‹
+NÂˆ›ÛÛX[ˆ™\Ù]H˜™›ÛÛX[”[•˜[YJ[œ]Ë[œ][œË”ˆ‹JNÂˆYˆ
+™\Ù]
+HÚYÙ]œœÔÝ]HH˜[ÙNÂˆ[ÙHYˆ
+Ù]
+HÚYÙ]œœÔÝ]HHYNÂˆ™]\›ˆÚYÙ]œœÔÝ]NÂˆBˆYˆ
+‘‘Ôˆ‹™\]X[ÊÚYÙ]\JJHÂˆ›ÛÛX[ˆÙ]H˜™›ÛÛX[”[•˜[YJ[œ]Ë[œ][œË”È‹
+NÂˆ›ÛÛX[ˆ™\Ù]H˜™›ÛÛX[”[•˜[YJ[œ]Ë[œ][œË”ˆ‹JNÂˆYˆ
+Ù]
+HÚYÙ]œœÔÝ]HHYNÂˆ[ÙHYˆ
+™\Ù]
+HÚYÙ]œœÔÝ]HH˜[ÙNÂˆ™]\›ˆÚYÙ]œœÔÝ]NÂˆBˆYˆ
+‘‘ÔQ•‹™\]X[ÊÚYÙ]\JJHÂˆÝš[™È[ÙHHÚYÙ]™^˜QšY[ÈOH[È•‚ˆˆÚYÙ]™^˜QšY[Ë›ÜÝš[™Ê˜Ü˜YšYÙÙ\“[ÙH‹•ŠNÂˆ›ÛÛX[ˆ[œ]H˜™›ÛÛX[”[•˜[YJ[œ]Ë[œ][œË’Sˆ‹
+NÂˆ˜™Ü˜Y˜]]™U˜[œÚ][ÛœË•šYÙÙ\ˆš[ÜˆH™]È˜™Ü˜Y˜]]™U˜[œÚ][ÛœË•šYÙÙ\ŠˆÚYÙ]˜Ü˜YÙÙÛSÝ]]ÚYÙ]˜Ü˜YÙÙÛS\Ý[œ]
+NÂˆ˜™Ü˜Y˜]]™U˜[œÚ][ÛœË•šYÙÙ\ˆ™^H”ˆ‹™\]X[Ê[ÙJBˆÈ˜™Ü˜Y˜]]™U˜[œÚ][ÛœËœ•šYÊš[Ü‹[œ]
+Bˆˆ‘ˆ‹™\]X[Ê[ÙJHÈ˜™Ü˜Y˜]]™U˜[œÚ][ÛœË™•šYÊš[Ü‹[œ]
+Bˆˆ˜™Ü˜Y˜]]™U˜[œÚ][ÛœËÙÙÛTš\ÙJš[Ü‹[œ]
+NÂˆÚYÙ]˜Ü˜YÙÙÛSÝ]]H™^›Ý]]ÂˆÚYÙ]˜Ü˜YÙÙÛS\Ý[œ]H™^›\Ý[œ]Âˆ™]\›ˆ™^›Ý]]ÂˆBˆYˆ
+‘‘—Õ’QÈ‹™\]X[ÊÚYÙ]\JJHÂˆ›ÛÛX[ˆ[œ]H˜™›ÛÛX[”[•˜[YJ[œ]Ë[œ][œË’Sˆ‹
+NÂˆ›ÛÛX[ˆš\Ú[™ÑYÙHH[œ]	‰ˆ]ÚYÙ]˜ÛÝ[\“\Ý[œ]ÂˆÚYÙ]˜ÛÝ[\“\Ý[œ]H[œ]Âˆ™]\›ˆš\Ú[™ÑYÙNÂˆBˆYˆ
+‘‘—Õ’QÈ‹™\]X[ÊÚYÙ]\JJHÂˆ›ÛÛX[ˆ[œ]H˜™›ÛÛX[”[•˜[YJ[œ]Ë[œ][œË’Sˆ‹
+NÂˆ›ÛÛX[ˆ˜[[™ÑYÙHHZ[œ]	‰ˆÚYÙ]˜ÛÝ[\“\Ý[œ]ÂˆÚYÙ]˜ÛÝ[\“\Ý[œ]H[œ]Âˆ™]\›ˆ˜[[™ÑYÙNÂˆBˆYˆ
+‘‘ÔQ•ÕH‹™\]X[ÊÚYÙ]\JJHÂˆËÈÛÝ\˜ÙKX˜XÚÙYÜ˜Y
+ËKŽˆ[™\[™[š\Ú[™ÈYÙ\Ë™\Ù]\ÝˆËÈ[œÚYÛ™Y
+Ú\ŠHM‹Xš]ÛÝ[[™H•SP‘TˆHÝ]]ˆ\È\ÈBˆËÈÙ\\˜]H™\œÚ[Û™Y›ØÚÎÈYØXÞH“ÓÑÒÖHÕHÝ^\È[˜Ú[™ÙY‚ˆ›ÛÛX[ˆ\ÈH˜™›ÛÛX[”[•˜[YJ[œ]Ë[œ][œËŠÈ‹
+NÂˆ›ÛÛX[ˆZ[\ÈH˜™›ÛÛX[”[•˜[YJ[œ]Ë[œ][œË‹H‹JNÂˆ›ÛÛX[ˆ™\Ù]H˜™›ÛÛX[”[•˜[YJ[œ]Ë[œ][œË”ˆ‹ŠNÂˆ˜™Ü˜Y˜]]™U˜[œÚ][ÛœËÛÝ[\ˆÛÝ[H˜™Ü˜Y˜]]™U˜[œÚ][ÛœË˜ÝJˆ™]È˜™Ü˜Y˜]]™U˜[œÚ][ÛœËÛÝ[\ŠÚYÙ]˜ÛÝ[\•˜[YKˆÚYÙ]˜Ü˜Y\Ý\ËÚYÙ]˜Ü˜Y\ÝZ[\ÊKˆ\ËZ[\Ë™\Ù]
+NÂˆÚYÙ]˜ÛÝ[\•˜[YHHÛÝ[˜[YNÂˆÚYÙ]˜Ü˜Y\Ý\ÈHÛÝ[›\Ý\ÎÂˆÚYÙ]˜Ü˜Y\ÝZ[\ÈHÛÝ[›\ÝZ[\ÎÂˆØXÚS[Y\šXÖÚ[™^HHÛÝ[˜[YNÂˆ™]\›ˆÛÝ[˜[YHOHÂˆBˆYˆ
+‘‘ÕH‹™\]X[ÊÚYÙ]\JJHÂˆ›ÛÛX[ˆÛÝ[[œ]H˜™›ÛÛX[”[•˜[YJ[œ]Ë[œ][œËÕH‹
+NÂˆ›ÛÛX[ˆ™\Ù][œ]H˜™›ÛÛX[”[•˜[YJ[œ]Ë[œ][œË”ˆ‹JNÂˆÚYÙ]˜ÛÝ[\•˜[YHH˜™ÛÝ[\Ý\
+ÚYÙ]˜ÛÝ[\•˜[YKÛÝ[[œ]ˆÚYÙ]˜ÛÝ[\“\Ý[œ]™\Ù][œ]
+NÂˆÚYÙ]˜ÛÝ[\“\Ý[œ]HÛÝ[[œ]Âˆ™]\›ˆÚYÙ]˜ÛÝ[\•˜[YHH˜™ÛÝ[\”™\Ù]
+[R[œ]Ë[œ][œËÚYÙ]˜ÛÝ[\”™\Ù]
+NÂˆBˆYˆ
+‘‘Õ‹™\]X[ÊÚYÙ]\JJHÂˆ›ÛÛX[ˆÛÝ[[œ]H˜™›ÛÛX[”[•˜[YJ[œ]Ë[œ][œËÑ‹
+NÂˆ›ÛÛX[ˆØY[œ]H˜™›ÛÛX[”[•˜[YJ[œ]Ë[œ][œË“‹JNÂˆÚYÙ]˜ÛÝ[\•˜[YHH˜™ÛÝ[ÝÛ”Ý\
+ÚYÙ]˜ÛÝ[\•˜[YKÛÝ[[œ]ˆÚYÙ]˜ÛÝ[\“\Ý[œ]ØY[œ]ˆ˜™ÛÝ[\”™\Ù]
+[R[œ]Ë[œ][œËÚYÙ]˜ÛÝ[\”™\Ù]
+JNÂˆÚYÙ]˜ÛÝ[\“\Ý[œ]HÛÝ[[œ]Âˆ™]\›ˆÚYÙ]˜ÛÝ[\•˜[YHHÂˆBˆYˆ
+‘‘4't%H‹™\]X[ÊØ[›ÛšXØ[\JJBˆ™]\›ˆY˜™›ÛÛX[”[•˜[YJ[œ]Ë[œ][œË’Sˆ‹
+NÂˆYˆ
+‘‘ÔQ•T’UQUPÈS•‹™\]X[ÊÚYÙ]\JBˆ‘‘ÔQ•T’UQUPÈ“ÐU‹™\]X[ÊÚYÙ]\JBˆ‘‘ÔQ•ÓÓTT‘H“ÐU‹™\]X[ÊÚYÙ]\JJHÂˆ›ÛÛX[ˆYÛÛ›™XÝYH˜[ÙKšYÚÛÛ›™XÝYH˜[ÙNÂˆ›Üˆ
+Ýš[™È[ˆˆ[œ][œÊHÂˆÝš[™È›Ü›X[^™YHØ[›ÛšXØ[˜™[“˜[YJ[ŠNÂˆYˆ
+’SŒH‹™\]X[Ê›Ü›X[^™Y
+JHYÛÛ›™XÝYHYNÂˆYˆ
+’SŒˆ‹™\]X[Ê›Ü›X[^™Y
+JHšYÚÛÛ›™XÝYHYNÂˆBˆYˆ
+[YÛÛ›™XÝY\šYÚÛÛ›™XÝY
+H™]\›ˆ˜[ÙNÂˆÝX›HYH˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’SŒH‹ÝX›K“˜SŠNÂˆÝX›HšYÚH˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’SŒˆ‹KÝX›K“˜SŠNÂˆ[XÝ[ÛˆH˜™Ü˜YX]˜XÝ[Û‘›Ü“Ü\˜]ÜŠÚYÙ]˜ÛÛ\\™SÜ\˜]Ü‹ˆ‘‘ÔQ•ÓÓTT‘H“ÐU‹™\]X[ÊÚYÙ]\JJNÂˆYˆ
+‘‘ÔQ•T’UQUPÈS•‹™\]X[ÊÚYÙ]\JJHÂˆ[YÙ\ˆH˜™Ü˜Y[YÙ\”Ù[XÝÜ‹™^XÝ[YÙ\ŠY
+NÂˆ[YÙ\ˆˆH˜™Ü˜Y[YÙ\”Ù[XÝÜ‹™^XÝ[YÙ\ŠšYÚ
+NÂˆYˆ
+OH[ˆOH[
+H™]\›ˆ˜[ÙNÂˆ[™\Ý[H˜™Ü˜YX]š[\š]Y]XÊ‹XÝ[ÛŠNÂˆØXÚS[Y\šXÖÚ[™^HH™\Ý[Âˆ™]\›ˆ™\Ý[OHÂˆBˆ›Ø]H
+›Ø]
+HYˆH
+›Ø]
+HšYÚÂˆYˆ
+‘‘ÔQ•T’UQUPÈ“ÐU‹™\]X[ÊÚYÙ]\JJHÂˆ›Ø]™\Ý[H˜™Ü˜YX]™›Ø]\š]Y]XÊ‹XÝ[ÛŠNÂˆØXÚS[Y\šXÖÚ[™^HH™\Ý[Âˆ™]\›ˆ™\Ý[OHŽÂˆBˆ™]\›ˆ˜™Ü˜YX]˜ÛÛ\\™J‹XÝ[ÛŠNÂˆBˆYˆ
+‘‘ÔQ•ÓÓTT‘H‹™\]X[ÊÚYÙ]\JJHÂˆËÈÛÝ\˜ÙH—ÐÓÓTT‘H\Ù\ÈÚYÛ™Y[YÙ\ˆÜ\˜[™Ë™]™\ˆ›Ø]‚ˆËÈ[˜[Y\ØÛÛ›™XÝYÜˆœ˜XÝ[Û˜[Ü\˜[™ÈØY™[H™]\›ˆ˜[ÙK‚ˆ›ÛÛX[ˆLPÛÛ›™XÝYH˜[ÙKLÛÛ›™XÝYH˜[ÙNÂˆ›Üˆ
+Ýš[™È˜[YHˆ[œ][œÊHÂˆYˆ
+’SŒH‹™\]X[ÊØ[›ÛšXØ[˜™[“˜[YJ˜[YJJJHLPÛÛ›™XÝYHYNÂˆYˆ
+’SŒˆ‹™\]X[ÊØ[›ÛšXØ[˜™[“˜[YJ˜[YJJJHLÛÛ›™XÝYHYNÂˆBˆYˆ
+ZLPÛÛ›™XÝYZLÛÛ›™XÝY
+H™]\›ˆ˜[ÙNÂˆ[YÙ\ˆYH˜™Ü˜Y[YÙ\”Ù[XÝÜ‹™^XÝ[YÙ\Šˆ˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’SŒH‹ÝX›K“˜SŠJNÂˆ[YÙ\ˆšYÚH˜™Ü˜Y[YÙ\”Ù[XÝÜ‹™^XÝ[YÙ\Šˆ˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œË’SŒˆ‹KÝX›K“˜SŠJNÂˆ™]\›ˆYOH[	‰ˆšYÚOH[ˆ	‰ˆ˜™Ü˜Y[YÙ\ÛÛ\\™K˜ÛÛ\\™JˆYšYÚ›Ü›X[^™PÛÛ\\š\ÛÛ“Ü\˜]Ü”Ý]XÊÚYÙ]˜ÛÛ\\™SÜ\˜]ÜŠJNÂˆBˆYˆ
+‘‘4(t`4,4,´/t-t/t.4-H‹™\]X[ÊÚYÙ]\JJHÂˆÝX›HHH˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œËH‹ÚYÙ]˜ÛÛ\\™PJNÂˆÝX›HˆH˜™[Y\šXÔ[•˜[YJ[R[œ]Ë[œ][œËˆ‹KÚYÙ]˜ÛÛ\\™PŠNÂˆÝÚ]Ú
+›Ü›X[^™PÛÛ\\š\ÛÛ“Ü\˜]Ü”Ý]XÊÚYÙ]˜ÛÛ\\™SÜ\˜]ÜŠJHÂˆØ\ÙHŽˆ™]\›ˆHŽÂˆØ\ÙHHŽˆ™]\›ˆHHŽÂˆØ\ÙHHŽˆ™]\›ˆHHŽÂˆØ\ÙHOHŽˆ™]\›ˆÝX›K˜ÛÛ\\™JKŠHOHÂˆØ\ÙHˆOHŽˆ™]\›ˆÝX›K˜ÛÛ\\™JKŠHOHÂˆY˜][ˆ™]\›ˆHˆŽÂˆBˆBˆYˆ
+‘‘ÔQ•“S’È‹™\]X[ÊØ[›ÛšXØ[\JJHÂˆ›ÛÛX[ˆ[œ]H˜™›ÛÛX[”[•˜[YJ[œ]Ë[œ][œË’Sˆ‹
+NÂˆÛ™È™\Ù]\ÈH˜™Û”™\Ù]\Ê[R[œ]Ë[œ][œËÚYÙ][Y\”™\Ù]\ÊNÂˆ˜™Ü˜Y˜]]™U[Y\‹”Ý]Hš[ÜˆHÚYÙ]˜Ü˜Y›[šÔÝ]HOH[ˆÈ˜™Ü˜Y˜]]™U[Y\‹”Ý]Kš[š]X[
+
+HˆÚYÙ]˜Ü˜Y›[šÔÝ]NÂˆ˜™Ü˜Y˜]]™U[Y\‹”Ý]H™^H˜™Ü˜Y˜]]™U[Y\‹œÝ\
+ˆ˜™Ü˜Y˜]]™U[Y\‹“S’Ëš[Ü‹[œ]ˆÞ\Ý[K˜Ý\œ™[[YSZ[\Ê
+K™\Ù]\ÊNÂˆÚYÙ]˜Ü˜Y›[šÔÝ]HH™^Âˆ™]\›ˆ™^›Ý]]ÂˆBˆYˆ
+‘‘ÔQ•SQTˆ‹™\]X[ÊØ[›ÛšXØ[\JJHÂˆ›ÛÛX[ˆ[œ]H˜™›ÛÛX[”[•˜[YJ[œ]Ë[œ][œË’Sˆ‹
+NÂˆÛ™È™\Ù]\ÈH˜™Ü˜Y[Y\”™\Ù]\Ê[R[œ]Ë[œ][œËÚYÙ][Y\”™\Ù]\ËˆÚYÙ]™^˜QšY[Ë›ÜÝš[™Ê˜Ü˜Y[Y\•[š]‹“TÈŠJNÂˆ˜™Ü˜Y˜]]™U[Y\‹”Ý]Hš[ÜˆHÚYÙ]˜Ü˜Y[Y\”Ý]HOH[ˆÈ˜™Ü˜Y˜]]™U[Y\‹”Ý]Kš[š]X[
+
+HˆÚYÙ]˜Ü˜Y[Y\”Ý]NÂˆÝš[™È[ÙHHÚYÙ]™^˜QšY[Ë›ÜÝš[™Ê˜Ü˜Y[Y\“[ÙH‹•ÓˆŠNÂˆ[[ÙPÛÙHH•Ñˆ‹™\]X[Ê[ÙJHÈ˜™Ü˜Y˜]]™U[Y\‹•Ñ‚ˆˆ•‹™\]X[Ê[ÙJHÈ˜™Ü˜Y˜]]™U[Y\‹•ˆˆ“S’È‹™\]X[Ê[ÙJHÈ˜™Ü˜Y˜]]™U[Y\‹“S’Èˆ˜™Ü˜Y˜]]™U[Y\‹•ÓŽÂˆ˜™Ü˜Y˜]]™U[Y\‹”Ý]H™^H˜™Ü˜Y˜]]™U[Y\‹œÝ\
+[ÙPÛÙKš[Ü‹[œ]ˆÞ\Ý[K˜Ý\œ™[[YSZ[\Ê
+K™\Ù]\ÊNÂˆÚYÙ]˜Ü˜Y[Y\”Ý]HH™^Âˆ™]\›ˆ™^›Ý]]ÂˆBˆYˆ
+‘‘Óˆ‹™\]X[ÊØ[›ÛšXØ[\JBˆ‘‘Ñˆ‹™\]X[ÊØ[›ÛšXØ[\JBˆ‘‘‹™\]X[ÊØ[›ÛšXØ[\JJHÂˆ›ÛÛX[ˆ[œ]H˜™›ÛÛX[”[•˜[YJ[œ]Ë[œ][œË’Sˆ‹
+NÂˆÛ™È™\Ù]H˜™Û”™\Ù]\Ê[R[œ]Ë[œ][œËÚYÙ][Y\”™\Ù]\ÊNÂˆÛ™È›ÝÈHÞ\Ý[PÛØÚË™[\ÙY™X[[YJ
+NÂˆ˜™[Y\•˜[œÚ][ÛœË”Ý\Ý\ÂˆYˆ
+‘‘Óˆ‹™\]X[ÊØ[›ÛšXØ[\JJBˆÝ\H˜™[Y\•˜[œÚ][ÛœËÛŠ[œ]›ÝË™\Ù]ÚYÙ][Y\”Ý\Y]
+NÂˆ[ÙHYˆ
+‘‘Ñˆ‹™\]X[ÊØ[›ÛšXØ[\JJBˆÝ\H˜™[Y\•˜[œÚ][ÛœËÙŠ[œ]›ÝË™\Ù]ˆÚYÙ][Y\”Ý\Y]ÚYÙ]˜ÛÝ[\“\Ý[œ]
+NÂˆ[ÙHÝ\H˜™[Y\•˜[œÚ][ÛœË
+[œ]›ÝË™\Ù]ˆÚYÙ][Y\”Ý\Y]ÚYÙ]˜ÛÝ[\“\Ý[œ]
+NÂˆÚYÙ][Y\”Ý\Y]HÝ\œÝ\Y]ÂˆYˆ
+H‘‘Óˆ‹™\]X[ÊØ[›ÛšXØ[\JJBˆÚYÙ]˜ÛÝ[\“\Ý[œ]HÝ\›\Ý[œ]Âˆ™]\›ˆÝ\›Ý]]ÂˆBˆ™]\›ˆ˜[ÙNÂˆB‚ˆš]˜]H›ÚYØÚY[PÜ˜Y™YÚ\Ý\•Üš]JÚYÙ]ÚYÙ][ÚYÙ][™^ÝX›H˜[YJHÂˆYˆ
+[Ü\˜]Ü“[ÙHÚYÙ]OH[ÚYÙ]˜Ü˜Y™YÚ\Ý\•Üš]T[™[™ÂˆQÝX›Kš\Ñš[š]J˜[YJHÚYÙ]˜ÛÛ›™XÝ[Û’[™›ÈOH[
+H™]\›ŽÂˆš[™[™Ô™\]Y\Ý™\]Y\ÝH\œÙPš[™[™ÊÚYÙ][™^ÚYÙ]˜ÛÛ›™XÝ[Û’[™›Ëˆ\ÐÜ˜Y™YÚ\Ý\‘›Ø]
+ÚYÙ]\JHÈˆˆJNÂˆYˆ
+™\]Y\ÝOH[™\]Y\Ý™[˜Ý[ÛÛÙHOHÊH™]\›ŽÂˆÝš[™ÈÙ^HHÚYÙ]˜ÛÛ›™XÝ[Û’[™›È
+ÈŸˆ
+È˜[YH
+ÈŸˆ
+ÈÚYÙ]™^˜QšY[Ë›Ü[
+˜Ü˜Y˜\š]‹
+Bˆ
+ÈŸˆ
+ÈÚYÙ]™^˜QšY[Ë›Ü›ÛÛX[Š˜Ü˜YÝØ\ÛÜ™‹˜[ÙJBˆ
+ÈŸˆ
+ÈÚYÙ]™^˜QšY[Ë›Ü›ÛÛX[Š˜Ü˜YÝØ\ž]H‹˜[ÙJNÂˆYˆ
+Ù^K™\]X[ÊÚYÙ]˜Ü˜Y™YÚ\Ý\“\ÝÜš]RÙ^JBˆ[™›ÚY›ÜË”Þ\Ý[PÛØÚË™[\ÙY™X[[YJ
+HÚYÙ]˜Ü˜Y™YÚ\Ý\”™]žP]
+H™]\›ŽÂˆ›ÛÛX[ˆ›ÛÛH\ÐÜ˜Y™YÚ\Ý\›ÛÛX[ŠÚYÙ]\JK›Ø][™ÈH\ÐÜ˜Y™YÚ\Ý\‘›Ø]
+ÚYÙ]\JNÂˆ[š]HÚYÙ]™^˜QšY[Ë›Ü[
+˜Ü˜Y˜\š]‹
+K[YÙ\ˆHÂˆ[×HÛÜ™ÈH[ÂˆžHÂˆYˆ
+›ÛÛ
+H˜™Ü˜Y™YÚ\Ý\ÛÙXË˜š]Üš]P[™X\ÚÊš]
+NÂˆ[ÙHYˆ
+›Ø][™ÊHÂˆYˆ
+X]˜XœÊ˜[YJHˆ›Ø]“PVÕSQJH™]\›ŽÂˆÛÜ™ÈH˜™Ü˜Y™YÚ\Ý\ÛÙXË™›Ø]™YÚ\Ý\œÊ
+›Ø]
+]˜[YKˆÚYÙ]™^˜QšY[Ë›Ü›ÛÛX[Š˜Ü˜YÝØ\ÛÜ™‹˜[ÙJKˆÚYÙ]™^˜QšY[Ë›Ü›ÛÛX[Š˜Ü˜YÝØ\ž]H‹˜[ÙJJNÂˆH[ÙHÂˆYˆ
+˜[YH˜[YHˆMLÍH˜[YHOHX]œš[
+˜[YJJH™]\›ŽÂˆ[YÙ\ˆH
+[
+]˜[YNÂˆBˆHØ]Ú
+[YØ[\™Ý[Y[^Ù\[Ûˆ[˜[Y
+HÈ™]\›ŽÈBˆš[˜[[×HÜš]UÛÜ™ÈHÛÜ™ÎÂˆš[˜[[Üš]R[H[YÙ\‹[š]H™\]Y\Ý[š]Y™\ÜÈH™\]Y\Ý˜Y™\ÜÎÂˆš[˜[›ÛÛX[ˆÜš]P›ÛÛH›ÛÛÜš]Q›Ø]H›Ø][™ÎÂˆš[˜[Ýš[™ÈÜš]RÙ^HHÙ^NÂˆš[˜[ÚYÙ]\™Ù]ÚYÙ]HÚYÙ]Âˆ\™Ù]ÚYÙ]˜Ü˜Y™YÚ\Ý\•Üš]T[™[™ÈHYNÂˆžHÂˆ[Ù\Ñ^XÝ]Ü‹™^XÝ]J
+
+HOˆÂˆÝš[™È\œ›ÜˆH[ÂˆžHÂˆ[Ù\ÕÜÛY[ÛY[H™]È[Ù\ÕÜÛY[
+™\]Y\ÝšÜÝ™\]Y\ÝœÜ
+NÂˆYˆ
+Üš]P›ÛÛ
+HÛY[Üš]SX\ÚÊ[š]Y™\ÜËˆ˜™Ü˜Y™YÚ\Ý\ÛÙXË˜š]Üš]P[™X\ÚÊš]
+Kˆ˜™Ü˜Y™YÚ\Ý\ÛÙXË˜š]Üš]SÜ“X\ÚÊš]˜[YHOHŒ
+JNÂˆ[ÙHYˆ
+Üš]Q›Ø]
+HÛY[Üš]S][\J[š]Y™\ÜËÜš]UÛÜ™ÊNÂˆ[ÙHÛY[Üš]TÚ[™ÛJ[š]Y™\ÜËÜš]R[
+NÂˆHØ]Ú
+^Ù\[Ûˆ˜Z[\™JHÈ\œ›ÜˆH‘T”Žˆˆ
+È\ØÜšX™S[Ù\Ñ\œ›ÜŠ˜Z[\™JNÈBˆš[˜[Ýš[™ÈÜš]Q\œ›ÜˆH\œ›ÜŽÂˆ[“Û•ZU™XY
+
+
+HOˆÂˆ\™Ù]ÚYÙ]˜Ü˜Y™YÚ\Ý\•Üš]T[™[™ÈH˜[ÙNÂˆ\™Ù]ÚYÙ]˜Ü˜Y™YÚ\Ý\”™]žP]H[™›ÚY›ÜË”Þ\Ý[PÛØÚË™[\ÙY™X[[YJ
+H
+ÈŒÂˆYˆ
+[Ü\˜]Ü“[ÙH\Ñš[š\Ú[™Ê
+H\Ñ\Ý›ÞYY
+
+HÚYÙ][™^HÚYÙ]ËœÚ^™J
+BˆÚYÙ]Ë™Ù]
+ÚYÙ][™^
+HOH\™Ù]ÚYÙ]
+H™]\›ŽÂˆYˆ
+Üš]Q\œ›ÜˆOH[
+HÂˆ\™Ù]ÚYÙ]˜Ü˜Y™YÚ\Ý\“\ÝÜš]RÙ^HHÜš]RÙ^NÂˆ]™U˜[Y\Ëœ]
+ÚYÙ][™^“ÒÈŠNÂˆH[ÙH]™U˜[Y\Ëœ]
+ÚYÙ][™^Üš]Q\œ›ÜŠNÂˆYˆ
+Y]ÜˆOH[
+HY]Ü‹š[˜[Y]J
+NÂˆJNÂˆJNÂˆHØ]Ú
+˜]˜K][˜ÛÛ˜Ý\œ™[”™Z™XÝY^XÝ][Û‘^Ù\[ÛˆYÛ›Ü™Y
+HÂˆ\™Ù]ÚYÙ]˜Ü˜Y™YÚ\Ý\•Üš]T[™[™ÈH˜[ÙNÂˆBˆB‚ˆš]˜]H›ÛÛX[ˆ]˜[X]Q˜™
+[[™^›ÛÛX[–×Hš\Ú][™ÊHÂˆYˆ
+ØÜ™Y[œËš\Ñ[\J
+JH™]\›ˆ˜[ÙNÂˆYˆ
+˜™ØXÚU˜[Y›[™ÝOHÚYÙ]ËœÚ^™J
+H˜™ØXÚU˜[Y\Ë›[™ÝOHÚYÙ]ËœÚ^™J
+JHÂˆ˜™ØXÚU˜[YH™]È›ÛÛX[–ÝÚYÙ]ËœÚ^™J
+WNÂˆ˜™ØXÚU˜[Y\ÈH™]È›ÛÛX[–ÝÚYÙ]ËœÚ^™J
+WNÂˆ˜™ØXÚS[Y\šXÈH™]ÈÝX›VÝÚYÙ]ËœÚ^™J
+WNÂˆBˆ™]\›ˆ]˜[X]Q˜™›ØÚÊÚYÙ]ËØÜ™Y[œË™Ù]
+Ý\œ™[ØÜ™Y[’[™^
+K˜ÛÛ›™XÝ[ÛœË[™^š\Ú][™Ë˜™ØXÚU˜[Y˜™ØXÚU˜[Y\Ë˜™ØXÚS[Y\šXÊNÂˆB‚ˆš]˜]H›ÛÛX[ˆ]˜[X]Q˜™[˜ØXÚY
+[[™^›ÛÛX[–×Hš\Ú][™ÊHÂˆYˆ
+ØÜ™Y[œËš\Ñ[\J
+JH™]\›ˆ˜[ÙNÂˆ™]\›ˆ]˜[X]Q˜™›ØÚÕ[˜ØXÚY
+ÚYÙ]ËØÜ™Y[œË™Ù]
+Ý\œ™[ØÜ™Y[’[™^
+K˜ÛÛ›™XÝ[ÛœË[™^š\Ú][™Ë˜™ØXÚU˜[Y˜™ØXÚU˜[Y\Ë˜™ØXÚS[Y\šXÊNÂˆB‚ˆš]˜]HÝX›H]˜[X]Q˜™[Y\šXÊ[[™^›ÛÛX[–×Hš\Ú][™ÊHÂˆYˆ
+ØÜ™Y[œËš\Ñ[\J
+JH™]\›ˆŒÂˆ™]\›ˆ]˜[X]Q˜™›ØÚÓ[Y\šXÊÚYÙ]ËØÜ™Y[œË™Ù]
+Ý\œ™[ØÜ™Y[’[™^
+K˜ÛÛ›™XÝ[ÛœË[™^š\Ú][™Ë˜™ØXÚU˜[Y˜™ØXÚU˜[Y\Ë˜™ØXÚS[Y\šXÊNÂˆB‚ˆš]˜]H›ÛÛX[ˆ™XXÚ\Ñ˜™
+[Ý\œ™[[ÛØ[›ÛÛX[–×Hš\Ú]Y\Ý˜™ÛÛ›™XÝ[ÛˆÛÛ›™XÝ[ÛœÊHÂˆYˆ
+Ý\œ™[OHÛØ[
+H™]\›ˆYNÂˆYˆ
+Ý\œ™[Ý\œ™[Hš\Ú]Y›[™Ýš\Ú]YØÝ\œ™[JH™]\›ˆ˜[ÙNÂˆš\Ú]YØÝ\œ™[HHYNÂˆ›Üˆ
+˜™ÛÛ›™XÝ[ÛˆÛÛ›™XÝ[ÛˆˆÛÛ›™XÝ[ÛœÊHÂˆYˆ
+ÛÛ›™XÝ[Û‹œÛÝ\˜ÙHOHÝ\œ™[	‰ˆ™XXÚ\Ñ˜™
+ÛÛ›™XÝ[Û‹\™Ù]ÛØ[š\Ú]YÛÛ›™XÝ[ÛœÊJH™]\›ˆYNÂˆBˆ™]\›ˆ˜[ÙNÂˆB‚ˆÊŠˆ^XÚ]YÙHÙ[XÝ[Ûˆ]›ÚYÈ[][™È[œ™[]Y‘ÛÛ›™XÝ[ÛœËˆ
+‹ÂˆÊŠˆÚ\™H\ÝÜžH\ÈÙ\ÜÚ[Û‹[ØØ[[™™]™\ˆÚ[™Ù\È\œÚ\ÝYYØXÞHYÙHY]Y]Kˆ
+‹Âˆš]˜]H›ÚY™\^Q˜™Ú\™QY]
+›ÛÛX[ˆ™YÊHÂˆYˆ
+Ü\˜]Ü“[ÙHÝ\œ™[ØÜ™Y[’[™^Ý\œ™[ØÜ™Y[’[™^HØÜ™Y[œËœÚ^™J
+JH™]\›ŽÂˆØÜ™Y[ˆÝ\œ™[HØÜ™Y[œË™Ù]
+Ý\œ™[ØÜ™Y[’[™^
+NÂˆžHÂˆ›ÛÛX[ˆÚ[™ÙYH™YÂˆÈ˜™Ú\™R\ÝÜžKœ™YÊÝ\œ™[Ý\œ™[˜ÛÛ›™XÝ[ÛœÊBˆˆ˜™Ú\™R\ÝÜžK[™ÊÝ\œ™[Ý\œ™[˜ÛÛ›™XÝ[ÛœÊNÂˆYˆ
+XÚ[™ÙY
+H™]\›ŽÂˆ\œÚ\Ý›Ú™XÝ
+
+NÂˆYˆ
+Y]ÜˆOH[
+HY]Ü‹š[˜[Y]J
+NÂˆØ\Ý›XZÙU^
+\Ë™YÈÈ´(t,´cô-ôc‘4/ô/´,´`´/´`4-t/t,ˆˆ´(t,´cô-ôc‘4/´`´/4-t/t-t/t,‹ˆØ\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆHØ]Ú
+^Ù\[ÛˆJHÂˆ˜™Ú\™R\ÝÜžK˜ÛX\Š
+NÂˆØ\Ý›XZÙU^
+\Ë´'t-H4`ô-4,4.ô/´`tc4,´/´`t`t`´,4/t/´,´.4`´c4`t,´cô-ôc‘‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆBˆB‚ˆÊŠˆ˜[YY“ÓÓ[Û›HÚ\™H[™\œÚ[Û‹Ú][™ËÜ™YÈ[™[[YYX]H\œÚ\Ý[˜ÙKˆ
+‹Âˆš]˜]H›ÚYÚÝÑ˜™[™\œÚ[Û‘X[ÙÊ
+HÈÚÝÑ˜™[™\œÚ[Û‘X[ÙÊLJNÈB‚ˆš]˜]H›ÚYÚÝÑ˜™[™\œÚ[Û‘X[ÙÊ[ÛÝ\˜ÙQš[\ŠHÂˆYˆ
+Ü\˜]Ü“[ÙHØÜ™Y[œËš\Ñ[\J
+HÝ\œ™[ØÜ™Y[’[™^ˆÝ\œ™[ØÜ™Y[’[™^HØÜ™Y[œËœÚ^™J
+JH™]\›ŽÂˆØÜ™Y[ˆØÜ™Y[ˆHØÜ™Y[œË™Ù]
+Ý\œ™[ØÜ™Y[’[™^
+NÂˆš[˜[\Ý˜™ÛÛ›™XÝ[ÛˆÚÚXÙ\ÈH™]È\œ˜^S\ÝŠ
+NÂˆš[˜[\ÝÝš[™ÏˆX™[ÈH™]È\œ˜^S\ÝŠ
+NÂˆ›Üˆ
+˜™ÛÛ›™XÝ[ÛˆYÙHˆØÜ™Y[‹˜ÛÛ›™XÝ[ÛœÊHÂˆYˆ
+YÙHOH[
+ÛÝ\˜ÙQš[\ˆH	‰ˆYÙKœÛÝ\˜ÙHOHÛÝ\˜ÙQš[\ŠJHÛÛ[YNÂˆYˆ
+YÙKœÛÝ\˜ÙHYÙK\™Ù]ˆYÙKœÛÝ\˜ÙHHÚYÙ]ËœÚ^™J
+HYÙK\™Ù]HÚYÙ]ËœÚ^™J
+JHÛÛ[YNÂˆÚYÙ]œ›ÛHHÚYÙ]Ë™Ù]
+YÙKœÛÝ\˜ÙJNÂˆÚYÙ]ÈHÚYÙ]Ë™Ù]
+YÙK\™Ù]
+NÂˆYˆ
+Z\Ò[™\X›Q˜™›ÛÛÚ\™JYÙKœ›ÛK\KË\JJHÛÛ[YNÂˆÚÚXÙ\Ë˜Y
+YÙJNÂˆX™[Ë˜Y
+
+YÙKœÛÝ\˜ÙH
+ÈJH
+ÈŽˆˆ
+ÈYÙK™^˜QšY[Ë›ÜÝš[™ÊœÛÝ\˜ÙT[ˆ‹ˆŠBˆ
+Èˆ8¡¤ˆˆ
+È
+YÙK\™Ù]
+ÈJH
+ÈŽˆˆ
+ÈYÙK™^˜QšY[Ë›ÜÝš[™Ê\™Ù][ˆ‹ˆŠBˆ
+È
+\Ñ˜™›ÛÛX[•Ú\™R[™\Y
+YÙKœ›ÛK\KË\JHÈˆ8§$È4&4't$ˆˆˆˆ4/´,tbôaô/t,4cÈŠJNÂˆBˆYˆ
+ÚÚXÙ\Ëš\Ñ[\J
+JHÂˆØ\Ý›XZÙU^
+\Ë´'t-t`ˆ4`´.4/ô.4-ô.4`4/´,´,4/t/tbôaH“ÓÓt`t,´cô-ô-t.H4-4.ôcÈ4.4/t,´-t`4`t.4.‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆ™]È[\X[ÙËZ[\Š\ÊKœÙ]]J´&4/t,´-t`4`t.4cÈ4`t,´cô-ô.‘
+“ÓÓ
+HŠBˆœÙ]][\ÊX™[ËÐ\œ˜^J™]ÈÝš[™ÖÌJK
+X[ÙË[™^
+HOˆÂˆ˜™ÛÛ›™XÝ[ÛˆYÙHHÚÚXÙ\Ë™Ù]
+[™^
+NÂˆYˆ
+\ØÜ™Y[‹˜ÛÛ›™XÝ[ÛœË˜ÛÛZ[œÊYÙJJH™]\›ŽÂˆÚYÙ]œ›ÛHHÚYÙ]Ë™Ù]
+YÙKœÛÝ\˜ÙJKÈHÚYÙ]Ë™Ù]
+YÙK\™Ù]
+NÂˆYˆ
+Z\Ò[™\X›Q˜™›ÛÛÚ\™JYÙKœ›ÛK\KË\JJH™]\›ŽÂˆØš™XÝ™]š[Ý\ÈHYÙK™^˜QšY[Ë›Ü
+š[™\YŠNÂˆ›ÛÛX[ˆ^\ÝYHYÙK™^˜QšY[Ëš\Êš[™\YŠNÂˆžHÂˆ˜™Ú\™R\ÝÜžKœ™XÛÜ™™Y›Ü™JØÜ™Y[‹ØÜ™Y[‹˜ÛÛ›™XÝ[ÛœÊNÂˆYˆ
+]ÙÙÛQ˜™›ÛÛX[•Ú\™R[™\œÚ[ÛŠYÙKœ›ÛK\KË\JJH™]\›ŽÂˆYˆ
+\\œÚ\Ý›Ú™XÝ›ÝÊYJJHÂˆYˆ
+^\ÝY
+HYÙK™^˜QšY[Ëœ]
+š[™\Y‹™]š[Ý\ÊNÂˆ[ÙHYÙK™^˜QšY[Ëœ™[[Ý™Jš[™\YŠNÂˆ˜™Ú\™R\ÝÜžK˜ÛX\Š
+NÂˆØ\Ý›XZÙU^
+\Ë´&4/t,´-t`4`t.4cÈ4/t-H4`t/´at`4,4/t-t/t,‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆYˆ
+Y]ÜˆOH[
+HY]Ü‹š[˜[Y]J
+NÂˆHØ]Ú
+^Ù\[Ûˆ˜Z[\™JHÂˆžHÂˆYˆ
+^\ÝY
+HYÙK™^˜QšY[Ëœ]
+š[™\Y‹™]š[Ý\ÊNÂˆ[ÙHYÙK™^˜QšY[Ëœ™[[Ý™Jš[™\YŠNÂˆHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HßBˆ˜™Ú\™R\ÝÜžK˜ÛX\Š
+NÂˆØ\Ý›XZÙU^
+\Ë´'´b4.4,t.´,4.4-ô/4-t/t-t/t.4cÈ“ÓÓt`t,´cô-ô.‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆBˆJKœÙ]™YØ]]™P]ÛŠ´'´`´/4-t/t,‹[
+KœÚÝÊ
+NÂˆB‚ˆš]˜]H›ÚYÚÝÑ˜™\ØÛÛ›™XÝX[ÙÊ
+HÈÚÝÑ˜™\ØÛÛ›™XÝX[ÙÊLJNÈB‚ˆš]˜]H›ÚYÚÝÑ˜™\ØÛÛ›™XÝX[ÙÊ[ÛÝ\˜ÙQš[\ŠHÂˆYˆ
+ØÜ™Y[œËš\Ñ[\J
+HÝ\œ™[ØÜ™Y[’[™^Ý\œ™[ØÜ™Y[’[™^HØÜ™Y[œËœÚ^™J
+JH™]\›ŽÂˆØÜ™Y[ˆØÜ™Y[ˆHØÜ™Y[œË™Ù]
+Ý\œ™[ØÜ™Y[’[™^
+NÂˆYˆ
+ØÜ™Y[‹˜ÛÛ›™XÝ[ÛœËš\Ñ[\J
+JHÂˆØ\Ý›XZÙU^
+\Ë´'t-t`ˆ4`t,´cô-ô-t.H‘4-4.ôcÈ4`ô-4,4.ô-t/t.4cÈ‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆš[˜[\Ý˜™ÛÛ›™XÝ[ÛˆØ[™Y]\ÈH™]È\œ˜^S\ÝŠ
+NÂˆš[˜[\ÝÝš[™ÏˆX™[ÈH™]È\œ˜^S\ÝŠ
+NÂˆ›Üˆ
+˜™ÛÛ›™XÝ[ÛˆYÙHˆØÜ™Y[‹˜ÛÛ›™XÝ[ÛœÊHÂˆYˆ
+YÙHOH[
+ÛÝ\˜ÙQš[\ˆH	‰ˆYÙKœÛÝ\˜ÙHOHÛÝ\˜ÙQš[\ŠBˆYÙKœÛÝ\˜ÙHYÙK\™Ù]ˆYÙKœÛÝ\˜ÙHHÚYÙ]ËœÚ^™J
+HYÙK\™Ù]HÚYÙ]ËœÚ^™J
+JHÛÛ[YNÂˆØ[™Y]\Ë˜Y
+YÙJNÂˆ”ÓÓ“Øš™XÝY]Y]HHYÙK™^˜QšY[ÎÂˆÝš[™È[“X™[HY]Y]HOH[	‰ˆY]Y]Kš\ÊœÛÝ\˜ÙT[ˆŠH	‰ˆY]Y]Kš\Ê\™Ù][ˆŠBˆÈˆÈˆ
+ÈY]Y]K›ÜÝš[™ÊœÛÝ\˜ÙT[ˆŠH
+Èˆ8¡¤ˆˆ
+ÈY]Y]K›ÜÝš[™Ê\™Ù][ˆŠH
+È—HˆˆˆŽÂˆX™[Ë˜Y
+
+YÙKœÛÝ\˜ÙH
+ÈJH
+ÈŽˆˆ
+ÈÚYÙ]Ë™Ù]
+YÙKœÛÝ\˜ÙJK^ˆ
+Èˆ8¡¤ˆˆ
+È
+YÙK\™Ù]
+ÈJH
+ÈŽˆˆ
+ÈÚYÙ]Ë™Ù]
+YÙK\™Ù]
+K^
+È[“X™[
+NÂˆBˆYˆ
+Ø[™Y]\Ëš\Ñ[\J
+JHÂˆØ\Ý›XZÙU^
+\Ë´'t-t`ˆ4-4/´`t`´`ô/ô/tbôaH4`t,´cô-ô-t.H‘‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆ™]È[\X[ÙËZ[\Š\ÊKœÙ]]J´(ô-4,4.ô.4`´c4`t,´cô-ôc‘ŠBˆœÙ]][\ÊX™[ËÐ\œ˜^J™]ÈÝš[™ÖÌJK
+X[ÙËÙ[XÝY
+HOˆÂˆ˜™ÛÛ›™XÝ[ÛˆYÙHHØ[™Y]\Ë™Ù]
+Ù[XÝY
+NÂˆYˆ
+\ØÜ™Y[‹˜ÛÛ›™XÝ[ÛœË˜ÛÛZ[œÊYÙJJH™]\›ŽÂˆžHÂˆ˜™Ú\™R\ÝÜžKœ™XÛÜ™™Y›Ü™JØÜ™Y[‹ØÜ™Y[‹˜ÛÛ›™XÝ[ÛœÊNÂˆHØ]Ú
+^Ù\[Ûˆ[˜[Y
+HÂˆØ\Ý›XZÙU^
+\Ë´'t-H4`ô-4,4.ô/´`tc4`t/´at`4,4/t.4`´c4.4`t`´/´`4.4cˆ‘‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆYˆ
+\ØÛÛ›™XÝ˜™YÙJØÜ™Y[‹˜ÛÛ›™XÝ[ÛœËYÙJJHÂˆ\œÚ\Ý›Ú™XÝ
+
+NÂˆYˆ
+Y]ÜˆOH[
+HY]Ü‹š[˜[Y]J
+NÂˆØ\Ý›XZÙU^
+\Ë´(t,´cô-ôc‘4`ô-4,4.ô-t/t,‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆBˆJKœÙ]™YØ]]™P]ÛŠ´'´`´/4-t/t,‹[
+KœÚÝÊ
+NÂˆB‚ˆÊŠˆÙ™™\ˆ[‹\ÜXÚYšXÈÚ\š[™È›Üˆ›ØÚÜÈÚÜÙH[ˆ˜[Y\È\™HÛÛ™š\›YY[ˆ\ÈZ[ˆ
+‹Âˆš]˜]H›ÚYÚÛÜÙQ˜™[œÊ[ÛÝ\˜ÙK[\™Ù]
+HÂˆš[˜[[ØÜ™Y[]Ù[XÝ[ÛˆHÝ\œ™[ØÜ™Y[’[™^Âˆš[˜[ÚYÙ]ÛÝ\˜ÙP]Ù[XÝ[ÛˆHÚYÙ]Ë™Ù]
+ÛÝ\˜ÙJNÂˆš[˜[ÚYÙ]\™Ù]]Ù[XÝ[ÛˆHÚYÙ]Ë™Ù]
+\™Ù]
+NÂˆÝš[™ÈÛÝ\˜ÙU\HHÚYÙ]Ë™Ù]
+ÛÝ\˜ÙJK\NÂˆÝš[™È\™Ù]\HHÚYÙ]Ë™Ù]
+\™Ù]
+K\NÂˆÝš[™Ö×HÛÝ\˜ÙT[œÈHÛ›ÝÛ‘˜™[œÊÛÝ\˜ÙP]Ù[XÝ[Û‹YJNÂˆÝš[™Ö×H\™Ù][œÈHÛ›ÝÛ‘˜™[œÊ\™Ù]]Ù[XÝ[Û‹˜[ÙJNÂˆYˆ
+ÛÝ\˜ÙT[œË›[™ÝOH\™Ù][œË›[™ÝOH
+HÂˆËÈHÛ›ÝÛˆ[œ][Û›HÜˆÝ]][Û›H›ØÚÈ]\Ý›Ý˜[˜XÚÈÈ[ˆ[\YÚ\™K‚ˆYˆ
+XØ[•\ÙU[œ[›™Y˜™˜[˜XÚÊÛÝ\˜ÙP]Ù[XÝ[Û‹\™Ù]]Ù[XÝ[ÛŠJHÂˆØ\Ý›XZÙU^
+\Ë´%4.ôcÈ4ct`´/´,ô/ˆ‘t,t.ô/´.´,4/t-H4/´/ô`4-t-4-t.ô-t/tbÈ4.´/´/t`´,4.´`´bÈ‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆY˜™ÛÛ›™XÝ[ÛŠÛÝ\˜ÙK\™Ù]™]È˜™ÛÛ›™XÝ[ÛŠÛÝ\˜ÙK\™Ù]
+JNÂˆ™]\›ŽÂˆBˆ™]È[\X[ÙËZ[\Š\ÊKœÙ]]J´$´bôat/´-‘ŠBˆœÙ]][\ÊÛÝ\˜ÙT[œË
+X[ÙËÛÝ\˜ÙPÚÚXÙJHOˆÂˆÝš[™ÈÚÜÙ[”ÛÝ\˜ÙT[ˆHÛÝ\˜ÙT[œÖÜÛÝ\˜ÙPÚÚXÙWNÂˆÝš[™Ö×HÛÛ\]X›T[œÈHÛÛ\]X›Q˜™\™Ù][œÊˆÛÝ\˜ÙP]Ù[XÝ[Û‹ÚÜÙ[”ÛÝ\˜ÙT[‹\™Ù]]Ù[XÝ[ÛŠNÂˆYˆ
+ÛÛ\]X›T[œË›[™ÝOH
+HÂˆØ\Ý›XZÙU^
+\Ë´'t-t`ˆ4`t/´,´/4-t`t`´.4/4bôaH4,´at/´-4/´,ˆ‘‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆ™]È[\X[ÙËZ[\Š\ÊKœÙ]]J´$´at/´-‘ŠBˆœÙ]][\ÊÛÛ\]X›T[œË
+\™Ù]X[ÙË\™Ù]ÚÚXÙJHOˆÂˆžHÂˆYˆ
+ØÜ™Y[]Ù[XÝ[ÛˆOHÝ\œ™[ØÜ™Y[’[™^ÛÝ\˜ÙHHÚYÙ]ËœÚ^™J
+Bˆ\™Ù]HÚYÙ]ËœÚ^™J
+BˆÚYÙ]Ë™Ù]
+ÛÝ\˜ÙJHOHÛÝ\˜ÙP]Ù[XÝ[Û‚ˆÚYÙ]Ë™Ù]
+\™Ù]
+HOH\™Ù]]Ù[XÝ[Û‚ˆ\ÛÝ\˜ÙU\K™\]X[ÊÚYÙ]Ë™Ù]
+ÛÝ\˜ÙJK\JBˆ]\™Ù]\K™\]X[ÊÚYÙ]Ë™Ù]
+\™Ù]
+K\JJHÂˆØ\Ý›XZÙU^
+\Ë‘‘t,t.ô/´.´.4.4-ô/4-t/t.4.ô.4`tcˆ4,´bô,t-t`4.4.4aH4-ô,4/t/´,´/ˆ‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆÝš[™ÈÚÜÙ[•\™Ù][ˆHÛÛ\]X›T[œÖÝ\™Ù]ÚÚXÙWNÂˆ˜™ÛÛ›™XÝ[ÛˆYÙHH[›™Y˜™ÛÛ›™XÝ[ÛŠÛÝ\˜ÙKÚÜÙ[”ÛÝ\˜ÙT[‹ˆ\™Ù]ÚÜÙ[•\™Ù][ŠNÂˆÝš[™ÈÛÝ\˜ÙTÚYÛ˜[HÛ›ÝÛ‘˜™[•\JÛÝ\˜ÙP]Ù[XÝ[Û‹ÚÜÙ[”ÛÝ\˜ÙT[‹YJNÂˆÝš[™È\™Ù]ÚYÛ˜[HÛ›ÝÛ‘˜™[•\J\™Ù]]Ù[XÝ[Û‹ÚÜÙ[•\™Ù][‹˜[ÙJNÂˆYˆ
+ÛÝ\˜ÙTÚYÛ˜[OH[	‰ˆ\™Ù]ÚYÛ˜[OH[
+HÂˆYÙK™^˜QšY[Ëœ]
+œÛÝ\˜ÙTÚYÛ˜[\H‹ÛÝ\˜ÙTÚYÛ˜[
+NÂˆYÙK™^˜QšY[Ëœ]
+\™Ù]ÚYÛ˜[\H‹\™Ù]ÚYÛ˜[
+NÂˆBˆ”ÓÓ“Øš™XÝœÛÛˆHÛÛ›™XÝ[Û•ÒœÛÛŠYÙJNÂˆ›ÛÛX[ˆ[˜[ZXÓXXÜ›Ô[œÈH\Ñ[˜[ZXÓXXÜ›ÕÚYÙ]
+ÛÝ\˜ÙP]Ù[XÝ[ÛŠBˆ\Ñ[˜[ZXÓXXÜ›ÕÚYÙ]
+\™Ù]]Ù[XÝ[ÛŠNÂˆ›ÛÛX[ˆÛÛ\]X›HH[˜[ZXÓXXÜ›Ô[œÂˆÈ\ÐÛÛ\]X›RÛ›ÝÛ‘˜™[œÊœÛÛ‹ÛÝ\˜ÙP]Ù[XÝ[Û‹\™Ù]]Ù[XÝ[ÛŠBˆˆ\ÐÛÛ\]X›RÛ›ÝÛ‘˜™[œÊœÛÛ‹ÛÝ\˜ÙU\K\™Ù]\JNÂˆYˆ
+XÛÛ\]X›JHÂˆØ\Ý›XZÙU^
+\Ë´'t-t`t/´,´/4-t`t`´.4/4bô-H4.´/´/t`´,4.´`´bÈ‘‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆY˜™ÛÛ›™XÝ[ÛŠÛÝ\˜ÙK\™Ù]YÙJNÂˆHØ]Ú
+^Ù\[Ûˆ\œ›ÜŠHÂˆØ\Ý›XZÙU^
+\Ë´'´b4.4,t.´,4.´/´/t`´,4.´`´/´,ˆ‘‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆBˆJKœÙ]™YØ]]™P]ÛŠ´'´`´/4-t/t,‹[
+KœÚÝÊ
+NÂˆJBˆœÙ]™YØ]]™P]ÛŠ´'´`´/4-t/t,‹[
+KœÚÝÊ
+NÂˆB‚ˆÊŠˆH˜[YY\›Z[˜[	ÜÈ\ÚXØ[HÜÚ][Ûˆ\ÈÝX›HXÜ›ÜÜÈY]È[™˜YÜËˆ
+‹ÂˆX›XÈÝ]XÈ›Ø]˜™\›Z[˜[œ˜XÝ[ÛŠÝš[™È\KÝš[™È[‹›ÛÛX[ˆÝ]]
+HÂˆÝš[™Ö×H[œÈHÛ›ÝÛ‘˜™[œÊ\KÝ]]
+NÂˆÝš[™È˜[YHHØ[›ÛšXØ[˜™[“˜[YJ[ŠNÂˆÝš[™ÈÚ[™HØ[›ÛšXØ[˜™›ØÚÕ\J\JNÂˆ›Üˆ
+[HHÈH[œË›[™ÝÈJÊÊHÂˆYˆ
+XØ[›ÛšXØ[˜™[“˜[YJ[œÖÚWJK™\]X[Ê˜[YJJHÛÛ[YNÂˆËÈÜšYÚ[˜[—ÐÕH˜]ÎJ
+NˆXY\ˆKÍ[œ]
+ËKˆ]ˆËÈËÎKÎËÎ[™[Y\šXÈH]ËÎˆYØXÞHÕH\È[˜Y™™XÝY‚ˆYˆ
+‘‘ÔQ•ÕH‹™\]X[ÊÚ[™
+Bˆ‘‘ÔQ•ÑS‹™\]X[ÊÚ[™
+JBˆ™]\›ˆÝ]]ÈÙˆÈˆˆ
+™ˆ
+ˆH
+ÈÙŠHÈŽÂˆËÈÜšYÚ[˜[—ÐÓÓTT‘H˜]ÌMJ
+NˆSŒOLKÍSŒLËÍˆËÈ“ÓÓOLKÌŽÈ[›ZÙHHÙ[™\šXÈÛÝ\˜ÙK]Ú]HÜ˜\˜[˜XÚË‚ˆYˆ
+‘‘ÔQ•ÓÓTT‘H‹™\]X[ÊÚ[™
+JBˆ™]\›ˆÝ]]ÈYˆˆ
+HOHÈŒYˆˆÍYŠNÂˆYˆ
+‘‘ÔQ•ÓÓTT‘H“ÐU‹™\]X[ÊÚ[™
+Bˆ‘‘ÔQ•T’UQUPÈS•‹™\]X[ÊÚ[™
+Bˆ‘‘ÔQ•T’UQUPÈ“ÐU‹™\]X[ÊÚ[™
+JBˆ™]\›ˆÝ]]ÈYˆˆ
+HOHÈŒYˆˆÍYŠNÂˆYˆ
+‘‘ÔQ•SÕ‘H‹™\]X[ÊÚ[™
+JBˆ™]\›ˆÝ]]ÈYˆˆ
+HOHÈYˆˆYˆÈ™ŠNÂˆYˆ
+‘‘ÔQ•ÕÈ‹™\]X[ÊÚ[™
+JBˆ™]\›ˆÝ]]ÈYˆˆ
+HOHÈYˆˆYˆÈ™ŠNÂˆYˆ
+\ÐÜ˜Y\]X›\Ú\ŠÚ[™
+JBˆ™]\›ˆHOHÈYˆÈ™ˆˆ™ˆÈÙŽÂˆËÈÜšYÚ[˜[—Ô”È˜]Î
+
+NˆXY\ˆKÌË‹ÔÈ]KÌˆ[™KÍ‹ˆËÈÝ]]H]KÌ‹ˆÚ\™H[˜ÚÜœÈ[™˜]ÛˆÛÛXÝÈ]\ÝX]Ú‚ˆYˆ
+‘‘”È‹™\]X[ÊÚ[™
+JBˆ™]\›ˆÝ]]ÈYˆˆ
+HOHÈYˆˆYˆÈ™ŠNÂˆYˆ
+‘‘ÔQ•T”VH‹™\]X[ÊÚ[™
+JBˆ™]\›ˆÝ]]ÈÙˆÈˆˆ
+™ˆ
+ˆH
+ÈÙŠHÈŽÂˆËÈHÜšYÚ[˜[Ü˜YS‘ÓÔ‹ÖÔˆ[™ÛÛ\\™H˜]Ú[™È\Ù\ÂˆËÈ]X\\‹ZZYÚ[™™YK\]X\\‹ZZYÚ[œ]ÜË‚ˆYˆ
+[Ý]]	‰ˆ[œË›[™ÝOHŠHÂˆYˆ
+‘‘S‘‹™\]X[ÊÚ[™
+H‘‘Ôˆ‹™\]X[ÊÚ[™
+Bˆ‘‘4(t(4$4$´'t%t't&4%H‹™\]X[ÊÚ[™
+JBˆ™]\›ˆHOHÈŒYˆˆÍYŽÂˆËÈHÜšYÚ[˜[Ü]X›ÙHÛÝ\˜ÙH—ÖÔ‹Ñ—ÕSQTˆ\ÈBˆËÈÛ™K]\™XY\‹ˆ]È˜[YYÛÛXÝÈYH]KÌˆ[™KÍ‹‚ˆYˆ
+‘‘Ôˆ‹™\]X[ÊÚ[™
+H‘‘Óˆ‹™\]X[ÊÚ[™
+Bˆ‘‘‹™\]X[ÊÚ[™
+H‘‘Ñˆ‹™\]X[ÊÚ[™
+Bˆ‘‘ÔQ•“S’È‹™\]X[ÊÚ[™
+H‘‘ÔQ•SQTˆ‹™\]X[ÊÚ[™
+Bˆ‘‘ÔQ•V‹™\]X[ÊÚ[™
+JBˆ™]\›ˆHOHÈYˆˆYˆÈ™ŽÂˆBˆ™]\›ˆ
+H
+ÈYŠHÈ
+[œË›[™Ý
+ÈYŠNÂˆBˆËÈYØXÞH[œ[›™YÜ˜\YÙ\È]™H›ÈÛÝ\˜ÙKXÛÛ™š\›YY[ˆÙ[ÛY]žK‚ˆ™]\›ˆYŽÂˆB‚ˆX›XÈÝ]XÈ›Ø]˜™\›Z[˜[œ˜XÝ[ÛŠÚYÙ]ÚYÙ]Ýš[™È[‹›ÛÛX[ˆÝ]]
+HÂˆYˆ
+ÚYÙ]OH[
+H™]\›ˆYŽÂˆYˆ
+H‘‘ÔQ•PPÔ“È‹™\]X[ÊØ[›ÛšXØ[˜™›ØÚÕ\JÚYÙ]\JJJBˆ™]\›ˆ˜™\›Z[˜[œ˜XÝ[ÛŠÚYÙ]\K[‹Ý]]
+NÂˆÝš[™Ö×H[œÈHÛ›ÝÛ‘˜™[œÊÚYÙ]Ý]]
+NÂˆÝš[™È˜[YHHØ[›ÛšXØ[˜™[“˜[YJ[ŠNÂˆ›Üˆ
+[HHÈH[œË›[™ÝÈJÊÊBˆYˆ
+Ø[›ÛšXØ[˜™[“˜[YJ[œÖÚWJK™\]X[Ê˜[YJJBˆ™]\›ˆÝ]][œË›[™ÝHHÈYˆˆ
+H
+ÈYŠHÈ
+[œË›[™Ý
+ÈYŠNÂˆ™]\›ˆYŽÂˆB‚ˆX›XÈÝ]XÈ›ÛÛX[ˆ\Ò[™\X›Q˜™›ÛÛÚ\™J˜™ÛÛ›™XÝ[ÛˆÛÛ›™XÝ[Û‹ˆÝš[™ÈÛÝ\˜ÙU\KÝš[™È\™Ù]\JHÂˆYˆ
+ÛÛ›™XÝ[ÛˆOH[ÛÛ›™XÝ[Û‹™^˜QšY[ÈOH[
+H™]\›ˆ˜[ÙNÂˆ”ÓÓ“Øš™XÝY]HHÛÛ›™XÝ[Û‹™^˜QšY[ÎÂˆ™]\›ˆ“ÓÓ‹™\]X[ÊÛ›ÝÛ‘˜™[•\JÛÝ\˜ÙU\KY]K›ÜÝš[™ÊœÛÝ\˜ÙT[ˆ‹ˆŠKYJJBˆ	‰ˆ“ÓÓ‹™\]X[ÊÛ›ÝÛ‘˜™[•\J\™Ù]\KY]K›ÜÝš[™Ê\™Ù][ˆ‹ˆŠK˜[ÙJJNÂˆB‚ˆX›XÈÝ]XÈ›ÛÛX[ˆ\Ñ˜™›ÛÛX[•Ú\™R[™\Y
+˜™ÛÛ›™XÝ[ÛˆYÙKˆÝš[™ÈÛÝ\˜ÙU\KÝš[™È\™Ù]\JHÂˆ™]\›ˆ\Ò[™\X›Q˜™›ÛÛÚ\™JYÙKÛÝ\˜ÙU\K\™Ù]\JBˆ	‰ˆ›ÛÛX[‹••QK™\]X[ÊYÙK™^˜QšY[Ë›Ü
+š[™\YŠJNÂˆB‚ˆX›XÈÝ]XÈ›ÛÛX[ˆY™™XÝ]™Q˜™›ÛÛX[’[œ]
+˜™ÛÛ›™XÝ[ÛˆÛÛ›™XÝ[Û‹Ýš[™ÈÛÝ\˜ÙU\KˆÝš[™È\™Ù]\K›ÛÛX[ˆÛÝ\˜ÙU˜[YJHÂˆ™]\›ˆ\Ñ˜™›ÛÛX[•Ú\™R[™\Y
+ÛÛ›™XÝ[Û‹ÛÝ\˜ÙU\K\™Ù]\JBˆÈ\ÛÝ\˜ÙU˜[YHˆÛÝ\˜ÙU˜[YNÂˆB‚ˆÊŠˆ]]]HÛ›HHÛ›ÝÛˆ›ÛÛX[ˆYÙNÈÝ\ˆ[\ÜYY]Y]H\È[ÝXÚYˆ
+‹ÂˆX›XÈÝ]XÈ›ÛÛX[ˆÙÙÛQ˜™›ÛÛX[•Ú\™R[™\œÚ[ÛŠ˜™ÛÛ›™XÝ[ÛˆÛÛ›™XÝ[Û‹Ýš[™ÈÛÝ\˜ÙU\KˆÝš[™È\™Ù]\JH›ÝÜÈ^Ù\[ÛˆÂˆYˆ
+Z\Ò[™\X›Q˜™›ÛÛÚ\™JÛÛ›™XÝ[Û‹ÛÝ\˜ÙU\K\™Ù]\JJH™]\›ˆ˜[ÙNÂˆÛÛ›™XÝ[Û‹™^˜QšY[Ëœ]
+š[™\Y‹ˆZ\Ñ˜™›ÛÛX[•Ú\™R[™\Y
+ÛÛ›™XÝ[Û‹ÛÝ\˜ÙU\K\™Ù]\JJNÂˆ™]\›ˆYNÂˆB‚ˆÊŠˆÛØÚÈ\ØÚÈ]\Ý™]™\ˆXZÈœ›ÛHØ]™Yš[\ÈÜˆY][™È[È]™H^XÝ][Û‹ˆ
+‹ÂˆX›XÈÝ]XÈ›ÚY™\Ù]˜™[Y\”[[YJÚYÙ]ÚYÙ]
+HÂˆYˆ
+ÚYÙ]OH[
+H™]\›ŽÂˆÝš[™ÈÚ[™HØ[›ÛšXØ[˜™›ØÚÕ\JÚYÙ]\JNÂˆYˆ
+‘‘ÔQ•“S’È‹™\]X[ÊÚ[™
+JHÂˆÚYÙ]˜Ü˜Y›[šÔÝ]HH˜™Ü˜Y˜]]™U[Y\‹”Ý]Kš[š]X[
+
+NÂˆBˆYˆ
+‘‘ÔQ•SQTˆ‹™\]X[ÊÚ[™
+JHÂˆÚYÙ]˜Ü˜Y[Y\”Ý]HH˜™Ü˜Y˜]]™U[Y\‹”Ý]Kš[š]X[
+
+NÂˆBˆYˆ
+‘‘ÔQ•T”VH‹™\]X[ÊÚ[™
+JHÂˆÚYÙ]˜Ü˜Y\œ˜^S\Ý[˜X›HH˜[ÙNÂˆBˆYˆ
+‘‘Óˆ‹™\]X[ÊÚ[™
+H‘‘‹™\]X[ÊÚ[™
+H‘‘Ñˆ‹™\]X[ÊÚ[™
+JHÂˆÚYÙ][Y\”Ý\Y]HÂˆYˆ
+‘‘‹™\]X[ÊÚ[™
+H‘‘Ñˆ‹™\]X[ÊÚ[™
+JBˆÚYÙ]˜ÛÝ[\“\Ý[œ]H˜[ÙNÂˆBˆB‚ˆÊŠˆÛ›H[œÝ\ÜYYØXÞH›ØÚÈZ\œÈX^H\ÙH[›Ûž[[Ý\ÈÜÚ][Û˜[ÛÛ›™XÝ[ÛœËˆ
+‹ÂˆX›XÈÝ]XÈ›ÛÛX[ˆØ[•\ÙU[œ[›™Y˜™˜[˜XÚÊÝš[™ÈÛÝ\˜ÙU\KÝš[™È\™Ù]\JHÂˆYˆ
+ÛÝ\˜ÙU\HOH[\™Ù]\HOH[ˆ\ÛÝ\˜ÙU\Kš[J
+KÕ\\Ø\ÙJ˜]˜K][“ØØ[K”“ÓÕ
+KœÝ\ÕÚ]
+‘‘ŠBˆ]\™Ù]\Kš[J
+KÕ\\Ø\ÙJ˜]˜K][“ØØ[K”“ÓÕ
+KœÝ\ÕÚ]
+‘‘ŠJH™]\›ˆ˜[ÙNÂˆ™]\›ˆÛ›ÝÛ‘˜™[œÊÛÝ\˜ÙU\KYJK›[™ÝOHˆ	‰ˆÛ›ÝÛ‘˜™[œÊÛÝ\˜ÙU\K˜[ÙJK›[™ÝOHˆ	‰ˆÛ›ÝÛ‘˜™[œÊ\™Ù]\KYJK›[™ÝOHˆ	‰ˆÛ›ÝÛ‘˜™[œÊ\™Ù]\K˜[ÙJK›[™ÝOHÂˆB‚ˆX›XÈÝ]XÈ›ÛÛX[ˆØ[•\ÙU[œ[›™Y˜™˜[˜XÚÊÚYÙ]ÛÝ\˜ÙKÚYÙ]\™Ù]
+HÂˆYˆ
+ÛÝ\˜ÙHOH[\™Ù]OH[ÛÝ\˜ÙK\HOH[\™Ù]\HOH[ˆ\ÛÝ\˜ÙK\Kš[J
+KÕ\\Ø\ÙJ˜]˜K][“ØØ[K”“ÓÕ
+KœÝ\ÕÚ]
+‘‘ŠBˆ]\™Ù]\Kš[J
+KÕ\\Ø\ÙJ˜]˜K][“ØØ[K”“ÓÕ
+KœÝ\ÕÚ]
+‘‘ŠJH™]\›ˆ˜[ÙNÂˆ™]\›ˆÛ›ÝÛ‘˜™[œÊÛÝ\˜ÙKYJK›[™ÝOH	‰ˆÛ›ÝÛ‘˜™[œÊÛÝ\˜ÙK˜[ÙJK›[™ÝOHˆ	‰ˆÛ›ÝÛ‘˜™[œÊ\™Ù]YJK›[™ÝOH	‰ˆÛ›ÝÛ‘˜™[œÊ\™Ù]˜[ÙJK›[™ÝOHÂˆB‚ˆÊŠˆÚÝÈÛ›H\KXÛÛ\]X›H\™Ù]\›Z[˜[ÈY\ˆÚÛÜÚ[™ÈHÛÝ\˜ÙH[‹ˆ
+‹ÂˆX›XÈÝ]XÈÝš[™Ö×HÛÛ\]X›Q˜™\™Ù][œÊÝš[™ÈÛÝ\˜ÙU\KÝš[™ÈÛÝ\˜ÙT[‹Ýš[™È\™Ù]\JHÂˆÝš[™Ö×H\™Ù][œÈHÛ›ÝÛ‘˜™[œÊ\™Ù]\K˜[ÙJNÂˆÝš[™ÈÛÝ\˜ÙTÚYÛ˜[HÛ›ÝÛ‘˜™[•\JÛÝ\˜ÙU\KÛÝ\˜ÙT[‹YJNÂˆYˆ
+Û›ÝÛ‘˜™[œÊÛÝ\˜ÙU\KYJK›[™Ýˆ	‰ˆÛÝ\˜ÙTÚYÛ˜[OH[
+Bˆ™]\›ˆ™]ÈÝš[™ÖÌNÂˆ\ÝÝš[™ÏˆÛÛ\]X›HH™]È\œ˜^S\ÝŠ
+NÂˆ›Üˆ
+Ýš[™È\™Ù][ˆˆ\™Ù][œÊHÂˆÝš[™È\™Ù]ÚYÛ˜[HÛ›ÝÛ‘˜™[•\J\™Ù]\K\™Ù][‹˜[ÙJNÂˆYˆ
+ÛÝ\˜ÙTÚYÛ˜[OH[\™Ù]ÚYÛ˜[OH[ÛÝ\˜ÙTÚYÛ˜[™\]X[Ê\™Ù]ÚYÛ˜[
+JBˆÛÛ\]X›K˜Y
+\™Ù][ŠNÂˆBˆ™]\›ˆÛÛ\]X›KÐ\œ˜^J™]ÈÝš[™ÖÌJNÂˆB‚ˆX›XÈÝ]XÈÝš[™Ö×HÛÛ\]X›Q˜™\™Ù][œÊÚYÙ]ÛÝ\˜ÙKÝš[™ÈÛÝ\˜ÙT[‹ÚYÙ]\™Ù]
+HÂˆÝš[™Ö×H\™Ù][œÈHÛ›ÝÛ‘˜™[œÊ\™Ù]˜[ÙJNÂˆÝš[™ÈÛÝ\˜ÙTÚYÛ˜[HÛ›ÝÛ‘˜™[•\JÛÝ\˜ÙKÛÝ\˜ÙT[‹YJNÂˆYˆ
+Û›ÝÛ‘˜™[œÊÛÝ\˜ÙKYJK›[™Ýˆ	‰ˆÛÝ\˜ÙTÚYÛ˜[OH[
+H™]\›ˆ™]ÈÝš[™ÖÌNÂˆ\ÝÝš[™ÏˆÛÛ\]X›HH™]È\œ˜^S\ÝŠ
+NÂˆ›Üˆ
+Ýš[™È\™Ù][ˆˆ\™Ù][œÊHÂˆÝš[™È\™Ù]ÚYÛ˜[HÛ›ÝÛ‘˜™[•\J\™Ù]\™Ù][‹˜[ÙJNÂˆYˆ
+ÛÝ\˜ÙTÚYÛ˜[OH[\™Ù]ÚYÛ˜[OH[ÛÝ\˜ÙTÚYÛ˜[™\]X[Ê\™Ù]ÚYÛ˜[
+JBˆÛÛ\]X›K˜Y
+\™Ù][ŠNÂˆBˆ™]\›ˆÛÛ\]X›KÐ\œ˜^J™]ÈÝš[™ÖÌJNÂˆB‚ˆX›XÈÝ]XÈÝš[™Ö×HÛ›ÝÛ‘˜™[œÊÝš[™È›ØÚÕ\K›ÛÛX[ˆÝ]]
+HÂˆYˆ
+›ØÚÕ\HOH[
+H™]\›ˆ™]ÈÝš[™ÖÌNÂˆÝš[™ÈÚ[™HØ[›ÛšXØ[˜™›ØÚÕ\J›ØÚÕ\JNÂˆYˆ
+‘‘4$´)t'´%‹™\]X[ÊÚ[™
+JH™]\›ˆÝ]]È™]ÈÝš[™Ö×^È”HŸHˆ™]ÈÝš[™ÖÌNÂˆYˆ
+\ÐÜ˜Y\]ÝXœØÜšX™\ŠÚ[™
+JH™]\›ˆÝ]]È™]ÈÝš[™Ö×^È”HŸHˆ™]ÈÝš[™ÖÌNÂˆYˆ
+\ÐÜ˜Y\]X›\Ú\ŠÚ[™
+JH™]\›ˆÝ]]È™]ÈÝš[™ÖÌHˆ™]ÈÝš[™Ö×^È‘Sˆ‹’SˆŸNÂˆYˆ
+\ÐÜ˜Y™YÚ\Ý\”ÛÝ\˜ÙJÚ[™
+JH™]\›ˆÝ]]È™]ÈÝš[™Ö×^È”HŸHˆ™]ÈÝš[™ÖÌNÂˆYˆ
+\ÐÜ˜Y™YÚ\Ý\”Ú[šÊÚ[™
+JH™]\›ˆÝ]]È™]ÈÝš[™ÖÌHˆ™]ÈÝš[™Ö×^È’SˆŸNÂˆYˆ
+\ÐÜ˜Y˜[YY˜\šXX›TÛÝ\˜ÙJÚ[™
+JH™]\›ˆÝ]]È™]ÈÝš[™Ö×^È”HŸHˆ™]ÈÝš[™ÖÌNÂˆYˆ
+\ÐÜ˜Y˜[YY˜\šXX›TÚ[šÊÚ[™
+JH™]\›ˆÝ]]È™]ÈÝš[™ÖÌHˆ™]ÈÝš[™Ö×^È’SˆŸNÂˆYˆ
+\ÐÜ˜YÝ[œš\ÙTÛÝ\˜ÙJÚ[™
+JH™]\›ˆÝ]]È™]ÈÝš[™Ö×^È”HŸHˆ™]ÈÝš[™ÖÌNÂˆYˆ
+\ÐÜ˜YÙ[\ÛÝ\˜ÙJÚ[™
+JH™]\›ˆÝ]]È™]ÈÝš[™Ö×^È”HŸHˆ™]ÈÝš[™ÖÌNÂˆYˆ
+\ÐÜ˜Y˜™Ù[œÛÜ”ÛÝ\˜ÙJÚ[™
+JH™]\›ˆÝ]]È™]ÈÝš[™Ö×^È”HŸHˆ™]ÈÝš[™ÖÌNÂˆYˆ
+‘‘S‘‹™\]X[ÊÚ[™
+H‘‘Ôˆ‹™\]X[ÊÚ[™
+H‘‘Ôˆ‹™\]X[ÊÚ[™
+Bˆ‘‘S‘‹™\]X[ÊÚ[™
+H‘‘“Ôˆ‹™\]X[ÊÚ[™
+JBˆ™]\›ˆÝ]]È™]ÈÝš[™Ö×^È”HŸHˆ™]ÈÝš[™Ö×^È’SŒH‹’SŒˆŸNÂˆYˆ
+‘‘4't%H‹™\]X[ÊÚ[™
+JH™]\›ˆÝ]]È™]ÈÝš[™Ö×^È”HŸHˆ™]ÈÝš[™Ö×^È’SˆŸNÂˆYˆ
+‘‘”È‹™\]X[ÊÚ[™
+H‘‘Ôˆ‹™\]X[ÊÚ[™
+JH™]\›ˆÝ]]È™]ÈÝš[™Ö×^È”HŸHˆ™]ÈÝš[™Ö×^È”ˆ‹”ÈŸNÂˆYˆ
+‘‘—Õ’QÈ‹™\]X[ÊÚ[™
+H‘‘—Õ’QÈ‹™\]X[ÊÚ[™
+Bˆ‘‘ÔQ•‹™\]X[ÊÚ[™
+JBˆ™]\›ˆÝ]]È™]ÈÝš[™Ö×^È”HŸHˆ™]ÈÝš[™Ö×^È’SˆŸNÂˆYˆ
+‘‘ÔQ•ÕH‹™\]X[ÊÚ[™
+JBˆ™]\›ˆÝ]]È™]ÈÝš[™Ö×^È”HŸHˆ™]ÈÝš[™Ö×^ÈŠÈ‹‹H‹”ˆŸNÂˆYˆ
+‘‘ÕH‹™\]X[ÊÚ[™
+JH™]\›ˆÝ]]È™]ÈÝš[™Ö×^È”HŸHˆ™]ÈÝš[™Ö×^ÈÕH‹”ˆ‹”ˆŸNÂˆYˆ
+‘‘Õ‹™\]X[ÊÚ[™
+JH™]\›ˆÝ]]È™]ÈÝš[™Ö×^È”HŸHˆ™]ÈÝš[™Ö×^ÈÑ‹“‹”ˆŸNÂˆYˆ
+‘‘4(t&ô'´%´%t't&4%H‹™\]X[ÊÚ[™
+H‘‘4$´*ô)ô&4(´$4't&4%H‹™\]X[ÊÚ[™
+Bˆ‘‘4(ô'4't'´%´%t't&4%H‹™\]X[ÊÚ[™
+H‘‘4%4%t&ô%t't&4%H‹™\]X[ÊÚ[™
+Bˆ‘‘RS—ÓPV‹™\]X[ÊÚ[™
+JBˆ™]\›ˆÝ]]È™]ÈÝš[™Ö×^È“ÕUŸHˆ™]ÈÝš[™Ö×^È’SŒH‹’SŒˆŸNÂˆYˆ
+‘‘ÔQ•ÓÓTT‘H‹™\]X[ÊÚ[™
+JBˆ™]\›ˆÝ]]È™]ÈÝš[™Ö×^È”HŸHˆ™]ÈÝš[™Ö×^È’SŒH‹’SŒˆŸNÂˆYˆ
+‘‘ÔQ•ÓÓTT‘H“ÐU‹™\]X[ÊÚ[™
+Bˆ‘‘ÔQ•T’UQUPÈS•‹™\]X[ÊÚ[™
+Bˆ‘‘ÔQ•T’UQUPÈ“ÐU‹™\]X[ÊÚ[™
+JBˆ™]\›ˆÝ]]È™]ÈÝš[™Ö×^È”HŸHˆ™]ÈÝš[™Ö×^È’SŒH‹’SŒˆŸNÂˆYˆ
+‘‘4(t(4$4$´'t%t't&4%H‹™\]X[ÊÚ[™
+JBˆ™]\›ˆÝ]]È™]ÈÝš[™Ö×^È”HŸHˆ™]ÈÝš[™Ö×^ÈH‹ˆŸNÂˆYˆ
+‘‘SÕ‘H‹™\]X[ÊÚ[™
+JBˆ™]\›ˆÝ]]È™]ÈÝš[™Ö×^È“ÕUŸHˆ™]ÈÝš[™Ö×^È’SˆŸNÂˆYˆ
+‘‘ÔQ•ÒS‘ÑHH‹™\]X[ÊÚ[™
+JBˆ™]\›ˆÝ]]È™]ÈÝš[™Ö×^È”HŸHˆ™]ÈÝš[™Ö×^È’HŸNÂˆYˆ
+‘‘ÔQ•ÒS‘ÑHˆ‹™\]X[ÊÚ[™
+JBˆ™]\›ˆÝ]]È™]ÈÝš[™Ö×^È”HŸHˆ™]ÈÝš[™Ö×^È‘ˆŸNÂˆYˆ
+‘‘ÔQ•SÕ‘H‹™\]X[ÊÚ[™
+JBˆ™]\›ˆÝ]]È™]ÈÝš[™Ö×^È”HŸHˆ™]ÈÝš[™Ö×^È‘Sˆ‹’HŸNÂˆYˆ
+‘‘ÔQ•V‹™\]X[ÊÚ[™
+JBˆ™]\›ˆÝ]]È™]ÈÝš[™Ö×^È”HŸHˆ™]ÈÝš[™Ö×^È‘Sˆ‹’HŸNÂˆYˆ
+‘‘ÔQ•T”VH‹™\]X[ÊÚ[™
+JBˆ™]\›ˆÝ]]È™]ÈÝš[™Ö×^È”HŸHˆ™]ÈÝš[™Ö×^È‘Sˆ‹‘‹’QŸNÂˆYˆ
+‘‘ÔQ•ÑS‹™\]X[ÊÚ[™
+JBˆ™]\›ˆÝ]]È™]ÈÝš[™Ö×^È”HŸHˆ™]ÈÝš[™Ö×^È’Sˆ‹’LH‹’LˆŸNÂˆYˆ
+‘‘ÑS‹™\]X[ÊÚ[™
+JBˆ™]\›ˆÝ]]È™]ÈÝš[™Ö×^È“ÕUŸHˆ™]ÈÝš[™Ö×^È‘È‹’SŒ‹’SŒHŸNÂˆYˆ
+‘‘ÕÈ‹™\]X[ÊÚ[™
+JH™]\›ˆÝ]]È™]ÈÝš[™Ö×^È“ÕUŸHˆ™]ÈÝš[™Ö×^ÈTÑH‹‘VŸNÂˆYˆ
+‘‘ÒSˆ‹™\]X[ÊÚ[™
+H‘‘P”È‹™\]X[ÊÚ[™
+Bˆ‘‘ÓÔÈ‹™\]X[ÊÚ[™
+H‘‘Sˆ‹™\]X[ÊÚ[™
+H‘‘ÔT•‹™\]X[ÊÚ[™
+Bˆ‘‘“ÐUÒS•‹™\]X[ÊÚ[™
+H‘‘S•Ñ“ÐU‹™\]X[ÊÚ[™
+JBˆ™]\›ˆÝ]]È™]ÈÝš[™Ö×^È“ÕUŸHˆ™]ÈÝš[™Ö×^È’SˆŸNÂˆYˆ
+‘‘ÔQ•ÑÈ‹™\]X[ÊÚ[™
+H‘‘ÔQ•ÓÔ‘È“ÐU‹™\]X[ÊÚ[™
+Bˆ‘‘ÔQ•ÒSˆ‹™\]X[ÊÚ[™
+H‘‘ÔQ•P”È‹™\]X[ÊÚ[™
+Bˆ‘‘ÔQ•S•È“ÐU‹™\]X[ÊÚ[™
+H‘‘ÔQ•“ÐUÈS•‹™\]X[ÊÚ[™
+JBˆ™]\›ˆÝ]]È™]ÈÝš[™Ö×^È“ÕUŸHˆ™]ÈÝš[™Ö×^È’SˆŸNÂˆYˆ
+‘‘ÔQ•ÕÈ‹™\]X[ÊÚ[™
+JBˆ™]\›ˆÝ]]È™]ÈÝš[™Ö×^È”HŸHˆ™]ÈÝš[™Ö×^È–‹–HŸNÂˆYˆ
+‘‘Óˆ‹™\]X[ÊÚ[™
+H‘‘Ñˆ‹™\]X[ÊÚ[™
+Bˆ‘‘‹™\]X[ÊÚ[™
+H‘‘ÔQ•“S’È‹™\]X[ÊÚ[™
+Bˆ‘‘ÔQ•SQTˆ‹™\]X[ÊÚ[™
+JBˆ™]\›ˆÝ]]È™]ÈÝš[™Ö×^È”HŸHˆ™]ÈÝš[™Ö×^È’Sˆ‹”ŸNÂˆ™]\›ˆ™]ÈÝš[™ÖÌNÂˆB‚ˆš]˜]H›ÚYY˜™ÛÛ›™XÝ[ÛŠ[ÛÝ\˜ÙK[\™Ù]˜™ÛÛ›™XÝ[ÛˆYÙJHÂˆYˆ
+YÙHOH[YÙKœÛÝ\˜ÙHOHÛÝ\˜ÙHYÙK\™Ù]OH\™Ù]ˆÝ\œ™[ØÜ™Y[’[™^Ý\œ™[ØÜ™Y[’[™^HØÜ™Y[œËœÚ^™J
+BˆÛÝ\˜ÙH\™Ù]ÛÝ\˜ÙHHÚYÙ]ËœÚ^™J
+H\™Ù]HÚYÙ]ËœÚ^™J
+BˆÛÝ\˜ÙHOH\™Ù]Z\Ñ˜™
+ÚYÙ]Ë™Ù]
+ÛÝ\˜ÙJJHZ\Ñ˜™
+ÚYÙ]Ë™Ù]
+\™Ù]
+JJH™]\›ŽÂˆØÜ™Y[ˆØÜ™Y[ˆHØÜ™Y[œË™Ù]
+Ý\œ™[ØÜ™Y[’[™^
+NÂˆžHÂˆYˆ
+Z\ÐÛÛ\]X›RÛ›ÝÛ‘˜™[œÊÛÛ›™XÝ[Û•ÒœÛÛŠYÙJKÚYÙ]Ë™Ù]
+ÛÝ\˜ÙJK\KˆÚYÙ]Ë™Ù]
+\™Ù]
+K\JJHÂˆØ\Ý›XZÙU^
+\Ë´'t-t`t/´,´/4-t`t`´.4/4bô-H4.´/´/t`´,4.´`´bÈ‘‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆHØ]Ú
+^Ù\[Ûˆ[˜[Y
+HÂˆØ\Ý›XZÙU^
+\Ë´'t-t.´/´`4`4-t.´`´/t,4cÈ4`t,´cô-ôc‘‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆYˆ
+™XXÚ\Ñ˜™
+\™Ù]ÛÝ\˜ÙK™]È›ÛÛX[–ÝÚYÙ]ËœÚ^™J
+WKØÜ™Y[‹˜ÛÛ›™XÝ[ÛœÊJHÂˆØ\Ý›XZÙU^
+\Ë´(t,´cô-ôc4/´`´/4-t/t-t/t,ˆ4/´/t,4`t/´-ô-4,4dt`ˆ4a´.4.´.È4,ˆ‘‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆ›Üˆ
+˜™ÛÛ›™XÝ[Ûˆ^\Ý[™ÈˆØÜ™Y[‹˜ÛÛ›™XÝ[ÛœÊHÂˆÝš[™È™]Õ\™Ù][ˆHØ[›ÛšXØ[˜™[“˜[YJYÙK™^˜QšY[Ë›ÜÝš[™Ê\™Ù][ˆ‹ˆŠJNÂˆYˆ
+[™]Õ\™Ù][‹š\Ñ[\J
+H	‰ˆ^\Ý[™Ë\™Ù]OH\™Ù]ˆ	‰ˆ™]Õ\™Ù][‹™\]X[ÊØ[›ÛšXØ[˜™[“˜[YJ^\Ý[™Ë™^˜QšY[Ë›ÜÝš[™Ê\™Ù][ˆ‹ˆŠJJJHÂˆØ\Ý›XZÙU^
+\Ë´$´at/´-‘4`ô-´-H4-ô,4/tcô`ˆ4-4`4`ô,ô.4/4/ô`4/´,´/´-4/´/‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆYˆ
+\XØ]Q˜™[™Ú[
+^\Ý[™ËYÙJJHÂˆØ\Ý›XZÙU^
+\Ë´(´,4.´,4cÈ4`t,´cô-ôc4`ô-´-H4`t`ôbt-t`t`´,´`ô-t`ˆ‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆBˆžHÂˆ˜™Ú\™R\ÝÜžKœ™XÛÜ™™Y›Ü™JØÜ™Y[‹ØÜ™Y[‹˜ÛÛ›™XÝ[ÛœÊNÂˆHØ]Ú
+^Ù\[Ûˆ[˜[Y
+HÂˆØ\Ý›XZÙU^
+\Ë´'t-H4`ô-4,4.ô/´`tc4`t/´at`4,4/t.4`´c4.4`t`´/´`4.4cˆ‘‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆØÜ™Y[‹˜ÛÛ›™XÝ[ÛœË˜Y
+YÙJNÂˆ\œÚ\Ý›Ú™XÝ
+
+NÂˆYˆ
+Y]ÜˆOH[
+HY]Ü‹š[˜[Y]J
+NÂˆØ\Ý›XZÙU^
+\Ë´(t,´cô-ôc‘4-4/´,t,4,´.ô-t/t,‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆB‚ˆš]˜]H›ÚYÛÛ›™XÝ˜™ÚYÙ]Ê[ÛÝ\˜ÙK[\™Ù]
+HÂˆYˆ
+ÛÝ\˜ÙH\™Ù]ÛÝ\˜ÙHHÚYÙ]ËœÚ^™J
+H\™Ù]HÚYÙ]ËœÚ^™J
+HÛÝ\˜ÙHOH\™Ù]
+HÂˆØ\Ý›XZÙU^
+\Ë´$´bô,t-t`4.4-4,´,4`4,4-ô/tbôaH‘t,t.ô/´.´,‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆYˆ
+Z\Ñ˜™
+ÚYÙ]Ë™Ù]
+ÛÝ\˜ÙJJHZ\Ñ˜™
+ÚYÙ]Ë™Ù]
+\™Ù]
+JJHÂˆØ\Ý›XZÙU^
+\Ë´(t,´cô-ô.4/4/´-´/t/ˆ4`t/´-ô-4,4,´,4`´c4`´/´.ôc4.´/ˆ4/4-t-´-4`È‘t,t.ô/´.´,4/4.‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆØÜ™Y[ˆØÜ™Y[ˆHØÜ™Y[œË™Ù]
+Ý\œ™[ØÜ™Y[’[™^
+NÂˆYˆ
+™XXÚ\Ñ˜™
+\™Ù]ÛÝ\˜ÙK™]È›ÛÛX[–ÝÚYÙ]ËœÚ^™J
+WKØÜ™Y[‹˜ÛÛ›™XÝ[ÛœÊJHÂˆØ\Ý›XZÙU^
+\Ë´(t,´cô-ôc4/´`´/4-t/t-t/t,ˆ4/´/t,4`t/´-ô-4,4dt`ˆ4a´.4.´.È4,ˆ‘‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆÚÛÜÙQ˜™[œÊÛÝ\˜ÙK\™Ù]
+NÂˆB‚ˆX›XÈÝ]XÈÛ\ÜÈÚYÙ]ÂˆX›XÈÝš[™È\NÂˆX›XÈÝš[™È^ÂˆX›XÈÝš[™ÈÛÛ›™XÝ[Û’[™›ÈHˆŽÂˆX›XÈ›ÛÛX[ˆ[œ]˜[YHH˜[ÙNÂˆX›XÈ›ÛÛX[ˆ]Û”Ý]HH˜[ÙNÂˆX›XÈ›ÛÛX[ˆœÔÝ]HH˜[ÙNÂˆX›XÈ[ÛÝ[\”™\Ù]HNÂˆX›XÈ[ÛÝ[\•˜[YHHÂˆX›XÈ›ÛÛX[ˆÛÝ[\“\Ý[œ]H˜[ÙNÂˆËÈ˜]]™HÜ˜YYÙH›YÜÈ\™H˜[œÚY[Ü\˜]Üˆ[[YHÛ›NÂˆËÈZ\ˆXœÙ[˜ÙHœ›ÛH”ÓÓˆ›ÝXÝÈÛ›Ú™XÝØÚ[X\ÈÛˆØ]™KØÛÜK‚ˆ›ÛÛX[ˆÜ˜Y\Ý\ÈH˜[ÙNÂˆ›ÛÛX[ˆÜ˜Y\ÝZ[\ÈH˜[ÙNÂˆËÈÜšYÚ[˜[—Õ’QÑÑTˆ[ÙH™\Ù]ÈÈOY˜[ÙHÛˆHœ™\Ú[œÝ[˜ÙK‚ˆËÈÈ›ÝÙ\šX[^™H[[YH]Ú\È[ÈYØXÞH›Ú™XÝY]Y]K‚ˆ›ÛÛX[ˆÜ˜YÙÙÛSÝ]]H˜[ÙNÂˆ›ÛÛX[ˆÜ˜YÙÙÛS\Ý[œ]H˜[ÙNÂˆËÈÚ[™ÙH]XÝ[Ûˆ[[YH\È˜[œÚY[ÈÛÝ\˜ÙHÝ\È]ÌŒ‹‚ˆËÈØ]™YÛ›Ú™XÝÝ]H[™™[™ÜˆY]Y]H™[XZ[ˆ[ÝXÚY‚ˆ˜™Ü˜YÚ[™ÙU˜[œÚ][ÛœË’[Ý]HÜ˜YÚ[™ÙR[Ý]HH˜™Ü˜YÚ[™ÙU˜[œÚ][ÛœË’[Ý]Kš[š]X[
+
+NÂˆ˜™Ü˜YÚ[™ÙU˜[œÚ][ÛœË‘›Ø]Ý]HÜ˜YÚ[™ÙQ›Ø]Ý]HH˜™Ü˜YÚ[™ÙU˜[œÚ][ÛœË‘›Ø]Ý]Kš[š]X[
+
+NÂˆËÈ›[šÈ[[YH\ØÚ\È›ÝØ]™YÈH™]ÛHÜ[™Y›Ú™XÝÝ\ÈYK‚ˆ˜™Ü˜Y˜]]™U[Y\‹”Ý]HÜ˜Y›[šÔÝ]HH˜™Ü˜Y˜]]™U[Y\‹”Ý]Kš[š]X[
+
+NÂˆ˜™Ü˜Y˜]]™U[Y\‹”Ý]HÜ˜Y[Y\”Ý]HH˜™Ü˜Y˜]]™U[Y\‹”Ý]Kš[š]X[
+
+NÂˆ›ÛÛX[ˆÜ˜Y\œ˜^S\Ý[˜X›HH˜[ÙNÂˆ˜[œÚY[ÝX›HÜ˜YÙ[œÛÜ•˜[YHHÝX›K“˜SŽÂˆ˜[œÚY[ÝX›HÜ˜Y\]˜[YNÂˆ˜[œÚY[›ÛÛX[ˆÜ˜Y\]\Ý[˜X›NÂˆ˜[œÚY[ÝX›V×HÜ˜YÜšY[][Û•˜[Y\ÈH™]ÈÝX›V×^ÑÝX›K“˜S‹ÝX›K“˜S‹ÝX›K“˜SŸNÂˆ˜[œÚY[›ÛÛX[ˆÜ˜YÙ[œÛÜ•˜[YÂˆ˜[œÚY[›ÛÛX[ˆÜ˜YÙ[\[™[™ÎÂˆ˜[œÚY[Û™ÈÜ˜YÙ[\™^Û]Âˆ˜[œÚY[[Ü˜Y™YÚ\Ý\•ÛÜ™Ü˜Y™YÚ\Ý\•ÛÜ™NÂˆ˜[œÚY[›ÛÛX[ˆÜ˜Y™YÚ\Ý\•˜[YÂˆ˜[œÚY[›ÛÛX[ˆÜ˜Y™YÚ\Ý\•Üš]T[™[™ÎÂˆ˜[œÚY[Ýš[™ÈÜ˜Y™YÚ\Ý\“\ÝÜš]RÙ^HHˆŽÂˆ˜[œÚY[Û™ÈÜ˜Y™YÚ\Ý\”™]žP]ÂˆX›XÈ[[Y\”™\Ù]\ÈHLÂˆX›XÈÛ™È[Y\”Ý\Y]HÂˆX›XÈÝX›HÛÛ\\™PHHŒÛÛ\\™PˆHŒÂˆX›XÈÝš[™ÈÛÛ\\™SÜ\˜]ÜˆHˆŽÂˆX›XÈÝX›HZ[•˜[YHHŒX^˜[YHHLŒÂˆX›XÈ[˜XÚÙÜ›Ý[™ÛÛÜˆHÂˆX›XÈ[^ÛÛÜˆHÛÛÜ‹œ™ØŠÌKKMJNÂˆX›XÈ[^Ú^™TÜHMÂˆX›XÈ›ÛÛX[ˆš\ÚX›HHYNÂˆX›XÈ›ÛÛX[ˆÚÝÑœ˜[YHHYNÂˆX›XÈ›ÛÛX[ˆ]]Ô™\Ú^™U^H˜[ÙNÂˆX›XÈÝš[™Ö×H[•^Ý]\ÈH™]ÈÝš[™ÖÌM—NÂˆX›XÈ[×H[•^ÛÛÜœÈH™]È[ÌM—NÂˆX›XÈÝš[™Ö×Hš]\ÝX™[ÈH™]ÈÝš[™ÖÌM—NÂˆX›XÈÝš[™Ö×H›ÚXÙSY\ÜØYÙ\ÈH™]ÈÝš[™ÖÌM—NÂˆX›XÈÝš[™Ö×H[XYÙT]Ý]\ÈH™]ÈÝš[™ÖÌM—NÂˆX›XÈÝX›HÛÝ[™™\ÚÛHKŒÂˆX›XÈ›ÛÛX[ˆÛÝ[™XÝ]™HH˜[ÙNÂˆX›XÈÝš[™ÈÛÝ[™š[T]H´$4.ô,4`4/ŽÂˆX›XÈ[\™Ù]ØÜ™Y[’[™^HÂˆX›XÈÝš[™È\™Ù]\›HˆŽÂˆX›XÈ[\Ý›ÚXÙTÝ]HHLNÂˆX›XÈ›ÛÛX[ˆ\ÝÛÝ[™Ý]HH˜[ÙNÂˆX›XÈ”ÓÓ“Øš™XÝ^˜QšY[ÈH™]È”ÓÓ“Øš™XÝ
+
+NÂˆ˜[œÚY[”ÓÓ“Øš™XÝÜ˜YXXÜ›ÑYš[š][Û”ÛÝ\˜ÙPØXÚNÂˆ˜[œÚY[˜™Ü˜YXXÜ›ÑYš[š][ÛˆÜ˜YXXÜ›ÑYš[š][ÛØXÚNÂˆËÈ[[YK[Û›HØÛÜH›Üˆ›Ù\È[œÚYH[ˆ—ÓPPÔ“È[œÝ[˜ÙK‚ˆX›XÈÝš[™ÈÜ˜Y˜\šXX›S˜[Y\ÜXÙHHˆŽÂˆX›XÈ›Ø]KËÂ‚ˆX›XÈÚYÙ]
+
+HÂˆ›Üˆ
+[HHÈHMŽÈJÊÊHÂˆ[•^Ý]\ÖÚWHH´(t/´`t`´/´cô/t.4-Hˆ
+ÈNÂˆ[•^ÛÛÜœÖÚWHHÂˆš]\ÝX™[ÖÚWHH´$t.4`ˆˆ
+ÈNÂˆ›ÚXÙSY\ÜØYÙ\ÖÚWHH´(t/´/´,tbt-t/t.4-Hˆ
+ÈNÂˆ[XYÙT]Ý]\ÖÚWHH´&´,4`4`´.4/t.´,ˆ
+ÈNÂˆBˆBˆB‚ˆš]˜]H›ÚYX›\ÚÜ˜Y\]YÙ\Ê
+HÂˆ˜™Ü˜Y\][[YH[[YHHÜ˜Y\][[YNÂˆYˆ
+[[YHOH[[Ü\˜]Ü“[ÙHØÜ™Y[œËš\Ñ[\J
+BˆÝ\œ™[ØÜ™Y[’[™^Ý\œ™[ØÜ™Y[’[™^HØÜ™Y[œËœÚ^™J
+JH™]\›ŽÂˆ›Üˆ
+[\™Ù]HÈ\™Ù]ÚYÙ]ËœÚ^™J
+NÈ\™Ù]
+ÊÊHÂˆÚYÙ]X›\Ú\ˆHÚYÙ]Ë™Ù]
+\™Ù]
+NÂˆYˆ
+Z\ÐÜ˜Y\]X›\Ú\ŠX›\Ú\‹\JJHÛÛ[YNÂˆ\Ý›ÛÛX[ˆ›ÛÛX[•˜[Y\ÈH™]È\œ˜^S\ÝŠ
+NÂˆ\ÝÝX›Oˆ[Y\šXÕ˜[Y\ÈH™]È\œ˜^S\ÝŠ
+NÂˆ\ÝÝš[™Ïˆ[œÈH™]È\œ˜^S\ÝŠ
+NÂˆ›Üˆ
+˜™ÛÛ›™XÝ[ÛˆYÙHˆØÜ™Y[œË™Ù]
+Ý\œ™[ØÜ™Y[’[™^
+K˜ÛÛ›™XÝ[ÛœÊHÂˆYˆ
+YÙK\™Ù]OH\™Ù]YÙKœÛÝ\˜ÙHYÙKœÛÝ\˜ÙHHÚYÙ]ËœÚ^™J
+JHÛÛ[YNÂˆ[œË˜Y
+YÙK™^˜QšY[Ë›ÜÝš[™Ê\™Ù][ˆ‹ˆŠJNÂˆ›ÛÛX[•˜[Y\Ë˜Y
+]˜[X]Q˜™
+YÙKœÛÝ\˜ÙK™]È›ÛÛX[–ÝÚYÙ]ËœÚ^™J
+WJJNÂˆ[Y\šXÕ˜[Y\Ë˜Y
+]˜[X]Q˜™[Y\šXÊYÙKœÛÝ\˜ÙK™]È›ÛÛX[–ÝÚYÙ]ËœÚ^™J
+WJJNÂˆBˆ›ÛÛX[ˆ[˜X›YH˜™›ÛÛX[”[•˜[YJ›ÛÛX[•˜[Y\Ë[œË‘Sˆ‹
+NÂˆYˆ
+Y[˜X›Y
+HÈX›\Ú\‹˜Ü˜Y\]\Ý[˜X›HH˜[ÙNÈÛÛ[YNÈBˆYˆ
+X›\Ú\‹˜Ü˜Y\]\Ý[˜X›JHÛÛ[YNÂˆX›\Ú\‹˜Ü˜Y\]\Ý[˜X›HHYNÂˆ[\HH\]\JX›\Ú\ŠNÂˆÝš[™È^[ØYÂˆYˆ
+\HOHJHÂˆ^[ØYH›ÛÛX[‹ÔÝš[™Ê˜™›ÛÛX[”[•˜[YJ›ÛÛX[•˜[Y\Ë[œË’Sˆ‹JJNÂˆH[ÙHÂˆÝX›H˜[YHH˜™[Y\šXÔ[•˜[YJ[Y\šXÕ˜[Y\Ë[œË’Sˆ‹KÝX›K“˜SŠNÂˆYˆ
+QÝX›Kš\Ñš[š]J˜[YJJHÈ]™U˜[Y\Ëœ]
+\™Ù]“TUÑ‘ÈŠNÈÛÛ[YNÈBˆYˆ
+\HOHŠHÂˆ[YÙ\ˆ^XÝH˜™Ü˜Y[YÙ\”Ù[XÝÜ‹™^XÝ[YÙ\Š˜[YJNÂˆYˆ
+^XÝOH[
+HÈ]™U˜[Y\Ëœ]
+\™Ù]“TUÑ‘ÈŠNÈÛÛ[YNÈBˆ^[ØYH[YÙ\‹ÔÝš[™Ê^XÝ
+NÂˆH[ÙHÂˆ›Ø]˜\œ›ÝÙYH
+›Ø]
+H˜[YNÂˆYˆ
+Q›Ø]š\Ñš[š]J˜\œ›ÝÙY
+JHÈ]™U˜[Y\Ëœ]
+\™Ù]“TUÑ‘ÈŠNÈÛÛ[YNÈBˆ^[ØYH›Ø]ÔÝš[™Ê˜\œ›ÝÙY
+NÂˆBˆBˆÝš[™ÈÜXÈHX›\Ú\‹™^˜QšY[Ë›ÜÝš[™Ê˜Ü˜Y\]ÜXÈ‹ˆŠKš[J
+NÂˆ›ÛÛX[ˆÙ[H[[YKœX›\Ú
+\]Ù\™\ŠX›\Ú\ŠKÜXË^[ØYˆX›\Ú\‹™^˜QšY[Ë›Ü›ÛÛX[Š˜Ü˜Y\]™]Z[ˆ‹˜[ÙJJNÂˆ]™U˜[Y\Ëœ]
+\™Ù]Ù[È“TU8¡¤ˆˆ
+ÈÜXÈˆ“TUÙ™›[™HŠNÂˆBˆB‚ˆš]˜]HÛ\ÜÈY]ÜØ[˜\È^[™ÈšY]ÈÂˆš]˜]Hš[˜[Z[Z[H™]ÈZ[
+Z[S•WÐSPT×Ñ“QÊNÂˆ[Ù[XÝYHLNÂˆ›Ø]ÝÛ–ÝÛ–KÝ\Ý\KÝ\ËÝ\ÂˆÛ™ÈÝÛ]Âˆ›ÛÛX[ˆ˜YÙÚ[™ÎÂˆ›ÛÛX[ˆ™\Ú^š[™ÎÂ‚ˆY]ÜØ[˜\Ê
+HÂˆÝ\\ŠXZ[XÝ]š]K\ÊNÂˆÙ]˜XÚÙÜ›Ý[™ÛÛÜŠÛÛÜ‹•ÒUJNÂˆÙ]^Y\•\JšY]Ë“VQT—ÕTWÔÓÑ•ÐT‘K[
+NÂˆB‚ˆÝ™\œšYH›ÝXÝY›ÚYÛ‘˜]ÊØ[˜\ÈØ[˜\ÊHÂˆÝ\\‹›Û‘˜]ÊØ[˜\ÊNÂˆØ[˜\Ë™˜]ÐÛÛÜŠØÜ™Y[œËš\Ñ[\J
+HÈÛÛÜ‹œ™ØŠLL‹MJHˆØÜ™Y[œË™Ù]
+Ý\œ™[ØÜ™Y[’[™^
+K˜˜XÚÙÜ›Ý[™ÛÛÜŠNÂˆZ[œÙ]ÛÛÜŠÛÛÜ‹œ™ØŠŒŽŒÍJJNÂˆZ[œÙ]Ý›ÚÙUÚY
+JNÂˆ[ÜšYH
+Œ
+NÂˆYˆ
+[Ü\˜]Ü“[ÙJHÂˆ›Üˆ
+[HÈÙ]ÚY
+
+NÈ
+ÏHÜšY
+HØ[˜\Ë™˜]Ó[™JÙ]ZYÚ
+
+KZ[
+NÂˆ›Üˆ
+[HHÈHÙ]ZYÚ
+
+NÈH
+ÏHÜšY
+HØ[˜\Ë™˜]Ó[™JKÙ]ÚY
+
+KKZ[
+NÂˆB‚ˆYˆ
+[Ü\˜]Ü“[ÙH	‰ˆ\ØÜ™Y[œËš\Ñ[\J
+JHÂˆØÜ™Y[ˆØÜ™Y[ˆHØÜ™Y[œË™Ù]
+Ý\œ™[ØÜ™Y[’[™^
+NÂˆZ[œÙ]ÛÛÜŠÛÛÜ‹œ™ØŠLNŒÍÊJNÂˆZ[œÙ]Ý›ÚÙUÚY
+
+ŠJNÂˆZ[œÙ]Ý[JZ[”Ý[K”Õ“ÒÑJNÂˆ›Üˆ
+˜™ÛÛ›™XÝ[ÛˆÛÛ›™XÝ[ÛˆˆØÜ™Y[‹˜ÛÛ›™XÝ[ÛœÊHÂˆYˆ
+ÛÛ›™XÝ[Û‹œÛÝ\˜ÙHÛÛ›™XÝ[Û‹\™Ù]ÛÛ›™XÝ[Û‹œÛÝ\˜ÙHHÚYÙ]ËœÚ^™J
+HÛÛ›™XÝ[Û‹\™Ù]HÚYÙ]ËœÚ^™J
+JHÛÛ[YNÂˆÚYÙ]œ›ÛHHÚYÙ]Ë™Ù]
+ÛÛ›™XÝ[Û‹œÛÝ\˜ÙJNÂˆÚYÙ]ÈHÚYÙ]Ë™Ù]
+ÛÛ›™XÝ[Û‹\™Ù]
+NÂˆYˆ
+Yœ›ÛKš\ÚX›H]Ëš\ÚX›HZ\Ñ˜™
+œ›ÛJHZ\Ñ˜™
+ÊJHÛÛ[YNÂˆ›Ø]HHœ›ÛKž
+Èœ›ÛKÎÂˆ›Ø]LHHœ›ÛKžH
+Èœ›ÛKš
+ˆ˜™\›Z[˜[œ˜XÝ[ÛŠœ›ÛKˆÛÛ›™XÝ[Û‹™^˜QšY[Ë›ÜÝš[™ÊœÛÝ\˜ÙT[ˆ‹ˆŠKYJNÂˆ›Ø]ˆHËžÂˆ›Ø]LˆHËžH
+ÈËš
+ˆ˜™\›Z[˜[œ˜XÝ[ÛŠËˆÛÛ›™XÝ[Û‹™^˜QšY[Ë›ÜÝš[™Ê\™Ù][ˆ‹ˆŠK˜[ÙJNÂˆZ[œÙ]ÛÛÜŠ\Ñ˜™›ÛÛX[•Ú\™R[™\Y
+ÛÛ›™XÝ[Û‹œ›ÛK\KË\JBˆÈÛÛÜ‹œ™ØŠŒÍLŠHˆÛÛÜ‹œ™ØŠLNŒÍÊJNÂˆ›Ø]ZYH
+H
+ÈŠHÈ™ŽÂˆØ[˜\Ë™˜]Ó[™JKLKZYLKZ[
+NÂˆØ[˜\Ë™˜]Ó[™JZYLKZYL‹Z[
+NÂˆØ[˜\Ë™˜]Ó[™JZYL‹‹L‹Z[
+NÂˆBˆZ[œÙ]Ý[JZ[”Ý[K‘’S
+NÂˆBˆ˜™ØXÚU˜[YH™]È›ÛÛX[–ÝÚYÙ]ËœÚ^™J
+WNÂˆ˜™ØXÚU˜[Y\ÈH™]È›ÛÛX[–ÝÚYÙ]ËœÚ^™J
+WNÂˆ˜™ØXÚS[Y\šXÈH™]ÈÝX›VÝÚYÙ]ËœÚ^™J
+WNÂˆYˆ
+Ü\˜]Ü“[ÙJHÂˆ›Üˆ
+[HHÈHÚYÙ]ËœÚ^™J
+NÈJÊÊBˆYˆ
+\Ñ˜™
+ÚYÙ]Ë™Ù]
+JJJH]˜[X]Q˜™
+K™]È›ÛÛX[–ÝÚYÙ]ËœÚ^™J
+WJNÂˆ›Üˆ
+[HHÈHÚYÙ]ËœÚ^™J
+NÈJÊÊHÂˆÚYÙ]Ú[šÈHÚYÙ]Ë™Ù]
+JNÂˆYˆ
+\ÐÜ˜Y™YÚ\Ý\”Ú[šÊÚ[šË\JJHØÚY[PÜ˜Y™YÚ\Ý\•Üš]JÚ[šËK˜™ØXÚS[Y\šXÖÚWJNÂˆBˆX›\ÚÜ˜Y\]YÙ\Ê
+NÂˆBˆËÈ˜™‹ËÈÚYÙ]š[™[™ÜÈ™[XZ[ˆ™XY[Û›NÈ^XÚ]˜\“Ý]›ØÚÜÈÜš]HÛ›H[ˆÜ\˜]Üˆ[ÙK‚ˆ›Üˆ
+[HHÈHÚYÙ]ËœÚ^™J
+NÈJÊÊHÂˆÚYÙ]\™Ù]HÚYÙ]Ë™Ù]
+JNÂˆYˆ
+\Ñ˜™
+\™Ù]
+H\™Ù]˜ÛÛ›™XÝ[Û’[™›ÈOH[ˆ]\™Ù]˜ÛÛ›™XÝ[Û’[™›ËœÝ\ÕÚ]
+™˜™‹ËÈŠJHÛÛ[YNÂˆYˆ
+Ü\˜]Ü“[ÙJHÂˆÝš[™È˜[YHH˜™™\Ý[š[™[™Ëœ™\ÛÛ™J\™Ù]˜ÛÛ›™XÝ[Û’[™›ËÚYÙ]Ëˆ˜™ØXÚU˜[Y˜™ØXÚU˜[Y\Ë˜™ØXÚS[Y\šXÊNÂˆ]™U˜[Y\Ëœ]
+K˜[YHOH[ÈÑ‘Èˆˆ˜[YJNÂˆH[ÙH]™U˜[Y\Ëœ™[[Ý™JJNÂˆBˆ›Üˆ
+[HHÈHÚYÙ]ËœÚ^™J
+NÈJÊÊHÂˆÚYÙ]ÈHÚYÙ]Ë™Ù]
+JNÂˆYˆ
+]Ëš\ÚX›H
+Ü\˜]Ü“[ÙH	‰ˆ\Ñ˜™
+ÊJJHÛÛ[YNÂˆ™XÝˆ™XÝH™]È™XÝŠËžËžKËž
+ÈËËËžH
+ÈËš
+NÂˆZ[œÙ]Ý[JZ[”Ý[K‘’S
+NÂˆYˆ
+Ë˜˜XÚÙÜ›Ý[™ÛÛÜˆOH
+HÂˆZ[œÙ]ÛÛÜŠË˜˜XÚÙÜ›Ý[™ÛÛÜŠNÂˆH[ÙHYˆ
+Ë\HOH[	‰ˆË\KœÝ\ÕÚ]
+‘‘ŠJHÂˆZ[œÙ]ÛÛÜŠÛÛÜ‹œ™ØŠŒÍËŒÌËM
+JNÂˆH[ÙHYˆ
+´&4/t-4.4.´,4`´/´`‹™\]X[ÊË\JH´%4,´`ôat/ô/´-ô.4a´.4/´/t/tbô.H4.4/t-4.4.´,4`´/´`‹™\]X[ÊË\JJHÂˆZ[œÙ]ÛÛÜŠÛÛÜ‹œ™ØŠŒŒL‹ŒÌJJNÂˆH[ÙHYˆ
+´&´/t/´/ô.´,‹™\]X[ÊË\JJHÂˆZ[œÙ]ÛÛÜŠË˜]Û”Ý]HÈÛÛÜ‹œ™ØŠNËËŒ
+HˆÛÛÜ‹œ™ØŠŒNKŒÍM
+JNÂˆH[ÙHYˆ
+´%ô,4-4,4`´aô.4.ˆ‹™\]X[ÊË\JJHÂˆZ[œÙ]ÛÛÜŠÛÛÜ‹œ™ØŠMËNNJJNÂˆH[ÙHYˆ
+´*4.´,4.ô,È4(t`´`4-t.ô.´,‹™\]X[ÊË\JH´'ô`4/´,ô`4-t`t`Kt,t,4`‹™\]X[ÊË\JH´$t.4`´/´,´bô.H4`t/ô.4`t/´.ˆ‹™\]X[ÊË\JJHÂˆZ[œÙ]ÛÛÜŠÛÛÜ‹œ™ØŠKKJJNÂˆH[ÙHYˆ
+´$ô`4,4a4.4.ˆÈ4(´`4-t/t-‹™\]X[ÊË\JJHÂˆZ[œÙ]ÛÛÜŠÛÛÜ‹œ™ØŠMKŒËŠJNÂˆH[ÙHÂˆZ[œÙ]ÛÛÜŠÛÛÜ‹•ÒUJNÂˆBˆËÈHÛÝ\˜ÙKX˜XÚÙY‘›ÙH[™XYHZ[È]ÈÝÛˆÜ]X\™BˆËÈÝ][™NÈ™]™\ˆX]™HH›Ü›Y\ˆ\œH›Ý[™Y™XÝ[™ÛH[Ë‚ˆ›ÛÛX[ˆÛÝ\˜ÙQ˜™ÚÚ[ˆH˜™ÛÝ\˜ÙPØ[˜\ÔÚÚ[‹œÚÝ[\ÙJÊNÂˆYˆ
+SÜšYÚ[˜[[™XØ]Ü‹œÝ\ÜÊË\JH	‰ˆ\ÛÝ\˜ÙQ˜™ÚÚ[ŠBˆØ[˜\Ë™˜]Ô›Ý[™™XÝ
+™XÝ
+ŠK
+ŠKZ[
+NÂˆYˆ
+
+SÜšYÚ[˜[[™XØ]Ü‹œÝ\ÜÊË\JH	‰ˆËœÚÝÑœ˜[YBˆ	‰ˆ\ÛÝ\˜ÙQ˜™ÚÚ[ŠHHOHÙ[XÝY
+HÂˆZ[œÙ]Ý[JZ[”Ý[K”Õ“ÒÑJNÂˆZ[œÙ]Ý›ÚÙUÚY
+
+HOHÙ[XÝYÈ‹YˆˆJJNÂˆZ[œÙ]ÛÛÜŠHOHÙ[XÝYÈÛÛÜ‹œ™ØŠŒKLKNLŠHˆÛÛÜ‹œ™ØŠMMŒËN
+JNÂˆØ[˜\Ë™˜]Ô›Ý[™™XÝ
+™XÝ
+ŠK
+ŠKZ[
+NÂˆBˆYˆ
+HOHÙ[XÝY
+HÂˆZ[œÙ]Ý[JZ[”Ý[K‘’S
+NÂˆZ[œÙ]ÛÛÜŠÛÛÜ‹œ™ØŠŒKLKNLŠJNÂˆ›Ø]Üš\H
+JNÂˆØ[˜\Ë™˜]Ô™XÝ
+Ëž
+ÈËÈHÜš\ËžH
+ÈËšHÜš\Ëž
+ÈËËËžH
+ÈËšZ[
+NÂˆBˆZ[œÙ]Ý[JZ[”Ý[K‘’S
+NÂˆZ[œÙ]ÛÛÜŠË^ÛÛÜŠNÂˆZ[œÙ]^Ú^™J
+Ë^Ú^™TÜ
+JNÂˆYˆ
+Ë\HOH[	‰ˆË\KœÝ\ÕÚ]
+‘‘ŠJHÂˆYˆ
+˜™ÛÝ\˜ÙPØ[˜\ÔÚÚ[‹œÚÝ[\ÙJÊJHÂˆ˜™ÛÝ\˜ÙPØ[˜\ÔÚÚ[‹™˜]ÊØ[˜\ËZ[ËÙ]™\ÛÝ\˜Ù\Ê
+K™Ù]\Ü^SY]šXÜÊ
+K™[œÚ]JNÂˆYˆ
+HOHÙ[XÝY
+HÂˆZ[œÙ]Ý[JZ[”Ý[K”Õ“ÒÑJNÂˆZ[œÙ]Ý›ÚÙUÚY
+
+‹YŠJNÂˆZ[œÙ]ÛÛÜŠÛÛÜ‹œ™ØŠŒKLKNLŠJNÂˆØ[˜\Ë™˜]Ô™XÝ
+™XÝZ[
+NÂˆZ[œÙ]Ý[JZ[”Ý[K‘’S
+NÂˆ›Ø]Üš\H
+JNÂˆØ[˜\Ë™˜]Ô™XÝ
+Ëž
+ÈËÈHÜš\ËžH
+ÈËšHÜš\ˆËž
+ÈËËËžH
+ÈËšZ[
+NÂˆBˆH[ÙHÂˆZ[œÙ]ÛÛÜŠË^ÛÛÜŠNÂˆZ[œÙ]^Ú^™J
+Ë^Ú^™TÜ
+JNÂˆYˆ
+Ë˜]]Ô™\Ú^™U^
+HZ[œÙ]^Ú^™JX]›Z[ŠZ[™Ù]^Ú^™J
+KX]›X^
+
+
+K
+ËÈH
+
+JHÈX]›X^
+‹Ë^›[™Ý
+
+H
+ˆNŠJJJNÂˆÝš[™È›ØÚÕ]HH‘‘4$´at/´-‹™\]X[ÊË\JHÈ´$´at/´-ˆ
+È
+Ëš[œ]˜[YHÈŒHˆˆŒŠBˆˆ
+‘‘ÔQ•ÕH‹™\]X[ÊË\JHÈÕLMˆˆ
+ÈË˜ÛÝ[\•˜[YBˆˆ
+
+‘‘ÕH‹™\]X[ÊË\JH‘‘Õ‹™\]X[ÊË\JJHÈ
+‘‘Õ‹™\]X[ÊË\JHÈÕˆˆÕHŠH
+ÈË˜ÛÝ[\•˜[YH
+È‹Èˆ
+ÈË˜ÛÝ[\”™\Ù]ˆË^
+JNÂˆYˆ
+]™U˜[Y\Ë˜ÛÛZ[œÒÙ^JJH	‰ˆH‘‘4$´at/´-‹™\]X[ÊË\JJH›ØÚÕ]H
+ÏHˆÈˆ
+È]™U˜[Y\Ë™Ù]
+JH
+È—HŽÂˆØ[˜\Ë™˜]Õ^
+›ØÚÕ]KËž
+È
+LŠKËžH
+È
+ŒÊKZ[
+NÂˆËÈ™]™\ˆ]˜[X]HÝ]Y[‘ÙÚXÈœ›ÛHHY]Ü‰ÜÈZ[\ÜÎ‚ˆËÈ˜]Ú[™È[Û™H]\Ý›ÝÛÝ[YÙ\ÈÜˆY˜[˜ÙHÓ‹ÕÑ‹Õ‚ˆZ[œÙ]^Ú^™J
+LJJNÂˆZ[œÙ]ÛÛÜŠÛÛÜ‹œ™ØŠLLM‹LÎJJNÂˆØ[˜\Ë™˜]Õ^
+“ÕUH8 %‹Ëž
+È
+LŠKËžH
+ÈËšH
+
+KZ[
+NÂˆZ[œÙ]^Ú^™J
+L
+JNÂˆZ[œÙ]ÛÛÜŠÛÛÜ‹œ™ØŠLKŒMÊJNÂˆÝš[™Ö×H›ØÚÒ[œ]ÈHÛ›ÝÛ‘˜™[œÊË˜[ÙJNÂˆYˆ
+›ØÚÒ[œ]Ë›[™ÝOH
+H›ØÚÒ[œ]ÈH™]ÈÝš[™Ö×^Èˆ‹ˆŸNÂˆ›Üˆ
+[[’[™^HÈ[’[™^›ØÚÒ[œ]Ë›[™ÝÈ[’[™^
+ÊÊHÂˆ›Ø]HHËžH
+ÈËš
+ˆ
+›ØÚÒ[œ]ÖÜ[’[™^Kš\Ñ[\J
+BˆÈ
+[’[™^
+ÈYŠHÈ
+›ØÚÒ[œ]Ë›[™Ý
+ÈYŠBˆˆ˜™\›Z[˜[œ˜XÝ[ÛŠË›ØÚÒ[œ]ÖÜ[’[™^K˜[ÙJJNÂˆØ[˜\Ë™˜]Ó[™JËžKËž
+È
+M
+KKZ[
+NÂˆØ[˜\Ë™˜]ÐÚ\˜ÛJËž
+È
+
+KK
+
+KZ[
+NÂˆYˆ
+X›ØÚÒ[œ]ÖÜ[’[™^Kš\Ñ[\J
+JBˆØ[˜\Ë™˜]Õ^
+›ØÚÒ[œ]ÖÜ[’[™^KËž
+È
+MÊKHH
+ÊKZ[
+NÂˆBˆÝš[™Ö×H›ØÚÓÝ]]ÈHÛ›ÝÛ‘˜™[œÊËYJNÂˆYˆ
+›ØÚÓÝ]]Ë›[™ÝOH
+H›ØÚÓÝ]]ÈH™]ÈÝš[™Ö×^ÈˆŸNÂˆ›Üˆ
+[[’[™^HÈ[’[™^›ØÚÓÝ]]Ë›[™ÝÈ[’[™^
+ÊÊHÂˆ›Ø]HHËžH
+ÈËš
+ˆ
+›ØÚÓÝ]]ÖÜ[’[™^Kš\Ñ[\J
+BˆÈ
+[’[™^
+ÈYŠHÈ
+›ØÚÓÝ]]Ë›[™Ý
+ÈYŠBˆˆ˜™\›Z[˜[œ˜XÝ[ÛŠË›ØÚÓÝ]]ÖÜ[’[™^KYJJNÂˆØ[˜\Ë™˜]Ó[™JËž
+ÈËÈH
+M
+KKËž
+ÈËËKZ[
+NÂˆØ[˜\Ë™˜]ÐÚ\˜ÛJËž
+ÈËÈH
+
+KK
+
+KZ[
+NÂˆBˆZ[œÙ]Ý[JZ[”Ý[K‘’S
+NÂˆBˆH[ÙHYˆ
+´%4.4/t,4/4.4aô-t`t.´.4.H4`´-t.´`t`ˆ‹™\]X[ÊË\JJHÂˆ[Ý]RYHÂˆYˆ
+]™U˜[Y\Ë˜ÛÛZ[œÒÙ^JJJHÂˆžHÈÝ]RYH
+[
+HX]œ›Ý[™
+ÝX›Kœ\œÙQÝX›J]™U˜[Y\Ë™Ù]
+JJJNÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HßBˆBˆYˆ
+Ý]RYÝ]RYHMŠHÝ]RYHÂˆÝš[™ÈÝ]U^HË™[•^Ý]\ÖÜÝ]RYNÂˆYˆ
+Ý]U^OH[Ý]U^š\Ñ[\J
+JHÝ]U^HË^
+ÈˆÈˆ
+ÈÝ]RY
+È—HŽÂˆ[™ÐÛÛÜˆHË™[•^ÛÛÜœÖÜÝ]RYNÂˆYˆ
+™ÐÛÛÜˆOH
+HÂˆZ[œÙ]ÛÛÜŠ™ÐÛÛÜŠNÂˆØ[˜\Ë™˜]Ô›Ý[™™XÝ
+™XÝ
+ŠK
+ŠKZ[
+NÂˆBˆZ[œÙ]ÛÛÜŠË^ÛÛÜŠNÂˆYˆ
+Ë˜]]Ô™\Ú^™U^
+HZ[œÙ]^Ú^™JX]›Z[ŠZ[™Ù]^Ú^™J
+KX]›X^
+
+
+K
+ËÈH
+Œ
+JHÈX]›X^
+‹Ý]U^›[™Ý
+
+H
+ˆNŠJJJNÂˆØ[˜\Ë™˜]Õ^
+Ý]U^Ëž
+È
+L
+KËžH
+ÈËšÈˆ
+È
+JKZ[
+NÂˆH[ÙHYˆ
+´$t.4`´/´,´bô.H4`t/ô.4`t/´.ˆ‹™\]X[ÊË\JJHÂˆ[š]X\ÚÈHÂˆYˆ
+]™U˜[Y\Ë˜ÛÛZ[œÒÙ^JJJHÂˆžHÈš]X\ÚÈH[YÙ\‹œ\œÙR[
+]™U˜[Y\Ë™Ù]
+JJNÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HßBˆBˆZ[œÙ]ÛÛÜŠË^ÛÛÜŠNÂˆZ[œÙ]^Ú^™J
+LJJNÂˆ›Ø][™VHHËžH
+È
+MŠNÂˆØ[˜\Ë™˜]Õ^
+Ë^
+ÈŽˆˆ
+ÈÝš[™Ë™›Ü›X]
+˜]˜K][“ØØ[K”“ÓÕ‰L‹š]X\ÚÊKËž
+È
+
+K[™VKZ[
+NÂˆ[™VH
+ÏH
+M
+NÂˆ›Üˆ
+[ˆHÈˆÈ	‰ˆ[™VHËžH
+ÈËšH
+
+NÈŠÊÊHÂˆ›ÛÛX[ˆš]ÛˆH
+š]X\ÚÈ	ˆ
+HŠJHOHÂˆZ[œÙ]ÛÛÜŠš]ÛˆÈÛÛÜ‹œ™ØŠŒ‹MŒËÍ
+HˆÛÛÜ‹œ™ØŠMMŒËN
+JNÂˆØ[˜\Ë™˜]ÐÚ\˜ÛJËž
+È
+LŠK[™VHH
+
+K
+
+KZ[
+NÂˆZ[œÙ]ÛÛÜŠË^ÛÛÜŠNÂˆØ[˜\Ë™˜]Õ^
+Ë˜š]\ÝX™[ÖØ—H
+ÈŽˆˆ
+È
+š]ÛˆÈŒHˆˆŒŠKËž
+È
+ŒŠK[™VKZ[
+NÂˆ[™VH
+ÏH
+M
+NÂˆBˆH[ÙHYˆ
+´'ô`4/´,ô`4-t`t`Kt,t,4`‹™\]X[ÊË\JJHÂˆÝX›H˜[HŒÂˆYˆ
+]™U˜[Y\Ë˜ÛÛZ[œÒÙ^JJJHÂˆžHÈ˜[HÝX›Kœ\œÙQÝX›J]™U˜[Y\Ë™Ù]
+JJNÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HßBˆBˆÝX›H˜][ÈHX]›X^
+ŒX]›Z[ŠKŒ
+˜[HË›Z[•˜[YJHÈX]›X^
+ŒKË›X^˜[YHHË›Z[•˜[YJJJNÂˆZ[œÙ]ÛÛÜŠÛÛÜ‹œ™ØŠŒËŒLËŒJJNÂˆØ[˜\Ë™˜]Ô›Ý[™™XÝ
+Ëž
+È
+
+KËžH
+È
+
+KËž
+ÈËÈH
+
+KËžH
+ÈËšH
+
+K
+
+K
+
+KZ[
+NÂˆZ[œÙ]ÛÛÜŠÛÛÜ‹œ™ØŠÍËNKŒÍJJNÂˆØ[˜\Ë™˜]Ô›Ý[™™XÝ
+Ëž
+È
+
+KËžH
+È
+
+KËž
+È
+
+H
+È
+›Ø]
+H
+
+ËÈH
+MŠJH
+ˆ˜][ÊKËžH
+ÈËšH
+
+K
+
+K
+
+KZ[
+NÂˆZ[œÙ]ÛÛÜŠË^ÛÛÜŠNÂˆZ[œÙ]^Ú^™J
+LŠJNÂˆØ[˜\Ë™˜]Õ^
+Ë^
+ÈŽˆˆ
+ÈÝš[™Ë™›Ü›X]
+˜]˜K][“ØØ[K”“ÓÕ‰KŒYˆ‹˜[
+KËž
+È
+L
+KËžH
+È
+N
+KZ[
+NÂˆH[ÙHYˆ
+´*4.´,4.ô,È4(t`´`4-t.ô.´,‹™\]X[ÊË\JJHÂˆÝX›H˜[HŒÂˆYˆ
+]™U˜[Y\Ë˜ÛÛZ[œÒÙ^JJJHÂˆžHÈ˜[HÝX›Kœ\œÙQÝX›J]™U˜[Y\Ë™Ù]
+JJNÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HßBˆBˆÝX›H˜][ÈHX]›X^
+ŒX]›Z[ŠKŒ
+˜[HË›Z[•˜[YJHÈX]›X^
+ŒKË›X^˜[YHHË›Z[•˜[YJJJNÂˆ›Ø]ÞHËž
+ÈËÈÈ™‹ÞHHËžH
+ÈËšH
+MJNÂˆ›Ø]˜Y]\ÈHX]›Z[ŠËËËš
+ˆK™ŠH
+ˆ™ŽÂˆZ[œÙ]Ý[JZ[”Ý[K”Õ“ÒÑJNÂˆZ[œÙ]Ý›ÚÙUÚY
+
+ÊJNÂˆZ[œÙ]ÛÛÜŠÛÛÜ‹œ™ØŠLLM‹LÎJJNÂˆØ[˜\Ë™˜]Ð\˜ÊÞH˜Y]\ËÞHH˜Y]\ËÞ
+È˜Y]\ËÞH
+È˜Y]\ËNN˜[ÙKZ[
+NÂˆ›Ø][™ÛT˜YH
+›Ø]
+HX]Ô˜YX[œÊN
+È˜][È
+ˆN
+NÂˆ›Ø]žHÞ
+È
+›Ø]
+HX]˜ÛÜÊ[™ÛT˜Y
+H
+ˆ
+˜Y]\ÈH
+ŠJNÂˆ›Ø]žHHÞH
+È
+›Ø]
+HX]œÚ[Š[™ÛT˜Y
+H
+ˆ
+˜Y]\ÈH
+ŠJNÂˆZ[œÙ]Ý›ÚÙUÚY
+
+ŠJNÂˆZ[œÙ]ÛÛÜŠÛÛÜ‹œ™ØŠŒŒÎÎ
+JNÂˆØ[˜\Ë™˜]Ó[™JÞÞKžžKZ[
+NÂˆZ[œÙ]Ý[JZ[”Ý[K‘’S
+NÂˆØ[˜\Ë™˜]ÐÚ\˜ÛJÞÞK
+
+KZ[
+NÂˆZ[œÙ]ÛÛÜŠË^ÛÛÜŠNÂˆZ[œÙ]^Ú^™J
+LJJNÂˆØ[˜\Ë™˜]Õ^
+Ë^
+Èˆˆ
+ÈÝš[™Ë™›Ü›X]
+˜]˜K][“ØØ[K”“ÓÕ‰KŒYˆ‹˜[
+KËž
+È
+
+KËžH
+È
+MŠKZ[
+NÂˆH[ÙHYˆ
+´$ô`4,4a4.4.ˆÈ4(´`4-t/t-‹™\]X[ÊË\JJHÂˆZ[œÙ]ÛÛÜŠÛÛÜ‹œ™ØŠLKKJJNÂˆZ[œÙ]Ý[JZ[”Ý[K”Õ“ÒÑJNÂˆZ[œÙ]Ý›ÚÙUÚY
+
+JJNÂˆØ[˜\Ë™˜]Ô™XÝ
+Ëž
+È
+
+KËžH
+È
+Œ
+KËž
+ÈËÈH
+
+KËžH
+ÈËšH
+
+KZ[
+NÂˆZ[œÙ]ÛÛÜŠÛÛÜ‹œ™ØŠÍNMËM
+JNÂˆØ[˜\Ë™˜]Ó[™JËž
+È
+L
+KËžH
+ÈËšH
+LŠKËž
+ÈËÈÈ™‹ËžH
+È
+Ž
+KZ[
+NÂˆØ[˜\Ë™˜]Ó[™JËž
+ÈËÈÈ™‹ËžH
+È
+Ž
+KËž
+ÈËÈH
+L
+KËžH
+ÈËšH
+ŒŠKZ[
+NÂˆZ[œÙ]Ý[JZ[”Ý[K‘’S
+NÂˆZ[œÙ]ÛÛÜŠÛÛÜ‹œ™ØŠLLŠJNÂˆZ[œÙ]^Ú^™J
+L
+JNÂˆØ[˜\Ë™˜]Õ^
+Ë^Ëž
+È
+L
+KËžH
+È
+MJKZ[
+NÂˆH[ÙHYˆ
+´&4/t-4.4.´,4`´/´`‹™\]X[ÊË\JH´%4,´`ôat/ô/´-ô.4a´.4/´/t/tbô.H4.4/t-4.4.´,4`´/´`‹™\]X[ÊË\JJHÂˆÝš[™È[™XØ]Ü•˜[YHH]™U˜[Y\Ë™Ù]
+JNÂˆš]X\[\HÜšYÚ[˜[[™XØ]Üš]X\
+Ë\ÐXÝ]™S[Ù\Õ˜[YJ[™XØ]Ü•˜[YJJNÂˆZ[œÙ][JMJNÂˆËÈÜšYÚ[˜[[XYÙUšY]È\Ù\È’UÖH[™[ˆ˜]È^[ÈÙˆY[™Ë‚ˆYˆ
+[\OH[	‰ˆ™XÝÚY
+
+HˆŒ	‰ˆ™XÝšZYÚ
+
+HˆŒ
+HÂˆØ[˜\Ë™˜]Ðš]X\
+[\[™]È™XÝŠ™XÝ›Y
+ÈL™XÝÜ
+ÈLˆ™XÝœšYÚHL™XÝ˜›ÝÛHHL
+KZ[
+NÂˆBˆ›ÛÛX[ˆ˜Z[YH[\OH[
+[™XØ]Ü•˜[YHOH[ˆ	‰ˆ
+[™XØ]Ü•˜[YKœÝ\ÕÚ]
+‘T”ˆŠH[™XØ]Ü•˜[YKœÝ\ÕÚ]
+Ñ‘ÈŠJJNÂˆYˆ
+˜Z[Y
+HÂˆš]X\Ø\›š[™ÈHÜšYÚ[˜[š]X\
+‹™˜]ØX›KšØ×ÝØ\›š[™×ÌÌŠNÂˆYˆ
+Ø\›š[™ÈOH[
+HØ[˜\Ë™˜]Ðš]X\
+Ø\›š[™Ë™XÝœšYÚHØ\›š[™Ë™Ù]ÚY
+
+Kˆ™XÝ˜›ÝÛHHØ\›š[™Ë™Ù]ZYÚ
+
+KZ[
+NÂˆBˆH[ÙHYˆ
+´&´/t/´/ô.´,‹™\]X[ÊË\JJHÂˆÝš[™È]Û•^HË^
+È
+Ë˜]Û”Ý]HÈˆô$´&´&×Hˆˆˆô$´*ô&´&×HŠNÂˆZ[œÙ]ÛÛÜŠË^ÛÛÜŠNÂˆYˆ
+Ë˜]]Ô™\Ú^™U^
+HZ[œÙ]^Ú^™JX]›Z[ŠZ[™Ù]^Ú^™J
+KX]›X^
+
+
+K
+ËÈH
+Œ
+JHÈX]›X^
+‹]Û•^›[™Ý
+
+H
+ˆNŠJJJNÂˆØ[˜\Ë™˜]Õ^
+]Û•^Ëž
+È
+L
+KËžH
+ÈËšÈˆ
+È
+JKZ[
+NÂˆH[ÙHYˆ
+´%ô,4-4,4`´aô.4.ˆ‹™\]X[ÊË\JJHÂˆZ[œÙ]ÛÛÜŠË^ÛÛÜŠNÂˆYˆ
+Ë˜]]Ô™\Ú^™U^
+HZ[œÙ]^Ú^™JX]›Z[ŠZ[™Ù]^Ú^™J
+KX]›X^
+
+
+K
+ËÈH
+N
+JHÈX]›X^
+‹Ë^›[™Ý
+
+H
+ˆNŠJJJNÂˆØ[˜\Ë™˜]Õ^
+Ë^Ëž
+È
+JKËžH
+È
+ŒJKZ[
+NÂˆZ[œÙ]ÛÛÜŠÛÛÜ‹œ™ØŠMKMKMJJNÂˆØ[˜\Ë™˜]Ô›Ý[™™XÝ
+™]È™XÝŠËž
+È
+
+KËžH
+È
+ŽJKËž
+ÈËÈH
+
+KËžH
+ÈËšH
+ŠJK
+
+K
+
+KZ[
+NÂˆZ[œÙ]Ý[JZ[”Ý[K”Õ“ÒÑJNÂˆZ[œÙ]ÛÛÜŠÛÛÜ‹œ™ØŠŒMËLNKŠJNÂˆØ[˜\Ë™˜]Ô›Ý[™™XÝ
+™]È™XÝŠËž
+È
+
+KËžH
+È
+ŽJKËž
+ÈËÈH
+
+KËžH
+ÈËšH
+ŠJK
+
+K
+
+KZ[
+NÂˆZ[œÙ]Ý[JZ[”Ý[K‘’S
+NÂˆZ[œÙ]ÛÛÜŠÛÛÜ‹œ™ØŠLŒL
+JNÂˆØ[˜\Ë™˜]Õ^
+¸¢$ˆ
+È‹Ëž
+È
+N
+KËžH
+ÈËšH
+MŠKZ[
+NÂˆH[ÙHYˆ
+´%ô,´`ô.´/´,´/´.H4`t.4,ô/t,4.È‹™\]X[ÊË\JJHÂˆ›ÛÛX[ˆXÝ]™HHËœÛÝ[™XÝ]™NÂˆYˆ
+]™U˜[Y\Ë˜ÛÛZ[œÒÙ^JJJHÂˆžHÈXÝ]™HHÝX›Kœ\œÙQÝX›J]™U˜[Y\Ë™Ù]
+JJHHËœÛÝ[™™\ÚÛÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HßBˆBˆZ[œÙ]ÛÛÜŠXÝ]™HÈÛÛÜ‹œ™ØŠŒÎKŽŽ
+HˆÛÛÜ‹œ™ØŠLLM‹LÎJJNÂˆØ[˜\Ë™˜]ÐÚ\˜ÛJËž
+È
+MŠKËžH
+ÈËšÈ‹
+ŠKZ[
+NÂˆZ[œÙ]ÛÛÜŠË^ÛÛÜŠNÂˆÝš[™ÈÛÝ[™X™[H
+XÝ]™HÈ¼'å"ˆˆˆ¼'å!ÈŠH
+ÈË^
+È
+XÝ]™HÈˆô$4&ô$4(4'Hˆˆˆô'´&—HŠNÂˆYˆ
+Ë˜]]Ô™\Ú^™U^
+HZ[œÙ]^Ú^™JX]›Z[ŠZ[™Ù]^Ú^™J
+KX]›X^
+
+
+K
+ËÈH
+ÌŠJHÈX]›X^
+‹ÛÝ[™X™[›[™Ý
+
+H
+ˆNŠJJJNÂˆØ[˜\Ë™˜]Õ^
+ÛÝ[™X™[Ëž
+È
+Ž
+KËžH
+ÈËšÈˆ
+È
+JKZ[
+NÂˆH[ÙHYˆ
+´'ô-t`4-tat/´-4/t,4ct.´`4,4/H‹™\]X[ÊË\JJHÂˆZ[œÙ]ÛÛÜŠË^ÛÛÜŠNÂˆÝš[™È˜]“X™[H¼'å%Èˆ
+ÈË^
+Èˆ
+4+t.´`4,4/Hˆ
+È
+Ë\™Ù]ØÜ™Y[’[™^
+ÈJH
+ÈŠHŽÂˆYˆ
+Ë˜]]Ô™\Ú^™U^
+HZ[œÙ]^Ú^™JX]›Z[ŠZ[™Ù]^Ú^™J
+KX]›X^
+
+
+K
+ËÈH
+MŠJHÈX]›X^
+‹˜]“X™[›[™Ý
+
+H
+ˆNŠJJJNÂˆØ[˜\Ë™˜]Õ^
+˜]“X™[Ëž
+È
+
+KËžH
+ÈËšÈˆ
+È
+JKZ[
+NÂˆH[ÙHYˆ
+´'4/t/´,ô/´/ô/´-ô.4a´.4/´/t/t/´-H4a4/´`´/ˆ‹™\]X[ÊË\JJHÂˆ[[YÒYHÂˆYˆ
+]™U˜[Y\Ë˜ÛÛZ[œÒÙ^JJJHÂˆžHÈ[YÒYH
+[
+HX]œ›Ý[™
+ÝX›Kœ\œÙQÝX›J]™U˜[Y\Ë™Ù]
+JJJNÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HßBˆBˆYˆ
+[YÒY[YÒYHMŠH[YÒYHÂˆÝš[™È[YÔ]HËš[XYÙT]Ý]\ÖÚ[YÒYNÂˆš]X\š]X\HØYØXÚYš]X\
+[YÔ]
+NÂˆYˆ
+š]X\OH[
+HÂˆØ[˜\Ë™˜]Ðš]X\
+š]X\[™XÝZ[
+NÂˆH[ÙHÂˆÝš[™È[YÓX™[H¼'å¯ˆ
+ÈË^
+ÈˆÈˆ
+È[YÒY
+È—Nˆˆ
+È
+[YÔ]OH[Èˆˆˆ[YÔ]
+NÂˆZ[œÙ]ÛÛÜŠË^ÛÛÜŠNÂˆYˆ
+Ë˜]]Ô™\Ú^™U^
+HZ[œÙ]^Ú^™JX]›Z[ŠZ[™Ù]^Ú^™J
+KX]›X^
+
+
+K
+ËÈH
+MŠJHÈX]›X^
+‹[YÓX™[›[™Ý
+
+H
+ˆNŠJJJNÂˆØ[˜\Ë™˜]Õ^
+[YÓX™[Ëž
+È
+
+KËžH
+ÈËšÈˆ
+È
+JKZ[
+NÂˆBˆH[ÙHYˆ
+´$ô/´.ô/´`t/´,´/´-H4`t/´/´,tbt-t/t.4-H‹™\]X[ÊË\JJHÂˆ[›ÚXÙRYHÂˆYˆ
+]™U˜[Y\Ë˜ÛÛZ[œÒÙ^JJJHÂˆžHÈ›ÚXÙRYH
+[
+HX]œ›Ý[™
+ÝX›Kœ\œÙQÝX›J]™U˜[Y\Ë™Ù]
+JJJNÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HßBˆBˆYˆ
+›ÚXÙRY›ÚXÙRYHMŠH›ÚXÙRYHÂˆÝš[™È›ÚXÙSX™[H¼'åèÈˆ
+ÈË^
+ÈˆÈˆ
+È›ÚXÙRY
+È—Nˆˆ
+ÈË›ÚXÙSY\ÜØYÙ\ÖÝ›ÚXÙRYNÂˆZ[œÙ]ÛÛÜŠË^ÛÛÜŠNÂˆYˆ
+Ë˜]]Ô™\Ú^™U^
+HZ[œÙ]^Ú^™JX]›Z[ŠZ[™Ù]^Ú^™J
+KX]›X^
+
+
+K
+ËÈH
+MŠJHÈX]›X^
+‹›ÚXÙSX™[›[™Ý
+
+H
+ˆNŠJJJNÂˆØ[˜\Ë™˜]Õ^
+›ÚXÙSX™[Ëž
+È
+
+KËžH
+ÈËšÈˆ
+È
+JKZ[
+NÂˆH[ÙHÂˆ›Ø]HËž
+È
+L
+NÂˆ›Ø]HHËžH
+ÈËšÈˆ
+È
+JNÂˆÝš[™È\Ü^U^HË^
+È
+]™U˜[Y\Ë˜ÛÛZ[œÒÙ^JJHÈˆHˆ
+È]™U˜[Y\Ë™Ù]
+JHˆˆŠNÂˆYˆ
+Ë˜]]Ô™\Ú^™U^
+HZ[œÙ]^Ú^™JX]›Z[ŠZ[™Ù]^Ú^™J
+KX]›X^
+
+
+K
+ËÈH
+Œ
+JHÈX]›X^
+‹\Ü^U^›[™Ý
+
+H
+ˆNŠJJJNÂˆØ[˜\Ë™˜]Õ^
+\Ü^U^KZ[
+NÂˆBˆBˆ›Üˆ
+ÚYÙ]ÚYÙ]ˆÚYÙ]ÊHÂˆYˆ
+
+‘‘4(´,4.t/4-t`‹™\]X[ÊÚYÙ]\JH‘‘‹™\]X[ÊÚYÙ]\JH‘‘Ñˆ‹™\]X[ÊÚYÙ]\JJH	‰ˆÚYÙ][Y\”Ý\Y]ˆˆ	‰ˆÞ\Ý[PÛØÚË™[\ÙY™X[[YJ
+HHÚYÙ][Y\”Ý\Y]ÚYÙ][Y\”™\Ù]\ÊHÂˆÜÝ[˜[Y]Q[^YY
+L
+NÂˆœ™XZÎÂˆBˆBˆYˆ
+˜™Ú\™S[ÙJHÂˆZ[œÙ]Ý[JZ[”Ý[K‘’S
+NÂˆZ[œÙ]ÛÛÜŠÛÛÜ‹œ™ØŠLKŒMÊJNÂˆZ[œÙ]^Ú^™J
+LŠJNÂˆØ[˜\Ë™˜]Õ^
+Ú\™TÛÝ\˜ÙHÈ´(4%t%´&4'4(t$´+ô%ô&ˆ4,´bô,t-t`4.4.4`t`´/´aô/t.4.ˆˆˆ´(4%t%´&4'4(t$´+ô%ô&ˆ4,´bô,t-t`4.4a´-t.ôc‹
+L
+K
+N
+KZ[
+NÂˆBˆB‚ˆš]˜]Hš[˜[Ü\˜]Ü‘Ù\Ý\™HÜ\˜]Ü‘Ù\Ý\™HH™]ÈÜ\˜]Ü‘Ù\Ý\™J
+NÂ‚ˆš]˜]H[][[YUÚYÙ]
+›Ø]›Ø]JHÂˆ›Üˆ
+[HHÚYÙ]ËœÚ^™J
+HHNÈHHÈKKJHÂˆÚYÙ]ÈHÚYÙ]Ë™Ù]
+JNÂˆYˆ
+Ëš\ÚX›H	‰ˆZ\Ñ˜™
+ÊH	‰ˆHËž	‰ˆHËž
+ÈËÈ	‰ˆHHËžH	‰ˆHHËžH
+ÈËš
+H™]\›ˆNÂˆBˆ™]\›ˆLNÂˆB‚ˆš]˜]H›ÛÛX[ˆÛ“Ü\˜]Ü•ÝXÚ
+[Ý[Û‘]™[]™[
+HÂˆ›Ø]H]™[™Ù]
+
+KHH]™[™Ù]J
+NÂˆ[XÝ[ÛˆH]™[™Ù]XÝ[Û“X\ÚÙY
+
+NÂˆYˆ
+XÝ[ÛˆOH[Ý[Û‘]™[PÕSÓ—ÑÕÓŠBˆÜ\˜]Ü‘Ù\Ý\™K˜™YÚ[Š][[YUÚYÙ]
+JKKÞ\Ý[PÛØÚË™[\ÙY™X[[YJ
+JNÂˆ[ÙHYˆ
+XÝ[ÛˆOH[Ý[Û‘]™[PÕSÓ—ÓSÕ‘JHÜ\˜]Ü‘Ù\Ý\™K›[Ý™JK
+JJNÂˆ[ÙHYˆ
+XÝ[ÛˆOH[Ý[Û‘]™[PÕSÓ—ÕT
+HÂˆ[\™Ù]HÜ\˜]Ü‘Ù\Ý\™K™[™
+][[YUÚYÙ]
+JKKÞ\Ý[PÛØÚË™[\ÙY™X[[YJ
+K
+JJNÂˆYˆ
+\™Ù]H	‰ˆ\™Ù]ÚYÙ]ËœÚ^™J
+JHXÝ]˜]T[[YUÚYÙ]
+\™Ù]JNÂˆ[˜[Y]J
+NÂˆH[ÙHYˆ
+XÝ[ÛˆOH[Ý[Û‘]™[PÕSÓ—ÐÐSÑSXÝ[ÛˆOH[Ý[Û‘]™[PÕSÓ—ÔÒS•T—ÑÕÓŠBˆÜ\˜]Ü‘Ù\Ý\™K˜Ø[˜Ù[
+
+NÂˆ™]\›ˆYNÂˆB‚ˆš]˜]H›ÚYXÝ]˜]T[[YUÚYÙ]
+[[™^›Ø]›Ø]JHÂˆÚYÙ]XÚÙYHÚYÙ]Ë™Ù]
+[™^
+NÂˆYˆ
+´%ô,4-4,4`´aô.4.ˆ‹™\]X[ÊXÚÙY\JH	‰ˆHHXÚÙYžH
+È
+ŽJJHÂˆY\ÝÙ]Ú[
+XÚÙYXÚÙYž
+ÈXÚÙYÈÈˆÈLHˆJNÂˆH[ÙHYˆ
+´&´/t/´/ô.´,‹™\]X[ÊXÚÙY\JJHÂˆXÚÙY˜]Û”Ý]HH\XÚÙY˜]Û”Ý]NÂˆ\œÚ\Ý›Ú™XÝ
+
+NÂˆš[™[™Ô™\]Y\Ý™\]Y\ÝH\œÙPš[™[™ÊLKXÚÙY˜ÛÛ›™XÝ[Û’[™›ÊNÂˆYˆ
+™\]Y\ÝOH[	‰ˆ™\]Y\Ý™[˜Ý[ÛÛÙHOHÊHÂˆš[˜[›ÛÛX[ˆ“ÛˆHXÚÙY˜]Û”Ý]NÂˆ[Ù\Ñ^XÝ]Ü‹™^XÝ]J
+
+HOˆÂˆžHÂˆ›ÛÛX[ˆÚÈHÜš]S[Ù\Ô™YÚ\Ý\”Ý]XÊ™\]Y\ÝšÜÝ™\]Y\ÝœÜ™\]Y\Ý[š]™\]Y\Ý˜Y™\ÜË“ÛˆÈHˆ
+NÂˆYˆ
+[ÚÊH›ÝÈ™]ÈSÑ^Ù\[ÛŠ´(ô`t`´`4/´.t`t`´,´/ˆ4/´`´.´.ô/´/t.4.ô/ˆ4-ô,4/ô.4`tc4`4-t,ô.4`t`´`4,ŠNÂˆHØ]Ú
+^Ù\[Ûˆ^
+HÂˆ[™›ÚY][“ÙË™J“ÓÑÒÖH‹“[Ù\ÈÜš]H˜Z[Y‹^
+NÂˆ[“Û•ZU™XY
+
+
+HOˆÂˆXÚÙY˜]Û”Ý]HHX“ÛŽÂˆ\œÚ\Ý›Ú™XÝ
+
+NÂˆYˆ
+Y]ÜˆOH[
+HY]Ü‹š[˜[Y]J
+NÂˆØ\Ý›XZÙU^
+XZ[XÝ]š]K\Ë´'´b4.4,t.´,4-ô,4/ô.4`t.[Ù\Îˆˆ
+È
+^™Ù]Y\ÜØYÙJ
+HOH[È^™Ù]Y\ÜØYÙJ
+Hˆ´/´b4.4,t.´,4`t,´cô-ô.ŠKØ\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆJNÂˆBˆJNÂˆBˆØ\Ý›XZÙU^
+XZ[XÝ]š]K\ËXÚÙY^
+È
+XÚÙY˜]Û”Ý]HÈŽˆ4$´&´&ÈˆˆŽˆ4$´*ô&´&ÈŠKØ\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆH[ÙHYˆ
+‘‘4$´at/´-‹™\]X[ÊXÚÙY\JJHÂˆXÚÙYš[œ]˜[YHH\XÚÙYš[œ]˜[YNÂˆ\œÚ\Ý›Ú™XÝ
+
+NÂˆØ\Ý›XZÙU^
+XZ[XÝ]š]K\Ë´$´at/´-‘Hˆ
+È
+XÚÙYš[œ]˜[YHÈŒHˆˆŒŠKØ\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆH[ÙHYˆ
+´'ô-t`4-tat/´-4/t,4ct.´`4,4/H‹™\]X[ÊXÚÙY\JJHÂˆYˆ
+XÚÙY\™Ù]ØÜ™Y[’[™^H	‰ˆXÚÙY\™Ù]ØÜ™Y[’[™^ØÜ™Y[œËœÚ^™J
+JHÂˆXÝ]˜]TØÜ™Y[ŠXÚÙY\™Ù]ØÜ™Y[’[™^
+NÂˆØ\Ý›XZÙU^
+XZ[XÝ]š]K\Ë´'ô-t`4-tat/´-4/t,4+t.´`4,4/Hˆ
+È
+XÚÙY\™Ù]ØÜ™Y[’[™^
+ÈJKØ\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆH[ÙHYˆ
+XÚÙY\™Ù]\›OH[	‰ˆ\XÚÙY\™Ù]\›š[J
+Kš\Ñ[\J
+JHÂˆžHÂˆ[[œ›ÝÜÙ\’[[H™]È[[
+[[PÕSÓ—Õ’QUË\šKœ\œÙJXÚÙY\™Ù]\›
+JNÂˆÝ\XÝ]š]Jœ›ÝÜÙ\’[[
+NÂˆHØ]Ú
+^Ù\[Ûˆ^
+HÂˆØ\Ý›XZÙU^
+XZ[XÝ]š]K\Ë´'t-H4`ô-4,4.ô/´`tc4/´`´.´`4bô`´cT“ˆˆ
+ÈXÚÙY\™Ù]\›Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆBˆH[ÙHÂˆËÈ›È›Ü\Y\ÈX[ÙÜÈ[ˆÜ\˜]Üˆ[ÙK‚ˆBˆH[ÙHÂˆËÈ›È›Ü\Y\ÈX[ÙÜÈ[ˆÜ\˜]Üˆ[ÙK‚ˆBˆB‚ˆÝ™\œšYHX›XÈ›ÛÛX[ˆÛ•ÝXÚ]™[
+[Ý[Û‘]™[]™[
+HÂˆYˆ
+Ü\˜]Ü“[ÙJH™]\›ˆÛ“Ü\˜]Ü•ÝXÚ
+]™[
+NÂˆ›Ø]H]™[™Ù]
+
+KHH]™[™Ù]J
+NÂˆYˆ
+]™[™Ù]XÝ[ÛŠ
+HOH[Ý[Û‘]™[PÕSÓ—ÑÕÓŠHÂˆÝÛ–HÈÝÛ–HHNÈÝÛ]HÞ\Ý[PÛØÚË™[\ÙY™X[[YJ
+NÈ˜YÙÚ[™ÈH˜[ÙNÈ™\Ú^š[™ÈH˜[ÙNÈÙ[XÝYHLNÂˆ›Üˆ
+[HHÚYÙ]ËœÚ^™J
+HHNÈHHÈKKJHÂˆÚYÙ]ÈHÚYÙ]Ë™Ù]
+JNÂˆYˆ
+]Ëš\ÚX›JHÛÛ[YNÂˆYˆ
+HËž	‰ˆHËž
+ÈËÈ	‰ˆHHËžH	‰ˆHHËžH
+ÈËš
+HÂˆÙ[XÝYHNÈÝ\HËžÈÝ\HHËžNÈÝ\ÈHËÎÈÝ\HËšÂˆ›Ø]Üš\H
+ŒŠNÂˆ™\Ú^š[™ÈHHËž
+ÈËÈHÜš\	‰ˆHHËžH
+ÈËšHÜš\Âˆœ™XZÎÂˆBˆBˆ[™›ÚYšY]Ë•šY]Ô\™[\™[HÙ]\™[
+
+NÂˆYˆ
+\™[OH[
+H\™[œ™\]Y\Ý\Ø[ÝÒ[\˜Ù\ÝXÚ]™[
+Ù[XÝYH
+NÂˆ[˜[Y]J
+NÂˆ™]\›ˆYNÂˆBˆYˆ
+]™[™Ù]XÝ[ÛŠ
+HOH[Ý[Û‘]™[PÕSÓ—ÓSÕ‘H	‰ˆÙ[XÝYH
+HÂˆ›Ø]HHÝÛ–HHHHÝÛ–NÂˆYˆ
+X]˜XœÊ
+H
+ÈX]˜XœÊJHˆ
+JJH˜YÙÚ[™ÈHYNÂˆYˆ
+˜YÙÚ[™ÊHÂˆÚYÙ]ÈHÚYÙ]Ë™Ù]
+Ù[XÝY
+NÂˆYˆ
+™\Ú^š[™ÊHÂˆ[Z[•ÈH
+Œ
+KZ[’H
+
+NÂˆ›Ø]X^ÈHX]›X^
+Z[•ËÙ]ÚY
+
+HHËž
+NÂˆ›Ø]X^HX]›X^
+Z[’Ù]ZYÚ
+
+HHËžJNÂˆËÈHX]›X^
+Z[•ËX]›Z[ŠX^ËÛ˜\ÑÜšY
+Ý\È
+È
+JJNÂˆËšHX]›X^
+Z[’X]›Z[ŠX^Û˜\ÑÜšY
+Ý\
+ÈJJJNÂˆH[ÙHÂˆ›Ø]X^HX]›X^
+Ù]ÚY
+
+HHËÊNÂˆ›Ø]X^HHX]›X^
+Ù]ZYÚ
+
+HHËš
+NÂˆËžHX]›X^
+X]›Z[ŠX^Û˜\ÑÜšY
+Ý\
+È
+JJNÂˆËžHHX]›X^
+X]›Z[ŠX^KÛ˜\ÑÜšY
+Ý\H
+ÈJJJNÂˆBˆ[˜[Y]J
+NÂˆBˆ™]\›ˆYNÂˆBˆYˆ
+]™[™Ù]XÝ[ÛŠ
+HOH[Ý[Û‘]™[PÕSÓ—ÕT
+HÂˆ[™›ÚYšY]Ë•šY]Ô\™[\™[HÙ]\™[
+
+NÂˆYˆ
+\™[OH[
+H\™[œ™\]Y\Ý\Ø[ÝÒ[\˜Ù\ÝXÚ]™[
+˜[ÙJNÂˆYˆ
+˜YÙÚ[™ÊHÂˆ\œÚ\Ý›Ú™XÝ
+
+NÂˆH[ÙHYˆ
+Ù[XÝYH	‰ˆÞ\Ý[PÛØÚË™[\ÙY™X[[YJ
+HHÝÛ]HML
+HÂˆÚÝÕÚYÙ]ÛÛ^Y[J
+NÂˆH[ÙHYˆ
+Ù[XÝYH	‰ˆ˜™Ú\™S[ÙJHÂˆÚYÙ]XÚÙYHÚYÙ]Ë™Ù]
+Ù[XÝY
+NÂˆYˆ
+Z\Ñ˜™
+XÚÙY
+JHÂˆØ\Ý›XZÙU^
+XZ[XÝ]š]K\Ë´$ˆ4`4-t-´.4/4-H4`t,´cô-ô.4,´bô,t-t`4.‘t,t.ô/´.ˆ‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆH[ÙHYˆ
+Ú\™TÛÝ\˜ÙH
+HÂˆÚ\™TÛÝ\˜ÙHHÙ[XÝYÂˆØ\Ý›XZÙU^
+XZ[XÝ]š]K\Ë´&4`t`´/´aô/t.4.ˆ4,´bô,t`4,4/Nˆˆ
+ÈXÚÙY^
+È‹ˆ4(´-t/ô-t`4c4,´bô,t-t`4.4a´-t.ô-t,´/´.H4,t.ô/´.ˆ‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆH[ÙHÂˆ[ÛÝ\˜ÙHHÚ\™TÛÝ\˜ÙNÂˆÚ\™TÛÝ\˜ÙHHLNÂˆÛÛ›™XÝ˜™ÚYÙ]ÊÛÝ\˜ÙKÙ[XÝY
+NÂˆ˜™Ú\™S[ÙHH˜[ÙNÂˆBˆH[ÙHYˆ
+Ù[XÝYH
+HÂˆY]Ù[XÝYÚYÙ]
+
+NÂˆBˆ[˜[Y]J
+NÂˆ™]\›ˆYNÂˆBˆYˆ
+]™[™Ù]XÝ[ÛŠ
+HOH[Ý[Û‘]™[PÕSÓ—ÐÐSÑS
+HÂˆ[™›ÚYšY]Ë•šY]Ô\™[\™[HÙ]\™[
+
+NÂˆYˆ
+\™[OH[
+H\™[œ™\]Y\Ý\Ø[ÝÒ[\˜Ù\ÝXÚ]™[
+˜[ÙJNÂˆÙ[XÝYHLNÂˆ˜YÙÚ[™ÈH˜[ÙNÂˆ™\Ú^š[™ÈH˜[ÙNÂˆ[˜[Y]J
+NÂˆ™]\›ˆYNÂˆBˆ™]\›ˆYNÂˆBˆBŸB‚‚

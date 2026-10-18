@@ -47,6 +47,34 @@ public class FbdExtendedPinTest {
         }
     }
 
+    @Test public void macroInstancesExposeTheirDeclaredDynamicPinsToEditorValidation() throws Exception {
+        MainActivity.Widget macro = new MainActivity.Widget();
+        macro.type = "FBD CRAFT MACRO";
+        macro.extraFields.put("craftMacroDefinition", new JSONObject(
+                "{\"name\":\"Scale\",\"countIn\":2,\"nameIn1\":\"Enable\","
+                        + "\"typeIn1\":1,\"nameIn2\":\"Raw\",\"typeIn2\":2,"
+                        + "\"nameOut\":\"Result\",\"typeOut\":3,\"fbInMacros\":[]}"));
+        assertArrayEquals(new String[]{"Enable", "Raw"}, MainActivity.knownFbdPins(macro, false));
+        assertArrayEquals(new String[]{"Result"}, MainActivity.knownFbdPins(macro, true));
+        assertEquals("BOOL", MainActivity.knownFbdPinType(macro, "enable", false));
+        assertEquals("NUMBER", MainActivity.knownFbdPinType(macro, "RAW", false));
+        assertEquals("NUMBER", MainActivity.knownFbdPinType(macro, "result", true));
+
+        MainActivity.Widget boolSource = new MainActivity.Widget();
+        boolSource.type = "FBD Вход";
+        MainActivity.Widget numericSink = new MainActivity.Widget();
+        numericSink.type = "FBD POW";
+        assertArrayEquals(new String[]{"Enable"},
+                MainActivity.compatibleFbdTargetPins(boolSource, "Q", macro));
+        assertArrayEquals(new String[]{"Raw"},
+                MainActivity.compatibleFbdTargetPins(numericSink, "OUT", macro));
+        JSONObject edge = MainActivity.connectionToJson(
+                MainActivity.pinnedFbdConnection(0, "Q", 1, "Raw"));
+        assertFalse(MainActivity.hasCompatibleKnownFbdPins(edge, boolSource, macro));
+        edge.put("sourcePin", "OUT");
+        assertTrue(MainActivity.hasCompatibleKnownFbdPins(edge, numericSink, macro));
+    }
+
     @Test public void tofTpNumericPresetRemainsBounded() {
         assertEquals(4321L, MainActivity.fbdTonPresetMs(
                 Arrays.asList(4321.0), Arrays.asList(" pT "), 500));

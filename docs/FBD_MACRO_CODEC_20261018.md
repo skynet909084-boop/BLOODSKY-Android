@@ -21,18 +21,25 @@ Export is UTF-8 JSON with the original `.mcr` text-file convention.
 oversize files, invalid types/names, foreign child records, and count limits.
 
 The extended FBD tools now import `.mcr` files into the active project and export a selected
-definition back to `.mcr`. Project-local definitions are stored under
+definition back to `.mcr`. Macro widget instances carry their selected definition in preserved
+widget metadata, and an imported catalog entry can be placed on the current FBD canvas. The wire
+picker, imported-project validator and canvas terminals read the
+definition's named input and output pins and enforce BOOL versus numeric compatibility. Original
+integer and float declarations stay distinct in the saved interface; both use the app's shared
+numeric signal class for wiring. Project-local definitions are stored under
 `craftMacroDefinitions`, so the existing project JSON unknown-field preservation keeps them
 through normal saves and reloads. `FbdCraftMacroCatalog` validates each catalog entry,
 replaces definitions case-insensitively by name, and caps the catalog at 64 entries.
 Import is bounded while reading the selected document and validates the entire definition
-before saving the project.
+before saving the project. Definitions may also retain an optional `bloodskyGraph` object;
+its bounded widget/edge counts, named macro inputs, output reference and acyclic topology are
+validated while preserving unknown graph metadata.
 
 ## Scope and remaining work
 
-This is an import/export and definition-model layer. It does not yet add an editor for nested
-child graphs, evaluate child blocks in scan order, map dynamic pins into the live connection
-picker, or enable `FB_MACRO` in the original palette. Runtime namespaces already exist for
+This remains an import/export and definition-model layer. It does not yet add an editor for nested
+child graphs, evaluate child blocks in scan order, or enable `FB_MACRO` in the original palette.
+Runtime namespaces already exist for
 named Craft variables but are not proof of complete macro execution. Keep the original
 palette entry gated until the complete nested graph lifecycle and exact-head Android gates
 pass. No visual parity or physical PLC behavior is claimed.
