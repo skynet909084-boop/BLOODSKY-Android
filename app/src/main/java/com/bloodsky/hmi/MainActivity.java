@@ -2194,6 +2194,98 @@ public class MainActivity extends Activity {
         });
     }
 
+    private boolean hasConfiguredIncomingSms() {
+        if (!operatorMode || editor == null) return false;
+        for (Widget widget : widgets) {
+            if ("Входящее SMS".equals(widget.type) && widget.extraFields.optBoolean("smsEnabled", false))
+                return true;
+        }
+        return false;
+    }
+
+    private void refreshIncomingSmsReceiver() {
+        if (!activityResumed || !hasConfiguredIncomingSms()
+                || !getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_TELEPHONY)) {
+            unregisterIncomingSmsReceiver();
+            return;
+        }
+        if (checkSelfPermission(android.Manifest.permission.RECEIVE_SMS)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            unregisterIncomingSmsReceiver();
+            if (!smsReceivePermissionRequested) {
+                smsReceivePermissionRequested = true;
+                requestPermissions(new String[]{android.Manifest.permission.RECEIVE_SMS}, REQUEST_SMS_RECEIVE_PERMISSION);
+            }
+            return;
+        }
+        if (incomingSmsReceiver != null) return;
+        incomingSmsReceiver = new SmsIncomingBroadcastReceiver(this::handleIncomingSms);
+        android.content.IntentFilter filter = new android.content.IntentFilter("android.provider.Telephony.SMS_RECEIVED");
+        if (android.os.Build.VERSION.SDK_INT >= 33)
+            registerReceiver(incomingSmsReceiver, filter, android.content.Context.RECEIVER_EXPORTED);
+        else registerReceiver(incomingSmsReceiver, filter);
+    }
+
+    private void unregisterIncomingSmsReceiver() {
+        if (incomingSmsReceiver == null) return;
+        try { unregisterReceiver(incomingSmsReceiver); } catch (IllegalArgumentException ignored) {}
+        incomingSmsReceiver = null;
+    }
+
+    private void handleIncomingSms(String sender, String body) {
+        if (!activityResumed || !operatorMode || editor == null || !hasConfiguredIncomingSms()) return;
+        final long sessionToken = pollSession.token();
+        for (Widget widget : new ArrayList<>(widgets)) {
+            if (!"Входящее SMS".equals(widget.type) || !widget.extraFields.optBoolean("smsEnabled", false)) continue;
+            final String allowedSender;
+            try { allowedSender = SmsRecipientStore.read(this, widget.extraFields.optString("smsSenderId", "")); }
+            catch (Exception invalid) { continue; }
+            String modeValue = widget.extraFields.optString("smsMode", "number");
+            SmsIncomingCommand.Mode mode = "bit".equals(modeValue)
+                    ? SmsIncomingCommand.Mode.SET_BIT : SmsIncomingCommand.Mode.REGISTER_NUMBER;
+            int bit = widget.extraFields.optInt("smsBit", 0);
+            SmsIncomingCommand.Result parsed = SmsIncomingCommand.parse(allowedSender, sender,
+                    widget.extraFields.optString("smsCommand", ""), body, mode, bit);
+            if (parsed == null) continue;
+            BindingRequest binding = parseBinding(-1, widget.connectionInfo);
+            if (binding == null || binding.functionCode != 3) continue;
+            final String host = binding.host;
+            final int port = binding.port, unit = binding.unit, address = binding.address;
+            final int[] values = parsed.registerValues.clone();
+            final boolean setStrobe = mode == SmsIncomingCommand.Mode.REGISTER_NUMBER
+                    && widget.extraFields.optBoolean("smsStrobeEnabled", false);
+            final BindingRequest strobeBinding = setStrobe
+                    ? parseBinding(-1, "tcp://" + host + ":" + port + "/" + unit + "/"
+                            + widget.extraFields.optInt("smsStrobeRegister", -1)) : null;
+            final int strobeBit = widget.extraFields.optInt("smsStrobeBit", 0);
+            if (setStrobe && (strobeBinding == null || strobeBinding.functionCode != 3
+                    || strobeBinding.unit != unit || strobeBit < 0 || strobeBit > 15)) continue;
+            modbusExecutor.execute(() -> {
+                if (!pollSession.accepts(sessionToken) || !activityResumed || !operatorMode) return;
+                Exception failure = null;
+                try {
+                    ModbusTcpClient client = new ModbusTcpClient(host, port);
+                    if (parsed.mode == SmsIncomingCommand.Mode.SET_BIT) {
+                        client.writeMask(unit, address, parsed.writeAndMask, parsed.writeOrMask);
+                    } else {
+                        if (values.length == 1) client.writeSingle(unit, address, values[0]);
+                        else client.writeMultiple(unit, address, values);
+                        if (setStrobe) {
+                            int mask = 1 << strobeBit;
+                            client.writeMask(unit, strobeBinding.address, 0xffff ^ mask, mask);
+                        }
+                    }
+                } catch (Exception error) { failure = error; }
+                final Exception result = failure;
+                runOnUiThread(() -> {
+                    if (!pollSession.accepts(sessionToken) || !activityResumed || !operatorMode) return;
+                    Toast.makeText(this, result == null ? "SMS-команда выполнена: Modbus обновлён"
+                            : "SMS-команда проверена, но запись Modbus не выполнена", Toast.LENGTH_LONG).show();
+                });
+            });
+        }
+    }
+
     private void showHomeAssistantDialog() {
         android.content.SharedPreferences prefs = getSharedPreferences("bloodsky_homeassistant", MODE_PRIVATE);
         LinearLayout form = new LinearLayout(this); form.setOrientation(LinearLayout.VERTICAL);
