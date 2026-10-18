@@ -300,8 +300,8 @@ public class MainActivity extends Activity {
 
     private void playCraftAlarmAlert(String alarmKey, String pathOrUri, int craftAlarmSoundIndex, boolean loop) {
         stopCraftAlarmAlert(alarmKey);
+        MediaPlayer player = null;
         try {
-            MediaPlayer player = null;
             int alarmResource = craftAlarmResource(craftAlarmSoundIndex);
             if (alarmResource != 0) {
                 player = MediaPlayer.create(this, alarmResource);
@@ -333,6 +333,9 @@ public class MainActivity extends Activity {
             craftAlarmPlayers.put(alarmKey, activePlayer);
             player.start();
         } catch (Exception ex) {
+            if (player != null) {
+                try { player.release(); } catch (Exception ignored) { }
+            }
             android.util.Log.e("BLOODSKY", "Craft alarm error", ex);
             try {
                 ToneGenerator tone = new ToneGenerator(AudioManager.STREAM_ALARM, 80);
