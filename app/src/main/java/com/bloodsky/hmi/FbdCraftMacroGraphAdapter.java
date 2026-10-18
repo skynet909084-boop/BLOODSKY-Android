@@ -197,6 +197,6 @@ final class FbdCraftMacroGraphAdapter {
     }
 
     private static String timerUnit(int unit) {
-        switch (unit) { case 2: return "S"; case 3: return "MIN"; default: return "MS"; }
+        switch (unit) { case 2: return "SEK"; case 3: return "MIN"; default: return "MS"; }
     }
 }
