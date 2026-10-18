@@ -45,6 +45,8 @@ Tags 3, 16 and 17 do not appear in this particular switch. Do not infer that the
 
 ## Porting caution
 
+Craft ID 13 (`CustomSeekBar`, `v.java`) is implemented as `Линейный задатчик Craft`: import preserves `max`, `isTurn` orientation and colors while leaving legacy device mapping disabled. The editor validates a 1–65535 integer maximum; operator mode presents a slider and writes the confirmed value through FC06 to an explicitly configured TCP holding register. Side-by-side visual and device acceptance remain open.
+
 Craft ID 20 is implemented as `Список Craft`: sixteen independently selectable labels backed by a UINT16 mask, matching `CustomList` (`textBit0`–`textBit15`, `getValue`, `setValue`, and `l(bit)`). Imported labels and both `visibleInWork` / `checkNoChange` flags survive conversion. Imported device IDs remain unbound until an operator enters an explicit TCP holding-register endpoint; the runtime reads FC03 and writes the mask with FC06. Empty labels are unavailable, and `checkNoChange` makes the operator list read-only. Register/manual/hardware parity beyond this TCP mapping remains open.
 
 JADX emits type-inference warnings around parts of the large factory and paste code. Use Smali and call-site analysis to resolve ambiguous branches before treating the factory's full tag mapping as definitive. Preserve unknown type IDs and unknown JSON fields during project import whenever possible.
