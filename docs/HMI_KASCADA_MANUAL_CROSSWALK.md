@@ -51,4 +51,5 @@ Source: `HMI-KaSCADA-v1.4-ot-08.09.19 (1).pdf` (109 pages), checked as extracted
 
 - Importer unit coverage asserts ID 9 classification, sound index and binding preservation, and ID 19's three-register connection metadata plus inactive status.
 - Python resource preparation supplies the exact five original alarm audio assets under `R.raw.kc_alarm1` … `kc_alarm5`.
+- Voice assistant first step: explicit local/on-device or online speech-recognition choice; tested commands navigate screens and start/stop the project, with confirmation on start. Named scenarios and smart-home voice actions are not implemented yet.
 - Full Android unit/APK and visual runtime checks remain required on the exact pull-request head; source tests alone do not establish full parity.
