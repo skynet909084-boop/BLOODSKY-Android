@@ -34,7 +34,7 @@ numeric signal class for wiring. Project-local definitions are stored under
 through normal saves and reloads. `FbdCraftMacroCatalog` validates each catalog entry,
 replaces definitions case-insensitively by name, and caps the catalog at 64 entries.
 Import is bounded while reading the selected document and validates the entire definition
-before saving the project. Definitions may also retain an optional `bloodskyGraph` object;
+before saving the project. Regression coverage verifies that an embedded graph survives `.mcr` export/import and project catalog save/reload. Definitions may also retain an optional `bloodskyGraph` object;
 its bounded widget/edge counts, named macro inputs, output reference and acyclic topology are
 validated while preserving unknown graph metadata. During operator scans, an imported macro
 instance evaluates that validated graph with its own child-widget runtime state and named typed
