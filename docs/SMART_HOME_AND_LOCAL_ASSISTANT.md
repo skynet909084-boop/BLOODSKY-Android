@@ -29,6 +29,14 @@ Do not embed undocumented Mi Home endpoints or request Xiaomi passwords in BLOOD
 
 Official Xiaomi integration and its local/cloud boundaries: <https://github.com/XiaoMi/ha_xiaomi_home>.
 
+### Home Assistant bridge: first implementation
+
+BLOODSKY now has an optional read-only Home Assistant REST connection. The user enters the local or HTTPS base URL and a Home Assistant access token, then BLOODSKY discovers and displays entity names, IDs and current states. The token is encrypted with an Android Keystore AES-GCM key and is never added to project JSON or logs. Plain HTTP is accepted only for localhost, `.local`, or private LAN IPv4 hosts; public hosts require HTTPS. Local HTTP still exposes the token to anyone able to observe the home network, so only use it on a trusted LAN. Device actions are deliberately not enabled in this discovery step.
+
+This is a documented bridge path for Xiaomi: configure Xiaomi Home in Home Assistant first, then connect BLOODSKY to Home Assistant. It avoids asking BLOODSKY users for Xiaomi account passwords and keeps device discovery local when Home Assistant is local. Xiaomi devices that the configured Home Assistant integration cannot expose remain unavailable. Home Assistant recommends its WebSocket API for subscriptions/live updates; the current first step uses REST discovery and does not yet claim continuous updates.
+
+Home Assistant official REST API: <https://developers.home-assistant.io/docs/api/rest>.
+
 ## Voice assistant: offline and online modes
 
 The first implementation is push-to-talk with an explicit mode choice on every activation:
