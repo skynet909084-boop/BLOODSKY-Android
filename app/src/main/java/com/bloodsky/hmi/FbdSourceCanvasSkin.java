@@ -150,6 +150,8 @@ public final class FbdSourceCanvasSkin {
                     : "FBD CRAFT CHANGE I".equals(w.type) ? "CH_I"
                     : "FBD CRAFT CHANGE F".equals(w.type) ? "CH_F"
                     : "FBD CRAFT MOVE".equals(w.type) ? "MOVE"
+                    : "FBD CRAFT MX".equals(w.type) ? "MX"
+                    : "FBD CRAFT ARRAY".equals(w.type) ? "ARRAY"
                     : "FBD CRAFT COMPARE".equals(w.type) ? w.compareOperator
                     : FbdDurationUnits.modeForType(w.type);
             float center = (left + right) / 2f;

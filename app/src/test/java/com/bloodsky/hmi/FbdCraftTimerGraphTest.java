@@ -16,6 +16,7 @@ public class FbdCraftTimerGraphTest {
         MainActivity.Widget timer = new MainActivity.Widget();
         timer.type = "FBD CRAFT TIMER";
         timer.text = "BLINK";
+        timer.w = 120; timer.h = 60;
         try {
             timer.extraFields.put("craftTimerMode", "BLINK");
             timer.extraFields.put("craftTimerUnit", "MIN");

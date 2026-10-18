@@ -116,9 +116,9 @@ public class OriginalFbdNativePaletteMappingTest {
         assertEquals(5f/8f, MainActivity.fbdTerminalFraction(array, "DT", false), 0.00001f);
         assertEquals(7f/8f, MainActivity.fbdTerminalFraction(array, "ID", false), 0.00001f);
         MainActivity.Widget mxWidget = new MainActivity.Widget();
-        mxWidget.type = mx; mxWidget.text = "MX";
+        mxWidget.type = mx; mxWidget.text = "MX"; mxWidget.w = 120; mxWidget.h = 60;
         MainActivity.Widget arrayWidget = new MainActivity.Widget();
-        arrayWidget.type = array; arrayWidget.text = "ARRAY";
+        arrayWidget.type = array; arrayWidget.text = "ARRAY"; arrayWidget.w = 120; arrayWidget.h = 60;
         assertTrue(FbdSourceCanvasSkin.shouldUse(mxWidget));
         assertTrue(FbdSourceCanvasSkin.shouldUse(arrayWidget));
     }
