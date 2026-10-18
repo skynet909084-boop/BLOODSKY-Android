@@ -3747,19 +3747,31 @@ public class MainActivity extends Activity {
 
         final EditText soundThresholdField;
         final EditText soundFilePathField;
+        final android.widget.Spinner soundPresetField;
         if ("Звуковой сигнал".equals(w.type)) {
             TextView soundHeader = new TextView(this);
-            soundHeader.setText("Параметры звука (порог срабатывания и имя файла)");
+            soundHeader.setText("Параметры звукового сигнала");
+
             soundHeader.setPadding(0, dp(10), 0, 0);
             form.addView(soundHeader);
             soundThresholdField = propertyField(Double.toString(w.soundThreshold), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-            soundThresholdField.setHint("Порог (например 1.0)");
+            soundThresholdField.setHint("Порог включения (обычно 1)");
             form.addView(soundThresholdField);
+            soundPresetField = new android.widget.Spinner(this);
+            soundPresetField.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item,
+                    new String[]{"Пользовательский файл", "Сигнал Craft 1", "Сигнал Craft 2",
+                            "Сигнал Craft 3", "Сигнал Craft 4", "Сигнал Craft 5"}));
+            soundPresetField.setSelection(Math.max(0, Math.min(5, w.craftAlarmSoundIndex)));
+            form.addView(soundPresetField);
+            TextView soundPresetHelp = new TextView(this);
+            soundPresetHelp.setText("Выбери один из пяти сигналов Craft или пользовательский аудиофайл.");
+            form.addView(soundPresetHelp);
             soundFilePathField = propertyField(w.soundFilePath, InputType.TYPE_CLASS_TEXT);
             soundFilePathField.setHint("Файл / content URI или 'Аларм'");
             form.addView(soundFilePathField);
             addMediaPicker(form, soundFilePathField, "audio/*");
-        } else { soundThresholdField = null; soundFilePathField = null; }
+        } else { soundThresholdField = null; soundFilePathField = null; soundPresetField = null; }
 
         final android.widget.Spinner targetScreenIndexField;
         final EditText targetUrlField;
@@ -4347,6 +4359,7 @@ public class MainActivity extends Activity {
                     if (soundThresholdField != null) {
                         w.soundThreshold = readDouble(soundThresholdField, w.soundThreshold);
                         w.soundFilePath = soundFilePathField.getText().toString();
+                        w.craftAlarmSoundIndex = soundPresetField.getSelectedItemPosition();
                     }
                     if (targetScreenIndexField != null) {
                         int selectedTarget = targetScreenIndexField.getSelectedItemPosition();
