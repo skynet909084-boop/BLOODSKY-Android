@@ -3408,14 +3408,24 @@ public class MainActivity extends Activity {
         final boolean craftConstantButton = "Константная кнопка Craft".equals(w.type);
         final boolean craftButtonConfig = "Кнопка".equals(w.type) || craftConstantButton;
         final android.widget.Spinner craftButtonModeField, craftButtonConstantTypeField;
-        final EditText craftButtonConstantField;
-        final android.widget.CheckBox craftButtonVisibleField;
+        final EditText craftButtonConstantField, craftButtonBitField;
+        final android.widget.CheckBox craftButtonVisibleField, craftButtonBitEnabledField;
         if (craftButtonConfig) {
             craftButtonModeField = new android.widget.Spinner(this);
             craftButtonModeField.setAdapter(new android.widget.ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item,
-                    new String[]{"Битовый переключатель", "Запись константы"}));
+                    new String[]{"Моментальная команда по биту", "Запись константы"}));
             craftButtonModeField.setSelection(craftConstantButton || w.extraFields.optInt("craftButtonMode", 0) == 2 ? 1 : 0);
             form.addView(craftButtonModeField);
+            craftButtonBitField = propertyField(Integer.toString(CraftMomentaryButton.bit(w.extraFields)),
+                    InputType.TYPE_CLASS_NUMBER);
+            craftButtonBitField.setHint("Бит регистра (0–15)"); form.addView(craftButtonBitField);
+            craftButtonBitEnabledField = new android.widget.CheckBox(this);
+            craftButtonBitEnabledField.setText("Разрешить запись бита FC22 после явной TCP-привязки");
+            craftButtonBitEnabledField.setChecked(w.extraFields.optBoolean("craftButtonBitEnabled", false));
+            form.addView(craftButtonBitEnabledField);
+            TextView bitHelp = new TextView(this);
+            bitHelp.setText("Режим Craft 0: при нажатии бит устанавливается, при отпускании сбрасывается. Нужен TCP holding-регистр FC03/FC22; импортированная привязка не используется.");
+            form.addView(bitHelp);
             craftButtonConstantTypeField = new android.widget.Spinner(this);
             craftButtonConstantTypeField.setAdapter(new android.widget.ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item,
                     new String[]{"UINT16", "Float32"}));
@@ -3425,11 +3435,11 @@ public class MainActivity extends Activity {
             craftButtonConstantField.setHint("Значение константы"); form.addView(craftButtonConstantField);
             TextView constantHelp = new TextView(this);
             constantHelp.setText("Craft-регистр #" + w.extraFields.optInt("craftButtonConstantRegister", 0)
-                    + " сохранён отдельно. Для записи настрой TCP holding-регистр FC03/FC06 выше."); form.addView(constantHelp);
+                    + " сохранён отдельно. Для записи константы настрой TCP holding-регистр FC03/FC06 выше."); form.addView(constantHelp);
             craftButtonVisibleField = new android.widget.CheckBox(this);
             craftButtonVisibleField.setText("Показывать кнопку в рабочем режиме");
             craftButtonVisibleField.setChecked(w.extraFields.optBoolean("craftButtonVisibleInWork", true)); form.addView(craftButtonVisibleField);
-        } else { craftButtonModeField = null; craftButtonConstantTypeField = null; craftButtonConstantField = null; craftButtonVisibleField = null; }
+        } else { craftButtonModeField = null; craftButtonConstantTypeField = null; craftButtonConstantField = null; craftButtonBitField = null; craftButtonBitEnabledField = null; craftButtonVisibleField = null; }
         final boolean craftRegisterGateway = "Шлюз Craft".equals(w.type);
         final boolean craftBitGateway = "Шлюз битовый".equals(w.type);
         if (craftRegisterGateway || craftBitGateway) {
@@ -4101,6 +4111,13 @@ public class MainActivity extends Activity {
                         int mode = craftButtonModeField.getSelectedItemPosition() == 1 ? 2 : 0;
                         int valueType = craftButtonConstantTypeField.getSelectedItemPosition();
                         String constant = craftButtonConstantField.getText().toString().trim();
+                        int buttonBit;
+                        try {
+                            buttonBit = Integer.parseInt(craftButtonBitField.getText().toString().trim());
+                            CraftMomentaryButton.masks(buttonBit, true);
+                        } catch (Exception invalid) {
+                            Toast.makeText(this, "Бит кнопки должен быть целым числом от 0 до 15", Toast.LENGTH_LONG).show(); return;
+                        }
                         BindingRequest buttonBinding = parseBinding(-1, connectionField.getText().toString().trim());
                         if (mode == 2) {
                             try { if (valueType == 0) CraftConstantButton.integer(constant); else CraftConstantButton.floating(constant); }
@@ -4108,9 +4125,15 @@ public class MainActivity extends Activity {
                             if (connectionField.getText().toString().trim().isEmpty() || buttonBinding == null || buttonBinding.functionCode != 3) {
                                 Toast.makeText(this, "Для константы нужен корректный TCP holding-регистр FC03/FC06", Toast.LENGTH_LONG).show(); return;
                             }
+                        } else if (craftButtonBitEnabledField.isChecked()
+                                && (connectionField.getText().toString().trim().isEmpty()
+                                || buttonBinding == null || buttonBinding.functionCode != 3)) {
+                            Toast.makeText(this, "Для битовой команды нужен TCP holding-регистр FC03/FC22", Toast.LENGTH_LONG).show(); return;
                         }
                         try {
                             w.extraFields.put("craftButtonMode", mode);
+                            w.extraFields.put("craftButtonBit", buttonBit);
+                            w.extraFields.put("craftButtonBitEnabled", mode == 0 && craftButtonBitEnabledField.isChecked());
                             w.extraFields.put("craftButtonConstantType", valueType);
                             w.extraFields.put("craftButtonConstant", constant);
                             w.extraFields.put("craftButtonConstantEnabled", mode == 2 && buttonBinding != null);
@@ -7672,12 +7695,74 @@ public class MainActivity extends Activity {
         }
 
         private final OperatorGesture operatorGesture = new OperatorGesture();
+        private Widget pressedCraftButton;
+        private BindingRequest pressedCraftButtonBinding;
+        private int pressedCraftButtonIndex = -1;
+        private int pressedCraftButtonBit;
+        private int operatorMomentaryCandidate = -1;
+
+        private void beginCraftBitButton(Widget widget, int index) {
+            operatorMomentaryCandidate = index;
+            if (!widget.extraFields.optBoolean("craftButtonBitEnabled", false)) {
+                Toast.makeText(MainActivity.this, "Настрой TCP holding-регистр FC03/FC22 и включи битовую команду в свойствах", Toast.LENGTH_LONG).show();
+                return;
+            }
+            BindingRequest binding = parseBinding(-1, widget.connectionInfo);
+            if (binding == null || binding.functionCode != 3) {
+                Toast.makeText(MainActivity.this, "Проверь TCP holding-регистр FC03/FC22 в свойствах кнопки", Toast.LENGTH_LONG).show();
+                return;
+            }
+            try { pressedCraftButtonBit = CraftMomentaryButton.bit(widget.extraFields); }
+            catch (IllegalArgumentException invalid) {
+                Toast.makeText(MainActivity.this, invalid.getMessage(), Toast.LENGTH_LONG).show(); return;
+            }
+            pressedCraftButton = widget;
+            pressedCraftButtonBinding = binding;
+            pressedCraftButtonIndex = index;
+            widget.buttonState = true;
+            invalidate();
+            queueCraftBitButtonWrite(widget, binding, index, pressedCraftButtonBit, true);
+        }
+
+        private void endCraftBitButton() {
+            Widget widget = pressedCraftButton;
+            BindingRequest binding = pressedCraftButtonBinding;
+            int index = pressedCraftButtonIndex;
+            int bit = pressedCraftButtonBit;
+            pressedCraftButton = null;
+            pressedCraftButtonBinding = null;
+            pressedCraftButtonIndex = -1;
+            if (widget == null || binding == null) return;
+            widget.buttonState = false;
+            invalidate();
+            queueCraftBitButtonWrite(widget, binding, index, bit, false);
+        }
+
+        private void queueCraftBitButtonWrite(Widget widget, BindingRequest binding, int index, int bit, boolean pressed) {
+            final int[] masks = CraftMomentaryButton.masks(bit, pressed);
+            modbusExecutor.execute(() -> {
+                Exception failure = null;
+                try {
+                    if (pressed && (!operatorMode || !activityResumed || !widgets.contains(widget)))
+                        throw new IOException("Рабочий режим остановлен");
+                    new ModbusTcpClient(binding.host, binding.port).writeMask(binding.unit, binding.address, masks[0], masks[1]);
+                } catch (Exception error) { failure = error; }
+                final Exception result = failure;
+                if (result != null) runOnUiThread(() -> {
+                    if (!activityResumed) return;
+                    Toast.makeText(MainActivity.this, (pressed ? "Не удалось установить бит: " : "Не удалось сбросить бит: ")
+                            + describeModbusError(result), Toast.LENGTH_LONG).show();
+                });
+            });
+        }
 
         private int hitRuntimeWidget(float x, float y) {
             for (int i = widgets.size() - 1; i >= 0; i--) {
                 Widget w = widgets.get(i);
                 if (w.visible && !isFbd(w)
-                        && !("Список Craft".equals(w.type) && !w.extraFields.optBoolean("craftListVisibleInWork", true))
+                        && !(("Список Craft".equals(w.type) || "Кнопка".equals(w.type)
+                        || "Константная кнопка Craft".equals(w.type))
+                        && !w.extraFields.optBoolean("craftButtonVisibleInWork", true))
                         && x >= w.x && x <= w.x + w.w && y >= w.y && y <= w.y + w.h) return i;
             }
             return -1;
@@ -7686,15 +7771,26 @@ public class MainActivity extends Activity {
         private boolean onOperatorTouch(MotionEvent event) {
             float x = event.getX(), y = event.getY();
             int action = event.getActionMasked();
-            if (action == MotionEvent.ACTION_DOWN)
-                operatorGesture.begin(hitRuntimeWidget(x, y), x, y, SystemClock.elapsedRealtime());
-            else if (action == MotionEvent.ACTION_MOVE) operatorGesture.move(x, y, dp(5));
+            if (action == MotionEvent.ACTION_DOWN) {
+                int hit = hitRuntimeWidget(x, y);
+                operatorMomentaryCandidate = -1;
+                operatorGesture.begin(hit, x, y, SystemClock.elapsedRealtime());
+                if (hit >= 0 && "Кнопка".equals(widgets.get(hit).type)
+                        && widgets.get(hit).extraFields.optInt("craftButtonMode", 0) == 0)
+                    beginCraftBitButton(widgets.get(hit), hit);
+            } else if (action == MotionEvent.ACTION_MOVE) operatorGesture.move(x, y, dp(5));
             else if (action == MotionEvent.ACTION_UP) {
+                int candidate = operatorMomentaryCandidate;
                 int target = operatorGesture.end(hitRuntimeWidget(x, y), x, y, SystemClock.elapsedRealtime(), dp(5));
-                if (target >= 0 && target < widgets.size()) activateRuntimeWidget(target, x, y);
+                if (candidate >= 0) endCraftBitButton();
+                operatorMomentaryCandidate = -1;
+                if (candidate < 0 && target >= 0 && target < widgets.size()) activateRuntimeWidget(target, x, y);
                 invalidate();
-            } else if (action == MotionEvent.ACTION_CANCEL || action == MotionEvent.ACTION_POINTER_DOWN)
+            } else if (action == MotionEvent.ACTION_CANCEL || action == MotionEvent.ACTION_POINTER_DOWN) {
                 operatorGesture.cancel();
+                endCraftBitButton();
+                operatorMomentaryCandidate = -1;
+            }
             return true;
         }
 
@@ -7859,27 +7955,7 @@ public class MainActivity extends Activity {
             } else if ("Константная кнопка Craft".equals(picked.type)) {
                 activateCraftConstantButton(picked, index);
             } else if ("Кнопка".equals(picked.type)) {
-                picked.buttonState = !picked.buttonState;
-                persistProject();
-                BindingRequest request = parseBinding(-1, picked.connectionInfo);
-                if (request != null && request.functionCode == 3) {
-                    final boolean btnOn = picked.buttonState;
-                    modbusExecutor.execute(() -> {
-                        try {
-                            boolean ok = writeModbusRegisterStatic(request.host, request.port, request.unit, request.address, btnOn ? 1 : 0);
-                            if (!ok) throw new IOException("Устройство отклонило запись регистра");
-                        } catch (Exception ex) {
-                            android.util.Log.e("BLOODSKY", "Modbus write failed", ex);
-                            runOnUiThread(() -> {
-                                picked.buttonState = !btnOn;
-                                persistProject();
-                                if (editor != null) editor.invalidate();
-                                Toast.makeText(MainActivity.this, "Ошибка записи Modbus: " + (ex.getMessage() != null ? ex.getMessage() : "ошибка связи"), Toast.LENGTH_LONG).show();
-                            });
-                        }
-                    });
-                }
-                Toast.makeText(MainActivity.this, picked.text + (picked.buttonState ? ": ВКЛ" : ": ВЫКЛ"), Toast.LENGTH_SHORT).show();
+                Toast.makeText(MainActivity.this, "Битовая команда работает, пока кнопку удерживают", Toast.LENGTH_SHORT).show();
             } else if ("FBD Вход".equals(picked.type)) {
                 picked.inputValue = !picked.inputValue;
                 persistProject();
