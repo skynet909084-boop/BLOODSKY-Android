@@ -33,7 +33,8 @@ public final class FbdSourceCanvasSkin {
                 || "FBD CRAFT LOG".equals(type) || "FBD CRAFT WORD TO FLOAT".equals(type)
                 || "FBD CRAFT POW".equals(type) || "FBD CRAFT SIN".equals(type)
                 || "FBD CRAFT ABS".equals(type) || "FBD CRAFT INT TO FLOAT".equals(type)
-                || "FBD CRAFT FLOAT TO INT".equals(type);
+                || "FBD CRAFT FLOAT TO INT".equals(type)
+                || MainActivity.isCraftMqttSubscriber(type) || MainActivity.isCraftMqttPublisher(type);
     }
 
     public static boolean shouldUse(MainActivity.Widget w) {
@@ -62,6 +63,8 @@ public final class FbdSourceCanvasSkin {
                 : "FBD CRAFT INT TO FLOAT".equals(w.type) ? "INT->FL"
                 : "FBD CRAFT FLOAT TO INT".equals(w.type) ? "FL->INT"
                 : "FBD CRAFT COMPARE".equals(w.type) ? w.compareOperator
+                : MainActivity.isCraftMqttSubscriber(w.type) ? "MQTT_S"
+                : MainActivity.isCraftMqttPublisher(w.type) ? "MQTT_P"
                 : "FBD CRAFT COMPARE FLOAT".equals(w.type)
                         || "FBD CRAFT ARITHMETIC INT".equals(w.type)
                         || "FBD CRAFT ARITHMETIC FLOAT".equals(w.type) ? w.compareOperator
@@ -73,6 +76,8 @@ public final class FbdSourceCanvasSkin {
     }
 
     public static float inputY(String type, String name) {
+        if (MainActivity.isCraftMqttPublisher(type))
+            return "EN".equalsIgnoreCase(name) ? 1f / 6f : 2f / 3f;
         if ("FBD CRAFT MOVE".equals(type))
             return "EN".equalsIgnoreCase(name) ? 0.5f : 5f / 6f;
         if ("FBD CRAFT POW".equals(type))
@@ -101,7 +106,7 @@ public final class FbdSourceCanvasSkin {
                 || "FBD CRAFT CHANGE I".equals(type)
                 || "FBD CRAFT CHANGE F".equals(type)
                 || "FBD CRAFT MOVE".equals(type) || "FBD CRAFT ARRAY".equals(type)
-                || "FBD CRAFT POW".equals(type);
+                || "FBD CRAFT POW".equals(type) || MainActivity.isCraftMqttPublisher(type);
     }
 
     public static void draw(Canvas canvas, Paint brush, MainActivity.Widget w, float density) {
@@ -176,6 +181,8 @@ public final class FbdSourceCanvasSkin {
                     : "FBD CRAFT VAR OUT FLOAT".equals(w.type) ? "S#_FLOAT"
                     : MainActivity.isCraftNamedVariableSource(w.type) ? "var name"
                     : MainActivity.isCraftNamedVariableSink(w.type) ? "var name"
+                    : MainActivity.isCraftMqttSubscriber(w.type) ? "MQTT_S"
+                    : MainActivity.isCraftMqttPublisher(w.type) ? "MQTT_P"
                     : "FBD CRAFT MOVE".equals(w.type) ? "MOVE"
                     : "FBD CRAFT MX".equals(w.type) ? "MX"
                     : "FBD CRAFT ARRAY".equals(w.type) ? "ARRAY"

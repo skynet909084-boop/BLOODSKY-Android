@@ -42,6 +42,8 @@ public final class OriginalFbdPalette {
         bindNative(dialog,R.id.kc_logic_tab_fb_sensor_speed,"Sensor_Speed",add);
         bindNative(dialog,R.id.kc_logic_tab_fb_sunrise,"Sunrise_GPS",add);
         bindNative(dialog,R.id.kc_logic_tab_fb_dt,"ODTEMP",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_mqtt_subscriber,"MQTT_SUBSCRIBER",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_mqtt_publisher,"MQTT_PUBLISHER",add);
         bindNative(dialog,R.id.kc_logic_tab_fb_mx,"FB_MX",add);
         bindNative(dialog,R.id.kc_logic_tab_fb_array,"FB_ARRAY",add);
         bindNative(dialog,R.id.kc_logic_tab_fb_word_to_float,"WordToFloat",add);
@@ -94,6 +96,8 @@ public final class OriginalFbdPalette {
         if ("Sensor_Speed".equals(tag)) return "FBD CRAFT SENSOR SPEED";
         if ("Sunrise_GPS".equals(tag)) return "FBD CRAFT SUNRISE";
         if ("ODTEMP".equals(tag)) return "FBD CRAFT ODTEMP";
+        if ("MQTT_SUBSCRIBER".equals(tag)) return "FBD CRAFT MQTT SUB BOOL";
+        if ("MQTT_PUBLISHER".equals(tag)) return "FBD CRAFT MQTT PUB BOOL";
         if ("FB_MX".equals(tag)) return "FBD CRAFT MX";
         if ("FB_ARRAY".equals(tag)) return "FBD CRAFT ARRAY";
         if ("WordToFloat".equals(tag)) return "FBD CRAFT WORD TO FLOAT";
@@ -129,6 +133,8 @@ public final class OriginalFbdPalette {
         if ("Sensor_Speed".equals(tag)) return "SM";
         if ("Sunrise_GPS".equals(tag)) return "SR";
         if ("ODTEMP".equals(tag)) return "DT";
+        if ("MQTT_SUBSCRIBER".equals(tag)) return "MQTT_S";
+        if ("MQTT_PUBLISHER".equals(tag)) return "MQTT_P";
         if ("FB_MX".equals(tag)) return "MX";
         if ("FB_ARRAY".equals(tag)) return "ARRAY";
         if ("WordToFloat".equals(tag)) return "WORD->FL";

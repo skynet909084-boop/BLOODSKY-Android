@@ -457,6 +457,30 @@ class FastFbdSmoke(Smoke):
         if current_widgets() != changes or self.saved_connections():
             raise AssertionError('Native change detector data lost after cold restart')
         self.capture('fast-fbd-native-change-restarted')
+
+        # MQTT source/sink blocks use the original palette. Verify both IDs
+        # are actionable and persist before attempting any live broker test.
+        adb('shell', 'pm', 'clear', PACKAGE)
+        adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
+        self.tap('Создать новый проект')
+        self.tap(class_name='android.widget.EditText')
+        adb('shell', 'input', 'text', PROJECT)
+        self.tap('Создать')
+        self.wait_node(description='Редактор экрана')
+        add_from_original_preview('FBD CRAFT MQTT SUB BOOL')
+        add_from_original_preview('FBD CRAFT MQTT PUB BOOL')
+        mqtt = current_widgets()
+        if [w['type'] for w in mqtt] != [
+                'FBD CRAFT MQTT SUB BOOL', 'FBD CRAFT MQTT PUB BOOL']:
+            raise AssertionError('Original MQTT previews did not create typed FBD blocks: ' + repr(mqtt))
+        self.capture('fast-fbd-original-mqtt-blocks')
+        adb('shell', 'am', 'force-stop', PACKAGE)
+        adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
+        self.tap('Загрузить проект')
+        self.tap(PROJECT)
+        self.wait_node(description='Редактор экрана')
+        if current_widgets() != mqtt or self.saved_connections():
+            raise AssertionError('Original MQTT block IDs changed after cold restart')
         crashes = adb('logcat', '-d', '-b', 'crash')
         (self.output / 'crash-log.txt').write_text(crashes)
         if PACKAGE in crashes:
@@ -478,6 +502,7 @@ class FastFbdSmoke(Smoke):
                 'COMPARE exact == mode and cold restart',
                 'original source SEL/COMPARE previews and cold restart',
                 'native CH_I/CH_F picker, property Apply, preserved widgets and cold restart',
+                'original MQTT subscriber/publisher palette and cold restart',
                 'no app crash']
         }, indent=2))
         print(f'FAST_FBD_SMOKE_OK elapsed_seconds={elapsed}', flush=True)

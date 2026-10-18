@@ -85,7 +85,7 @@ public class OriginalFbdNativePaletteMappingTest {
 
     @Test public void unsupportedOriginalBlocksStayDisabledAndUnmapped() {
         for (String source : new String[]{
-                "FB_MACRO", "MQTT_SUBSCRIBER", "MQTT_PUBLISHER",
+                "FB_MACRO",
                 "FB_TRIGGER_ALT", "", "FB_CTU_OLD"}) {
             assertNull(source, OriginalFbdPalette.nativeTypeForOriginalTag(source));
             assertNull(source, OriginalFbdPalette.nativeLabelForOriginalTag(source));
@@ -122,6 +122,17 @@ public class OriginalFbdNativePaletteMappingTest {
         arrayWidget.type = array; arrayWidget.text = "ARRAY"; arrayWidget.w = 120; arrayWidget.h = 60;
         assertTrue(FbdSourceCanvasSkin.shouldUse(mxWidget));
         assertTrue(FbdSourceCanvasSkin.shouldUse(arrayWidget));
+    }
+
+    @Test public void originalMqttTilesMapToTypedSubscriberAndPublisherContracts() {
+        String subscriber = OriginalFbdPalette.nativeTypeForOriginalTag("MQTT_SUBSCRIBER");
+        String publisher = OriginalFbdPalette.nativeTypeForOriginalTag("MQTT_PUBLISHER");
+        assertEquals("FBD CRAFT MQTT SUB BOOL", subscriber);
+        assertEquals("FBD CRAFT MQTT PUB BOOL", publisher);
+        assertArrayEquals(new String[]{"Q"}, MainActivity.knownFbdPins(subscriber, true));
+        assertEquals("BOOL", MainActivity.knownFbdPinType(subscriber, "Q", true));
+        assertArrayEquals(new String[]{"EN", "IN"}, MainActivity.knownFbdPins(publisher, false));
+        assertEquals("BOOL", MainActivity.knownFbdPinType(publisher, "EN", false));
     }
 
     @Test public void originalLogAndWordConversionMapToTypedSourceBlocks() {

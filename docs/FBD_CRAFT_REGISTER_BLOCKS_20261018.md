@@ -18,7 +18,7 @@ Sources use the existing `tcp://host:port/unit/address` Modbus TCP binding or a 
 
 `VarNameIn` and `VarNameOut` map to three typed source/sink pairs: BOOL, INT32 and FLOAT32. A shared transient store follows Craft's top-level global name behavior; named variables are cleared when a project is loaded or operator mode starts. Constant mode is supported on VarNameIn. Names are case-sensitive, as in Craft's `HashMap` store.
 
-Macro-instance namespaces are intentionally not emulated by this flat screen graph. `FB_MACRO` remains disabled until nested graph editing, dynamic outer pins, persistence and isolated per-instance namespaces can be implemented together. ODTEMP and MQTT remain disabled pending device-network and broker integration.
+Macro-instance namespaces are intentionally not emulated by this flat screen graph. `FB_MACRO` remains disabled until nested graph editing, dynamic outer pins, persistence and isolated per-instance namespaces can be implemented together. MQTT subscriber/publisher blocks now use two operator-scoped Paho broker clients; see `FBD_CRAFT_MQTT_20261018.md`. ODTEMP uses a bounded private-network source contract as described below.
 
 `Sensor_Light` and `Sensor_Orientation` use Android's built-in light and orientation sensors. `Sensor_Speed` requests foreground fine-location permission only when used in operator mode, then reports GPS speed in km/h. Sensor/location listeners are removed when the activity pauses and cached readings are invalidated. `Sunrise_GPS` is implemented locally from its configured latitude/longitude and current local date/time zone; it does not acquire location or make a network request.
 

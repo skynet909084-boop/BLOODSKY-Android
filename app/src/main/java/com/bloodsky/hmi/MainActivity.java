@@ -79,6 +79,7 @@ public class MainActivity extends Activity {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService modbusExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService craftSensorExecutor = Executors.newSingleThreadExecutor();
+    private FbdCraftMqttRuntime craftMqttRuntime;
     private final Map<Integer, String> liveValues = new HashMap<>();
     private boolean modbusPollingActive = false;
     private boolean activityResumed = false;
@@ -203,7 +204,7 @@ public class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         activityResumed = true;
-        if (editor != null) { startModbusPolling(); startFbdSensors(); }
+        if (editor != null) { startModbusPolling(); startFbdSensors(); startCraftMqtt(); }
     }
 
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
@@ -218,6 +219,7 @@ public class MainActivity extends Activity {
         activityResumed = false;
         stopModbusPolling();
         stopFbdSensors();
+        stopCraftMqtt();
         if (mediaPlayer != null) {
             try { mediaPlayer.stop(); } catch (Exception ignored) {}
             try { mediaPlayer.release(); } catch (Exception ignored) {}
@@ -230,6 +232,7 @@ public class MainActivity extends Activity {
     @Override protected void onDestroy() {
         stopModbusPolling();
         stopFbdSensors();
+        stopCraftMqtt();
         editor = null;
         modbusExecutor.shutdownNow();
         craftSensorExecutor.shutdownNow();
@@ -836,6 +839,60 @@ public class MainActivity extends Activity {
         for (Widget widget : widgets) if (isCraftFbdSensorSource(widget.type)) widget.craftSensorValid = false;
     }
 
+    private void stopCraftMqtt() {
+        FbdCraftMqttRuntime active = craftMqttRuntime;
+        craftMqttRuntime = null;
+        if (active != null) active.close();
+        for (Widget widget : widgets) if (isCraftMqttSubscriber(widget.type)) widget.craftMqttValue = null;
+    }
+
+    private void startCraftMqtt() {
+        stopCraftMqtt();
+        if (!activityResumed || !operatorMode || editor == null) return;
+        FbdCraftMqttRuntime runtime = new FbdCraftMqttRuntime();
+        craftMqttRuntime = runtime;
+        final EditorCanvas sessionEditor = editor;
+        for (int server = 1; server <= 2; server++) {
+            JSONObject saved;
+            try { saved = new JSONObject(getSharedPreferences("bloodsky_mqtt", MODE_PRIVATE)
+                    .getString("server" + server, "{}")); }
+            catch (Exception invalid) { saved = new JSONObject(); }
+            FbdCraftMqttRuntime.Broker broker = new FbdCraftMqttRuntime.Broker(
+                    saved.optString("uri", ""), saved.optString("username", ""), saved.optString("password", ""));
+            Map<String, FbdCraftMqttRuntime.MessageListener> subscriptions = new LinkedHashMap<>();
+            boolean used = false;
+            for (int i = 0; i < widgets.size(); i++) {
+                Widget target = widgets.get(i);
+                if (isCraftMqttSubscriber(target.type) && mqttServer(target) == server) {
+                    used = true;
+                    String topic = target.extraFields.optString("craftMqttTopic", "").trim();
+                    int type = mqttType(target);
+                    final int targetIndex = i;
+                    if (FbdCraftMqttRuntime.validTopicFilter(topic)) {
+                        FbdCraftMqttRuntime.MessageListener nextListener = (receivedTopic, payload) -> {
+                        Double value = FbdCraftMqttRuntime.parsePayload(payload, type);
+                        runOnUiThread(() -> {
+                            if (craftMqttRuntime != runtime || !activityResumed || !operatorMode
+                                    || editor != sessionEditor || targetIndex >= widgets.size()
+                                    || widgets.get(targetIndex) != target) return;
+                            target.craftMqttValue = value;
+                            liveValues.put(targetIndex, value == null ? "ERR: MQTT payload" : Double.toString(value));
+                            if (editor != null) editor.invalidate();
+                        });
+                        };
+                        FbdCraftMqttRuntime.MessageListener previous = subscriptions.get(topic);
+                        if (previous == null) subscriptions.put(topic, nextListener);
+                        else subscriptions.put(topic, (receivedTopic, payload) -> {
+                            previous.onMessage(receivedTopic, payload);
+                            nextListener.onMessage(receivedTopic, payload);
+                        });
+                    }
+                } else if (isCraftMqttPublisher(target.type) && mqttServer(target) == server) used = true;
+            }
+            if (used && broker.isConfigured()) runtime.connect(server, broker, subscriptions);
+        }
+    }
+
     private BindingRequest parseBinding(int widgetIndex, String binding, int quantity) {
         if (binding == null || !binding.startsWith("tcp://")) return null;
         try {
@@ -1351,6 +1408,8 @@ public class MainActivity extends Activity {
         sysRegField.setHint("Системные регистры");
         form.addView(sysRegField);
 
+        EditText[][] mqttFields = {addMqttBrokerFields(form, 1), addMqttBrokerFields(form, 2)};
+
         ScrollView scroll = new ScrollView(this);
         scroll.addView(form);
 
@@ -1364,6 +1423,17 @@ public class MainActivity extends Activity {
                 JSONObject updated = validatedProjectSettings(projectExtraFields,
                         stationField.getText().toString(), slaveIdField.getText().toString(),
                         slavePortField.getText().toString(), sysRegField.getText().toString().trim());
+                for (int i = 0; i < mqttFields.length; i++) {
+                    String endpoint = mqttFields[i][0].getText().toString().trim();
+                    if (!endpoint.isEmpty() && !FbdCraftMqttRuntime.validUri(endpoint))
+                        throw new IllegalArgumentException("MQTT сервер " + (i + 1) + ": tcp://адрес:порт или ssl://адрес:порт");
+                    JSONObject broker = new JSONObject();
+                    broker.put("uri", endpoint);
+                    broker.put("username", mqttFields[i][1].getText().toString());
+                    broker.put("password", mqttFields[i][2].getText().toString());
+                    getSharedPreferences("bloodsky_mqtt", MODE_PRIVATE).edit()
+                            .putString("server" + (i + 1), broker.toString()).apply();
+                }
                 projectExtraFields = updated;
                 persistProject();
                 settings.dismiss();
@@ -1375,6 +1445,24 @@ public class MainActivity extends Activity {
             }
         }));
         settings.show();
+    }
+
+    private EditText[] addMqttBrokerFields(LinearLayout form, int number) {
+        JSONObject saved;
+        try { saved = new JSONObject(getSharedPreferences("bloodsky_mqtt", MODE_PRIVATE)
+                .getString("server" + number, "{}")); }
+        catch (Exception invalid) { saved = new JSONObject(); }
+        TextView title = new TextView(this);
+        title.setText("MQTT сервер " + number + " (Craft)");
+        title.setPadding(0, dp(12), 0, 0);
+        form.addView(title);
+        EditText uri = propertyField(saved.optString("uri", ""), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        uri.setHint("tcp://192.168.1.10:1883 или ssl://broker:8883"); form.addView(uri);
+        EditText username = propertyField(saved.optString("username", ""), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        username.setHint("Логин (необязательно)"); form.addView(username);
+        EditText password = propertyField(saved.optString("password", ""), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        password.setHint("Пароль (необязательно)"); form.addView(password);
+        return new EditText[]{uri, username, password};
     }
 
     private void showEditor() {
@@ -1417,7 +1505,7 @@ public class MainActivity extends Activity {
             actionParams.gravity = Gravity.CENTER_HORIZONTAL;
             root.addView(actions, actionParams);
         }
-        setContentView(root); editor.invalidate(); startModbusPolling(); startFbdSensors();
+        setContentView(root); editor.invalidate(); startModbusPolling(); startFbdSensors(); startCraftMqtt();
     }
 
     private android.widget.ImageButton editorIcon(int drawable, String description) {
@@ -1439,7 +1527,11 @@ public class MainActivity extends Activity {
         if (!operatorMode) {
             FbdCraftRegisterStore.clear();
             FbdCraftNamedVariableStore.clear();
-            for (Widget value : widgets) resetFbdTimerRuntime(value);
+            for (Widget value : widgets) {
+                resetFbdTimerRuntime(value);
+                value.craftMqttLastEnable = false;
+                value.craftMqttValue = null;
+            }
         }
         operatorMode = !operatorMode; fbdWireMode = false; wireSource = -1;
         if (!operatorMode) for (Widget value : widgets) if (isCraftOdTempSource(value.type)) {
@@ -2188,6 +2280,32 @@ public class MainActivity extends Activity {
         } else {
             craftOdTempHostField = null; craftOdTempTypeField = null; craftOdTempResponseField = null;
         }
+        final EditText craftMqttTopicField;
+        final android.widget.Spinner craftMqttTypeField, craftMqttServerField;
+        final android.widget.CheckBox craftMqttRetainField;
+        if (isCraftMqttSubscriber(w.type) || isCraftMqttPublisher(w.type)) {
+            boolean subscriber = isCraftMqttSubscriber(w.type);
+            craftMqttTopicField = propertyField(w.extraFields.optString("craftMqttTopic", ""),
+                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+            craftMqttTopicField.setHint("MQTT topic"); form.addView(craftMqttTopicField);
+            craftMqttTypeField = new android.widget.Spinner(this);
+            craftMqttTypeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item, new String[]{"BOOL", "INT", "FLOAT"}));
+            craftMqttTypeField.setSelection(mqttType(w) - 1); form.addView(craftMqttTypeField);
+            craftMqttServerField = new android.widget.Spinner(this);
+            craftMqttServerField.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item, new String[]{"MQTT сервер 1", "MQTT сервер 2"}));
+            craftMqttServerField.setSelection(mqttServer(w) - 1); form.addView(craftMqttServerField);
+            craftMqttRetainField = subscriber ? null : new android.widget.CheckBox(this);
+            if (craftMqttRetainField != null) {
+                craftMqttRetainField.setText("Retain");
+                craftMqttRetainField.setChecked(w.extraFields.optBoolean("craftMqttRetain", false));
+                form.addView(craftMqttRetainField);
+            }
+        } else {
+            craftMqttTopicField = null; craftMqttTypeField = null;
+            craftMqttServerField = null; craftMqttRetainField = null;
+        }
         if (isCraftNamedVariableSource(w.type) || isCraftNamedVariableSink(w.type)) {
             boolean source = isCraftNamedVariableSource(w.type);
             craftVariableNameField = propertyField(w.extraFields.optString("craftVariableName",
@@ -2638,6 +2756,25 @@ public class MainActivity extends Activity {
                             w.extraFields.put("craftOdTempType", craftOdTempTypeField.getSelectedItemPosition() + 1);
                             w.extraFields.put("craftOdTempResponse", craftOdTempResponseField.getSelectedItemPosition() + 1);
                         } catch (Exception ignored) {}
+                    }
+                    if (craftMqttTopicField != null) {
+                        String topic = craftMqttTopicField.getText().toString().trim();
+                        boolean topicValid = isCraftMqttSubscriber(w.type)
+                                ? FbdCraftMqttRuntime.validTopicFilter(topic)
+                                : FbdCraftMqttRuntime.validTopic(topic);
+                        if (!topicValid) {
+                            Toast.makeText(this, "Укажи корректный MQTT topic/filter", Toast.LENGTH_LONG).show(); return;
+                        }
+                        int type = craftMqttTypeField.getSelectedItemPosition() + 1;
+                        try {
+                            w.extraFields.put("craftMqttTopic", topic);
+                            w.extraFields.put("craftMqttType", type);
+                            w.extraFields.put("craftMqttServer", craftMqttServerField.getSelectedItemPosition() + 1);
+                            if (craftMqttRetainField != null) w.extraFields.put("craftMqttRetain", craftMqttRetainField.isChecked());
+                        } catch (Exception ignored) {}
+                        String suffix = type == 1 ? "BOOL" : type == 3 ? "FLOAT" : "INT";
+                        w.type = isCraftMqttSubscriber(w.type) ? "FBD CRAFT MQTT SUB " + suffix
+                                : "FBD CRAFT MQTT PUB " + suffix;
                     }
                     w.text = textField.getText().toString();
                     w.connectionInfo = connectionField.getText().toString().trim();
@@ -3397,6 +3534,20 @@ public class MainActivity extends Activity {
         return "FBD CRAFT ODTEMP".equals(canonicalFbdBlockType(type));
     }
 
+    public static boolean isCraftMqttSubscriber(String type) {
+        return type != null && type.startsWith("FBD CRAFT MQTT SUB ");
+    }
+    public static boolean isCraftMqttPublisher(String type) {
+        return type != null && type.startsWith("FBD CRAFT MQTT PUB ");
+    }
+    private static int mqttType(Widget widget) {
+        int fallback = widget.type.endsWith("BOOL") ? 1 : widget.type.endsWith("FLOAT") ? 3 : 2;
+        return Math.max(1, Math.min(3, widget.extraFields.optInt("craftMqttType", fallback)));
+    }
+    private static int mqttServer(Widget widget) {
+        return Math.max(1, Math.min(2, widget.extraFields.optInt("craftMqttServer", 1)));
+    }
+
     public static boolean isAllowedOdTempHost(String host) {
         if (host == null) return false;
         String[] parts = host.trim().split("\\.", -1);
@@ -3481,6 +3632,12 @@ public class MainActivity extends Activity {
         String kind = canonicalFbdBlockType(blockType);
         String name = canonicalFbdPinName(pin);
         if (kind.equals("FBD ВХОД")) return output && "Q".equals(name) ? "BOOL" : null;
+        if (isCraftMqttSubscriber(kind) && output && "Q".equals(name))
+            return kind.endsWith("BOOL") ? "BOOL" : "NUMBER";
+        if (isCraftMqttPublisher(kind) && !output) {
+            if ("EN".equals(name)) return "BOOL";
+            if ("IN".equals(name)) return kind.endsWith("BOOL") ? "BOOL" : "NUMBER";
+        }
         if (isCraftRegisterSource(kind) && output && "Q".equals(name))
             return isCraftRegisterBoolean(kind) ? "BOOL" : "NUMBER";
         if (isCraftRegisterSink(kind) && !output && "IN".equals(name))
@@ -3921,6 +4078,11 @@ public class MainActivity extends Activity {
         if (index < 0 || index >= widgetsList.size() || visiting[index]) return false;
         Widget widget = widgetsList.get(index);
         if (!isFbdWidget(widget)) return false;
+        if (isCraftMqttSubscriber(widget.type)) {
+            double value = widget.craftMqttValue == null ? Double.NaN : widget.craftMqttValue;
+            cacheNumeric[index] = value;
+            return Double.isFinite(value) && value != 0.0;
+        }
         if (isCraftOdTempSource(widget.type)) {
             double value = widget.craftSensorValid ? widget.craftSensorValue : Double.NaN;
             cacheNumeric[index] = value;
@@ -4795,6 +4957,8 @@ public class MainActivity extends Activity {
                 return output ? 0.5f : (i == 0 ? 0.5f : 5f / 6f);
             if ("FBD CRAFT POW".equals(kind))
                 return output ? 0.5f : (i == 0 ? 0.5f : 5f / 6f);
+            if (isCraftMqttPublisher(kind))
+                return i == 0 ? 1f / 6f : 2f / 3f;
             // Original FB_RS draw8(): header 1/3, R/S at 1/2 and 5/6,
             // output Q at 1/2. Wire anchors and drawn contacts must match.
             if ("FBD RS".equals(kind))
@@ -4900,6 +5064,8 @@ public class MainActivity extends Activity {
         if (blockType == null) return new String[0];
         String kind = canonicalFbdBlockType(blockType);
         if ("FBD ВХОД".equals(kind)) return output ? new String[]{"Q"} : new String[0];
+        if (isCraftMqttSubscriber(kind)) return output ? new String[]{"Q"} : new String[0];
+        if (isCraftMqttPublisher(kind)) return output ? new String[0] : new String[]{"EN", "IN"};
         if (isCraftRegisterSource(kind)) return output ? new String[]{"Q"} : new String[0];
         if (isCraftRegisterSink(kind)) return output ? new String[0] : new String[]{"IN"};
         if (isCraftNamedVariableSource(kind)) return output ? new String[]{"Q"} : new String[0];
@@ -5053,6 +5219,8 @@ public class MainActivity extends Activity {
         FbdCraftNativeTimer.State craftTimerState = FbdCraftNativeTimer.State.initial();
         boolean craftArrayLastEnable = false;
         transient double craftSensorValue = Double.NaN;
+        transient Double craftMqttValue;
+        transient boolean craftMqttLastEnable;
         transient double[] craftOrientationValues = new double[]{Double.NaN, Double.NaN, Double.NaN};
         transient boolean craftSensorValid;
         transient boolean craftOdTempPending;
@@ -5096,6 +5264,52 @@ public class MainActivity extends Activity {
                 voiceMessages[i] = "Сообщение " + i;
                 imagePathStates[i] = "Картинка " + i;
             }
+        }
+    }
+
+    private void publishCraftMqttEdges() {
+        FbdCraftMqttRuntime runtime = craftMqttRuntime;
+        if (runtime == null || !operatorMode || screens.isEmpty()
+                || currentScreenIndex < 0 || currentScreenIndex >= screens.size()) return;
+        for (int target = 0; target < widgets.size(); target++) {
+            Widget publisher = widgets.get(target);
+            if (!isCraftMqttPublisher(publisher.type)) continue;
+            List<Boolean> booleanValues = new ArrayList<>();
+            List<Double> numericValues = new ArrayList<>();
+            List<String> pins = new ArrayList<>();
+            for (FbdConnection edge : screens.get(currentScreenIndex).connections) {
+                if (edge.target != target || edge.source < 0 || edge.source >= widgets.size()) continue;
+                pins.add(edge.extraFields.optString("targetPin", ""));
+                booleanValues.add(evaluateFbdBlock(widgets, screens.get(currentScreenIndex).connections,
+                        edge.source, new boolean[widgets.size()]));
+                numericValues.add(evaluateFbdBlockNumeric(widgets, screens.get(currentScreenIndex).connections,
+                        edge.source, new boolean[widgets.size()]));
+            }
+            boolean enabled = fbdBooleanPinValue(booleanValues, pins, "EN", 0);
+            if (!enabled) { publisher.craftMqttLastEnable = false; continue; }
+            if (publisher.craftMqttLastEnable) continue;
+            publisher.craftMqttLastEnable = true;
+            int type = mqttType(publisher);
+            String payload;
+            if (type == 1) {
+                payload = Boolean.toString(fbdBooleanPinValue(booleanValues, pins, "IN", 1));
+            } else {
+                double value = fbdNumericPinValue(numericValues, pins, "IN", 1, Double.NaN);
+                if (!Double.isFinite(value)) { liveValues.put(target, "MQTT CFG"); continue; }
+                if (type == 2) {
+                    Integer exact = FbdCraftIntegerSelector.exactInteger(value);
+                    if (exact == null) { liveValues.put(target, "MQTT CFG"); continue; }
+                    payload = Integer.toString(exact);
+                } else {
+                    float narrowed = (float) value;
+                    if (!Float.isFinite(narrowed)) { liveValues.put(target, "MQTT CFG"); continue; }
+                    payload = Float.toString(narrowed);
+                }
+            }
+            String topic = publisher.extraFields.optString("craftMqttTopic", "").trim();
+            boolean sent = runtime.publish(mqttServer(publisher), topic, payload,
+                    publisher.extraFields.optBoolean("craftMqttRetain", false));
+            liveValues.put(target, sent ? "MQTT → " + topic : "MQTT offline");
         }
     }
 
@@ -5159,6 +5373,7 @@ public class MainActivity extends Activity {
                     Widget sink = widgets.get(i);
                     if (isCraftRegisterSink(sink.type)) scheduleCraftRegisterWrite(sink, i, fbdCacheNumeric[i]);
                 }
+                publishCraftMqttEdges();
             }
             // fbd:// widget bindings remain read-only; explicit VarOut blocks write only in operator mode.
             for (int i = 0; i < widgets.size(); i++) {
