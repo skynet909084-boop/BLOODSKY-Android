@@ -30,6 +30,15 @@ public class CraftRtspImportTest {
         assertEquals(7, video.getJSONObject("craftOther").getInt("futureFlag"));
         assertEquals("rtsp://operator:secret@camera.example/live",
                 video.getJSONObject("craftOther").getString("streamEndpoint"));
+
+        JSONObject savedAndReopened = MainActivity.widgetToJson(MainActivity.widgetFromJson(video));
+        assertEquals("Видео RTSP Craft", savedAndReopened.getString("type"));
+        assertTrue(savedAndReopened.getBoolean("craftUnsupportedComponent"));
+        assertFalse(savedAndReopened.getBoolean("craftRtspEnabled"));
+        assertEquals("keep", savedAndReopened.getJSONObject("craftConnectionInfo").getString("privateOption"));
+        assertEquals(7, savedAndReopened.getJSONObject("craftOther").getInt("futureFlag"));
+        assertEquals("rtsp://operator:secret@camera.example/live",
+                savedAndReopened.getJSONObject("craftOther").getString("streamEndpoint"));
     }
 
     @Test public void givesBlankImportedVideoAnExplicitDisabledLabel() throws Exception {
