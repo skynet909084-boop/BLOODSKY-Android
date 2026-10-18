@@ -2506,7 +2506,10 @@ public class MainActivity extends Activity {
         w.timerPresetMs = Math.max(1, Math.min(3600000, obj.optInt("timerPresetMs", 1000)));
         w.timerStartedAt = obj.optLong("timerStartedAt", 0L);
         w.compareA = obj.optDouble("compareA", 0.0); w.compareB = obj.optDouble("compareB", 0.0);
-        w.compareOperator = normalizeWidgetOperator(w.type, obj.optString("compareOperator", ">"));
+        boolean craftArithmetic = "FBD CRAFT ARITHMETIC INT".equals(w.type)
+                || "FBD CRAFT ARITHMETIC FLOAT".equals(w.type);
+        w.compareOperator = normalizeWidgetOperator(w.type,
+                obj.optString("compareOperator", craftArithmetic ? "+" : ">"));
         w.minValue = obj.optDouble("minValue", 0.0); w.maxValue = obj.optDouble("maxValue", 100.0);
         w.backgroundColor = obj.optInt("backgroundColor", 0); w.textColor = obj.optInt("textColor", Color.rgb(31, 41, 55));
         w.textSizeSp = Math.max(8, Math.min(48, obj.optInt("textSizeSp", 14)));
@@ -2543,6 +2546,8 @@ public class MainActivity extends Activity {
                 || "FBD CRAFT ARITHMETIC FLOAT".equals(type))
                 && ("+".equals(operator) || "-".equals(operator)
                 || "*".equals(operator) || "/".equals(operator))) return operator;
+        if ("FBD CRAFT ARITHMETIC INT".equals(type)
+                || "FBD CRAFT ARITHMETIC FLOAT".equals(type)) return "+";
         return normalizeComparisonOperatorStatic(operator);
     }
 
