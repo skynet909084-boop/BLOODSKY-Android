@@ -12,12 +12,12 @@ Use a provider-neutral `SmartHomeAdapter` boundary. Each adapter exposes a norma
 
 The request is to control devices already connected to a user's Yandex Smart Home account. Yandex documents a user-application API for listing home/device state, changing device and group capabilities, and launching scenarios. Access uses a registered Yandex OAuth app and `iot:view` / `iot:control` scopes. This is an optional cloud connector, separate from BLOODSKY's own cloud management (which remains out of scope).
 
-Implementation sequence:
+First implementation:
 
-1. Add an opt-in Yandex adapter and account-linking flow; do not ask users to paste a long-lived token.
-2. Read device IDs, names, capabilities, groups, and scenarios with `iot:view`.
-3. Add `iot:control` actions only after explicit account consent; show the target and action before voice-triggered writes.
-4. Keep provider request IDs and bounded error text in diagnostics; never put tokens in project exports or logs.
+1. The user registers a Yandex OAuth API application with `iot:view` and `iot:control`, then enters its OAuth token in the BLOODSKY connection dialog. Token storage is encrypted with Android Keystore and excluded from project exports and logs.
+2. The adapter reads device and scenario names from `GET /v1.0/user/info`.
+3. User scenarios can be started from the device list only after an explicit confirmation. Device capabilities are currently discovery-only; no direct Yandex device write is enabled.
+4. A native Yandex mobile sign-in flow and capability-by-capability device control remain follow-up work. Do not embed a Yandex client secret in the APK.
 
 Official protocol: <https://yandex.ru/dev/dialogs/smart-home/doc/en/concepts/platform-protocol>.
 
