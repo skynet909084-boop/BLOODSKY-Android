@@ -40,6 +40,18 @@ class OriginalComponentPaletteTests(unittest.TestCase):
         self.assertIn('"Фон экрана", background', code)
         self.assertNotIn('java.util.function', code) # API 23 compatibility.
 
+    def test_supported_original_controls_are_not_dimmed(self):
+        code = (ROOT / 'app/src/main/java/com/bloodsky/hmi/OriginalComponentPalette.java').read_text()
+        for item, widget_type in [
+            ('switch', 'Кнопка'),
+            ('alarm', 'Звуковой сигнал'),
+            ('gateway', 'Шлюз Craft'),
+            ('gateway_bit', 'Шлюз битовый'),
+        ]:
+            self.assertRegex(code, r'bind\(dialog, R.id.kc_picker_tab_' + item
+                             + r', "' + re.escape(widget_type) + r'"')
+            self.assertNotRegex(code, r'unavailable\(dialog, R.id.kc_picker_tab_' + item + r',')
+
     def test_sms_directions_are_opt_in_and_push_uses_telegram(self):
         palette = (ROOT / 'app/src/main/java/com/bloodsky/hmi/OriginalComponentPalette.java').read_text()
         main = (ROOT / 'app/src/main/java/com/bloodsky/hmi/MainActivity.java').read_text()

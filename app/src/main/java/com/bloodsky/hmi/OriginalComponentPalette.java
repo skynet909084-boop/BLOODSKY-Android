@@ -18,17 +18,17 @@ public final class OriginalComponentPalette {
         Dialog dialog = new Dialog(activity, android.R.style.Theme_Material_NoActionBar_Fullscreen);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         dialog.setContentView(R.layout.kc_fragment_component_bar);
-        // In-scope source entries stay visible; unimplemented semantics stay disabled.
-        unavailable(dialog, R.id.kc_picker_tab_switch, "Переключатель");
+        // Bind source entries to the closest implemented BLOODSKY operator component.
+        bind(dialog, R.id.kc_picker_tab_switch, "Кнопка", "Кнопка", add);
         bind(dialog, R.id.kc_picker_tab_list, "Список Craft", "Список", add);
         bind(dialog, R.id.kc_picker_tab_line_setter, "Линейный задатчик Craft", "Линейный задатчик", add);
         unavailable(dialog, R.id.kc_picker_tab_voice_recognition, "Распознавание речи");
         unavailable(dialog, R.id.kc_picker_tab_digital_indicator, "Цифровой индикатор");
-        unavailable(dialog, R.id.kc_picker_tab_alarm, "Сигнализатор");
+        bind(dialog, R.id.kc_picker_tab_alarm, "Звуковой сигнал", "Аларм", add);
         unavailable(dialog, R.id.kc_picker_tab_gif, "GIF");
         bind(dialog, R.id.kc_picker_tab_archive, "Архив Craft", "Архив", add);
-        unavailable(dialog, R.id.kc_picker_tab_gateway, "Шлюз");
-        unavailable(dialog, R.id.kc_picker_tab_gateway_bit, "Битовый шлюз");
+        bind(dialog, R.id.kc_picker_tab_gateway, "Шлюз Craft", "Шлюз", add);
+        bind(dialog, R.id.kc_picker_tab_gateway_bit, "Шлюз битовый", "Битовый шлюз", add);
         bind(dialog, R.id.kc_picker_tab_sms_in, "Входящее SMS", "SMS: команда", add);
         bind(dialog, R.id.kc_picker_tab_sms_out, "SMS-уведомление", "SMS: {value}", add);
         dialog.findViewById(R.id.kc_picker_tab_sms_in).setVisibility(View.VISIBLE);
