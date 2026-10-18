@@ -304,6 +304,27 @@ public class CraftProjectImporterTest {
         MainActivity.validateImportedProjectStatic(project.toString());
     }
 
+    @Test public void importsConstantButtonValueButDisablesLegacyDeviceLink() throws Exception {
+        String json = new JSONObject().put("TableNameProject", new JSONObject().put("name", "Constant").put("countScreen", 1))
+                .put("TableConnections", new org.json.JSONArray())
+                .put("TableComponent", new org.json.JSONArray().put(new JSONObject()
+                        .put("componentId", 6).put("text", "Задать режим")
+                        .put("jsTableComponent_connectionInfo", new JSONObject()
+                                .put("posDeviceNetworkInList", 2).put("addressRegister", 4).put("addressBit", 1))
+                        .put("jsTableComponent_other", new JSONObject().put("numScreen", 1).put("mode", 2)
+                                .put("typeRegister", 1).put("constantRegister", 500).put("constant", "12.5"))))
+                .toString();
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(json));
+        JSONObject button = project.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets").getJSONObject(0);
+        assertEquals("Константная кнопка Craft", button.getString("type"));
+        assertEquals("", button.getString("connectionInfo"));
+        assertFalse(button.getBoolean("craftButtonConstantEnabled"));
+        assertEquals(1, button.getInt("craftButtonConstantType"));
+        assertEquals("12.5", button.getString("craftButtonConstant"));
+        assertEquals(500, button.getInt("craftButtonConstantRegister"));
+        MainActivity.validateImportedProjectStatic(project.toString());
+    }
+
     @Test public void reconcilesStaleCraftScreenCountWithReferencedScreens() throws Exception {
         String json = "{\"TableNameProject\":{\"name\":\"Legacy screen\",\"countScreen\":16},\"TableConnections\":[],\"TableComponent\":["
                 + "{\"componentId\":2,\"text\":\"On screen 20\",\"x\":1,\"y\":2,\"width\":100,\"height\":30,\"jsTableComponent_other\":{\"numScreen\":20}}]}";
