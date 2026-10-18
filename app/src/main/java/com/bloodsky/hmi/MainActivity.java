@@ -4130,7 +4130,7 @@ public class MainActivity extends Activity {
         }
         if (isCraftNamedVariableSource(widget.type)) {
             int kind = craftNamedVariableKind(widget.type);
-            double value = FbdCraftNamedVariableStore.read(
+            double value = FbdCraftNamedVariableStore.read(widget.craftVariableNamespace,
                     craftNamedVariableName(widget), kind);
             if (widget.extraFields.optBoolean("craftNamedConstantMode",
                     widget.extraFields.optBoolean("isConstant", false))) {
@@ -4196,7 +4196,7 @@ public class MainActivity extends Activity {
             else cacheNumeric[index] = isCraftNamedVariableSink(widget.type) && craftNamedVariableKind(widget.type) == 1
                     ? (inputs.get(0) ? 1.0 : 0.0) : numInputs.get(0);
             if (Double.isFinite(cacheNumeric[index])) FbdCraftNamedVariableStore.write(
-                    craftNamedVariableName(widget),
+                    widget.craftVariableNamespace, craftNamedVariableName(widget),
                     craftNamedVariableKind(widget.type), cacheNumeric[index]);
             return Double.isFinite(cacheNumeric[index]) && cacheNumeric[index] != 0.0;
         }
@@ -5272,6 +5272,8 @@ public class MainActivity extends Activity {
         public int lastVoiceState = -1;
         public boolean lastSoundState = false;
         public JSONObject extraFields = new JSONObject();
+        // Runtime-only scope for nodes inside an FB_MACRO instance.
+        public String craftVariableNamespace = "";
         public float x, y, w, h;
 
         public Widget() {

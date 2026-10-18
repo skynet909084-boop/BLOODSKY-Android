@@ -116,4 +116,33 @@ public class FbdCraftVarBlockTest {
         sensor.craftSensorValid = false;
         assertTrue(Double.isNaN(value(Arrays.asList(sensor), null, 0)));
     }
+
+    @Test public void namedVariablesAreIsolatedByMacroInstanceNamespace() throws Exception {
+        FbdCraftNamedVariableStore.clear();
+        MainActivity.Widget alphaSource = block("FBD CRAFT VAR NAME IN INT");
+        alphaSource.craftVariableNamespace = "macro-alpha";
+        alphaSource.extraFields.put("craftVariableName", "state");
+        MainActivity.Widget betaSource = block("FBD CRAFT VAR NAME IN INT");
+        betaSource.craftVariableNamespace = "macro-beta";
+        betaSource.extraFields.put("craftVariableName", "state");
+        MainActivity.Widget constant = block("FBD CRAFT VAR INT");
+        constant.extraFields.put("craftVarConstantMode", true);
+        constant.extraFields.put("craftVarConstant", "321");
+        MainActivity.Widget alphaSink = block("FBD CRAFT VAR NAME OUT INT");
+        alphaSink.craftVariableNamespace = "macro-alpha";
+        alphaSink.extraFields.put("craftVariableName", "state");
+        List<MainActivity.Widget> nodes = Arrays.asList(alphaSource, constant, alphaSink, betaSource);
+        List<MainActivity.FbdConnection> wires = Arrays.asList(
+                MainActivity.pinnedFbdConnection(1, "Q", 2, "IN"));
+        assertEquals(321.0, value(nodes, wires, 2), 0.0);
+        assertEquals(321.0, value(nodes, null, 0), 0.0);
+        assertEquals(0.0, value(nodes, null, 3), 0.0);
+        assertTrue(FbdCraftNamedVariableStore.write("macro-beta", "state", 2, 654.0));
+        assertEquals(654.0, value(nodes, null, 3), 0.0);
+        assertEquals(321.0, value(nodes, null, 0), 0.0);
+        FbdCraftNamedVariableStore.clearNamespace("macro-alpha");
+        assertEquals(0.0, FbdCraftNamedVariableStore.read("macro-alpha", "state", 2), 0.0);
+        assertEquals(654.0, FbdCraftNamedVariableStore.read("macro-beta", "state", 2), 0.0);
+    }
+
 }
