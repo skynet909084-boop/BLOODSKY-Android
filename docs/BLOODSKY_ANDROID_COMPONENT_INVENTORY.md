@@ -23,7 +23,7 @@ Manifest names include:
 - network-device, address-connection, server-list, Bluetooth-device, alarm-sound and Wi-Fi-to-USB bridge settings
 - foreground service and Eclipse Paho MQTT service
 
-The decompiled source manifest declares networking, Wi-Fi state, Bluetooth, storage, location, audio, camera, SMS, wake-lock and notification permissions. BLOODSKY's manifest currently requests only INTERNET and ACCESS_FINE_LOCATION; it does not request SMS permissions. Keep permissions limited to enabled features, with runtime permission flows and clear explanations rather than copying the legacy manifest wholesale. Telegram notifications use the existing INTERNET permission.
+The decompiled source manifest declares networking, Wi-Fi state, Bluetooth, storage, location, audio, camera, SMS, wake-lock and notification permissions. BLOODSKY requests INTERNET, ACCESS_FINE_LOCATION, RECORD_AUDIO and SEND_SMS for enabled features; SMS send permission is requested at runtime only when an SMS event is configured and first occurs. Inbound SMS remains disabled and RECEIVE_SMS/READ_SMS are not requested. Telegram notifications use the existing INTERNET permission.
 
 ## Screen/widget inventory (class-name mapping is partly obfuscated)
 
