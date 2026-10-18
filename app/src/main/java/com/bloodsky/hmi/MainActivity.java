@@ -3676,9 +3676,13 @@ public class MainActivity extends Activity {
         if (session == null || currentScreenIndex != session.screenIndex) return false;
         try {
             saveActiveScreen();
-            int outputNode = session.outputNode;
-            if (outputNode < 0 || outputNode >= widgets.size())
+            int outputNode = -1;
+            for (int i = 0; i < widgets.size(); i++) {
+                if (widgets.get(i) == session.outputWidget) { outputNode = i; break; }
+            }
+            if (outputNode < 0)
                 throw new IllegalArgumentException("Выходной блок удалён. Назначьте новый выход перед сохранением.");
+            session.outputNode = outputNode;
             FbdCraftMacroDefinition updated = updateCraftMacroDefinitionGraph(
                     session.definition, widgets, screens.get(currentScreenIndex).connections,
                     outputNode, session.outputPin);
@@ -3722,13 +3726,16 @@ public class MainActivity extends Activity {
                 .setItems(pins, (dialog, which) -> {
                     NestedMacroEditSession session = nestedMacroEdit;
                     int previousNode = session.outputNode;
+                    Widget previousWidget = session.outputWidget;
                     String previousPin = session.outputPin;
                     session.outputNode = blockIndex;
+                    session.outputWidget = widgets.get(blockIndex);
                     session.outputPin = pins[which];
                     if (persistProjectNow(true)) {
                         Toast.makeText(this, "Выход макроса обновлён", Toast.LENGTH_SHORT).show();
                     } else {
                         session.outputNode = previousNode;
+                        session.outputWidget = previousWidget;
                         session.outputPin = previousPin;
                     }
                 }).setNegativeButton("Отмена", null).show();
@@ -3766,6 +3773,7 @@ public class MainActivity extends Activity {
             screens.set(currentScreenIndex, nested);
             widgets.clear();
             for (Widget widget : nested.widgets) widgets.add(copyWidget(widget));
+            session.outputWidget = widgets.get(outputNode);
             fbdWireHistory.clear();
             fbdWireMode = false;
             wireSource = -1;
@@ -4059,6 +4067,7 @@ public class MainActivity extends Activity {
         final Screen nestedScreen;
         FbdCraftMacroDefinition definition;
         int outputNode;
+        Widget outputWidget;
         String outputPin;
         NestedMacroEditSession(int screenIndex, Screen hostScreen, Screen nestedScreen,
                 FbdCraftMacroDefinition definition, int outputNode, String outputPin) {
