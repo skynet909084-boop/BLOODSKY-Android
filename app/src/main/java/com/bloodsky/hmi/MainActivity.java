@@ -1495,6 +1495,9 @@ public class MainActivity extends Activity {
             verticalWorkspace.setVerticalScrollBarEnabled(true);
             verticalWorkspace.setSmoothScrollingEnabled(false);
             int workspaceHeight = dp(2400);
+            // ScrollView measures a custom View's vertical axis as unspecified;
+            // keep the design surface taller than the viewport for real scroll range.
+            editor.setMinimumHeight(workspaceHeight);
             verticalWorkspace.addView(editor,
                     new android.widget.ScrollView.LayoutParams(-1, workspaceHeight));
             area.addView(verticalWorkspace,
