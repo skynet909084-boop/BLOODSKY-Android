@@ -226,7 +226,8 @@ class FastFbdSmoke(Smoke):
         self.wait_node(description='Редактор экрана')
         native = current_widgets()
         if (native[5]['type'] != 'FBD CRAFT TIMER'
-                or native[5].get('extraFields', {}).get('craftTimerMode') != 'TOF'):
+                or native[5].get('craftTimerMode') != 'TOF'
+                or native[5].get('text') != 'TOF'):
             raise AssertionError('Craft source mode did not persist independently of legacy TOF: ' + repr(native[5]))
         self.capture('fast-fbd-native-craft-timer-tof')
 
