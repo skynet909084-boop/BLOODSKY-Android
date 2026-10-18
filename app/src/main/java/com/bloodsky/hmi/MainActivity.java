@@ -4795,3 +4795,60 @@ public class MainActivity extends Activity {
                         selected = i; startX = w.x; startY = w.y; startW = w.w; startH = w.h;
                         float grip = dp(22);
                         resizing = x >= w.x + w.w - grip && y >= w.y + w.h - grip;
+                        break;
+                    }
+                }
+                invalidate();
+                return true;
+            }
+            if (event.getAction() == MotionEvent.ACTION_MOVE && selected >= 0) {
+                float dx = x - downX, dy = y - downY;
+                if (Math.abs(dx) + Math.abs(dy) > dp(5)) dragging = true;
+                if (dragging) {
+                    Widget w = widgets.get(selected);
+                    if (resizing) {
+                        int minW = dp(60), minH = dp(40);
+                        float maxW = Math.max(minW, getWidth() - w.x);
+                        float maxH = Math.max(minH, getHeight() - w.y);
+                        w.w = Math.max(minW, Math.min(maxW, snapToGrid(startW + dx)));
+                        w.h = Math.max(minH, Math.min(maxH, snapToGrid(startH + dy)));
+                    } else {
+                        float maxX = Math.max(0, getWidth() - w.w);
+                        float maxY = Math.max(0, getHeight() - w.h);
+                        w.x = Math.max(0, Math.min(maxX, snapToGrid(startX + dx)));
+                        w.y = Math.max(0, Math.min(maxY, snapToGrid(startY + dy)));
+                    }
+                    invalidate();
+                }
+                return true;
+            }
+            if (event.getAction() == MotionEvent.ACTION_UP) {
+                if (dragging) {
+                    persistProject();
+                } else if (selected >= 0 && SystemClock.elapsedRealtime() - downAt >= 550L) {
+                    showWidgetContextMenu();
+                } else if (selected >= 0 && fbdWireMode) {
+                    Widget picked = widgets.get(selected);
+                    if (!isFbd(picked)) {
+                        Toast.makeText(MainActivity.this, "В режиме связи выбери FBD-блок", Toast.LENGTH_SHORT).show();
+                    } else if (wireSource < 0) {
+                        wireSource = selected;
+                        Toast.makeText(MainActivity.this, "Источник выбран: " + picked.text + ". Теперь выбери целевой блок", Toast.LENGTH_LONG).show();
+                    } else {
+                        int source = wireSource;
+                        wireSource = -1;
+                        connectFbdWidgets(source, selected);
+                        fbdWireMode = false;
+                    }
+                } else if (selected >= 0) {
+                    editSelectedWidget();
+                }
+                invalidate();
+                return true;
+            }
+            return true;
+        }
+    }
+}
+
+
