@@ -64,3 +64,6 @@ Craft ID 9 (`CustomComponents.c`) preserves `posSound` 1–5 and the source's lo
 
 
 Craft ID 23 (`CustomComponents.f`) is now mapped to a visible disabled placeholder during import. It preserves `craftOther` and opaque connection data, marks `craftRtspEnabled=false`, and never starts a network stream. `CraftRtspConfig` validates a separately supplied RTSP/RTSPS URL and rejects embedded URI user-info. The video editor/player and secure credential persistence/export behavior are not implemented yet.
+
+
+Craft ID 27 (`CustomComponents.a0`) now imports as the existing 16-state `Голосовое сообщение` widget, which exposes editable state phrases and synthesizes speech on Modbus state changes. Craft's original component fields remain preserved in `craftOther`; their exact phrase-key mapping has not been verified. Imported device links are cleared, so TTS does not run until an operator configures a BLOODSKY binding. Runtime behavior is a partial port pending source-field and device/UI acceptance.
