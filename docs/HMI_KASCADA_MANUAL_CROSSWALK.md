@@ -29,9 +29,11 @@ Source: `HMI-KaSCADA-v1.4-ot-08.09.19 (1).pdf` (109 pages), checked as extracted
 
 ## Product scope from the user
 
-- BLOODSKY remains an independent local application. Licensing, cloud administration and remote cloud control are explicitly out of scope.
+- BLOODSKY remains an independent local application. Licensing, cloud administration and remote cloud control are explicitly out of scope. Optional Yandex/Xiaomi adapters do not make the app's local Modbus/FBD runtime depend on the internet.
 - Local device transports, project editing, widgets, FBD/EL, archiving, and local web monitoring remain in scope.
 - SMS remains an optional SIM-based channel alongside Telegram. Current SMS palette entries stay visible but disabled until their runtime and permissions are implemented. Telegram notifications use the Bot API when the user configures a bot and chat.
+- A push-to-talk assistant now offers explicit local on-device and online Android speech-recognition modes. Both use the same tested Russian command allowlist for screen navigation and confirmed project start/stop; this is not yet a general LLM or named-scenario executor.
+- A first optional Home Assistant bridge discovers entity states and confirms on/off actions for supported light, switch, fan, and input_boolean entities; it supports a local Xiaomi Home-to-Home Assistant path. Continuous subscriptions and direct Yandex account OAuth remain follow-up work.
 
 ## Decoded component IDs confirmed this pass
 
@@ -39,8 +41,6 @@ Source: `HMI-KaSCADA-v1.4-ot-08.09.19 (1).pdf` (109 pages), checked as extracted
 |---:|---|---|---|
 | 9 | `CustomComponents.c` | Bell/alarm. `posSound` selects one of five bundled sounds; one Modbus bit connection; sound loops while active. | Maps to BLOODSKY sound alarm; selected sound index and loop flag persist. The Craft binding stays in `craftConnectionInfo`, not the active BLOODSKY binding. |
 | 19 | `CustomComponents.k` | Register gateway. Has source register, receive register and trigger connection records; modes select transfer behavior. Activation can write registers. | Maps to a labeled unsupported placeholder and preserves all original JSON/mode/connection fields. No gateway action is executed. |
-
-- A first optional Home Assistant bridge discovers and displays entity state read-only; it supports a local Xiaomi Home-to-Home Assistant path. Write controls, subscriptions, and direct Yandex account OAuth remain follow-up work.
 
 ## Working interpretation and immediate gaps
 
@@ -53,5 +53,4 @@ Source: `HMI-KaSCADA-v1.4-ot-08.09.19 (1).pdf` (109 pages), checked as extracted
 
 - Importer unit coverage asserts ID 9 classification, sound index and binding preservation, and ID 19's three-register connection metadata plus inactive status.
 - Python resource preparation supplies the exact five original alarm audio assets under `R.raw.kc_alarm1` … `kc_alarm5`.
-- Voice assistant first step: explicit local/on-device or online speech-recognition choice; tested commands navigate screens and start/stop the project, with confirmation on start. Named scenarios and smart-home voice actions are not implemented yet.
 - Full Android unit/APK and visual runtime checks remain required on the exact pull-request head; source tests alone do not establish full parity.
