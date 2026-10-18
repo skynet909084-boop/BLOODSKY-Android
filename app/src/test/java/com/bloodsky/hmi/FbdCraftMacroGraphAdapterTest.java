@@ -59,7 +59,7 @@ public class FbdCraftMacroGraphAdapterTest {
                 .put("fbInMacros", new JSONArray().put(first).put(second));
         JSONObject graph = FbdCraftMacroGraphAdapter.translate(macro, macro.getJSONArray("fbInMacros"));
         assertNotNull(graph);
-        assertEquals("OUT", graph.getJSONArray("connections").getJSONObject(1).getString("sourcePin"));
+        assertEquals("OUT", graph.getJSONArray("connections").getJSONObject(0).getString("sourcePin"));
         assertEquals("OUT", graph.getString("outputPin"));
     }
 
