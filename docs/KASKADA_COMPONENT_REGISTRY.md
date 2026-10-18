@@ -45,6 +45,8 @@ Tags 3, 16 and 17 do not appear in this particular switch. Do not infer that the
 
 ## Porting caution
 
+Craft component ID 6 mode 2 (`CustomComponents.e`) is implemented as `Константная кнопка Craft`: import preserves value type, constant, source register metadata and `visibleInWork`, while legacy device mapping remains disabled. The editor validates UINT16 or finite Float32 constants and requires an explicit TCP holding-register target. Operator presses write FC06 for UINT16 or FC16 for Float32; the original Craft register number is retained as source metadata and is not silently reused as a BLOODSKY network address. Side-by-side UI and device acceptance remain open.
+
 Craft ID 13 (`CustomSeekBar`, `v.java`) is implemented as `Линейный задатчик Craft`: import preserves `max`, `isTurn` orientation and colors while leaving legacy device mapping disabled. The editor validates a 1–65535 integer maximum; operator mode presents a slider and writes the confirmed value through FC06 to an explicitly configured TCP holding register. Side-by-side visual and device acceptance remain open.
 
 Craft ID 20 is implemented as `Список Craft`: sixteen independently selectable labels backed by a UINT16 mask, matching `CustomList` (`textBit0`–`textBit15`, `getValue`, `setValue`, and `l(bit)`). Imported labels and both `visibleInWork` / `checkNoChange` flags survive conversion. Imported device IDs remain unbound until an operator enters an explicit TCP holding-register endpoint; the runtime reads FC03 and writes the mask with FC06. Empty labels are unavailable, and `checkNoChange` makes the operator list read-only. Register/manual/hardware parity beyond this TCP mapping remains open.
