@@ -27,7 +27,7 @@
 | 8.1, стр. 76–77 | Телефон | Нет функционального phone-компонента | Проверить предназначение по layout/source; реализовать только подтверждённое действие и permission flow |
 | 8.2–8.3, стр. 78–83 | Шлюз регистров и битов | Craft ID 19 подтверждён как регистровый шлюз и сохраняется неисполняемым placeholder | Портировать режимы передачи/триггеры для регистров и битов; проверки диапазона, edge, таймаутов и запрет неявного выполнения при импорте |
 | 8.4, стр. 84–86 | Входящее SMS: до 16 integer registers, exact text match for bit mode, optional success strobe | Opt-in foreground receiver, runtime permission, encrypted sender allowlist, one-to-sixteen signed 16-bit sequential writes, atomic FC22 bit set, optional FC22 strobe set after successful numeric write, Craft ID 18 import disabled-by-default implemented | Android multipart/PDU device tests, screen diagnostics parity and real SIM/Modbus hardware acceptance remain open |
-| 8.5, стр. 87–89 | Исходящее SMS: текст и до 8 регистров, `%1`…`%8` | Отправка есть как отдельное BLOODSKY событие по Modbus 0→1, номер зашифрован; сейчас один `{value}` | Добавить выбранный источник и количество 1–8 регистров, `%n` подстановку, стабильное чтение одного snapshot, multi-SIM/нет SIM и SMS multipart tests |
+| 8.5, стр. 87–89 | Исходящее SMS: текст и до 8 регистров, `%1`…`%8` | Event widget reads 1–8 contiguous registers from its selected TCP binding, renders `%n` placeholders or appends values, retains `{value}`, encrypts recipient, and sends multipart SMS | Android SMS-manager/device tests, multi-SIM choice, and exact original error-message parity remain open |
 | 8.6, стр. 90 | RTSP видео | Не сделано | Проверить поддерживаемые Android decoder/codec, URL credentials policy, lifecycle и сетевые ошибки; не сохранять пароли в export |
 | 8.7, стр. 91 | Push-уведомления | Исходящий Telegram Bot API есть как опциональная замена/дополнение | Перенести конфигурацию уровня компонента и условия срабатывания; Telegram требует сеть, локальное ядро не должно от него зависеть |
 | 8.8, стр. 92 | WebView | Не сделано как Craft-компонент | Реализовать ограниченный widget без file/content access по умолчанию, URL allowlist для управления и отдельный сетевой permission UX |
@@ -50,7 +50,7 @@
 | Функция | Реализовано | Осталось |
 |---|---|---|
 | Telegram | Bot/chat settings, encrypted secret, Modbus edge event | Компонентные настройки/ответные статусы и установка, сквозной UI test |
-| SMS | Исходящее SMS-уведомление; входящий opt-in component with foreground receiver, encrypted sender allowlist, 1–16 signed numeric values, atomic bit and optional strobe writes | Android multipart/hardware tests; исходящая функция уже, чем мануал (1 value вместо 1–8) |
+| SMS | Исходящее SMS-уведомление reads/templates 1–8 registers; входящий opt-in component has foreground receiver, encrypted sender allowlist, 1–16 signed numeric values, atomic bit and optional strobe writes | Android multipart/PDU and real SIM/Modbus hardware tests; exact vendor event/error UX still partial |
 | Home Assistant / Xiaomi | HA discovery + подтверждённые power actions; Xiaomi доступен через установленный пользователем HA integration | WebSocket subscriptions, сущности сверх allowlist, reconnect, сквозная работа с устройством |
 | Yandex Smart Home | Device/scenario discovery, запуск выбранного сценария после подтверждения; token encrypted | Native OAuth, прямые capability writes, discovery ошибок и сквозной UI test |
 | Голос | Push-to-talk, явный offline on-device/online Android recognition, allowlist навигации и run/stop, подтверждение запуска | Локальный ассистент пока распознаёт команды, но не является LLM; нет локальных именованных сценариев и голосовых вызовов HA/Yandex; offline recognition отсутствует на Android <31/без engine |
@@ -63,7 +63,7 @@
 |---|---|---|
 | P0 | Точная матрица: каждому Craft ID и FBD классу указать source evidence, свойства, runtime и BLOODSKY статус; исправить старые завышенные `implemented` отметки | Нет статуса «готово» только по наличию класса/иконки; тест/снимок/протокол указан у каждой завершённой строки |
 | P1 | Импорт примеров: sanitised fixtures, component-level report, asset basename/path matching и экспорт-импорт без потери unknown fields | Все три переданных проекта проходят import→save→export→reopen; неподдерживаемые элементы видимы и безопасны |
-| P2 | Остальные редакторские виджеты и свойства (список, линейный setter, анимация, архив, SMS outbound template parity, RTSP, WebView, телефон, gateway, sensors) | Для каждого класса: создание, изменение свойств, сохранение/открытие, runtime boundary tests |
+| P2 | Остальные редакторские виджеты и свойства (список, линейный setter, анимация, архив, RTSP, WebView, телефон, gateway, sensors) | Для каждого класса: создание, изменение свойств, сохранение/открытие, runtime boundary tests |
 | P3 | Источник-точный FBD/EL: CTU/RS/TIMER modes, pins/types/inversion, macro, named vars, sensors and system registers | Unit + imported-project tests против Smali/source vectors; UI smoke и equal-density screenshot на исходных блоках |
 | P4 | Device/protocol stack: device manager, Modbus RTU Bluetooth/USB, local slave, Wi-Fi-to-USB bridge | Mock simulator suite, permissions/reconnect tests и физическое устройство для каждого транспортного family |
 | P5 | Local runtime services: local browser control/archive, background lifecycle, alarm/event service | LAN-only test, bounded auth/session, airplane-mode runtime test и lifecycle stress |
@@ -72,7 +72,7 @@
 
 ## Текущее решение по следующему пакету
 
-P0 audit/matrix correction completed in the preceding commit. Incoming SMS now follows the manual's 1–16 numeric values, bit set and optional strobe model; imported ID 18 remains disabled pending explicit operator configuration. Continue with outgoing `%1`…`%8` register-template parity. No imported command executes automatically.
+P0 audit/matrix correction completed in the preceding commit. Incoming and outgoing SMS now cover the manual's 1–16 incoming values, optional strobe, and 1–8 outgoing templates. Imported ID 18 remains disabled pending explicit operator configuration. Continue with remaining widgets, local transports and exact FBD parity. No imported command executes automatically.
 
 ## Проверки этого аудита
 
