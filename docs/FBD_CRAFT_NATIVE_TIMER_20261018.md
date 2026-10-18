@@ -12,4 +12,4 @@ The timer uses the original FB_TIMER split-body geometry and typed named graph c
 
 ## Remaining source-backed FBD scope
 
-`FB_MX` and `FB_ARRAY` require Craft's shared ID/value register transport; `FB_MACRO` requires a persisted executable nested graph with its dynamic typed interfaces and isolated namespace. These source previews remain disabled until their runtime and lifecycle are implemented. This batch does not claim complete FBD or pixel-identical original drawing parity.
+Craft's shared register blocks `FB_MX` and `FB_ARRAY` are implemented separately; see `docs/FBD_CRAFT_MX_ARRAY_20261018.md`. `FB_MACRO` still requires a persisted executable nested graph with dynamic typed interfaces and isolated namespaces, so that preview remains disabled. This batch does not claim complete FBD or pixel-identical original drawing parity.

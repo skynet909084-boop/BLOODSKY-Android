@@ -11,20 +11,20 @@ Source: decompiled APK artifact `11912849123`, `jadx/sources/ru/himik/nightscrea
 | FB_XOR | Yes | Same with header and vertical divider | XOR header, conditional M/O/Q text and port lines, conditional inversion circle | Partial |
 | FB_RS | Yes | Same with header and vertical divider | RS header, conditional M/O/Q text and port lines, conditional inversion circle | Partial |
 | FB_TIMER | Yes | Same with header and vertical divider | TON/TOF/TP/BLINK mode; configurable time unit MS/SEK/MIN; conditional labels | Partial |
-| FB_TRIGGER | Yes | Same with header and vertical divider | T/F/R mode, conditional labels and pins | Not matched |
-| FB_COMPARE | Yes | Same | Comparison operator >, <, <=, >=, =, <>; quarter-height input pins | Not matched |
-| FB_COMPARE_FLOAT | Yes | Same | Compare layout | Not matched |
-| FB_ARITHMETIC_INT | Yes | Same | Arithmetic layout | Not matched |
-| FB_ARITHMETIC_FLOAT | Yes | Same | Arithmetic layout | Not matched |
-| FB_CHANGE_I | Yes | Same with header/divider | Three-section layout | Not matched |
-| FB_CHANGE_F | Yes | Same with header/divider | Three-section layout | Not matched |
-| FB_MOVE | Yes | Same with header/divider | Three-section layout | Not matched |
-| FB_MX | Yes | Same with header/divider | Three-section layout | Not matched |
-| FB_POW | Yes | Same with header/divider | Three-section layout | Not matched |
-| FB_ARRAY | No local onDraw | Inherited | Inspect base class | Not matched |
+| FB_TRIGGER | Yes | Same with header and vertical divider | T/F/R mode, conditional labels and pins | Runtime integrated; visual partial |
+| FB_COMPARE | Yes | Same | Comparison operator >, <, <=, >=, =, <>; quarter-height input pins | Runtime integrated; visual partial |
+| FB_COMPARE_FLOAT | Yes | Same | Compare layout | Runtime integrated; visual partial |
+| FB_ARITHMETIC_INT | Yes | Same | Arithmetic layout | Runtime integrated; visual partial |
+| FB_ARITHMETIC_FLOAT | Yes | Same | Arithmetic layout | Runtime integrated; visual partial |
+| FB_CHANGE_I | Yes | Same with header/divider | Three-section layout | Runtime integrated; visual partial |
+| FB_CHANGE_F | Yes | Same with header/divider | Three-section layout | Runtime integrated; visual partial |
+| FB_MOVE | Yes | Same with header/divider | Three-section layout | Runtime integrated; visual partial |
+| FB_MX | Yes | Same with header/divider | BOOL enable, Integer index, Integer output | Runtime integrated; visual partial |
+| FB_POW | Yes | Same with header/divider | Three-section layout | Existing runtime; visual partial |
+| FB_ARRAY | No local onDraw | Inherited | EN, DT, ID inputs and Q output; shared Integer register store | Runtime integrated; inherited visual approximation |
 | FB_CTU | No local onDraw | Inherited | Inspect base class | Not matched |
 | FB_MACRO | No local onDraw | Inherited | Inspect base class | Not matched |
-| FB_SEL | No local onDraw | Inherited | Inspect base class | Not matched |
+| FB_SEL | No local onDraw | Inherited | Integer select with typed inputs | Runtime integrated; inherited visual approximation |
 
 ## Geometry and semantics verified
 
@@ -41,4 +41,4 @@ Source: decompiled APK artifact `11912849123`, `jadx/sources/ru/himik/nightscrea
 4. Verify XML menus/dialogs, original drawable assets, project storage, Modbus semantics, and operator mode independently.
 5. Keep custom BLOODSKY improvements out of the baseline clone.
 
-This matrix is an **audit**, not evidence that all 19 classes have been ported.
+This matrix remains an **audit**, not evidence of full pixel or lifecycle parity. `FB_MACRO` nested graph storage, remaining palette/action coverage, exact same-density drawings, and complete original project/storage behavior remain open. See per-batch runtime evidence before treating any row as accepted.

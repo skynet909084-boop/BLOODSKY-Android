@@ -28,7 +28,8 @@ public final class FbdSourceCanvasSkin {
                 || "FBD CRAFT ARITHMETIC FLOAT".equals(type)
                 || "FBD CRAFT CHANGE I".equals(type)
                 || "FBD CRAFT CHANGE F".equals(type)
-                || "FBD CRAFT MOVE".equals(type);
+                || "FBD CRAFT MOVE".equals(type)
+                || "FBD CRAFT MX".equals(type) || "FBD CRAFT ARRAY".equals(type);
     }
 
     public static boolean shouldUse(MainActivity.Widget w) {
@@ -47,6 +48,8 @@ public final class FbdSourceCanvasSkin {
                 : "FBD CRAFT CHANGE I".equals(w.type) ? "CH_I"
                 : "FBD CRAFT CHANGE F".equals(w.type) ? "CH_F"
                 : "FBD CRAFT MOVE".equals(w.type) ? "MOVE"
+                : "FBD CRAFT MX".equals(w.type) ? "MX"
+                : "FBD CRAFT ARRAY".equals(w.type) ? "ARRAY"
                 : "FBD CRAFT COMPARE".equals(w.type) ? w.compareOperator
                 : "FBD CRAFT COMPARE FLOAT".equals(w.type)
                         || "FBD CRAFT ARITHMETIC INT".equals(w.type)
@@ -61,6 +64,8 @@ public final class FbdSourceCanvasSkin {
     public static float inputY(String type, String name) {
         if ("FBD CRAFT MOVE".equals(type))
             return "EN".equalsIgnoreCase(name) ? 0.5f : 5f / 6f;
+        if ("FBD CRAFT ARRAY".equals(type))
+            return "EN".equalsIgnoreCase(name) ? 3f/8f : "DT".equalsIgnoreCase(name) ? 5f/8f : 7f/8f;
         if ("FBD XOR".equals(type) || isTimer(type)) {
             String[] pins = MainActivity.knownFbdPins(type, false);
             for (int i = 0; i < pins.length; i++) {
@@ -73,7 +78,7 @@ public final class FbdSourceCanvasSkin {
     private static boolean isTimer(String type) {
         return "FBD Таймер".equals(type) || "FBD TOF".equals(type)
                 || "FBD TP".equals(type) || "FBD CRAFT BLINK".equals(type)
-                || "FBD CRAFT TIMER".equals(type);
+                || "FBD CRAFT TIMER".equals(type) || "FBD CRAFT MX".equals(type);
     }
 
     /** Decompiled original FB_CTU=draw9 and FB_RS/FB_TRIGGER=draw8. */
@@ -82,7 +87,7 @@ public final class FbdSourceCanvasSkin {
                 || "FBD CRAFT T".equals(type) || "FBD RS".equals(type)
                 || "FBD CRAFT CHANGE I".equals(type)
                 || "FBD CRAFT CHANGE F".equals(type)
-                || "FBD CRAFT MOVE".equals(type);
+                || "FBD CRAFT MOVE".equals(type) || "FBD CRAFT ARRAY".equals(type);
     }
 
     public static void draw(Canvas canvas, Paint brush, MainActivity.Widget w, float density) {
@@ -108,7 +113,8 @@ public final class FbdSourceCanvasSkin {
             boolean divided = "FBD XOR".equals(w.type) || isTimer(w.type)
                     || hasNativeHeader(w.type);
             float headerFraction = ("FBD CRAFT CTU".equals(w.type)
-                    || "FBD CRAFT SEL".equals(w.type)) ? 0.25f : 1f / 3f;
+                    || "FBD CRAFT SEL".equals(w.type)
+                    || "FBD CRAFT ARRAY".equals(w.type)) ? 0.25f : 1f / 3f;
             if (divided) {
                 float header = y0 + w.h * headerFraction;
                 brush.setColor(Color.BLACK);

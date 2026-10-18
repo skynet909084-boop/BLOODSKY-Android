@@ -29,6 +29,8 @@ public final class OriginalFbdPalette {
         bindNative(dialog,R.id.kc_logic_tab_fb_change_i,"FB_CHANGE_I",add);
         bindNative(dialog,R.id.kc_logic_tab_fb_change_f,"FB_CHANGE_F",add);
         bindNative(dialog,R.id.kc_logic_tab_fb_move,"FB_MOVE",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_mx,"FB_MX",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_array,"FB_ARRAY",add);
         bindNative(dialog,R.id.kc_logic_tab_fb_sel,"FB_SEL",add);
         bindNative(dialog,R.id.kc_logic_tab_el_compare_int,"FB_COMPARE",add);
         bindNative(dialog,R.id.kc_logic_tab_el_arithmetic_int,"FB_ARITHMETIC_INT",add);
@@ -63,6 +65,8 @@ public final class OriginalFbdPalette {
         if ("FB_CHANGE_I".equals(tag)) return "FBD CRAFT CHANGE I";
         if ("FB_CHANGE_F".equals(tag)) return "FBD CRAFT CHANGE F";
         if ("FB_MOVE".equals(tag)) return "FBD CRAFT MOVE";
+        if ("FB_MX".equals(tag)) return "FBD CRAFT MX";
+        if ("FB_ARRAY".equals(tag)) return "FBD CRAFT ARRAY";
         if ("FB_SEL".equals(tag)) return "FBD CRAFT SEL";
         if ("FB_COMPARE".equals(tag)) return "FBD CRAFT COMPARE";
         if ("FB_ARITHMETIC_INT".equals(tag)) return "FBD CRAFT ARITHMETIC INT";
@@ -78,6 +82,8 @@ public final class OriginalFbdPalette {
         if ("FB_CHANGE_I".equals(tag)) return "CH_I";
         if ("FB_CHANGE_F".equals(tag)) return "CH_F";
         if ("FB_MOVE".equals(tag)) return "MOVE";
+        if ("FB_MX".equals(tag)) return "MX";
+        if ("FB_ARRAY".equals(tag)) return "ARRAY";
         if ("FB_SEL".equals(tag)) return "SEL";
         if ("FB_COMPARE".equals(tag)) return ">";
         if ("FB_ARITHMETIC_INT".equals(tag) || "FB_ARITHMETIC_FLOAT".equals(tag)) return "+";

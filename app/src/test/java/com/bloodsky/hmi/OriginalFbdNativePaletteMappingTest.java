@@ -85,13 +85,41 @@ public class OriginalFbdNativePaletteMappingTest {
 
     @Test public void unsupportedOriginalBlocksStayDisabledAndUnmapped() {
         for (String source : new String[]{
-                "FB_TIMER", "FB_ARRAY", "FB_MACRO",
-                "FB_MX", "MQTT_SUBSCRIBER", "Var",
+                "FB_TIMER", "FB_MACRO", "MQTT_SUBSCRIBER", "Var",
                 "FB_POW", "FB_TRIGGER_ALT", "", "FB_CTU_OLD"}) {
             assertNull(source, OriginalFbdPalette.nativeTypeForOriginalTag(source));
             assertNull(source, OriginalFbdPalette.nativeLabelForOriginalTag(source));
         }
         assertNull(OriginalFbdPalette.nativeTypeForOriginalTag(null));
         assertNull(OriginalFbdPalette.nativeLabelForOriginalTag(null));
+    }
+
+    @Test public void originalMxAndArrayUseSeparateTypedRegisterContracts() {
+        String mx = OriginalFbdPalette.nativeTypeForOriginalTag("FB_MX");
+        String array = OriginalFbdPalette.nativeTypeForOriginalTag("FB_ARRAY");
+        assertEquals("FBD CRAFT MX", mx);
+        assertEquals("MX", OriginalFbdPalette.nativeLabelForOriginalTag("FB_MX"));
+        assertEquals("FBD CRAFT ARRAY", array);
+        assertEquals("ARRAY", OriginalFbdPalette.nativeLabelForOriginalTag("FB_ARRAY"));
+        assertArrayEquals(new String[]{"EN", "I"}, MainActivity.knownFbdPins(mx, false));
+        assertArrayEquals(new String[]{"EN", "DT", "ID"}, MainActivity.knownFbdPins(array, false));
+        for (String type : new String[]{mx, array}) {
+            assertEquals("BOOL", MainActivity.knownFbdPinType(type, "EN", false));
+            assertEquals("NUMBER", MainActivity.knownFbdPinType(type, "Q", true));
+        }
+        assertEquals("NUMBER", MainActivity.knownFbdPinType(mx, "I", false));
+        assertEquals("NUMBER", MainActivity.knownFbdPinType(array, "DT", false));
+        assertEquals("NUMBER", MainActivity.knownFbdPinType(array, "ID", false));
+        assertEquals(0.5f, MainActivity.fbdTerminalFraction(mx, "EN", false), 0.00001f);
+        assertEquals(5f/6f, MainActivity.fbdTerminalFraction(mx, "I", false), 0.00001f);
+        assertEquals(3f/8f, MainActivity.fbdTerminalFraction(array, "EN", false), 0.00001f);
+        assertEquals(5f/8f, MainActivity.fbdTerminalFraction(array, "DT", false), 0.00001f);
+        assertEquals(7f/8f, MainActivity.fbdTerminalFraction(array, "ID", false), 0.00001f);
+        MainActivity.Widget mxWidget = new MainActivity.Widget();
+        mxWidget.type = mx; mxWidget.text = "MX";
+        MainActivity.Widget arrayWidget = new MainActivity.Widget();
+        arrayWidget.type = array; arrayWidget.text = "ARRAY";
+        assertTrue(FbdSourceCanvasSkin.shouldUse(mxWidget));
+        assertTrue(FbdSourceCanvasSkin.shouldUse(arrayWidget));
     }
 }

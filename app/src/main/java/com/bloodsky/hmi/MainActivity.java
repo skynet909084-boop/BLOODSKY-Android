@@ -1241,7 +1241,10 @@ public class MainActivity extends Activity {
         if (!persistProjectNow(true)) return;
         // Editing must not advance timers. Re-entering runtime starts a fresh
         // clock epoch rather than resuming an old saved elapsedRealtime value.
-        if (!operatorMode) for (Widget value : widgets) resetFbdTimerRuntime(value);
+        if (!operatorMode) {
+            FbdCraftRegisterStore.clear();
+            for (Widget value : widgets) resetFbdTimerRuntime(value);
+        }
         operatorMode = !operatorMode; fbdWireMode = false; wireSource = -1;
         showEditor();
     }
@@ -1630,7 +1633,9 @@ public class MainActivity extends Activity {
                 "FBD — Craft Arithmetic INT (16 бит)",
                 "FBD — Craft Arithmetic FLOAT32",
                 "FBD — Craft COMPARE FLOAT32",
-                "FBD — Craft MOVE (EN + Integer)"
+                "FBD — Craft MOVE (EN + Integer)",
+                "FBD — Craft MX (EN + Integer ID)",
+                "FBD — Craft ARRAY (EN + DT + ID)"
         };
         final String[] types = {
                 "Текст", "Кнопка", "Индикатор", "Задатчик",
@@ -1649,7 +1654,8 @@ public class MainActivity extends Activity {
                 "FBD CRAFT SEL", "FBD CRAFT COMPARE",
                 "FBD CRAFT CHANGE I", "FBD CRAFT CHANGE F",
                 "FBD CRAFT ARITHMETIC INT", "FBD CRAFT ARITHMETIC FLOAT",
-                "FBD CRAFT COMPARE FLOAT", "FBD CRAFT MOVE"
+                "FBD CRAFT COMPARE FLOAT", "FBD CRAFT MOVE",
+                "FBD CRAFT MX", "FBD CRAFT ARRAY"
         };
         final String[] defaults = {
                 "Надпись", "Кнопка", "Индикатор", "Задатчик: 0",
@@ -1662,7 +1668,7 @@ public class MainActivity extends Activity {
                 "MOVE", "SEL", "ABS", "MIN/MAX",
                 "RS", "SR", "CTU", "CTD", "R_TRIG", "F_TRIG",
                 "CTU 16 bit", "T", "TON", "BLINK", "SEL", ">",
-                "CH_I", "CH_F", "+", "+", ">", "MOVE"
+                "CH_I", "CH_F", "+", "+", ">", "MOVE", "MX", "ARRAY"
         };
         LinearLayout list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
@@ -2712,6 +2718,7 @@ public class MainActivity extends Activity {
             return false;
         }
         fbdWireHistory.clear();
+        FbdCraftRegisterStore.clear();
         imageCache.clear();
         widgets.clear(); screens.clear(); currentScreenIndex = 0;
         projectExtraFields = new JSONObject();
@@ -3026,6 +3033,16 @@ public class MainActivity extends Activity {
             if (output && "Q".equals(name)) return "NUMBER";
             if (!output && "EN".equals(name)) return "BOOL";
             if (!output && "I".equals(name)) return "NUMBER";
+        }
+        if (kind.equals("FBD CRAFT MX")) {
+            if (output && "Q".equals(name)) return "NUMBER";
+            if (!output && "EN".equals(name)) return "BOOL";
+            if (!output && "I".equals(name)) return "NUMBER";
+        }
+        if (kind.equals("FBD CRAFT ARRAY")) {
+            if (output && "Q".equals(name)) return "NUMBER";
+            if (!output && "EN".equals(name)) return "BOOL";
+            if (!output && ("DT".equals(name) || "ID".equals(name))) return "NUMBER";
         }
         if (kind.equals("FBD CRAFT SEL")) {
             if (output && "Q".equals(name)) return "NUMBER";
@@ -3433,6 +3450,48 @@ public class MainActivity extends Activity {
                     widget.craftChangeFloatState, (float)value);
             widget.craftChangeFloatState = next;
             return next.changed;
+        }
+        if ("FBD CRAFT MX".equals(canonicalType)) {
+            boolean enabled = fbdBooleanPinValue(inputs, inputPins, "EN", -1);
+            Integer id = FbdCraftIntegerSelector.exactInteger(
+                    fbdNumericPinValue(numInputs, inputPins, "I", -1, Double.NaN));
+            Integer value = enabled && id != null ? FbdCraftRegisterStore.read(id) : null;
+            if (value == null) {
+                cacheNumeric[index] = Double.NaN;
+                return false;
+            }
+            cacheNumeric[index] = value;
+            return value != 0;
+        }
+        if ("FBD CRAFT ARRAY".equals(canonicalType)) {
+            boolean hasEnable = false, hasData = false, hasId = false;
+            for (String pin : inputPins) {
+                String name = canonicalFbdPinName(pin);
+                if ("EN".equals(name)) hasEnable = true;
+                if ("DT".equals(name)) hasData = true;
+                if ("ID".equals(name)) hasId = true;
+            }
+            if (hasEnable && hasData && hasId) {
+                boolean enabled = fbdBooleanPinValue(inputs, inputPins, "EN", -1);
+                if (!enabled) widget.craftArrayLastEnable = false;
+                else if (FbdCraftRegisterStore.risingEnable(widget.craftArrayLastEnable, true)) {
+                    widget.craftArrayLastEnable = true;
+                    Integer id = FbdCraftIntegerSelector.exactInteger(
+                            fbdNumericPinValue(numInputs, inputPins, "ID", -1, Double.NaN));
+                    Integer data = FbdCraftIntegerSelector.exactInteger(
+                            fbdNumericPinValue(numInputs, inputPins, "DT", -1, Double.NaN));
+                    if (id != null && data != null) FbdCraftRegisterStore.write(id, data);
+                }
+            }
+            Integer id = hasId ? FbdCraftIntegerSelector.exactInteger(
+                    fbdNumericPinValue(numInputs, inputPins, "ID", -1, Double.NaN)) : null;
+            Integer value = id == null ? null : FbdCraftRegisterStore.read(id);
+            if (value == null) {
+                cacheNumeric[index] = Double.NaN;
+                return false;
+            }
+            cacheNumeric[index] = value;
+            return value != 0;
         }
         if ("FBD CRAFT MOVE".equals(widget.type)) {
             boolean hasEnable = false, hasInput = false;
@@ -3938,6 +3997,8 @@ public class MainActivity extends Activity {
             // output Q at 1/2. Wire anchors and drawn contacts must match.
             if ("FBD RS".equals(kind))
                 return output ? 0.5f : (i == 0 ? 0.5f : 5f / 6f);
+            if ("FBD CRAFT ARRAY".equals(kind))
+                return output ? 0.5f : (2f * i + 3f) / 8f;
             // The original Craft AND/OR/XOR and compare drawing uses
             // quarter-height and three-quarter-height input ports.
             if (!output && pins.length == 2) {
@@ -3948,7 +4009,8 @@ public class MainActivity extends Activity {
                 // one-third header. Its named contacts lie at 1/2 and 5/6.
                 if ("FBD XOR".equals(kind) || "FBD TON".equals(kind)
                         || "FBD TP".equals(kind) || "FBD TOF".equals(kind)
-                        || "FBD CRAFT BLINK".equals(kind) || "FBD CRAFT TIMER".equals(kind))
+                        || "FBD CRAFT BLINK".equals(kind) || "FBD CRAFT TIMER".equals(kind)
+                        || "FBD CRAFT MX".equals(kind))
                     return i == 0 ? 0.5f : 5f / 6f;
             }
             return (i + 1f) / (pins.length + 1f);
@@ -3995,6 +4057,9 @@ public class MainActivity extends Activity {
         }
         if ("FBD CRAFT TIMER".equals(kind)) {
             widget.craftTimerState = FbdCraftNativeTimer.State.initial();
+        }
+        if ("FBD CRAFT ARRAY".equals(kind)) {
+            widget.craftArrayLastEnable = false;
         }
         if ("FBD TON".equals(kind) || "FBD TP".equals(kind) || "FBD TOF".equals(kind)) {
             widget.timerStartedAt = 0L;
@@ -4065,6 +4130,10 @@ public class MainActivity extends Activity {
             return output ? new String[]{"Q"} : new String[]{"F"};
         if ("FBD CRAFT MOVE".equals(kind))
             return output ? new String[]{"Q"} : new String[]{"EN", "I"};
+        if ("FBD CRAFT MX".equals(kind))
+            return output ? new String[]{"Q"} : new String[]{"EN", "I"};
+        if ("FBD CRAFT ARRAY".equals(kind))
+            return output ? new String[]{"Q"} : new String[]{"EN", "DT", "ID"};
         if ("FBD CRAFT SEL".equals(kind))
             return output ? new String[]{"Q"} : new String[]{"IN", "I1", "I2"};
         if ("FBD SEL".equals(kind))
@@ -4167,6 +4236,7 @@ public class MainActivity extends Activity {
         // Blink runtime epoch is not saved; a newly opened project starts idle.
         FbdCraftNativeTimer.State craftBlinkState = FbdCraftNativeTimer.State.initial();
         FbdCraftNativeTimer.State craftTimerState = FbdCraftNativeTimer.State.initial();
+        boolean craftArrayLastEnable = false;
         public int timerPresetMs = 1000;
         public long timerStartedAt = 0L;
         public double compareA = 0.0, compareB = 0.0;

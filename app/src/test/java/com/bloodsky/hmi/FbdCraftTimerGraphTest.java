@@ -15,7 +15,7 @@ public class FbdCraftTimerGraphTest {
         assertEquals(5f/6f, FbdSourceCanvasSkin.inputY("FBD CRAFT TIMER", "PT"), .00001f);
         MainActivity.Widget timer = new MainActivity.Widget();
         timer.type = "FBD CRAFT TIMER";
-        timer.text = "TON";
+        timer.text = "BLINK";
         try {
             timer.extraFields.put("craftTimerMode", "BLINK");
             timer.extraFields.put("craftTimerUnit", "MIN");
