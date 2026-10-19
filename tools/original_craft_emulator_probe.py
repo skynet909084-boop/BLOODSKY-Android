@@ -164,12 +164,13 @@ def execute_macro_drag(drop_x: int, drop_y: int):
         raise RuntimeError("Android build-tools d8 was not found")
     dex_dir = OUT / "craft-drag-dex"
     dex_dir.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        [str(d8), "--min-api", "23", "--lib", str(android_jar),
-         "--classpath", classpath, "--output", str(dex_dir),
-         str(classes / "CraftDragGesture.class")],
-        check=True,
-    )
+    d8_command = [str(d8), "--min-api", "23", "--lib", str(android_jar)]
+    for dependency in [uiautomator_jar, *optional_jars]:
+        d8_command.extend(["--classpath", str(dependency)])
+    d8_command.extend([
+        "--output", str(dex_dir), str(classes / "CraftDragGesture.class"),
+    ])
+    subprocess.run(d8_command, check=True)
     subprocess.run(
         ["jar", "cf", str(jar), "-C", str(dex_dir), "classes.dex"],
         check=True,
