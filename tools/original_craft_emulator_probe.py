@@ -144,6 +144,10 @@ def replay(path):
     fresh_start()
     for action in path:
         perform(action)
+        # Capture and inspect every post-tap screen before attempting the next action.
+        root, _, _ = dump_ui("tap-checkpoint")
+        if is_project_loading(root):
+            return
 
 
 def is_project_loading(root):
@@ -151,7 +155,7 @@ def is_project_loading(root):
                for n in root.iter("node"))
 
 
-def wait_for_project(root, label, timeout=2):
+def wait_for_project(root, label, timeout=0):
     deadline = time.time() + timeout
     while is_project_loading(root) and time.time() < deadline:
         time.sleep(1)
