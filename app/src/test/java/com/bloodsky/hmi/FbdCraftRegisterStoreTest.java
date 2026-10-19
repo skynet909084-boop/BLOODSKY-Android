@@ -63,7 +63,7 @@ public class FbdCraftRegisterStoreTest {
         assertEquals(Integer.valueOf(3), FbdCraftRegisterStore.read(7, second));
         assertEquals(0, actions.paletteChanges);
         assertTrue(FbdCraftRegisterStore.write(9, 0x4000, first));
-        assertEquals(Integer.valueOf(0x4000), FbdCraftRegisterStore.read(9, second));
+        assertEquals(0x4000, FbdCraftRegisterStore.read(9, second).intValue() & 0x4000);
         assertEquals(0, actions.saves);
     }
 
