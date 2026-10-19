@@ -100,6 +100,14 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("FBD FloatToInt", self.source)
         self.assertIn("FBD IntToFloat", self.source)
 
+    def test_macro_editor_is_the_third_palette_page(self):
+        palette = (ROOT / "app/src/main/java/com/bloodsky/hmi/OriginalFbdPalette.java").read_text(encoding="utf-8")
+        self.assertIn("this::showCraftMacroTools", self.source)
+        self.assertIn('"Редактор макросов",macroEditor', palette)
+        self.assertIn('otherElements.setText("Другие элементы BLOODSKY")', self.source)
+        self.assertIn('page.addView(macroList', self.source)
+        self.assertIn("createCraftMacroFromSelection()", self.source)
+
     def test_original_indicator_picker_has_real_preview_and_click_target(self):
         start = self.source.index("private void showAddWidgetMenu()")
         end = self.source.index("private void addWidget(", start)
