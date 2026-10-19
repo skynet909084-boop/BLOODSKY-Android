@@ -10,7 +10,7 @@ import subprocess
 import sys
 import time
 import xml.etree.ElementTree as ET
-from collections import deque
+from collections import Counter, deque
 from pathlib import Path
 from PIL import Image
 
@@ -147,11 +147,34 @@ def execute_macro_drag(source_x: int, source_y: int, drop_x: int, drop_y: int,
         str(drop_x), str(drop_y), str(duration_ms))
 
 
-def canvas_probe_point(state_label: str) -> tuple[int, int]:
-    """Pick a point on the clear canvas, beyond the open left component palette."""
+def canvas_region(state_label: str) -> tuple[int, int, int]:
+    """Return screenshot width, canvas top and bottom, using its flat background."""
     with Image.open(OUT / f"{state_label}.png") as image:
         width, height = image.size
-    return int(width * 0.75), int(height * 0.62)
+        pixels = image.convert("RGB")
+        left, right = int(width * 0.06), int(width * 0.92)
+        flat_rows = []
+        for y in range(int(height * 0.4), height):
+            colors = [pixels.getpixel((x, y)) for x in range(left, right, 8)]
+            color, count = Counter(colors).most_common(1)[0]
+            if count / len(colors) >= 0.85 and min(color) >= 80 and max(color) - min(color) <= 20:
+                flat_rows.append(y)
+    runs = []
+    for y in flat_rows:
+        if not runs or y > runs[-1][-1] + 1:
+            runs.append([y])
+        else:
+            runs[-1].append(y)
+    region = max((run for run in runs if len(run) >= int(height * 0.08)), key=len, default=[])
+    if region:
+        return width, region[0], region[-1]
+    return width, int(height * 0.64), height - 1
+
+
+def canvas_probe_point(state_label: str) -> tuple[int, int]:
+    """Pick the middle of the large, flat canvas region below Craft's palette."""
+    width, top, bottom = canvas_region(state_label)
+    return int(width * 0.75), (top + bottom) // 2
 
 
 def placed_widget_point(state_label: str) -> tuple[int, int]:
@@ -160,6 +183,7 @@ def placed_widget_point(state_label: str) -> tuple[int, int]:
         root = ET.parse(OUT / f"{state_label}.xml").getroot()
     except (ET.ParseError, OSError):
         return canvas_probe_point(state_label)
+    width, canvas_top, canvas_bottom = canvas_region(state_label)
     candidates = []
     for node in root.iter("node"):
         if node.attrib.get("package") != PACKAGE or not node.attrib.get("class", "").endswith("ImageView"):
@@ -174,7 +198,9 @@ def placed_widget_point(state_label: str) -> tuple[int, int]:
         left, top, right, bottom = map(int, match.groups())
         area = (right - left) * (bottom - top)
         if left >= 0 and top >= 0 and area >= 100_000:
-            candidates.append((area, (left + right) // 2, (top + bottom) // 2))
+            visible_top, visible_bottom = max(top, canvas_top), min(bottom, canvas_bottom)
+            if visible_bottom > visible_top:
+                candidates.append((area, (left + right) // 2, (visible_top + visible_bottom) // 2))
     if candidates:
         _, x, y = max(candidates)
         return x, y
