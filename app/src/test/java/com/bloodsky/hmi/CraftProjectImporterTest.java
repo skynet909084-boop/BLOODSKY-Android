@@ -123,7 +123,7 @@ public class CraftProjectImporterTest {
         assertEquals("", image.getJSONArray("imagePathStates").getString(1));
         assertEquals("", image.getString("connectionInfo"));
         assertEquals(42, image.getJSONObject("craftConnectionInfo").getInt("addressRegister"));
-        assertEquals(3, image.getJSONObject("craftOther").getInt("posDeviceNetworkInList"));
+        assertEquals(1, image.getJSONObject("craftOther").getInt("typeCommand"));
     }
 
     @Test public void missingCraftId17ImageIsLeftUnresolved() throws Exception {
