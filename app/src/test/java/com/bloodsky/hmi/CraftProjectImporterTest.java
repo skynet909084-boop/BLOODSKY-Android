@@ -516,6 +516,37 @@ public class CraftProjectImporterTest {
         assertEquals(2, endpoints.getJSONObject(1).getInt("connectionsId"));
         assertEquals(100, new JSONObject(widget.getString("craftConnectionInfo"))
                 .getInt("posDeviceNetworkInList"));
+        JSONObject resolution = widget.getJSONObject("craftBindingResolution");
+        assertEquals("global", resolution.getString("kind"));
+        assertEquals(8, resolution.getInt("globalRegisterBucket"));
+        assertFalse(resolution.has("deviceSlot"));
+    }
+
+    @Test public void resolvesCraftSlotByExplicitNumWithoutActivatingIt() throws Exception {
+        JSONObject source = new JSONObject(sample());
+        JSONArray slots = new JSONArray();
+        slots.put(new JSONObject().put("num", 5).put("name", "Boiler").put("address", 34)
+                .put("idServer", 2).put("server", "endpoint-secret"));
+        slots.put(new JSONObject().put("num", 2).put("name", "Pump").put("address", 18)
+                .put("idServer", 2).put("server", "another-endpoint"));
+        source.getJSONObject("TableNameProject").put("countDevice", 1)
+                .put("deviceNetwork", slots.toString());
+        source.getJSONArray("TableComponent").getJSONObject(0)
+                .put("jsTableComponent_connectionInfo",
+                        new JSONObject().put("posDeviceNetworkInList", 5)
+                                .put("addressRegister", 77).put("typeRequest", 3).toString());
+
+        JSONObject imported = new JSONObject(CraftProjectImporter.convert(source.toString()));
+        JSONObject widget = imported.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0);
+        JSONObject resolution = widget.getJSONObject("craftBindingResolution");
+        assertEquals("device", resolution.getString("kind"));
+        assertEquals(5, resolution.getInt("deviceSlot"));
+        assertEquals("Boiler", resolution.getString("deviceName"));
+        assertEquals(34, resolution.getInt("unitAddress"));
+        assertTrue(resolution.getBoolean("endpointConfigured"));
+        assertFalse(resolution.toString().contains("endpoint-secret"));
+        assertEquals("", widget.getString("connectionInfo"));
     }
 
 }

@@ -3790,6 +3790,15 @@ public class MainActivity extends Activity {
         EditText connectionField = propertyField(w.connectionInfo == null ? "" : w.connectionInfo, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         connectionField.setHint("tcp://192.168.1.10:502/1/40001 (FC03/FC04) или fbd://N (номер блока с 1)");
         form.addView(connectionField);
+        String sourceBindingText = CraftNetworkBindingResolver.display(
+                w.extraFields.optJSONObject("craftBindingResolution"));
+        if (!sourceBindingText.isEmpty()) {
+            TextView sourceBindingLabel = new TextView(this);
+            sourceBindingLabel.setText(sourceBindingText);
+            sourceBindingLabel.setContentDescription("Исходная привязка Craft; неактивна");
+            sourceBindingLabel.setPadding(0, dp(6), 0, dp(2));
+            form.addView(sourceBindingLabel);
+        }
         final EditText archiveIntervalField, archiveMaxRowsField, archiveChannelCountField, archiveTriggerField;
         final Spinner archiveRecordTypeField;
         if ("Архив Craft".equals(w.type)) {
