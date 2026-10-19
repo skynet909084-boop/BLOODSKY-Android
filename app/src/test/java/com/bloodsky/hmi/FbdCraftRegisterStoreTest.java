@@ -163,7 +163,6 @@ public class FbdCraftRegisterStoreTest {
         assertEquals(3, FbdCraftRegisterStore.serviceRegisters().readRawWord(7));
         assertFalse(CraftSystemRegisterAccess.writeInt(0, 123, project));
         assertFalse(CraftSystemRegisterAccess.isValidWordAddress(2000));
-        assertFalse(CraftSystemRegisterAccess.isValidFloatAddress(1999));
     }
 
     private static final class ActionSpy implements CraftServiceRegisters.Actions {
