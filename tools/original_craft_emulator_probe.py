@@ -142,53 +142,11 @@ def action_key(a):
             a["class"], a["bounds"], a["field"])
 
 
-def execute_macro_drag(drop_x: int, drop_y: int):
-    """Use a single held pointer stream so the source tile can start Android drag-and-drop."""
-    sdk = Path(__import__("os").environ["ANDROID_HOME"])
-    platform = sdk / "platforms" / "android-35"
-    android_jar = platform / "android.jar"
-    uiautomator_jar = platform / "uiautomator.jar"
-    optional_jars = list((platform / "optional").glob("*.jar"))
-    classpath = __import__("os").pathsep.join(
-        map(str, [android_jar, uiautomator_jar, *optional_jars]))
-    source = Path(__file__).with_name("CraftDragGesture.java")
-    classes = OUT / "craft-drag-classes"
-    classes.mkdir(parents=True, exist_ok=True)
-    jar = OUT / "CraftDragGesture.jar"
-    subprocess.run(["javac", "-source", "8", "-target", "8",
-                    "-classpath", classpath, "-d", str(classes), str(source)], check=True)
-    # The legacy "uiautomator runtest" loader reads DEX from JARs, not JVM .class files.
-    build_tools = sorted((sdk / "build-tools").glob("*"), reverse=True)
-    d8 = next((candidate / "d8" for candidate in build_tools if (candidate / "d8").exists()), None)
-    if d8 is None:
-        raise RuntimeError("Android build-tools d8 was not found")
-    dex_dir = OUT / "craft-drag-dex"
-    dex_dir.mkdir(parents=True, exist_ok=True)
-    d8_command = [str(d8), "--min-api", "23", "--lib", str(android_jar)]
-    for dependency in [uiautomator_jar, *optional_jars]:
-        d8_command.extend(["--classpath", str(dependency)])
-    d8_command.extend([
-        "--output", str(dex_dir), str(classes / "CraftDragGesture.class"),
-    ])
-    subprocess.run(d8_command, check=True)
-    subprocess.run(
-        ["jar", "cf", str(jar), "-C", str(dex_dir), "classes.dex"],
-        check=True,
-    )
-    adb("push", str(jar), "/data/local/tmp/CraftDragGesture.jar")
-    result = subprocess.run(
-        ["adb", "shell", "uiautomator", "runtest",
-         "/data/local/tmp/CraftDragGesture.jar", "-c", "CraftDragGesture"],
-        text=True, capture_output=True, timeout=ADB_TIMEOUT,
-    )
-    if result.stdout:
-        print(result.stdout, flush=True)
-    if result.returncode:
-        raise RuntimeError(
-            "uiautomator drag test failed: "
-            + result.stderr.strip() + "\n" + result.stdout.strip()
-        )
-
+def execute_macro_drag(source_x: int, source_y: int, drop_x: int, drop_y: int,
+                        duration_ms: int = 1600):
+    """Use Android's native drag-and-drop input stream, including its long-press phase."""
+    adb("shell", "input", "draganddrop", str(source_x), str(source_y),
+        str(drop_x), str(drop_y), str(duration_ms))
 
 def perform(action):
     if action["kind"] == "back":
@@ -201,7 +159,11 @@ def perform(action):
             # swipe keeps the pointer down long enough to trigger View.onLongClick.
             adb("shell", "input", "swipe", x, y, x, y, str(action.get("duration_ms", 1100)))
         elif action["kind"] == "drag":
-            execute_macro_drag(action["drop_x"], action["drop_y"])
+            node = action["node"]
+            execute_macro_drag(
+                node["x"], node["y"], action["drop_x"], action["drop_y"],
+                action.get("duration_ms", 1600),
+            )
         else:
             adb("shell", "input", "tap", x, y)
         if node.get("field"):
