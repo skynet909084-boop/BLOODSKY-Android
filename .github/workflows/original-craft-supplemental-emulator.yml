@@ -38,6 +38,7 @@ jobs:
           - app-settings
           - alarms-animation
           - project-lifecycle
+          - license-limits
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
