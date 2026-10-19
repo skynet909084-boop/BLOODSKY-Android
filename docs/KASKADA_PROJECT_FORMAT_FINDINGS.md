@@ -49,3 +49,18 @@ The exporter copies referenced images/sounds/PDF into the project directory and 
 - Map each widget tag to its custom view and serialized `other` fields.
 - Confirm archive entry names and exact JSON filename from `ExportPresenter.createZip_` and import extraction routines.
 - Inspect Modbus RTU/TCP data paths and FBD execution semantics before implementing runtime behavior.
+
+
+## Network binding relationships (source-confirmed)
+
+The original app separates the transport kind, the server endpoint/configuration, the device slot, and a widget's register binding:
+
+1. `TableConnections` contains connector rows: `connectionsId`, `name`, and `server`.
+2. `connectionsId` is a connector-kind ID, not a unique endpoint ID. The source creates type 1 for Bluetooth, 2 for Wi-Fi, 3 for USB, and 4 for KaScada Cloud. Multiple server rows can therefore share the same `connectionsId`.
+3. `deviceNetwork` is an ordered array of device slots. A slot carries the device/unit address, the selected endpoint/config string, its connector kind (`idServer`), and mode flags. Its position is meaningful.
+4. A component's `connectionInfo.posDeviceNetworkInList` selects a device slot; register/bit address and request type then select the data within that device. Register and bit gateways have separate source, receive, and optional trigger slot references.
+5. The FBD graph has a separate identity/pin layer (`saveKey`, `keyOut`, `numOnIn`, `macrosOut`). In the inspected project exports, FBD blocks had no device-slot references; the external I/O bindings were on component records. Treating FBD wires as network endpoints would mix two different graphs.
+
+The source constructs the Wi-Fi connector from its host and port fields, while the cloud connector receives a cloud connection string. Keep those opaque strings, passwords, public addresses, and local endpoints private. The `server` value is connector-specific and must not be parsed as one universal host/port format.
+
+For BLOODSKY, preserve the ordered device-slot array, resolve each component's slot index before creating runtime bindings, and keep connector-kind IDs distinct from endpoint row IDs. When importing, retain the original endpoint and flags as source metadata; require an explicit user remap before activating network I/O.
