@@ -18,6 +18,19 @@ public class FbdCraftMacroGraphAdapterTest {
                 .put("fbInMacros", new JSONArray().put(child));
     }
 
+    @Test public void mapsOriginalCraftTimerContactAndRetainsLegacyPtAlias() {
+        assertArrayEquals(new String[]{"IN", "MS"},
+                MainActivity.knownFbdPins("FBD CRAFT TIMER", false));
+        assertEquals("NUMBER", MainActivity.knownFbdPinType("FBD CRAFT TIMER", "MS", false));
+        assertEquals("NUMBER", MainActivity.knownFbdPinType("FBD CRAFT TIMER", "PT", false));
+        assertEquals(2000L, MainActivity.fbdCraftTimerPresetMs(
+                java.util.Collections.singletonList(2.0), java.util.Collections.singletonList("MS"),
+                1000, "SEK"));
+        assertEquals(3000L, MainActivity.fbdCraftTimerPresetMs(
+                java.util.Collections.singletonList(3.0), java.util.Collections.singletonList("PT"),
+                1000, "SEK"));
+    }
+
     @Test public void mapsVerifiedCraftComponentIds() throws Exception {
         assertEquals("FBD AND", FbdCraftMacroGraphAdapter.typeForComponentId(103, null));
         assertEquals("FBD CRAFT TIMER", FbdCraftMacroGraphAdapter.typeForComponentId(115, null));
