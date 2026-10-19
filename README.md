@@ -26,7 +26,7 @@ The current source-backed, page-by-page functional audit and remaining implement
 ## Editor and operator controls
 
 - Use the bottom-left component icon to open the palette. Tap a component to edit properties; long-press it for the context menu. The bottom strip provides cut/copy/paste/alignment.
-- The component palette page corner opens the FBD catalogue; its next page opens other BLOODSKY elements. Supported source-backed entries add native FBD blocks; dimmed entries remain unavailable. Back dismisses the wide catalogue.
+- The component palette page corner opens the FBD catalogue; its next page opens other BLOODSKY elements and the third page opens the macro editor. The editor creates macros from a selected FBD output and its upstream graph, lists project macros, and adds or imports/exports them. Supported source-backed entries add native FBD blocks; dimmed entries remain unavailable. Back dismisses the wide catalogue.
 - Long-press an FBD block for wiring, inversion, timer/property actions, and other commands. Long-press a macro with an embedded BLOODSKY graph and choose **Редактировать вложенный граф** to edit it; assign its output pin from a verified block, then save through validation. Opaque original Craft child records are not executed.
 - Timer/counter presets and comparison properties reject invalid input while keeping the form and saved project unchanged. Comparison accepts decimal comma and `=`/`<>` aliases.
 - The original play icon starts operator mode; the stop icon returns to editing. Runtime hides editing tools, grid/selection handles and FBD editor visuals. Short taps operate existing controls; dragging and long-pressing do not edit or activate them.
