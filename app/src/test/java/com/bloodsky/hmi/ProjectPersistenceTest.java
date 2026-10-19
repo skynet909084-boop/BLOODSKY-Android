@@ -82,9 +82,13 @@ public class ProjectPersistenceTest {
         widget.put("connectionInfo", "binding-to-device-slot-1");
         widget.put("x", 10); widget.put("y", 20); widget.put("w", 100); widget.put("h", 50);
         widgets.put(widget);
+        widgets.put(new JSONObject().put("type", "FBD AND").put("text", "И")
+                .put("x", 120).put("y", 20).put("w", 100).put("h", 50));
+        widgets.put(new JSONObject().put("type", "FBD OR").put("text", "ИЛИ")
+                .put("x", 240).put("y", 20).put("w", 100).put("h", 50));
         screen.put("widgets", widgets);
         JSONArray fbdConnections = new JSONArray().put(new JSONObject()
-                .put("source", 0).put("target", 0)
+                .put("source", 1).put("target", 2)
                 .put("vendorRoute", new JSONObject().put("kind", "orthogonal")));
         screen.put("connections", fbdConnections);
         screens.put(screen);
@@ -112,8 +116,8 @@ public class ProjectPersistenceTest {
         assertEquals("binding-to-device-slot-1",
                 importedScreen.getJSONArray("widgets").getJSONObject(0).getString("connectionInfo"));
         JSONObject importedEdge = importedScreen.getJSONArray("connections").getJSONObject(0);
-        assertEquals(0, importedEdge.getInt("source"));
-        assertEquals(0, importedEdge.getInt("target"));
+        assertEquals(1, importedEdge.getInt("source"));
+        assertEquals(2, importedEdge.getInt("target"));
         assertEquals("orthogonal", importedEdge.getJSONObject("vendorRoute").getString("kind"));
     }
 
