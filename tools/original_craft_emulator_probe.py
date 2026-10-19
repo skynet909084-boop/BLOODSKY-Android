@@ -142,7 +142,13 @@ def perform(action):
         adb("shell", "input", "keyevent", "4")
     else:
         node = action["node"]
-        adb("shell", "input", "tap", str(node["x"]), str(node["y"]))
+        x, y = str(node["x"]), str(node["y"])
+        if action["kind"] == "long_press":
+            # Android shell has no dedicated long-press verb; a zero-distance
+            # swipe keeps the pointer down long enough to trigger View.onLongClick.
+            adb("shell", "input", "swipe", x, y, x, y, str(action.get("duration_ms", 1100)))
+        else:
+            adb("shell", "input", "tap", x, y)
         if node.get("field"):
             time.sleep(0.3)
             hint = (node.get("hint", "") + " " + node.get("text", "")).lower()
@@ -353,12 +359,12 @@ def fast_walk(path, parent_signature=None):
         return
     captured = capture_state(path)
     if captured is None:
-        return
+        return False
     parent_label, signature, actions = captured
     if len(path) >= MAX_DEPTH:
         if actions:
             coverage_limited = True
-        return
+        return True
     if len(actions) > MAX_ACTIONS_PER_STATE:
         coverage_limited = True
     for action in actions[:MAX_ACTIONS_PER_STATE]:
@@ -369,7 +375,19 @@ def fast_walk(path, parent_signature=None):
             break
         transition_rows.append({"from": parent_label, "action": action["label"], "depth": len(path)+1})
         perform(action)
-        fast_walk(path + [action], signature)
+        child_was_new = fast_walk(path + [action], signature)
+        if child_was_new is False and action["kind"] == "tap" and not action["node"].get("field"):
+            # Many Craft controls (including project actions) are long-press
+            # targets. Retry only when a normal tap produced no visible state.
+            hold = {
+                "kind": "long_press",
+                "node": action["node"],
+                "duration_ms": 1100,
+                "label": "LONG PRESS: " + action["label"],
+            }
+            transition_rows.append({"from": parent_label, "action": hold["label"], "depth": len(path)+1})
+            perform(hold)
+            fast_walk(path + [hold], signature)
         adb("shell", "input", "keyevent", "4", check=False)
         time.sleep(WAIT)
         # Normally Android Back restores the parent without resetting Craft data.
