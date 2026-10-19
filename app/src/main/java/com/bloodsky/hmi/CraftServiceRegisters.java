@@ -23,9 +23,9 @@ public final class CraftServiceRegisters {
 
     private static final int[] PALETTE = {
             0, 0xFF000000, 0xFFFF0000, 0xFF800000, 0xFFFFFF00,
-            0xFF804000, 0xFF00FF00, 0xFF008000, 0xFF00FFFF,
+            0xFF808000, 0xFF00FF00, 0xFF008000, 0xFF00FFFF,
             0xFF008080, 0xFF0000FF, 0xFF000080, 0xFFFF00FF,
-            0xFF800080, 0xFFB0B0B0, 0xFF808080, 0xFFFFFFFF
+            0xFF800080, 0xFFC0C0C0, 0xFF808080, 0xFFFFFFFF
     };
     private static final CraftServiceRegisters GLOBAL = new CraftServiceRegisters();
 
