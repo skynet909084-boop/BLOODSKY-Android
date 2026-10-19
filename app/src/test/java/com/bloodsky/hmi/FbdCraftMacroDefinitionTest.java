@@ -319,7 +319,7 @@ public class FbdCraftMacroDefinitionTest {
         org.json.JSONObject outerGraph = restored.toJson().getJSONObject("bloodskyGraph");
         assertEquals(2, outerGraph.getJSONArray("widgets").length());
         org.json.JSONObject capturedInner = outerGraph.getJSONArray("widgets").getJSONObject(1)
-                .getJSONObject("extraFields").getJSONObject("craftMacroDefinition");
+                .getJSONObject("craftMacroDefinition");
         assertTrue(capturedInner.getJSONObject("bloodskyGraph").has("widgets"));
 
         MainActivity.Widget outerWidget = new MainActivity.Widget();
@@ -343,8 +343,7 @@ public class FbdCraftMacroDefinitionTest {
             org.json.JSONObject child = new org.json.JSONObject(nested);
             org.json.JSONObject macroWidget = new org.json.JSONObject()
                     .put("type", "FBD CRAFT MACRO")
-                    .put("extraFields", new org.json.JSONObject()
-                            .put("craftMacroDefinition", child));
+                    .put("craftMacroDefinition", child);
             org.json.JSONObject parentGraph = new org.json.JSONObject()
                     .put("widgets", new org.json.JSONArray().put(macroWidget))
                     .put("connections", new org.json.JSONArray())
