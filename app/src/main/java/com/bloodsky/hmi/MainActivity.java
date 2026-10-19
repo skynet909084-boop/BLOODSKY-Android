@@ -3612,7 +3612,8 @@ public class MainActivity extends Activity {
     }
 
     private void showFbdPalette() {
-        OriginalFbdPalette.show(this, this::addWidget, this::showAddWidgetMenu, this::showCraftMacroTools);
+        OriginalFbdPalette.show(this, this::addWidget, this::showAddWidgetMenu,
+                this::showCraftMacroTools, this::createCraftMacroFromSelection);
     }
 
     private void showExtendedWidgetMenu() {
