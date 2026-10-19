@@ -25,6 +25,22 @@ concurrency:
 
 jobs:
   rebuild-and-probe:
+    name: Craft UI probe (${{ matrix.direction }})
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        direction:
+          - project-create
+          - import-paste
+          - import-qr
+          - exit-policy
+          - components
+          - fbd
+          - macros
+          - devices
+          - network
+          - runtime
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
@@ -97,19 +113,19 @@ jobs:
           emulator-options: -no-window -gpu software -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: |
             set -eu
-            mkdir -p build-reports/original-craft-1.0.7
+            mkdir -p build-reports/original-craft-1.0.7-${{ matrix.direction }}
             adb shell settings put global airplane_mode_on 1
             adb shell svc wifi disable || true
             adb shell svc data disable || true
             adb install -r build/KaScada-Craft-1.0.7.apk
-            python tools/original_craft_emulator_probe.py build-reports/original-craft-1.0.7 ${{ github.event_name == 'pull_request' && '--full' || inputs.profile == 'full' && '--full' || '' }}
+            python tools/original_craft_emulator_probe.py build-reports/original-craft-1.0.7-${{ matrix.direction }} ${{ github.event_name == 'pull_request' && '--full' || inputs.profile == 'full' && '--full' || '' }} --direction=${{ matrix.direction }}
       - name: Upload rebuilt APK and full UI evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Original-Craft-1.0.7-emulator-probe
+          name: Original-Craft-1.0.7-emulator-probe-${{ matrix.direction }}
           path: |
             build/KaScada-Craft-1.0.7.apk
-            build-reports/original-craft-1.0.7/
+            build-reports/original-craft-1.0.7-${{ matrix.direction }}/
           if-no-files-found: warn
           retention-days: 7
