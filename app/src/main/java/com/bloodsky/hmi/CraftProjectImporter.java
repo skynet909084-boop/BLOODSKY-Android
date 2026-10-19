@@ -213,6 +213,7 @@ public final class CraftProjectImporter {
         else if (componentId == 7) type = "Динамический текст";
         else if (componentId == 8) type = "Числовой ввод Craft"; // CustomComponents.i: bounded integer / Float32 input
         else if (componentId == 11) type = "Прогресс-бар"; // Craft progress bar
+        else if (componentId == 12 || componentId == 24) type = "Шкала / Стрелка"; // Existing editable gauge; original styling remains partial
         else if (componentId == 18) type = "Входящее SMS"; // CustomComponents.x; opt-in runtime only
         else if (componentId == 27) type = "Распознавание речи Craft"; // visible disabled placeholder; original recognition flow is not yet ported
         else {
@@ -221,7 +222,10 @@ public final class CraftProjectImporter {
         }
 
         widget.put("type", type);
-        widget.put("text", boundedString(source.optString("text", ""), 2000));
+        String displayText = source.optString("text", "");
+        if (displayText.trim().isEmpty() && componentId == 24)
+            displayText = other.optString("indicatorName", "");
+        widget.put("text", boundedString(displayText, 2000));
         // Craft's device-link encoding differs from BLOODSKY's tcp:// grammar.
         // Keep it for round-trip recovery without activating an unverified binding.
         widget.put("connectionInfo", "");
@@ -236,6 +240,18 @@ public final class CraftProjectImporter {
         widget.put("backgroundColor", color(source.opt("colorBackground"), Color.TRANSPARENT));
         widget.put("craftComponentId", componentId);
         widget.put("craftOther", other);
+        if (componentId == 12) {
+            widget.put("minValue", decimal(other.opt("min"), 0));
+            widget.put("maxValue", decimal(other.opt("max"), 100));
+            widget.put("craftGaugeKind", "threshold");
+        } else if (componentId == 24) {
+            widget.put("minValue", decimal(other.opt("minGauge"), 0));
+            widget.put("maxValue", decimal(other.opt("maxGauge"), 100));
+            widget.put("textSizeSp", boundedInt(other.opt("sizeText"), widget.optInt("textSizeSp", 14), 8, 48));
+            widget.put("craftGaugeScaleCount", boundedInt(other.opt("countTextScale"), 0, 0, 64));
+            widget.put("craftGaugeHideBackground", other.optBoolean("hideBackground", false));
+            widget.put("craftGaugeKind", "graduated");
+        }
         if (componentId == 15) {
             widget.put("craftArchiveChannelCount", boundedInt(other.opt("countChannel"), 1, 1, 4));
             String archiveType = other.optString("typeRecord", "INT").toUpperCase(java.util.Locale.ROOT);

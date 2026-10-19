@@ -94,6 +94,50 @@ public class CraftProjectImporterTest {
         assertEquals(100.0, second.getJSONObject(1).getDouble("maxValue"), 0.001);
     }
 
+    @Test public void importsCraftGaugeIdsAsEditableGaugesAndKeepsLegacyLinksInactive() throws Exception {
+        JSONObject source = new JSONObject()
+                .put("TableNameProject", new JSONObject().put("name", "Gauges").put("countScreen", 1))
+                .put("TableConnections", new JSONArray())
+                .put("TableComponent", new JSONArray()
+                        .put(new JSONObject().put("componentId", 12).put("text", "Flow")
+                                .put("jsTableComponent_connectionInfo", new JSONObject()
+                                        .put("posDeviceNetworkInList", 2).put("addressRegister", 10).put("typeRequest", 3))
+                                .put("jsTableComponent_other", new JSONObject()
+                                        .put("numScreen", 1).put("max", 180)
+                                        .put("firstColorPoint", 60).put("secondColorPoint", 120)))
+                        .put(new JSONObject().put("componentId", 24).put("text", "")
+                                .put("jsTableComponent_connectionInfo", new JSONObject()
+                                        .put("posDeviceNetworkInList", 100).put("addressRegister", 20).put("typeRequest", 3))
+                                .put("jsTableComponent_other", new JSONObject()
+                                        .put("numScreen", 1).put("indicatorName", "Pressure")
+                                        .put("minGauge", -20).put("maxGauge", 300)
+                                        .put("countTextScale", 5).put("hideBackground", true))));
+        JSONObject imported = new JSONObject(CraftProjectImporter.convert(source.toString()));
+        JSONArray widgets = imported.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets");
+        assertEquals(2, widgets.length());
+
+        JSONObject thresholdGauge = widgets.getJSONObject(0);
+        assertEquals("Шкала / Стрелка", thresholdGauge.getString("type"));
+        assertEquals("threshold", thresholdGauge.getString("craftGaugeKind"));
+        assertEquals(0.0, thresholdGauge.getDouble("minValue"), 0.001);
+        assertEquals(180.0, thresholdGauge.getDouble("maxValue"), 0.001);
+        assertEquals(60, thresholdGauge.getJSONObject("craftOther").getInt("firstColorPoint"));
+        assertEquals("", thresholdGauge.getString("connectionInfo"));
+        assertTrue(thresholdGauge.has("craftBindingResolution"));
+
+        JSONObject graduatedGauge = widgets.getJSONObject(1);
+        assertEquals("Шкала / Стрелка", graduatedGauge.getString("type"));
+        assertEquals("graduated", graduatedGauge.getString("craftGaugeKind"));
+        assertEquals("Pressure", graduatedGauge.getString("text"));
+        assertEquals(-20.0, graduatedGauge.getDouble("minValue"), 0.001);
+        assertEquals(300.0, graduatedGauge.getDouble("maxValue"), 0.001);
+        assertEquals(5, graduatedGauge.getJSONObject("craftOther").getInt("countTextScale"));
+        assertTrue(graduatedGauge.getBoolean("craftGaugeHideBackground"));
+        assertEquals("", graduatedGauge.getString("connectionInfo"));
+        assertEquals("global", graduatedGauge.getJSONObject("craftBindingResolution").getString("kind"));
+        assertFalse(graduatedGauge.optBoolean("craftUnsupportedComponent", false));
+    }
+
     @Test public void expandsBeyondStaleDeclaredScreenCountForComponentReferences() throws Exception {
         String legacy = sample().replace("\"numScreen\":2", "\"numScreen\":3");
         JSONObject project = new JSONObject(CraftProjectImporter.convert(legacy));
