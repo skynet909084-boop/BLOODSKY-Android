@@ -135,6 +135,20 @@ public class FbdCraftRegisterStoreTest {
         assertEquals(0x3fc0, project.readWord(1000));
     }
 
+    @Test public void floatAddressZeroMatchesCraftInputAndOutputBounds() {
+        assertFalse(CraftSystemRegisterAccess.isValidFloatReadAddress(0));
+        assertTrue(CraftSystemRegisterAccess.isValidFloatWriteAddress(0));
+        assertThrows(IllegalArgumentException.class,
+                () -> CraftSystemRegisterAccess.readFloat(0, false, false, new CraftSystemRegisterBank()));
+        assertFalse(CraftSystemRegisterAccess.writeFloat(0, 1.0f, false, false,
+                new CraftSystemRegisterBank(), 1L));
+        assertTrue(CraftSystemRegisterAccess.isValidFloatReadAddress(1));
+        assertTrue(CraftSystemRegisterAccess.isValidFloatWriteAddress(1998));
+        assertFalse(CraftSystemRegisterAccess.isValidFloatReadAddress(1999));
+        assertFalse(CraftSystemRegisterAccess.isValidFloatWriteAddress(1999));
+        assertFalse(CraftSystemRegisterAccess.isValidWordAddress(2000));
+    }
+
     @Test public void typedSystemOutputsUseCraftHandlersForServiceAddresses() {
         FbdCraftRegisterStore.clear();
         CraftSystemRegisterBank project = new CraftSystemRegisterBank();

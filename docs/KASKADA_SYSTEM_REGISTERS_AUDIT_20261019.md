@@ -120,3 +120,7 @@ Craft serializes nonzero user values as `systemRegisters: [{"reg_10": value}, ..
 BLOODSKY now resolves imported Craft FBD `VAR BOOL/INT/FLOAT` sources from their `reg`/`bit` fields into the active project's bank when no external TCP binding is configured. `VAR OUT` writes to that bank while operator mode runs. BOOL, raw INT, Float32 with the two byte/word order flags, and the 0–9 VarOut side-effect path use the typed adapter. MX/ARRAY continue to use their raw, side-effect-free path. Project save/import retains 10–1999, including the documented boundary register 1000.
 
 Coverage added: typed read/write at 10 and 1000, signed raw integer compatibility, bit inversion, Float32 order combinations, service handler routing, and address/pair bounds. APK/unit, Android 11 UI smoke, and original Craft probe must be checked at the final commit head before treating this revision as verified.
+
+### Float input/output address boundary cross-check
+
+Craft `Logic/VarFloat.j()` rejects register 0 and accepts 1–1998; `Logic/VarOutFloat.j()` accepts 0–1998. BLOODSKY now keeps separate input and output Float bounds rather than applying one shared predicate. A VarOutFloat write beginning at service register 0 is accepted by the source setter but its two underlying service-register writes have no storage effect, so the adapter reports no retained write. Regression coverage locks these distinct boundaries.

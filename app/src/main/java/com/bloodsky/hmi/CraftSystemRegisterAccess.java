@@ -15,7 +15,13 @@ public final class CraftSystemRegisterAccess {
         return address >= 0 && address < CraftSystemRegisterBank.SIZE;
     }
 
-    public static boolean isValidFloatAddress(int address) {
+    /** Craft VarFloat input excludes address 0, while VarOutFloat accepts it. */
+    public static boolean isValidFloatReadAddress(int address) {
+        return address >= 1 && address < CraftSystemRegisterBank.SIZE - 1;
+    }
+
+    /** Craft VarOutFloat setter accepts 0..1998 (service writes may be ignored). */
+    public static boolean isValidFloatWriteAddress(int address) {
         return address >= 0 && address < CraftSystemRegisterBank.SIZE - 1;
     }
 
@@ -41,7 +47,7 @@ public final class CraftSystemRegisterAccess {
     /** VarFloat input: two adjacent words in the configured Craft word/byte order. */
     public static float readFloat(int address, boolean swapWord, boolean swapByte,
                                   CraftSystemRegisterBank projectBank) {
-        if (!isValidFloatAddress(address)) throw new IllegalArgumentException("Craft FLOAT needs two adjacent registers");
+        if (!isValidFloatReadAddress(address)) throw new IllegalArgumentException("Craft FLOAT input needs two adjacent registers starting at address 1..1998");
         int first = readInt(address, projectBank);
         int second = readInt(address + 1, projectBank);
         if (swapByte) {
@@ -82,7 +88,7 @@ public final class CraftSystemRegisterAccess {
      */
     public static boolean writeFloat(int address, float value, boolean swapWord, boolean swapByte,
                                      CraftSystemRegisterBank projectBank, long nowMillis) {
-        if (!isValidFloatAddress(address)) throw new IllegalArgumentException("Craft FLOAT needs two adjacent registers");
+        if (!isValidFloatWriteAddress(address)) throw new IllegalArgumentException("Craft FLOAT output needs two adjacent registers starting at address 0..1998");
         int[] words = FbdCraftRegisterCodec.floatRegisters(value, swapWord, swapByte);
         boolean first = writeInt(address, words[0], projectBank);
         boolean second = writeInt(address + 1, words[1], projectBank);
