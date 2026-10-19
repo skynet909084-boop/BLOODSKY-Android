@@ -350,7 +350,7 @@ def seed_project():
     time.sleep(WAIT)
     root, _, _ = dump_ui("seed-named-project", capture_screenshot=True)
 
-    submit = _find_control(root, lambda label, node: label.strip() in {"create", "создать"})
+    submit = _find_control(root, lambda label, node: (node.get("text", "").strip().casefold() in {"create", "создать"} or node.get("content-desc", "").strip().casefold() in {"create", "создать"} or node.get("resource_id", "").rsplit("/", 1)[-1].casefold() in {"create", "создать"}))
     if submit is None:
         project_seed_result["failure"] = "create-submit-not-found"
         return False
