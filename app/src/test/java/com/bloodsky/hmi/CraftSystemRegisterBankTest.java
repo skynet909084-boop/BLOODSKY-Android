@@ -20,8 +20,10 @@ public class CraftSystemRegisterBankTest {
         assertEquals(1234, bank.readWord(1999));
         expectIllegal(() -> bank.readWord(9));
         expectIllegal(() -> bank.writeWord(2000, 1));
-        expectIllegal(() -> bank.writeWord(10, -1));
-        expectIllegal(() -> bank.writeWord(10, 65536));
+        bank.writeWord(10, -1);
+        assertEquals(-1, bank.readWord(10));
+        bank.writeWord(10, 65536);
+        assertEquals(65536, bank.readWord(10));
     }
 
     @Test public void bitWritesPreserveOtherBitsAndValidateBitNumber() throws Exception {
@@ -51,20 +53,20 @@ public class CraftSystemRegisterBankTest {
 
     @Test public void projectJsonPersistsOnlyNonzeroUserWordsAndRestores() throws Exception {
         CraftSystemRegisterBank source = new CraftSystemRegisterBank();
-        source.writeWord(10, 41);
+        source.writeWord(10, -41);
         source.writeWord(1000, 65535);
         source.writeWord(1999, 7);
 
         JSONArray saved = source.toProjectJson();
         assertEquals(3, saved.length());
-        assertEquals(41, saved.getJSONObject(0).getInt("reg_10"));
+        assertEquals(-41, saved.getJSONObject(0).getInt("reg_10"));
         assertEquals(65535, saved.getJSONObject(1).getInt("reg_1000"));
         assertEquals(7, saved.getJSONObject(2).getInt("reg_1999"));
 
         CraftSystemRegisterBank restored = new CraftSystemRegisterBank();
         restored.writeWord(11, 99);
         restored.restoreProjectJson(saved);
-        assertEquals(41, restored.readWord(10));
+        assertEquals(-41, restored.readWord(10));
         assertEquals(0, restored.readWord(11));
         assertEquals(65535, restored.readWord(1000));
         assertEquals(7, restored.readWord(1999));
