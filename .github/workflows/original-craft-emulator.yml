@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/original-craft-emulator.yml'
       - 'tools/original_craft_emulator_probe.py'
+      - 'tools/original_craft_longpress_probe.py'
   workflow_dispatch:
     inputs:
       profile:
