@@ -45,7 +45,7 @@ class OriginalFbdPaletteTests(unittest.TestCase):
         self.assertEqual('100.0dp', source_card.get(A + 'layout_width'))
         self.assertEqual('100.0dp', source_card.get(A + 'layout_height'))
         self.assertEqual('FB_MACRO', next(n for n in source_card.iter()
-                                          if n.get(A + 'tag') == 'FB_MACRO').get(A + 'tag'))
+                                          if n.tag == 'ru.himik.nightscream.kascada.Logic.FB_MACRO').tag.rsplit('.', 1)[-1])
 
         card = ET.parse(ROOT / 'app/src/main/res/layout/kc_macro_library_card.xml').getroot()
         self.assertEqual('100dp', card.get(A + 'layout_width'))
