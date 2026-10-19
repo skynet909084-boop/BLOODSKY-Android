@@ -35,14 +35,14 @@ public final class FbdCraftRegisterStore {
         catch (IllegalArgumentException invalid) { return null; }
     }
 
-    /** Write Craft's shared bank; user words are bounded to unsigned 16-bit values. */
+    /** Write Craft's shared bank using q.d.b.T semantics for user addresses (raw Java int). */
     public static synchronized boolean write(int id, int value, CraftSystemRegisterBank userRegisters) {
         if (!isValidId(id)) return false;
         if (id < CraftSystemRegisterBank.FIRST_USER_REGISTER) {
             SERVICE.writeArrayWord(id, value);
             return true;
         }
-        if (userRegisters == null || value < 0 || value > 0xffff) return false;
+        if (userRegisters == null) return false;
         try {
             userRegisters.writeWord(id, value);
             return true;
