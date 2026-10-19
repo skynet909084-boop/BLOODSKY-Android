@@ -6174,7 +6174,7 @@ public class MainActivity extends Activity {
         if (kind.equals("FBD CRAFT TIMER")) {
             if (output && "Q".equals(name)) return "BOOL";
             if (!output && "IN".equals(name)) return "BOOL";
-            if (!output && "PT".equals(name)) return "NUMBER";
+            if (!output && ("MS".equals(name) || "PT".equals(name))) return "NUMBER";
         }
         if (kind.equals("FBD CRAFT ARITHMETIC INT")
                 || kind.equals("FBD CRAFT ARITHMETIC FLOAT")) {
@@ -6618,10 +6618,11 @@ public class MainActivity extends Activity {
         return Math.round(raw);
     }
 
-    /** Source Craft FB_TIMER takes an Integer PT and scales it by the selected unit. */
+    /** Original FB_TIMER takes an Integer MS input; PT remains a legacy BLOODSKY alias. */
     public static long fbdCraftTimerPresetMs(List<Double> values, List<String> pins,
                                              int configuredMs, String unit) {
-        double raw = fbdNumericPinValue(values, pins, "PT", -1, Double.NaN);
+        double raw = fbdNumericPinValue(values, pins, "MS", -1, Double.NaN);
+        if (Double.isNaN(raw)) raw = fbdNumericPinValue(values, pins, "PT", -1, Double.NaN);
         if (Double.isNaN(raw)) return Math.max(1, Math.min(3600000, configuredMs));
         Integer exact = FbdCraftIntegerSelector.exactInteger(raw);
         if (exact == null) return Math.max(1, Math.min(3600000, configuredMs));
@@ -7863,9 +7864,10 @@ public class MainActivity extends Activity {
             return output ? new String[]{"OUT"} : new String[]{"IN"};
         if ("FBD CRAFT POW".equals(kind))
             return output ? new String[]{"Q"} : new String[]{"X", "Y"};
+        if ("FBD CRAFT TIMER".equals(kind))
+            return output ? new String[]{"Q"} : new String[]{"IN", "MS"};
         if ("FBD TON".equals(kind) || "FBD TOF".equals(kind)
-                || "FBD TP".equals(kind) || "FBD CRAFT BLINK".equals(kind)
-                || "FBD CRAFT TIMER".equals(kind))
+                || "FBD TP".equals(kind) || "FBD CRAFT BLINK".equals(kind))
             return output ? new String[]{"Q"} : new String[]{"IN", "PT"};
         return new String[0];
     }
