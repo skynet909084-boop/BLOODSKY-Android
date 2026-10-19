@@ -109,3 +109,10 @@ Source of truth: `docs/FBD_MACRO_CODEC_20261018.md`.
 - Probe #96 rebuilt and launched Craft successfully but remains partial: 12 states / 11 transitions, 68.6 seconds, termination at state_limit. It reached the macro editor route; it is not full feature coverage.
 - Verified from docs/FBD_CRAFT_MX_ARRAY_20261018.md and docs/KASKADA_SYSTEM_REGISTERS_AUDIT_20261019.md that FB_MX/FB_ARRAY share q.d.b and the project saves user words 10–1999. BLOODSKY now routes these FBD user-word reads/writes to each project's persisted bank; transient service words 0–9 remain isolated pending side-effect tracing.
 - New implementation changes are being prepared on PR #143; check the latest head and checks before relying on them. Keep main untouched and do not merge without review.
+
+
+## FBD evaluator correction — 2026-10-19
+
+- First compile exposed that the graph evaluator is static; it cannot capture MainActivity.systemRegisterBank directly. The previous code commit failed APK/unit and UI build for that compile error.
+- Updated the evaluator API to accept the project bank at its top-level entry and carry it through recursive evaluation via a scoped ThreadLocal, restored in finally. Added an FBD graph integration test for ARRAY write → persisted bank → MX read.
+- Fix is on the current PR branch; previous CI results do not include this correction. Recheck the latest head.

@@ -80,4 +80,4 @@ This confirms the bank size and persistence shape from executable source. The ma
 
 ## Progress — shared FBD user-register access
 
-Pinned Craft FB_MX and FB_ARRAY use the same q.d.b register manager that project save serializes. BLOODSKY now routes their addresses 10–1999 through the project bank, while 0–9 remain transient and do not invoke unverified service actions. Tests cover per-project isolation, the service/user boundary, 16-bit range rejection and address limits. This does not yet wire Var/VarOut UI components or gateway endpoints to the bank.
+Pinned Craft FB_MX and FB_ARRAY use the same q.d.b register manager that project save serializes. BLOODSKY routes their addresses 10–1999 through the project bank, while 0–9 remain transient and do not invoke unverified service actions. The top-level graph call passes a per-project bank into the recursive evaluator; tests cover per-project isolation, the service/user boundary, 16-bit range rejection and graph read-after-write. This does not yet wire Var/VarOut UI components or gateway endpoints to the bank.

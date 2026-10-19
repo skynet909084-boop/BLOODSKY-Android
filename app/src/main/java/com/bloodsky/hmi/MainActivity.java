@@ -55,6 +55,7 @@ import java.io.DataOutputStream;
 
 public class MainActivity extends Activity {
     private static final String PREFS = "bloodsky_projects";
+    private static final ThreadLocal<CraftSystemRegisterBank> ACTIVE_FBD_SYSTEM_REGISTER_BANK = new ThreadLocal<>();
     private static final String ACTIVE_PROJECT = "active_project";
     private static final String PROJECT_CATALOG = "project_catalog_v1";
     private static final String TELEGRAM_PREFS = "bloodsky_telegram";
@@ -6356,6 +6357,26 @@ public class MainActivity extends Activity {
         return isFbdWidget(widget);
     }
 
+    public static boolean evaluateFbdBlock(List<Widget> widgetsList, List<FbdConnection> connectionsList,
+            int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric,
+            CraftSystemRegisterBank userRegisters) {
+        return withFbdSystemRegisterBank(userRegisters, () -> evaluateFbdBlock(
+                widgetsList, connectionsList, index, visiting, cacheValid, cacheValues, cacheNumeric));
+    }
+
+    private static <T> T withFbdSystemRegisterBank(CraftSystemRegisterBank userRegisters,
+                                                   java.util.function.Supplier<T> operation) {
+        CraftSystemRegisterBank previous = ACTIVE_FBD_SYSTEM_REGISTER_BANK.get();
+        if (userRegisters == null) ACTIVE_FBD_SYSTEM_REGISTER_BANK.remove();
+        else ACTIVE_FBD_SYSTEM_REGISTER_BANK.set(userRegisters);
+        try {
+            return operation.get();
+        } finally {
+            if (previous == null) ACTIVE_FBD_SYSTEM_REGISTER_BANK.remove();
+            else ACTIVE_FBD_SYSTEM_REGISTER_BANK.set(previous);
+        }
+    }
+
     public static boolean evaluateFbdBlock(List<Widget> widgetsList, List<FbdConnection> connectionsList, int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
         if (index < 0 || index >= widgetsList.size()) return false;
         if (cacheValid[index]) return cacheValues[index];
@@ -6416,6 +6437,13 @@ public class MainActivity extends Activity {
         if (widget.extraFields == null) widget.extraFields = new JSONObject();
         widget.extraFields.put("invertOut", !isFbdBlockOutputInverted(widget));
         return true;
+    }
+
+    public static double evaluateFbdBlockNumeric(List<Widget> widgetsList, List<FbdConnection> connectionsList,
+            int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric,
+            CraftSystemRegisterBank userRegisters) {
+        return withFbdSystemRegisterBank(userRegisters, () -> evaluateFbdBlockNumeric(
+                widgetsList, connectionsList, index, visiting, cacheValid, cacheValues, cacheNumeric));
     }
 
     public static double evaluateFbdBlockNumeric(List<Widget> widgetsList, List<FbdConnection> connectionsList, int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
@@ -6556,6 +6584,13 @@ public class MainActivity extends Activity {
         if (!Double.isFinite(x) || !Double.isFinite(y)) return Double.NaN;
         float result = (float) Math.pow((float) x, (float) y);
         return Float.isFinite(result) ? result : Double.NaN;
+    }
+
+    public static boolean evaluateFbdBlockUncached(List<Widget> widgetsList, List<FbdConnection> connectionsList,
+            int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric,
+            CraftSystemRegisterBank userRegisters) {
+        return withFbdSystemRegisterBank(userRegisters, () -> evaluateFbdBlockUncached(
+                widgetsList, connectionsList, index, visiting, cacheValid, cacheValues, cacheNumeric));
     }
 
     public static boolean evaluateFbdBlockUncached(List<Widget> widgetsList, List<FbdConnection> connectionsList, int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
@@ -6848,7 +6883,7 @@ public class MainActivity extends Activity {
             boolean enabled = fbdBooleanPinValue(inputs, inputPins, "EN", -1);
             Integer id = FbdCraftIntegerSelector.exactInteger(
                     fbdNumericPinValue(numInputs, inputPins, "I", -1, Double.NaN));
-            Integer value = enabled && id != null ? FbdCraftRegisterStore.read(id, systemRegisterBank) : null;
+            Integer value = enabled && id != null ? FbdCraftRegisterStore.read(id, ACTIVE_FBD_SYSTEM_REGISTER_BANK.get()) : null;
             if (value == null) {
                 cacheNumeric[index] = Double.NaN;
                 return false;
@@ -6873,7 +6908,7 @@ public class MainActivity extends Activity {
                             fbdNumericPinValue(numInputs, inputPins, "ID", -1, Double.NaN));
                     Integer data = FbdCraftIntegerSelector.exactInteger(
                             fbdNumericPinValue(numInputs, inputPins, "DT", -1, Double.NaN));
-                    if (id != null && data != null) FbdCraftRegisterStore.write(id, data, systemRegisterBank);
+                    if (id != null && data != null) FbdCraftRegisterStore.write(id, data, ACTIVE_FBD_SYSTEM_REGISTER_BANK.get());
                 }
             }
             Integer id = hasId ? FbdCraftIntegerSelector.exactInteger(
@@ -7314,17 +7349,17 @@ public class MainActivity extends Activity {
             fbdCacheValues = new boolean[widgets.size()];
             fbdCacheNumeric = new double[widgets.size()];
         }
-        return evaluateFbdBlock(widgets, screens.get(currentScreenIndex).connections, index, visiting, fbdCacheValid, fbdCacheValues, fbdCacheNumeric);
+        return evaluateFbdBlock(widgets, screens.get(currentScreenIndex).connections, index, visiting, fbdCacheValid, fbdCacheValues, fbdCacheNumeric, systemRegisterBank);
     }
 
     private boolean evaluateFbdUncached(int index, boolean[] visiting) {
         if (screens.isEmpty()) return false;
-        return evaluateFbdBlockUncached(widgets, screens.get(currentScreenIndex).connections, index, visiting, fbdCacheValid, fbdCacheValues, fbdCacheNumeric);
+        return evaluateFbdBlockUncached(widgets, screens.get(currentScreenIndex).connections, index, visiting, fbdCacheValid, fbdCacheValues, fbdCacheNumeric, systemRegisterBank);
     }
 
     private double evaluateFbdNumeric(int index, boolean[] visiting) {
         if (screens.isEmpty()) return 0.0;
-        return evaluateFbdBlockNumeric(widgets, screens.get(currentScreenIndex).connections, index, visiting, fbdCacheValid, fbdCacheValues, fbdCacheNumeric);
+        return evaluateFbdBlockNumeric(widgets, screens.get(currentScreenIndex).connections, index, visiting, fbdCacheValid, fbdCacheValues, fbdCacheNumeric, systemRegisterBank);
     }
 
     private boolean reachesFbd(int current, int goal, boolean[] visited, List<FbdConnection> connections) {
