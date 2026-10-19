@@ -68,6 +68,7 @@ This audit establishes the manual's documented model and the current BLOODSKY ga
 Pinned decompilation inspected from `run 38600957172` (artifact SHA-256 `d78bd703d6096ac12d69e19f8b5b5dfa9a4c25e342ce9af0ef8b42326aaa3f8c`):
 
 - `ru/himik/nightscream/kascada/q/d/b.smali` constructs `j` as an `int[2000]`; the static highest accepted index is 1999. The same class reads a 16-bit word (`I(address)`), reads a bit (`G(address, bit)`), writes a bit (`K(address, bit, value)`), and reads a Float from two adjacent words (`H(address)`). Its Float path assembles four bytes and calls `ByteBuffer.wrap(...).getFloat()`; exact register/byte arrangement still needs validation against the VarOutFloat writer and sample projects.
+- Write paths differ: `U(address, word)` and `L(address, bit, value)` special-case addresses below 10 and route them through component/handler logic; user-register writes update the backing array. `T(address, word)` is a direct array assignment. Model service registers as side-effecting providers/commands rather than ordinary retained words.
 - The bank is cleared by `C()`, which replaces it with a zeroed `int[2000]`.
 - `mbCanvas.smali` restores project-retained user values from the `systemRegisters` JSON array. Each entry is an object with a key `reg_N`; the load path writes the value into `MyApplication.v0.j[N]`.
 - `Bd/h$a.smali` saves only nonzero words, scanning from address 10 through the full array length. Service words 0–9 are therefore not retained by this project-save loop; user values are stored in the project's `systemRegisters` column.
