@@ -1465,22 +1465,150 @@ public class MainActivity extends Activity {
     }
 
     private void showCraftMacroTools() {
-        new AlertDialog.Builder(this).setTitle("Макросы Craft (.mcr)")
-                .setItems(new String[]{"Импортировать .mcr в проект", "Экспортировать .mcr из проекта",
-                                "Добавить макрос на схему", "Создать макрос из выбранного блока"},
-                        (dialog, which) -> {
-                            if (which == 0) {
-                                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-                                intent.addCategory(Intent.CATEGORY_OPENABLE);
-                                intent.setType("*/*");
-                                try { startActivityForResult(intent, REQUEST_IMPORT_CRAFT_MACRO); }
-                                catch (Exception failure) {
-                                    Toast.makeText(this, "Не удалось открыть выбор файла", Toast.LENGTH_LONG).show();
-                                }
-                            } else if (which == 1) exportCraftMacroFromCatalog();
-                            else if (which == 2) addCraftMacroFromCatalog();
-                            else createCraftMacroFromSelection();
-                        }).setNegativeButton("Закрыть", null).show();
+        android.app.Dialog dialog = new android.app.Dialog(this,
+                android.R.style.Theme_Material_Light_NoActionBar_Fullscreen);
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setPadding(dp(18), dp(12), dp(18), dp(18));
+        page.setBackgroundColor(Color.rgb(245, 247, 250));
+
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        Button back = new Button(this);
+        back.setText("‹ Назад");
+        back.setAllCaps(false);
+        back.setOnClickListener(v -> dialog.dismiss());
+        header.addView(back, new LinearLayout.LayoutParams(-2, -2));
+        TextView title = new TextView(this);
+        title.setText("Редактор макросов");
+        title.setTextColor(Color.rgb(30, 41, 59));
+        title.setTextSize(22);
+        title.setTypeface(null, android.graphics.Typeface.BOLD);
+        title.setPadding(dp(12), 0, 0, 0);
+        header.addView(title, new LinearLayout.LayoutParams(0, -2, 1f));
+        page.addView(header, new LinearLayout.LayoutParams(-1, -2));
+
+        TextView intro = new TextView(this);
+        intro.setText("Создай макрос из выбранного выходного FBD-блока: в него войдёт блок и подключённые к нему входные источники.");
+        intro.setTextColor(Color.rgb(71, 85, 105));
+        intro.setTextSize(14);
+        intro.setPadding(dp(4), dp(8), dp(4), dp(12));
+        page.addView(intro, new LinearLayout.LayoutParams(-1, -2));
+
+        Button create = new Button(this);
+        create.setText("Создать из выбранного FBD-блока");
+        create.setAllCaps(false);
+        create.setContentDescription("Создать макрос из выбранного FBD-блока");
+        create.setOnClickListener(v -> {
+            dialog.dismiss();
+            createCraftMacroFromSelection();
+        });
+        page.addView(create, new LinearLayout.LayoutParams(-1, -2));
+
+        LinearLayout fileActions = new LinearLayout(this);
+        fileActions.setOrientation(LinearLayout.HORIZONTAL);
+        Button importMacro = new Button(this);
+        importMacro.setText("Импорт .mcr");
+        importMacro.setAllCaps(false);
+        importMacro.setOnClickListener(v -> {
+            dialog.dismiss();
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            try { startActivityForResult(intent, REQUEST_IMPORT_CRAFT_MACRO); }
+            catch (Exception failure) {
+                Toast.makeText(this, "Не удалось открыть выбор файла", Toast.LENGTH_LONG).show();
+            }
+        });
+        fileActions.addView(importMacro, new LinearLayout.LayoutParams(0, -2, 1f));
+        Button exportMacro = new Button(this);
+        exportMacro.setText("Экспорт .mcr");
+        exportMacro.setAllCaps(false);
+        exportMacro.setOnClickListener(v -> {
+            dialog.dismiss();
+            exportCraftMacroFromCatalog();
+        });
+        fileActions.addView(exportMacro, new LinearLayout.LayoutParams(0, -2, 1f));
+        page.addView(fileActions, new LinearLayout.LayoutParams(-1, -2));
+
+        TextView section = new TextView(this);
+        section.setText("МАКРОСЫ ПРОЕКТА");
+        section.setTextColor(Color.rgb(37, 99, 235));
+        section.setTextSize(12);
+        section.setTypeface(null, android.graphics.Typeface.BOLD);
+        section.setPadding(dp(4), dp(18), dp(4), dp(8));
+        page.addView(section, new LinearLayout.LayoutParams(-1, -2));
+
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout macroList = new LinearLayout(this);
+        macroList.setOrientation(LinearLayout.VERTICAL);
+        String[] names;
+        try { names = FbdCraftMacroCatalog.names(projectExtraFields); }
+        catch (Exception invalidCatalog) { names = new String[0]; }
+        exportMacro.setEnabled(names.length > 0);
+        if (names.length == 0) {
+            TextView empty = new TextView(this);
+            empty.setText("В проекте пока нет макросов. Создай макрос из FBD-схемы или импортируй файл .mcr.");
+            empty.setTextColor(Color.rgb(100, 116, 139));
+            empty.setTextSize(14);
+            empty.setPadding(dp(8), dp(12), dp(8), dp(12));
+            macroList.addView(empty, new LinearLayout.LayoutParams(-1, -2));
+        } else {
+            for (String macroName : names) {
+                FbdCraftMacroDefinition definition;
+                try { definition = FbdCraftMacroCatalog.find(projectExtraFields, macroName); }
+                catch (Exception invalid) { definition = null; }
+                if (definition == null) continue;
+                LinearLayout row = new LinearLayout(this);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                row.setPadding(dp(8), dp(4), dp(4), dp(4));
+                row.setBackgroundColor(Color.WHITE);
+                TextView details = new TextView(this);
+                StringBuilder ports = new StringBuilder();
+                for (FbdCraftMacroDefinition.Port input : definition.getInputs()) {
+                    if (ports.length() > 0) ports.append(", ");
+                    ports.append(input.name).append(": ").append(input.signalType());
+                }
+                details.setText(definition.getName() + "\n"
+                        + (ports.length() == 0 ? "Без входов" : ports.toString())
+                        + "  →  " + definition.getOutput().name + ": "
+                        + definition.getOutput().signalType());
+                details.setTextColor(Color.rgb(30, 41, 59));
+                details.setTextSize(14);
+                row.addView(details, new LinearLayout.LayoutParams(0, -2, 1f));
+                Button add = new Button(this);
+                add.setText("Добавить");
+                add.setAllCaps(false);
+                add.setContentDescription("Добавить макрос: " + definition.getName());
+                add.setOnClickListener(v -> {
+                    try {
+                        addCraftMacroWidget(definition);
+                        dialog.dismiss();
+                    } catch (Exception failure) {
+                        Toast.makeText(this, "Не удалось добавить макрос", Toast.LENGTH_LONG).show();
+                    }
+                });
+                row.addView(add, new LinearLayout.LayoutParams(-2, -2));
+                macroList.addView(row, new LinearLayout.LayoutParams(-1, -2));
+                View separator = new View(this);
+                separator.setBackgroundColor(Color.rgb(226, 232, 240));
+                macroList.addView(separator, new LinearLayout.LayoutParams(-1, dp(1)));
+            }
+        }
+        scroll.addView(macroList);
+        page.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        dialog.setContentView(page);
+        dialog.show();
+        android.view.Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(
+                    Color.rgb(245, 247, 250)));
+            window.setLayout(android.view.WindowManager.LayoutParams.MATCH_PARENT,
+                    android.view.WindowManager.LayoutParams.MATCH_PARENT);
+        }
     }
 
     private void addCraftMacroFromCatalog() {
@@ -3538,7 +3666,7 @@ public class MainActivity extends Activity {
         list.setOrientation(LinearLayout.VERTICAL);
         list.setPadding(dp(8), dp(4), dp(8), dp(4));
         Button macroTools = new Button(this);
-        macroTools.setText("Импорт / экспорт Craft .mcr");
+        macroTools.setText("Редактор макросов  ›");
         macroTools.setAllCaps(false);
         macroTools.setOnClickListener(v -> showCraftMacroTools());
         list.addView(macroTools, new LinearLayout.LayoutParams(-1, -2));
