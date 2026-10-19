@@ -6913,7 +6913,7 @@ public class MainActivity extends Activity {
             }
             Integer id = hasId ? FbdCraftIntegerSelector.exactInteger(
                     fbdNumericPinValue(numInputs, inputPins, "ID", -1, Double.NaN)) : null;
-            Integer value = id == null ? null : FbdCraftRegisterStore.read(id, systemRegisterBank);
+            Integer value = id == null ? null : FbdCraftRegisterStore.read(id, ACTIVE_FBD_SYSTEM_REGISTER_BANK.get());
             if (value == null) {
                 cacheNumeric[index] = Double.NaN;
                 return false;
