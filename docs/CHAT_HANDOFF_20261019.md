@@ -82,3 +82,13 @@ Source of truth: `docs/FBD_MACRO_CODEC_20261018.md`.
 - Commits: `9d35beb2ca13d0023a42e7a6c29584f324435ce8` (bank), `2d72493fdd31e13531245ee2ddb51da8256c185d` (tests), `b666289175cdd4a2a455b3d03648d3455f991f10` (declare JSON exception in API/tests).
 - This is a foundational implementation only: it is not yet connected to project load/save, component bindings, service-register providers, or gateway endpoints. Do not claim complete system-register parity.
 - Current workspace has no checked-out project, so local Gradle/test execution was unavailable. Check exact-head APK/unit and UI workflows before relying on this change.
+
+
+## Progress after register-bank persistence integration — 2026-10-19
+
+- Added per-project Craft system-register bank restore/save in `MainActivity`. Valid Craft arrays restore atomically; only user words 10–1999 are saved; unknown/malformed bank fields are preserved instead of overwritten.
+- Resolved the name collision: the legacy BLOODSKY text setting now lives in `systemRegisterSettings`; legacy string values are migrated from `systemRegisters`, while Craft's JSONArray remains dedicated to the register bank. Added a regression test for both cases.
+- Commit `10d4623f331fe80c7bbad3cca435a1f955e6bc1d`: `fix(registers): separate Craft bank from legacy settings`.
+- Exact-head checks were triggered: APK/unit run #1064 (run ID `39286221453`), UI smoke #697 (`39286221404`), Craft emulator probe #94 (`39286221413`). Last checked, all three were queued without an assigned runner. Check their status against the newest PR head before relying on them.
+- Prior exact-head run #1063 on `911b5e3472149ca02e9a15ee15382093b9ae2379` passed APK/unit tests. Its Craft probe #93 completed but reached only 12 states / 11 transitions and stopped at its state limit; coverage was incomplete.
+- This work implements project storage and compatibility only. It does not route component bindings to the bank or implement service-register behavior. The next safe step is to trace and isolate service providers/commands before activating any component binding. Keep imported/ambiguous bindings inactive.
