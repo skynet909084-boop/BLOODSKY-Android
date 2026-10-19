@@ -22,9 +22,9 @@ OUT = Path(sys.argv[1])
 OUT.mkdir(parents=True, exist_ok=True)
 PACKAGE = "ru.kascada.modbus"
 ADB_TIMEOUT = 45
-MAX_STATES = 180
-MAX_DEPTH = 7
-MAX_QUEUED = 900
+MAX_STATES = 80
+MAX_DEPTH = 6
+MAX_QUEUED = 240
 WAIT = 2.0
 
 
@@ -200,7 +200,7 @@ while queue and len(state_rows) < MAX_STATES:
     if loading_stalled:
         screenshot_hash = ""
     visible = visible_state(root)
-    signature = hashlib.sha256(json.dumps([visible, screenshot_hash], ensure_ascii=False).encode()).hexdigest()
+    signature = hashlib.sha256(json.dumps(visible, ensure_ascii=False).encode()).hexdigest()
     if signature in seen:
         (OUT / f"{label}.xml").unlink(missing_ok=True)
         (OUT / f"{label}.png").unlink(missing_ok=True)
@@ -215,8 +215,15 @@ while queue and len(state_rows) < MAX_STATES:
 
     if len(path) >= MAX_DEPTH:
         continue
-    actions = [{"kind": "tap", "node": n, "label": (n["text"] or n["description"] or n["hint"] or n["class"])[:100]}
-               for n in ctrls]
+    actions = []
+    seen_points = set()
+    for n in ctrls:
+        point = (n["x"], n["y"])
+        if point in seen_points:
+            continue
+        seen_points.add(point)
+        actions.append({"kind": "tap", "node": n,
+                        "label": (n["text"] or n["description"] or n["hint"] or n["class"])[:100]})
     for action in actions:
         child = path + [action]
         if len(queue) + len(state_rows) >= MAX_QUEUED:
