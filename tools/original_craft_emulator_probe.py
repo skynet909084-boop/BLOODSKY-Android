@@ -12,13 +12,14 @@ import xml.etree.ElementTree as ET
 from collections import deque
 from pathlib import Path
 from PIL import Image
-from original_craft_probe_state import is_project_loading
+from original_craft_probe_state import is_project_loading, prioritize_actions
 
 OUT = Path(sys.argv[1])
 OUT.mkdir(parents=True, exist_ok=True)
 PACKAGE = "ru.kascada.modbus"
 ADB_TIMEOUT = 45
 PROFILE = "quick" if "--full" not in sys.argv[2:] else "full"
+DIRECTION = next((arg.partition("=")[2] for arg in sys.argv[2:] if arg.startswith("--direction=")), "balanced")
 MAX_STATES = 20 if PROFILE == "quick" else 300
 MAX_DEPTH = 4 if PROFILE == "quick" else 12
 MAX_QUEUED = 240
@@ -274,7 +275,7 @@ def capture_state(path):
         seen_points.add(point)
         actions.append({"kind": "tap", "node": n,
                         "label": (n["text"] or n["description"] or n["hint"] or n["resource_id"] or n["class"])[:100]})
-    return label, signature, actions
+    return label, signature, prioritize_actions(actions, DIRECTION)
 
 
 runtime_limit_hit = False
