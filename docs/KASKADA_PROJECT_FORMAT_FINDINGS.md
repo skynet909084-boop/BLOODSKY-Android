@@ -64,3 +64,10 @@ The original app separates the transport kind, the server endpoint/configuration
 The source constructs the Wi-Fi connector from its host and port fields, while the cloud connector receives a cloud connection string. Keep those opaque strings, passwords, public addresses, and local endpoints private. The `server` value is connector-specific and must not be parsed as one universal host/port format.
 
 For BLOODSKY, preserve the ordered device-slot array, resolve each component's slot index before creating runtime bindings, and keep connector-kind IDs distinct from endpoint row IDs. When importing, retain the original endpoint and flags as source metadata; require an explicit user remap before activating network I/O.
+
+
+## Reserved device-slot value (source-confirmed)
+
+Do not validate `posDeviceNetworkInList` only as an array index. The original app's connection-settings click handler explicitly writes integer `100` to this field for a dedicated control (`r/h0.smali`, click ID `0x7f090141`); the same model field is serialized as `posDeviceNetworkInList` by component JSON writers such as `CustomComponents/w.smali`. This confirms that `100` is an intentional special state exposed by the original UI, not automatically a malformed or stale slot reference. The exact user-facing label of that control has not yet been recovered.
+
+The supplied local archives contain this value in multiple components, so preserving it is required for lossless import/export. BLOODSKY should retain `100` as an opaque/reserved binding state and must not clamp it to the current `deviceNetwork` length, reinterpret it as slot 100, or silently replace it with `-1`. Runtime behavior for components in this state still needs source-level confirmation before parity work.
