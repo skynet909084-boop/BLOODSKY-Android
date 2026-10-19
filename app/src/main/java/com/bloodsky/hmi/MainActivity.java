@@ -235,6 +235,7 @@ public class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         activityResumed = true;
+        updateCraftDeviceRegisters();
         if (editor != null) { startModbusPolling(); startFbdSensors(); startCraftMqtt(); }
         refreshIncomingSmsReceiver();
     }
@@ -300,6 +301,7 @@ public class MainActivity extends Activity {
         smsExecutor.shutdownNow();
         resetCraftAlarmEdges();
         stopAllCraftAlarmPlayback();
+        CraftServiceRegisters.global().setActions(null);
         if (textToSpeech != null) {
             try { textToSpeech.stop(); textToSpeech.shutdown(); } catch (Exception ignored) {}
             textToSpeech = null;
@@ -469,6 +471,7 @@ public class MainActivity extends Activity {
         editor = null;
         try { readProjectCatalog(); }
         catch (Exception error) { Toast.makeText(this, "Сохранение проекта: " + error.getMessage(), Toast.LENGTH_LONG).show(); }
+        CraftServiceRegisters.global().setActions(null);
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
@@ -2261,6 +2264,7 @@ public class MainActivity extends Activity {
             actionParams.gravity = Gravity.CENTER_HORIZONTAL;
             root.addView(actions, actionParams);
         }
+        configureCraftServiceRegisters();
         setContentView(root);
         EditorCanvas attachedEditor = editor;
         // A landscape orientation change can attach the new editor tree before its first
@@ -5578,6 +5582,92 @@ public class MainActivity extends Activity {
         fbdWireMode = false;
         wireSource = -1;
         editor = null;
+    }
+
+    private void configureCraftServiceRegisters() {
+        CraftServiceRegisters service = CraftServiceRegisters.global();
+        service.setScreenCount(screens.size());
+        service.setCurrentScreen(currentScreenIndex + 1);
+        service.setActions(new CraftServiceRegisters.Actions() {
+            @Override public void selectScreen(int oneBasedScreen) {
+                mainHandler.post(() -> {
+                    if (oneBasedScreen >= 1 && oneBasedScreen <= screens.size()
+                            && currentScreenIndex != oneBasedScreen - 1)
+                        activateScreen(oneBasedScreen - 1);
+                });
+            }
+            @Override public void applyBackground(int paletteIndex, int color) {
+                mainHandler.post(() -> {
+                    if (screens.isEmpty()) return;
+                    Screen active = screens.get(Math.max(0, Math.min(currentScreenIndex, screens.size() - 1)));
+                    if (paletteIndex == 0) {
+                        if (active.extraFields.has("craftServicePaletteBaseColor"))
+                            active.backgroundColor = active.extraFields.optInt("craftServicePaletteBaseColor", active.backgroundColor);
+                        active.extraFields.remove("craftServicePaletteBaseColor");
+                    } else {
+                        if (!active.extraFields.has("craftServicePaletteBaseColor"))
+                            try { active.extraFields.put("craftServicePaletteBaseColor", active.backgroundColor); } catch (Exception ignored) {}
+                        active.backgroundColor = color;
+                    }
+                    if (editor != null) editor.invalidate();
+                    persistProject();
+                });
+            }
+            @Override public void enterPassword(int candidate) {
+                // Craft 1.0.7 submits this candidate to its project-password
+                // gate. BLOODSKY project locking is not implemented yet.
+                android.util.Log.d("BLOODSKY", "Craft service password candidate received");
+            }
+            @Override public void saveProject() {
+                mainHandler.post(() -> persistProjectNow(true));
+            }
+            @Override public void refreshComponents() {
+                mainHandler.post(() -> { if (editor != null) editor.invalidate(); });
+            }
+            @Override public void openProjectUrl() {
+                mainHandler.post(() -> {
+                    String url = projectExtraFields.optString("projectUrl",
+                            projectExtraFields.optString("url", ""));
+                    if (url.isEmpty()) {
+                        Toast.makeText(MainActivity.this, "URL проекта не задан", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    try {
+                        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+                    } catch (Exception failure) {
+                        Toast.makeText(MainActivity.this, "Не удалось открыть URL проекта", Toast.LENGTH_SHORT).show();
+                    }
+                });
+            }
+            @Override public void exitApplication() {
+                mainHandler.post(() -> finishAffinity());
+            }
+            @Override public void logCascade() {
+                android.util.Log.d("BLOODSKY", "каскада");
+            }
+        });
+        updateCraftDeviceRegisters();
+    }
+
+    private void updateCraftDeviceRegisters() {
+        CraftServiceRegisters service = CraftServiceRegisters.global();
+        if (editor != null && !screens.isEmpty()) {
+            service.setScreenCount(screens.size());
+            service.setCurrentScreen(currentScreenIndex + 1);
+        }
+        Intent battery = registerReceiver(null, new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        if (battery != null) {
+            int level = battery.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1);
+            int status = battery.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1);
+            boolean charging = status == android.os.BatteryManager.BATTERY_STATUS_CHARGING
+                    || status == android.os.BatteryManager.BATTERY_STATUS_FULL;
+            service.setCharging(charging);
+            service.setBatteryLevel(level);
+        }
+        try {
+            service.setBrightness(android.provider.Settings.System.getInt(
+                    getContentResolver(), android.provider.Settings.System.SCREEN_BRIGHTNESS));
+        } catch (android.provider.Settings.SettingNotFoundException ignored) {}
     }
 
     private void persistProject() { persistProjectNow(false); }
