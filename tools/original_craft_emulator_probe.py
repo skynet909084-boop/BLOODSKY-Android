@@ -167,7 +167,7 @@ def visible_state(root):
             continue
         cls = n.attrib.get("class", "")
         text = n.attrib.get("text", "")
-        if loading and (cls.endswith("ImageView") or re.fullmatch(r"\\d{1,2}:\\d{2}", text)):
+        if loading and (cls.endswith("ImageView") or re.fullmatch(r"\d{1,2}:\d{2}", text)):
             continue
         out.append((cls, text, n.attrib.get("content-desc", ""),
                     n.attrib.get("bounds", ""), n.attrib.get("checked", ""),
