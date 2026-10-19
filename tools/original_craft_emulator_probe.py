@@ -152,6 +152,9 @@ def perform(action):
             # Android shell has no dedicated long-press verb; a zero-distance
             # swipe keeps the pointer down long enough to trigger View.onLongClick.
             adb("shell", "input", "swipe", x, y, x, y, str(action.get("duration_ms", 1100)))
+        elif action["kind"] == "drag":
+            adb("shell", "input", "swipe", x, y, str(action["drop_x"]),
+                str(action["drop_y"]), str(action.get("duration_ms", 1200)))
         else:
             adb("shell", "input", "tap", x, y)
         if node.get("field"):
@@ -445,6 +448,9 @@ def guided_quick_walk():
         ("component palette", lambda n: n.get("resource_id", "").endswith("menu_bar_component")),
         ("FBD page", lambda n: n.get("resource_id", "").endswith("switch_layout")),
         ("macro page", lambda n: n.get("resource_id", "").endswith("switch_layout")),
+        ("component palette", lambda n: n.get("resource_id", "").endswith("switch_layout")),
+        ("FBD palette", lambda n: n.get("resource_id", "").endswith("switch_layout")),
+        ("drag macro block to canvas", lambda n: n.get("resource_id", "").endswith("tab_fb_macro")),
     ]
     for label, predicate in steps:
         if captured is None:
@@ -457,6 +463,12 @@ def guided_quick_walk():
             print(f"guided route stopped before {label}: target absent; controls={available}", flush=True)
             coverage_limited = True
             break
+        if label == "drag macro block to canvas":
+            action = {
+                "kind": "drag", "node": action["node"], "drop_x": 1150,
+                "drop_y": 850, "duration_ms": 1600,
+                "label": "DRAG macro block to canvas",
+            }
         transition_rows.append({"from": captured[0], "action": action["label"], "depth": len(path) + 1})
         perform(action)
         path = path + [action]
