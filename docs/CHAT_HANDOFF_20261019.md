@@ -136,3 +136,13 @@ Source of truth: `docs/FBD_MACRO_CODEC_20261018.md`.
 - Bank storage and JSON restore now preserve Craft's raw Java int values rather than imposing an unsigned-16-bit clamp that the source manager does not have. The project's saved systemRegisters values include the full 10–1999 runtime bank; the manual documents through 1000.
 - Unit coverage now checks INT/BOOL/FLOAT access at 10 and 1000, both float order flags, service-handler routing, and boundaries. Latest code head at time of this note: 1356622477cdd1d99a0fb0a6e017f97c0621ae1a. APK/unit, UI smoke and original Craft probe are running on that head; see Actions before relying on the checks.
 - PR #143 remains open on feat/craft-screen-navigation-import-20261018; main is untouched.
+
+
+## Branch and manual audit continuation — 2026-10-19
+
+- Fetched and enumerated 129 remote branches and all 31 open PRs. The dependency chain #76 → #139 → #141 → #142 → #143 is still active; 118 branch tips are not yet part of `main`. No branch was deleted and stable `main` was untouched. See `docs/GITHUB_BRANCH_AUDIT_20261019.md` for the inventory and remaining workstreams.
+- Read/rendered all 109 manual pages and reviewed the source screenshots, especially table 9.1.1 (PDF page 70) and dynamic-image settings (PDF pages 49–50). Rechecked the pinned decompilation artifact hash against the existing source audit.
+- Cherry-picked the source-backed Craft ID17 image-path importer into PR #143 as `54830d6`. It imports only unique ZIP media matches, preserves all source fields, leaves ambiguous/missing files unresolved and leaves the legacy device binding inactive. Tests cover all three media cases. Full bit/number runtime behavior and visual parity are not yet accepted.
+- Exact old PR #143 head `8d589bf` passed APK/unit run #1096, original Craft probe #126 and Android UI smoke #729. Probe #126 is not full coverage: 12 states, 11 transitions, `state_limit`, `coverage_complete=false`.
+- Local Python tool suite passed after preparing the pinned reference resources: 149 tests, exit 0. Local Gradle/Gradle wrapper is unavailable, so Android tests/build must be confirmed by GitHub Actions after push.
+- Next: push the new commit, verify exact-head Android and UI checks, inspect new artifact, then continue the full Craft traversal and remaining register/gateway, macro, transport and per-component gaps. Do not merge PR #143 into `main` without current acceptance.
