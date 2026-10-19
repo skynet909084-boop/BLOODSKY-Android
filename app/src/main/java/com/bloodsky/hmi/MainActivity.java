@@ -1599,8 +1599,16 @@ public class MainActivity extends Activity {
             int target = pending.remove(pending.size() - 1);
             if (target < 0 || target >= sourceWidgets.size() || included[target]) continue;
             Widget widget = sourceWidgets.get(target);
-            if (!isFbdWidget(widget) || "FBD CRAFT MACRO".equals(canonicalFbdBlockType(widget.type)))
-                throw new IllegalArgumentException("Nested Craft macro blocks cannot be captured yet");
+            if (!isFbdWidget(widget))
+                throw new IllegalArgumentException("Нельзя включить в макрос неподдерживаемый блок");
+            if ("FBD CRAFT MACRO".equals(canonicalFbdBlockType(widget.type))) {
+                FbdCraftMacroDefinition nested = macroDefinition(widget);
+                JSONObject nestedGraph = nested == null ? null
+                        : nested.toJson().optJSONObject("bloodskyGraph");
+                if (nestedGraph == null)
+                    throw new IllegalArgumentException(
+                            "Вложенный макрос должен иметь проверенный граф BLOODSKY");
+            }
             included[target] = true;
             for (FbdConnection edge : sourceConnections)
                 if (edge != null && edge.target == target) pending.add(edge.source);
