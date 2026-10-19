@@ -6623,7 +6623,7 @@ public class MainActivity extends Activity {
         double input = fbdNumericPinValue(values, pins, "IN", 0, Double.NaN);
         double millis = fbdNumericPinValue(values, pins, "MS", 1, Double.NaN);
         if (Double.isNaN(millis)) millis = fbdNumericPinValue(values, pins, "PT", 1, Double.NaN);
-        return Double.isFinite(input) && Double.isFinite(millis);
+        return Double.isFinite(input) && FbdCraftIntegerSelector.exactInteger(millis) != null;
     }
 
     /** Original FB_TIMER takes an Integer MS input; PT remains a legacy BLOODSKY alias. */
