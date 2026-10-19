@@ -142,6 +142,23 @@ def action_key(a):
             a["class"], a["bounds"], a["field"])
 
 
+def execute_macro_drag(drop_x: int, drop_y: int):
+    """Use a single held pointer stream so the source tile can start Android drag-and-drop."""
+    sdk = Path(__import__("os").environ["ANDROID_HOME"])
+    android_jar = sdk / "platforms" / "android-35" / "android.jar"
+    source = Path(__file__).with_name("CraftDragGesture.java")
+    classes = OUT / "craft-drag-classes"
+    classes.mkdir(parents=True, exist_ok=True)
+    jar = OUT / "CraftDragGesture.jar"
+    subprocess.run(["javac", "-classpath", str(android_jar), "-d", str(classes),
+                    str(source)], check=True)
+    subprocess.run(["jar", "cf", str(jar), "-C", str(classes), "."], check=True)
+    adb("push", str(jar), "/data/local/tmp/CraftDragGesture.jar")
+    adb("shell", "uiautomator", "runtest", "/data/local/tmp/CraftDragGesture.jar",
+        "-c", "CraftDragGesture", "-e", "dropX", str(drop_x),
+        "-e", "dropY", str(drop_y))
+
+
 def perform(action):
     if action["kind"] == "back":
         adb("shell", "input", "keyevent", "4")
@@ -153,8 +170,7 @@ def perform(action):
             # swipe keeps the pointer down long enough to trigger View.onLongClick.
             adb("shell", "input", "swipe", x, y, x, y, str(action.get("duration_ms", 1100)))
         elif action["kind"] == "drag":
-            adb("shell", "input", "swipe", x, y, str(action["drop_x"]),
-                str(action["drop_y"]), str(action.get("duration_ms", 1200)))
+            execute_macro_drag(action["drop_x"], action["drop_y"])
         else:
             adb("shell", "input", "tap", x, y)
         if node.get("field"):
