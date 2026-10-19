@@ -45,7 +45,16 @@ public final class FbdCraftMacroDefinition {
         return fromJson(json);
     }
 
+    private static final int MAX_NESTING_DEPTH = 8;
+
     public static FbdCraftMacroDefinition fromJson(String json) throws JSONException {
+        return fromJson(json, 0);
+    }
+
+    private static FbdCraftMacroDefinition fromJson(String json, int nestingDepth)
+            throws JSONException {
+        if (nestingDepth > MAX_NESTING_DEPTH)
+            throw new JSONException("Nested macro graph exceeds maximum depth");
         if (json == null || json.getBytes(StandardCharsets.UTF_8).length > MAX_FILE_BYTES)
             throw new JSONException("Invalid macro file size");
         org.json.JSONTokener tokener = new org.json.JSONTokener(json);
@@ -76,7 +85,8 @@ public final class FbdCraftMacroDefinition {
             throw new JSONException("Invalid macro output port");
         if (root.has("bloodskyGraph") && !(root.opt("bloodskyGraph") instanceof JSONObject))
             throw new JSONException("Nested macro graph must be an object");
-        validateBloodskyGraph(root.optJSONObject("bloodskyGraph"), inputs, outputName, outputType);
+        validateBloodskyGraph(root.optJSONObject("bloodskyGraph"), inputs, outputName,
+                outputType, nestingDepth);
         try {
             return new FbdCraftMacroDefinition(new JSONObject(root.toString()), name, inputs,
                     new Port(outputName, outputType, true));
@@ -87,7 +97,7 @@ public final class FbdCraftMacroDefinition {
 
     /** Optional BLOODSKY-authored graph carried beside opaque original Craft records. */
     private static void validateBloodskyGraph(JSONObject graph, List<Port> inputs,
-                                               String outputPortName, int outputPortType) throws JSONException {
+            String outputPortName, int outputPortType, int nestingDepth) throws JSONException {
         if (graph == null) return;
         JSONArray widgets = graph.optJSONArray("widgets");
         JSONArray connections = graph.optJSONArray("connections");
@@ -107,8 +117,19 @@ public final class FbdCraftMacroDefinition {
             JSONObject widget = widgets.optJSONObject(i);
             if (widget == null) throw new JSONException("Nested macro widget must be an object");
             String type = widget.optString("type", "");
-            if (!type.startsWith("FBD ") || "FBD CRAFT MACRO".equals(type))
+            if (!type.startsWith("FBD "))
                 throw new JSONException("Nested macro graph contains an unsupported block");
+            if ("FBD CRAFT MACRO".equals(type)) {
+                JSONObject extra = widget.optJSONObject("extraFields");
+                JSONObject nestedDefinition = extra == null ? null
+                        : extra.optJSONObject("craftMacroDefinition");
+                if (nestedDefinition == null)
+                    throw new JSONException("Nested macro block has no validated definition");
+                FbdCraftMacroDefinition parsedDefinition = fromJson(
+                        nestedDefinition.toString(), nestingDepth + 1);
+                if (parsedDefinition.toJson().optJSONObject("bloodskyGraph") == null)
+                    throw new JSONException("Nested macro block has no supported graph");
+            }
             if ("FBD CRAFT MACRO IN".equals(type)) {
                 String portName = widget.optString("craftMacroPortName", "").trim();
                 int portType = widget.optInt("craftMacroPortType", -1);
