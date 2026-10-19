@@ -11,7 +11,7 @@ class FastFbdUiGateTests(unittest.TestCase):
         script = (ROOT / 'tools/android_ui_fbd_quick.py').read_text(encoding='utf-8')
         ast.parse(script)
         for evidence in (
-                "Добавить: FBD И", "Добавить: FBD CRAFT TIMER",
+                "Добавить: FBD И", "Добавить: FBD Таймер",
                 "Свойства: FBD CRAFT TIMER", "Время таймера, мс",
                 "Инвертировать выход BOOL", "Связать FBD",
                 "saved_connections()", "Инвертировать BOOL-связь FBD…",
@@ -19,7 +19,7 @@ class FastFbdUiGateTests(unittest.TestCase):
                 "quick-fbd", "crash-log.txt", "result.json"):
             self.assertIn(evidence, script)
         self.assertIn("'2345'", script)
-        self.assertNotIn("Добавить: FBD Таймер", script)
+        self.assertNotIn("self.tap(description='Добавить: FBD CRAFT TIMER')", script)
 
     def test_feature_pr_emulator_is_not_restarted_for_each_push(self):
         workflow = (ROOT / '.github/workflows/android-ui-smoke.yml').read_text(encoding='utf-8')
