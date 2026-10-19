@@ -34,7 +34,9 @@ class OriginalFbdPaletteTests(unittest.TestCase):
         self.assertNotIn('bind(dialog,R.id.kc_logic_tab_fb_rs',code)
         self.assertNotIn('bind(dialog,R.id.kc_logic_tab_fb_ctu',code)
         self.assertIn('this::showFbdPalette',main)
-        self.assertIn('this::showExtendedWidgetMenu',main)
+        self.assertIn('this::showCraftMacroTools',main)
+        self.assertIn('otherElements.setText("Другие элементы BLOODSKY")',main)
+        self.assertIn('showExtendedWidgetMenu();',main)
 
     def test_every_referenced_drawable_exists_and_xml_backgrounds_match_original(self):
         for folder in ['layout','layout-land']:
