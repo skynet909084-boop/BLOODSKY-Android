@@ -16,7 +16,7 @@ The current prototype includes:
 - original indicator ON/OFF image menus, built-in lamps and custom document-provider images retained after process restart;
 - a Modbus TCP register scanner for FC03/FC04;
 - periodic polling of widgets with `tcp://host:port/unit/address` bindings;
-- typed FBD pins and graph validation, Craft `.mcr` import/export, graph capture/editing for BLOODSKY-authored macros, and per-instance nested graph execution. Opaque original Craft macro children are preserved but not executed.
+- typed FBD pins and graph validation, Craft `.mcr` import/export, graph capture/editing for BLOODSKY-authored macros, including bounded nesting of validated graph-backed macros, and per-instance nested graph execution. Opaque original Craft macro children are preserved but not executed.
 
 This is still a working prototype, not yet a complete Kaskada Craft replacement. The exact original UI has not been verified pixel-for-pixel against the decompiled APK and reference screenshots. Full component/property parity, execution of opaque original Craft macro children, Modbus RTU, broader protocol compatibility, physical-device testing and a signed release build remain open work.
 
