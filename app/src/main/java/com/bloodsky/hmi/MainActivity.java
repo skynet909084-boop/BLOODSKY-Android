@@ -89,6 +89,13 @@ public class MainActivity extends Activity {
     private boolean[] fbdCacheValues = new boolean[0];
     private double[] fbdCacheNumeric = new double[0];
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final Runnable craftServiceRegisterTicker = new Runnable() {
+        @Override public void run() {
+            if (!activityResumed || editor == null) return;
+            updateCraftDeviceRegisters();
+            mainHandler.postDelayed(this, 1000L);
+        }
+    };
     private final ExecutorService modbusExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService craftSensorExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService telegramExecutor = Executors.newSingleThreadExecutor();
@@ -236,7 +243,11 @@ public class MainActivity extends Activity {
         super.onResume();
         activityResumed = true;
         updateCraftDeviceRegisters();
-        if (editor != null) { startModbusPolling(); startFbdSensors(); startCraftMqtt(); }
+        if (editor != null) {
+            mainHandler.removeCallbacks(craftServiceRegisterTicker);
+            mainHandler.postDelayed(craftServiceRegisterTicker, 1000L);
+            startModbusPolling(); startFbdSensors(); startCraftMqtt();
+        }
         refreshIncomingSmsReceiver();
     }
 
@@ -275,6 +286,7 @@ public class MainActivity extends Activity {
             editor.operatorMomentaryCandidate = -1;
         }
         activityResumed = false;
+        mainHandler.removeCallbacks(craftServiceRegisterTicker);
         unregisterIncomingSmsReceiver();
         stopModbusPolling();
         stopFbdSensors();
@@ -301,6 +313,7 @@ public class MainActivity extends Activity {
         smsExecutor.shutdownNow();
         resetCraftAlarmEdges();
         stopAllCraftAlarmPlayback();
+        mainHandler.removeCallbacks(craftServiceRegisterTicker);
         CraftServiceRegisters.global().setActions(null);
         if (textToSpeech != null) {
             try { textToSpeech.stop(); textToSpeech.shutdown(); } catch (Exception ignored) {}
@@ -2265,6 +2278,10 @@ public class MainActivity extends Activity {
             root.addView(actions, actionParams);
         }
         configureCraftServiceRegisters();
+        if (activityResumed) {
+            mainHandler.removeCallbacks(craftServiceRegisterTicker);
+            mainHandler.postDelayed(craftServiceRegisterTicker, 1000L);
+        }
         setContentView(root);
         EditorCanvas attachedEditor = editor;
         // A landscape orientation change can attach the new editor tree before its first
