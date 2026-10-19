@@ -38,6 +38,37 @@ class OriginalFbdPaletteTests(unittest.TestCase):
         self.assertIn('otherElements.setText("Другие элементы BLOODSKY")',main)
         self.assertIn('showExtendedWidgetMenu();',main)
 
+    def test_macro_library_uses_source_grid_cards_and_page_switches(self):
+        source = ET.parse(ROOT / 'build/craft-reference/apktool/res/layout/fragment_tile_macros.xml').getroot()
+        source_card = ET.parse(ROOT / 'build/craft-reference/apktool/res/layout/item_tile_add_new_macros.xml').getroot()
+        self.assertEqual('androidx.recyclerview.widget.RecyclerView',
+                         next(n.tag for n in source if n.tag == 'androidx.recyclerview.widget.RecyclerView'))
+        self.assertEqual('100.0dp', source_card.get(A + 'layout_width'))
+        self.assertEqual('100.0dp', source_card.get(A + 'layout_height'))
+        self.assertEqual('FB_MACRO', next(n for n in source_card.iter()
+                                          if n.tag == 'com.bloodsky.hmi.OriginalFbdDrawing').get(A + 'tag'))
+
+        card = ET.parse(ROOT / 'app/src/main/res/layout/kc_macro_library_card.xml').getroot()
+        self.assertEqual('100dp', card.get(A + 'layout_width'))
+        self.assertEqual('100dp', card.get(A + 'layout_height'))
+        self.assertEqual('FB_MACRO', next(n for n in card.iter()
+                                          if n.tag == 'com.bloodsky.hmi.OriginalFbdDrawing').get(A + 'tag'))
+
+        main = (ROOT / 'app/src/main/java/com/bloodsky/hmi/MainActivity.java').read_text()
+        page = main.split('private void showCraftMacroTools()', 1)[1].split(
+                'private void addCraftMacroFromCatalog()', 1)[0]
+        self.assertIn('android.widget.GridLayout', page)
+        self.assertIn('/ 180f', page)
+        self.assertIn('dp(100)', page)
+        self.assertIn('R.layout.kc_macro_library_card', page)
+        self.assertIn('FbdCraftMacroCatalog.names(projectExtraFields)', page)
+        self.assertIn('R.drawable.kc_tab_page1', page)
+        self.assertIn('showAddWidgetMenu();', page)
+        self.assertIn('setOnLongClickListener', page)
+        self.assertIn('showFbdPalette();', page)
+        self.assertIn('Импорт .mcr', page)
+        self.assertIn('Экспорт .mcr', page)
+
     def test_every_referenced_drawable_exists_and_xml_backgrounds_match_original(self):
         for folder in ['layout','layout-land']:
             for node in ET.parse(ROOT/'app/src/main/res'/folder/'kc_fragment_component_logic_bar.xml').iter():
