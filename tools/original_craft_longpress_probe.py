@@ -102,6 +102,7 @@ def controls(root):
             "x": (x1 + x2) // 2,
             "y": (y1 + y2) // 2,
             "field": field,
+            "clickable": clickable or permission_button,
             "long_clickable": long_clickable,
             "package": package,
             "permission_message": permission_message if permission_button else "",
@@ -211,6 +212,8 @@ def save_checkpoint(complete=False):
         "states_captured": len(state_rows),
         "unique_state_signatures": len(seen),
         "transitions_visited": len(transition_rows),
+        "long_press_controls_available": sum(row["long_press_controls_available"] for row in state_rows),
+        "long_press_actions_executed": sum(1 for row in transition_rows if row["kind"] == "long_press"),
         "elapsed_seconds": round(time.time() - started, 1),
         "project_loading_stalled_states": sum(1 for row in state_rows if row["project_loading_stalled"]),
         "states": state_rows,
@@ -266,6 +269,7 @@ def capture_state(path):
         screenshot_hash = ""
     path_labels = [a["label"] for a in path]
     row = {"state": label, "path": path_labels, "control_count": len(ctrls),
+           "long_press_controls_available": sum(1 for c in ctrls if c.get("long_clickable")),
            "controls": ctrls, "screenshot_sha256": screenshot_hash,
            "project_loading_stalled": loading_stalled}
     state_rows.append(row)
