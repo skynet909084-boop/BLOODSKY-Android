@@ -153,6 +153,33 @@ def canvas_probe_point(state_label: str) -> tuple[int, int]:
         width, height = image.size
     return int(width * 0.75), int(height * 0.62)
 
+
+def placed_widget_point(state_label: str) -> tuple[int, int]:
+    """Prefer the placed widget's accessibility bounds over a guessed canvas point."""
+    try:
+        root = ET.parse(OUT / f"{state_label}.xml").getroot()
+    except (ET.ParseError, OSError):
+        return canvas_probe_point(state_label)
+    candidates = []
+    for node in root.iter("node"):
+        if node.attrib.get("package") != PACKAGE or not node.attrib.get("class", "").endswith("ImageView"):
+            continue
+        if node.attrib.get("clickable") != "true":
+            continue
+        if node.attrib.get("resource-id", "").endswith("tab_dyn_pictures"):
+            continue
+        match = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.attrib.get("bounds", ""))
+        if not match:
+            continue
+        left, top, right, bottom = map(int, match.groups())
+        area = (right - left) * (bottom - top)
+        if left >= 0 and top >= 0 and area >= 100_000:
+            candidates.append((area, (left + right) // 2, (top + bottom) // 2))
+    if candidates:
+        _, x, y = max(candidates)
+        return x, y
+    return canvas_probe_point(state_label)
+
 def perform(action):
     if action["kind"] == "back":
         adb("shell", "input", "keyevent", "4")
@@ -491,7 +518,7 @@ def guided_quick_walk():
         path.append(action)
         captured = capture_state(path)
         if label == "drag Craft ID17 dynamic picture to canvas" and captured is not None:
-            property_x, property_y = canvas_probe_point(captured[0])
+            property_x, property_y = placed_widget_point(captured[0])
             properties_action = {
                 "kind": "tap", "node": {"x": property_x, "y": property_y, "field": False},
                 "label": "Open Craft ID17 properties",
