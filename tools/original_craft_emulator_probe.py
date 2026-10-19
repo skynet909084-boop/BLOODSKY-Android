@@ -111,9 +111,7 @@ def controls(root):
         visual_control = package == PACKAGE and (
             (PROFILE == "full" and (cls.endswith("ImageView") or cls.endswith("TextView")))
             or (PROFILE == "quick" and resource_id in {
-                "ru.kascada.modbus:id/tab_fb_macro",
-                "ru.kascada.modbus:id/tab_fb_timer",
-                "ru.kascada.modbus:id/tab_fb_t_trigger",
+                "ru.kascada.modbus:id/tab_dyn_pictures",
             })
         )
         clickable = (node.attrib.get("clickable") == "true" or permission_button or visual_control) and node.attrib.get("enabled") != "false"
@@ -238,6 +236,7 @@ seen = set()
 state_rows = []
 transition_rows = []
 started = time.time()
+quick_goal_reached = False
 
 
 def save_checkpoint(complete=False):
@@ -252,9 +251,11 @@ def save_checkpoint(complete=False):
         "runtime_limit_seconds": MAX_RUNTIME_SECONDS,
         "runtime_limit_hit": runtime_limit_hit,
         "coverage_limited": coverage_limited,
-        "coverage_complete": (not runtime_limit_hit and not coverage_limited
+        "coverage_complete": (PROFILE == "full" and not runtime_limit_hit and not coverage_limited
                               and len(state_rows) < MAX_STATES),
+        "guided_goal_reached": quick_goal_reached,
         "termination_reason": ("runtime_limit" if runtime_limit_hit else
+                               "guided_goal_reached" if quick_goal_reached else
                                "state_limit" if len(state_rows) >= MAX_STATES else
                                "depth_or_control_limit" if coverage_limited else "frontier_exhausted"),
         "states_captured": len(state_rows),
@@ -266,11 +267,11 @@ def save_checkpoint(complete=False):
         "transitions": transition_rows,
         "runtime_error_log": "android-runtime-errors.log",
         "limitations": [
-            "Quick profile visits at most 25 unique states, depth 5, and 5 controls per state.",
+            "Quick profile targets the Craft ID17 palette-to-properties path; it is a focused sample, never a complete UI audit.",
             "Full profile explores up to 300 unique states with depth 12, up to 240 controls per state, and a 5h45m limit so artifact upload has time before the six-hour runner cap.",
             "Full traversal uses one app session with Back navigation and de-duplicates identical visible accessibility states; identical screens with different hidden data may merge.",
             "Depth, per-screen action, state, or wall-clock caps are recorded as incomplete coverage rather than a complete audit.",
-            "The quick profile prioritizes project creation and editor palette navigation; create-dialog orientation/cancel branches are skipped, so coverage remains partial. Custom non-clickable canvas targets may be absent.",
+            "The quick profile skips project-dialog orientation/cancel branches and FBD macro exploration to keep the normal component/property path short.",
             "Screenshots and accessibility trees are flushed to the report after each unique state.",
             "Unavailable Bluetooth and USB hardware is not simulated.",
             "Generic values are entered only into visible text fields to reveal subsequent screens; they are not valid device credentials.",
@@ -447,7 +448,8 @@ def full_walk():
 
 
 def guided_quick_walk():
-    """Follow the known project -> editor -> FBD -> macro route with ADB."""
+    """Follow project creation -> Craft ID17 placement -> ID17 properties."""
+    global coverage_limited, quick_goal_reached
     path = []
     captured = capture_state(path)
     if captured is None:
@@ -457,10 +459,7 @@ def guided_quick_walk():
         ("project name", lambda n: n.get("field")),
         ("create project", lambda n: n.get("text", "").strip().upper() == "CREATE" and not n.get("field")),
         ("component palette", lambda n: n.get("resource_id", "").endswith("menu_bar_component")),
-        ("FBD page", lambda n: n.get("resource_id", "").endswith("switch_layout")),
-        ("drag macro block to canvas", lambda n: n.get("resource_id", "").endswith("tab_fb_macro")),
-        ("open macro editor palette", lambda n: n.get("resource_id", "").endswith("menu_bar_component")),
-        ("macro FBD page", lambda n: n.get("resource_id", "").endswith("switch_layout")),
+        ("drag Craft ID17 dynamic picture to canvas", lambda n: n.get("resource_id", "").endswith("tab_dyn_pictures")),
     ]
     for label, predicate in steps:
         if captured is None:
@@ -473,97 +472,32 @@ def guided_quick_walk():
             print(f"guided route stopped before {label}: target absent; controls={available}", flush=True)
             coverage_limited = True
             break
-        if label == "drag macro block to canvas":
+        if label == "drag Craft ID17 dynamic picture to canvas":
             action = {
                 "kind": "drag", "node": action["node"], "drop_x": 1150,
                 "drop_y": 850, "duration_ms": 1600,
-                "label": "DRAG macro block to canvas",
+                "label": "DRAG Craft ID17 dynamic picture to canvas",
             }
         transition_rows.append({"from": captured[0], "action": action["label"], "depth": len(path) + 1})
         perform(action)
-        path = path + [action]
+        path.append(action)
         captured = capture_state(path)
-        if label == "drag macro block to canvas" and captured is not None:
-            controls = captured[2]
-            name_node = next(
-                (a["node"] for a in controls
-                 if a["node"].get("resource_id", "").endswith("nameMacro")),
-                None,
-            )
-            if name_node is not None:
-                name_action = {
-                    "kind": "tap", "node": name_node,
-                    "label": "Enter macro name MacroTest",
-                }
-                transition_rows.append({
-                    "from": captured[0], "action": name_action["label"],
-                    "depth": len(path) + 1,
-                })
-                # Verify the field accepted text before dismissing the keyboard or scrolling.
-                entered = False
-                for attempt in range(2):
-                    adb("shell", "input", "tap", str(name_node["x"]), str(name_node["y"]))
-                    time.sleep(0.6)
-                    adb("shell", "input", "text", "MacroTest")
-                    time.sleep(0.5)
-                    focused_root, _, _ = dump_ui(f"macro-name-entry-{attempt + 1}", capture_screenshot=True)
-                    entered = any(
-                        n.attrib.get("resource-id", "").endswith("nameMacro")
-                        and n.attrib.get("text", "").strip() == "MacroTest"
-                        for n in focused_root.iter("node")
-                    )
-                    print(
-                        f"macro name entry attempt {attempt + 1}: accepted={entered}",
-                        flush=True,
-                    )
-                    if entered:
-                        break
-                    adb("shell", "input", "keyevent", "4")
-                    time.sleep(0.3)
-                if not entered:
-                    coverage_limited = True
-                    print("guided route stopped: MacroTest was not accepted by nameMacro", flush=True)
-                    break
-                adb("shell", "input", "keyevent", "4")
-                time.sleep(WAIT)
-                path.append(name_action)
-                captured = capture_state(path)
-
-                scroll_label = "SCROLL macro form to output and Create"
-                transition_rows.append({
-                    "from": captured[0] if captured else "macro dialog",
-                    "action": scroll_label, "depth": len(path) + 1,
-                })
-                path.append({"label": scroll_label})
-                create_node = None
-                for scroll_attempt in range(3):
-                    adb("shell", "input", "swipe", "1200", "1280", "1200", "350", "700")
-                    time.sleep(WAIT)
-                    captured = capture_state(path)
-                    create_node = next(
-                        (a["node"] for a in (captured[2] if captured else [])
-                         if a["node"].get("resource_id", "").endswith("bCreateMacro")),
-                        None,
-                    )
-                    if create_node is not None:
-                        print(f"macro form Create button visible after scroll {scroll_attempt + 1}", flush=True)
-                        break
-                if create_node is None:
-                    coverage_limited = True
-                    print("guided route stopped: bCreateMacro not exposed after three scrolls", flush=True)
-                    break
-                if create_node is not None:
-                    create_action = {
-                        "kind": "tap", "node": create_node,
-                        "label": "Create macro",
-                    }
-                    transition_rows.append({
-                        "from": captured[0], "action": create_action["label"],
-                        "depth": len(path) + 1,
-                    })
-                    perform(create_action)
-                    path.append(create_action)
-                    captured = capture_state(path)
+        if label == "drag Craft ID17 dynamic picture to canvas" and captured is not None:
+            properties_action = {
+                "kind": "tap", "node": {"x": 1150, "y": 850, "field": False},
+                "label": "Open Craft ID17 properties",
+            }
+            transition_rows.append({
+                "from": captured[0], "action": properties_action["label"],
+                "depth": len(path) + 1,
+            })
+            perform(properties_action)
+            path.append(properties_action)
+            captured = capture_state(path)
+            quick_goal_reached = captured is not None
+            coverage_limited = True
+            if not quick_goal_reached:
+                print("guided route stopped: Craft ID17 properties did not produce a new state", flush=True)
 
 
 fresh_start()

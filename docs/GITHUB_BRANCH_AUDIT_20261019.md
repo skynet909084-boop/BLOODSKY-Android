@@ -57,7 +57,7 @@ Other unmerged refs without an open PR directly attached include branch bases, t
 
 ## Next gates
 
-1. The exact-head APK/JUnit #1105 passed on `7d72ac8`. UI smoke #738 failed before emulator launch because clean-runner dependency resolution could not find Paho 1.2.5 in Google/Maven Central. The repository now includes Eclipse's official Paho releases repository in `settings.gradle`; wait for exact-head APK/UI validation after the fix. Craft probe #135 is still running; prior probe #133 was partial (12 states, 11 transitions, `state_limit`).
+1. On `4cd07e3`, APK/JUnit #1106 passed. UI smoke #739 is running after the official Paho repository fix. Craft probe #136 passed as a run but remains partial (12 states, 11 transitions, `state_limit`).
 2. Continue source-backed gaps on the same integration line in focused commits: internal/system gateway endpoint and typed component binding; macro round-trip/execution; RTU hardware adapter; remaining documented component/runtime gaps.
 4. Keep PR #143 open until its checks and acceptance notes are current. Close PR #157 only after its change is present in #143 and the new head passes.
 5. Do not merge into `main` or delete the unmerged dependency branches while their stacked PRs remain active.
@@ -67,3 +67,9 @@ Other unmerged refs without an open PR directly attached include branch bases, t
 - PR #143 head `7d72ac8` adds the ID17 number/bit selection property control. Local Python suite passed 149/149; parity JSON and `git diff --check` passed.
 - Clean-runner UI smoke exposed a dependency-resolution gap hidden by the APK workflow cache. Eclipse's official Paho instructions list `https://repo.eclipse.org/content/repositories/paho-releases/` as the release repository; it is now included in `settings.gradle` so CI and fresh checkouts can resolve the MQTT client without relying on a warm cache.
 - Current follow-up commit must be checked by fresh APK/JUnit, Android 11 UI smoke and original Craft probe. No merge, branch deletion or change to `main` was made.
+
+## Focused Craft probe route correction — in progress
+
+- Probe #136 screenshots and accessibility tree show the HMI component palette at state 4, then the old quick route tapped `switch_layout` and spent the rest of its 12-state budget creating a macro.
+- Decompiled `mbCanvas.java` confirms `tab_dyn_pictures` is a drag source; dropping it on the canvas creates `CustomDynPictures`. The #136 accessibility tree exposes that exact image control (`long-clickable=true`) at `[611,938][751,1078]`.
+- The local quick-probe route now targets that Craft ID17 control, drops it on the canvas and taps the component to reach its property screen. It reports the guided waypoint separately and never marks a bounded quick run as complete coverage. Local Python tool suite passed 149/149 and the script compiles; exact-head validation is pending after the current UI smoke completes.

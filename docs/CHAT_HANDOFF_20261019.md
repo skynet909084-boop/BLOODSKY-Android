@@ -158,3 +158,9 @@ Source of truth: `docs/FBD_MACRO_CODEC_20261018.md`.
 
 - Added a number/bit selector for `typeCommand` and help text for explicitly setting the BLOODSKY TCP register binding. The Craft legacy binding is still not activated on import.
 - Added regression coverage confirming any nonzero `typeCommand` uses the bit-mask behavior. Pending validation is recorded by the new Actions runs on the current head; visual/device acceptance and full Craft probe coverage remain open.
+
+## Fast Craft probe route — prepared locally
+
+- Reviewed Craft probe #136's screenshots and XML. It already reached the component palette at state 4, then spent the remaining quick budget in the FBD macro editor.
+- Decompiled `mbCanvas.java` confirms `tab_dyn_pictures` is a drag source for creating `CustomDynPictures`. The quick probe now targets this ID17 component and taps it for the property view. `guided_goal_reached` is recorded separately; quick coverage remains explicitly incomplete.
+- Local validation: Python tool suite 149/149, probe script compiles, ID17 control confirmed in the #136 XML. Awaiting UI smoke #739 before committing and running the focused probe on GitHub.
