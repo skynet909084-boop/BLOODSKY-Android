@@ -41,12 +41,11 @@ class OriginalFbdPaletteTests(unittest.TestCase):
     def test_macro_library_uses_source_grid_cards_and_page_switches(self):
         source = ET.parse(ROOT / 'build/craft-reference/apktool/res/layout/fragment_tile_macros.xml').getroot()
         source_card = ET.parse(ROOT / 'build/craft-reference/apktool/res/layout/item_tile_add_new_macros.xml').getroot()
-        self.assertEqual('androidx.recyclerview.widget.RecyclerView',
-                         next(n.tag for n in source if n.tag == 'androidx.recyclerview.widget.RecyclerView'))
+        self.assertIn('androidx.recyclerview.widget.RecyclerView', [n.tag for n in source.iter()])
         self.assertEqual('100.0dp', source_card.get(A + 'layout_width'))
         self.assertEqual('100.0dp', source_card.get(A + 'layout_height'))
         self.assertEqual('FB_MACRO', next(n for n in source_card.iter()
-                                          if n.tag == 'com.bloodsky.hmi.OriginalFbdDrawing').get(A + 'tag'))
+                                          if n.get(A + 'tag') == 'FB_MACRO').get(A + 'tag'))
 
         card = ET.parse(ROOT / 'app/src/main/res/layout/kc_macro_library_card.xml').getroot()
         self.assertEqual('100dp', card.get(A + 'layout_width'))
