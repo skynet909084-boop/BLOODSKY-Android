@@ -477,4 +477,45 @@ public class CraftProjectImporterTest {
         MainActivity.validateImportedProjectStatic(project.toString());
     }
 
+
+    @Test public void preservesGlobalRegisterBindingWithoutActivatingDeviceSlot100() throws Exception {
+        JSONObject source = new JSONObject(sample());
+        JSONArray deviceSlots = new JSONArray();
+        for (int i = 0; i < 16; i++) {
+            deviceSlots.put(new JSONObject().put("num", i).put("name", "Device " + (i + 1))
+                    .put("address", 1).put("idServer", 2).put("rtu", true).put("server", ""));
+        }
+        source.getJSONObject("TableNameProject")
+                .put("countDevice", 1)
+                .put("deviceNetwork", deviceSlots.toString());
+
+        // Duplicate numeric IDs are present in real exports; preserve the full endpoint table.
+        source.put("TableConnections", new JSONArray()
+                .put(new JSONObject().put("connectionsId", 2).put("name", "Endpoint A").put("server", "{}"))
+                .put(new JSONObject().put("connectionsId", 2).put("name", "Endpoint B").put("server", "{}")));
+
+        JSONObject globalBinding = new JSONObject().put("posDeviceNetworkInList", 100)
+                .put("addressRegister", 10).put("typeRequest", 3);
+        source.getJSONArray("TableComponent").getJSONObject(0)
+                .put("jsTableComponent_connectionInfo", globalBinding.toString());
+
+        JSONObject imported = new JSONObject(CraftProjectImporter.convert(source.toString()));
+        JSONObject widget = imported.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0);
+        assertEquals("Imported Craft hardware bindings must stay inactive",
+                "", widget.getString("connectionInfo"));
+        assertEquals(globalBinding.toString(), widget.getString("craftConnectionInfo"));
+
+        JSONObject craftSource = imported.getJSONObject("craftSource");
+        JSONObject originalProject = craftSource.getJSONObject("TableNameProject");
+        assertEquals(1, originalProject.getInt("countDevice"));
+        assertEquals(16, new JSONArray(originalProject.getString("deviceNetwork")).length());
+        JSONArray endpoints = craftSource.getJSONArray("TableConnections");
+        assertEquals(2, endpoints.length());
+        assertEquals(2, endpoints.getJSONObject(0).getInt("connectionsId"));
+        assertEquals(2, endpoints.getJSONObject(1).getInt("connectionsId"));
+        assertEquals(100, new JSONObject(widget.getString("craftConnectionInfo"))
+                .getInt("posDeviceNetworkInList"));
+    }
+
 }
