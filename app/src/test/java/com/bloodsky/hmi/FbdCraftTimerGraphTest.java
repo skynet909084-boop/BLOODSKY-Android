@@ -27,7 +27,7 @@ public class FbdCraftTimerGraphTest {
         assertTrue(FbdSourceCanvasSkin.shouldUse(timer));
     }
 
-    @Test public void integerPtUsesVerifiedCraftUnitAndRejectsFractionalValues() {
+    @Test public void integerMsAndLegacyPtUseVerifiedCraftUnitAndRejectFractionalValues() {
         assertEquals(2345L, MainActivity.fbdCraftTimerPresetMs(
                 Arrays.asList(2345.0), Arrays.asList("MS"), 1000, "MS"));
         assertEquals(2000L, MainActivity.fbdCraftTimerPresetMs(
@@ -51,6 +51,20 @@ public class FbdCraftTimerGraphTest {
         assertTrue("Unpinned legacy connections retain positional inputs",
                 MainActivity.fbdCraftTimerInputsReady(Arrays.asList(1.0, 500.0),
                         Arrays.asList("", "")));
+    }
+
+    @Test public void unresolvedTimerInputsPreserveItsPriorRuntimeState() {
+        MainActivity.Widget timer = new MainActivity.Widget();
+        timer.type = "FBD CRAFT TIMER";
+        FbdCraftNativeTimer.State prior = new FbdCraftNativeTimer.State(true, true, false, 123L);
+        timer.craftTimerState = prior;
+        double[] numeric = new double[1];
+        boolean output = MainActivity.evaluateFbdBlock(
+                Arrays.asList(timer), java.util.Collections.emptyList(), 0,
+                new boolean[1], new boolean[1], new boolean[1], numeric);
+        assertFalse(output);
+        assertSame(prior, timer.craftTimerState);
+        assertTrue(Double.isNaN(numeric[0]));
     }
 
 }
