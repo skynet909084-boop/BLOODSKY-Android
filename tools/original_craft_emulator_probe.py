@@ -432,8 +432,42 @@ def full_walk():
     return len(queue)
 
 
+def guided_quick_walk():
+    """Follow the known project -> editor -> FBD -> macro route with ADB."""
+    path = []
+    captured = capture_state(path)
+    if captured is None:
+        return
+    steps = [
+        ("create project dialog", lambda n: "CREATE A NEW PROJECT" in n.get("text", "").upper()),
+        ("project name", lambda n: n.get("field")),
+        ("create project", lambda n: n.get("text", "").strip().upper() == "CREATE" and not n.get("field")),
+        ("component palette", lambda n: n.get("resource_id", "").endswith("menu_bar_component")),
+        ("FBD page", lambda n: n.get("resource_id", "").endswith("switch_layout")),
+        ("macro page", lambda n: n.get("resource_id", "").endswith("switch_layout")),
+    ]
+    for label, predicate in steps:
+        if captured is None:
+            print(f"guided route stopped before {label}: previous screen was unchanged", flush=True)
+            break
+        actions = captured[2]
+        action = next((a for a in actions if predicate(a["node"])), None)
+        if action is None:
+            available = [a["label"] for a in actions]
+            print(f"guided route stopped before {label}: target absent; controls={available}", flush=True)
+            coverage_limited = True
+            break
+        transition_rows.append({"from": captured[0], "action": action["label"], "depth": len(path) + 1})
+        perform(action)
+        path = path + [action]
+        captured = capture_state(path)
+
+
 fresh_start()
-fast_walk([])
+if PROFILE == "quick":
+    guided_quick_walk()
+else:
+    fast_walk([])
 remaining_frontier = 0
 
 # Capture all uncaught Android Java exceptions from this audit session.
