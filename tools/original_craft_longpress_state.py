@@ -26,7 +26,7 @@ def actions_for_controls(controls, direction: str):
         label = (control.get("text") or control.get("description") or
                  control.get("hint") or control.get("resource_id") or
                  control.get("class") or "control")[:100]
-        if point not in seen_taps:
+        if (control.get("clickable") or control.get("field")) and point not in seen_taps:
             seen_taps.add(point)
             actions.append({"kind": "tap", "node": control, "label": label})
         if control.get("long_clickable") and point not in seen_long_presses:
