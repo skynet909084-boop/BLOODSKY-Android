@@ -53,7 +53,7 @@ Treat the entries as the manual's contract, not as proven runtime semantics. The
 
 1. Resolve the bank capacity discrepancy from Craft 1.0.7 source/runtime; keep address validation configurable until confirmed.
 2. Define a typed register-bank API for Boolean bits, 16-bit words, and two-word Floats with explicit byte/register order.
-3. Implement service-register providers with read/write permissions and lifecycle hooks (screen, battery, time, refresh, save, exit); isolate side effects behind tested commands.
+3. Completed for registers 0–9: add service providers and source-backed word/bit command handlers with tested timing. Remaining service parity is limited to unavailable channel-fault mapping, project-password unlock, embedded WebView, and typed UI VarIn/VarOut bindings.
 4. Route component bindings with device **Система** to that bank; route gateway source/destination endpoints to internal or external transport without collapsing the two namespaces.
 5. Preserve imported project fields but keep unsupported or ambiguous system bindings visible and inactive until a faithful mapping exists.
 6. Add tests for read-only/write-only addresses, bit masks, endian variants, refresh/save/exit side effects, import/save/reopen, and gateway transfers to/from the system bank; then verify the UI on emulator/device.
