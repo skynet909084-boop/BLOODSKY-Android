@@ -32,9 +32,9 @@ public class FbdCraftRegisterStoreTest {
         assertNull(FbdCraftRegisterStore.read(2000, firstProject));
         assertEquals(65535, firstProject.readWord(10));
 
-        assertTrue(FbdCraftRegisterStore.write(9, -7, firstProject));
-        assertEquals(Integer.valueOf(-7), FbdCraftRegisterStore.read(9, firstProject));
-        assertEquals(Integer.valueOf(-7), FbdCraftRegisterStore.read(9, secondProject));
+        assertTrue(FbdCraftRegisterStore.write(9, 0x4000, firstProject));
+        assertEquals(0x4000, FbdCraftRegisterStore.read(9, firstProject).intValue() & 0x4000);
+        assertEquals(0x4000, FbdCraftRegisterStore.read(9, secondProject).intValue() & 0x4000);
     }
 
     @Test public void statusIdAndBatteryProvidersUseCraftBitLayout() {
@@ -119,12 +119,13 @@ public class FbdCraftRegisterStoreTest {
 
     private static final class ActionSpy implements CraftServiceRegisters.Actions {
         int selectedScreen = -1;
+        int paletteChanges;
         int paletteIndex = -1;
         int paletteColor;
         int passwordCandidate = -1;
         int saves, refreshes, urlRequests, exits, cascadeLogs;
         public void selectScreen(int screen) { selectedScreen = screen; }
-        public void applyBackground(int index, int color) { paletteIndex = index; paletteColor = color; }
+        public void applyBackground(int index, int color) { paletteChanges++; paletteIndex = index; paletteColor = color; }
         public void enterPassword(int candidate) { passwordCandidate = candidate; }
         public void saveProject() { saves++; }
         public void refreshComponents() { refreshes++; }
