@@ -1,7 +1,10 @@
+import sys
 import unittest
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
-from tools.original_craft_probe_state import is_project_loading
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from original_craft_probe_state import is_project_loading
 
 
 class OriginalCraftProbeStateTest(unittest.TestCase):
