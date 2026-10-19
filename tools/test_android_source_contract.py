@@ -107,6 +107,7 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn('otherElements.setText("Другие элементы BLOODSKY")', self.source)
         self.assertIn('scroll.addView(macroList)', self.source)
         self.assertIn("createCraftMacroFromSelection()", self.source)
+        self.assertIn("showFbdPalette();", self.source)
 
     def test_original_indicator_picker_has_real_preview_and_click_target(self):
         start = self.source.index("private void showAddWidgetMenu()")
