@@ -11,7 +11,7 @@ This note records documented behavior separately from the current implementation
 
 KaLogic provides an internal nonvolatile system-register area for PLC-style processing and data conversion. The manual says the first ten addresses (0–9) are service registers and addresses 10–1000 are user registers. Values are connected to UI components and FBD through Boolean, Integer/Word and Float variables.
 
-The manual itself has an unresolved count/range inconsistency: it says the area contains 200 registers, but lists user-register addresses through 1000. Preserve this discrepancy as an open question; do not silently choose a capacity.
+The count/range mismatch is now partly resolved against Craft 1.0.7 Smali. The manual says 200 registers and its table shows user addresses through 1000; the runtime allocates an `int[2000]` register bank (static size `E=2000`, highest valid index `F=1999`). Its project-save loop serializes nonzero values starting at address 10 through the end of that array. Thus the runtime capacity is 2000 words (addresses 0–1999), while the manual documents only through 1000. Whether the UI intentionally limits entry to 1000 still needs a separate check.
 
 Components can bind directly to a system register by choosing the device named **Система**. The manual describes register and bit gateways as the bridge between this internal bank and external device registers. They are distinct from direct Modbus device bindings.
 
@@ -61,3 +61,17 @@ Treat the entries as the manual's contract, not as proven runtime semantics. The
 ## Acceptance boundary
 
 This audit establishes the manual's documented model and the current BLOODSKY gap. It does not claim that system-register runtime behavior is implemented or that every manual detail matches Craft 1.0.7. Validate against the pinned decompilation and original app before marking parity complete.
+
+
+## Original runtime findings (Craft 1.0.7 Smali)
+
+Pinned decompilation inspected from `run 38600957172` (artifact SHA-256 `d78bd703d6096ac12d69e19f8b5b5dfa9a4c25e342ce9af0ef8b42326aaa3f8c`):
+
+- `ru/himik/nightscream/kascada/q/d/b.smali` constructs `j` as an `int[2000]`; the static highest accepted index is 1999. The same class reads a 16-bit word (`I(address)`), reads a bit (`G(address, bit)`), writes a bit (`K(address, bit, value)`), and reads a Float from two adjacent words (`H(address)`). Its Float path assembles four bytes and calls `ByteBuffer.wrap(...).getFloat()`; exact register/byte arrangement still needs validation against the VarOutFloat writer and sample projects.
+- The bank is cleared by `C()`, which replaces it with a zeroed `int[2000]`.
+- `mbCanvas.smali` restores project-retained user values from the `systemRegisters` JSON array. Each entry is an object with a key `reg_N`; the load path writes the value into `MyApplication.v0.j[N]`.
+- `Bd/h$a.smali` saves only nonzero words, scanning from address 10 through the full array length. Service words 0–9 are therefore not retained by this project-save loop; user values are stored in the project's `systemRegisters` column.
+- `Bd/e.smali` defines `TableNameProject.systemRegisters` as text, and project import/export copies that field. This is persisted project state, separate from an external Modbus device register map.
+- The runtime's register-9 path uses the same bank bit accessors and dispatches handler events for service-bit effects. The manual remains the authority for user-facing labels; message-to-action mapping and permission/timing behavior should be traced before implementing those side effects.
+
+This confirms the bank size and persistence shape from executable source. The manual's 200 count is inconsistent with the runtime; don't implement a 200-word bank. The 1000 endpoint remains the documented table endpoint, while the source bank continues through 1999.
