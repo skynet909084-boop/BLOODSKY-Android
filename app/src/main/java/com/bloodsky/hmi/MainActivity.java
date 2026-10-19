@@ -6360,21 +6360,26 @@ public class MainActivity extends Activity {
     public static boolean evaluateFbdBlock(List<Widget> widgetsList, List<FbdConnection> connectionsList,
             int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric,
             CraftSystemRegisterBank userRegisters) {
-        return withFbdSystemRegisterBank(userRegisters, () -> evaluateFbdBlock(
-                widgetsList, connectionsList, index, visiting, cacheValid, cacheValues, cacheNumeric));
+        CraftSystemRegisterBank previous = setActiveFbdSystemRegisterBank(userRegisters);
+        try {
+            return evaluateFbdBlock(widgetsList, connectionsList, index, visiting,
+                    cacheValid, cacheValues, cacheNumeric);
+        } finally {
+            restoreActiveFbdSystemRegisterBank(previous);
+        }
     }
 
-    private static <T> T withFbdSystemRegisterBank(CraftSystemRegisterBank userRegisters,
-                                                   java.util.function.Supplier<T> operation) {
+    private static CraftSystemRegisterBank setActiveFbdSystemRegisterBank(
+            CraftSystemRegisterBank userRegisters) {
         CraftSystemRegisterBank previous = ACTIVE_FBD_SYSTEM_REGISTER_BANK.get();
         if (userRegisters == null) ACTIVE_FBD_SYSTEM_REGISTER_BANK.remove();
         else ACTIVE_FBD_SYSTEM_REGISTER_BANK.set(userRegisters);
-        try {
-            return operation.get();
-        } finally {
-            if (previous == null) ACTIVE_FBD_SYSTEM_REGISTER_BANK.remove();
-            else ACTIVE_FBD_SYSTEM_REGISTER_BANK.set(previous);
-        }
+        return previous;
+    }
+
+    private static void restoreActiveFbdSystemRegisterBank(CraftSystemRegisterBank previous) {
+        if (previous == null) ACTIVE_FBD_SYSTEM_REGISTER_BANK.remove();
+        else ACTIVE_FBD_SYSTEM_REGISTER_BANK.set(previous);
     }
 
     public static boolean evaluateFbdBlock(List<Widget> widgetsList, List<FbdConnection> connectionsList, int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
@@ -6442,8 +6447,13 @@ public class MainActivity extends Activity {
     public static double evaluateFbdBlockNumeric(List<Widget> widgetsList, List<FbdConnection> connectionsList,
             int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric,
             CraftSystemRegisterBank userRegisters) {
-        return withFbdSystemRegisterBank(userRegisters, () -> evaluateFbdBlockNumeric(
-                widgetsList, connectionsList, index, visiting, cacheValid, cacheValues, cacheNumeric));
+        CraftSystemRegisterBank previous = setActiveFbdSystemRegisterBank(userRegisters);
+        try {
+            return evaluateFbdBlockNumeric(widgetsList, connectionsList, index, visiting,
+                    cacheValid, cacheValues, cacheNumeric);
+        } finally {
+            restoreActiveFbdSystemRegisterBank(previous);
+        }
     }
 
     public static double evaluateFbdBlockNumeric(List<Widget> widgetsList, List<FbdConnection> connectionsList, int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
@@ -6589,8 +6599,13 @@ public class MainActivity extends Activity {
     public static boolean evaluateFbdBlockUncached(List<Widget> widgetsList, List<FbdConnection> connectionsList,
             int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric,
             CraftSystemRegisterBank userRegisters) {
-        return withFbdSystemRegisterBank(userRegisters, () -> evaluateFbdBlockUncached(
-                widgetsList, connectionsList, index, visiting, cacheValid, cacheValues, cacheNumeric));
+        CraftSystemRegisterBank previous = setActiveFbdSystemRegisterBank(userRegisters);
+        try {
+            return evaluateFbdBlockUncached(widgetsList, connectionsList, index, visiting,
+                    cacheValid, cacheValues, cacheNumeric);
+        } finally {
+            restoreActiveFbdSystemRegisterBank(previous);
+        }
     }
 
     public static boolean evaluateFbdBlockUncached(List<Widget> widgetsList, List<FbdConnection> connectionsList, int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
