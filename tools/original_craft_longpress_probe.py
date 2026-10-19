@@ -56,10 +56,10 @@ def dump_ui(label: str, capture_screenshot: bool = True):
     if capture_screenshot:
         with png.open("wb") as f:
             try:
-            subprocess.run(["adb", "exec-out", "screencap", "-p"], stdout=f,
-                           check=False, timeout=ADB_TIMEOUT)
-        except subprocess.TimeoutExpired as exc:
-            raise RuntimeError(f"adb screenshot timed out after {ADB_TIMEOUT}s") from exc
+                subprocess.run(["adb", "exec-out", "screencap", "-p"], stdout=f,
+                               check=False, timeout=ADB_TIMEOUT)
+            except subprocess.TimeoutExpired as exc:
+                raise RuntimeError(f"adb screenshot timed out after {ADB_TIMEOUT}s") from exc
     return root, local.read_text(errors="replace") if local.exists() else "", png
 
 
