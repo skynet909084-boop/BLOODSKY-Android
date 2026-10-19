@@ -157,7 +157,23 @@ def execute_macro_drag(drop_x: int, drop_y: int):
     jar = OUT / "CraftDragGesture.jar"
     subprocess.run(["javac", "-source", "8", "-target", "8",
                     "-classpath", classpath, "-d", str(classes), str(source)], check=True)
-    subprocess.run(["jar", "cf", str(jar), "-C", str(classes), "."], check=True)
+    # The legacy "uiautomator runtest" loader reads DEX from JARs, not JVM .class files.
+    build_tools = sorted((sdk / "build-tools").glob("*"), reverse=True)
+    d8 = next((candidate / "d8" for candidate in build_tools if (candidate / "d8").exists()), None)
+    if d8 is None:
+        raise RuntimeError("Android build-tools d8 was not found")
+    dex_dir = OUT / "craft-drag-dex"
+    dex_dir.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [str(d8), "--min-api", "23", "--lib", str(android_jar),
+         "--classpath", classpath, "--output", str(dex_dir),
+         str(classes / "CraftDragGesture.class")],
+        check=True,
+    )
+    subprocess.run(
+        ["jar", "cf", str(jar), "-C", str(dex_dir), "classes.dex"],
+        check=True,
+    )
     adb("push", str(jar), "/data/local/tmp/CraftDragGesture.jar")
     result = subprocess.run(
         ["adb", "shell", "uiautomator", "runtest",
