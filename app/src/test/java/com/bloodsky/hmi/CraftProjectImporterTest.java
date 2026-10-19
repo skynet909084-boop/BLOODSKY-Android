@@ -94,6 +94,58 @@ public class CraftProjectImporterTest {
         assertEquals(100.0, second.getJSONObject(1).getDouble("maxValue"), 0.001);
     }
 
+    private static String multiStateImageProject(String firstPath) throws Exception {
+        JSONObject other = new JSONObject().put("numScreen", 1).put("typeCommand", 1);
+        for (int state = 0; state < 16; state++)
+            other.put("pathPic_" + state, state == 0 ? firstPath : "");
+        JSONObject component = new JSONObject().put("componentId", 17).put("text", "States")
+                .put("x", 1).put("y", 2).put("width", 100).put("height", 80)
+                .put("jsTableComponent_connectionInfo",
+                        new JSONObject().put("posDeviceNetworkInList", 3).put("addressRegister", 42))
+                .put("jsTableComponent_other", other);
+        return new JSONObject().put("TableNameProject",
+                        new JSONObject().put("name", "ID17").put("countScreen", 1))
+                .put("TableComponent", new JSONArray().put(component))
+                .put("TableConnections", new JSONArray()).toString();
+    }
+
+    @Test public void mapsCraftId17ImageStatesOnlyToUniqueArchiveMediaAndKeepsBindingInactive() throws Exception {
+        Map<String, byte[]> media = new HashMap<>();
+        media.put("Sample/active.png", new byte[]{1, 2, 3});
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(
+                multiStateImageProject("/storage/emulated/0/Craft/active.png"),
+                "Sample/Sample.pro", media));
+        JSONObject image = project.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0);
+        assertEquals("Многопозиционное фото", image.getString("type"));
+        assertFalse(image.optBoolean("craftUnsupportedComponent", false));
+        assertEquals("Sample/active.png", image.getJSONArray("imagePathStates").getString(0));
+        assertEquals("", image.getJSONArray("imagePathStates").getString(1));
+        assertEquals("", image.getString("connectionInfo"));
+        assertEquals(42, image.getJSONObject("craftConnectionInfo").getInt("addressRegister"));
+        assertEquals(3, image.getJSONObject("craftOther").getInt("posDeviceNetworkInList"));
+    }
+
+    @Test public void missingCraftId17ImageIsLeftUnresolved() throws Exception {
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(
+                multiStateImageProject("missing.png"), "Sample/Sample.pro", new HashMap<String, byte[]>()));
+        JSONObject image = project.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0);
+        assertEquals("", image.getJSONArray("imagePathStates").getString(0));
+        assertEquals("", image.getString("connectionInfo"));
+    }
+
+    @Test public void ambiguousCraftId17LegacyImageBasenameIsLeftUnresolved() throws Exception {
+        Map<String, byte[]> media = new HashMap<>();
+        media.put("one/state.png", new byte[]{1});
+        media.put("two/state.png", new byte[]{2});
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(
+                multiStateImageProject("/storage/emulated/0/Craft/state.png"), "Sample/Sample.pro", media));
+        JSONObject image = project.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0);
+        assertEquals("", image.getJSONArray("imagePathStates").getString(0));
+    }
+
     @Test public void expandsBeyondStaleDeclaredScreenCountForComponentReferences() throws Exception {
         String legacy = sample().replace("\"numScreen\":2", "\"numScreen\":3");
         JSONObject project = new JSONObject(CraftProjectImporter.convert(legacy));

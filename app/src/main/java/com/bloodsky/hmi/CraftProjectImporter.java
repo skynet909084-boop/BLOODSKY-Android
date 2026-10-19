@@ -81,7 +81,7 @@ public final class CraftProjectImporter {
             int screenNumber = positiveInt(other.opt("numScreen"), 1);
             if (screenNumber > screenCount) throw new IllegalArgumentException("Компонент ссылается на отсутствующий экран Craft");
             int componentId = positiveInt(component.opt("componentId"), -1);
-            JSONObject widget = convertComponent(component, other, componentId, screenCount);
+            JSONObject widget = convertComponent(component, other, componentId, screenCount, archiveParent, availableMedia);
             JSONObject bindingResolution = CraftNetworkBindingResolver.resolve(
                     source, component.opt("jsTableComponent_connectionInfo"));
             if (bindingResolution != null) widget.put("craftBindingResolution", bindingResolution);
@@ -192,7 +192,8 @@ public final class CraftProjectImporter {
     }
 
     private static JSONObject convertComponent(JSONObject source, JSONObject other, int componentId,
-                                               int screenCount) throws Exception {
+                                               int screenCount, String archiveParent,
+                                               Map<String, byte[]> availableMedia) throws Exception {
         JSONObject widget = new JSONObject();
         String type;
         if (componentId == 1) type = "Индикатор"; // CustomComponents.y, image-state indicator
@@ -204,6 +205,7 @@ public final class CraftProjectImporter {
         else if (componentId == 23) type = "Видео RTSP Craft"; // CustomComponents.f; preserve as disabled until source-backed player mapping
         else if (componentId == 13) type = "Линейный задатчик Craft"; // CustomSeekBar
         else if (componentId == 15) type = "Архив Craft"; // local-only history; Craft device links stay disabled until remapped
+        else if (componentId == 17) type = "Многопозиционное фото"; // Craft 16-state image; keep legacy register inactive
         else if (componentId == 20) type = "Список Craft"; // CustomList, 16 selectable bit labels
         else if (componentId == 6 && integer(other.opt("mode"), 0) == 1)
             type = "Переход на экран"; // CustomComponents.e mode 1 calls the original screen-switch handler
@@ -236,6 +238,19 @@ public final class CraftProjectImporter {
         widget.put("backgroundColor", color(source.opt("colorBackground"), Color.TRANSPARENT));
         widget.put("craftComponentId", componentId);
         widget.put("craftOther", other);
+        if (componentId == 17) {
+            JSONArray imagePaths = new JSONArray();
+            for (int state = 0; state < 16; state++) {
+                String sourcePath = other.optString("pathPic_" + state, "").trim();
+                String resolvedPath = "";
+                if (!sourcePath.isEmpty() && !"0".equals(sourcePath) && availableMedia != null) {
+                    String candidate = archiveRelativeImage(archiveParent, sourcePath, availableMedia);
+                    if (candidate != null && availableMedia.containsKey(candidate)) resolvedPath = candidate;
+                }
+                imagePaths.put(resolvedPath);
+            }
+            widget.put("imagePathStates", imagePaths);
+        }
         if (componentId == 15) {
             widget.put("craftArchiveChannelCount", boundedInt(other.opt("countChannel"), 1, 1, 4));
             String archiveType = other.optString("typeRecord", "INT").toUpperCase(java.util.Locale.ROOT);
@@ -405,7 +420,7 @@ public final class CraftProjectImporter {
     }
 
     private static boolean isSupportedComponent(int id) {
-        return id == 1 || id == 2 || id == 4 || id == 5 || id == 6 || id == 7 || id == 9 || id == 11 || id == 13 || id == 18 || id == 20 || id == 22 || id == 23;
+        return id == 1 || id == 2 || id == 4 || id == 5 || id == 6 || id == 7 || id == 9 || id == 11 || id == 13 || id == 17 || id == 18 || id == 20 || id == 22 || id == 23;
     }
 
     private static String timerMode(int mode) {
