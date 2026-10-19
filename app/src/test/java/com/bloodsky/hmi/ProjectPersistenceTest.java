@@ -66,6 +66,8 @@ public class ProjectPersistenceTest {
         project.put("projectName", "ZIP Проект");
         project.put("currentScreen", 0);
         project.put("unknownProjectKey", "preservedValue");
+        // Source findings keep ordered device slots and FBD graph edges in separate layers.
+        project.put("deviceNetwork", new JSONArray().put("device-a").put("device-b"));
 
         JSONArray screens = new JSONArray();
         JSONObject screen = new JSONObject();
@@ -76,9 +78,15 @@ public class ProjectPersistenceTest {
         JSONObject widget = new JSONObject();
         widget.put("type", "Кнопка");
         widget.put("text", "Пуск");
+        // Keep a binding opaque; this test does not invent Craft's connectionInfo schema.
+        widget.put("connectionInfo", "binding-to-device-slot-1");
         widget.put("x", 10); widget.put("y", 20); widget.put("w", 100); widget.put("h", 50);
         widgets.put(widget);
         screen.put("widgets", widgets);
+        JSONArray fbdConnections = new JSONArray().put(new JSONObject()
+                .put("source", 0).put("target", 0)
+                .put("vendorRoute", new JSONObject().put("kind", "orthogonal")));
+        screen.put("connections", fbdConnections);
         screens.put(screen);
         project.put("screens", screens);
 
@@ -98,6 +106,15 @@ public class ProjectPersistenceTest {
         JSONArray importedScreens = importedProject.getJSONArray("screens");
         assertEquals(1, importedScreens.length());
         assertEquals("Главный", importedScreens.getJSONObject(0).getString("name"));
+        assertEquals(new JSONArray().put("device-a").put("device-b").toString(),
+                importedProject.getJSONArray("deviceNetwork").toString());
+        JSONObject importedScreen = importedScreens.getJSONObject(0);
+        assertEquals("binding-to-device-slot-1",
+                importedScreen.getJSONArray("widgets").getJSONObject(0).getString("connectionInfo"));
+        JSONObject importedEdge = importedScreen.getJSONArray("connections").getJSONObject(0);
+        assertEquals(0, importedEdge.getInt("source"));
+        assertEquals(0, importedEdge.getInt("target"));
+        assertEquals("orthogonal", importedEdge.getJSONObject("vendorRoute").getString("kind"));
     }
 
     @Test(expected = IllegalArgumentException.class)
