@@ -8569,7 +8569,6 @@ public class MainActivity extends Activity {
                             if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(16)) / Math.max(4f, imgLabel.length() * 0.58f))));
                             canvas.drawText(imgLabel, w.x + dp(8), w.y + w.h / 2 + dp(5), paint);
                         }
-                    }
                 } else if ("Распознавание речи Craft".equals(w.type)) {
                     paint.setColor(Color.rgb(51, 65, 85));
                     canvas.drawRoundRect(new RectF(w.x + dp(6), w.y + dp(6),
@@ -9167,4 +9166,17 @@ public class MainActivity extends Activity {
                 invalidate();
                 return true;
             }
-            if (action == MotionEvent.ACTI
+            if (action == MotionEvent.ACTION_CANCEL) {
+                android.view.ViewParent parent = getParent();
+                if (parent != null) parent.requestDisallowInterceptTouchEvent(false);
+                selected = -1; dragging = false; resizing = false; marqueeActive = false;
+                dragOrigins.clear();
+                invalidate();
+                return true;
+            }
+            return true;
+        }
+    }
+}
+
+
