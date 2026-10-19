@@ -8,7 +8,7 @@ import org.json.JSONObject;
  *
  * <p>The pinned Craft runtime allocates 2000 words (addresses 0..1999), but
  * routes service addresses 0..9 through side-effect handlers. This class owns
- * only user words 10..1999; service providers remain a separate integration.</p>
+ * only user addresses 10..1999; service providers remain a separate integration.</p>
  */
 public final class CraftSystemRegisterBank {
     public static final int SIZE = 2000;
@@ -28,7 +28,6 @@ public final class CraftSystemRegisterBank {
 
     public synchronized void writeWord(int address, int value) {
         requireUserRegister(address);
-        requireWord(value);
         words[address] = value;
     }
 
@@ -107,8 +106,9 @@ public final class CraftSystemRegisterBank {
             Object raw = row.opt(key);
             if (!(raw instanceof Number)) throw new IllegalArgumentException("System register value must be numeric");
             int value = ((Number) raw).intValue();
-            requireWord(value);
-            if (((Number) raw).doubleValue() != value) throw new IllegalArgumentException("System register value must be an integer");
+            double numericValue = ((Number) raw).doubleValue();
+            if (numericValue < Integer.MIN_VALUE || numericValue > Integer.MAX_VALUE || numericValue != value)
+                throw new IllegalArgumentException("System register value must be a 32-bit integer");
             restored[address] = value;
             seen[address] = true;
         }
