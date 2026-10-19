@@ -447,10 +447,8 @@ def guided_quick_walk():
         ("create project", lambda n: n.get("text", "").strip().upper() == "CREATE" and not n.get("field")),
         ("component palette", lambda n: n.get("resource_id", "").endswith("menu_bar_component")),
         ("FBD page", lambda n: n.get("resource_id", "").endswith("switch_layout")),
-        ("macro page", lambda n: n.get("resource_id", "").endswith("switch_layout")),
-        ("component palette", lambda n: n.get("resource_id", "").endswith("switch_layout")),
-        ("FBD palette", lambda n: n.get("resource_id", "").endswith("switch_layout")),
         ("drag macro block to canvas", lambda n: n.get("resource_id", "").endswith("tab_fb_macro")),
+        ("macro page", lambda n: n.get("resource_id", "").endswith("switch_layout")),
     ]
     for label, predicate in steps:
         if captured is None:
