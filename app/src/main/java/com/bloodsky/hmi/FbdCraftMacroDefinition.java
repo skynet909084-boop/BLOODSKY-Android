@@ -120,9 +120,7 @@ public final class FbdCraftMacroDefinition {
             if (!type.startsWith("FBD "))
                 throw new JSONException("Nested macro graph contains an unsupported block");
             if ("FBD CRAFT MACRO".equals(type)) {
-                JSONObject extra = widget.optJSONObject("extraFields");
-                JSONObject nestedDefinition = extra == null ? null
-                        : extra.optJSONObject("craftMacroDefinition");
+                JSONObject nestedDefinition = widget.optJSONObject("craftMacroDefinition");
                 if (nestedDefinition == null)
                     throw new JSONException("Nested macro block has no validated definition");
                 FbdCraftMacroDefinition parsedDefinition = fromJson(
