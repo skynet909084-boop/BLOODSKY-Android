@@ -145,18 +145,22 @@ def action_key(a):
 def execute_macro_drag(drop_x: int, drop_y: int):
     """Use a single held pointer stream so the source tile can start Android drag-and-drop."""
     sdk = Path(__import__("os").environ["ANDROID_HOME"])
-    android_jar = sdk / "platforms" / "android-35" / "android.jar"
+    platform = sdk / "platforms" / "android-35"
+    android_jar = platform / "android.jar"
+    uiautomator_jar = platform / "uiautomator.jar"
+    optional_jars = list((platform / "optional").glob("*.jar"))
+    classpath = __import__("os").pathsep.join(
+        map(str, [android_jar, uiautomator_jar, *optional_jars]))
     source = Path(__file__).with_name("CraftDragGesture.java")
     classes = OUT / "craft-drag-classes"
     classes.mkdir(parents=True, exist_ok=True)
     jar = OUT / "CraftDragGesture.jar"
-    subprocess.run(["javac", "-classpath", str(android_jar), "-d", str(classes),
+    subprocess.run(["javac", "-classpath", classpath, "-d", str(classes),
                     str(source)], check=True)
     subprocess.run(["jar", "cf", str(jar), "-C", str(classes), "."], check=True)
     adb("push", str(jar), "/data/local/tmp/CraftDragGesture.jar")
     adb("shell", "uiautomator", "runtest", "/data/local/tmp/CraftDragGesture.jar",
-        "-c", "CraftDragGesture", "-e", "dropX", str(drop_x),
-        "-e", "dropY", str(drop_y))
+        "-c", "CraftDragGesture")
 
 
 def perform(action):

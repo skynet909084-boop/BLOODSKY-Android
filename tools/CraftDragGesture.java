@@ -1,17 +1,17 @@
 import android.app.Instrumentation;
 import android.os.SystemClock;
-import android.test.InstrumentationTestCase;
+import com.android.uiautomator.testrunner.UiAutomatorTestCase;
 import android.view.InputDevice;
 import android.view.MotionEvent;
 
 /** Sends one continuous long-press-and-drag gesture from the FBD macro tile. */
-public class CraftDragGesture extends InstrumentationTestCase {
+public class CraftDragGesture extends UiAutomatorTestCase {
     public void testMacroBlockDrag() {
         Instrumentation instrumentation = getInstrumentation();
         int sourceX = 1629;
         int sourceY = 359;
-        int dropX = Integer.parseInt(instrumentation.getArguments().getString("dropX", "1150"));
-        int dropY = Integer.parseInt(instrumentation.getArguments().getString("dropY", "850"));
+        int dropX = 1150;
+        int dropY = 850;
         long downTime = SystemClock.uptimeMillis();
         send(instrumentation, downTime, downTime, MotionEvent.ACTION_DOWN, sourceX, sourceY, 1f);
         SystemClock.sleep(800);
@@ -29,7 +29,7 @@ public class CraftDragGesture extends InstrumentationTestCase {
 
     private void send(Instrumentation instrumentation, long downTime, long eventTime,
                       int action, float x, float y, float pressure) {
-        MotionEvent event = MotionEvent.obtain(downTime, eventTime, action, x, y, pressure);
+        MotionEvent event = MotionEvent.obtain(downTime, eventTime, action, x, y, 0);
         event.setSource(InputDevice.SOURCE_TOUCHSCREEN);
         instrumentation.sendPointerSync(event);
         event.recycle();
