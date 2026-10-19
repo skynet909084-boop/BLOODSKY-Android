@@ -35,6 +35,9 @@ class OriginalFbdPaletteTests(unittest.TestCase):
         self.assertNotIn('bind(dialog,R.id.kc_logic_tab_fb_ctu',code)
         self.assertIn('this::showFbdPalette',main)
         self.assertIn('this::showCraftMacroTools',main)
+        self.assertIn('this::createCraftMacroFromSelection',main)
+        self.assertIn('action(dialog,R.id.kc_logic_tab_fb_macro',code)
+        self.assertIn('macroTile.setAlpha(1f)',code)
         self.assertIn('menu.getMenu().add("Другие элементы BLOODSKY")',main)
         self.assertIn('showExtendedWidgetMenu();',main)
 
