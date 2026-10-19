@@ -155,12 +155,22 @@ def execute_macro_drag(drop_x: int, drop_y: int):
     classes = OUT / "craft-drag-classes"
     classes.mkdir(parents=True, exist_ok=True)
     jar = OUT / "CraftDragGesture.jar"
-    subprocess.run(["javac", "-classpath", classpath, "-d", str(classes),
-                    str(source)], check=True)
+    subprocess.run(["javac", "-source", "8", "-target", "8",
+                    "-classpath", classpath, "-d", str(classes), str(source)], check=True)
     subprocess.run(["jar", "cf", str(jar), "-C", str(classes), "."], check=True)
     adb("push", str(jar), "/data/local/tmp/CraftDragGesture.jar")
-    adb("shell", "uiautomator", "runtest", "/data/local/tmp/CraftDragGesture.jar",
-        "-c", "CraftDragGesture")
+    result = subprocess.run(
+        ["adb", "shell", "uiautomator", "runtest",
+         "/data/local/tmp/CraftDragGesture.jar", "-c", "CraftDragGesture"],
+        text=True, capture_output=True, timeout=ADB_TIMEOUT,
+    )
+    if result.stdout:
+        print(result.stdout, flush=True)
+    if result.returncode:
+        raise RuntimeError(
+            "uiautomator drag test failed: "
+            + result.stderr.strip() + "\n" + result.stdout.strip()
+        )
 
 
 def perform(action):
