@@ -70,6 +70,8 @@ public class MainActivity extends Activity {
     private EditText pendingMediaField;
     private String projectName = "Мой проект";
     private JSONObject projectExtraFields = new JSONObject();
+    private final CraftSystemRegisterBank systemRegisterBank = new CraftSystemRegisterBank();
+    private boolean systemRegisterBankPersistable = true;
     private LinearLayout root;
     private android.widget.PopupWindow sourceOverflowPopup;
     private EditorCanvas editor;
@@ -2093,7 +2095,8 @@ public class MainActivity extends Activity {
         result.put("modbusSlaveId", id);
         result.put("modbusSlavePort", port);
         result.put("modbusSlave", legacy);
-        result.put("systemRegisters", registers);
+        result.put("systemRegisterSettings", registers);
+        if (result.opt("systemRegisters") instanceof String) result.remove("systemRegisters");
         return result;
     }
 
@@ -2134,7 +2137,11 @@ public class MainActivity extends Activity {
         sysRegLabel.setText("Системные регистры");
         sysRegLabel.setPadding(0, dp(10), 0, 0);
         form.addView(sysRegLabel);
-        EditText sysRegField = propertyField(projectExtraFields.optString("systemRegisters", "SYS_STATUS=0, SYS_TIME=100"), InputType.TYPE_CLASS_TEXT);
+        Object savedSystemRegisters = projectExtraFields.opt("systemRegisters");
+        String legacySystemRegisterSettings = savedSystemRegisters instanceof String
+                ? (String) savedSystemRegisters : "SYS_STATUS=0, SYS_TIME=100";
+        EditText sysRegField = propertyField(projectExtraFields.optString("systemRegisterSettings",
+                legacySystemRegisterSettings), InputType.TYPE_CLASS_TEXT);
         sysRegField.setHint("Системные регистры");
         form.addView(sysRegField);
 
@@ -5583,6 +5590,7 @@ public class MainActivity extends Activity {
                 java.util.Iterator<String> projectKeys = projectExtraFields.keys();
                 while (projectKeys.hasNext()) { String key = projectKeys.next(); project.put(key, projectExtraFields.get(key)); }
             }
+            if (systemRegisterBankPersistable) project.put("systemRegisters", systemRegisterBank.toProjectJson());
             JSONArray screenArray = new JSONArray();
             for (Screen screen : screens) {
                 JSONObject screenObj = new JSONObject();
@@ -5630,6 +5638,8 @@ public class MainActivity extends Activity {
         imageCache.clear();
         widgets.clear(); screens.clear(); currentScreenIndex = 0;
         projectExtraFields = new JSONObject();
+        systemRegisterBank.clear();
+        systemRegisterBankPersistable = true;
         projectName = prefs.getString("project_name", projectName);
         try {
             Object parsed = new org.json.JSONTokener(json).nextValue();
@@ -5638,6 +5648,19 @@ public class MainActivity extends Activity {
                 String importedProjectName = project.optString("projectName", projectName);
                 if (importedProjectName != null && !importedProjectName.trim().isEmpty()) projectName = importedProjectName.trim();
                 try { projectExtraFields = new JSONObject(project.toString()); } catch (Exception ignored) { projectExtraFields = new JSONObject(); }
+                Object savedSystemRegisterBank = project.opt("systemRegisters");
+                if (savedSystemRegisterBank instanceof JSONArray) {
+                    try { systemRegisterBank.restoreProjectJson((JSONArray) savedSystemRegisterBank); }
+                    catch (Exception invalidBank) {
+                        systemRegisterBankPersistable = false;
+                        android.util.Log.w("BLOODSKY", "Preserving invalid imported systemRegisters field", invalidBank);
+                    }
+                } else if (savedSystemRegisterBank instanceof String) {
+                    projectExtraFields.put("systemRegisterSettings", savedSystemRegisterBank);
+                    projectExtraFields.remove("systemRegisters");
+                } else if (savedSystemRegisterBank != null && savedSystemRegisterBank != JSONObject.NULL) {
+                    systemRegisterBankPersistable = false;
+                }
                 JSONArray screenArray = project.optJSONArray("screens");
                 if (screenArray != null) {
                     for (int i = 0; i < screenArray.length(); i++) {

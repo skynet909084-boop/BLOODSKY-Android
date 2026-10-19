@@ -141,6 +141,20 @@ public class Batch3ModbusAndSettingsTest {
     }
 
     @Test
+    public void projectSettingsKeepCraftSystemRegisterArraySeparate() throws Exception {
+        JSONArray bank = new JSONArray().put(new JSONObject().put("reg_10", 42));
+        JSONObject imported = new JSONObject().put("systemRegisters", bank);
+        JSONObject updated = MainActivity.validatedProjectSettings(imported, "0", "1", "502", "SYS_STATUS=40001");
+        assertEquals(42, updated.getJSONArray("systemRegisters").getJSONObject(0).getInt("reg_10"));
+        assertEquals("SYS_STATUS=40001", updated.getString("systemRegisterSettings"));
+
+        JSONObject legacy = new JSONObject().put("systemRegisters", "SYS_STATUS=40001");
+        JSONObject migrated = MainActivity.validatedProjectSettings(legacy, "0", "1", "502", "SYS_STATUS=40002");
+        assertEquals("SYS_STATUS=40002", migrated.getString("systemRegisterSettings"));
+        assertTrue(!migrated.has("systemRegisters"));
+    }
+
+    @Test
     public void testFullProductionProjectAtomicSaveAndLoadRoundTrip() throws Exception {
         File tempFile = File.createTempFile("bloodsky_test_project", ".json");
         tempFile.deleteOnExit();
