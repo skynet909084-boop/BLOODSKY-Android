@@ -5200,6 +5200,7 @@ public class MainActivity extends Activity {
             screen.connections.addAll(kept);
         }
         editor.selected = -1;
+        editor.selectedWidgets.clear();
         liveValues.clear();
         persistProject();
         editor.invalidate();
@@ -7928,10 +7929,15 @@ public class MainActivity extends Activity {
     private class EditorCanvas extends View {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         int selected = -1;
+        final ArrayList<Integer> selectedWidgets = new ArrayList<>();
+        final LinkedHashMap<Integer, float[]> dragOrigins = new LinkedHashMap<>();
         float downX, downY, startX, startY, startW, startH;
+        float marqueeX, marqueeY;
+        float groupMinX, groupMinY, groupMaxX, groupMaxY;
         long downAt;
         boolean dragging;
         boolean resizing;
+        boolean marqueeActive;
 
         EditorCanvas() {
             super(MainActivity.this);
@@ -8042,13 +8048,13 @@ public class MainActivity extends Activity {
                 if (!OriginalIndicator.supports(w.type) && !sourceFbdSkin)
                     canvas.drawRoundRect(rect, dp(6), dp(6), paint);
                 if ((!OriginalIndicator.supports(w.type) && w.showFrame
-                        && !sourceFbdSkin) || i == selected) {
+                        && !sourceFbdSkin) || i == selected || selectedWidgets.contains(i)) {
                     paint.setStyle(Paint.Style.STROKE);
                     paint.setStrokeWidth(dp(i == selected ? 2.5f : 1));
-                    paint.setColor(i == selected ? Color.rgb(21, 101, 192) : Color.rgb(148, 163, 184));
+                    paint.setColor(i == selected || selectedWidgets.contains(i) ? Color.rgb(21, 101, 192) : Color.rgb(148, 163, 184));
                     canvas.drawRoundRect(rect, dp(6), dp(6), paint);
                 }
-                if (i == selected) {
+                if (i == selected && selectedWidgets.size() <= 1) {
                     paint.setStyle(Paint.Style.FILL);
                     paint.setColor(Color.rgb(21, 101, 192));
                     float grip = dp(9);
@@ -8060,15 +8066,16 @@ public class MainActivity extends Activity {
                 if (w.type != null && w.type.startsWith("FBD ")) {
                     if (FbdSourceCanvasSkin.shouldUse(w)) {
                         FbdSourceCanvasSkin.draw(canvas, paint, w, getResources().getDisplayMetrics().density);
-                        if (i == selected) {
+                        if (i == selected || selectedWidgets.contains(i)) {
                             paint.setStyle(Paint.Style.STROKE);
                             paint.setStrokeWidth(dp(2.5f));
                             paint.setColor(Color.rgb(21, 101, 192));
                             canvas.drawRect(rect, paint);
                             paint.setStyle(Paint.Style.FILL);
                             float grip = dp(9);
-                            canvas.drawRect(w.x + w.w - grip, w.y + w.h - grip,
-                                    w.x + w.w, w.y + w.h, paint);
+                            if (i == selected && selectedWidgets.size() <= 1)
+                                canvas.drawRect(w.x + w.w - grip, w.y + w.h - grip,
+                                        w.x + w.w, w.y + w.h, paint);
                         }
                     } else {
                     paint.setColor(w.textColor);
@@ -8379,6 +8386,18 @@ public class MainActivity extends Activity {
                     postInvalidateDelayed(100L);
                     break;
                 }
+            }
+            if (marqueeActive && dragging) {
+                float left = Math.min(downX, marqueeX), top = Math.min(downY, marqueeY);
+                float right = Math.max(downX, marqueeX), bottom = Math.max(downY, marqueeY);
+                paint.setStyle(Paint.Style.FILL);
+                paint.setColor(Color.argb(42, 21, 101, 192));
+                canvas.drawRect(left, top, right, bottom, paint);
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(dp(1.5f));
+                paint.setColor(Color.rgb(21, 101, 192));
+                canvas.drawRect(left, top, right, bottom, paint);
+                paint.setStyle(Paint.Style.FILL);
             }
             if (fbdWireMode) {
                 paint.setStyle(Paint.Style.FILL);
@@ -8784,48 +8803,109 @@ public class MainActivity extends Activity {
         @Override public boolean onTouchEvent(MotionEvent event) {
             if (operatorMode) return onOperatorTouch(event);
             float x = event.getX(), y = event.getY();
-            if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                downX = x; downY = y; downAt = SystemClock.elapsedRealtime(); dragging = false; resizing = false; selected = -1;
+            int action = event.getActionMasked();
+            if (action == MotionEvent.ACTION_DOWN) {
+                downX = x; downY = y; marqueeX = x; marqueeY = y;
+                downAt = SystemClock.elapsedRealtime();
+                dragging = false; resizing = false; marqueeActive = false; selected = -1;
+                dragOrigins.clear();
+                boolean hit = false;
                 for (int i = widgets.size() - 1; i >= 0; i--) {
                     Widget w = widgets.get(i);
                     if (!w.visible) continue;
                     if (x >= w.x && x <= w.x + w.w && y >= w.y && y <= w.y + w.h) {
+                        if (!selectedWidgets.contains(i)) {
+                            selectedWidgets.clear();
+                            selectedWidgets.add(i);
+                        }
                         selected = i; startX = w.x; startY = w.y; startW = w.w; startH = w.h;
                         float grip = dp(22);
-                        resizing = x >= w.x + w.w - grip && y >= w.y + w.h - grip;
+                        resizing = selectedWidgets.size() == 1
+                                && x >= w.x + w.w - grip && y >= w.y + w.h - grip;
+                        hit = true;
                         break;
                     }
                 }
+                if (hit) {
+                    groupMinX = groupMinY = Float.POSITIVE_INFINITY;
+                    groupMaxX = groupMaxY = Float.NEGATIVE_INFINITY;
+                    for (int index : selectedWidgets) {
+                        if (index < 0 || index >= widgets.size()) continue;
+                        Widget widget = widgets.get(index);
+                        dragOrigins.put(index, new float[]{widget.x, widget.y});
+                        groupMinX = Math.min(groupMinX, widget.x);
+                        groupMinY = Math.min(groupMinY, widget.y);
+                        groupMaxX = Math.max(groupMaxX, widget.x + widget.w);
+                        groupMaxY = Math.max(groupMaxY, widget.y + widget.h);
+                    }
+                } else {
+                    selectedWidgets.clear();
+                    marqueeActive = true;
+                }
                 android.view.ViewParent parent = getParent();
-                if (parent != null) parent.requestDisallowInterceptTouchEvent(selected >= 0);
+                if (parent != null) parent.requestDisallowInterceptTouchEvent(hit || marqueeActive);
                 invalidate();
                 return true;
             }
-            if (event.getAction() == MotionEvent.ACTION_MOVE && selected >= 0) {
+            if (action == MotionEvent.ACTION_MOVE) {
                 float dx = x - downX, dy = y - downY;
-                if (Math.abs(dx) + Math.abs(dy) > dp(5)) dragging = true;
-                if (dragging) {
-                    Widget w = widgets.get(selected);
-                    if (resizing) {
-                        int minW = dp(60), minH = dp(40);
-                        float maxW = Math.max(minW, getWidth() - w.x);
-                        float maxH = Math.max(minH, getHeight() - w.y);
-                        w.w = Math.max(minW, Math.min(maxW, snapToGrid(startW + dx)));
-                        w.h = Math.max(minH, Math.min(maxH, snapToGrid(startH + dy)));
-                    } else {
-                        float maxX = Math.max(0, getWidth() - w.w);
-                        float maxY = Math.max(0, getHeight() - w.h);
-                        w.x = Math.max(0, Math.min(maxX, snapToGrid(startX + dx)));
-                        w.y = Math.max(0, Math.min(maxY, snapToGrid(startY + dy)));
-                    }
+                if (marqueeActive) {
+                    if (Math.abs(dx) + Math.abs(dy) > dp(5)) dragging = true;
+                    marqueeX = x; marqueeY = y;
                     invalidate();
+                    return true;
                 }
-                return true;
+                if (selected >= 0) {
+                    if (Math.abs(dx) + Math.abs(dy) > dp(5)) dragging = true;
+                    if (dragging) {
+                        Widget w = widgets.get(selected);
+                        if (resizing) {
+                            int minW = dp(60), minH = dp(40);
+                            float maxW = Math.max(minW, getWidth() - w.x);
+                            float maxH = Math.max(minH, getHeight() - w.y);
+                            w.w = Math.max(minW, Math.min(maxW, snapToGrid(startW + dx)));
+                            w.h = Math.max(minH, Math.min(maxH, snapToGrid(startH + dy)));
+                        } else if (selectedWidgets.size() > 1) {
+                            float moveX = snapToGrid(dx), moveY = snapToGrid(dy);
+                            moveX = CanvasSelectionGeometry.clampTranslation(
+                                    moveX, groupMinX, groupMaxX, getWidth());
+                            moveY = CanvasSelectionGeometry.clampTranslation(
+                                    moveY, groupMinY, groupMaxY, getHeight());
+                            for (Map.Entry<Integer, float[]> origin : dragOrigins.entrySet()) {
+                                int index = origin.getKey();
+                                if (index < 0 || index >= widgets.size()) continue;
+                                Widget member = widgets.get(index);
+                                member.x = origin.getValue()[0] + moveX;
+                                member.y = origin.getValue()[1] + moveY;
+                            }
+                        } else {
+                            float maxX = Math.max(0, getWidth() - w.w);
+                            float maxY = Math.max(0, getHeight() - w.h);
+                            w.x = Math.max(0, Math.min(maxX, snapToGrid(startX + dx)));
+                            w.y = Math.max(0, Math.min(maxY, snapToGrid(startY + dy)));
+                        }
+                        invalidate();
+                    }
+                    return true;
+                }
             }
-            if (event.getAction() == MotionEvent.ACTION_UP) {
+            if (action == MotionEvent.ACTION_UP) {
                 android.view.ViewParent parent = getParent();
                 if (parent != null) parent.requestDisallowInterceptTouchEvent(false);
-                if (dragging) {
+                if (marqueeActive) {
+                    marqueeActive = false;
+                    if (dragging) {
+                        float left = Math.min(downX, marqueeX), top = Math.min(downY, marqueeY);
+                        float right = Math.max(downX, marqueeX), bottom = Math.max(downY, marqueeY);
+                        for (int i = 0; i < widgets.size(); i++) {
+                            Widget w = widgets.get(i);
+                            if (w.visible && CanvasSelectionGeometry.centerInside(
+                                    w.x, w.y, w.w, w.h, left, top, right, bottom))
+                                selectedWidgets.add(i);
+                        }
+                        if (!selectedWidgets.isEmpty()) selected = selectedWidgets.get(selectedWidgets.size() - 1);
+                    }
+                } else if (dragging) {
                     persistProject();
                 } else if (selected >= 0 && SystemClock.elapsedRealtime() - downAt >= 550L) {
                     showWidgetContextMenu();
@@ -8845,15 +8925,15 @@ public class MainActivity extends Activity {
                 } else if (selected >= 0) {
                     editSelectedWidget();
                 }
+                dragOrigins.clear();
                 invalidate();
                 return true;
             }
-            if (event.getAction() == MotionEvent.ACTION_CANCEL) {
+            if (action == MotionEvent.ACTION_CANCEL) {
                 android.view.ViewParent parent = getParent();
                 if (parent != null) parent.requestDisallowInterceptTouchEvent(false);
-                selected = -1;
-                dragging = false;
-                resizing = false;
+                selected = -1; dragging = false; resizing = false; marqueeActive = false;
+                dragOrigins.clear();
                 invalidate();
                 return true;
             }

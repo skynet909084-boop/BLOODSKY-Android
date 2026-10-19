@@ -17,8 +17,8 @@
           "id": "editor.select_move",
           "name": "Select & Drag Move",
           "status": "partial",
-          "criteria": "Selected widget shows highlight border and moves on drag with grid snapping.",
-          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
+          "criteria": "Single selection, rectangular center-based multi-select, visible selection borders, and grid-snapped group movement with preserved offsets.",
+          "audit_note": "Single and group movement implemented with original marquee-center semantics; resize, bulk toolbar actions, and side-by-side UI acceptance remain open. See docs/COMPONENT_INTERACTION_AUDIT_20261018.md."
         },
         {
           "id": "editor.resize",

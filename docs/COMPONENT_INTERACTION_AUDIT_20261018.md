@@ -8,6 +8,13 @@ The Craft canvas attaches a shared click listener to regular widgets. In editor 
 
 BLOODSKY's canvas routes a short editor tap to `editSelectedWidget()`; the property form contains the common caption/data-binding fields plus type-specific controls. Moving or resizing commits on release. A stationary hold (550 ms) opens a contextual action menu; FBD blocks get the FBD-specific menu. This is an additional BLOODSKY shortcut, while the original hold gesture is used to begin dragging. The existing toolbar and selection-action controls remain available for commands.
 
+
+## Marquee selection and group movement
+
+Source: `mbCanvas$k.smali` (canvas selection listener) and `mbCanvas$z.smali` (canvas drag listener). Dragging on the canvas selection surface draws a rectangular marquee. On release, the source checks each component's center point against that rectangle, skips connected `VarNameIn`/`VarNameOut` interface nodes, marks matching components selected, computes the group's union bounds, and stores each selected component's offset from the union's top-left corner. Dragging the resulting `RelativeLayout` selection box repositions every selected component from those offsets, so mixed widgets and FBD components preserve their relative layout.
+
+At the audited BLOODSKY head, the canvas only hit-tests a single widget and updates that widget's geometry during drag; a drag starting on empty canvas does not create a selection. This is a concrete editor parity gap. The incremental implementation adds a center-based marquee, visible selection borders, and group translation while retaining single-widget resize and tap/property routes. Group movement is clamped to the canvas and keeps the existing grid snap. The existing copy/cut/align toolbar actions still operate on the primary selected widget; bulk actions remain separate work. Unit tests cover marquee geometry and group-bound clamping. Full visual acceptance remains open.
+
 ## Operator-mode component taps
 
 Only four component IDs have a dedicated branch in Craft's `onClickView` operator-mode switch. The rest do not open the generic editor from this switch.
