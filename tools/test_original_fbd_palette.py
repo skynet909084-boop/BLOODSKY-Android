@@ -35,7 +35,7 @@ class OriginalFbdPaletteTests(unittest.TestCase):
         self.assertNotIn('bind(dialog,R.id.kc_logic_tab_fb_ctu',code)
         self.assertIn('this::showFbdPalette',main)
         self.assertIn('this::showCraftMacroTools',main)
-        self.assertIn('otherElements.setText("Другие элементы BLOODSKY")',main)
+        self.assertIn('menu.getMenu().add("Другие элементы BLOODSKY")',main)
         self.assertIn('showExtendedWidgetMenu();',main)
 
     def test_macro_library_uses_source_grid_cards_and_page_switches(self):
