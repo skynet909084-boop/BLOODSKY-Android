@@ -59,10 +59,15 @@ def document_nodes(xml, filename):
 def property_scroll_up(target, previous=None, visible_descriptions=()):
     order = ['Время таймера, мс', 'Уставка счётчика', 'Сравнение A', 'Оператор сравнения', 'Сравнение B', 'Положение X', 'Положение Y', 'Ширина элемента', 'Высота элемента']
     visible = [order.index(value) for value in visible_descriptions if value in order]
+    # Craft exposes additional component-specific fields that are intentionally not
+    # listed in this navigation hint table. Keep searching those fields instead of
+    # raising ValueError; a repeated scroll signature reverses direction below.
+    if target not in order:
+        return True
     if visible:
         if order.index(target) > max(visible): return True
         if order.index(target) < min(visible): return False
-    return previous is None or order.index(target) >= order.index(previous)
+    return previous is None or (previous in order and order.index(target) >= order.index(previous))
 
 
 def keyboard_is_shown(diagnostics):
