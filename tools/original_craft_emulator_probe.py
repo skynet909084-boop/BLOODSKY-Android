@@ -494,10 +494,23 @@ def guided_quick_walk():
             perform(properties_action)
             path.append(properties_action)
             captured = capture_state(path)
-            quick_goal_reached = captured is not None
+            property_controls = [] if captured is None else [
+                item["node"] for item in captured[2]
+                if item["node"].get("field")
+            ]
+            palette_still_open = captured is not None and any(
+                item["node"].get("resource_id", "").endswith("tab_dyn_pictures")
+                for item in captured[2]
+            )
+            quick_goal_reached = bool(property_controls) and not palette_still_open
             coverage_limited = True
             if not quick_goal_reached:
-                print("guided route stopped: Craft ID17 properties did not produce a new state", flush=True)
+                print(
+                    "guided route incomplete: Craft ID17 property editor was not verified; "
+                    f"captured={captured is not None}, palette_still_open={palette_still_open}, "
+                    f"property_fields={len(property_controls)}",
+                    flush=True,
+                )
 
 
 fresh_start()

@@ -162,5 +162,5 @@ Source of truth: `docs/FBD_MACRO_CODEC_20261018.md`.
 ## Fast Craft probe route — prepared locally
 
 - Reviewed Craft probe #136's screenshots and XML. It already reached the component palette at state 4, then spent the remaining quick budget in the FBD macro editor.
-- Decompiled `mbCanvas.java` confirms `tab_dyn_pictures` is a drag source for creating `CustomDynPictures`. The quick probe now targets this ID17 component and taps it for the property view. `guided_goal_reached` is recorded separately; quick coverage remains explicitly incomplete.
-- Local validation: Python tool suite 149/149, probe script compiles, ID17 control confirmed in the #136 XML. Awaiting UI smoke #739 before committing and running the focused probe on GitHub.
+- Decompiled `mbCanvas.java` confirms `tab_dyn_pictures` is a drag source for creating `CustomDynPictures`. Probe #137 ran the drag/tap route, but the final capture still displayed the palette with no property fields. Success reporting is being tightened to mark that route incomplete until the ID17 property editor is actually visible.
+- Probe #137: 7 states / 6 transitions, 39.7 seconds, APK rebuilt/launched, no runtime failure recorded in the successful job. APK/JUnit #1107 passed; Android 11 UI smoke #740 was still running. Python suite remains 149/149 from the preceding exact head; rerun after the validation correction.
