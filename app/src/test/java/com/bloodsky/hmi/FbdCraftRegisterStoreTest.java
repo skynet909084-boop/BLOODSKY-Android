@@ -26,11 +26,12 @@ public class FbdCraftRegisterStoreTest {
         assertTrue(FbdCraftRegisterStore.write(10, 65535, firstProject));
         assertEquals(Integer.valueOf(65535), FbdCraftRegisterStore.read(10, firstProject));
         assertEquals(Integer.valueOf(0), FbdCraftRegisterStore.read(10, secondProject));
-        assertFalse(FbdCraftRegisterStore.write(10, 65536, firstProject));
+        assertTrue(FbdCraftRegisterStore.write(10, Integer.MIN_VALUE, firstProject));
+        assertEquals(Integer.valueOf(Integer.MIN_VALUE), FbdCraftRegisterStore.read(10, firstProject));
         assertFalse(FbdCraftRegisterStore.write(2000, 1, firstProject));
         assertNull(FbdCraftRegisterStore.read(-1, firstProject));
         assertNull(FbdCraftRegisterStore.read(2000, firstProject));
-        assertEquals(65535, firstProject.readWord(10));
+        assertEquals(Integer.MIN_VALUE, firstProject.readWord(10));
 
         assertTrue(FbdCraftRegisterStore.write(9, 0x4000, firstProject));
         assertEquals(0x4000, FbdCraftRegisterStore.read(9, firstProject).intValue() & 0x4000);
