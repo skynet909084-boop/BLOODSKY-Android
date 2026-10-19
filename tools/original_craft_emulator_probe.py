@@ -175,6 +175,8 @@ def perform(action):
                 value = "CraftAudit"
             elif any(x in hint for x in ("порт", "port", "unit", "id", "колич", "count")):
                 value = "1"
+            elif "macro name" in hint or "name macro" in hint:
+                value = "MacroTest"
             elif any(x in hint for x in ("адрес", "address", "host", "ip")):
                 value = "127.0.0.1"
             else:
@@ -480,6 +482,53 @@ def guided_quick_walk():
         perform(action)
         path = path + [action]
         captured = capture_state(path)
+        if label == "drag macro block to canvas" and captured is not None:
+            controls = captured[2]
+            name_node = next(
+                (a["node"] for a in controls
+                 if a["node"].get("resource_id", "").endswith("nameMacro")),
+                None,
+            )
+            if name_node is not None:
+                name_action = {
+                    "kind": "tap", "node": name_node,
+                    "label": "Enter macro name MacroTest",
+                }
+                transition_rows.append({
+                    "from": captured[0], "action": name_action["label"],
+                    "depth": len(path) + 1,
+                })
+                perform(name_action)
+                path.append(name_action)
+                captured = capture_state(path)
+
+                scroll_label = "SCROLL macro form to output and Create"
+                transition_rows.append({
+                    "from": captured[0] if captured else "macro dialog",
+                    "action": scroll_label, "depth": len(path) + 1,
+                })
+                adb("shell", "input", "swipe", "1200", "1280", "1200", "350", "700")
+                path.append({"label": scroll_label})
+                time.sleep(WAIT)
+                captured = capture_state(path)
+
+                create_node = next(
+                    (a["node"] for a in (captured[2] if captured else [])
+                     if a["node"].get("resource_id", "").endswith("bCreateMacro")),
+                    None,
+                )
+                if create_node is not None:
+                    create_action = {
+                        "kind": "tap", "node": create_node,
+                        "label": "Create macro",
+                    }
+                    transition_rows.append({
+                        "from": captured[0], "action": create_action["label"],
+                        "depth": len(path) + 1,
+                    })
+                    perform(create_action)
+                    path.append(create_action)
+                    captured = capture_state(path)
 
 
 fresh_start()
