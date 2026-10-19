@@ -61,16 +61,19 @@ Two supplied Craft project archives were inspected locally. Endpoint strings and
 | Entries in serialized `deviceNetwork` | 16 | 16 |
 | `TableComponent` records | 65 | 346 |
 | Components with `jsTableComponent_connectionInfo` | 46 | 75 |
-| `posDeviceNetworkInList` values | 0: 45, 100: 1 | 0: 13, 100: 62 |
+| `posDeviceNetworkInList` references to network slot 0 | 45 | 13 |
+| References to global bucket 100 | 1 | 62 |
 | `TableConnections` records | 3 | 2 |
 | Project archive contents | `.pro` + one JPG | `.pro` + one JPG |
 
 Additional observations:
 
-- Each archive contains the project JSON at a project-relative `.pro` path, plus one JPG asset. The standalone Sample A `.pro` matches the copy inside its ZIP.
-- In both samples, component binding JSON contains `posDeviceNetworkInList`, `addressRegister`, and `typeRequest`. The slot reference is separate from the `TableConnections` records.
-- Sample `TableConnections` rows contain `connectionsId`, `name`, and `server`; `connectionsId=2` repeats within each sample. Do not assume this field is a unique row key or a widget ID.
-- Both samples contain `posDeviceNetworkInList=100` while `deviceNetwork` contains 16 entries. Its meaning is unresolved. Preserve it verbatim and do not treat it as a valid slot until the original source confirms its sentinel behavior.
-- `countDevice` does not match the serialized `deviceNetwork` array length in these samples. Do not use it as the array length.
+- Each archive contains Craft project JSON at a nested `.pro` path. Sample A's standalone `.pro` matches the copy inside its ZIP.
+- Binding JSON contains `posDeviceNetworkInList`, `addressRegister`, and `typeRequest`; it is separate from the endpoint records in `TableConnections`.
+- The existing source audit confirms that `posDeviceNetworkInList=100` routes to the global/system register bucket (index 8), not to a network device slot. It appears once in Sample A and 62 times in Sample B.
+- Both samples repeat `connectionsId=2` in `TableConnections`. Do not treat that numeric field as a unique endpoint or widget key; preserve the complete rows and resolve widget bindings through the device-network position.
+- `countDevice` differs from the 16 serialized network rows, so preserve it as a separate setting rather than using it as the array length.
 
-This audit confirms enough structure to build a read-only inspector and fixture tests. It does not establish complete component semantics or make original Craft import safe; endpoint resolution, the value 100, component IDs, and the full database/export mapping still need source verification.
+The source-level correlation, including how the two saved projects relate, is recorded in [PR #148](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/148) and its `HOME_PROJECT_NETWORK_CORRELATION_20261019.md` audit. The read-only archive inspector now recognizes nested Craft `.pro` members and reports no issues for both supplied ZIPs. Raw endpoint values were not added to this repository.
+
+This audit confirms enough structure for fixture tests and safe archive inspection. It does not make endpoint activation safe: original hardware bindings remain preserved but inactive until user-visible endpoint mapping and verified transport behavior are in place.
