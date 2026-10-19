@@ -4,7 +4,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from original_craft_probe_state import is_project_loading
+from original_craft_probe_state import is_project_loading, prioritize_actions
 
 
 class OriginalCraftProbeStateTest(unittest.TestCase):
@@ -19,6 +19,11 @@ class OriginalCraftProbeStateTest(unittest.TestCase):
     def test_does_not_mark_normal_editor_as_loading(self):
         root = ET.fromstring('<hierarchy><node text="Редактор проекта" /><node text="Создать" /></hierarchy>')
         self.assertFalse(is_project_loading(root))
+
+    def test_direction_prioritizes_matching_controls_without_dropping_others(self):
+        actions = [{"label": "Create project"}, {"label": "Import project"}, {"label": "Exit"}]
+        ordered = prioritize_actions(actions, "import-paste")
+        self.assertEqual(["Import project", "Create project", "Exit"], [item["label"] for item in ordered])
 
 
 if __name__ == "__main__":
