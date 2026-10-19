@@ -118,6 +118,34 @@ public class FbdCraftRegisterStoreTest {
         assertEquals(1, actions.exits);
     }
 
+    @Test public void typedSystemRegisterAccessCoversWordBitAndFloatAtUserAddresses() {
+        FbdCraftRegisterStore.clear();
+        CraftSystemRegisterBank project = new CraftSystemRegisterBank();
+
+        assertTrue(CraftSystemRegisterAccess.writeInt(10, -123, project));
+        assertEquals(-123, CraftSystemRegisterAccess.readInt(10, project));
+        assertTrue(CraftSystemRegisterAccess.writeBool(1000, 15, true, 1L, project));
+        assertTrue(CraftSystemRegisterAccess.readBool(1000, 15, false, project));
+        assertFalse(CraftSystemRegisterAccess.readBool(1000, 15, true, project));
+
+        assertTrue(CraftSystemRegisterAccess.writeFloat(1000, 1.5f, false, false, project, 2L));
+        assertEquals(1.5f, CraftSystemRegisterAccess.readFloat(1000, false, false, project), 0.0f);
+        assertTrue(CraftSystemRegisterAccess.writeFloat(1001, -2.25f, true, true, project, 3L));
+        assertEquals(-2.25f, CraftSystemRegisterAccess.readFloat(1001, true, true, project), 0.0f);
+        assertEquals(0x3fc0, project.readWord(1000));
+    }
+
+    @Test public void typedSystemFloatPreservesCraftServiceWordOutputPath() {
+        FbdCraftRegisterStore.clear();
+        CraftSystemRegisterBank project = new CraftSystemRegisterBank();
+        assertTrue(CraftSystemRegisterAccess.writeFloat(9, 1.5f, false, false, project, 20000L));
+        assertEquals(0x3fc0, FbdCraftRegisterStore.read(9, project).intValue());
+        assertEquals(0, FbdCraftRegisterStore.read(10, project).intValue());
+        assertEquals(1.5f, CraftSystemRegisterAccess.readFloat(9, false, false, project), 0.0f);
+        assertFalse(CraftSystemRegisterAccess.isValidWordAddress(2000));
+        assertFalse(CraftSystemRegisterAccess.isValidFloatAddress(1999));
+    }
+
     private static final class ActionSpy implements CraftServiceRegisters.Actions {
         int selectedScreen = -1;
         int paletteChanges;
