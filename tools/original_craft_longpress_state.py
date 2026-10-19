@@ -67,3 +67,20 @@ def touch_command(action, duration_ms: int = LONG_PRESS_MS):
     if action["kind"] == "long_press":
         return ["shell", "input", "swipe", x, y, x, y, str(duration_ms)]
     return ["shell", "input", "tap", x, y]
+
+
+
+def safe_field_value(hint: str | None):
+    """Return a generic probe value only for a clearly identified field hint."""
+    hint = (hint or "").strip().casefold()
+    if not hint:
+        return None
+    if any(x in hint for x in ("парол", "password", "ключ", "token")):
+        return "test"
+    if any(x in hint for x in ("имя проекта", "название проекта", "project name", "project title")):
+        return "CraftAudit"
+    if any(x in hint for x in ("порт", "port", "unit id", "slave id", "колич", "count")):
+        return "1"
+    if any(x in hint for x in ("адрес", "address", "host", "ip")):
+        return "127.0.0.1"
+    return None

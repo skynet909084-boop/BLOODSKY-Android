@@ -1,6 +1,8 @@
 import unittest
 
-from original_craft_longpress_state import action_identity, actions_for_controls, touch_command
+from original_craft_longpress_state import (
+    action_identity, actions_for_controls, safe_field_value, touch_command,
+)
 
 
 class CraftLongPressStateTest(unittest.TestCase):
@@ -48,6 +50,15 @@ class CraftLongPressStateTest(unittest.TestCase):
             actions_for_controls.__globals__["action_identity"](
                 {"kind": "long_press", "node": node}),
         )
+
+    def test_unknown_or_name_dialog_hints_are_not_filled(self):
+        self.assertIsNone(safe_field_value(""))
+        self.assertIsNone(safe_field_value("Please, enter a new name"))
+        self.assertIsNone(safe_field_value(""))
+
+    def test_known_probe_fields_receive_safe_generic_values(self):
+        self.assertEqual("127.0.0.1", safe_field_value("Device address"))
+        self.assertEqual("1", safe_field_value("Port"))
 
     def test_long_press_uses_stationary_swipe_with_one_second_hold(self):
         action = {"kind": "long_press", "node": {"x": 123, "y": 456}}

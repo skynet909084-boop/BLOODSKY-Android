@@ -14,7 +14,7 @@ from pathlib import Path
 from PIL import Image
 from original_craft_probe_state import is_project_loading
 from original_craft_longpress_state import (
-    LONG_PRESS_MS, action_identity, actions_for_controls, touch_command,
+    LONG_PRESS_MS, action_identity, actions_for_controls, safe_field_value, touch_command,
 )
 
 OUT = Path(sys.argv[1])
@@ -125,18 +125,12 @@ def perform(action):
         adb(*touch_command(action, LONG_PRESS_MS))
         if node.get("field") and action["kind"] == "tap":
             time.sleep(0.3)
-            hint = (node.get("hint", "") + " " + node.get("text", "")).lower()
-            if any(x in hint for x in ("парол", "password", "ключ", "token")):
-                value = "test"
-            elif any(x in hint for x in ("имя проекта", "название проекта", "project name", "project title")):
-                value = "CraftAudit"
-            elif any(x in hint for x in ("порт", "port", "unit", "id", "колич", "count")):
-                value = "1"
-            elif any(x in hint for x in ("адрес", "address", "host", "ip")):
-                value = "127.0.0.1"
-            else:
-                value = "1"
-            adb("shell", "input", "text", value)
+            # Only enter generic probe data when the accessibility hint clearly
+            # identifies a known field. In particular, never append "1" to an
+            # existing screen name: that created Screen1, Screen11, ... branches.
+            value = safe_field_value(node.get("hint", ""))
+            if value is not None:
+                adb("shell", "input", "text", value)
             adb("shell", "input", "keyevent", "4")
     time.sleep(WAIT)
 
