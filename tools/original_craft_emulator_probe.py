@@ -146,6 +146,13 @@ def execute_macro_drag(source_x: int, source_y: int, drop_x: int, drop_y: int,
     adb("shell", "input", "draganddrop", str(source_x), str(source_y),
         str(drop_x), str(drop_y), str(duration_ms))
 
+
+def canvas_probe_point(state_label: str) -> tuple[int, int]:
+    """Pick a point on the clear canvas, beyond the open left component palette."""
+    with Image.open(OUT / f"{state_label}.png") as image:
+        width, height = image.size
+    return int(width * 0.75), int(height * 0.62)
+
 def perform(action):
     if action["kind"] == "back":
         adb("shell", "input", "keyevent", "4")
@@ -473,9 +480,10 @@ def guided_quick_walk():
             coverage_limited = True
             break
         if label == "drag Craft ID17 dynamic picture to canvas":
+            drop_x, drop_y = canvas_probe_point(captured[0])
             action = {
-                "kind": "drag", "node": action["node"], "drop_x": 1150,
-                "drop_y": 850, "duration_ms": 1600,
+                "kind": "drag", "node": action["node"], "drop_x": drop_x,
+                "drop_y": drop_y, "duration_ms": 1600,
                 "label": "DRAG Craft ID17 dynamic picture to canvas",
             }
         transition_rows.append({"from": captured[0], "action": action["label"], "depth": len(path) + 1})
@@ -483,8 +491,9 @@ def guided_quick_walk():
         path.append(action)
         captured = capture_state(path)
         if label == "drag Craft ID17 dynamic picture to canvas" and captured is not None:
+            property_x, property_y = canvas_probe_point(captured[0])
             properties_action = {
-                "kind": "tap", "node": {"x": 1150, "y": 850, "field": False},
+                "kind": "tap", "node": {"x": property_x, "y": property_y, "field": False},
                 "label": "Open Craft ID17 properties",
             }
             transition_rows.append({
