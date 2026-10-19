@@ -498,7 +498,33 @@ def guided_quick_walk():
                     "from": captured[0], "action": name_action["label"],
                     "depth": len(path) + 1,
                 })
-                perform(name_action)
+                # Verify the field accepted text before dismissing the keyboard or scrolling.
+                entered = False
+                for attempt in range(2):
+                    adb("shell", "input", "tap", str(name_node["x"]), str(name_node["y"]))
+                    time.sleep(0.6)
+                    adb("shell", "input", "text", "MacroTest")
+                    time.sleep(0.5)
+                    focused_root, _, _ = dump_ui(f"macro-name-entry-{attempt + 1}", capture_screenshot=True)
+                    entered = any(
+                        n.attrib.get("resource-id", "").endswith("nameMacro")
+                        and n.attrib.get("text", "").strip() == "MacroTest"
+                        for n in focused_root.iter("node")
+                    )
+                    print(
+                        f"macro name entry attempt {attempt + 1}: accepted={entered}",
+                        flush=True,
+                    )
+                    if entered:
+                        break
+                    adb("shell", "input", "keyevent", "4")
+                    time.sleep(0.3)
+                if not entered:
+                    coverage_limited = True
+                    print("guided route stopped: MacroTest was not accepted by nameMacro", flush=True)
+                    break
+                adb("shell", "input", "keyevent", "4")
+                time.sleep(WAIT)
                 path.append(name_action)
                 captured = capture_state(path)
 
@@ -507,16 +533,24 @@ def guided_quick_walk():
                     "from": captured[0] if captured else "macro dialog",
                     "action": scroll_label, "depth": len(path) + 1,
                 })
-                adb("shell", "input", "swipe", "1200", "1280", "1200", "350", "700")
                 path.append({"label": scroll_label})
-                time.sleep(WAIT)
-                captured = capture_state(path)
-
-                create_node = next(
-                    (a["node"] for a in (captured[2] if captured else [])
-                     if a["node"].get("resource_id", "").endswith("bCreateMacro")),
-                    None,
-                )
+                create_node = None
+                for scroll_attempt in range(3):
+                    adb("shell", "input", "swipe", "1200", "1280", "1200", "350", "700")
+                    time.sleep(WAIT)
+                    captured = capture_state(path)
+                    create_node = next(
+                        (a["node"] for a in (captured[2] if captured else [])
+                         if a["node"].get("resource_id", "").endswith("bCreateMacro")),
+                        None,
+                    )
+                    if create_node is not None:
+                        print(f"macro form Create button visible after scroll {scroll_attempt + 1}", flush=True)
+                        break
+                if create_node is None:
+                    coverage_limited = True
+                    print("guided route stopped: bCreateMacro not exposed after three scrolls", flush=True)
+                    break
                 if create_node is not None:
                     create_action = {
                         "kind": "tap", "node": create_node,
