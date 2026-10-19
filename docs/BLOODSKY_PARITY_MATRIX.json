@@ -149,7 +149,7 @@
           "name": "Multi-State Image / Picture (CustomComponents.h)",
           "status": "partial",
           "criteria": "Multi-state image view decoding file/URI bitmaps with fallback status frame.",
-          "audit_note": "Craft ID17 on PR #143 commit 54830d6 imports all 16 pathPic_0..15 references only when a ZIP media path is uniquely resolved; missing or ambiguous paths stay empty, original metadata is preserved, and the legacy device binding remains inactive. Importer unit tests cover these cases. Bit/number state-selection semantics, configured binding, and same-density visual/device acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
+          "audit_note": "Craft ID17 on PR #143 commit 54830d6 imports all 16 pathPic_0..15 references only when a ZIP media path is uniquely resolved; missing or ambiguous paths stay empty, original metadata is preserved, and the legacy device binding remains inactive. Source-backed typeCommand selection (numeric index or first set bit) now has unit coverage. Explicit binding setup and same-density visual/device acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "widget.voice_announcement",

@@ -23,7 +23,7 @@ PR #143 is the active working line. Its head commit already includes source-back
 
 - Craft ID17 is the manual's dynamic picture (§7.3, PDF pages 49–50): it has sixteen paths and chooses an image by bit or numeric register value.
 - The source-confirmed importer change from PR #157 was cherry-picked into PR #143 as commit `54830d6` (`Import Craft multi-state image media safely`). It maps only unique, present ZIP media paths to `imagePathStates`; absent/ambiguous paths stay unresolved, all Craft metadata is retained, and the old device/register binding stays inactive.
-- Three importer tests cover present, missing, and ambiguous media. This does not claim source-exact selection/binding or visual parity. The original same-density screenshot check is still required.
+- Three importer tests cover present, missing, and ambiguous media. Source inspection found the exact runtime choice in `CustomComponents/h.java`: `typeCommand=0` selects numeric image 0–15; nonzero uses the first set bit and hides the component for mask zero. `CraftMultiStateImage` now implements this selection and MainActivity uses it; unit coverage was added. Explicit device binding and same-density visual proof still remain open.
 - PR #157's earlier APK/unit run #1029 and Craft probe #52 succeeded on its own head. Those checks do not cover the cherry-picked PR #143 head; new exact-head CI is required before closing the duplicate PR.
 
 ## Other open PR work that is not complete

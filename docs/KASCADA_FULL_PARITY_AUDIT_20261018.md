@@ -85,4 +85,5 @@ P0 source audit is in progress: the exact factory-to-class/property key slice fo
 ## Обновление импортёра изображения Craft ID17 — 2026-10-19
 
 - На ветку PR #143 перенесён проверенный commit `54830d6` из дочерней ветки PR #157. Он сохраняет исходные поля, сопоставляет 16 image paths с ZIP-медиа только при однозначном совпадении и оставляет неизвестную связь устройства выключенной.
-- Руководство §7.3 (PDF стр. 49–50) показывает 16 image-path полей и управление по биту либо числу. Импорт путей покрыт тремя тестами; точное исполнение `typeCommand`/регистровой связи и равноплотностное сравнение ещё не приняты.
+- Руководство §7.3 (PDF стр. 49–50) показывает 16 image-path полей и управление по биту либо числу. По `CustomComponents/h.java` Craft `typeCommand=0` выбирает номер изображения 0–15; ненулевое значение выбирает картинку по первой установленной битовой позиции, а нулевая маска или неверный числовой индекс скрывает изображение. Этот выбор перенесён в `CraftMultiStateImage` и покрыт тестами; текущий экранный рендерер применяет выбранный путь.
+- Craft ID17 unit tests cover present, missing, and ambiguous ZIP media plus numeric/bit selection. Exact-head Actions, explicitly configured device binding and same-density visual/device acceptance are still pending; imported legacy bindings remain disabled.

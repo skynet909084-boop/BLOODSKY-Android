@@ -146,3 +146,9 @@ Source of truth: `docs/FBD_MACRO_CODEC_20261018.md`.
 - Exact old PR #143 head `8d589bf` passed APK/unit run #1096, original Craft probe #126 and Android UI smoke #729. Probe #126 is not full coverage: 12 states, 11 transitions, `state_limit`, `coverage_complete=false`.
 - Local Python tool suite passed after preparing the pinned reference resources: 149 tests, exit 0. Local Gradle/Gradle wrapper is unavailable, so Android tests/build must be confirmed by GitHub Actions after push.
 - Next: push the new commit, verify exact-head Android and UI checks, inspect new artifact, then continue the full Craft traversal and remaining register/gateway, macro, transport and per-component gaps. Do not merge PR #143 into `main` without current acceptance.
+
+## Craft ID17 runtime selection — 2026-10-19
+
+- Source check in `CustomComponents/h.java` confirmed numeric mode 0 accepts image indices 0–15; any nonzero mode treats the register word as a bit mask and selects the lowest set bit, hiding the component on an empty mask or invalid numeric index.
+- Added `CraftMultiStateImage` and wired it into the multi-state image renderer. Added unit cases for numeric bounds, lowest-bit priority, bit 15 and the zero-mask hide state.
+- This follow-up is being checked locally and is not yet on GitHub. Current remote head `814168f` has APK/unit success while Android UI smoke #730 and original Craft probe #127 are still running; finish those checks before pushing the next source change.
