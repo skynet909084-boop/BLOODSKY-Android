@@ -1,7 +1,7 @@
 import unittest
 import xml.etree.ElementTree as ET
 
-from original_craft_probe_state import is_project_loading
+from tools.original_craft_probe_state import is_project_loading
 
 
 class OriginalCraftProbeStateTest(unittest.TestCase):
