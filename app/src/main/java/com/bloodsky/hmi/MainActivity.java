@@ -1465,160 +1465,167 @@ public class MainActivity extends Activity {
     }
 
     private void showCraftMacroTools() {
-        android.app.Dialog dialog = new android.app.Dialog(this,
-                android.R.style.Theme_Material_Light_NoActionBar_Fullscreen);
+        final android.app.Dialog dialog = new android.app.Dialog(this,
+                android.R.style.Theme_Material_NoActionBar_Fullscreen);
         dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
 
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
-        page.setPadding(dp(18), dp(12), dp(18), dp(18));
-        page.setBackgroundColor(Color.rgb(245, 247, 250));
+        page.setBackgroundColor(Color.rgb(35, 35, 35));
 
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(dp(8), dp(4), dp(8), dp(4));
         Button back = new Button(this);
-        back.setText("‹ Назад");
+        back.setText("‹");
+        back.setTextSize(24);
+        back.setContentDescription("Вернуться к FBD");
         back.setAllCaps(false);
         back.setOnClickListener(v -> {
             dialog.dismiss();
             showFbdPalette();
         });
-        header.addView(back, new LinearLayout.LayoutParams(-2, -2));
+        header.addView(back, new LinearLayout.LayoutParams(dp(56), dp(48)));
+
         TextView title = new TextView(this);
-        title.setText("Редактор макросов");
-        title.setTextColor(Color.rgb(30, 41, 59));
-        title.setTextSize(22);
-        title.setTypeface(null, android.graphics.Typeface.BOLD);
-        title.setPadding(dp(12), 0, 0, 0);
-        header.addView(title, new LinearLayout.LayoutParams(0, -2, 1f));
-        page.addView(header, new LinearLayout.LayoutParams(-1, -2));
+        title.setText("Макросы");
+        title.setTextColor(Color.rgb(237, 176, 59));
+        title.setTextSize(18);
+        title.setGravity(Gravity.CENTER_VERTICAL);
+        title.setPadding(dp(8), 0, 0, 0);
+        header.addView(title, new LinearLayout.LayoutParams(0, dp(48), 1f));
 
-        TextView intro = new TextView(this);
-        intro.setText("Создай макрос из выбранного выходного FBD-блока: в него войдёт блок и подключённые к нему входные источники.");
-        intro.setTextColor(Color.rgb(71, 85, 105));
-        intro.setTextSize(14);
-        intro.setPadding(dp(4), dp(8), dp(4), dp(12));
-        page.addView(intro, new LinearLayout.LayoutParams(-1, -2));
-
-        Button create = new Button(this);
-        create.setText("Создать из выбранного FBD-блока");
-        create.setAllCaps(false);
-        create.setContentDescription("Создать макрос из выбранного FBD-блока");
-        create.setOnClickListener(v -> {
-            dialog.dismiss();
-            createCraftMacroFromSelection();
+        Button more = new Button(this);
+        more.setText("⋮");
+        more.setTextSize(22);
+        more.setContentDescription("Действия с макросами");
+        more.setAllCaps(false);
+        more.setOnClickListener(anchor -> {
+            android.widget.PopupMenu menu = new android.widget.PopupMenu(this, anchor);
+            menu.getMenu().add("Создать из выбранного FBD-блока")
+                    .setOnMenuItemClickListener(item -> {
+                        dialog.dismiss();
+                        createCraftMacroFromSelection();
+                        return true;
+                    });
+            menu.getMenu().add("Импорт .mcr").setOnMenuItemClickListener(item -> {
+                dialog.dismiss();
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("*/*");
+                try { startActivityForResult(intent, REQUEST_IMPORT_CRAFT_MACRO); }
+                catch (Exception failure) {
+                    Toast.makeText(this, "Не удалось открыть выбор файла", Toast.LENGTH_LONG).show();
+                }
+                return true;
+            });
+            android.view.MenuItem export = menu.getMenu().add("Экспорт .mcr");
+            try { export.setEnabled(FbdCraftMacroCatalog.names(projectExtraFields).length > 0); }
+            catch (Exception invalidCatalog) { export.setEnabled(false); }
+            export.setOnMenuItemClickListener(item -> {
+                dialog.dismiss();
+                exportCraftMacroFromCatalog();
+                return true;
+            });
+            menu.getMenu().add("Другие элементы BLOODSKY").setOnMenuItemClickListener(item -> {
+                dialog.dismiss();
+                showExtendedWidgetMenu();
+                return true;
+            });
+            menu.show();
         });
-        page.addView(create, new LinearLayout.LayoutParams(-1, -2));
+        header.addView(more, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        page.addView(header, new LinearLayout.LayoutParams(-1, dp(56)));
 
-        LinearLayout fileActions = new LinearLayout(this);
-        fileActions.setOrientation(LinearLayout.HORIZONTAL);
-        Button importMacro = new Button(this);
-        importMacro.setText("Импорт .mcr");
-        importMacro.setAllCaps(false);
-        importMacro.setOnClickListener(v -> {
-            dialog.dismiss();
-            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-            intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.setType("*/*");
-            try { startActivityForResult(intent, REQUEST_IMPORT_CRAFT_MACRO); }
-            catch (Exception failure) {
-                Toast.makeText(this, "Не удалось открыть выбор файла", Toast.LENGTH_LONG).show();
-            }
-        });
-        fileActions.addView(importMacro, new LinearLayout.LayoutParams(0, -2, 1f));
-        Button exportMacro = new Button(this);
-        exportMacro.setText("Экспорт .mcr");
-        exportMacro.setAllCaps(false);
-        exportMacro.setOnClickListener(v -> {
-            dialog.dismiss();
-            exportCraftMacroFromCatalog();
-        });
-        fileActions.addView(exportMacro, new LinearLayout.LayoutParams(0, -2, 1f));
-        page.addView(fileActions, new LinearLayout.LayoutParams(-1, -2));
-
-        Button otherElements = new Button(this);
-        otherElements.setText("Другие элементы BLOODSKY");
-        otherElements.setAllCaps(false);
-        otherElements.setOnClickListener(v -> {
-            dialog.dismiss();
-            showExtendedWidgetMenu();
-        });
-        page.addView(otherElements, new LinearLayout.LayoutParams(-1, -2));
-
-        TextView section = new TextView(this);
-        section.setText("МАКРОСЫ ПРОЕКТА");
-        section.setTextColor(Color.rgb(37, 99, 235));
-        section.setTextSize(12);
-        section.setTypeface(null, android.graphics.Typeface.BOLD);
-        section.setPadding(dp(4), dp(18), dp(4), dp(8));
-        page.addView(section, new LinearLayout.LayoutParams(-1, -2));
-
-        ScrollView scroll = new ScrollView(this);
-        LinearLayout macroList = new LinearLayout(this);
-        macroList.setOrientation(LinearLayout.VERTICAL);
         String[] names;
         try { names = FbdCraftMacroCatalog.names(projectExtraFields); }
-        catch (Exception invalidCatalog) { names = new String[0]; }
-        exportMacro.setEnabled(names.length > 0);
+        catch (Exception invalidCatalog) {
+            names = new String[0];
+            Toast.makeText(this, "Каталог макросов повреждён", Toast.LENGTH_LONG).show();
+        }
+
+        FrameLayout library = new FrameLayout(this);
+        page.addView(library, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+        scroll.setFillViewport(true);
+        android.widget.GridLayout grid = new android.widget.GridLayout(this);
+        int columns = Math.max(1, (int) ((getResources().getDisplayMetrics().widthPixels
+                / getResources().getDisplayMetrics().density) / 180f));
+        grid.setColumnCount(columns);
+        grid.setPadding(dp(16), dp(16), dp(16), dp(16));
+
+        for (String macroName : names) {
+            FbdCraftMacroDefinition definition;
+            try { definition = FbdCraftMacroCatalog.find(projectExtraFields, macroName); }
+            catch (Exception invalid) { definition = null; }
+            if (definition == null) continue;
+
+            View card = getLayoutInflater().inflate(R.layout.kc_macro_library_card, grid, false);
+            android.graphics.drawable.GradientDrawable cardBackground =
+                    new android.graphics.drawable.GradientDrawable();
+            cardBackground.setColor(Color.WHITE);
+            cardBackground.setCornerRadius(dp(8));
+            card.setBackground(cardBackground);
+            card.setElevation(0f);
+
+            TextView cardTitle = card.findViewById(R.id.kc_macro_library_title);
+            cardTitle.setText(definition.getName());
+            card.setContentDescription("Добавить макрос: " + definition.getName());
+            final FbdCraftMacroDefinition selectedDefinition = definition;
+            card.setOnClickListener(v -> {
+                try {
+                    addCraftMacroWidget(selectedDefinition);
+                    dialog.dismiss();
+                } catch (Exception failure) {
+                    Toast.makeText(this, "Не удалось добавить макрос", Toast.LENGTH_LONG).show();
+                }
+            });
+
+            android.widget.GridLayout.LayoutParams cardParams =
+                    new android.widget.GridLayout.LayoutParams(
+                            android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED),
+                            android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED));
+            cardParams.width = dp(100);
+            cardParams.height = dp(100);
+            cardParams.setMargins(dp(16), dp(16), dp(16), dp(16));
+            grid.addView(card, cardParams);
+        }
+        scroll.addView(grid, new android.widget.ScrollView.LayoutParams(-1, -2));
+        library.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
+
         if (names.length == 0) {
             TextView empty = new TextView(this);
-            empty.setText("В проекте пока нет макросов. Создай макрос из FBD-схемы или импортируй файл .mcr.");
-            empty.setTextColor(Color.rgb(100, 116, 139));
-            empty.setTextSize(14);
-            empty.setPadding(dp(8), dp(12), dp(8), dp(12));
-            macroList.addView(empty, new LinearLayout.LayoutParams(-1, -2));
-        } else {
-            for (String macroName : names) {
-                FbdCraftMacroDefinition definition;
-                try { definition = FbdCraftMacroCatalog.find(projectExtraFields, macroName); }
-                catch (Exception invalid) { definition = null; }
-                if (definition == null) continue;
-                final FbdCraftMacroDefinition selectedDefinition = definition;
-                LinearLayout row = new LinearLayout(this);
-                row.setGravity(Gravity.CENTER_VERTICAL);
-                row.setPadding(dp(8), dp(4), dp(4), dp(4));
-                row.setBackgroundColor(Color.WHITE);
-                TextView details = new TextView(this);
-                StringBuilder ports = new StringBuilder();
-                for (FbdCraftMacroDefinition.Port input : definition.getInputs()) {
-                    if (ports.length() > 0) ports.append(", ");
-                    ports.append(input.name).append(": ").append(input.signalType());
-                }
-                details.setText(definition.getName() + "\n"
-                        + (ports.length() == 0 ? "Без входов" : ports.toString())
-                        + "  →  " + definition.getOutput().name + ": "
-                        + definition.getOutput().signalType());
-                details.setTextColor(Color.rgb(30, 41, 59));
-                details.setTextSize(14);
-                row.addView(details, new LinearLayout.LayoutParams(0, -2, 1f));
-                Button add = new Button(this);
-                add.setText("Добавить");
-                add.setAllCaps(false);
-                add.setContentDescription("Добавить макрос: " + selectedDefinition.getName());
-                add.setOnClickListener(v -> {
-                    try {
-                        addCraftMacroWidget(selectedDefinition);
-                        dialog.dismiss();
-                    } catch (Exception failure) {
-                        Toast.makeText(this, "Не удалось добавить макрос", Toast.LENGTH_LONG).show();
-                    }
-                });
-                row.addView(add, new LinearLayout.LayoutParams(-2, -2));
-                macroList.addView(row, new LinearLayout.LayoutParams(-1, -2));
-                View separator = new View(this);
-                separator.setBackgroundColor(Color.rgb(226, 232, 240));
-                macroList.addView(separator, new LinearLayout.LayoutParams(-1, dp(1)));
-            }
+            empty.setText("Библиотека макросов пуста");
+            empty.setTextColor(Color.WHITE);
+            empty.setTextSize(20);
+            empty.setGravity(Gravity.CENTER);
+            empty.setContentDescription("Библиотека макросов пуста");
+            library.addView(empty, new FrameLayout.LayoutParams(-1, -1));
         }
-        scroll.addView(macroList);
-        page.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        ImageView switchPage = new ImageView(this);
+        switchPage.setBackgroundResource(R.drawable.kc_tab_page1);
+        switchPage.setContentDescription("Палитра компонентов");
+        switchPage.setOnClickListener(v -> {
+            dialog.dismiss();
+            showAddWidgetMenu();
+        });
+        switchPage.setOnLongClickListener(v -> {
+            dialog.dismiss();
+            showFbdPalette();
+            return true;
+        });
+        FrameLayout.LayoutParams switchParams =
+                new FrameLayout.LayoutParams(dp(60), dp(60), Gravity.BOTTOM | Gravity.END);
+        library.addView(switchPage, switchParams);
 
         dialog.setContentView(page);
         dialog.show();
         android.view.Window window = dialog.getWindow();
         if (window != null) {
             window.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(
-                    Color.rgb(245, 247, 250)));
+                    Color.rgb(35, 35, 35)));
             window.setLayout(android.view.WindowManager.LayoutParams.MATCH_PARENT,
                     android.view.WindowManager.LayoutParams.MATCH_PARENT);
         }
