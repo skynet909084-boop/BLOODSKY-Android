@@ -149,7 +149,7 @@
           "name": "Multi-State Image / Picture (CustomComponents.h)",
           "status": "partial",
           "criteria": "Multi-state image view decoding file/URI bitmaps with fallback status frame.",
-          "audit_note": "Craft ID17 importer commit 54830d6 maps all 16 pathPic_0..15 references only when a ZIP media path is uniquely resolved; missing or ambiguous paths stay empty, original metadata is preserved, and legacy device binding remains inactive. Source-backed typeCommand selection (numeric index or first set bit) is implemented in PR #143 head f222d6c with unit coverage. APK/JUnit #1102 passed; UI smoke #735 and Craft probe #132 are running. Explicit binding setup and same-density visual/device acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
+          "audit_note": "Craft ID17 importer commit 54830d6 maps all 16 pathPic_0..15 references only when a ZIP media path is uniquely resolved; missing or ambiguous paths stay empty, original metadata is preserved, and legacy device binding remains inactive. Source-backed typeCommand selection (numeric index or first set bit) is implemented in PR #143 with unit coverage. On exact head e0de694, APK/JUnit #1103 and full UI smoke #736 passed; probe #133 passed but stopped at 12 states / 11 transitions with state_limit (coverage_complete=false). Explicit binding setup and same-density visual/device acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "widget.voice_announcement",
