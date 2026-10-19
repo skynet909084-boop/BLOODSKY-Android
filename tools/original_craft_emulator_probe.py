@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Breadth-first UI audit of the original Craft 1.0.7 APK on an offline emulator.
-
-Every discovered branch is replayed from cleared app data, then all visible in-app
-controls are explored. Screenshots, accessibility trees, action paths and crashes are
-saved as CI artifacts. This tests the UI surface without pretending to emulate hardware.
-"""
+"""Capture a bounded quick tour or a broader UI audit of original Craft 1.0.7."""
 from __future__ import annotations
 
 import hashlib
@@ -22,9 +17,11 @@ OUT = Path(sys.argv[1])
 OUT.mkdir(parents=True, exist_ok=True)
 PACKAGE = "ru.kascada.modbus"
 ADB_TIMEOUT = 45
-MAX_STATES = 80
-MAX_DEPTH = 6
+PROFILE = "quick" if "--full" not in sys.argv[2:] else "full"
+MAX_STATES = 20 if PROFILE == "quick" else 80
+MAX_DEPTH = 4 if PROFILE == "quick" else 6
 MAX_QUEUED = 240
+MAX_ACTIONS_PER_STATE = 6 if PROFILE == "quick" else 240
 WAIT = 2.0
 
 
@@ -80,7 +77,7 @@ def controls(root):
         if not match:
             continue
         x1, y1, x2, y2 = map(int, match.groups())
-        visual_control = package == PACKAGE and (
+        visual_control = PROFILE == "full" and package == PACKAGE and (
             cls.endswith("ImageView") or cls.endswith("TextView")
         )
         clickable = (node.attrib.get("clickable") == "true" or permission_button or visual_control) and node.attrib.get("enabled") != "false"
@@ -179,14 +176,45 @@ def visible_state(root):
     return out
 
 
-queue = deque([[]])
 seen = set()
 state_rows = []
 transition_rows = []
 started = time.time()
-while queue and len(state_rows) < MAX_STATES:
-    path = queue.popleft()
-    replay(path)
+
+
+def save_checkpoint(complete=False):
+    report = {
+        "app_package": PACKAGE,
+        "offline": True,
+        "profile": PROFILE,
+        "execution_finished": complete,
+        "max_states": MAX_STATES,
+        "max_path_depth": MAX_DEPTH,
+        "max_actions_per_state": MAX_ACTIONS_PER_STATE,
+        "states_captured": len(state_rows),
+        "unique_state_signatures": len(seen),
+        "transitions_visited": len(transition_rows),
+        "elapsed_seconds": round(time.time() - started, 1),
+        "project_loading_stalled_states": sum(1 for row in state_rows if row["project_loading_stalled"]),
+        "states": state_rows,
+        "transitions": transition_rows,
+        "runtime_error_log": "android-runtime-errors.log",
+        "limitations": [
+            "Quick profile visits at most 20 unique states, depth 4, and 6 controls per state; run with --full for broad traversal.",
+            "The quick profile follows clickable accessibility controls and text fields, so custom non-clickable canvas targets may be absent.",
+            "Screenshots and accessibility trees are flushed to the report after each unique state.",
+            "Unavailable Bluetooth and USB hardware is not simulated.",
+            "Generic values are entered only into visible text fields to reveal subsequent screens; they are not valid device credentials.",
+            "Project loading is observed for 2 seconds; a persistent loading screen is recorded once and is not expanded into duplicate branches."
+        ],
+    }
+    target = OUT / "ui-audit.json"
+    temporary = OUT / "ui-audit.json.tmp"
+    temporary.write_text(json.dumps(report, ensure_ascii=False, indent=2))
+    temporary.replace(target)
+
+
+def capture_state(path):
     label = f"state-{len(state_rows):03d}"
     root, xml, png = dump_ui(label)
     loading_stalled = is_project_loading(root)
@@ -206,7 +234,7 @@ while queue and len(state_rows) < MAX_STATES:
     if signature in seen:
         (OUT / f"{label}.xml").unlink(missing_ok=True)
         (OUT / f"{label}.png").unlink(missing_ok=True)
-        continue
+        return None
     seen.add(signature)
     path_labels = [a["label"] for a in path]
     row = {"state": label, "path": path_labels, "control_count": len(ctrls),
@@ -214,9 +242,8 @@ while queue and len(state_rows) < MAX_STATES:
            "project_loading_stalled": loading_stalled}
     state_rows.append(row)
     print(f"{label}: depth={len(path)} controls={len(ctrls)} loading_stalled={loading_stalled} path={' / '.join(path_labels[-3:])}", flush=True)
+    save_checkpoint()
 
-    if len(path) >= MAX_DEPTH:
-        continue
     actions = []
     seen_points = set()
     for n in ctrls:
@@ -226,39 +253,72 @@ while queue and len(state_rows) < MAX_STATES:
         seen_points.add(point)
         actions.append({"kind": "tap", "node": n,
                         "label": (n["text"] or n["description"] or n["hint"] or n["resource_id"] or n["class"])[:100]})
-    for action in actions:
-        child = path + [action]
-        if len(queue) + len(state_rows) >= MAX_QUEUED:
+    return label, signature, actions
+
+
+def fast_walk(path, parent_signature=None):
+    if len(state_rows) >= MAX_STATES:
+        return
+    captured = capture_state(path)
+    if captured is None:
+        return
+    parent_label, signature, actions = captured
+    if len(path) >= MAX_DEPTH:
+        return
+    for action in actions[:MAX_ACTIONS_PER_STATE]:
+        if len(state_rows) >= MAX_STATES:
             break
-        queue.append(child)
-        transition_rows.append({"from": label, "action": action["label"], "depth": len(child)})
+        transition_rows.append({"from": parent_label, "action": action["label"], "depth": len(path)+1})
+        perform(action)
+        fast_walk(path + [action], signature)
+        adb("shell", "input", "keyevent", "4", check=False)
+        time.sleep(WAIT)
+        # Normally Android Back restores the parent without resetting Craft data.
+        # Fall back to a single path replay only when a screen does not unwind cleanly.
+        remote = "/sdcard/craft-audit-restore.xml"
+        local = OUT / "restore-check.xml"
+        adb("shell", "uiautomator", "dump", remote, check=False)
+        adb("pull", remote, str(local), check=False)
+        try:
+            restored = ET.parse(local).getroot()
+            restored_signature = hashlib.sha256(json.dumps(
+                visible_state(restored), ensure_ascii=False).encode()).hexdigest()
+        except (ET.ParseError, OSError):
+            restored_signature = ""
+        if restored_signature != signature:
+            replay(path)
+
+
+def full_walk():
+    queue = deque([[]])
+    while queue and len(state_rows) < MAX_STATES:
+        path = queue.popleft()
+        replay(path)
+        captured = capture_state(path)
+        if captured is None:
+            continue
+        _, _, actions = captured
+        if len(path) >= MAX_DEPTH:
+            continue
+        for action in actions:
+            child = path + [action]
+            if len(queue) + len(state_rows) >= MAX_QUEUED:
+                break
+            queue.append(child)
+    return len(queue)
+
+
+if PROFILE == "quick":
+    fresh_start()
+    fast_walk([])
+    remaining_frontier = 0
+else:
+    remaining_frontier = full_walk()
 
 # Capture all uncaught Android Java exceptions from this audit session.
 log = adb("logcat", "-d", "-v", "brief", "AndroidRuntime:E", "*:S", check=False)
 (OUT / "android-runtime-errors.log").write_text(log)
-report = {
-    "app_package": PACKAGE,
-    "offline": True,
-    "max_states": MAX_STATES,
-    "max_path_depth": MAX_DEPTH,
-    "max_queued_paths": MAX_QUEUED,
-    "states_captured": len(state_rows),
-    "unique_state_signatures": len(seen),
-    "transitions_queued": len(transition_rows),
-    "remaining_frontier": len(queue),
-    "elapsed_seconds": round(time.time() - started, 1),
-    "project_loading_stalled_states": sum(1 for row in state_rows if row["project_loading_stalled"]),
-    "states": state_rows,
-    "transitions": transition_rows,
-    "runtime_error_log": "android-runtime-errors.log",
-    "limitations": [
-        "Traversal is bounded by state, depth and queued-path limits; report lists any remaining frontier.",
-        "Android Back is not exhaustively traversed as a branch; forward controls are explored from each captured state.",
-        "Visible app ImageView and TextView nodes are tapped even when Android accessibility marks them non-clickable, because the Craft canvas handles several palette controls through parent touch listeners.",
-        "Unavailable Bluetooth and USB hardware is not simulated.",
-        "Generic values are entered only into visible text fields to reveal subsequent screens; they are not valid device credentials. A deterministic test project name is used when the field identifies itself as a project-name field.",
-        "Project loading is observed for up to 2 seconds; a persistent loading screen is recorded once and is not tapped or expanded into duplicate branches."
-    ],
-}
-(OUT / "full-ui-audit.json").write_text(json.dumps(report, ensure_ascii=False, indent=2))
-print(json.dumps({k: report[k] for k in ("states_captured", "transitions_queued", "remaining_frontier", "project_loading_stalled_states", "elapsed_seconds")}), flush=True)
+save_checkpoint(complete=True)
+summary = json.loads((OUT / "ui-audit.json").read_text())
+print(json.dumps({k: summary[k] for k in ("profile", "states_captured", "transitions_visited", "elapsed_seconds", "execution_finished")}), flush=True)
+
