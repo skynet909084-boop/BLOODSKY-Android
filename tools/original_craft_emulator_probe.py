@@ -585,14 +585,12 @@ def guided_quick_walk():
             perform(properties_action)
             path.append(properties_action)
             captured = capture_state(path)
-            property_controls = [] if captured is None else [
-                item["node"] for item in captured[2]
-                if item["node"].get("field")
-            ]
+            visible_controls = [] if captured is None or not state_rows else state_rows[-1]["controls"]
+            property_controls = [node for node in visible_controls if node.get("field")]
             palette_still_open = captured is not None and any(
-                item["node"].get("resource_id", "").endswith("tab_dyn_pictures")
-                and on_screen(item["node"], captured[0])
-                for item in captured[2]
+                node.get("resource_id", "").endswith("tab_dyn_pictures")
+                and on_screen(node, captured[0])
+                for node in visible_controls
             )
             quick_goal_reached = bool(property_controls) and not palette_still_open
             coverage_limited = True
