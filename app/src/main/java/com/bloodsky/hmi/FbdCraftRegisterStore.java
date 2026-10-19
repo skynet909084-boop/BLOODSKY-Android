@@ -7,6 +7,7 @@ package com.bloodsky.hmi;
 public final class FbdCraftRegisterStore {
     public static final int SIZE = 2000;
     private static final int[] VALUES = new int[SIZE];
+    private static final java.util.WeakHashMap<CraftSystemRegisterBank, int[]> PROJECT_SERVICE_VALUES = new java.util.WeakHashMap<>();
 
     private FbdCraftRegisterStore() {}
 
@@ -23,10 +24,20 @@ public final class FbdCraftRegisterStore {
     }
 
 
-    /** Read Craft's shared bank: persistent user words, transient service words. */
+    private static int[] serviceValues(CraftSystemRegisterBank userRegisters) {
+        if (userRegisters == null) return VALUES;
+        int[] values = PROJECT_SERVICE_VALUES.get(userRegisters);
+        if (values == null) {
+            values = new int[CraftSystemRegisterBank.FIRST_USER_REGISTER];
+            PROJECT_SERVICE_VALUES.put(userRegisters, values);
+        }
+        return values;
+    }
+
+    /** Read Craft's shared bank: project-persistent user words, project-transient service words. */
     public static synchronized Integer read(int id, CraftSystemRegisterBank userRegisters) {
         if (!isValidId(id)) return null;
-        if (id < CraftSystemRegisterBank.FIRST_USER_REGISTER) return VALUES[id];
+        if (id < CraftSystemRegisterBank.FIRST_USER_REGISTER) return serviceValues(userRegisters)[id];
         if (userRegisters == null) return null;
         try { return userRegisters.readWord(id); }
         catch (IllegalArgumentException invalid) { return null; }
@@ -36,7 +47,7 @@ public final class FbdCraftRegisterStore {
     public static synchronized boolean write(int id, int value, CraftSystemRegisterBank userRegisters) {
         if (!isValidId(id)) return false;
         if (id < CraftSystemRegisterBank.FIRST_USER_REGISTER) {
-            VALUES[id] = value;
+            serviceValues(userRegisters)[id] = value;
             return true;
         }
         if (userRegisters == null || value < 0 || value > 0xffff) return false;
@@ -54,5 +65,6 @@ public final class FbdCraftRegisterStore {
 
     public static synchronized void clear() {
         java.util.Arrays.fill(VALUES, 0);
+        PROJECT_SERVICE_VALUES.clear();
     }
 }
