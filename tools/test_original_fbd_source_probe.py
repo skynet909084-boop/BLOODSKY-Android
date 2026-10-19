@@ -49,12 +49,12 @@ class OriginalFbdSourceProbeTests(unittest.TestCase):
     def test_class_fingerprint_reports_quoted_port_labels_and_real_method_calls(self):
         source = ('class FB_TIMER {\n'
                   '  FB_TIMER(){setName("TON");}\n'
-                  '  void ports(){drawText("Q");drawText("IN");drawText("PT");}\n'
+                  '  void ports(){drawText("Q");drawText("IN");drawText("MS");}\n'
                   '  int getValue(){return 0;}\n'
                   '}\n')
         row = contract_fingerprint(SOURCE_PREFIX + "FB_TIMER.java", source.encode())
         self.assertEqual(hashlib.sha256(source.encode()).hexdigest(), row["sha256"])
-        self.assertEqual(["TON", "Q", "IN", "PT"], [x["value"] for x in row["literal_labels"]])
+        self.assertEqual(["TON", "Q", "IN", "MS"], [x["value"] for x in row["literal_labels"]])
         self.assertEqual([2, 3, 3, 3], [x["line"] for x in row["literal_labels"]])
         calls = [x["name"] for x in row["method_calls"]]
         self.assertIn("setName", calls)
@@ -91,7 +91,7 @@ class OriginalFbdSourceProbeTests(unittest.TestCase):
         correct = [
             row("FB_CTU.java", ["CTU", "+", "-", "R", "Q", "CTU"]),
             row("FB_RS.java", ["RS", "R", "S", "Q"]),
-            row("FB_TIMER.java", ["TON", "IN", "Q", "TOF", "TP"]),
+            row("FB_TIMER.java", ["TON", "IN", "MS", "Q", "TOF", "TP"]),
         ]
         claims = assert_pinned_original_labels(correct)
         self.assertEqual(3, len(claims))
