@@ -1,6 +1,6 @@
 import unittest
 
-from original_craft_longpress_state import actions_for_controls, touch_command
+from original_craft_longpress_state import action_identity, actions_for_controls, touch_command
 
 
 class CraftLongPressStateTest(unittest.TestCase):
@@ -39,6 +39,15 @@ class CraftLongPressStateTest(unittest.TestCase):
         actions = actions_for_controls(controls, "macros")
         self.assertEqual("Macros", actions[0]["label"])
         self.assertEqual("LONG PRESS: Calculator", actions[1]["label"])
+
+    def test_action_identity_distinguishes_gesture_kind(self):
+        node = {"resource_id": "toolbar", "bounds": "[0,0][20,20]"}
+        self.assertNotEqual(
+            action_identity(
+                {"kind": "tap", "node": node}),
+            actions_for_controls.__globals__["action_identity"](
+                {"kind": "long_press", "node": node}),
+        )
 
     def test_long_press_uses_stationary_swipe_with_one_second_hold(self):
         action = {"kind": "long_press", "node": {"x": 123, "y": 456}}

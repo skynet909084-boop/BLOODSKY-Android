@@ -14,7 +14,7 @@ from pathlib import Path
 from PIL import Image
 from original_craft_probe_state import is_project_loading
 from original_craft_longpress_state import (
-    LONG_PRESS_MS, actions_for_controls, touch_command,
+    LONG_PRESS_MS, action_identity, actions_for_controls, touch_command,
 )
 
 OUT = Path(sys.argv[1])
@@ -308,7 +308,7 @@ def save_checkpoint(complete=False):
                               and len(state_rows) < MAX_STATES),
         "termination_reason": ("runtime_limit" if runtime_limit_hit else
                                "state_limit" if len(state_rows) >= MAX_STATES else
-                               "depth_or_control_limit" if coverage_limited else "frontier_exhausted"),
+                               "depth_control_or_cycle_limit" if coverage_limited else "frontier_exhausted"),
         "states_captured": len(state_rows),
         "unique_state_signatures": len(seen),
         "transitions_visited": len(transition_rows),
@@ -316,6 +316,7 @@ def save_checkpoint(complete=False):
         "long_press_actions_executed": sum(1 for row in transition_rows if row["kind"] == "long_press"),
         "elapsed_seconds": round(time.time() - started, 1),
         "project_loading_stalled_states": sum(1 for row in state_rows if row["project_loading_stalled"]),
+        "repeated_actions_pruned": cycle_pruned_actions,
         "project_seed": project_seed_result,
         "states": state_rows,
         "transitions": transition_rows,
@@ -324,7 +325,7 @@ def save_checkpoint(complete=False):
             "Quick profile visits at most 20 unique states, depth 4, and 6 controls per state.",
             "Full profile explores up to 300 unique states with depth 12, up to 64 controls per state, and a 5h45m limit so artifact upload has time before the six-hour runner cap.",
             "Full traversal uses one app session with Back navigation and de-duplicates identical visible accessibility states; identical screens with different hidden data may merge.",
-            "Depth, per-screen action, state, or wall-clock caps are recorded as incomplete coverage rather than a complete audit.",
+            "Depth, per-screen action, state, wall-clock caps, and repeated-action cycle pruning are recorded as incomplete coverage rather than a complete audit.",
             "Only views marked long-clickable=true in the Android accessibility tree receive a one-second stationary long press.",
             "The quick profile follows clickable accessibility controls, text fields, and explicitly long-clickable views, so custom canvas targets may be absent.",
             "Screenshots and accessibility trees are flushed to the report after each unique state.",
@@ -383,10 +384,11 @@ def capture_state(path):
 
 runtime_limit_hit = False
 coverage_limited = False
+cycle_pruned_actions = 0
 
 
 def fast_walk(path, parent_signature=None):
-    global runtime_limit_hit, coverage_limited
+    global runtime_limit_hit, coverage_limited, cycle_pruned_actions
     if MAX_RUNTIME_SECONDS and time.time() - started >= MAX_RUNTIME_SECONDS:
         runtime_limit_hit = True
         return
@@ -402,7 +404,12 @@ def fast_walk(path, parent_signature=None):
         return
     if len(actions) > MAX_ACTIONS_PER_STATE:
         coverage_limited = True
+    path_action_ids = {action_identity(previous) for previous in path}
     for action in actions[:MAX_ACTIONS_PER_STATE]:
+        if action_identity(action) in path_action_ids:
+            cycle_pruned_actions += 1
+            coverage_limited = True
+            continue
         if len(state_rows) >= MAX_STATES:
             break
         if MAX_RUNTIME_SECONDS and time.time() - started >= MAX_RUNTIME_SECONDS:

@@ -52,6 +52,14 @@ def actions_for_controls(controls, direction: str):
             *filter(lambda action: action["kind"] != "long_press", focused)]
 
 
+def action_identity(action):
+    """Identify one control gesture so a DFS path cannot repeat a UI toggle forever."""
+    node = action["node"]
+    return (action["kind"], node.get("resource_id", ""), node.get("text", ""),
+            node.get("description", ""), node.get("hint", ""), node.get("class", ""),
+            node.get("bounds", ""))
+
+
 def touch_command(action, duration_ms: int = LONG_PRESS_MS):
     """Return adb shell input arguments for a tap or an observed long-click."""
     node = action["node"]
