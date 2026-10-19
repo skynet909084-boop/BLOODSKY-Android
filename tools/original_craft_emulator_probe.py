@@ -295,6 +295,15 @@ def capture_state(path):
     actions = []
     seen_points = set()
     for n in ctrls:
+        # Only edit a populated field when it still contains a prompt/placeholder.
+        # Re-tapping a project-name field used to append "1" on every traversal,
+        # filling the quick state budget before reaching the editor.
+        if n.get("field") and n.get("text", "").strip():
+            current = n["text"].strip().lower()
+            placeholders = ("please, enter", "please enter", "paste link here",
+                            "enter a new name", "введите", "укажите")
+            if not any(marker in current for marker in placeholders):
+                continue
         point = (n["x"], n["y"])
         if point in seen_points:
             continue
