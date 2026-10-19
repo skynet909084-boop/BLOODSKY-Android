@@ -337,7 +337,7 @@ def capture_state(path):
         if n.get("field") and n.get("text", "").strip():
             current = n["text"].strip().lower()
             placeholders = ("please, enter", "please enter", "paste link here",
-                            "enter a new name", "введите", "укажите")
+                            "enter a new name", "macro name", "введите", "укажите")
             if not any(marker in current for marker in placeholders):
                 continue
         point = (n["x"], n["y"])
