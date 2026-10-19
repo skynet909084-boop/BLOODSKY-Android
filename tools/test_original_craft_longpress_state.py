@@ -16,8 +16,8 @@ class CraftLongPressStateTest(unittest.TestCase):
 
     def test_tap_and_long_press_at_same_point_are_kept_once_each(self):
         controls = [
-            {"x": 10, "y": 20, "text": "Timer", "long_clickable": True},
-            {"x": 10, "y": 20, "text": "Timer child", "long_clickable": True},
+            {"x": 10, "y": 20, "text": "Timer", "clickable": True, "long_clickable": True},
+            {"x": 10, "y": 20, "text": "Timer child", "clickable": True, "long_clickable": True},
         ]
         actions = actions_for_controls(controls, "fbd-timer-modes")
         self.assertEqual(["long_press", "tap"], [action["kind"] for action in actions])
