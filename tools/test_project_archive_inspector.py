@@ -49,6 +49,21 @@ class ArchiveInspectorTests(unittest.TestCase):
         self.assertEqual(report.project_json_entries, ["project.json"])
         self.assertFalse(any(issue.severity == "error" for issue in report.issues))
 
+    def test_recognizes_craft_pro_json_entry(self):
+        payload = json.dumps({
+            "TableNameProject": {"name": "Demo"},
+            "TableComponent": [],
+            "TableConnections": []
+        })
+        path = self.make_archive([("demo/demo.pro", payload),
+                                  ("demo/background.jpg", b"image-bytes")])
+        report = inspect_archive(path)
+        self.assertEqual(report.entries, 2)
+        self.assertEqual(report.json_entries, 1)
+        self.assertEqual(report.project_json_entries, ["demo/demo.pro"])
+        self.assertFalse(any(issue.severity == "error" for issue in report.issues))
+        self.assertFalse(any("No JSON entry" in issue.message for issue in report.issues))
+
     def test_reports_invalid_json(self):
         path = self.make_archive([("broken.json", "{not json")])
         report = inspect_archive(path)
