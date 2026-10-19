@@ -18,10 +18,11 @@ OUT.mkdir(parents=True, exist_ok=True)
 PACKAGE = "ru.kascada.modbus"
 ADB_TIMEOUT = 45
 PROFILE = "quick" if "--full" not in sys.argv[2:] else "full"
-MAX_STATES = 20 if PROFILE == "quick" else 80
-MAX_DEPTH = 4 if PROFILE == "quick" else 6
+MAX_STATES = 20 if PROFILE == "quick" else 300
+MAX_DEPTH = 4 if PROFILE == "quick" else 12
 MAX_QUEUED = 240
 MAX_ACTIONS_PER_STATE = 6 if PROFILE == "quick" else 240
+MAX_RUNTIME_SECONDS = 0 if PROFILE == "quick" else 5 * 3600 + 45 * 60
 WAIT = 2.0
 
 
@@ -36,7 +37,7 @@ def adb(*args: str, check: bool = True) -> str:
     return p.stdout.strip()
 
 
-def dump_ui(label: str):
+def dump_ui(label: str, capture_screenshot: bool = True):
     remote = "/sdcard/craft-audit-window.xml"
     adb("shell", "uiautomator", "dump", remote, check=False)
     local = OUT / f"{label}.xml"
@@ -46,9 +47,10 @@ def dump_ui(label: str):
     except (ET.ParseError, OSError):
         root = ET.Element("hierarchy")
     png = OUT / f"{label}.png"
-    with png.open("wb") as f:
-        subprocess.run(["adb", "exec-out", "screencap", "-p"], stdout=f,
-                       check=False, timeout=ADB_TIMEOUT)
+    if capture_screenshot:
+        with png.open("wb") as f:
+            subprocess.run(["adb", "exec-out", "screencap", "-p"], stdout=f,
+                           check=False, timeout=ADB_TIMEOUT)
     return root, local.read_text(errors="replace") if local.exists() else "", png
 
 
@@ -130,9 +132,10 @@ def perform(action):
     time.sleep(WAIT)
 
 
-def fresh_start():
+def fresh_start(clear_data: bool = True):
     adb("shell", "am", "force-stop", PACKAGE, check=False)
-    adb("shell", "pm", "clear", PACKAGE, check=False)
+    if clear_data:
+        adb("shell", "pm", "clear", PACKAGE, check=False)
     for permission in (
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
@@ -146,7 +149,8 @@ def fresh_start():
 
 
 def replay(path):
-    fresh_start()
+    # Keep project data during fallback path replay; the audit clears data only once.
+    fresh_start(clear_data=False)
     for action in path:
         # Replay already observed prefixes, waiting after each tap. The main loop
         # captures only the newly explored endpoint instead of dumping every prefix.
@@ -191,6 +195,14 @@ def save_checkpoint(complete=False):
         "max_states": MAX_STATES,
         "max_path_depth": MAX_DEPTH,
         "max_actions_per_state": MAX_ACTIONS_PER_STATE,
+        "runtime_limit_seconds": MAX_RUNTIME_SECONDS,
+        "runtime_limit_hit": runtime_limit_hit,
+        "coverage_limited": coverage_limited,
+        "coverage_complete": (not runtime_limit_hit and not coverage_limited
+                              and len(state_rows) < MAX_STATES),
+        "termination_reason": ("runtime_limit" if runtime_limit_hit else
+                               "state_limit" if len(state_rows) >= MAX_STATES else
+                               "depth_or_control_limit" if coverage_limited else "frontier_exhausted"),
         "states_captured": len(state_rows),
         "unique_state_signatures": len(seen),
         "transitions_visited": len(transition_rows),
@@ -200,7 +212,10 @@ def save_checkpoint(complete=False):
         "transitions": transition_rows,
         "runtime_error_log": "android-runtime-errors.log",
         "limitations": [
-            "Quick profile visits at most 20 unique states, depth 4, and 6 controls per state; run with --full for broad traversal.",
+            "Quick profile visits at most 20 unique states, depth 4, and 6 controls per state.",
+            "Full profile explores up to 300 unique states with depth 12, up to 240 controls per state, and a 5h45m limit so artifact upload has time before the six-hour runner cap.",
+            "Full traversal uses one app session with Back navigation and de-duplicates identical visible accessibility states; identical screens with different hidden data may merge.",
+            "Depth, per-screen action, state, or wall-clock caps are recorded as incomplete coverage rather than a complete audit.",
             "The quick profile follows clickable accessibility controls and text fields, so custom non-clickable canvas targets may be absent.",
             "Screenshots and accessibility trees are flushed to the report after each unique state.",
             "Unavailable Bluetooth and USB hardware is not simulated.",
@@ -212,30 +227,37 @@ def save_checkpoint(complete=False):
     temporary = OUT / "ui-audit.json.tmp"
     temporary.write_text(json.dumps(report, ensure_ascii=False, indent=2))
     temporary.replace(target)
+    if len(state_rows) % 10 == 0:
+        log = adb("logcat", "-d", "-v", "brief", "AndroidRuntime:E", "*:S", check=False)
+        (OUT / "android-runtime-errors.log").write_text(log)
 
 
 def capture_state(path):
     label = f"state-{len(state_rows):03d}"
-    root, xml, png = dump_ui(label)
+    root, xml, png = dump_ui(label, capture_screenshot=False)
+    loading_stalled = is_project_loading(root)
+    visible = visible_state(root)
+    signature = hashlib.sha256(json.dumps(visible, ensure_ascii=False).encode()).hexdigest()
+    if signature in seen:
+        (OUT / f"{label}.xml").unlink(missing_ok=True)
+        return None
+
+    # Save the expensive screenshot only for a new state; every unique capture
+    # still waits WAIT seconds after the preceding action before reaching here.
+    with png.open("wb") as f:
+        subprocess.run(["adb", "exec-out", "screencap", "-p"], stdout=f,
+                       check=False, timeout=ADB_TIMEOUT)
     loading_stalled = is_project_loading(root)
     ctrls = [] if loading_stalled else controls(root)
     if png.exists() and not loading_stalled:
         with Image.open(png) as image:
             width, height = image.size
-            # Ignore status/navigation bars and clock changes; retain visible app canvas.
             normalized = image.crop((0, min(60, height // 10), width, max(height // 10, height - 80))).convert("L").resize((64, 64))
             screenshot_hash = hashlib.sha256(normalized.tobytes()).hexdigest()
     else:
         screenshot_hash = ""
     if loading_stalled:
         screenshot_hash = ""
-    visible = visible_state(root)
-    signature = hashlib.sha256(json.dumps(visible, ensure_ascii=False).encode()).hexdigest()
-    if signature in seen:
-        (OUT / f"{label}.xml").unlink(missing_ok=True)
-        (OUT / f"{label}.png").unlink(missing_ok=True)
-        return None
-    seen.add(signature)
     path_labels = [a["label"] for a in path]
     row = {"state": label, "path": path_labels, "control_count": len(ctrls),
            "controls": ctrls, "screenshot_sha256": screenshot_hash,
@@ -256,7 +278,15 @@ def capture_state(path):
     return label, signature, actions
 
 
+runtime_limit_hit = False
+coverage_limited = False
+
+
 def fast_walk(path, parent_signature=None):
+    global runtime_limit_hit, coverage_limited
+    if MAX_RUNTIME_SECONDS and time.time() - started >= MAX_RUNTIME_SECONDS:
+        runtime_limit_hit = True
+        return
     if len(state_rows) >= MAX_STATES:
         return
     captured = capture_state(path)
@@ -264,9 +294,16 @@ def fast_walk(path, parent_signature=None):
         return
     parent_label, signature, actions = captured
     if len(path) >= MAX_DEPTH:
+        if actions:
+            coverage_limited = True
         return
+    if len(actions) > MAX_ACTIONS_PER_STATE:
+        coverage_limited = True
     for action in actions[:MAX_ACTIONS_PER_STATE]:
         if len(state_rows) >= MAX_STATES:
+            break
+        if MAX_RUNTIME_SECONDS and time.time() - started >= MAX_RUNTIME_SECONDS:
+            runtime_limit_hit = True
             break
         transition_rows.append({"from": parent_label, "action": action["label"], "depth": len(path)+1})
         perform(action)
@@ -308,17 +345,14 @@ def full_walk():
     return len(queue)
 
 
-if PROFILE == "quick":
-    fresh_start()
-    fast_walk([])
-    remaining_frontier = 0
-else:
-    remaining_frontier = full_walk()
+fresh_start()
+fast_walk([])
+remaining_frontier = 0
 
 # Capture all uncaught Android Java exceptions from this audit session.
 log = adb("logcat", "-d", "-v", "brief", "AndroidRuntime:E", "*:S", check=False)
 (OUT / "android-runtime-errors.log").write_text(log)
 save_checkpoint(complete=True)
 summary = json.loads((OUT / "ui-audit.json").read_text())
-print(json.dumps({k: summary[k] for k in ("profile", "states_captured", "transitions_visited", "elapsed_seconds", "execution_finished")}), flush=True)
+print(json.dumps({k: summary[k] for k in ("profile", "states_captured", "transitions_visited", "elapsed_seconds", "execution_finished", "coverage_complete", "termination_reason")}), flush=True)
 
