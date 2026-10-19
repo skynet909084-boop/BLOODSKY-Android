@@ -140,6 +140,16 @@ def action_key(a):
             a["class"], a["bounds"], a["field"])
 
 
+def on_screen(node, state_label: str) -> bool:
+    match = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.get("bounds", ""))
+    if not match:
+        return False
+    left, top, right, bottom = map(int, match.groups())
+    with Image.open(OUT / f"{state_label}.png") as image:
+        width, height = image.size
+    return right > 0 and bottom > 0 and left < width and top < height
+
+
 def execute_macro_drag(source_x: int, source_y: int, drop_x: int, drop_y: int,
                         duration_ms: int = 1600):
     """Use Android's native drag-and-drop input stream, including its long-press phase."""
@@ -212,7 +222,10 @@ def perform(action):
     else:
         node = action["node"]
         x, y = str(node["x"]), str(node["y"])
-        if action["kind"] == "long_press":
+        if action["kind"] == "fling_left":
+            adb("shell", "input", "swipe", x, y, str(action["end_x"]), y,
+                str(action.get("duration_ms", 260)))
+        elif action["kind"] == "long_press":
             # Android shell has no dedicated long-press verb; a zero-distance
             # swipe keeps the pointer down long enough to trigger View.onLongClick.
             adb("shell", "input", "swipe", x, y, x, y, str(action.get("duration_ms", 1100)))
@@ -544,6 +557,22 @@ def guided_quick_walk():
         path.append(action)
         captured = capture_state(path)
         if label == "drag Craft ID17 dynamic picture to canvas" and captured is not None:
+            with Image.open(OUT / f"{captured[0]}.png") as image:
+                width, height = image.size
+            reveal_action = {
+                "kind": "fling_left",
+                "node": {"x": int(width * 0.82), "y": int(height * 0.55), "field": False},
+                "end_x": int(width * 0.55), "duration_ms": 260,
+                "label": "Swipe Craft palette left to expose canvas",
+            }
+            transition_rows.append({
+                "from": captured[0], "action": reveal_action["label"],
+                "depth": len(path) + 1,
+            })
+            perform(reveal_action)
+            path.append(reveal_action)
+            captured = capture_state(path)
+        if label == "drag Craft ID17 dynamic picture to canvas" and captured is not None:
             property_x, property_y = placed_widget_point(captured[0])
             properties_action = {
                 "kind": "tap", "node": {"x": property_x, "y": property_y, "field": False},
@@ -562,6 +591,7 @@ def guided_quick_walk():
             ]
             palette_still_open = captured is not None and any(
                 item["node"].get("resource_id", "").endswith("tab_dyn_pictures")
+                and on_screen(item["node"], captured[0])
                 for item in captured[2]
             )
             quick_goal_reached = bool(property_controls) and not palette_still_open
