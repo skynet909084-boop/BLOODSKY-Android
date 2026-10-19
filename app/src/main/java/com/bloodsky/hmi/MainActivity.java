@@ -56,6 +56,7 @@ import java.io.DataOutputStream;
 public class MainActivity extends Activity {
     private static final String PREFS = "bloodsky_projects";
     private static final ThreadLocal<CraftSystemRegisterBank> ACTIVE_FBD_SYSTEM_REGISTER_BANK = new ThreadLocal<>();
+    private static final ThreadLocal<Boolean> ACTIVE_FBD_SYSTEM_REGISTER_WRITES = new ThreadLocal<>();
     private static final String ACTIVE_PROJECT = "active_project";
     private static final String PROJECT_CATALOG = "project_catalog_v1";
     private static final String TELEGRAM_PREFS = "bloodsky_telegram";
@@ -6467,12 +6468,23 @@ public class MainActivity extends Activity {
     public static boolean evaluateFbdBlock(List<Widget> widgetsList, List<FbdConnection> connectionsList,
             int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric,
             CraftSystemRegisterBank userRegisters) {
+        return evaluateFbdBlock(widgetsList, connectionsList, index, visiting, cacheValid, cacheValues,
+                cacheNumeric, userRegisters, false);
+    }
+
+    private static boolean evaluateFbdBlock(List<Widget> widgetsList, List<FbdConnection> connectionsList,
+            int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric,
+            CraftSystemRegisterBank userRegisters, boolean allowSystemRegisterWrites) {
         CraftSystemRegisterBank previous = setActiveFbdSystemRegisterBank(userRegisters);
+        Boolean previousWriteState = ACTIVE_FBD_SYSTEM_REGISTER_WRITES.get();
+        ACTIVE_FBD_SYSTEM_REGISTER_WRITES.set(allowSystemRegisterWrites);
         try {
             return evaluateFbdBlock(widgetsList, connectionsList, index, visiting,
                     cacheValid, cacheValues, cacheNumeric);
         } finally {
             restoreActiveFbdSystemRegisterBank(previous);
+            if (previousWriteState == null) ACTIVE_FBD_SYSTEM_REGISTER_WRITES.remove();
+            else ACTIVE_FBD_SYSTEM_REGISTER_WRITES.set(previousWriteState);
         }
     }
 
@@ -6777,16 +6789,33 @@ public class MainActivity extends Activity {
             if (widget.extraFields.optBoolean("craftVarConstantMode", false)) {
                 try { value = Double.parseDouble(widget.extraFields.optString("craftVarConstant", "0")); }
                 catch (Exception ignored) { value = Double.NaN; }
-            } else if (widget.craftRegisterValid) {
-                try {
-                    if (isCraftRegisterBoolean(widget.type))
-                        value = FbdCraftRegisterCodec.booleanValue(widget.craftRegisterWord0,
-                                widget.extraFields.optInt("craftVarBit", 0), false) ? 1.0 : 0.0;
-                    else if ("FBD CRAFT VAR INT".equals(canonicalFbdBlockType(widget.type)))
-                        value = FbdCraftRegisterCodec.integerValue(widget.craftRegisterWord0);
-                    else value = FbdCraftRegisterCodec.floatValue(widget.craftRegisterWord0,
-                                widget.craftRegisterWord1);
-                } catch (Exception ignored) { value = Double.NaN; }
+            } else {
+                String connection = widget.connectionInfo == null ? "" : widget.connectionInfo.trim();
+                if (widget.craftRegisterValid) {
+                    try {
+                        if (isCraftRegisterBoolean(widget.type))
+                            value = FbdCraftRegisterCodec.booleanValue(widget.craftRegisterWord0,
+                                    widget.extraFields.optInt("craftVarBit", 0), false) ? 1.0 : 0.0;
+                        else if ("FBD CRAFT VAR INT".equals(canonicalFbdBlockType(widget.type)))
+                            value = widget.craftRegisterWord0;
+                        else value = FbdCraftRegisterCodec.floatValue(widget.craftRegisterWord0,
+                                    widget.craftRegisterWord1);
+                    } catch (Exception ignored) { value = Double.NaN; }
+                } else if (connection.isEmpty()) {
+                    try {
+                        CraftSystemRegisterBank bank = ACTIVE_FBD_SYSTEM_REGISTER_BANK.get();
+                        int address = widget.extraFields.optInt("reg", -1);
+                        if (isCraftRegisterBoolean(widget.type))
+                            value = CraftSystemRegisterAccess.readBool(address,
+                                    widget.extraFields.optInt("bit", widget.extraFields.optInt("craftVarBit", 0)),
+                                    false, bank) ? 1.0 : 0.0;
+                        else if ("FBD CRAFT VAR INT".equals(canonicalFbdBlockType(widget.type)))
+                            value = CraftSystemRegisterAccess.readInt(address, bank);
+                        else value = CraftSystemRegisterAccess.readFloat(address,
+                                    widget.extraFields.optBoolean("craftSwapWord", false),
+                                    widget.extraFields.optBoolean("craftSwapByte", false), bank);
+                    } catch (Exception ignored) { value = Double.NaN; }
+                }
             }
             cacheNumeric[index] = value;
             return Double.isFinite(value) && value != 0.0;
@@ -6820,6 +6849,28 @@ public class MainActivity extends Activity {
             if (inputPins.isEmpty()) cacheNumeric[index] = Double.NaN;
             else if (isCraftRegisterBoolean(widget.type)) cacheNumeric[index] = inputs.get(0) ? 1.0 : 0.0;
             else cacheNumeric[index] = numInputs.get(0);
+            String connection = widget.connectionInfo == null ? "" : widget.connectionInfo.trim();
+            if (Boolean.TRUE.equals(ACTIVE_FBD_SYSTEM_REGISTER_WRITES.get()) && connection.isEmpty()
+                    && Double.isFinite(cacheNumeric[index])) {
+                try {
+                    int address = widget.extraFields.optInt("reg", -1);
+                    CraftSystemRegisterBank bank = ACTIVE_FBD_SYSTEM_REGISTER_BANK.get();
+                    if (isCraftRegisterBoolean(widget.type)) {
+                        CraftSystemRegisterAccess.writeBool(address,
+                                widget.extraFields.optInt("bit", widget.extraFields.optInt("craftVarBit", 0)),
+                                cacheNumeric[index] != 0.0, android.os.SystemClock.elapsedRealtime(), bank);
+                    } else if ("FBD CRAFT VAR OUT INT".equals(canonicalFbdBlockType(widget.type))) {
+                        double numeric = cacheNumeric[index];
+                        if (numeric == Math.rint(numeric) && numeric >= Integer.MIN_VALUE && numeric <= Integer.MAX_VALUE)
+                            CraftSystemRegisterAccess.writeInt(address, (int) numeric, bank);
+                    } else if (Math.abs(cacheNumeric[index]) <= Float.MAX_VALUE) {
+                        CraftSystemRegisterAccess.writeFloat(address, (float) cacheNumeric[index],
+                                widget.extraFields.optBoolean("craftSwapWord", false),
+                                widget.extraFields.optBoolean("craftSwapByte", false), bank,
+                                android.os.SystemClock.elapsedRealtime());
+                    }
+                } catch (Exception ignored) { }
+            }
             return !Double.isNaN(cacheNumeric[index]) && cacheNumeric[index] != 0.0;
         }
         if (isCraftNamedVariableSink(widget.type)) {
@@ -7471,7 +7522,8 @@ public class MainActivity extends Activity {
             fbdCacheValues = new boolean[widgets.size()];
             fbdCacheNumeric = new double[widgets.size()];
         }
-        return evaluateFbdBlock(widgets, screens.get(currentScreenIndex).connections, index, visiting, fbdCacheValid, fbdCacheValues, fbdCacheNumeric, systemRegisterBank);
+        return evaluateFbdBlock(widgets, screens.get(currentScreenIndex).connections, index, visiting,
+                fbdCacheValid, fbdCacheValues, fbdCacheNumeric, systemRegisterBank, operatorMode);
     }
 
     private boolean evaluateFbdUncached(int index, boolean[] visiting) {
