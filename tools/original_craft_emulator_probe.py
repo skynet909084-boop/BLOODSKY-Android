@@ -155,14 +155,6 @@ def is_project_loading(root):
                for n in root.iter("node"))
 
 
-def wait_for_project(root, label, timeout=0):
-    deadline = time.time() + timeout
-    while is_project_loading(root) and time.time() < deadline:
-        time.sleep(1)
-        root, xml, png = dump_ui(label)
-    return root, xml, png
-
-
 def visible_state(root):
     loading = is_project_loading(root)
     out = []
@@ -189,7 +181,6 @@ while queue and len(state_rows) < MAX_STATES:
     replay(path)
     label = f"state-{len(state_rows):03d}"
     root, xml, png = dump_ui(label)
-    root, xml, png = wait_for_project(root, label)
     loading_stalled = is_project_loading(root)
     ctrls = [] if loading_stalled else controls(root)
     if png.exists() and not loading_stalled:
