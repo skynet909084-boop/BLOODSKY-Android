@@ -19,7 +19,7 @@ OUT.mkdir(parents=True, exist_ok=True)
 PACKAGE = "ru.kascada.modbus"
 ADB_TIMEOUT = 45
 PROFILE = "quick" if "--full" not in sys.argv[2:] else "full"
-MAX_STATES = 25 if PROFILE == "quick" else 300
+MAX_STATES = 12 if PROFILE == "quick" else 300
 MAX_DEPTH = 8 if PROFILE == "quick" else 12
 MAX_QUEUED = 240
 MAX_ACTIONS_PER_STATE = 10 if PROFILE == "quick" else 240
@@ -108,8 +108,13 @@ def controls(root):
         if not match:
             continue
         x1, y1, x2, y2 = map(int, match.groups())
-        visual_control = PROFILE == "full" and package == PACKAGE and (
-            cls.endswith("ImageView") or cls.endswith("TextView")
+        visual_control = package == PACKAGE and (
+            (PROFILE == "full" and (cls.endswith("ImageView") or cls.endswith("TextView")))
+            or (PROFILE == "quick" and resource_id in {
+                "ru.kascada.modbus:id/tab_fb_macro",
+                "ru.kascada.modbus:id/tab_fb_timer",
+                "ru.kascada.modbus:id/tab_fb_t_trigger",
+            })
         )
         clickable = (node.attrib.get("clickable") == "true" or permission_button or visual_control) and node.attrib.get("enabled") != "false"
         field = cls.endswith("EditText") and node.attrib.get("enabled") != "false"
@@ -334,12 +339,14 @@ def capture_state(path):
                           node.get("hint", ""), resource_id)).lower()
         if resource_id.endswith("menu_bar_component"):
             return 0
-        if any(term in label for term in ("macro", "макрос", "fb_macro", "fbd")):
+        if resource_id.endswith("switch_layout"):
             return 1
-        if "worktoolbar" in resource_id.lower() or "menu_appbar_right" in resource_id.lower():
+        if resource_id.endswith("tab_fb_macro") or "macro" in label or "макрос" in label:
             return 2
-        if "slidingscreen" in resource_id.lower():
+        if "worktoolbar" in resource_id.lower() or "menu_appbar_right" in resource_id.lower():
             return 3
+        if "slidingscreen" in resource_id.lower():
+            return 4
         return 10
 
     actions.sort(key=action_priority)
