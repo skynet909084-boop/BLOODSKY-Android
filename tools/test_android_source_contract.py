@@ -104,8 +104,10 @@ class AndroidSourceContractTests(unittest.TestCase):
         palette = (ROOT / "app/src/main/java/com/bloodsky/hmi/OriginalFbdPalette.java").read_text(encoding="utf-8")
         self.assertIn("this::showCraftMacroTools", self.source)
         self.assertIn('"Редактор макросов",macroEditor', palette)
-        self.assertIn('otherElements.setText("Другие элементы BLOODSKY")', self.source)
-        self.assertIn('scroll.addView(macroList)', self.source)
+        self.assertIn('menu.getMenu().add("Другие элементы BLOODSKY")', self.source)
+        self.assertIn("android.widget.GridLayout", self.source)
+        self.assertIn("R.layout.kc_macro_library_card", self.source)
+        self.assertIn("R.drawable.kc_tab_page1", self.source)
         self.assertIn("createCraftMacroFromSelection()", self.source)
         self.assertIn("showFbdPalette();", self.source)
 
