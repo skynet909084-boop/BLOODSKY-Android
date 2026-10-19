@@ -26,5 +26,23 @@ class OriginalCraftProbeStateTest(unittest.TestCase):
         self.assertEqual(["Import project", "Create project", "Exit"], [item["label"] for item in ordered])
 
 
+    def test_remaining_directions_prioritize_relevant_controls(self):
+        actions = [
+            {"label": "Save project"},
+            {"label": "License key"},
+            {"label": "Element properties"},
+            {"label": "Open project"},
+        ]
+        for direction, expected in (
+            ("project-persistence", "Save project"),
+            ("license-limits", "License key"),
+            ("element-properties", "Element properties"),
+            ("project-lifecycle", "Open project"),
+        ):
+            with self.subTest(direction=direction):
+                ordered = prioritize_actions(actions, direction)
+                self.assertEqual(expected, ordered[0]["label"])
+                self.assertEqual(len(actions), len(ordered))
+
 if __name__ == "__main__":
     unittest.main()
