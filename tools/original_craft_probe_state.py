@@ -25,6 +25,15 @@ _DIRECTION_TERMS = {
     "devices": ("device", "server", "устройств", "сервер"),
     "network": ("tcp", "modbus", "bluetooth", "usb", "wi-fi", "wifi", "сеть"),
     "runtime": ("run", "start", "рабоч", "запуск", "экран"),
+    "project-persistence": ("save", "export", "сохран", "экспорт", "архив"),
+    "element-properties": ("properties", "property", "state", "color", "свойств", "цвет", "состояни"),
+    "tags-registers": ("tag", "register", "coil", "holding", "тег", "регистр", "канал"),
+    "protocol-setup": ("modbus rtu", "rtu", "iec", "protocol", "протокол", "скорост", "baud", "tcp"),
+    "editor-canvas": ("canvas", "zoom", "screen", "add", "delete", "холст", "масштаб", "экран", "добавить"),
+    "app-settings": ("settings", "preferences", "настрой", "параметр", "лиценз"),
+    "alarms-animation": ("alarm", "sound", "blink", "animation", "звук", "авар", "миган", "анимац"),
+    "project-lifecycle": ("rename", "open project", "delete project", "переимен", "список проектов"),
+    "license-limits": ("license", "unlock", "activation", "лиценз", "ключ", "активац", "лимит"),
 }
 
 
