@@ -82,6 +82,28 @@ public class FbdCraftRegisterGraphTest {
         assertEquals(321, bank.readWord(10));
     }
 
+    @Test public void importedCraftVarBlocksReadProjectSystemRegistersBySerializedAddress() throws Exception {
+        FbdCraftRegisterStore.clear();
+        CraftSystemRegisterBank bank = new CraftSystemRegisterBank();
+        bank.writeWord(1000, -17);
+        bank.writeBit(10, 4, true);
+        bank.writeFloat32(1001, 12.5f, false, false);
+
+        MainActivity.Widget integer = widget("FBD CRAFT VAR INT");
+        integer.extraFields.put("reg", 1000);
+        MainActivity.Widget bool = widget("FBD CRAFT VAR BOOL");
+        bool.extraFields.put("reg", 10);
+        bool.extraFields.put("bit", 4);
+        MainActivity.Widget floating = widget("FBD CRAFT VAR FLOAT");
+        floating.extraFields.put("reg", 1001);
+        List<MainActivity.Widget> nodes = Arrays.asList(integer, bool, floating);
+        List<MainActivity.FbdConnection> edges = java.util.Collections.emptyList();
+
+        assertEquals(-17.0, number(nodes, edges, 0, bank), 0.0);
+        assertEquals(1.0, number(nodes, edges, 1, bank), 0.0);
+        assertEquals(12.5, number(nodes, edges, 2, bank), 0.0);
+    }
+
     @Test public void invalidArrayIndexCannotReadOrWriteOutsideSourceBank() throws Exception {
         FbdCraftRegisterStore.clear();
         MainActivity.Widget enable = widget("FBD Вход"); enable.inputValue = true;
