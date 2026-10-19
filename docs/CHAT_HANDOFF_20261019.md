@@ -116,3 +116,14 @@ Source of truth: `docs/FBD_MACRO_CODEC_20261018.md`.
 - First compile exposed that the graph evaluator is static; it cannot capture MainActivity.systemRegisterBank directly. The previous code commit failed APK/unit and UI build for that compile error.
 - Updated the evaluator API to accept the project bank at its top-level entry and carry it through recursive evaluation via a scoped ThreadLocal, restored in finally. Added an FBD graph integration test for ARRAY write → persisted bank → MX read.
 - Fix is on the current PR branch; previous CI results do not include this correction. Recheck the latest head.
+
+
+## Craft 1.0.7 service registers 0–9 — 2026-10-19
+
+- User asked to compare HMI-KaSCADA v1.4 manual table 9.1.1 with actual Craft 1.0.7 decompiled behavior, then port that behavior to BLOODSKY. The pinned full decompilation is in the original-Craft artifact from run 38600957172; audit sources: q/d/b.java, mbCanvas.java, MyApplication.java, Utils/o.java and palette q/d/a.java.
+- Implemented CraftServiceRegisters as a shared transient service bank. FbdCraftRegisterStore routes MX reads and ARRAY raw writes to that bank for addresses 0–9 and keeps user words 10–1999 project-scoped. ARRAY raw T / MX raw I deliberately bypass VarOut handlers. Separate word/bit handler APIs preserve source-specific effects.
+- MainActivity supplies charging, battery, brightness and current-screen values, and handles navigation, palette, save, refresh, URL and exit actions. Service behavior and write-path differences are recorded in docs/KASKADA_SYSTEM_REGISTERS_AUDIT_20261019.md; the FBD and manual crosswalk notes were updated too.
+- Source differences from manual: register 7 is a palette index 0–16 (bit handler stores the bit index itself); register 8 word writes submit a password candidate without storing it; register 9 whole-word writes trigger exit only, while bit writes implement save/refresh/URL/exit/log actions with source timing. Service words are shared, not per-project.
+- Bounded gaps: project-password unlocking and Craft-style channel-fault sources have no BLOODSKY equivalent yet; Craft bit-10 opens an embedded WebView, while BLOODSKY uses external URL intent; typed UI VarIn/VarOut bindings are not implemented. Keep these limits visible and do not claim full component-binding parity.
+- APK/unit run #1084 passed and built the debug APK for code head 1cd27d1fac3fd169b731ade8c223a777b1c2f475. Original Craft probe #114 passed for the same code head. Full BLOODSKY Android 11 smoke #717 was superseded by documentation-only commits; check the newest CI runs on this handoff commit.
+- PR #143 remains open, base feat/craft-project-json-import-20261018, and must not be merged into stable main without review.
