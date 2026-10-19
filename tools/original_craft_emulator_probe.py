@@ -24,7 +24,7 @@ PACKAGE = "ru.kascada.modbus"
 MAX_STATES = 180
 MAX_DEPTH = 7
 MAX_QUEUED = 900
-WAIT = 0.35
+WAIT = 2.0
 
 
 def adb(*args: str, check: bool = True) -> str:
@@ -151,7 +151,7 @@ def is_project_loading(root):
                for n in root.iter("node"))
 
 
-def wait_for_project(root, label, timeout=12):
+def wait_for_project(root, label, timeout=2):
     deadline = time.time() + timeout
     while is_project_loading(root) and time.time() < deadline:
         time.sleep(1)
@@ -247,7 +247,7 @@ report = {
         "Visible app ImageView and TextView nodes are tapped even when Android accessibility marks them non-clickable, because the Craft canvas handles several palette controls through parent touch listeners.",
         "Unavailable Bluetooth and USB hardware is not simulated.",
         "Generic values are entered only into visible text fields to reveal subsequent screens; they are not valid device credentials. A deterministic test project name is used when the field identifies itself as a project-name field.",
-        "Project loading is observed for up to 12 seconds; a persistent loading screen is recorded once and is not tapped or expanded into duplicate branches.",
+        "Project loading is observed for up to 2 seconds; a persistent loading screen is recorded once and is not tapped or expanded into duplicate branches."
     ],
 }
 (OUT / "full-ui-audit.json").write_text(json.dumps(report, ensure_ascii=False, indent=2))
