@@ -1533,6 +1533,15 @@ public class MainActivity extends Activity {
         fileActions.addView(exportMacro, new LinearLayout.LayoutParams(0, -2, 1f));
         page.addView(fileActions, new LinearLayout.LayoutParams(-1, -2));
 
+        Button otherElements = new Button(this);
+        otherElements.setText("Другие элементы BLOODSKY");
+        otherElements.setAllCaps(false);
+        otherElements.setOnClickListener(v -> {
+            dialog.dismiss();
+            showExtendedWidgetMenu();
+        });
+        page.addView(otherElements, new LinearLayout.LayoutParams(-1, -2));
+
         TextView section = new TextView(this);
         section.setText("МАКРОСЫ ПРОЕКТА");
         section.setTextColor(Color.rgb(37, 99, 235));
@@ -1561,6 +1570,7 @@ public class MainActivity extends Activity {
                 try { definition = FbdCraftMacroCatalog.find(projectExtraFields, macroName); }
                 catch (Exception invalid) { definition = null; }
                 if (definition == null) continue;
+                final FbdCraftMacroDefinition selectedDefinition = definition;
                 LinearLayout row = new LinearLayout(this);
                 row.setGravity(Gravity.CENTER_VERTICAL);
                 row.setPadding(dp(8), dp(4), dp(4), dp(4));
@@ -1581,10 +1591,10 @@ public class MainActivity extends Activity {
                 Button add = new Button(this);
                 add.setText("Добавить");
                 add.setAllCaps(false);
-                add.setContentDescription("Добавить макрос: " + definition.getName());
+                add.setContentDescription("Добавить макрос: " + selectedDefinition.getName());
                 add.setOnClickListener(v -> {
                     try {
-                        addCraftMacroWidget(definition);
+                        addCraftMacroWidget(selectedDefinition);
                         dialog.dismiss();
                     } catch (Exception failure) {
                         Toast.makeText(this, "Не удалось добавить макрос", Toast.LENGTH_LONG).show();
@@ -3588,7 +3598,7 @@ public class MainActivity extends Activity {
     }
 
     private void showFbdPalette() {
-        OriginalFbdPalette.show(this, this::addWidget, this::showAddWidgetMenu, this::showExtendedWidgetMenu);
+        OriginalFbdPalette.show(this, this::addWidget, this::showAddWidgetMenu, this::showCraftMacroTools);
     }
 
     private void showExtendedWidgetMenu() {
