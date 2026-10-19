@@ -41,7 +41,7 @@ class FastFbdSmoke(Smoke):
         self.wait_node(description='Редактор экрана')
         self.tap(description='Добавить элемент')
         self.tap(description='Функциональные блоки и другие элементы')
-        self.tap(description='Добавить: FBD CRAFT TIMER')
+        self.tap(description='Добавить: FBD Таймер')
         initial = current_widgets()
         if [w['type'] for w in initial] != ['FBD И', 'FBD CRAFT TIMER']:
             raise AssertionError('Original FBD palette entries mapped incorrectly: ' + repr(initial))
