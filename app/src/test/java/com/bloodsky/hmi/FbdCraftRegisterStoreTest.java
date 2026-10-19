@@ -37,6 +37,21 @@ public class FbdCraftRegisterStoreTest {
         assertEquals(Integer.valueOf(-7), FbdCraftRegisterStore.read(9, secondProject));
     }
 
+    @Test public void statusIdAndBatteryProvidersUseCraftBitLayout() {
+        FbdCraftRegisterStore.clear();
+        CraftServiceRegisters service = FbdCraftRegisterStore.serviceRegisters();
+        service.setCharging(true);
+        service.setChannelFault(2, true);
+        service.setBatteryLevel(73);
+        service.setDeviceId(0x1234);
+
+        assertEquals(Integer.valueOf(1 << 2), FbdCraftRegisterStore.read(0));
+        assertEquals(Integer.valueOf(0x1234), FbdCraftRegisterStore.read(1));
+        assertEquals(Integer.valueOf(73), FbdCraftRegisterStore.read(6));
+        service.setCharging(false);
+        assertEquals(Integer.valueOf((1 << 2) | (1 << 15)), FbdCraftRegisterStore.read(0));
+    }
+
     @Test public void serviceRegisterArrayWritesAreRawAndSharedAcrossProjectBanks() {
         FbdCraftRegisterStore.clear();
         CraftSystemRegisterBank first = new CraftSystemRegisterBank();
