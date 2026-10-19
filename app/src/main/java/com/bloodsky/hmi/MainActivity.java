@@ -1479,7 +1479,10 @@ public class MainActivity extends Activity {
         Button back = new Button(this);
         back.setText("‹ Назад");
         back.setAllCaps(false);
-        back.setOnClickListener(v -> dialog.dismiss());
+        back.setOnClickListener(v -> {
+            dialog.dismiss();
+            showFbdPalette();
+        });
         header.addView(back, new LinearLayout.LayoutParams(-2, -2));
         TextView title = new TextView(this);
         title.setText("Редактор макросов");
