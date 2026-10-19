@@ -61,8 +61,10 @@ jobs:
           packages: 'platform-tools'
       - name: Install probe dependencies
         run: python -m pip install Pillow
-      - name: Test emulator probe loading detection
-        run: python tools/test_original_craft_probe_state.py -v
+      - name: Test loading and long-press probe helpers
+        run: |
+          python tools/test_original_craft_probe_state.py -v
+          python tools/test_original_craft_longpress_state.py -v
       - name: Install matching Apktool and Android build tools
         run: |
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
@@ -113,19 +115,19 @@ jobs:
           emulator-options: -no-window -gpu software -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: |
             set -eu
-            mkdir -p build-reports/original-craft-1.0.7-${{ matrix.direction }}
+            mkdir -p build-reports/original-craft-1.0.7-longpress-${{ matrix.direction }}
             adb shell settings put global airplane_mode_on 1
             adb shell svc wifi disable || true
             adb shell svc data disable || true
             adb install -r build/KaScada-Craft-1.0.7.apk
-            python tools/original_craft_emulator_probe.py build-reports/original-craft-1.0.7-${{ matrix.direction }} ${{ github.event_name == 'pull_request' && '--full' || inputs.profile == 'full' && '--full' || '' }} --direction=${{ matrix.direction }}
+            python tools/original_craft_longpress_probe.py build-reports/original-craft-1.0.7-longpress-${{ matrix.direction }} ${{ github.event_name == 'pull_request' && '--full' || inputs.profile == 'full' && '--full' || '' }} --direction=${{ matrix.direction }}
       - name: Upload rebuilt APK and full UI evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Original-Craft-1.0.7-emulator-probe-${{ matrix.direction }}
+          name: Original-Craft-1.0.7-longpress-probe-${{ matrix.direction }}
           path: |
             build/KaScada-Craft-1.0.7.apk
-            build-reports/original-craft-1.0.7-${{ matrix.direction }}/
+            build-reports/original-craft-1.0.7-longpress-${{ matrix.direction }}/
           if-no-files-found: warn
           retention-days: 7
