@@ -211,7 +211,7 @@ while queue and len(state_rows) < MAX_STATES:
            "controls": ctrls, "screenshot_sha256": screenshot_hash,
            "project_loading_stalled": loading_stalled}
     state_rows.append(row)
-    print(f"{label}: depth={len(path)} controls={len(ctrls)} loading_stalled={loading_stalled} path={' / '.join(path_labels[-3:])}")
+    print(f"{label}: depth={len(path)} controls={len(ctrls)} loading_stalled={loading_stalled} path={' / '.join(path_labels[-3:])}", flush=True)
 
     if len(path) >= MAX_DEPTH:
         continue
@@ -252,4 +252,4 @@ report = {
     ],
 }
 (OUT / "full-ui-audit.json").write_text(json.dumps(report, ensure_ascii=False, indent=2))
-print(json.dumps({k: report[k] for k in ("states_captured", "transitions_queued", "remaining_frontier", "project_loading_stalled_states", "elapsed_seconds")}))
+print(json.dumps({k: report[k] for k in ("states_captured", "transitions_queued", "remaining_frontier", "project_loading_stalled_states", "elapsed_seconds")}), flush=True)
