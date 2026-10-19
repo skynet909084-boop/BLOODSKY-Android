@@ -45,7 +45,7 @@ Treat the entries as the manual's contract, not as proven runtime semantics. The
 ## BLOODSKY state
 
 - Craft component ID 19 register gateway has opt-in TCP read/transfer/write runtime; ID 22 bit gateway has opt-in TCP bit-transfer runtime. These operate on explicitly configured TCP endpoints.
-- The project-persisted **Система** user bank (addresses 10–1999), bounded word/bit/Float API, and `FB_MX`/`FB_ARRAY` routing for user words are implemented. Service-register providers and side effects for 0–9, typed variable component bindings, Float gateway endpoints, and internal gateway transfers remain open. RTU/Bluetooth transport parity also remains open; see `docs/BLOODSKY_EXECUTION_STATUS.md`.
+- The project-persisted **Система** user bank (addresses 10–1999), bounded word/bit/Float API, and `FB_MX`/`FB_ARRAY` routing for user words are implemented. Registers 0–9 now have a shared transient Craft service bank, dynamic status/time/battery/screen providers, and source-backed VarOut side-effect handlers. Typed variable component bindings, Float gateway endpoints, and internal gateway transfers remain open. RTU/Bluetooth transport parity also remains open; see `docs/BLOODSKY_EXECUTION_STATUS.md`.
 - `CraftNetworkBindingResolver` recognizes imported `posDeviceNetworkInList=100` as `kind=global` and records `globalRegisterBucket=8`. This preserves original binding metadata; it does not activate the corresponding component binding.
 - The special Craft source slot 100 is a global/system binding marker, not Modbus register address 100 and not network device slot 100. Do not conflate it with system-register addresses 0–1000 or an external device's Modbus address.
 
@@ -60,7 +60,7 @@ Treat the entries as the manual's contract, not as proven runtime semantics. The
 
 ## Acceptance boundary
 
-This audit establishes the manual's documented model and the current BLOODSKY gap. It does not claim that system-register runtime behavior is implemented or that every manual detail matches Craft 1.0.7. Validate against the pinned decompilation and original app before marking parity complete.
+This audit separates the manual contract from Craft 1.0.7's actual call-path behavior. Register 0–9 providers and VarOut handlers are implemented in BLOODSKY from the pinned decompilation. Runtime cases without a BLOODSKY equivalent (project password lock, device-channel fault source, and Craft's internal WebView action) remain explicitly bounded.
 
 
 ## Original runtime findings (Craft 1.0.7 Smali)
@@ -73,11 +73,32 @@ Pinned decompilation inspected from `run 38600957172` (artifact SHA-256 `d78bd70
 - `mbCanvas.smali` restores project-retained user values from the `systemRegisters` JSON array. Each entry is an object with a key `reg_N`; the load path writes the value into `MyApplication.v0.j[N]`.
 - `Bd/h$a.smali` saves only nonzero words, scanning from address 10 through the full array length. Service words 0–9 are therefore not retained by this project-save loop; user values are stored in the project's `systemRegisters` column.
 - `Bd/e.smali` defines `TableNameProject.systemRegisters` as text, and project import/export copies that field. This is persisted project state, separate from an external Modbus device register map.
-- The runtime's register-9 path uses the same bank bit accessors and dispatches handler events for service-bit effects. The manual remains the authority for user-facing labels; message-to-action mapping and permission/timing behavior should be traced before implementing those side effects.
+- The runtime's service paths are now traced through JADX source as well as Smali. Table 9.1.1 labels are kept distinct from implementation details below.
 
 This confirms the bank size and persistence shape from executable source. The manual's 200 count is inconsistent with the runtime; don't implement a 200-word bank. The 1000 endpoint remains the documented table endpoint, while the source bank continues through 1999.
 
 
 ## Progress — shared FBD user-register access
 
-Pinned Craft FB_MX and FB_ARRAY use the same q.d.b register manager that project save serializes. BLOODSKY routes their addresses 10–1999 through the project bank, while 0–9 remain transient and do not invoke unverified service actions. The top-level graph call passes a per-project bank into the recursive evaluator; tests cover per-project isolation, the service/user boundary, 16-bit range rejection and graph read-after-write. This does not yet wire Var/VarOut UI components or gateway endpoints to the bank.
+Pinned Craft FB_MX reads q.d.b.I and FB_ARRAY writes q.d.b.T directly. BLOODSKY routes addresses 10–1999 through the project's persisted user bank; addresses 0–9 use one shared transient service bank, as in the original runtime manager. The FBD raw array path deliberately bypasses VarOut handlers. The distinct VarOut word/bit handlers now implement Craft 1.0.7 validation, navigation, palette, password submission, and register-9 commands. Unit tests cover shared raw service words, project-isolated user words, side-effect dispatch, save/refresh timing, and register 0 status layout.
+
+## Verified Craft 1.0.7 service-register behavior
+
+The source audit covered JADX q/d/b.java, mbCanvas.java, MyApplication.java, Utils/o.java, and the Craft palette class, with Smali cross-checking. Service addresses remain transient and shared by the single runtime manager; project JSON persistence starts at address 10.
+
+| Address | Dynamic/raw source behavior | VarOut word handler | VarOut bit handler |
+|---:|---|---|---|
+| 0 RGST | Bits 0–7 are channel error flags; bit 15 is inverted charging (0 while charging). | Ignored. | Ignored. |
+| 1 RGID | Set from MyApplication.c when the manager starts; the pinned source initializes it to zero and has no assignment to the field. | Ignored. | Ignored. |
+| 2 RGDT | dayOfMonth * 100 + month, with Java's month converted to 1–12. | Ignored. | Ignored. |
+| 3 RGTM | hourOfDay * 100 + minute. | Ignored. | Ignored. |
+| 4 RGCN | Current screen is stored as a one-based number. | Accepts 1..screen-count and navigates only on change. | A true bit write treats the bit index itself as a one-based screen number and navigates; false is ignored. |
+| 5 RGIL | Refreshed from Android Settings.System.screen_brightness by the original worker. | Stores values ≤255 (negative values pass the original check); >255 is ignored. It does not call Settings.System.putInt. | Bits 0–7 mutate the transient word; other bit indices are ignored. |
+| 6 RFCH | Battery level. | Ignored. | Ignored. |
+| 7 RGRGB | A palette index in practice, despite the manual's 16-bit color label. The palette is indices 0–16. | Accepts 0..16, stores the index and applies/reset the background if changed. | On a true write, stores the bit index itself (not 1 << bit); accepts 0..16 and dispatches the palette index. False is ignored. |
+| 8 RGPR | Starts at zero; the original word VarOut path submits a candidate to the project-password check without storing it. | Sends a changed candidate to the password gate; does not store it. | Mutates the selected bit and submits the resulting word only when it changed. |
+| 9 | Bits 0–2 weekday (Monday=1..Sunday=7); bit 8 is set when seconds are odd. Clock/date values are periodically refreshed by the worker. | Stores the whole word and immediately dispatches exit only when bit 15 is set; it does not dispatch save/refresh for bits 14/13. | Evaluates command bits on each handler write: bit 15 exits, bit 14 saves on a rising latch with a 10 s limit, bit 13 refreshes at most once per second, bit 10 opens the project URL, and bit 11 logs “каскада”. |
+
+Call-path distinction is material: FB_ARRAY calls raw T(address,value); FB_MX calls raw I(address). Those operations bypass all VarOut handler effects. Craft's ordinary user-variable output paths call U/L and invoke the service handler for addresses 0–9.
+
+BLOODSKY now implements this split in CraftServiceRegisters and FbdCraftRegisterStore. MainActivity supplies battery, charge, brightness and current-screen values, handles screen navigation, palette updates, save/refresh/URL/exit commands, and clears callbacks when the editor closes. Register 1 remains zero unless a source ID provider is added. Channel faults can be written through the provider API but the current BLOODSKY connection model does not yet provide Craft-style channel indices. Project-password submission has no unlock effect while the equivalent project lock remains unimplemented. Craft's bit-10 action opens an external URL intent instead of its embedded WebView.
