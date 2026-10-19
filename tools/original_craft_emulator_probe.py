@@ -21,6 +21,7 @@ from PIL import Image
 OUT = Path(sys.argv[1])
 OUT.mkdir(parents=True, exist_ok=True)
 PACKAGE = "ru.kascada.modbus"
+ADB_TIMEOUT = 45
 MAX_STATES = 180
 MAX_DEPTH = 7
 MAX_QUEUED = 900
@@ -28,7 +29,11 @@ WAIT = 2.0
 
 
 def adb(*args: str, check: bool = True) -> str:
-    p = subprocess.run(["adb", *args], text=True, capture_output=True)
+    try:
+        p = subprocess.run(["adb", *args], text=True, capture_output=True,
+                           timeout=ADB_TIMEOUT)
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"adb {' '.join(args)} timed out after {ADB_TIMEOUT}s") from exc
     if check and p.returncode:
         raise RuntimeError(f"adb {' '.join(args)} failed: {p.stderr.strip()}")
     return p.stdout.strip()
@@ -45,7 +50,8 @@ def dump_ui(label: str):
         root = ET.Element("hierarchy")
     png = OUT / f"{label}.png"
     with png.open("wb") as f:
-        subprocess.run(["adb", "exec-out", "screencap", "-p"], stdout=f, check=False)
+        subprocess.run(["adb", "exec-out", "screencap", "-p"], stdout=f,
+                       check=False, timeout=ADB_TIMEOUT)
     return root, local.read_text(errors="replace") if local.exists() else "", png
 
 
