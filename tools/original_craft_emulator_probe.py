@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import re
 import subprocess
@@ -18,10 +19,10 @@ OUT.mkdir(parents=True, exist_ok=True)
 PACKAGE = "ru.kascada.modbus"
 ADB_TIMEOUT = 45
 PROFILE = "quick" if "--full" not in sys.argv[2:] else "full"
-MAX_STATES = 20 if PROFILE == "quick" else 300
-MAX_DEPTH = 4 if PROFILE == "quick" else 12
+MAX_STATES = 25 if PROFILE == "quick" else 300
+MAX_DEPTH = 5 if PROFILE == "quick" else 12
 MAX_QUEUED = 240
-MAX_ACTIONS_PER_STATE = 6 if PROFILE == "quick" else 240
+MAX_ACTIONS_PER_STATE = 5 if PROFILE == "quick" else 240
 MAX_RUNTIME_SECONDS = 0 if PROFILE == "quick" else 5 * 3600 + 45 * 60
 WAIT = 2.0
 
@@ -37,6 +38,36 @@ def adb(*args: str, check: bool = True) -> str:
     return p.stdout.strip()
 
 
+def save_screenshot(png: Path) -> bool:
+    """Save a verified screenshot, retrying transient adb output failures."""
+    png.unlink(missing_ok=True)
+    last_error = "empty screenshot output"
+    for attempt in range(2):
+        try:
+            result = subprocess.run(
+                ["adb", "exec-out", "screencap", "-p"],
+                capture_output=True, timeout=ADB_TIMEOUT,
+            )
+            if result.returncode != 0:
+                last_error = result.stderr.decode(errors="replace").strip() or f"adb exit {result.returncode}"
+            elif not result.stdout:
+                last_error = "empty screenshot output"
+            else:
+                with Image.open(io.BytesIO(result.stdout)) as image:
+                    image.verify()
+                png.write_bytes(result.stdout)
+                return True
+        except subprocess.TimeoutExpired:
+            last_error = f"adb screenshot timed out after {ADB_TIMEOUT}s"
+        except (OSError, SyntaxError, ValueError) as exc:
+            last_error = f"invalid PNG: {exc}"
+        if attempt == 0:
+            time.sleep(0.25)
+    print(f"warning: screenshot unavailable for {png.name}: {last_error}", flush=True)
+    png.unlink(missing_ok=True)
+    return False
+
+
 def dump_ui(label: str, capture_screenshot: bool = True):
     remote = "/sdcard/craft-audit-window.xml"
     adb("shell", "uiautomator", "dump", remote, check=False)
@@ -48,9 +79,7 @@ def dump_ui(label: str, capture_screenshot: bool = True):
         root = ET.Element("hierarchy")
     png = OUT / f"{label}.png"
     if capture_screenshot:
-        with png.open("wb") as f:
-            subprocess.run(["adb", "exec-out", "screencap", "-p"], stdout=f,
-                           check=False, timeout=ADB_TIMEOUT)
+        save_screenshot(png)
     return root, local.read_text(errors="replace") if local.exists() else "", png
 
 
@@ -212,7 +241,7 @@ def save_checkpoint(complete=False):
         "transitions": transition_rows,
         "runtime_error_log": "android-runtime-errors.log",
         "limitations": [
-            "Quick profile visits at most 20 unique states, depth 4, and 6 controls per state.",
+            "Quick profile visits at most 25 unique states, depth 5, and 5 controls per state.",
             "Full profile explores up to 300 unique states with depth 12, up to 240 controls per state, and a 5h45m limit so artifact upload has time before the six-hour runner cap.",
             "Full traversal uses one app session with Back navigation and de-duplicates identical visible accessibility states; identical screens with different hidden data may merge.",
             "Depth, per-screen action, state, or wall-clock caps are recorded as incomplete coverage rather than a complete audit.",
@@ -244,12 +273,9 @@ def capture_state(path):
 
     # Save the expensive screenshot only for a new state; every unique capture
     # still waits WAIT seconds after the preceding action before reaching here.
-    with png.open("wb") as f:
-        subprocess.run(["adb", "exec-out", "screencap", "-p"], stdout=f,
-                       check=False, timeout=ADB_TIMEOUT)
-    loading_stalled = is_project_loading(root)
+    screenshot_ok = save_screenshot(png)
     ctrls = [] if loading_stalled else controls(root)
-    if png.exists() and not loading_stalled:
+    if screenshot_ok and not loading_stalled:
         with Image.open(png) as image:
             width, height = image.size
             normalized = image.crop((0, min(60, height // 10), width, max(height // 10, height - 80))).convert("L").resize((64, 64))
