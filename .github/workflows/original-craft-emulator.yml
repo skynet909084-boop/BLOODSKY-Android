@@ -7,6 +7,13 @@ on:
       - '.github/workflows/original-craft-emulator.yml'
       - 'tools/original_craft_emulator_probe.py'
   workflow_dispatch:
+    inputs:
+      profile:
+        description: 'Quick smoke or exhaustive single-session UI traversal'
+        required: true
+        type: choice
+        options: [quick, full]
+        default: full
 
 permissions:
   contents: read
@@ -19,7 +26,7 @@ concurrency:
 jobs:
   rebuild-and-probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
       - name: Download pinned full Craft 1.0.7 decompilation
@@ -93,7 +100,11 @@ jobs:
             adb shell svc wifi disable || true
             adb shell svc data disable || true
             adb install -r build/KaScada-Craft-1.0.7.apk
-            python tools/original_craft_emulator_probe.py build-reports/original-craft-1.0.7
+            if [ "${{ github.event_name == 'pull_request' || inputs.profile == 'full' }}" = "true" ]; then
+              python tools/original_craft_emulator_probe.py build-reports/original-craft-1.0.7 --full
+            else
+              python tools/original_craft_emulator_probe.py build-reports/original-craft-1.0.7
+            fi
       - name: Upload rebuilt APK and full UI evidence
         if: always()
         uses: actions/upload-artifact@v4
