@@ -80,7 +80,7 @@ This confirms the bank size and persistence shape from executable source. The ma
 
 ## Progress — shared FBD user-register access
 
-Pinned Craft FB_MX reads q.d.b.I and FB_ARRAY writes q.d.b.T directly. BLOODSKY routes addresses 10–1999 through the project's persisted user bank; addresses 0–9 use one shared transient service bank, as in the original runtime manager. The FBD raw array path deliberately bypasses VarOut handlers. The distinct VarOut word/bit handlers now implement Craft 1.0.7 validation, navigation, palette, password submission, and register-9 commands. Unit tests cover shared raw service words, project-isolated user words, side-effect dispatch, save/refresh timing, and register 0 status layout.
+Pinned Craft FB_MX reads q.d.b.I and FB_ARRAY writes q.d.b.T directly. BLOODSKY routes addresses 10–1999 through the project's persisted user bank; addresses 0–9 use one shared transient service bank, as in the original runtime manager. The FBD raw array path deliberately bypasses VarOut handlers. The distinct VarOut word/bit handlers now implement Craft 1.0.7 validation, navigation, palette, password submission, and register-9 commands. Unit tests cover shared raw service words, project-isolated user words, typed BOOL/INT/FLOAT access at documented addresses, side-effect dispatch, save/refresh timing, and register 0 status layout.
 
 ## Verified Craft 1.0.7 service-register behavior
 
@@ -102,3 +102,21 @@ The source audit covered JADX q/d/b.java, mbCanvas.java, MyApplication.java, Uti
 Call-path distinction is material: FB_ARRAY calls raw T(address,value); FB_MX calls raw I(address). Those operations bypass all VarOut handler effects. Craft's ordinary user-variable output paths call U/L and invoke the service handler for addresses 0–9.
 
 BLOODSKY now implements this split in CraftServiceRegisters and FbdCraftRegisterStore. MainActivity supplies battery, charge, brightness and current-screen values, handles screen navigation, palette updates, save/refresh/URL/exit commands, and clears callbacks when the editor closes. Register 1 remains zero unless a source ID provider is added. Channel faults can be written through the provider API but the current BLOODSKY connection model does not yet provide Craft-style channel indices. Project-password submission has no unlock effect while the equivalent project lock remains unimplemented. Craft's bit-10 action opens an external URL intent instead of its embedded WebView.
+
+
+## Craft 1.0.7 user-register range 10–1000 and typed variables
+
+The documented range 10–1000 contains ordinary user words; the original source does not assign a different per-address function to each register. The shared q.d.b manager stores raw Java `int` values at 10–1999. Its input/output components supply the type and operation:
+
+| Craft component | Source behavior | Address / storage details |
+|---|---|---|
+| `Var` / `VarInt` | Read one bit with `G(reg,bit)` or one raw word with `I(reg)`. BOOL output inversion and constant mode are component properties. | `Var` and `VarInt` accept addresses 0–1999; bit 0–15. |
+| `VarFloat` | Read Float32 across `reg` and `reg+1` using the manager's configured byte/register order. | The component's setter accepts 1–1998; two adjacent words are required. |
+| `VarOut` / `VarOutInt` | Write a BOOL bit with `L(reg,bit,value)` or a whole raw integer with `U(reg,value)`. Addresses below 10 invoke service handlers; 10+ stores directly. | BOOL/INT output setters accept 1–1999; BOOL bit 0–15. |
+| `VarOutFloat` | Convert Float32 to four bytes, arrange by its two order flags, and send the two resulting words through `U`. | Setter accepts 0–1998; each word is written separately, so a pair may straddle the service/user boundary. |
+
+Craft serializes nonzero user values as `systemRegisters: [{"reg_10": value}, ...]`; service registers 0–9 are transient. Runtime capacity is 2000 entries (0–1999), even though manual table 9.1.1 documents ordinary user registers through 1000. The Java source does not clamp `I/T/U` to unsigned 16-bit values; Modbus transport words remain 16-bit.
+
+BLOODSKY now resolves imported Craft FBD `VAR BOOL/INT/FLOAT` sources from their `reg`/`bit` fields into the active project's bank when no external TCP binding is configured. `VAR OUT` writes to that bank while operator mode runs. BOOL, raw INT, Float32 with the two byte/word order flags, and the 0–9 VarOut side-effect path use the typed adapter. MX/ARRAY continue to use their raw, side-effect-free path. Project save/import retains 10–1999, including the documented boundary register 1000.
+
+Coverage added: typed read/write at 10 and 1000, signed raw integer compatibility, bit inversion, Float32 order combinations, service handler routing, and address/pair bounds. APK/unit, Android 11 UI smoke, and original Craft probe must be checked at the final commit head before treating this revision as verified.
