@@ -19,6 +19,7 @@ public class CraftMultiStateImageTest {
 
     @Test public void bitModeSelectsTheLowestSetBitAndHidesAnEmptyMask() {
         assertEquals(2, CraftMultiStateImage.selectIndex(1, 0x8004));
+        assertEquals(2, CraftMultiStateImage.selectIndex(7, 0x8004));
         assertEquals(0, CraftMultiStateImage.selectIndex(1, 0x8005));
         assertEquals(15, CraftMultiStateImage.selectIndex(1, 0x8000));
         assertEquals(-1, CraftMultiStateImage.selectIndex(1, 0));

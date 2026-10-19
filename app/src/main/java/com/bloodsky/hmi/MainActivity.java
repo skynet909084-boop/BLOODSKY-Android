@@ -4331,18 +4331,38 @@ public class MainActivity extends Activity {
         } else { targetScreenIndexField = null; targetUrlField = null; targetVisibleInWorkField = null; }
 
         final EditText[] imagePathFields = new EditText[w.imagePathStates.length];
+        final Spinner imageSelectionModeField;
         if ("Многопозиционное фото".equals(w.type)) {
             TextView imgHeader = new TextView(this);
             imgHeader.setText("Пути к изображениям состояний (0–15)");
             imgHeader.setPadding(0, dp(10), 0, 0);
             form.addView(imgHeader);
+            TextView imgModeHeader = new TextView(this);
+            imgModeHeader.setText("Выбор состояния по значению регистра");
+            imgModeHeader.setPadding(0, dp(10), 0, 0);
+            form.addView(imgModeHeader);
+            imageSelectionModeField = new Spinner(this);
+            imageSelectionModeField.setContentDescription("Режим выбора картинки Craft");
+            imageSelectionModeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item,
+                    new String[]{"Номер картинки: 0–15", "Битовая маска: первый установленный бит"}));
+            JSONObject imageCraftOther = w.extraFields.optJSONObject("craftOther");
+            imageSelectionModeField.setSelection(imageCraftOther == null
+                    || imageCraftOther.optInt("typeCommand", 0) == 0 ? 0 : 1);
+            form.addView(imageSelectionModeField);
+            TextView imgBindingHelp = new TextView(this);
+            imgBindingHelp.setText("Чтобы включить выбор по устройству, задай явную TCP-привязку выше: "
+                    + "tcp://192.168.1.10:502/1/40001. Без активного значения показывается картинка 0. "
+                    + "Исходная привязка Craft при импорте не включается автоматически.");
+            imgBindingHelp.setPadding(0, dp(4), 0, dp(4));
+            form.addView(imgBindingHelp);
             for (int k = 0; k < imagePathFields.length; k++) {
                 imagePathFields[k] = propertyField(w.imagePathStates[k], InputType.TYPE_CLASS_TEXT);
                 imagePathFields[k].setHint("Изображение " + k + " (файл / URI)");
                 form.addView(imagePathFields[k]);
                 addMediaPicker(form, imagePathFields[k], "image/*");
             }
-        }
+        } else imageSelectionModeField = null;
 
         final EditText[] voiceMsgFields = new EditText[w.voiceMessages.length];
         if ("Голосовое сообщение".equals(w.type)) {
@@ -4994,6 +5014,14 @@ public class MainActivity extends Activity {
                             if (imagePathFields[k] != null) {
                                 w.imagePathStates[k] = imagePathFields[k].getText().toString();
                             }
+                        }
+                        if (imageSelectionModeField != null) {
+                            try {
+                                JSONObject sourceOther = w.extraFields.optJSONObject("craftOther");
+                                if (sourceOther == null) sourceOther = new JSONObject();
+                                sourceOther.put("typeCommand", imageSelectionModeField.getSelectedItemPosition() == 0 ? 0 : 1);
+                                w.extraFields.put("craftOther", sourceOther);
+                            } catch (Exception ignored) { }
                         }
                     }
                     if ("Голосовое сообщение".equals(w.type)) {

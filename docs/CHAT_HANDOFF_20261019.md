@@ -153,3 +153,8 @@ Source of truth: `docs/FBD_MACRO_CODEC_20261018.md`.
 - Source check in `CustomComponents/h.java` confirmed numeric mode 0 accepts image indices 0–15; any nonzero mode treats the register word as a bit mask and selects the lowest set bit, hiding the component on an empty mask or invalid numeric index.
 - Added `CraftMultiStateImage` and wired it into the multi-state image renderer. Added unit cases for numeric bounds, lowest-bit priority, bit 15 and the zero-mask hide state.
 - Follow-up is on PR #143 in `e0de694`. APK/JUnit #1103 and Android 11 UI smoke #736 passed; original Craft probe #133 passed as a run but remains partial at 12 states / 11 transitions (`state_limit`, `coverage_complete=false`). Local Python suite passes 149/149 after resource preparation.
+
+## Craft ID17 property editor — 2026-10-19
+
+- Added a number/bit selector for `typeCommand` and help text for explicitly setting the BLOODSKY TCP register binding. The Craft legacy binding is still not activated on import.
+- Added regression coverage confirming any nonzero `typeCommand` uses the bit-mask behavior. Pending validation is recorded by the new Actions runs on the current head; visual/device acceptance and full Craft probe coverage remain open.
