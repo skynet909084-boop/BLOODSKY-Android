@@ -1685,8 +1685,12 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "У выбранного блока нет проверенного выхода", Toast.LENGTH_LONG).show();
             return;
         }
-        EditText name = propertyField(output.text == null || output.text.trim().isEmpty()
-                ? "Macro" : output.text.trim(), InputType.TYPE_CLASS_TEXT);
+        String suggestedName = output.text == null || output.text.trim().isEmpty()
+                ? "Macro" : output.text.trim();
+        if (suggestedName.length() > 10) suggestedName = suggestedName.substring(0, 10);
+        EditText name = propertyField(suggestedName, InputType.TYPE_CLASS_TEXT);
+        name.setFilters(new android.text.InputFilter[]{
+                new android.text.InputFilter.LengthFilter(10)});
         new AlertDialog.Builder(this).setTitle("Создать макрос из схемы")
                 .setMessage("Вложенная схема будет взята от выбранного блока до его входных источников.")
                 .setView(name).setNegativeButton("Отмена", null)
