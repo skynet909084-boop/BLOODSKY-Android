@@ -286,6 +286,80 @@ public class FbdCraftMacroDefinitionTest {
         assertEquals("FLOAT", inferredFloat.getOutput().signalType());
     }
 
+    @Test public void capturesAndExecutesValidatedNestedMacroGraphs() throws Exception {
+        String innerJson = "{\"name\":\"Inner\",\"countIn\":1,"
+                + "\"nameIn1\":\"Raw\",\"typeIn1\":2,"
+                + "\"nameOut\":\"Result\",\"typeOut\":2,\"fbInMacros\":[],"
+                + "\"bloodskyGraph\":{"
+                + "\"widgets\":[{\"type\":\"FBD CRAFT MACRO IN\","
+                + "\"craftMacroPortName\":\"Raw\",\"craftMacroPortType\":2},"
+                + "{\"type\":\"FBD ABS\"}],"
+                + "\"connections\":[{\"source\":0,\"sourcePin\":\"Q\","
+                + "\"target\":1,\"targetPin\":\"IN\"}],"
+                + "\"outputNode\":1,\"outputPin\":\"OUT\","
+                + "\"outputPort\":\"Result\"}}";
+        FbdCraftMacroDefinition inner = FbdCraftMacroDefinition.fromJson(innerJson);
+        MainActivity.Widget source = new MainActivity.Widget();
+        source.type = "FBD CRAFT VAR INT";
+        source.extraFields.put("craftVarConstantMode", true).put("craftVarConstant", "-7");
+        MainActivity.Widget innerWidget = new MainActivity.Widget();
+        innerWidget.type = "FBD CRAFT MACRO";
+        innerWidget.extraFields.put("craftMacroDefinition", inner.toJson());
+        java.util.List<MainActivity.Widget> sourceWidgets = java.util.Arrays.asList(
+                source, innerWidget);
+        java.util.List<MainActivity.FbdConnection> sourceEdges = java.util.Collections.singletonList(
+                MainActivity.connectionFromJson(new org.json.JSONObject()
+                        .put("source", 0).put("sourcePin", "Q").put("target", 1)
+                        .put("targetPin", "Raw")));
+
+        FbdCraftMacroDefinition outer = MainActivity.createCraftMacroDefinitionFromGraph(
+                "Outer", sourceWidgets, sourceEdges, 1, "Result");
+        FbdCraftMacroDefinition restored = FbdCraftMacroDefinition.fromMcrBytes(
+                outer.toMcrBytes());
+        org.json.JSONObject outerGraph = restored.toJson().getJSONObject("bloodskyGraph");
+        assertEquals(2, outerGraph.getJSONArray("widgets").length());
+        org.json.JSONObject capturedInner = outerGraph.getJSONArray("widgets").getJSONObject(1)
+                .getJSONObject("extraFields").getJSONObject("craftMacroDefinition");
+        assertTrue(capturedInner.getJSONObject("bloodskyGraph").has("widgets"));
+
+        MainActivity.Widget outerWidget = new MainActivity.Widget();
+        outerWidget.type = "FBD CRAFT MACRO";
+        outerWidget.extraFields.put("craftMacroDefinition", restored.toJson());
+        java.util.List<MainActivity.Widget> runtimeWidgets = java.util.Arrays.asList(source, outerWidget);
+        boolean[] visiting = new boolean[2], cacheValid = new boolean[2], cacheValues = new boolean[2];
+        double[] cacheNumeric = new double[2];
+        assertEquals(7.0, MainActivity.evaluateFbdBlockNumeric(runtimeWidgets, sourceEdges, 1,
+                visiting, cacheValid, cacheValues, cacheNumeric), 0.0);
+    }
+
+    @Test public void rejectsNestedMacroGraphsBeyondSafeDepth() throws Exception {
+        String nested = "{\"name\":\"Level0\",\"countIn\":0,\"typeOut\":1,"
+                + "\"fbInMacros\":[],\"bloodskyGraph\":{"
+                + "\"widgets\":[{\"type\":\"FBD НЕ\"}],\"
+                + "\"connections\":[],\"outputNode\":0,"
+                + "\"outputPin\":\"Q\",\"outputPort\":\"Q\"}}";
+        // Nest a valid zero-input graph under a macro widget until the bounded parser rejects it.
+        for (int depth = 0; depth < 10; depth++) {
+            org.json.JSONObject child = new org.json.JSONObject(nested);
+            org.json.JSONObject macroWidget = new org.json.JSONObject()
+                    .put("type", "FBD CRAFT MACRO")
+                    .put("extraFields", new org.json.JSONObject()
+                            .put("craftMacroDefinition", child));
+            org.json.JSONObject parentGraph = new org.json.JSONObject()
+                    .put("widgets", new org.json.JSONArray().put(macroWidget))
+                    .put("connections", new org.json.JSONArray())
+                    .put("outputNode", 0).put("outputPin", "Q").put("outputPort", "Q");
+            // A macro graph output has the nested macro's declared output and therefore a BOOL interface.
+            org.json.JSONObject parent = new org.json.JSONObject()
+                    .put("name", "Level" + (depth + 1)).put("countIn", 0).put("typeOut", 1)
+                    .put("fbInMacros", new org.json.JSONArray())
+                    .put("bloodskyGraph", parentGraph);
+            nested = parent.toString();
+        }
+        final String tooDeep = nested;
+        assertInvalid(() -> FbdCraftMacroDefinition.fromJson(tooDeep));
+    }
+
     private static void assertInvalid(ThrowingRunnable action) throws Exception {
         try { action.run(); fail("Expected invalid macro to be rejected"); }
         catch (JSONException expected) { /* expected */ }
