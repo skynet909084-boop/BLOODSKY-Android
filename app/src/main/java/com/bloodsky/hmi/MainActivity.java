@@ -246,8 +246,8 @@ public class MainActivity extends Activity {
         if (editor != null) {
             mainHandler.removeCallbacks(craftServiceRegisterTicker);
             mainHandler.postDelayed(craftServiceRegisterTicker, 1000L);
-            startModbusPolling(); startFbdSensors(); startCraftMqtt();
         }
+        if (editor != null) { startModbusPolling(); startFbdSensors(); startCraftMqtt(); }
         refreshIncomingSmsReceiver();
     }
 
