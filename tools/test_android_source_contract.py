@@ -105,7 +105,7 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("this::showCraftMacroTools", self.source)
         self.assertIn('"Редактор макросов",macroEditor', palette)
         self.assertIn('otherElements.setText("Другие элементы BLOODSKY")', self.source)
-        self.assertIn('page.addView(macroList', self.source)
+        self.assertIn('scroll.addView(macroList)', self.source)
         self.assertIn("createCraftMacroFromSelection()", self.source)
 
     def test_original_indicator_picker_has_real_preview_and_click_target(self):
