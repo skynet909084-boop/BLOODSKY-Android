@@ -88,6 +88,7 @@ def controls(root):
         if not clickable and not field:
             continue
         out.append({
+            "resource_id": resource_id,
             "text": node.attrib.get("text", "")[:120],
             "description": node.attrib.get("content-desc", "")[:120],
             "hint": node.attrib.get("hint", "")[:120],
@@ -104,7 +105,8 @@ def controls(root):
 
 
 def action_key(a):
-    return (a["text"], a["description"], a["hint"], a["class"], a["bounds"], a["field"])
+    return (a["resource_id"], a["text"], a["description"], a["hint"],
+            a["class"], a["bounds"], a["field"])
 
 
 def perform(action):
@@ -149,11 +151,9 @@ def fresh_start():
 def replay(path):
     fresh_start()
     for action in path:
+        # Replay already observed prefixes, waiting after each tap. The main loop
+        # captures only the newly explored endpoint instead of dumping every prefix.
         perform(action)
-        # Capture and inspect every post-tap screen before attempting the next action.
-        root, _, _ = dump_ui("tap-checkpoint")
-        if is_project_loading(root):
-            return
 
 
 def is_project_loading(root):
@@ -169,11 +169,13 @@ def visible_state(root):
             continue
         cls = n.attrib.get("class", "")
         text = n.attrib.get("text", "")
-        if loading and (cls.endswith("ImageView") or re.fullmatch(r"\d{1,2}:\d{2}", text)):
+        if re.fullmatch(r"\d{1,2}:\d{2}", text):
+            text = "<clock>"
+        if loading and cls.endswith("ImageView"):
             continue
-        out.append((cls, text, n.attrib.get("content-desc", ""),
-                    n.attrib.get("bounds", ""), n.attrib.get("checked", ""),
-                    n.attrib.get("selected", "")))
+        out.append((n.attrib.get("resource-id", ""), cls, text,
+                    n.attrib.get("content-desc", ""), n.attrib.get("bounds", ""),
+                    n.attrib.get("checked", ""), n.attrib.get("selected", "")))
     return out
 
 
@@ -223,7 +225,7 @@ while queue and len(state_rows) < MAX_STATES:
             continue
         seen_points.add(point)
         actions.append({"kind": "tap", "node": n,
-                        "label": (n["text"] or n["description"] or n["hint"] or n["class"])[:100]})
+                        "label": (n["text"] or n["description"] or n["hint"] or n["resource_id"] or n["class"])[:100]})
     for action in actions:
         child = path + [action]
         if len(queue) + len(state_rows) >= MAX_QUEUED:
