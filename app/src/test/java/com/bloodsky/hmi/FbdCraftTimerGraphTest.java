@@ -43,6 +43,9 @@ public class FbdCraftTimerGraphTest {
         assertFalse(MainActivity.fbdCraftTimerInputsReady(Arrays.asList(1.0), Arrays.asList("IN")));
         assertFalse(MainActivity.fbdCraftTimerInputsReady(Arrays.asList(Double.NaN, 500.0),
                 Arrays.asList("IN", "MS")));
+        assertFalse("Original timer MS input must remain an Integer",
+                MainActivity.fbdCraftTimerInputsReady(Arrays.asList(1.0, 500.5),
+                        Arrays.asList("IN", "MS")));
         assertTrue(MainActivity.fbdCraftTimerInputsReady(Arrays.asList(0.0, 500.0),
                 Arrays.asList("IN", "MS")));
         assertTrue("PT remains accepted for previously saved BLOODSKY projects",
