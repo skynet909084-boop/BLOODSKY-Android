@@ -13,7 +13,7 @@ import android.view.WindowManager;
 public final class OriginalFbdPalette {
     private OriginalFbdPalette() {}
     public static void show(Activity activity, OriginalComponentPalette.Selection add,
-                            Runnable components, Runnable extended) {
+                            Runnable components, Runnable macroEditor) {
         Dialog dialog=new Dialog(activity,android.R.style.Theme_Material_NoActionBar_Fullscreen);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         dialog.setContentView(R.layout.kc_fragment_component_logic_bar);
@@ -59,7 +59,7 @@ public final class OriginalFbdPalette {
         bindNative(dialog,R.id.kc_logic_tab_fb_abs,"ABS",add);
         bindNative(dialog,R.id.kc_logic_tab_fb_int_to_float,"IntToFloat",add);
         bindNative(dialog,R.id.kc_logic_tab_fb_float_to_int,"FloatToInt",add);
-        action(dialog,R.id.kc_logic_switch_layout,"Другие элементы BLOODSKY",extended);
+        action(dialog,R.id.kc_logic_switch_layout,"Редактор макросов",macroEditor);
         View back=dialog.findViewById(R.id.kc_logic_close);
         if(back!=null) action(dialog,R.id.kc_logic_close,"Палитра компонентов",components);
         dialog.show();
