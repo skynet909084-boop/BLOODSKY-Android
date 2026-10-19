@@ -49,3 +49,28 @@ The exporter copies referenced images/sounds/PDF into the project directory and 
 - Map each widget tag to its custom view and serialized `other` fields.
 - Confirm archive entry names and exact JSON filename from `ExportPresenter.createZip_` and import extraction routines.
 - Inspect Modbus RTU/TCP data paths and FBD execution semantics before implementing runtime behavior.
+
+## Sample archive audit — 2026-10-19
+
+Two supplied Craft project archives were inspected locally. Endpoint strings and project-specific register values are intentionally omitted here.
+
+| Observation | Sample A | Sample B |
+|---|---:|---:|
+| Screens | 16 | 16 |
+| `countDevice` field | 1 | 7 |
+| Entries in serialized `deviceNetwork` | 16 | 16 |
+| `TableComponent` records | 65 | 346 |
+| Components with `jsTableComponent_connectionInfo` | 46 | 75 |
+| `posDeviceNetworkInList` values | 0: 45, 100: 1 | 0: 13, 100: 62 |
+| `TableConnections` records | 3 | 2 |
+| Project archive contents | `.pro` + one JPG | `.pro` + one JPG |
+
+Additional observations:
+
+- Each archive contains the project JSON at a project-relative `.pro` path, plus one JPG asset. The standalone Sample A `.pro` matches the copy inside its ZIP.
+- In both samples, component binding JSON contains `posDeviceNetworkInList`, `addressRegister`, and `typeRequest`. The slot reference is separate from the `TableConnections` records.
+- Sample `TableConnections` rows contain `connectionsId`, `name`, and `server`; `connectionsId=2` repeats within each sample. Do not assume this field is a unique row key or a widget ID.
+- Both samples contain `posDeviceNetworkInList=100` while `deviceNetwork` contains 16 entries. Its meaning is unresolved. Preserve it verbatim and do not treat it as a valid slot until the original source confirms its sentinel behavior.
+- `countDevice` does not match the serialized `deviceNetwork` array length in these samples. Do not use it as the array length.
+
+This audit confirms enough structure to build a read-only inspector and fixture tests. It does not establish complete component semantics or make original Craft import safe; endpoint resolution, the value 100, component IDs, and the full database/export mapping still need source verification.
