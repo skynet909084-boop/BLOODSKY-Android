@@ -113,13 +113,14 @@ public final class CraftServiceRegisters {
                 words[5] = setBit(words[5], bit, value);
                 return true;
             case 7:
-                if (bit < 0 || bit > 16 || !value || words[7] == (1 << bit)) return false;
-                words[7] = 1 << bit;
-                dispatchPalette(words[7]);
+                if (bit < 0 || bit > 16 || !value || words[7] == bit) return false;
+                words[7] = bit;
+                dispatchPalette(bit);
                 return true;
             case 8:
+                int previousPassword = words[8];
                 words[8] = setBit(words[8], bit, value);
-                if (actions != null) actions.enterPassword(words[8]);
+                if (words[8] != previousPassword && actions != null) actions.enterPassword(words[8]);
                 return true;
             case 9:
                 words[9] = setBit(words[9], bit, value);
