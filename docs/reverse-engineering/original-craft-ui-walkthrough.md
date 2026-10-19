@@ -26,3 +26,16 @@ Blocks: `tab_fb_rs`, `tab_fb_t_trigger`, `tab_fb_timer`, `tab_fb_ctu`, `tab_fb_m
 ## Automation gap and next probe
 
 Most palette tiles are exposed as non-clickable `View`/`ImageView` nodes, so the generic quick traversal cannot discover their touch semantics from accessibility flags. It repeatedly tapped `tab_sound` without leaving the palette. Run #62 adds a zero-distance ADB swipe (1.1 s hold) when a normal tap produces no visible state transition. The next investigation must also test dragging/tapping a selected palette tile onto the canvas, inspect `menu_appbar_right`, and capture edit dialogs for placed components. Do not treat the empty macro-library screenshot as proof that macro creation is unavailable.
+
+## Guided ADB verification (run #65)
+
+Evidence: [run #65](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39257628353), commit `d00308ec1fab7c363f1ac3366979b10556a74155`, artifact `Original-Craft-1.0.7-emulator-probe` (artifact ID `12189260618`). A deterministic ADB route replaced the broad button walk for the quick profile. It completed in 39.5 seconds and captured 7 states / 6 actions with no project-loading stalls.
+
+The screenshots and UIAutomator trees verify this exact route:
+
+1. `CREATE A NEW PROJECT` → name dialog → entered `CraftAudit` → `CREATE`.
+2. In the editor, `menu_bar_component` opens the component palette.
+3. First `switch_layout` opens the FBD palette. Its visible tiles include `tab_fb_t_trigger`, `tab_fb_timer`, and `tab_fb_macro`.
+4. Second `switch_layout` opens the macro library. The screenshot says “Macros library is empty”; the accessibility tree exposes only `switch_layout` there.
+
+This confirms that the macro library is a distinct page after FBD. It does not yet verify creating a macro from a block: FBD tiles are custom non-clickable views, and the macro tile must be tested with the original long-press/drag gesture into the canvas. The run #65 artifact includes `state-000` through `state-006` PNG screenshots and matching XML trees.
