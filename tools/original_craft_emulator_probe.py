@@ -20,9 +20,9 @@ PACKAGE = "ru.kascada.modbus"
 ADB_TIMEOUT = 45
 PROFILE = "quick" if "--full" not in sys.argv[2:] else "full"
 MAX_STATES = 25 if PROFILE == "quick" else 300
-MAX_DEPTH = 5 if PROFILE == "quick" else 12
+MAX_DEPTH = 8 if PROFILE == "quick" else 12
 MAX_QUEUED = 240
-MAX_ACTIONS_PER_STATE = 5 if PROFILE == "quick" else 240
+MAX_ACTIONS_PER_STATE = 10 if PROFILE == "quick" else 240
 MAX_RUNTIME_SECONDS = 0 if PROFILE == "quick" else 5 * 3600 + 45 * 60
 WAIT = 2.0
 
@@ -245,7 +245,7 @@ def save_checkpoint(complete=False):
             "Full profile explores up to 300 unique states with depth 12, up to 240 controls per state, and a 5h45m limit so artifact upload has time before the six-hour runner cap.",
             "Full traversal uses one app session with Back navigation and de-duplicates identical visible accessibility states; identical screens with different hidden data may merge.",
             "Depth, per-screen action, state, or wall-clock caps are recorded as incomplete coverage rather than a complete audit.",
-            "The quick profile follows clickable accessibility controls and text fields, so custom non-clickable canvas targets may be absent.",
+            "The quick profile prioritizes project creation and editor palette navigation; create-dialog orientation/cancel branches are skipped, so coverage remains partial. Custom non-clickable canvas targets may be absent.",
             "Screenshots and accessibility trees are flushed to the report after each unique state.",
             "Unavailable Bluetooth and USB hardware is not simulated.",
             "Generic values are entered only into visible text fields to reveal subsequent screens; they are not valid device credentials.",
@@ -275,6 +275,17 @@ def capture_state(path):
     # still waits WAIT seconds after the preceding action before reaching here.
     screenshot_ok = save_screenshot(png)
     ctrls = [] if loading_stalled else controls(root)
+    if PROFILE == "quick" and not loading_stalled:
+        # Fill the project name once and confirm; skip orientation/cancel branches.
+        is_create_dialog = (any(n.get("field") for n in ctrls)
+                            and any(n.get("text", "").strip().upper() == "CREATE"
+                                    for n in ctrls))
+        if is_create_dialog:
+            focused = [n for n in ctrls if n.get("field")
+                       or n.get("text", "").strip().upper() == "CREATE"]
+            if len(focused) < len(ctrls):
+                coverage_limited = True
+                ctrls = focused
     if screenshot_ok and not loading_stalled:
         with Image.open(png) as image:
             width, height = image.size
@@ -310,6 +321,22 @@ def capture_state(path):
         seen_points.add(point)
         actions.append({"kind": "tap", "node": n,
                         "label": (n["text"] or n["description"] or n["hint"] or n["resource_id"] or n["class"])[:100]})
+    def action_priority(action):
+        node = action["node"]
+        resource_id = node.get("resource_id", "")
+        label = " ".join((node.get("text", ""), node.get("description", ""),
+                          node.get("hint", ""), resource_id)).lower()
+        if resource_id.endswith("menu_bar_component"):
+            return 0
+        if any(term in label for term in ("macro", "макрос", "fb_macro", "fbd")):
+            return 1
+        if "worktoolbar" in resource_id.lower() or "menu_appbar_right" in resource_id.lower():
+            return 2
+        if "slidingscreen" in resource_id.lower():
+            return 3
+        return 10
+
+    actions.sort(key=action_priority)
     return label, signature, actions
 
 
