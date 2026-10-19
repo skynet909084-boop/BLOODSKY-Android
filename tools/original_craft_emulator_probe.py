@@ -146,6 +146,35 @@ def replay(path):
         perform(action)
 
 
+def is_project_loading(root):
+    return any("Загрузка проекта" in n.attrib.get("text", "")
+               for n in root.iter("node"))
+
+
+def wait_for_project(root, label, timeout=12):
+    deadline = time.time() + timeout
+    while is_project_loading(root) and time.time() < deadline:
+        time.sleep(1)
+        root, xml, png = dump_ui(label)
+    return root, xml, png
+
+
+def visible_state(root):
+    loading = is_project_loading(root)
+    out = []
+    for n in root.iter("node"):
+        if n.attrib.get("package", "") not in ("", PACKAGE):
+            continue
+        cls = n.attrib.get("class", "")
+        text = n.attrib.get("text", "")
+        if loading and (cls.endswith("ImageView") or re.fullmatch(r"\\d{1,2}:\\d{2}", text)):
+            continue
+        out.append((cls, text, n.attrib.get("content-desc", ""),
+                    n.attrib.get("bounds", ""), n.attrib.get("checked", ""),
+                    n.attrib.get("selected", "")))
+    return out
+
+
 queue = deque([[]])
 seen = set()
 state_rows = []
@@ -156,8 +185,10 @@ while queue and len(state_rows) < MAX_STATES:
     replay(path)
     label = f"state-{len(state_rows):03d}"
     root, xml, png = dump_ui(label)
-    ctrls = controls(root)
-    if png.exists():
+    root, xml, png = wait_for_project(root, label)
+    loading_stalled = is_project_loading(root)
+    ctrls = [] if loading_stalled else controls(root)
+    if png.exists() and not loading_stalled:
         with Image.open(png) as image:
             width, height = image.size
             # Ignore status/navigation bars and clock changes; retain visible app canvas.
@@ -165,10 +196,9 @@ while queue and len(state_rows) < MAX_STATES:
             screenshot_hash = hashlib.sha256(normalized.tobytes()).hexdigest()
     else:
         screenshot_hash = ""
-    visible = [(n.attrib.get("class", ""), n.attrib.get("text", ""),
-                n.attrib.get("content-desc", ""), n.attrib.get("bounds", ""),
-                n.attrib.get("checked", ""), n.attrib.get("selected", ""))
-               for n in root.iter("node") if n.attrib.get("package", "") in ("", PACKAGE)]
+    if loading_stalled:
+        screenshot_hash = ""
+    visible = visible_state(root)
     signature = hashlib.sha256(json.dumps([visible, screenshot_hash], ensure_ascii=False).encode()).hexdigest()
     if signature in seen:
         (OUT / f"{label}.xml").unlink(missing_ok=True)
@@ -177,9 +207,10 @@ while queue and len(state_rows) < MAX_STATES:
     seen.add(signature)
     path_labels = [a["label"] for a in path]
     row = {"state": label, "path": path_labels, "control_count": len(ctrls),
-           "controls": ctrls, "screenshot_sha256": screenshot_hash}
+           "controls": ctrls, "screenshot_sha256": screenshot_hash,
+           "project_loading_stalled": loading_stalled}
     state_rows.append(row)
-    print(f"{label}: depth={len(path)} controls={len(ctrls)} path={' / '.join(path_labels[-3:])}")
+    print(f"{label}: depth={len(path)} controls={len(ctrls)} loading_stalled={loading_stalled} path={' / '.join(path_labels[-3:])}")
 
     if len(path) >= MAX_DEPTH:
         continue
@@ -206,6 +237,7 @@ report = {
     "transitions_queued": len(transition_rows),
     "remaining_frontier": len(queue),
     "elapsed_seconds": round(time.time() - started, 1),
+    "project_loading_stalled_states": sum(1 for row in state_rows if row["project_loading_stalled"]),
     "states": state_rows,
     "transitions": transition_rows,
     "runtime_error_log": "android-runtime-errors.log",
@@ -215,7 +247,8 @@ report = {
         "Visible app ImageView and TextView nodes are tapped even when Android accessibility marks them non-clickable, because the Craft canvas handles several palette controls through parent touch listeners.",
         "Unavailable Bluetooth and USB hardware is not simulated.",
         "Generic values are entered only into visible text fields to reveal subsequent screens; they are not valid device credentials. A deterministic test project name is used when the field identifies itself as a project-name field.",
+        "Project loading is observed for up to 12 seconds; a persistent loading screen is recorded once and is not tapped or expanded into duplicate branches.",
     ],
 }
 (OUT / "full-ui-audit.json").write_text(json.dumps(report, ensure_ascii=False, indent=2))
-print(json.dumps({k: report[k] for k in ("states_captured", "transitions_queued", "remaining_frontier", "elapsed_seconds")}))
+print(json.dumps({k: report[k] for k in ("states_captured", "transitions_queued", "remaining_frontier", "project_loading_stalled_states", "elapsed_seconds")}))
