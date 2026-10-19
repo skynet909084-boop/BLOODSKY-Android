@@ -48,16 +48,17 @@ The nested graph is serialized under `fbInMacros`. The original collects non-mac
 
 This means a faithful importer must preserve both the macro's public typed ports and the separately serialized child graph. Treating ID 135 as an ordinary visible block loses behavior and graph structure.
 
-## BLOODSKY gap and next port steps
+## BLOODSKY status and remaining gap
 
-The current parity matrix marks ID 135 unsupported. BLOODSKY can edit and run BLOODSKY-authored nested graphs, and preserves opaque original macro child records, but those original children are not executed.
+The repository already has a lossless `.mcr` model/catalog (`FbdCraftMacroDefinition`, `FbdCraftMacroCatalog`), a fail-closed translator (`FbdCraftMacroGraphAdapter`), and nested graph execution in `MainActivity.evaluateCraftMacroBlock`. The adapter translates source-mapped child IDs into the existing graph runtime and retains the original `fbInMacros` records. Its unit tests cover typed input wiring, output wiring, selected component IDs and rejection of broken or unsupported graphs.
 
-Next implementation work:
+This is partial original parity, not a missing-from-scratch feature: several screen-level I/O blocks (including sensors, MQTT and some register I/O), unknown IDs, and other unmapped cases remain opaque and do not execute. The editor palette and interaction flow also differ from Craft. The parity matrix's ID 135 status should be read as incomplete full Craft parity, not as absence of any macro support.
 
-1. Model the original macro ports and `fbInMacros` children without dropping unknown properties or IDs.
-2. Map only child component IDs whose factory, properties, pin types and runtime behavior are already source-verified; keep unknown child records visible and fail-closed.
-3. Match original pin names, types, input count and connection keys when rendering imported macros.
-4. Verify import/save/reopen and nested execution using a small source-derived macro fixture before enabling execution for imported macros.
-5. Add the macro editor palette and the original canvas selection/drag gestures to runtime parity checks.
+Remaining work:
 
-Do not infer that the macro canvas saves on return until the save/reopen path has been captured.
+1. Verify the translator and runtime against an actual Craft-produced `.mcr`/project macro, including its `uniqueId`, child `saveKey/keyOut/numOnIn` links, port types and names.
+2. Compare the current port selection/default rules with the runtime dialog, then check the graph editor's add-block and return/save flow.
+3. Keep unknown or unsupported children lossless and fail-closed; only expand execution when factory properties and typed pin mappings are source-verified.
+4. Add original-vs-BLOODSKY runtime cases for save/reopen and nested evaluation, including the reported multi-selection and individual long-drag gestures.
+
+The editor's return/save behavior is still unverified; do not infer persistence from the creation dialog closing alone.
