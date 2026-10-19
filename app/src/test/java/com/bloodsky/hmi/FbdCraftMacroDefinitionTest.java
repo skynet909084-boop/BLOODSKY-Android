@@ -335,7 +335,7 @@ public class FbdCraftMacroDefinitionTest {
     @Test public void rejectsNestedMacroGraphsBeyondSafeDepth() throws Exception {
         String nested = "{\"name\":\"Level0\",\"countIn\":0,\"typeOut\":1,"
                 + "\"fbInMacros\":[],\"bloodskyGraph\":{"
-                + "\"widgets\":[{\"type\":\"FBD НЕ\"}],
+                + "\"widgets\":[{\"type\":\"FBD НЕ\"}],"
                 + "\"connections\":[],\"outputNode\":0,"
                 + "\"outputPin\":\"Q\",\"outputPort\":\"Q\"}}";
         // Nest a valid zero-input graph under a macro widget until the bounded parser rejects it.
