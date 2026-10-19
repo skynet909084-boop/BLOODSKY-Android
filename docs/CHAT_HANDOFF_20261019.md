@@ -10,13 +10,13 @@ This is the durable entry point for resuming work after a ChatGPT/Work chat is c
 - PR status when checked (2026-10-19 21:00 Asia/Yekaterinburg): open, mergeable, not merged.
 - Head branch: `feat/craft-screen-navigation-import-20261018`
 - Base branch: `feat/craft-project-json-import-20261018`
-- Head SHA checked: `76c668fb70dfd697dea62a25e64777085031d4a3`
+- Head SHA checked at initial handoff: `76c668fb70dfd697dea62a25e64777085031d4a3`; latest progress commit below.
 - The default/stable branch is `main`. Do not merge this PR into stable without the requested review and verified checks.
 - Local scratch workspace for this chat contained no project checkout; GitHub was the source used for status and documentation.
 
 ## CI status at handoff
 
-For the PR head SHA above, the latest queried PR-triggered workflow runs were queued; no outcome was confirmed yet:
+At initial handoff, PR-triggered workflow runs for the then-current head were queued. Later runs must be checked against the latest head before relying on them:
 
 | Workflow | Run | State |
 |---|---:|---|
@@ -71,3 +71,14 @@ Source of truth: `docs/FBD_MACRO_CODEC_20261018.md`.
 3. Continue from the unfinished system-register bank work and/or the macro acceptance above; preserve the PR branch and keep stable `main` untouched.
 4. Commit durable notes/results to the PR branch and update this handoff when the state changes.
 
+
+
+## Progress after the initial handoff — 2026-10-19
+
+- Continued on PR #143 branch `feat/craft-screen-navigation-import-20261018`; stable `main` remains untouched.
+- Added `CraftSystemRegisterBank` as an isolated per-project bank for Craft user registers 10–1999 (the 2000-word capacity confirmed from pinned Smali). Service registers 0–9 remain outside this class because their original handlers have side effects.
+- Added bounded 16-bit word and bit read/write, Float32 across two words with explicit word/byte swaps, and atomic import/export for Craft's `systemRegisters` JSON array (nonzero values only; malformed/duplicate/service rows reject the complete restore).
+- Added `CraftSystemRegisterBankTest` for range checks, bit preservation, all four Float byte/register layouts, JSON persistence, and atomic rejection.
+- Commits: `9d35beb2ca13d0023a42e7a6c29584f324435ce8` (bank), `2d72493fdd31e13531245ee2ddb51da8256c185d` (tests), `b666289175cdd4a2a455b3d03648d3455f991f10` (declare JSON exception in API/tests).
+- This is a foundational implementation only: it is not yet connected to project load/save, component bindings, service-register providers, or gateway endpoints. Do not claim complete system-register parity.
+- Current workspace has no checked-out project, so local Gradle/test execution was unavailable. Check exact-head APK/unit and UI workflows before relying on this change.
