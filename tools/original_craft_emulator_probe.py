@@ -12,6 +12,7 @@ import xml.etree.ElementTree as ET
 from collections import deque
 from pathlib import Path
 from PIL import Image
+from original_craft_probe_state import is_project_loading
 
 OUT = Path(sys.argv[1])
 OUT.mkdir(parents=True, exist_ok=True)
@@ -157,13 +158,11 @@ def replay(path):
         perform(action)
 
 
-def is_project_loading(root):
-    return any("Загрузка проекта" in n.attrib.get("text", "")
-               for n in root.iter("node"))
-
-
 def visible_state(root):
     loading = is_project_loading(root)
+    if loading:
+        # Collapse a spinner and its changing elapsed-time label to one state.
+        return [("__craft_project_loading__", "loading", "project-loading", "", "", "", "")]
     out = []
     for n in root.iter("node"):
         if n.attrib.get("package", "") not in ("", PACKAGE):
