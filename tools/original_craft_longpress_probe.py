@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import re
 import subprocess
@@ -23,10 +24,10 @@ PACKAGE = "ru.kascada.modbus"
 ADB_TIMEOUT = 15
 PROFILE = "quick" if "--full" not in sys.argv[2:] else "full"
 DIRECTION = next((arg.partition("=")[2] for arg in sys.argv[2:] if arg.startswith("--direction=")), "balanced")
-MAX_STATES = 20 if PROFILE == "quick" else 100
-MAX_DEPTH = 4 if PROFILE == "quick" else 8
+MAX_STATES = 25 if PROFILE == "quick" else 100
+MAX_DEPTH = 5 if PROFILE == "quick" else 8
 MAX_QUEUED = 240
-MAX_ACTIONS_PER_STATE = 6 if PROFILE == "quick" else 12
+MAX_ACTIONS_PER_STATE = 5 if PROFILE == "quick" else 12
 MAX_RUNTIME_SECONDS = 0 if PROFILE == "quick" else 50 * 60
 WAIT = 0.5
 SEED_EDITOR_DIRECTIONS = {"project-create", "components", "fbd", "macros", "devices", "network", "runtime"}
@@ -43,6 +44,36 @@ def adb(*args: str, check: bool = True) -> str:
     return p.stdout.strip()
 
 
+def save_screenshot(png: Path) -> bool:
+    """Save a verified screenshot, retrying transient adb output failures."""
+    png.unlink(missing_ok=True)
+    last_error = "empty screenshot output"
+    for attempt in range(2):
+        try:
+            result = subprocess.run(
+                ["adb", "exec-out", "screencap", "-p"],
+                capture_output=True, timeout=ADB_TIMEOUT,
+            )
+            if result.returncode != 0:
+                last_error = result.stderr.decode(errors="replace").strip() or f"adb exit {result.returncode}"
+            elif not result.stdout:
+                last_error = "empty screenshot output"
+            else:
+                with Image.open(io.BytesIO(result.stdout)) as image:
+                    image.verify()
+                png.write_bytes(result.stdout)
+                return True
+        except subprocess.TimeoutExpired:
+            last_error = f"adb screenshot timed out after {ADB_TIMEOUT}s"
+        except (OSError, SyntaxError, ValueError) as exc:
+            last_error = f"invalid PNG: {exc}"
+        if attempt == 0:
+            time.sleep(0.25)
+    print(f"warning: screenshot unavailable for {png.name}: {last_error}", flush=True)
+    png.unlink(missing_ok=True)
+    return False
+
+
 def dump_ui(label: str, capture_screenshot: bool = True):
     remote = "/sdcard/craft-audit-window.xml"
     adb("shell", "uiautomator", "dump", remote, check=False)
@@ -54,12 +85,7 @@ def dump_ui(label: str, capture_screenshot: bool = True):
         root = ET.Element("hierarchy")
     png = OUT / f"{label}.png"
     if capture_screenshot:
-        with png.open("wb") as f:
-            try:
-                subprocess.run(["adb", "exec-out", "screencap", "-p"], stdout=f,
-                               check=False, timeout=ADB_TIMEOUT)
-            except subprocess.TimeoutExpired as exc:
-                raise RuntimeError(f"adb screenshot timed out after {ADB_TIMEOUT}s") from exc
+        save_screenshot(png)
     return root, local.read_text(errors="replace") if local.exists() else "", png
 
 
@@ -358,15 +384,9 @@ def capture_state(path):
 
     # Save the expensive screenshot only for a new state; every unique capture
     # still waits WAIT seconds after the preceding action before reaching here.
-    with png.open("wb") as f:
-        try:
-            subprocess.run(["adb", "exec-out", "screencap", "-p"], stdout=f,
-                           check=False, timeout=ADB_TIMEOUT)
-        except subprocess.TimeoutExpired as exc:
-            raise RuntimeError(f"adb screenshot timed out after {ADB_TIMEOUT}s") from exc
-    loading_stalled = is_project_loading(root)
+    screenshot_ok = save_screenshot(png)
     ctrls = [] if loading_stalled else controls(root)
-    if png.exists() and not loading_stalled:
+    if screenshot_ok and not loading_stalled:
         with Image.open(png) as image:
             width, height = image.size
             normalized = image.crop((0, min(60, height // 10), width, max(height // 10, height - 80))).convert("L").resize((64, 64))
