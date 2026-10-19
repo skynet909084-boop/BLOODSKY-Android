@@ -326,9 +326,15 @@ public class FbdCraftMacroDefinitionTest {
         outerWidget.type = "FBD CRAFT MACRO";
         outerWidget.extraFields.put("craftMacroDefinition", restored.toJson());
         java.util.List<MainActivity.Widget> runtimeWidgets = java.util.Arrays.asList(source, outerWidget);
+        FbdCraftMacroDefinition.Port outerInput = restored.getInputs().get(0);
+        MainActivity.FbdConnection runtimeEdge = MainActivity.connectionFromJson(
+                new org.json.JSONObject().put("source", 0).put("sourcePin", "Q")
+                        .put("target", 1).put("targetPin", outerInput.name));
+        java.util.List<MainActivity.FbdConnection> runtimeEdges =
+                java.util.Collections.singletonList(runtimeEdge);
         boolean[] visiting = new boolean[2], cacheValid = new boolean[2], cacheValues = new boolean[2];
         double[] cacheNumeric = new double[2];
-        assertEquals(7.0, MainActivity.evaluateFbdBlockNumeric(runtimeWidgets, sourceEdges, 1,
+        assertEquals(7.0, MainActivity.evaluateFbdBlockNumeric(runtimeWidgets, runtimeEdges, 1,
                 visiting, cacheValid, cacheValues, cacheNumeric), 0.0);
     }
 
