@@ -135,13 +135,19 @@ public class FbdCraftRegisterStoreTest {
         assertEquals(0x3fc0, project.readWord(1000));
     }
 
-    @Test public void typedSystemFloatPreservesCraftServiceWordOutputPath() {
+    @Test public void typedSystemOutputsUseCraftHandlersForServiceAddresses() {
         FbdCraftRegisterStore.clear();
         CraftSystemRegisterBank project = new CraftSystemRegisterBank();
-        assertTrue(CraftSystemRegisterAccess.writeFloat(9, 1.5f, false, false, project, 20000L));
-        assertEquals(0x3fc0, FbdCraftRegisterStore.read(9, project).intValue());
-        assertEquals(0, FbdCraftRegisterStore.read(10, project).intValue());
-        assertEquals(1.5f, CraftSystemRegisterAccess.readFloat(9, false, false, project), 0.0f);
+        ActionSpy actions = new ActionSpy();
+        FbdCraftRegisterStore.serviceRegisters().setActions(actions);
+        FbdCraftRegisterStore.serviceRegisters().setScreenCount(3);
+
+        assertTrue(CraftSystemRegisterAccess.writeInt(4, 2, project));
+        assertEquals(2, actions.selectedScreen);
+        assertTrue(CraftSystemRegisterAccess.writeBool(7, 3, true, 20000L, project));
+        assertEquals(3, actions.paletteIndex);
+        assertEquals(3, FbdCraftRegisterStore.serviceRegisters().readRawWord(7));
+        assertFalse(CraftSystemRegisterAccess.writeInt(0, 123, project));
         assertFalse(CraftSystemRegisterAccess.isValidWordAddress(2000));
         assertFalse(CraftSystemRegisterAccess.isValidFloatAddress(1999));
     }
