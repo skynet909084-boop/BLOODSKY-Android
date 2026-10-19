@@ -2,7 +2,7 @@ package com.bloodsky.hmi;
 
 /**
  * Craft FB_MX/FB_ARRAY address adapter. User words share the project-persisted
- * system bank; service words 0..9 remain transient until their providers exist.
+ * system bank; service words 0..9 use Craft's shared runtime service bank.
  */
 public final class FbdCraftRegisterStore {
     public static final int SIZE = 2000;
