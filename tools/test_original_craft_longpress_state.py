@@ -42,6 +42,16 @@ class CraftLongPressStateTest(unittest.TestCase):
         self.assertEqual("Macros", actions[0]["label"])
         self.assertEqual("LONG PRESS: Calculator", actions[1]["label"])
 
+    def test_calculator_is_skipped_outside_fbd_but_kept_for_fbd(self):
+        controls = [
+            {"x": 10, "y": 20, "resource_id": "ru.kascada.modbus:id/calc", "text": "Calculator", "clickable": True},
+            {"x": 30, "y": 40, "text": "Macros", "clickable": True},
+        ]
+        macros = actions_for_controls(controls, "macros")
+        fbd = actions_for_controls(controls, "fbd")
+        self.assertEqual(["Macros"], [a["label"] for a in macros])
+        self.assertEqual({"Calculator", "Macros"}, {a["label"] for a in fbd})
+
     def test_action_identity_distinguishes_gesture_kind(self):
         node = {"resource_id": "toolbar", "bounds": "[0,0][20,20]"}
         self.assertNotEqual(

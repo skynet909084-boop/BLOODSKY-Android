@@ -45,7 +45,7 @@ jobs:
           - network
           - runtime
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - name: Download pinned full Craft 1.0.7 decompilation

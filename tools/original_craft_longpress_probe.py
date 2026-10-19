@@ -20,14 +20,14 @@ from original_craft_longpress_state import (
 OUT = Path(sys.argv[1])
 OUT.mkdir(parents=True, exist_ok=True)
 PACKAGE = "ru.kascada.modbus"
-ADB_TIMEOUT = 45
+ADB_TIMEOUT = 15
 PROFILE = "quick" if "--full" not in sys.argv[2:] else "full"
 DIRECTION = next((arg.partition("=")[2] for arg in sys.argv[2:] if arg.startswith("--direction=")), "balanced")
-MAX_STATES = 20 if PROFILE == "quick" else 300
-MAX_DEPTH = 4 if PROFILE == "quick" else 12
+MAX_STATES = 20 if PROFILE == "quick" else 100
+MAX_DEPTH = 4 if PROFILE == "quick" else 8
 MAX_QUEUED = 240
-MAX_ACTIONS_PER_STATE = 6 if PROFILE == "quick" else 64
-MAX_RUNTIME_SECONDS = 0 if PROFILE == "quick" else 5 * 3600 + 45 * 60
+MAX_ACTIONS_PER_STATE = 6 if PROFILE == "quick" else 12
+MAX_RUNTIME_SECONDS = 0 if PROFILE == "quick" else 50 * 60
 WAIT = 0.5
 SEED_EDITOR_DIRECTIONS = {"project-create", "components", "fbd", "macros", "devices", "network", "runtime"}
 
@@ -55,8 +55,11 @@ def dump_ui(label: str, capture_screenshot: bool = True):
     png = OUT / f"{label}.png"
     if capture_screenshot:
         with png.open("wb") as f:
+            try:
             subprocess.run(["adb", "exec-out", "screencap", "-p"], stdout=f,
                            check=False, timeout=ADB_TIMEOUT)
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"adb screenshot timed out after {ADB_TIMEOUT}s") from exc
     return root, local.read_text(errors="replace") if local.exists() else "", png
 
 
@@ -299,8 +302,11 @@ def save_checkpoint(complete=False):
         "runtime_limit_hit": runtime_limit_hit,
         "coverage_limited": coverage_limited,
         "coverage_complete": (not runtime_limit_hit and not coverage_limited
-                              and len(state_rows) < MAX_STATES),
-        "termination_reason": ("runtime_limit" if runtime_limit_hit else
+                              and not probe_error and len(state_rows) < MAX_STATES),
+        "probe_error": probe_error,
+        "termination_reason": ("adb_timeout" if "timed out after" in probe_error else
+                               "adb_or_probe_error" if probe_error else
+                               "runtime_limit" if runtime_limit_hit else
                                "state_limit" if len(state_rows) >= MAX_STATES else
                                "depth_control_or_cycle_limit" if coverage_limited else "frontier_exhausted"),
         "states_captured": len(state_rows),
@@ -317,7 +323,7 @@ def save_checkpoint(complete=False):
         "runtime_error_log": "android-runtime-errors.log",
         "limitations": [
             "Quick profile visits at most 20 unique states, depth 4, and 6 controls per state.",
-            "Full profile explores up to 300 unique states with depth 12, up to 64 controls per state, and a 5h45m limit so artifact upload has time before the six-hour runner cap.",
+            "Full profile explores up to 100 unique states with depth 8, up to 12 actions per state, and a 50-minute limit so artifact upload has time.",
             "Full traversal uses one app session with Back navigation and de-duplicates identical visible accessibility states; identical screens with different hidden data may merge.",
             "Depth, per-screen action, state, wall-clock caps, and repeated-action cycle pruning are recorded as incomplete coverage rather than a complete audit.",
             "Only views marked long-clickable=true in the Android accessibility tree receive a one-second stationary long press.",
@@ -333,8 +339,11 @@ def save_checkpoint(complete=False):
     temporary.write_text(json.dumps(report, ensure_ascii=False, indent=2))
     temporary.replace(target)
     if len(state_rows) % 10 == 0:
-        log = adb("logcat", "-d", "-v", "brief", "AndroidRuntime:E", "*:S", check=False)
-        (OUT / "android-runtime-errors.log").write_text(log)
+        try:
+            log = adb("logcat", "-d", "-v", "brief", "AndroidRuntime:E", "*:S", check=False)
+            (OUT / "android-runtime-errors.log").write_text(log)
+        except RuntimeError as exc:
+            (OUT / "android-runtime-errors.log").write_text(f"Logcat unavailable: {exc}\\n")
 
 
 def capture_state(path):
@@ -350,8 +359,11 @@ def capture_state(path):
     # Save the expensive screenshot only for a new state; every unique capture
     # still waits WAIT seconds after the preceding action before reaching here.
     with png.open("wb") as f:
-        subprocess.run(["adb", "exec-out", "screencap", "-p"], stdout=f,
-                       check=False, timeout=ADB_TIMEOUT)
+        try:
+            subprocess.run(["adb", "exec-out", "screencap", "-p"], stdout=f,
+                           check=False, timeout=ADB_TIMEOUT)
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"adb screenshot timed out after {ADB_TIMEOUT}s") from exc
     loading_stalled = is_project_loading(root)
     ctrls = [] if loading_stalled else controls(root)
     if png.exists() and not loading_stalled:
@@ -378,6 +390,7 @@ def capture_state(path):
 
 runtime_limit_hit = False
 coverage_limited = False
+probe_error = ""
 cycle_pruned_actions = 0
 
 
@@ -450,17 +463,24 @@ def full_walk():
     return len(queue)
 
 
-fresh_start()
-seed_ok = True
-if PROFILE == "full" and DIRECTION in SEED_EDITOR_DIRECTIONS:
-    seed_ok = seed_project()
-    save_checkpoint()
-if seed_ok:
-    fast_walk([])
+try:
+    fresh_start()
+    seed_ok = True
+    if PROFILE == "full" and DIRECTION in SEED_EDITOR_DIRECTIONS:
+        seed_ok = seed_project()
+        save_checkpoint()
+    if seed_ok:
+        fast_walk([])
+except RuntimeError as exc:
+    probe_error = str(exc)
+    print(f"Probe stopped safely; preserving partial evidence: {probe_error}", flush=True)
 remaining_frontier = 0
 
-# Capture all uncaught Android Java exceptions from this audit session.
-log = adb("logcat", "-d", "-v", "brief", "AndroidRuntime:E", "*:S", check=False)
+# Capture all uncaught Android Java exceptions from this audit session when ADB is responsive.
+try:
+    log = adb("logcat", "-d", "-v", "brief", "AndroidRuntime:E", "*:S", check=False)
+except RuntimeError as exc:
+    log = f"Logcat unavailable: {exc}\\n"
 (OUT / "android-runtime-errors.log").write_text(log)
 save_checkpoint(complete=True)
 summary = json.loads((OUT / "ui-audit.json").read_text())

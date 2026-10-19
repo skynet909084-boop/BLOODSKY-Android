@@ -16,6 +16,13 @@ _LONG_PRESS_FOCUS = {
 LONG_PRESS_MS = 1000
 
 
+def _is_auxiliary_calculator(action):
+    node = action["node"]
+    resource = node.get("resource_id", "").rsplit("/", 1)[-1].casefold()
+    label = action.get("label", "").casefold()
+    return resource in {"calc", "calculator"} or "calculator" in label
+
+
 def actions_for_controls(controls, direction: str):
     """Create taps for navigation and long presses only for explicitly marked views."""
     actions = []
@@ -36,6 +43,10 @@ def actions_for_controls(controls, direction: str):
 
     terms = _LONG_PRESS_FOCUS.get(direction)
     focused = prioritize_actions(actions, direction)
+    # The calculator opens an unrelated keypad flow for focused audits.
+    # Keep it available during FBD exploration, where calc blocks may matter.
+    if direction != "fbd":
+        focused = [action for action in focused if not _is_auxiliary_calculator(action)]
     if terms:
         # Long-press a direction-matched target first when one is present.
         # Otherwise navigate toward that section before exploring unrelated
