@@ -101,3 +101,11 @@ Source of truth: `docs/FBD_MACRO_CODEC_20261018.md`.
 - UI smoke #697 (39286221404) built the APK and emulator successfully, but the Install and exercise APK on Android 11 step was cancelled (The operation was canceled). GitHub still reported the workflow run as in progress although its only job was marked cancelled; immediate job rerun was rejected because GitHub considered the workflow run still running. Retry after its run status settles.
 - These are results for the code commit/PR merge ref above, not proof for subsequent application-source changes. PR head is now documentation-only commit 35c7b3f1633f043ce2bd83b25dbb588af6e2164c.
 - Next work: resolve/retry the UI smoke cancellation, then trace original service-register handlers and route supported FBD/global user-register access to the project bank. Service registers 0–9 and unclear imported bindings must remain inactive until their effects are source-backed and tested.
+
+
+## CI and FBD register integration — 2026-10-19
+
+- On documentation-only head b3a88aa4ab96da2b5cdebde3909d8240cd73c3cb, APK/unit run #1066 passed, Original Craft probe #96 completed successfully, and Android UI smoke #699 passed on Android 11.
+- Probe #96 rebuilt and launched Craft successfully but remains partial: 12 states / 11 transitions, 68.6 seconds, termination at state_limit. It reached the macro editor route; it is not full feature coverage.
+- Verified from docs/FBD_CRAFT_MX_ARRAY_20261018.md and docs/KASKADA_SYSTEM_REGISTERS_AUDIT_20261019.md that FB_MX/FB_ARRAY share q.d.b and the project saves user words 10–1999. BLOODSKY now routes these FBD user-word reads/writes to each project's persisted bank; transient service words 0–9 remain isolated pending side-effect tracing.
+- New implementation changes are being prepared on PR #143; check the latest head and checks before relying on them. Keep main untouched and do not merge without review.

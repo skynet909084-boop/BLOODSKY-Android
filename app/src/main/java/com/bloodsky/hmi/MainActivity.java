@@ -6848,7 +6848,7 @@ public class MainActivity extends Activity {
             boolean enabled = fbdBooleanPinValue(inputs, inputPins, "EN", -1);
             Integer id = FbdCraftIntegerSelector.exactInteger(
                     fbdNumericPinValue(numInputs, inputPins, "I", -1, Double.NaN));
-            Integer value = enabled && id != null ? FbdCraftRegisterStore.read(id) : null;
+            Integer value = enabled && id != null ? FbdCraftRegisterStore.read(id, systemRegisterBank) : null;
             if (value == null) {
                 cacheNumeric[index] = Double.NaN;
                 return false;
@@ -6873,12 +6873,12 @@ public class MainActivity extends Activity {
                             fbdNumericPinValue(numInputs, inputPins, "ID", -1, Double.NaN));
                     Integer data = FbdCraftIntegerSelector.exactInteger(
                             fbdNumericPinValue(numInputs, inputPins, "DT", -1, Double.NaN));
-                    if (id != null && data != null) FbdCraftRegisterStore.write(id, data);
+                    if (id != null && data != null) FbdCraftRegisterStore.write(id, data, systemRegisterBank);
                 }
             }
             Integer id = hasId ? FbdCraftIntegerSelector.exactInteger(
                     fbdNumericPinValue(numInputs, inputPins, "ID", -1, Double.NaN)) : null;
-            Integer value = id == null ? null : FbdCraftRegisterStore.read(id);
+            Integer value = id == null ? null : FbdCraftRegisterStore.read(id, systemRegisterBank);
             if (value == null) {
                 cacheNumeric[index] = Double.NaN;
                 return false;

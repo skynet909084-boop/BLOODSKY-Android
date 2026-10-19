@@ -1,9 +1,8 @@
 package com.bloodsky.hmi;
 
 /**
- * Transient Craft register bank shared by source-native MX and ARRAY blocks.
- * Pinned Craft q.d.b has E=2000, F=1999 and int[2000]; its I/T methods only
- * check the upper bound, so this adapter also rejects negative IDs safely.
+ * Craft FB_MX/FB_ARRAY address adapter. User words share the project-persisted
+ * system bank; service words 0..9 remain transient until their providers exist.
  */
 public final class FbdCraftRegisterStore {
     public static final int SIZE = 2000;
@@ -21,6 +20,32 @@ public final class FbdCraftRegisterStore {
 
     public static synchronized Integer read(int id) {
         return isValidId(id) ? VALUES[id] : null;
+    }
+
+
+    /** Read Craft's shared bank: persistent user words, transient service words. */
+    public static synchronized Integer read(int id, CraftSystemRegisterBank userRegisters) {
+        if (!isValidId(id)) return null;
+        if (id < CraftSystemRegisterBank.FIRST_USER_REGISTER) return VALUES[id];
+        if (userRegisters == null) return null;
+        try { return userRegisters.readWord(id); }
+        catch (IllegalArgumentException invalid) { return null; }
+    }
+
+    /** Write Craft's shared bank; user words are bounded to unsigned 16-bit values. */
+    public static synchronized boolean write(int id, int value, CraftSystemRegisterBank userRegisters) {
+        if (!isValidId(id)) return false;
+        if (id < CraftSystemRegisterBank.FIRST_USER_REGISTER) {
+            VALUES[id] = value;
+            return true;
+        }
+        if (userRegisters == null || value < 0 || value > 0xffff) return false;
+        try {
+            userRegisters.writeWord(id, value);
+            return true;
+        } catch (IllegalArgumentException invalid) {
+            return false;
+        }
     }
 
     public static boolean risingEnable(boolean previous, boolean enabled) {

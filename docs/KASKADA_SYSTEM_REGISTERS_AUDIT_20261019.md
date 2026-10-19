@@ -5,7 +5,7 @@
 - HMI-KaSCADA v1.4 manual supplied by the user, PDF pages 69–74 (printed sections 9 and 10).
 - BLOODSKY-Android source on `feat/craft-screen-navigation-import-20261018`: `CraftRegisterGateway`, `CraftBitGateway`, `CraftNetworkBindingResolver`, `CraftProjectImporter`, and `docs/BLOODSKY_EXECUTION_STATUS.md`.
 
-This note records documented behavior separately from the current implementation. A successful import/build is not evidence that the internal register bank is implemented.
+This note separates documented behavior from the current implementation. Passing import/build checks alone does not establish full register or service-register parity.
 
 ## Documented model
 
@@ -45,8 +45,8 @@ Treat the entries as the manual's contract, not as proven runtime semantics. The
 ## BLOODSKY state
 
 - Craft component ID 19 register gateway has opt-in TCP read/transfer/write runtime; ID 22 bit gateway has opt-in TCP bit-transfer runtime. These operate on explicitly configured TCP endpoints.
-- Internal **Система** register storage, service-register providers, Float register packing, and system-register endpoints for the gateways are not implemented yet. RTU/Bluetooth transport parity also remains open; see `docs/BLOODSKY_EXECUTION_STATUS.md`.
-- `CraftNetworkBindingResolver` recognizes imported `posDeviceNetworkInList=100` as `kind=global` and records `globalRegisterBucket=8`. This preserves the original binding metadata; it does not create a live system-register bank or execute the element.
+- The project-persisted **Система** user bank (addresses 10–1999), bounded word/bit/Float API, and `FB_MX`/`FB_ARRAY` routing for user words are implemented. Service-register providers and side effects for 0–9, typed variable component bindings, Float gateway endpoints, and internal gateway transfers remain open. RTU/Bluetooth transport parity also remains open; see `docs/BLOODSKY_EXECUTION_STATUS.md`.
+- `CraftNetworkBindingResolver` recognizes imported `posDeviceNetworkInList=100` as `kind=global` and records `globalRegisterBucket=8`. This preserves original binding metadata; it does not activate the corresponding component binding.
 - The special Craft source slot 100 is a global/system binding marker, not Modbus register address 100 and not network device slot 100. Do not conflate it with system-register addresses 0–1000 or an external device's Modbus address.
 
 ## Recommended implementation order
@@ -76,3 +76,8 @@ Pinned decompilation inspected from `run 38600957172` (artifact SHA-256 `d78bd70
 - The runtime's register-9 path uses the same bank bit accessors and dispatches handler events for service-bit effects. The manual remains the authority for user-facing labels; message-to-action mapping and permission/timing behavior should be traced before implementing those side effects.
 
 This confirms the bank size and persistence shape from executable source. The manual's 200 count is inconsistent with the runtime; don't implement a 200-word bank. The 1000 endpoint remains the documented table endpoint, while the source bank continues through 1999.
+
+
+## Progress — shared FBD user-register access
+
+Pinned Craft FB_MX and FB_ARRAY use the same q.d.b register manager that project save serializes. BLOODSKY now routes their addresses 10–1999 through the project bank, while 0–9 remain transient and do not invoke unverified service actions. Tests cover per-project isolation, the service/user boundary, 16-bit range rejection and address limits. This does not yet wire Var/VarOut UI components or gateway endpoints to the bank.
