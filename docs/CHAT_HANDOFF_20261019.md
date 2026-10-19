@@ -92,3 +92,12 @@ Source of truth: `docs/FBD_MACRO_CODEC_20261018.md`.
 - Exact-head checks were triggered: APK/unit run #1064 (run ID `39286221453`), UI smoke #697 (`39286221404`), Craft emulator probe #94 (`39286221413`). Last checked, all three were queued without an assigned runner. Check their status against the newest PR head before relying on them.
 - Prior exact-head run #1063 on `911b5e3472149ca02e9a15ee15382093b9ae2379` passed APK/unit tests. Its Craft probe #93 completed but reached only 12 states / 11 transitions and stopped at its state limit; coverage was incomplete.
 - This work implements project storage and compatibility only. It does not route component bindings to the bank or implement service-register behavior. The next safe step is to trace and isolate service providers/commands before activating any component binding. Keep imported/ambiguous bindings inactive.
+
+
+## CI results for register-bank persistence — 2026-10-19
+
+- APK/unit run #1064 (39286221453) completed its build job successfully: archive-inspector tests, Android unit tests, debug APK build, and artifact uploads all passed for the PR merge ref containing code commit 10d4623f331fe80c7bbad3cca435a1f955e6bc1d.
+- Original Craft emulator probe #94 (39286221413) rebuilt and launched the pinned Craft 1.0.7 APK successfully. It captured 12 states and 11 transitions in 72.6 seconds, then stopped at the configured state limit; coverage_complete=false. It reached macro editor/create flow but did not cover full functionality.
+- UI smoke #697 (39286221404) built the APK and emulator successfully, but the Install and exercise APK on Android 11 step was cancelled (The operation was canceled). GitHub still reported the workflow run as in progress although its only job was marked cancelled; immediate job rerun was rejected because GitHub considered the workflow run still running. Retry after its run status settles.
+- These are results for the code commit/PR merge ref above, not proof for subsequent application-source changes. PR head is now documentation-only commit 35c7b3f1633f043ce2bd83b25dbb588af6e2164c.
+- Next work: resolve/retry the UI smoke cancellation, then trace original service-register handlers and route supported FBD/global user-register access to the project bank. Service registers 0–9 and unclear imported bindings must remain inactive until their effects are source-backed and tested.
