@@ -71,7 +71,7 @@ public final class CraftSystemRegisterBank {
     }
 
     /** Craft project format: [{"reg_10": value}, ...], omitting zero-valued words. */
-    public synchronized JSONArray toProjectJson() {
+    public synchronized JSONArray toProjectJson() throws org.json.JSONException {
         JSONArray saved = new JSONArray();
         for (int address = FIRST_USER_REGISTER; address < SIZE; address++) {
             if (words[address] != 0) {

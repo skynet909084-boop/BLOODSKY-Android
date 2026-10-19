@@ -7,7 +7,7 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class CraftSystemRegisterBankTest {
-    @Test public void userRangeExcludesServiceAndOutOfCapacityAddresses() {
+    @Test public void userRangeExcludesServiceAndOutOfCapacityAddresses() throws Exception {
         CraftSystemRegisterBank bank = new CraftSystemRegisterBank();
         assertFalse(CraftSystemRegisterBank.isUserRegister(9));
         assertTrue(CraftSystemRegisterBank.isUserRegister(10));
@@ -24,7 +24,7 @@ public class CraftSystemRegisterBankTest {
         expectIllegal(() -> bank.writeWord(10, 65536));
     }
 
-    @Test public void bitWritesPreserveOtherBitsAndValidateBitNumber() {
+    @Test public void bitWritesPreserveOtherBitsAndValidateBitNumber() throws Exception {
         CraftSystemRegisterBank bank = new CraftSystemRegisterBank();
         bank.writeWord(10, 0xa500);
         bank.writeBit(10, 3, true);
@@ -36,7 +36,7 @@ public class CraftSystemRegisterBankTest {
         expectIllegal(() -> bank.writeBit(10, -1, true));
     }
 
-    @Test public void floatRoundTripsWithAllExplicitByteAndRegisterOrders() {
+    @Test public void floatRoundTripsWithAllExplicitByteAndRegisterOrders() throws Exception {
         float value = -123.25f;
         for (boolean swapWord : new boolean[]{false, true}) {
             for (boolean swapByte : new boolean[]{false, true}) {
@@ -49,7 +49,7 @@ public class CraftSystemRegisterBankTest {
         expectIllegal(() -> new CraftSystemRegisterBank().writeFloat32(10, Float.POSITIVE_INFINITY, false, false));
     }
 
-    @Test public void projectJsonPersistsOnlyNonzeroUserWordsAndRestores() {
+    @Test public void projectJsonPersistsOnlyNonzeroUserWordsAndRestores() throws Exception {
         CraftSystemRegisterBank source = new CraftSystemRegisterBank();
         source.writeWord(10, 41);
         source.writeWord(1000, 65535);
@@ -73,7 +73,7 @@ public class CraftSystemRegisterBankTest {
         assertEquals(0, restored.readWord(1999));
     }
 
-    @Test public void invalidRestoreRejectsWholeSnapshotWithoutPartialMutation() {
+    @Test public void invalidRestoreRejectsWholeSnapshotWithoutPartialMutation() throws Exception {
         CraftSystemRegisterBank bank = new CraftSystemRegisterBank();
         bank.writeWord(10, 12);
         JSONArray invalid = new JSONArray()
