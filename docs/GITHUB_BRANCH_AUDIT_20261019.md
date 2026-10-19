@@ -24,6 +24,7 @@ PR #143 is the active working line. Its head commit already includes source-back
 - Craft ID17 is the manual's dynamic picture (§7.3, PDF pages 49–50): it has sixteen paths and chooses an image by bit or numeric register value.
 - The source-confirmed importer change from PR #157 was cherry-picked into PR #143 as commit `54830d6` (`Import Craft multi-state image media safely`). It maps only unique, present ZIP media paths to `imagePathStates`; absent/ambiguous paths stay unresolved, all Craft metadata is retained, and the old device/register binding stays inactive.
 - Three importer tests cover present, missing, and ambiguous media. Source inspection found the exact runtime choice in `CustomComponents/h.java`: `typeCommand=0` selects numeric image 0–15; nonzero uses the first set bit and hides the component for mask zero. `CraftMultiStateImage` now implements this selection and MainActivity uses it; unit coverage was added. Explicit device binding and same-density visual proof still remain open.
+- The first runtime commit was truncated while writing the large `MainActivity.java` blob through the connector; merge checks immediately exposed the missing source tail. Commit `0ba4383` restored the full file from `814168f` and reapplied the ID17 patch. The local 149-test Python suite passes after reference resource preparation; exact-head GitHub checks on `0ba4383` are the current acceptance gate.
 - PR #157's earlier APK/unit run #1029 and Craft probe #52 succeeded on its own head. Those checks do not cover the cherry-picked PR #143 head; new exact-head CI is required before closing the duplicate PR.
 
 ## Other open PR work that is not complete
@@ -58,6 +59,6 @@ Other unmerged refs without an open PR directly attached include branch bases, t
 
 1. Push `54830d6` to the PR #143 head and wait for exact-head Python, Android unit/APK, UI smoke and Craft probe checks.
 2. Inspect the new original probe artifact and continue the interrupted coverage plan with the supplemental directions; record what each direction actually reaches.
-3. Continue source-backed gaps on the same integration line in focused commits: internal/system gateway endpoint and typed component binding; Craft ID17 bit/number semantics; macro round-trip/execution; remaining documented component/runtime gaps.
+3. After the exact-head checks are green, continue source-backed gaps on the same integration line in focused commits: internal/system gateway endpoint and typed component binding; macro round-trip/execution; RTU hardware adapter; remaining documented component/runtime gaps.
 4. Keep PR #143 open until its checks and acceptance notes are current. Close PR #157 only after its change is present in #143 and the new head passes.
 5. Do not merge into `main` or delete the unmerged dependency branches while their stacked PRs remain active.
