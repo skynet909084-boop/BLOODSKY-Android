@@ -322,7 +322,7 @@ def save_checkpoint(complete=False):
         "runtime_error_log": "android-runtime-errors.log",
         "limitations": [
             "Quick profile visits at most 20 unique states, depth 4, and 6 controls per state.",
-            "Full profile explores up to 300 unique states with depth 12, up to 240 controls per state, and a 5h45m limit so artifact upload has time before the six-hour runner cap.",
+            "Full profile explores up to 300 unique states with depth 12, up to 64 controls per state, and a 5h45m limit so artifact upload has time before the six-hour runner cap.",
             "Full traversal uses one app session with Back navigation and de-duplicates identical visible accessibility states; identical screens with different hidden data may merge.",
             "Depth, per-screen action, state, or wall-clock caps are recorded as incomplete coverage rather than a complete audit.",
             "Only views marked long-clickable=true in the Android accessibility tree receive a one-second stationary long press.",
@@ -330,7 +330,7 @@ def save_checkpoint(complete=False):
             "Screenshots and accessibility trees are flushed to the report after each unique state.",
             "Unavailable Bluetooth and USB hardware is not simulated.",
             "Generic values are entered only into visible text fields to reveal subsequent screens; they are not valid device credentials.",
-            "Project loading is observed for 2 seconds; a persistent loading screen is recorded once and is not expanded into duplicate branches."
+            "Project creation is observed for up to 90 seconds before traversal; persistent loading is recorded once and not expanded into duplicate branches."
         ],
     }
     target = OUT / "ui-audit.json"
