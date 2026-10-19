@@ -35,16 +35,19 @@ def actions_for_controls(controls, direction: str):
                             "label": f"LONG PRESS: {label}"})
 
     terms = _LONG_PRESS_FOCUS.get(direction)
-    if terms:
-        indexed = list(enumerate(actions))
-        indexed.sort(key=lambda pair: (
-            pair[1]["kind"] != "long_press",
-            not any(term in pair[1]["label"].casefold() for term in terms),
-            pair[0],
-        ))
-        return [action for _, action in indexed]
-
     focused = prioritize_actions(actions, direction)
+    if terms:
+        # Long-press a direction-matched target first when one is present.
+        # Otherwise navigate toward that section before exploring unrelated
+        # long-clickable controls such as the calculator button.
+        matching_long_presses = [
+            action for action in focused
+            if action["kind"] == "long_press"
+            and any(term in action["label"].casefold() for term in terms)
+        ]
+        return [*matching_long_presses,
+                *(action for action in focused if action not in matching_long_presses)]
+
     return [*filter(lambda action: action["kind"] == "long_press", focused),
             *filter(lambda action: action["kind"] != "long_press", focused)]
 

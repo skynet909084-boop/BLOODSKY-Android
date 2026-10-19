@@ -31,6 +31,15 @@ class CraftLongPressStateTest(unittest.TestCase):
         actions = actions_for_controls(controls, "fbd-timer-modes")
         self.assertIn("Timer", actions[0]["label"])
 
+    def test_unmatched_long_press_does_not_block_directional_navigation(self):
+        controls = [
+            {"x": 10, "y": 20, "text": "Calculator", "long_clickable": True},
+            {"x": 30, "y": 40, "text": "Macros", "clickable": True},
+        ]
+        actions = actions_for_controls(controls, "macros")
+        self.assertEqual("Macros", actions[0]["label"])
+        self.assertEqual("LONG PRESS: Calculator", actions[1]["label"])
+
     def test_long_press_uses_stationary_swipe_with_one_second_hold(self):
         action = {"kind": "long_press", "node": {"x": 123, "y": 456}}
         self.assertEqual(

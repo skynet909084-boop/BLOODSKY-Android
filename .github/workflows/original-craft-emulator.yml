@@ -7,6 +7,8 @@ on:
       - '.github/workflows/original-craft-emulator.yml'
       - 'tools/original_craft_emulator_probe.py'
       - 'tools/original_craft_longpress_probe.py'
+      - 'tools/original_craft_longpress_state.py'
+      - 'tools/test_original_craft_longpress_state.py'
   workflow_dispatch:
     inputs:
       profile:
