@@ -39,8 +39,7 @@ class CraftLongPressStateTest(unittest.TestCase):
             {"x": 30, "y": 40, "text": "Macros", "clickable": True},
         ]
         actions = actions_for_controls(controls, "macros")
-        self.assertEqual("Macros", actions[0]["label"])
-        self.assertEqual("LONG PRESS: Calculator", actions[1]["label"])
+        self.assertEqual(["Macros"], [action["label"] for action in actions])
 
     def test_calculator_is_skipped_outside_fbd_but_kept_for_fbd(self):
         controls = [
