@@ -6618,6 +6618,14 @@ public class MainActivity extends Activity {
         return Math.round(raw);
     }
 
+    /** Original FB_TIMER.f() returns without changing state until IN and MS resolve. */
+    public static boolean fbdCraftTimerInputsReady(List<Double> values, List<String> pins) {
+        double input = fbdNumericPinValue(values, pins, "IN", 0, Double.NaN);
+        double millis = fbdNumericPinValue(values, pins, "MS", 1, Double.NaN);
+        if (Double.isNaN(millis)) millis = fbdNumericPinValue(values, pins, "PT", 1, Double.NaN);
+        return Double.isFinite(input) && Double.isFinite(millis);
+    }
+
     /** Original FB_TIMER takes an Integer MS input; PT remains a legacy BLOODSKY alias. */
     public static long fbdCraftTimerPresetMs(List<Double> values, List<String> pins,
                                              int configuredMs, String unit) {
@@ -7234,6 +7242,10 @@ public class MainActivity extends Activity {
             return next.output;
         }
         if ("FBD CRAFT TIMER".equals(canonicalType)) {
+            if (!fbdCraftTimerInputsReady(numInputs, inputPins)) {
+                cacheNumeric[index] = Double.NaN;
+                return false;
+            }
             boolean input = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
             long presetMs = fbdCraftTimerPresetMs(numInputs, inputPins, widget.timerPresetMs,
                     widget.extraFields.optString("craftTimerUnit", "MS"));
