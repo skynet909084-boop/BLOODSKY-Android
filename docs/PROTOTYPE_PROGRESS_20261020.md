@@ -209,3 +209,11 @@ The artifact completed without probe errors or runtime-cap hit. Its project seed
 - Parsed the Library-provided projects `home2.pro`, `gitH.pro`, `пож.pro`, and `дом 2025.pro` embedded in its ZIP. Counts: 65, 65, 124 and 346 `TableComponent` records respectively; none contains a record with `componentId=3`.
 - `home2.zip` and `gitH.zip` each contain the paired `.pro` plus one image; their `.pro` files differ. `пож.zip` contains only an empty directory entry, while its separate `.pro` is the 124-component source. The 346-component `дом 2025.pro` is embedded in `дом 2025.zip`.
 - These examples provide no positive mapping for ID 3; absence in these projects does not resolve the app-wide mapping question. Keep it fail-closed and continue registry/factory/resource search.
+
+
+## Original project acceptance gap — 20 Oct 2026
+
+- Existing sanitized CI fixtures cover `home.pro` (24 components), `gitH.pro` (65 components) and standalone `пож.pro` (124 components). They check import/save/reopen, but do not establish ZIP media round-trip or full runtime bindings.
+- Newly supplied `home2` and `дом 2025` archives are not yet represented in that CI acceptance; `дом 2025` contains 346 component records. `пож.zip` has no media payload.
+- Next acceptance package: add sanitized immutable fixtures with checksums and expected record/screen/connection counts; perform import → deterministic single-field edit → save → ZIP export → re-import → reopen; assert component/connection metadata, unknown fields, inactive legacy bindings, media bytes/backgrounds, screen counts and device slots are preserved except for the explicit edit. Keep missing-media, size/path, rollback and CRC failure checks intact. Add a focused API30 UI restart pass for a representative fixture.
+- Do not claim original-project parity until these fixture-based gates pass. No raw Library archive has been copied into the repository.
