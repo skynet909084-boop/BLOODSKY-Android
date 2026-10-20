@@ -1282,6 +1282,8 @@ public class MainActivity extends Activity {
                                 new CraftRegisterGateway.Transport() {
                                     @Override public int[] read(CraftRegisterGateway.Binding binding, int quantity) throws IOException {
                                         if (!pollSession.accepts(sessionToken)) throw new IOException("Сеанс проекта завершён");
+                                        if (binding.systemRegister)
+                                            return CraftRegisterGateway.readSystemSource(binding, quantity, systemRegisterBank);
                                         return new ModbusTcpClient(binding.host, binding.port).read(
                                                 binding.unit, binding.address, quantity, binding.readFunction);
                                     }
@@ -4073,7 +4075,7 @@ public class MainActivity extends Activity {
             gatewayCountField.setHint(craftBitGateway ? "Количество бит (1–16; по изменению — 1)" : "Количество регистров (1–99; по изменению — 1)"); form.addView(gatewayCountField);
             gatewaySourceField = propertyField(w.extraFields.optString(craftBitGateway ? "craftBitGatewaySource" : "craftGatewaySource", ""),
                     InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-            gatewaySourceField.setHint(craftBitGateway ? "Источник: tcp://192.168.1.10:502/1/0 (адрес 0-based)" : "Источник: tcp://192.168.1.10:502/1/40001 (FC03/04)"); form.addView(gatewaySourceField);
+            gatewaySourceField.setHint(craftBitGateway ? "Источник: tcp://192.168.1.10:502/1/0 (адрес 0-based)" : "Источник: tcp://192.168.1.10:502/1/40001 (FC03/04) или system://register/10"); form.addView(gatewaySourceField);
             gatewayDestinationField = propertyField(w.extraFields.optString(craftBitGateway ? "craftBitGatewayDestination" : "craftGatewayDestination", ""),
                     InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
             gatewayDestinationField.setHint(craftBitGateway ? "Coil-приёмник: tcp://192.168.1.11:502/1/0" : "Приёмник: tcp://192.168.1.11:502/1/40001 (holding)"); form.addView(gatewayDestinationField);
@@ -4088,7 +4090,7 @@ public class MainActivity extends Activity {
             TextView gatewayHelp = new TextView(this);
             gatewayHelp.setText(craftBitGateway
                     ? "У исходного проекта адреса устройств заданы внутренними индексами; укажи TCP-адреса вручную. Источник читает FC01/FC02, приёмник пишет coils через FC05/FC15. Постоянно и по фронту передаётся 1–16 бит, по изменению — один. Адреса TCP здесь нумеруются с нуля. Системные регистры и RTU/Bluetooth пока не поддерживаются. Импортированный шлюз выключен."
-                    : "У исходного проекта адреса устройств заданы внутренними индексами; они не переносятся в сетевые адреса автоматически. Укажи TCP-адреса вручную. Режимы 0/1 копируют 1–99 holding/input-регистров, режим по изменению копирует ровно один. Системные регистры, RTU и Bluetooth здесь пока не поддерживаются. Импортированный шлюз изначально выключен.");
+                    : "У исходного проекта адреса устройств заданы внутренними индексами; они не переносятся автоматически. Укажи TCP-адрес приёмника вручную. Источник можно задать как TCP/FC03/04 или как system://register/10 (локальный банк Система, только чтение); режимы 0/1 копируют 1–99 регистров, по изменению — один. Внутренние регистры 0–1999 доступны как источник; приёмник Система, RTU и Bluetooth пока не поддерживаются. Импортированный шлюз изначально выключен.");
             form.addView(gatewayHelp);
         } else {
             gatewayEnabledField = null; gatewayModeField = null; gatewaySourceFunctionField = null;

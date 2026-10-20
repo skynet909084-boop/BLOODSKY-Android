@@ -2,16 +2,16 @@
 
 ## Craft register gateway ID 19 — 2026-10-18
 
-- Added an explicit settings form for source, destination, count, mode, trigger endpoint and trigger bit. Imported device-index bindings are preserved but do not run; gateway enable is opt-in and requires replacing them with TCP endpoints.
+- Added an explicit settings form for source, destination, count, mode, trigger endpoint and trigger bit. Imported device-index bindings are preserved but do not run; gateway enable is opt-in and requires explicit endpoints (TCP destination, TCP or local-system source).
 - Added direct Modbus TCP execution for continuous transfer, rising-edge trigger, and single-register source-change mode. Reads support FC03/FC04; writes use validated FC16 holding-register batches. All network requests run on the existing background Modbus executor and are guarded by project/operator lifecycle tokens.
 - `CraftRegisterGateway` validates address/range/count/mode constraints and owns event state. Unit tests cover 1–99 counts, FC04 source normalization, holding-only target, low→high edge behavior, source-change behavior, disabled import and no destination writes after a failed read.
-- Runtime still does not implement Craft system-register endpoints, RTU/Bluetooth transports, or bit gateway ID 22. The source-backed unit tests and debug APK pass in [Actions run #765](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39130772248). Simulator/hardware acceptance and physical parity remain open.
+- The gateway can now read a bounded local Craft system-register range with `system://register/N` and copy it to an explicitly configured TCP holding-register destination. System-register destinations are still unsupported; imported Craft bindings remain disabled until remapped. RTU/Bluetooth transports and physical acceptance remain open.
 
 ## Craft bit gateway ID 22 — 2026-10-18
 
 - Manual page 60 and Craft 1.0.7 source confirm a bit-gateway widget with 1–16 bits, FC01 Coils or FC02 Discrete Inputs source selection, three transfer modes, and a holding-register bit trigger for rising-edge mode.
 - Added opt-in TCP settings/runtime: FC01/02 bit reads, FC05 one-coil write or FC15 packed writes, continuous/rising-edge/source-change modes, and a 1-bit limit for source-change. Imported endpoint indices stay disabled until manually remapped.
-- Added loopback protocol tests for FC05/15 packing and echo, importer preservation tests, and pure gateway mode/validation tests. System registers, RTU/Bluetooth and paired-device acceptance remain open.
+- Added loopback protocol tests for FC05/15 packing and echo, importer preservation tests, and pure gateway mode/validation tests. ID 22 remains TCP-only; system-register endpoints, RTU/Bluetooth and paired-device acceptance remain open for that gateway.
 
 ## Full manual/decompilation audit refresh — 2026-10-18
 

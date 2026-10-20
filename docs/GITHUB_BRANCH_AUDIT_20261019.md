@@ -91,3 +91,10 @@ Other unmerged refs without an open PR directly attached include branch bases, t
 - The Craft Float input/output boundary fix is already present on this line as `b329708`; the separate local commit `f94cfc7` was a duplicate and was not cherry-picked.
 - Remaining source-backed work stays open: typed non-FBD UI bindings to Craft system registers, internal/system gateway endpoints and transfers, physical RTU Bluetooth/USB adapters, remaining macro round-trip/execution behavior, and full visual/runtime acceptance. See `KASKADA_SYSTEM_REGISTERS_AUDIT_20261019.md` and `TRANSPORT_CONNECTIVITY_AUDIT_20261019.md` for evidence and boundaries.
 
+
+
+## Craft ID19 local-system source — 2026-10-20
+
+- JADX `mbCanvas.F(int, CustomComponents.b)` routes source slot 100 to the internal `q.d.b` register manager (`v0.e`); network slots route to their configured connection. The editor labels this slot `S#` and stores it separately from TCP unit/register addressing.
+- BLOODSKY now accepts explicit `system://register/N` as a read-only source for ID19 and copies values only to an explicitly configured TCP holding-register destination. The address/count must fit Craft's 0–1999 runtime bank. System destinations and service-register writes remain unsupported; imported connection metadata still does not auto-enable the gateway.
+- Regression tests cover source parsing, forbidden system destination, bank bounds, multiword reads and TCP destination validation. Python suite passed 149/149 after resource preparation; `git diff --check` passed. Android unit/build validation must come from CI because this checkout has no Gradle executable or wrapper.

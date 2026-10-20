@@ -20,12 +20,19 @@ public final class CraftRegisterGateway {
     public static final class Binding {
         public final String host;
         public final int port, unit, address, readFunction;
-        private Binding(String host, int port, int unit, int address, int readFunction) {
+        public final boolean systemRegister;
+        private Binding(String host, int port, int unit, int address, int readFunction,
+                        boolean systemRegister) {
             this.host = host; this.port = port; this.unit = unit; this.address = address;
-            this.readFunction = readFunction;
+            this.readFunction = readFunction; this.systemRegister = systemRegister;
+        }
+        private static Binding system(int address) {
+            return new Binding("", 0, 0, address, 3, true);
         }
         public boolean sameDevice(Binding other) {
-            return other != null && host.equalsIgnoreCase(other.host) && port == other.port && unit == other.unit;
+            if (other == null || systemRegister != other.systemRegister) return false;
+            return systemRegister ? true
+                    : host.equalsIgnoreCase(other.host) && port == other.port && unit == other.unit;
         }
     }
 
@@ -44,12 +51,13 @@ public final class CraftRegisterGateway {
         private int[] previousSource;
         private String key(Config config) {
             return config.mode + "|" + config.count + "|" + config.triggerBit + "|"
-                    + config.source.host + ":" + config.source.port + "/" + config.source.unit + "/"
-                    + config.source.address + "/" + config.source.readFunction + "|"
-                    + config.destination.host + ":" + config.destination.port + "/" + config.destination.unit
-                    + "/" + config.destination.address + "|"
-                    + (config.trigger == null ? "" : config.trigger.host + ":" + config.trigger.port + "/"
-                    + config.trigger.unit + "/" + config.trigger.address + "/" + config.trigger.readFunction);
+                    + id(config.source) + "|" + id(config.destination) + "|" + id(config.trigger);
+        }
+        private String id(Binding binding) {
+            if (binding == null) return "";
+            if (binding.systemRegister) return "system/" + binding.address;
+            return binding.host + ":" + binding.port + "/" + binding.unit + "/"
+                    + binding.address + "/" + binding.readFunction;
         }
         private void resetIfChanged(Config config) {
             String nextKey = key(config);
@@ -97,9 +105,21 @@ public final class CraftRegisterGateway {
     }
 
     public static Binding parseBinding(String value, int quantity, boolean destination) {
-        if (value == null || !value.startsWith("tcp://")) return null;
+        if (value == null) return null;
         try {
             URI uri = URI.create(value.trim());
+            if ("system".equals(uri.getScheme())) {
+                String[] systemPath = uri.getPath().split("/", -1);
+                if (destination || !"register".equals(uri.getHost()) || systemPath.length != 2
+                        || !systemPath[0].isEmpty() || uri.getRawQuery() != null
+                        || uri.getRawFragment() != null || uri.getRawUserInfo() != null) return null;
+                int address = Integer.parseInt(systemPath[1]);
+                if (address < 0 || address >= CraftSystemRegisterBank.SIZE
+                        || quantity < 1 || quantity > 99
+                        || (long) address + quantity > CraftSystemRegisterBank.SIZE) return null;
+                return Binding.system(address);
+            }
+            if (!"tcp".equals(uri.getScheme())) return null;
             String[] path = uri.getPath().split("/", -1);
             if (uri.getHost() == null || uri.getPort() < 1 || uri.getPort() > 65535
                     || path.length != 3 || !path[0].isEmpty() || uri.getRawQuery() != null
@@ -115,8 +135,20 @@ public final class CraftRegisterGateway {
             }
             if ((destination && function != 3) || quantity < 1 || quantity > (destination ? 99 : 99)
                     || (long)address + quantity > 65536L) return null;
-            return new Binding(uri.getHost(), uri.getPort(), unit, address, function);
+            return new Binding(uri.getHost(), uri.getPort(), unit, address, function, false);
         } catch (Exception ignored) { return null; }
+    }
+
+    /** Reads Craft's local system bank for a source/trigger endpoint; never writes it. */
+    public static int[] readSystemSource(Binding binding, int quantity,
+                                         CraftSystemRegisterBank projectBank) {
+        if (binding == null || !binding.systemRegister || quantity < 1 || quantity > 99
+                || (long) binding.address + quantity > CraftSystemRegisterBank.SIZE)
+            throw new IllegalArgumentException("A bounded Craft system-register source is required");
+        int[] values = new int[quantity];
+        for (int i = 0; i < quantity; i++)
+            values[i] = CraftSystemRegisterAccess.readInt(binding.address + i, projectBank);
+        return values;
     }
 
     public static Outcome transfer(Config config, State state, Transport transport) throws IOException {

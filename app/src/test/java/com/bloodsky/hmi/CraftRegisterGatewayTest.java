@@ -49,6 +49,28 @@ public class CraftRegisterGatewayTest {
         assertNull(CraftRegisterGateway.from(new JSONObject()));
     }
 
+    @Test public void systemRegisterCanBeAnExplicitReadOnlyGatewaySource() {
+        CraftRegisterGateway.Binding system = CraftRegisterGateway.parseBinding(
+                "system://register/10", 2, false);
+        assertNotNull(system);
+        assertTrue(system.systemRegister);
+        assertEquals(10, system.address);
+        assertNull(CraftRegisterGateway.parseBinding("system://register/10", 1, true));
+        assertNull(CraftRegisterGateway.parseBinding("system://register/1999", 2, false));
+        assertNull(CraftRegisterGateway.parseBinding("system://register/10?x=1", 1, false));
+        CraftRegisterGateway.Config config = CraftRegisterGateway.validate(true, 0, 2,
+                "system://register/10", "tcp://b.local:502/1/40001", "", 0);
+        assertTrue(config.source.systemRegister);
+        assertFalse(config.destination.systemRegister);
+        CraftSystemRegisterBank project = new CraftSystemRegisterBank();
+        CraftSystemRegisterAccess.writeInt(10, 321, project);
+        CraftSystemRegisterAccess.writeInt(11, 654, project);
+        assertArrayEquals(new int[]{321, 654},
+                CraftRegisterGateway.readSystemSource(config.source, 2, project));
+        assertThrows(IllegalArgumentException.class,
+                () -> CraftRegisterGateway.readSystemSource(config.destination, 1, project));
+    }
+
     @Test public void continuousModeTransfersEverySuccessfulPoll() throws Exception {
         CraftRegisterGateway.Config config = config(0, 2);
         CraftRegisterGateway.State state = new CraftRegisterGateway.State();
