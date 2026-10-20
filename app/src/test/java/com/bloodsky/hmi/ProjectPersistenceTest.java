@@ -68,6 +68,7 @@ public class ProjectPersistenceTest {
         project.put("projectName", "ZIP Проект");
         project.put("currentScreen", 0);
         project.put("unknownProjectKey", "preservedValue");
+        project.put("deviceNetwork", new JSONArray().put("device-a").put("device-b"));
 
         JSONArray screens = new JSONArray();
         JSONObject screen = new JSONObject();
@@ -78,9 +79,18 @@ public class ProjectPersistenceTest {
         JSONObject widget = new JSONObject();
         widget.put("type", "Кнопка");
         widget.put("text", "Пуск");
+        widget.put("connectionInfo", "binding-to-device-slot-1");
         widget.put("x", 10); widget.put("y", 20); widget.put("w", 100); widget.put("h", 50);
         widgets.put(widget);
+        widgets.put(new JSONObject().put("type", "FBD AND").put("text", "И")
+                .put("x", 120).put("y", 20).put("w", 100).put("h", 50));
+        widgets.put(new JSONObject().put("type", "FBD OR").put("text", "ИЛИ")
+                .put("x", 240).put("y", 20).put("w", 100).put("h", 50));
         screen.put("widgets", widgets);
+        JSONArray fbdConnections = new JSONArray().put(new JSONObject()
+                .put("source", 1).put("target", 2)
+                .put("vendorRoute", new JSONObject().put("kind", "orthogonal")));
+        screen.put("connections", fbdConnections);
         screens.put(screen);
         project.put("screens", screens);
 
@@ -97,9 +107,24 @@ public class ProjectPersistenceTest {
 
         assertEquals("ZIP Проект", importedProject.optString("projectName"));
         assertEquals("preservedValue", importedProject.optString("unknownProjectKey"));
+        JSONArray importedDeviceNetwork = importedProject.getJSONArray("deviceNetwork");
+        assertEquals(2, importedDeviceNetwork.length());
+        assertEquals("device-a", importedDeviceNetwork.getString(0));
+        assertEquals("device-b", importedDeviceNetwork.getString(1));
         JSONArray importedScreens = importedProject.getJSONArray("screens");
         assertEquals(1, importedScreens.length());
-        assertEquals("Главный", importedScreens.getJSONObject(0).getString("name"));
+        JSONObject importedScreen = importedScreens.getJSONObject(0);
+        assertEquals("Главный", importedScreen.getString("name"));
+        JSONArray importedWidgets = importedScreen.getJSONArray("widgets");
+        assertEquals("binding-to-device-slot-1", importedWidgets.getJSONObject(0).getString("connectionInfo"));
+        assertEquals("FBD AND", importedWidgets.getJSONObject(1).getString("type"));
+        assertEquals("FBD OR", importedWidgets.getJSONObject(2).getString("type"));
+        JSONArray importedConnections = importedScreen.getJSONArray("connections");
+        assertEquals(1, importedConnections.length());
+        assertEquals(1, importedConnections.getJSONObject(0).getInt("source"));
+        assertEquals(2, importedConnections.getJSONObject(0).getInt("target"));
+        assertEquals("orthogonal", importedConnections.getJSONObject(0)
+                .getJSONObject("vendorRoute").getString("kind"));
     }
 
     @Test(expected = IllegalArgumentException.class)
