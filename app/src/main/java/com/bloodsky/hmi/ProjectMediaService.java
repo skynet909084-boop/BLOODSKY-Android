@@ -359,7 +359,7 @@ public class ProjectMediaService {
                                                           String projectPath, String savedProjectJson) throws IOException {
         if (projectPath == null || !projectPath.matches("media/asset_[0-9a-f]{64}\\.[a-z0-9]{1,10}"))
             throw new IOException("Invalid selected media reference");
-        if (savedProjectJson != null && savedProjectJson.contains("\"" + projectPath + "\"")) return false;
+        if (savedProjectJsonReferencesPath(savedProjectJson, projectPath)) return false;
         File root;
         try { root = resolveProjectMediaDir(filesDir, projectJson); }
         catch (RuntimeException invalidProject) {
@@ -370,6 +370,33 @@ public class ProjectMediaService {
         if (!file.getPath().startsWith(base + File.separator))
             throw new IOException("Unsafe selected media path");
         return file.isFile() && file.delete();
+    }
+
+    private static boolean savedProjectJsonReferencesPath(String savedProjectJson, String projectPath) {
+        if (savedProjectJson == null || savedProjectJson.trim().isEmpty()) return false;
+        try {
+            return containsJsonStringValue(new JSONObject(savedProjectJson), projectPath);
+        } catch (org.json.JSONException invalidSavedProject) {
+            // Keep the media copy if saved metadata cannot be inspected safely.
+            return true;
+        }
+    }
+
+    private static boolean containsJsonStringValue(Object value, String expected) {
+        if (expected.equals(value)) return true;
+        if (value instanceof JSONObject) {
+            JSONObject object = (JSONObject) value;
+            java.util.Iterator<String> keys = object.keys();
+            while (keys.hasNext()) {
+                if (containsJsonStringValue(object.opt(keys.next()), expected)) return true;
+            }
+        } else if (value instanceof JSONArray) {
+            JSONArray array = (JSONArray) value;
+            for (int i = 0; i < array.length(); i++) {
+                if (containsJsonStringValue(array.opt(i), expected)) return true;
+            }
+        }
+        return false;
     }
 
     public static final class SelectedMediaCopy {
