@@ -28,6 +28,10 @@ public class FbdSourceNativeCanvasSkinTest {
         assertTrue(FbdSourceCanvasSkin.supports("FBD CRAFT SENSOR SPEED"));
         assertTrue(FbdSourceCanvasSkin.supports("FBD CRAFT SUNRISE"));
         assertTrue(FbdSourceCanvasSkin.supports("FBD CRAFT ODTEMP"));
+        for (String type : new String[]{"FBD CRAFT VAR BOOL", "FBD CRAFT VAR OUT BOOL",
+                "FBD CRAFT VAR INT", "FBD CRAFT VAR OUT INT", "FBD CRAFT VAR FLOAT",
+                "FBD CRAFT VAR OUT FLOAT", "FBD CRAFT VAR NAME IN INT", "FBD CRAFT VAR NAME OUT FLOAT"})
+            assertTrue(FbdSourceCanvasSkin.supports(type));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT CTU", "CTU 16 bit")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT T", "T")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT BLINK", "BLINK")));
@@ -42,6 +46,34 @@ public class FbdSourceNativeCanvasSkinTest {
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT SENSOR SPEED", "SM")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT SUNRISE", "SR")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT ODTEMP", "DT")));
+    }
+
+    @Test public void variableCaptionsFollowRegisterConstantAndNamedVariableFields() throws Exception {
+        MainActivity.Widget bit = block("FBD CRAFT VAR BOOL", "VAR");
+        bit.extraFields.put("reg", 12); bit.extraFields.put("craftVarBit", 7);
+        assertEquals("S#12.7", FbdSourceCanvasSkin.variableCaption(bit));
+        assertTrue(FbdSourceCanvasSkin.shouldUse(bit));
+        bit.text = "user label";
+        assertFalse(FbdSourceCanvasSkin.shouldUse(bit));
+
+        MainActivity.Widget constant = block("FBD CRAFT VAR INT", "VAR_INT");
+        constant.extraFields.put("craftVarConstantMode", true);
+        constant.extraFields.put("craftVarConstant", "123");
+        assertEquals("123", FbdSourceCanvasSkin.variableCaption(constant));
+        assertTrue(FbdSourceCanvasSkin.shouldUse(constant));
+
+        MainActivity.Widget named = block("FBD CRAFT VAR NAME IN INT", "var name");
+        named.extraFields.put("craftVariableName", "pressure");
+        assertEquals("pressure", FbdSourceCanvasSkin.variableCaption(named));
+        assertTrue(FbdSourceCanvasSkin.shouldUse(named));
+        assertArrayEquals(new String[0], MainActivity.knownFbdPins(named.type, false));
+        assertArrayEquals(new String[]{"Q"}, MainActivity.knownFbdPins(named.type, true));
+
+        MainActivity.Widget namedSink = block("FBD CRAFT VAR NAME OUT INT", "var name");
+        namedSink.extraFields.put("craftVariableName", "pressure");
+        assertTrue(FbdSourceCanvasSkin.shouldUse(namedSink));
+        assertArrayEquals(new String[]{"IN"}, MainActivity.knownFbdPins(namedSink.type, false));
+        assertArrayEquals(new String[0], MainActivity.knownFbdPins(namedSink.type, true));
     }
 
     @Test public void sensorAndSunriseLabelsFollowImportedSourceModes() throws Exception {
