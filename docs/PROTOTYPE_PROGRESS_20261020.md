@@ -312,3 +312,13 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 - Inspected the USB portion of legacy PR #38 against the current prototype. It manually opens the first attached USB device, selects the first interface and bulk endpoints, and sends a fixed single-register request. The dialog stores baud/parity/stop-bit settings, but this code does not apply them through a serial driver. The current app has no USB serial library or USB transport integration; `ModbusRtuClient` is only a protocol client over already-open byte streams.
 - Do not merge the PR #38 USB code as-is or report USB RTU as implemented. The supported next implementation must use a serial driver, request Android USB permission, apply serial parameters, and connect the existing `ModbusRtuClient` to the opened port; device hardware acceptance remains a separate gate.
 - User direction: defer original project archive testing to final-app acceptance and prioritize app implementation/convergence meanwhile.
+
+
+## Continuation checkpoint — 20 Oct 2026, 14:26 Yekaterinburg
+
+- Integration cleanup is recorded at `a58997c` on `prototype/all-in-one-20261020`; stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+- Removed five unused cloud-agent/DeepSeek workflows from the integration branch and closed superseded PRs #38, #44, #46, #69, #73 and #74. Open PRs #149–151 are retained as original-app evidence probes.
+- A fresh inventory still shows 43 branch refs. They have not been deleted; keep them available as history until a supported ref-deletion operation is available. The integration line remains the only working app prototype.
+- Reviewed the newly supplied decoded source archive (SHA-256 `92d12206bde746f5a76c89e0c3311119287b14bb26cdc8ca36d515e2fca01f7a`). It exposes Craft's USB serial call path and supported CDC ACM, CH34x, CP21xx, FTDI and Prolific drivers. Craft requests USB permission, opens a serial port, applies baud/data/stop/parity settings, then exchanges RTU frames.
+- BLOODSKY still has a stream-level `ModbusRtuClient`, without USB host permission/driver ownership or a device lifecycle. Implement that adapter as the next focused code slice; do not transplant old PR #38 wholesale. Require fake-port tests, exact-head APK/JUnit and UI evidence before calling the runtime path integrated. Hardware acceptance remains separate.
+- This checkpoint changed documentation/workflows only; no Android code changed and no new APK run was started.
