@@ -494,10 +494,15 @@ class Smoke:
             raise AssertionError('Canceling FBD context actions changed saved wires')
         if saved_widgets() != expected:
             raise AssertionError('Adding a wire changed component properties')
+        # Start the drag well inside the block body. The upper-left pin/skin
+        # gutter is not a reliable pointer target on Android 12.
         adb('shell', 'input', 'swipe',
-            str(round(left+source['x']+9)), str(round(top+source['y']+9)),
-            str(round(left+source['x']+39)), str(round(top+source['y']+19)), '310')
+            str(sx), str(sy), str(sx+64), str(sy+32), '310')
+        drag_deadline = time.monotonic() + 10
         dragged_widgets = saved_widgets()
+        while dragged_widgets == expected and time.monotonic() < drag_deadline:
+            time.sleep(0.2)
+            dragged_widgets = saved_widgets()
         if dragged_widgets == expected:
             raise AssertionError('FBD drag did not persist new geometry')
         for idx, widget in enumerate(dragged_widgets):
