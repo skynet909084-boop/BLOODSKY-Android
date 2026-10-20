@@ -142,3 +142,10 @@ All nine available `ui-audit.json` files had `unique_state_signatures == states_
 | Import paste | 10 / 10 | 29 | 3 | 320.2 | 1 |
 | Devices | 11 / 11 | 26 | 7 | 357.8 | 1 |
 | Import QR | 8 / 8 | 26 | 7 | 333.7 | 1 |
+
+
+### Probe signature audit follow-up
+
+- A further code review found the first de-dup implementation keyed visible text/geometry but omitted interaction attributes. PR #151 now includes package, hint, enabled/clickable/long-clickable, focus, checked/selected, scrollable, and related accessibility fields in each node signature; a unit regression verifies that changing `long-clickable` or `enabled` creates a distinct signature.
+- Quick artifacts from superseded head `d4b9af4d7821675b0d1d0afdb652f717dcae26f6` (run #167) and the partial full run #168 are historical evidence only. They were cancelled after the signature was strengthened; the provisional table above must not be used as final acceptance evidence.
+- Latest probe head: `0406c01c2440d65cd726967744a3d45a27eb04dc`. Exact-head APK/JUnit run [#1159](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39386327606) and fresh ten-direction quick probe [#170](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39386327522) are running. If both pass, dispatch a new full-profile run from this exact head before accepting any Craft coverage.
