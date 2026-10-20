@@ -1200,6 +1200,7 @@ public class MainActivity extends Activity {
         final List<Integer> bitGatewayIndices = new ArrayList<>();
         final List<Integer> archiveTriggerIndices = new ArrayList<>();
         final Map<Integer, String> craftSystemTextUpdates = new HashMap<>();
+        final Map<Integer, String> craftSystemNumericUpdates = new HashMap<>();
         for (int i = 0; i < snapshotWidgets.size(); i++) {
             Widget widget = snapshotWidgets.get(i);
             if ("Шлюз битовый".equals(widget.type)) {
@@ -1218,6 +1219,12 @@ public class MainActivity extends Activity {
                     snapshotExtras.get(i), systemRegisterBank);
             if (systemTextState != null) {
                 craftSystemTextUpdates.put(i, systemTextState);
+                continue;
+            }
+            String systemNumericState = CraftSystemNumericWidgetBinding.readIntegerState(
+                    snapshotExtras.get(i), systemRegisterBank);
+            if (systemNumericState != null) {
+                craftSystemNumericUpdates.put(i, systemNumericState);
                 continue;
             }
             boolean craftSource = isCraftRegisterSource(widget.type);
@@ -1240,6 +1247,7 @@ public class MainActivity extends Activity {
                     && parseBinding(i, binding) == null) invalidBindings.put(i, "CFG");
         }
         if (requests.isEmpty() && invalidBindings.isEmpty() && craftSystemTextUpdates.isEmpty()
+                && craftSystemNumericUpdates.isEmpty()
                 && gatewayIndices.isEmpty() && bitGatewayIndices.isEmpty()) return;
         modbusPollInFlight = true;
         try {
@@ -1247,6 +1255,7 @@ public class MainActivity extends Activity {
             try {
                 final Map<Integer, String> updates = new HashMap<>(invalidBindings);
                 updates.putAll(craftSystemTextUpdates);
+                updates.putAll(craftSystemNumericUpdates);
                 for (BindingRequest request : requests) {
                     if (!pollSession.accepts(sessionToken)) return;
                     String value;
@@ -8945,6 +8954,12 @@ public class MainActivity extends Activity {
             if (!widget.extraFields.optBoolean("craftNumericEnabled", false)) {
                 Toast.makeText(MainActivity.this, "Открой свойства ID 8 и явно разреши ввод", Toast.LENGTH_LONG).show(); return;
             }
+            boolean craftSystemBinding = CraftSystemNumericWidgetBinding.isGlobalSystemBinding(widget.extraFields);
+            if (craftSystemBinding && !CraftSystemNumericWidgetBinding.canWriteInteger(widget.extraFields)) {
+                Toast.makeText(MainActivity.this,
+                        "Для системной связи Craft пока доступен только целочисленный ввод в пользовательский регистр 10–1999",
+                        Toast.LENGTH_LONG).show(); return;
+            }
             boolean passwordRequired = widget.extraFields.optBoolean("craftNumericPasswordRequired", false);
             String passwordKey = widget.extraFields.optString("craftNumericPasswordKey", "");
             final String expectedPassword;
@@ -8965,6 +8980,10 @@ public class MainActivity extends Activity {
             range.setText("Диапазон: " + widget.extraFields.optDouble("craftNumericMin", 0)
                     + " – " + widget.extraFields.optDouble("craftNumericMax", 1000)); form.addView(range);
             String initial = liveValues.get(widgetIndex);
+            if (craftSystemBinding) {
+                String systemValue = CraftSystemNumericWidgetBinding.readIntegerState(widget.extraFields, systemRegisterBank);
+                if (systemValue != null) initial = systemValue;
+            }
             if (initial == null || initial.startsWith("ERR") || initial.startsWith("CFG")) initial = widget.text;
             if (initial == null || initial.isEmpty()) initial = "0";
             EditText value = propertyField(initial, InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
@@ -8989,6 +9008,12 @@ public class MainActivity extends Activity {
                 final String formatted = widget.extraFields.optInt("craftNumericMode", CraftNumericInput.INTEGER) == CraftNumericInput.FLOAT32
                         ? CraftNumericInput.truncateFloatDisplay((float) next, widget.extraFields) : Integer.toString((int) next);
                 if (binding == null) {
+                    if (craftSystemBinding) {
+                        if (!operatorMode || !activityResumed || !widgets.contains(widget)
+                                || !CraftSystemNumericWidgetBinding.writeInteger(widget.extraFields, next, systemRegisterBank)) {
+                            Toast.makeText(MainActivity.this, "Не удалось записать системный регистр", Toast.LENGTH_LONG).show(); return;
+                        }
+                    }
                     widget.text = formatted; liveValues.put(widgetIndex, formatted);
                     persistProject(); invalidate(); dialog.dismiss(); return;
                 }

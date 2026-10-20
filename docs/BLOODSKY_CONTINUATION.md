@@ -7,7 +7,7 @@ This file is the durable handoff for continuing the Craft 1.0.7 parity work with
 - Repository: `skynet909084-boop/BLOODSKY-Android`.
 - Active branch: `feat/craft-screen-navigation-import-20261018`, PR #143, stacked on PR #142 → #141 → #139 → #76.
 - Stable `main` is untouched. Do not merge PRs, delete branches, or rebase stacked work as part of routine progress; preserve branch dependencies and review them first.
-- Local checkout matched `origin/feat/craft-screen-navigation-import-20261018` at `c5b166c0a8779febc67f46505d160e4a239b8c5d` before the current read-only system-widget change.
+- Local branch and origin refs last pointed to `b5e62e8e6284de5265185b07b2a5cb9d61cb8721`; the current ID8 implementation and audit refresh are being prepared for one batched GitHub commit.
 - Persist each focused, reviewed change to GitHub on the active feature branch and update this handoff after meaningful gates. Do not rely on chat memory as the project record.
 
 ## Latest completed changes
@@ -15,7 +15,8 @@ This file is the durable handoff for continuing the Craft 1.0.7 parity work with
 - `6d05c18` — ID19 can read an explicitly configured local Craft system-register range through `system://register/N` (0–1999) and copy it to an explicitly configured TCP holding-register destination. System-register destinations/writes are unsupported; imported bindings remain disabled.
 - `cf2b430` — corrected the system gateway audit to reflect the actual implementation boundary.
 - `56ff229` — fixed the Android UI smoke selector to expect the Craft-localized FBD timer title (`Свойства: FBD Таймер`). This was a test selector bug, not an app defect.
-- Current uncommitted slice: imported Craft component ID 7 (`CustomDynText`) can read a bit from the local system-register bank when `posDeviceNetworkInList=100` and `typeRequest=1`; network bindings and output widgets remain disabled. Evidence: pinned `CustomComponents/CustomDynText.java#getStringAddress` selects request 1 and label `S#<address>` for system slots; `q/d/b.java#G` reads the configured address bit. Regression coverage is in `CraftSystemWidgetBindingTest`.
+- `efdef6a`/`b5e62e8` — imported Craft component ID 7 (`CustomDynText`) reads a bit from the local system-register bank when `posDeviceNetworkInList=100` and `typeRequest=1`; network bindings and output widgets remain disabled. Evidence: pinned `CustomComponents/CustomDynText.java#getStringAddress` selects request 1 and label `S#<address>` for system slots; `q/d/b.java#G` reads the configured address bit. Regression coverage is in `CraftSystemWidgetBindingTest`.
+- Local uncommitted ID8 slice: imported Craft numeric input reads the exact system word for source slot 100, with UINT16/INT16 display; writes require the existing explicit input opt-in and are limited to integer mode and project registers 10–1999. Float32 and writes to service registers 0–9 stay disabled. Source evidence: pinned `CustomComponents/i.java#getInitConnectionInfo`, `setValue`, and `mbCanvas.t`; tests are in `CraftSystemNumericWidgetBindingTest`. Exact-head CI is pending after the current UI run completed.
 
 ## Verification snapshot for `56ff229`
 
@@ -24,9 +25,10 @@ This file is the durable handoff for continuing the Craft 1.0.7 parity work with
 - Quick original Craft probe #157: passed its focused route, 8 states / 7 transitions in 47.9 seconds; `coverage_complete=false` by design — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39360336281 (artifact 12237655437).
 - Full Android 11 UI smoke #760: passed on `c5b166c` — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39360336162
 - Full original Craft 1.0.7 emulator probe #155 remains in progress on exact product head `56ff22926c43e088cf59d4825ad5c13bef594b98` — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39359626632
-- Exact new head `efdef6ac75a1bbd558808cacd53d5779f2634868`: quick Craft probe #157 passed — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39363667130; full Android UI smoke is still running — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39363667121; Android APK/JUnit run #39363667171 failed only in the new test `systemServiceBitsAreReadFromCraftServiceRegisterProvider` — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39363667171.
-- The failing assertion expected bit 15 to be 1 after `setCharging(true)`. Craft's service provider intentionally stores `!charging` in that bit (the manual defines 0 = charging, 1 = not charging); the test now checks 1 after `setCharging(false)` and restores its prior value. Rerun the APK/JUnit gate on the follow-up head before calling this change verified.
-- The local environment has no `gradle` executable or wrapper. Python suite passed 149/149 after `python tools/prepare_craft_resources.py` materialized pinned Craft resources; generated files were removed. Do not report Android verification until the exact-head rerun passes.
+- On intermediate head `efdef6ac75a1bbd558808cacd53d5779f2634868`, the APK/JUnit run failed only because the new test expected service bit 15 to be 1 after `setCharging(true)`. Craft stores `!charging` in that bit; the manual defines 0 = charging and 1 = not charging. The test was corrected in `b5e62e8e6284de5265185b07b2a5cb9d61cb8721` to assert 1 after `setCharging(false)` and restore its prior value.
+- Exact head `b5e62e8e6284de5265185b07b2a5cb9d61cb8721`: Android APK/JUnit/build passed — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39364083355; focused Craft probe passed — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39364083373; Android 11 UI smoke #762 passed — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39364083422.
+- The full manually dispatched original Craft traversal #155 remains in progress on old product head `56ff22926c43e088cf59d4825ad5c13bef594b98`, in “Install, launch and traverse original UI offline” — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39359626632. Do not treat the focused route as complete coverage.
+- The local environment has no `gradle` executable or wrapper. Python suite passed 149/149 after `python tools/prepare_craft_resources.py` materialized pinned Craft resources; generated files were removed. The corrected Android tests are verified by the exact-head CI above.
 
 ## Source and documentation baseline
 
