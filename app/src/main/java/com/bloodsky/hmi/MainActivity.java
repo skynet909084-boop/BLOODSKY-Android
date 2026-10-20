@@ -7879,9 +7879,11 @@ public class MainActivity extends Activity {
         BindingRequest request = parseProjectBinding(widgetIndex, widget.connectionInfo,
                 isCraftRegisterFloat(widget.type) ? 2 : 1);
         if (request == null || request.functionCode != 3) return;
+        final UsbSerialModbusConnection selectedUsbConnection = request.usb ? manualUsbConnection : null;
         String key = widget.connectionInfo + "|" + value + "|" + widget.extraFields.optInt("craftVarBit", 0)
                 + "|" + widget.extraFields.optBoolean("craftSwapWord", false)
-                + "|" + widget.extraFields.optBoolean("craftSwapByte", false);
+                + "|" + widget.extraFields.optBoolean("craftSwapByte", false)
+                + (request.usb ? "|usbSession=" + System.identityHashCode(selectedUsbConnection) : "");
         if (key.equals(widget.craftRegisterLastWriteKey)
                 || android.os.SystemClock.elapsedRealtime() < widget.craftRegisterRetryAt) return;
         boolean bool = isCraftRegisterBoolean(widget.type), floating = isCraftRegisterFloat(widget.type);
@@ -7910,7 +7912,7 @@ public class MainActivity extends Activity {
                 String error = null;
                 try {
                     if (request.usb) {
-                        UsbSerialModbusConnection connection = manualUsbConnection;
+                        UsbSerialModbusConnection connection = selectedUsbConnection;
                         if (connection == null || !connection.isOpen()) throw new IOException("USB RTU не подключён");
                         if (writeBool) connection.writeMask(unit, address,
                                 FbdCraftRegisterCodec.bitWriteAndMask(bit),
