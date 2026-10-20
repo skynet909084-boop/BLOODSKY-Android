@@ -15,6 +15,17 @@ _LONG_PRESS_FOCUS = {
 
 LONG_PRESS_MS = 1000
 
+_VISIBLE_STATE_ATTRIBUTES = (
+    "package", "resource-id", "class", "text", "content-desc", "hint", "bounds",
+    "checked", "selected", "enabled", "clickable", "long-clickable", "focusable",
+    "focused", "scrollable", "checkable", "password", "context-clickable", "dismissable",
+)
+
+
+def visible_state_attributes(attributes):
+    """Return stable visible and interactive fields used to identify a UI state."""
+    return tuple(attributes.get(name, "") for name in _VISIBLE_STATE_ATTRIBUTES)
+
 
 def _is_auxiliary_calculator(action):
     node = action["node"]
