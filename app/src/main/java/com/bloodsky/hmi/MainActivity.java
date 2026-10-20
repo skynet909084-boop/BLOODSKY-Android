@@ -54,6 +54,7 @@ import java.io.IOException;
 import java.io.DataOutputStream;
 
 public class MainActivity extends Activity {
+    private static final int MAX_PROJECT_ARCHIVE_ENTRIES = 20_000;
     private static final String PREFS = "bloodsky_projects";
     private static final ThreadLocal<CraftSystemRegisterBank> ACTIVE_FBD_SYSTEM_REGISTER_BANK = new ThreadLocal<>();
     private static final ThreadLocal<Boolean> ACTIVE_FBD_SYSTEM_REGISTER_WRITES = new ThreadLocal<>();
@@ -5449,15 +5450,18 @@ public class MainActivity extends Activity {
         byte[] projectJsonBytes = null;
         String projectEntryPath = "";
         java.util.Set<String> entryNames = new java.util.HashSet<>();
+        Map<String, byte[]> pendingMedia = new java.util.LinkedHashMap<>();
         long totalUncompressedBytes = 0;
         int entryCount = 0;
 
         try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(inputStream)) {
             java.util.zip.ZipEntry entry;
             while ((entry = zis.getNextEntry()) != null) {
-                if (++entryCount > 2048) throw new IllegalArgumentException("Too many files in ZIP archive");
+                if (++entryCount > MAX_PROJECT_ARCHIVE_ENTRIES) {
+                    throw new IllegalArgumentException("ZIP entry count exceeds limit");
+                }
                 String name = entry.getName();
-                if (name == null || name.contains("..") || name.startsWith("/") || name.startsWith("\\")) {
+                if (!isSafeProjectArchiveEntryName(name)) {
                     throw new IllegalArgumentException("Unsafe entry path in ZIP archive: " + name);
                 }
                 if (!entryNames.add(name.toLowerCase(java.util.Locale.ROOT))) {
@@ -5483,10 +5487,10 @@ public class MainActivity extends Activity {
                     }
                     projectJsonBytes = entryBuffer.toByteArray();
                     projectEntryPath = name;
-                } else if (extractedMedia != null && !entry.isDirectory()) {
+                } else if (!entry.isDirectory()) {
                     String mediaPath = lowerName.startsWith("media/")
                             ? name.substring("media/".length()) : name;
-                    extractedMedia.put(mediaPath, entryBuffer.toByteArray());
+                    pendingMedia.put(mediaPath, entryBuffer.toByteArray());
                 }
             }
         }
@@ -5496,10 +5500,35 @@ public class MainActivity extends Activity {
         String json = new String(projectJsonBytes, StandardCharsets.UTF_8);
         JSONObject parsed = new JSONObject(json);
         if (CraftProjectImporter.isCraftProject(parsed)) {
-            json = CraftProjectImporter.convert(json, projectEntryPath, extractedMedia);
+            json = CraftProjectImporter.convert(json, projectEntryPath, pendingMedia);
         }
         validateImportedProjectStatic(json);
+        if (extractedMedia != null) {
+            for (String path : pendingMedia.keySet()) {
+                for (String existing : extractedMedia.keySet()) {
+                    if (existing.equalsIgnoreCase(path)) {
+                        throw new IllegalArgumentException("Duplicate extracted media path: " + path);
+                    }
+                }
+            }
+            extractedMedia.putAll(pendingMedia);
+        }
         return json;
+    }
+
+    /** Reject ambiguous and platform-specific paths before interpreting a ZIP member. */
+    static boolean isSafeProjectArchiveEntryName(String name) {
+        if (name == null || name.isEmpty() || name.indexOf('\\') >= 0
+                || name.indexOf('\0') >= 0 || name.startsWith("/")) return false;
+        boolean directory = name.endsWith("/");
+        String body = directory ? name.substring(0, name.length() - 1) : name;
+        if (body.isEmpty()) return false;
+        String[] parts = body.split("/", -1);
+        if (parts.length == 0 || parts[0].indexOf(':') >= 0) return false;
+        for (String part : parts) {
+            if (part.isEmpty() || ".".equals(part) || "..".equals(part)) return false;
+        }
+        return true;
     }
 
     private boolean persistNestedMacroEdit(boolean synchronous) {
