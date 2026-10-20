@@ -36,6 +36,17 @@ class FastFbdUiGateTests(unittest.TestCase):
         self.assertGreater(y, 140 + source['y'] + 22)
         self.assertLess(y, 140 + source['y'] + source['h'] - 22)
 
+    def test_full_fbd_link_uses_real_finger_driver_for_both_blocks(self):
+        source = (ROOT / 'tools/android_ui_smoke.py').read_text(encoding='utf-8')
+        # Direct shell input taps are not equivalent to finger events on every
+        # Android API level. The jar is already built and pushed in Smoke.run.
+        self.assertIn("def finger_tap(self, x, y):", source)
+        self.assertIn("'BloodskyFingerTap', str(x), str(y)", source)
+        self.assertIn('self.finger_tap(sx, sy)', source)
+        self.assertIn('self.finger_tap(tx, ty)', source)
+        self.assertIn("self.checkpoint('fbd-link:target-finger-tap')", source)
+        self.assertIn("'build/ui-input/bloodsky-ui-input.jar'", source)
+
     def test_feature_pr_emulator_is_not_restarted_for_each_push(self):
         workflow = (ROOT / '.github/workflows/android-ui-smoke.yml').read_text(encoding='utf-8')
         self.assertIn("github.base_ref != 'main' && github.base_ref != 'feat/craft-project-json-import-20261018' && 'quick'", workflow)
