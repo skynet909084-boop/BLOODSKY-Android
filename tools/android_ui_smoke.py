@@ -1008,25 +1008,35 @@ class Smoke:
             xml = adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml')
             active = json.loads({n.get('name'): n.text for n in ET.fromstring(xml)}['active_project'])
             return active['screens'][0]['widgets']
+        def wait_for_saved_widget_count(expected, timeout=10):
+            deadline = time.monotonic() + timeout
+            observed = None
+            while time.monotonic() < deadline:
+                observed = saved_widgets()
+                if len(observed) == expected:
+                    return observed
+                time.sleep(0.2)
+            raise AssertionError('Timed out waiting for saved widget count '
+                                 + str(expected) + '; last count='
+                                 + str(None if observed is None else len(observed)))
         self.tap(description='Копировать')
         self.tap(description='Вставить')
-        copied = saved_widgets()
-        if len(copied) != 5:
-            raise AssertionError('Copy/paste did not add exactly one component')
+        copied = wait_for_saved_widget_count(5)
+
         expected_copy = {k: v for k, v in copied[0].items() if k not in ('x', 'y')}
         if {k: v for k, v in copied[-1].items() if k not in ('x', 'y')} != expected_copy:
             raise AssertionError('Clipboard lost indicator properties or media')
         self.tap(description='Вырезать')
-        if len(saved_widgets()) != 4:
-            raise AssertionError('Cut did not remove selected copy')
+        wait_for_saved_widget_count(4)
+
         self.tap(description='Вставить')
-        pasted = saved_widgets()
-        if len(pasted) != 5 or {k: v for k, v in pasted[-1].items() if k not in ('x', 'y')} != expected_copy:
+        pasted = wait_for_saved_widget_count(5)
+        if {k: v for k, v in pasted[-1].items() if k not in ('x', 'y')} != expected_copy:
             raise AssertionError('Cut/paste lost copied indicator properties')
         self.capture('04i-pasted-indicator')
         self.tap(description='Вырезать')
         self.tap(description='Вырезать')  # No selection: must leave the clipboard/project intact.
-        if saved_widgets() != copied[:4]:
+        if wait_for_saved_widget_count(4) != copied[:4]:
             raise AssertionError('Cut changed unrelated components or accepted an empty selection')
         # Editor clicks edit a button; only operator taps may activate it.
         baseline = saved_widgets()
