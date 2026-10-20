@@ -129,6 +129,24 @@ class Smoke:
         x, y = center(node.get('bounds'))
         adb('shell', 'input', 'tap', str(x), str(y))
 
+    def prepare_custom_image(self):
+        # ADB push alone does not index the image in API30 MediaStore. The
+        # Downloads image-filter view can remain empty until a media scan.
+        path = '/sdcard/Download/bloodsky-custom.png'
+        adb('push', 'build/craft-reference/apktool/res/drawable/lamp_yellow.png', path)
+        adb('shell', 'am', 'broadcast', '-a', 'android.intent.action.MEDIA_SCANNER_SCAN_FILE',
+            '-d', 'file://' + path)
+        deadline = time.monotonic() + 30
+        observed = ''
+        while time.monotonic() < deadline:
+            observed = adb('shell', 'content', 'query', '--uri',
+                           'content://media/external/images/media', '--projection', '_display_name')
+            if re.search(r'_display_name=bloodsky-custom\\.png(?:,|$)', observed, re.MULTILINE):
+                return
+            time.sleep(0.3)
+        (self.output / 'media-index.txt').write_text(observed)
+        raise AssertionError('Custom image was not indexed by MediaStore')
+
     def tap_document(self, filename):
         xml = self.dump()
         list_buttons = [n for n in matching_nodes(xml, description='List view')
@@ -143,8 +161,7 @@ class Smoke:
         attempts = 0
         while time.monotonic() < deadline:
             xml = self.dump()
-            nodes = [n for n in matching_nodes(xml, text=filename)
-                     if n.get('package') == 'com.android.documentsui']
+            nodes = document_nodes(xml, filename)
             if len(nodes) > 1:
                 raise AssertionError('Ambiguous document: ' + filename)
             bounds = nodes[0].get('bounds') if len(nodes) == 1 else None
@@ -156,8 +173,10 @@ class Smoke:
                 attempts += 1
                 for _ in range(3):
                     xml = self.dump()
-                    if not any(n.get('package') == 'com.android.documentsui'
-                               for n in ET.fromstring(xml).iter('node')):
+                    visible = list(ET.fromstring(xml).iter('node'))
+                    if (any(n.get('package') == PACKAGE for n in visible)
+                            and not any(n.get('package') == 'com.android.documentsui'
+                                        for n in visible)):
                         return
                 if attempts >= 3:
                     break
@@ -778,6 +797,7 @@ class Smoke:
         self.tap(description='Изображение ON')
         self.tap(description='Выбрать своё изображение')
         self.wait_node('Своё изображение')
+        self.prepare_custom_image()
         self.tap('Выбрать файл…')
         self.tap(description='Show roots')
         self.tap('Downloads')
