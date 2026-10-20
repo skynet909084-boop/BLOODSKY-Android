@@ -357,6 +357,18 @@ class Smoke:
         active = json.loads({n.get('name'): n.text for n in ET.fromstring(xml)}['active_project'])
         return active['screens'][0].get('connections', [])
 
+    def wait_for_saved_connections(self, expected, timeout=10):
+        """Poll persisted project state after asynchronous UI taps and dialogs."""
+        deadline = time.monotonic() + timeout
+        observed = None
+        while time.monotonic() < deadline:
+            observed = self.saved_connections()
+            if observed == expected:
+                return observed
+            time.sleep(0.2)
+        raise AssertionError('Timed out waiting for saved FBD connections; expected='
+                             + repr(expected) + '; last=' + repr(observed))
+
     def wait_for_saved_connection_count(self, expected, timeout=10):
         deadline = time.monotonic() + timeout
         observed = None
@@ -532,37 +544,30 @@ class Smoke:
         self.tap_editor_menu_item('Инвертировать BOOL-связь FBD…')
         self.wait_node('Инверсия связи FBD (BOOL)')
         self.tap(str(source_idx+1) + ':Q → ' + str(target_idx+1) + ':IN  обычная')
-        inverted = self.saved_connections()
-        if len(inverted) != 1 or not inverted[0].get('inverted'):
-            raise AssertionError('Named BOOL wire inversion was not persisted')
+        inverted = [dict(links[0], inverted=True)]
+        self.wait_for_saved_connections(inverted)
         if {k: v for k, v in inverted[0].items() if k != 'inverted'} != links[0]:
             raise AssertionError('Wire inversion changed other saved metadata')
         self.capture('04v-fbd-inverted-bool-wire')
         self.tap_editor_menu_item('Отменить связь FBD')
-        if self.saved_connections() != links:
-            raise AssertionError('Undo did not restore normal BOOL wire metadata')
+        self.wait_for_saved_connections(links)
         self.tap_editor_menu_item('Повторить связь FBD')
-        if self.saved_connections() != inverted:
-            raise AssertionError('Redo did not restore inverted BOOL wire metadata')
+        self.wait_for_saved_connections(inverted)
         self.tap_editor_menu_item('Отменить связь FBD')
-        if self.saved_connections() != links:
-            raise AssertionError('Second undo failed to restore normal BOOL wire')
+        self.wait_for_saved_connections(links)
         self.tap_editor_menu_item('Удалить связь FBD…')
         label = (str(source_idx+1) + ': ' + source['text'] + ' → '
                  + str(target_idx+1) + ': ' + target['text'] + ' [Q → IN]')
         self.wait_node('Удалить связь FBD')
         self.tap(label)
-        if self.saved_connections():
-            raise AssertionError('FBD disconnect did not persist removal')
+        self.wait_for_saved_connections([])
         self.capture('04s-fbd-disconnected')
         # Undo must restore the same fully typed connection, not a generic wire.
         self.tap_editor_menu_item('Отменить связь FBD')
-        if self.saved_connections() != links:
-            raise AssertionError('FBD undo failed to restore Q -> IN with all metadata')
+        self.wait_for_saved_connections(links)
         self.capture('04t-fbd-undo-restored')
         self.tap_editor_menu_item('Повторить связь FBD')
-        if self.saved_connections():
-            raise AssertionError('FBD redo failed to remove the restored wire')
+        self.wait_for_saved_connections([])
         self.capture('04u-fbd-redo-disconnected')
         adb('shell', 'am', 'force-stop', PACKAGE)
         adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
