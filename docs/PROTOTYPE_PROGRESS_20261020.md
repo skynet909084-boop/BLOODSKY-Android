@@ -461,3 +461,12 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 - Точный HEAD APK/JUnit run #1205 на probe branch завершился до Gradle: шаг Set up Android SDK не смог загрузить command-line tools (HTTP 502 от Google после обнаружения несовпадающей preinstalled sdkmanager); SDK install aborted. Это runner/dependency download failure, тесты не стартовали. Перезапущен только упавший job (attempt 2); результат ожидается. Не приравнивать к дефекту приложения и не считать проверку пройденной до успешного повтора.
 - Следующий шаг: разобрать artifact #172, получить успешную exact-head APK/JUnit проверку исследовательского HEAD, затем продолжить первый источник-подтверждённый кодовый пробел по FBD или регистрам и обновить матрицу по результатам.
 
+
+
+## USB serial status corrected from current source — 20 Oct 2026
+
+- Re-audit of current prototype source found the USB implementation was already present despite stale “not implemented” wording in the older transport audit: explicit device enumeration/selection and permission flow, configured serial port, RTU session read/write, detach/error cleanup, a manual diagnostic screen and USB-bound operator writes.
+- Existing fake-port tests cover UART settings, RTU read/write, timeout, error close, detach unblock and repeated close; binding parsing also has tests. No USB serial adapter is available, and Android UsbManager integration/physical PLC acceptance remain open.
+- Updated the single readiness matrix to status “Код реализован, проверки не завершены”; total readiness remains 3.6% because this criterion has no full acceptance weight until the Android/device gates pass. Updated the transport audit to separate current source from its historical checkpoint.
+- Next USB step is Android instrumentation for permission/denial/cancellation and real detach, followed by physical adapter/PLC acceptance when hardware is available. This does not close the separate 16-slot device-manager requirement.
+
