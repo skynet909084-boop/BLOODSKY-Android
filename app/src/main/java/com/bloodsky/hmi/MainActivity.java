@@ -101,6 +101,10 @@ public class MainActivity extends Activity {
         }
     };
     private final ExecutorService modbusExecutor = Executors.newSingleThreadExecutor();
+    private UsbSerialModbusConnection manualUsbConnection;
+    private UsbSerialConnector manualUsbConnector;
+    private int manualUsbScreenGeneration;
+    private boolean manualUsbScreenVisible;
     private final ExecutorService craftSensorExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService telegramExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService homeAssistantExecutor = Executors.newSingleThreadExecutor();
@@ -303,6 +307,8 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        manualUsbScreenGeneration++;
+        closeManualUsbConnection();
         unregisterIncomingSmsReceiver();
         stopModbusPolling();
         stopFbdSensors();
@@ -482,6 +488,9 @@ public class MainActivity extends Activity {
     }
 
     private void showHome() {
+        manualUsbScreenGeneration++;
+        manualUsbScreenVisible = false;
+        closeManualUsbConnection();
         operatorMode = false;
         setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
         stopModbusPolling();
@@ -513,6 +522,7 @@ public class MainActivity extends Activity {
             } else Toast.makeText(this, "Сначала создай или загрузи проект", Toast.LENGTH_SHORT).show();
         }, menuWidth);
         addLegacyMenuItem("Импорт проекта", this::importProject, menuWidth);
+        addLegacyMenuItem("USB Serial • Modbus RTU", this::showUsbSerialScreen, menuWidth);
         addLegacyMenuItem("Выход", this::finish, menuWidth);
         root.addView(new View(this), new LinearLayout.LayoutParams(1, 0, 0.1f));
         TextView footer = new TextView(this);
@@ -528,7 +538,7 @@ public class MainActivity extends Activity {
         Button button = legacyMenuButton(label, task);
         // The source specifies dp for text rather than sp.
         button.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 20);
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(width, 0, 0.14f);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(width, 0, 0.11f);
         params.gravity = Gravity.CENTER_HORIZONTAL;
         params.topMargin = dp(10);
         root.addView(button, params);
@@ -730,6 +740,119 @@ public class MainActivity extends Activity {
         }), new LinearLayout.LayoutParams(-1, dp(52)));
         root.addView(result, new LinearLayout.LayoutParams(-1, 0, 1));
         setContentView(root);
+    }
+
+    private void showUsbSerialScreen() {
+        final int screenGeneration = ++manualUsbScreenGeneration;
+        manualUsbScreenVisible = true;
+        stopModbusPolling();
+        editor = null;
+        closeManualUsbConnection();
+        root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(Color.rgb(241, 245, 249));
+        root.addView(heading("BLOODSKY • USB Serial RTU"), new LinearLayout.LayoutParams(-1, dp(60)));
+        root.addView(action("‹ Назад", this::showHome), new LinearLayout.LayoutParams(-1, dp(48)));
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(dp(16), dp(8), dp(16), dp(12));
+        scroll.addView(form);
+        TextView intro = new TextView(this);
+        intro.setText("Выбери USB-адаптер и нажми «Подключить». Разрешение Android запрашивается для выбранного устройства.");
+        intro.setTextColor(Color.rgb(55, 65, 81)); intro.setTextSize(14); form.addView(intro);
+        Spinner deviceSpinner = new Spinner(this);
+        List<UsbSerialConnector.DeviceOption> devices = new ArrayList<>();
+        ArrayAdapter<String> deviceAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, new ArrayList<>());
+        deviceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        deviceSpinner.setAdapter(deviceAdapter); form.addView(deviceSpinner);
+        TextView deviceInfo = new TextView(this); deviceInfo.setTextColor(Color.rgb(75, 85, 99)); deviceInfo.setTextSize(12); form.addView(deviceInfo);
+        Spinner baudSpinner = new Spinner(this);
+        String[] baudChoices = {"9600", "19200", "38400", "57600", "115200"};
+        baudSpinner.setAdapter(simpleSpinnerAdapter(baudChoices)); form.addView(baudSpinner);
+        Spinner paritySpinner = new Spinner(this);
+        String[] parityChoices = {"8N1", "8E1", "8O1", "8N2"};
+        paritySpinner.setAdapter(simpleSpinnerAdapter(parityChoices)); form.addView(paritySpinner);
+        EditText unitField = propertyField("1", InputType.TYPE_CLASS_NUMBER); unitField.setHint("Unit ID (0–247)"); form.addView(unitField);
+        EditText addressField = propertyField("0", InputType.TYPE_CLASS_NUMBER); addressField.setHint("Начальный адрес регистра (0–65535)"); form.addView(addressField);
+        EditText countField = propertyField("10", InputType.TYPE_CLASS_NUMBER); countField.setHint("Количество регистров (1–125)"); form.addView(countField);
+        Spinner functionSpinner = new Spinner(this);
+        functionSpinner.setAdapter(simpleSpinnerAdapter(new String[]{"Holding registers (FC03)", "Input registers (FC04)"})); form.addView(functionSpinner);
+        TextView result = new TextView(this); result.setTextColor(Color.rgb(31, 41, 55)); result.setTextSize(14);
+        result.setPadding(0, dp(10), 0, dp(10)); result.setText("USB-адаптеры не выбраны.");
+        Runnable refreshDevices = () -> {
+            try {
+                if (manualUsbConnector == null) manualUsbConnector = new UsbSerialConnector(this);
+                devices.clear(); devices.addAll(manualUsbConnector.listDevices()); deviceAdapter.clear();
+                for (UsbSerialConnector.DeviceOption option : devices)
+                    deviceAdapter.add(option.id + " • " + String.format(java.util.Locale.US, "%04X:%04X", option.vendorId, option.productId));
+                deviceAdapter.notifyDataSetChanged();
+                deviceInfo.setText(devices.isEmpty() ? "Поддерживаемые USB serial-адаптеры не найдены." : "Найдено адаптеров: " + devices.size());
+                result.setText(devices.isEmpty() ? "Подключи USB serial-адаптер и обнови список." : "Выбери устройство, параметры линии и нажми «Подключить».");
+            } catch (Exception error) { result.setText("Ошибка поиска USB-адаптеров: " + errorMessage(error)); }
+        };
+        form.addView(action("Обновить список USB", refreshDevices), new LinearLayout.LayoutParams(-1, dp(48)));
+        form.addView(action("Подключить выбранный адаптер", () -> {
+            if (devices.isEmpty() || deviceSpinner.getSelectedItemPosition() < 0) { result.setText("Сначала обнови список и выбери адаптер."); return; }
+            final UsbSerialConnector.DeviceOption selected = devices.get(deviceSpinner.getSelectedItemPosition());
+            final int baud = Integer.parseInt(baudChoices[baudSpinner.getSelectedItemPosition()]);
+            final String framing = parityChoices[paritySpinner.getSelectedItemPosition()];
+            UsbSerialSettings.Parity parity = framing.charAt(1) == 'E' ? UsbSerialSettings.Parity.EVEN : framing.charAt(1) == 'O' ? UsbSerialSettings.Parity.ODD : UsbSerialSettings.Parity.NONE;
+            final int stopBits = framing.endsWith("2") ? 2 : 1;
+            result.setText("Открываю " + selected.id + ". Подтверди доступ в диалоге Android, если он появится…");
+            modbusExecutor.execute(() -> {
+                try {
+                    UsbSerialModbusConnection opened = manualUsbConnector.connect(selected.id, new UsbSerialSettings(baud, 8, stopBits, parity), 1500).get();
+                    runOnUiThread(() -> {
+                        if (screenGeneration != manualUsbScreenGeneration) { try { opened.close(); } catch (IOException ignored) { } return; }
+                        closeManualUsbConnection(); manualUsbConnection = opened;
+                        result.setText("Подключено: " + selected.id + " • " + baud + " " + framing + ". Запросы выполняются только по кнопке.");
+                    });
+                } catch (Exception error) {
+                    runOnUiThread(() -> { if (screenGeneration == manualUsbScreenGeneration) result.setText("Не удалось подключить USB-адаптер: " + errorMessage(error)); });
+                }
+            });
+        }), new LinearLayout.LayoutParams(-1, dp(48)));
+        form.addView(action("Отключить", () -> { closeManualUsbConnection(); result.setText("USB-адаптер отключён."); }), new LinearLayout.LayoutParams(-1, dp(48)));
+        form.addView(action("Считать регистры", () -> {
+            final UsbSerialModbusConnection connection = manualUsbConnection;
+            if (connection == null) { result.setText("Сначала подключи USB-адаптер."); return; }
+            final int unit, address, count;
+            try {
+                unit = Integer.parseInt(unitField.getText().toString().trim()); address = Integer.parseInt(addressField.getText().toString().trim());
+                count = Integer.parseInt(countField.getText().toString().trim());
+                if (unit < 0 || unit > 247 || address < 0 || address > 65535 || count < 1 || count > 125 || address + count > 65536) throw new IllegalArgumentException();
+            } catch (Exception invalid) { result.setText("Проверь Unit ID, адрес и количество регистров."); return; }
+            final int function = functionSpinner.getSelectedItemPosition() == 0 ? 3 : 4;
+            result.setText("Читаю регистры по Modbus RTU…");
+            modbusExecutor.execute(() -> {
+                try {
+                    int[] values = connection.read(unit, function, address, count);
+                    StringBuilder report = new StringBuilder("FC").append(function).append(" • адрес ").append(address).append("\n");
+                    for (int i = 0; i < values.length; i++) report.append(address + i).append(": ").append(values[i]).append(i + 1 == values.length ? "" : "\n");
+                    runOnUiThread(() -> result.setText(report.toString()));
+                } catch (Exception error) {
+                    runOnUiThread(() -> { if (manualUsbConnection == connection && !connection.isOpen()) manualUsbConnection = null; result.setText("Ошибка Modbus RTU: " + errorMessage(error)); });
+                }
+            });
+        }), new LinearLayout.LayoutParams(-1, dp(48)));
+        form.addView(result, new LinearLayout.LayoutParams(-1, -2));
+        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1)); setContentView(root); refreshDevices.run();
+    }
+
+    private ArrayAdapter<String> simpleSpinnerAdapter(String[] values) {
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, values);
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item); return adapter;
+    }
+
+    private String errorMessage(Throwable error) {
+        Throwable cause = error; while (cause.getCause() != null) cause = cause.getCause();
+        return cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
+    }
+
+    private void closeManualUsbConnection() {
+        UsbSerialModbusConnection connection = manualUsbConnection; manualUsbConnection = null;
+        if (connection != null) try { connection.close(); } catch (IOException error) { android.util.Log.w("BLOODSKY", "USB serial close failed", error); }
     }
 
     public static int calculateModbusRtuCrc(byte[] data, int length) {
@@ -3168,6 +3291,7 @@ public class MainActivity extends Activity {
 
     @Override public void onBackPressed() {
         if (nestedMacroEdit != null) { closeNestedMacroGraphEditor(); return; }
+        if (manualUsbScreenVisible) { showHome(); return; }
         if (editor != null) {
             if (operatorMode) toggleOperatorMode();
             else if (persistProjectNow(true)) showHome();
