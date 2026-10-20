@@ -23,6 +23,8 @@ public class FbdSourceNativeCanvasSkinTest {
         assertTrue(FbdSourceCanvasSkin.supports("FBD CRAFT CHANGE I"));
         assertTrue(FbdSourceCanvasSkin.supports("FBD CRAFT CHANGE F"));
         assertTrue(FbdSourceCanvasSkin.supports("FBD CRAFT MOVE"));
+        assertTrue(FbdSourceCanvasSkin.supports("FBD CRAFT SENSOR ORIENTATION"));
+        assertTrue(FbdSourceCanvasSkin.supports("FBD CRAFT SUNRISE"));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT CTU", "CTU 16 bit")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT T", "T")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT BLINK", "BLINK")));
@@ -32,6 +34,28 @@ public class FbdSourceNativeCanvasSkinTest {
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT CHANGE F", "CH_F")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT MOVE", "MOVE")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT COMPARE", ">")));
+        assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT SENSOR ORIENTATION", "ORIENTATION_X")));
+        assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT SUNRISE", "SR")));
+    }
+
+    @Test public void sensorAndSunriseLabelsFollowImportedSourceModes() throws Exception {
+        MainActivity.Widget orientation = block("FBD CRAFT SENSOR ORIENTATION", "ORIENTATION_Z");
+        orientation.extraFields.put("craftSensorAxis", 3);
+        assertEquals("ORIENTATION_Z", FbdSourceCanvasSkin.orientationCaption(orientation));
+        assertTrue(FbdSourceCanvasSkin.shouldUse(orientation));
+        orientation.text = "ORIENTATION_Z";
+        assertTrue(FbdSourceCanvasSkin.shouldUse(orientation));
+        orientation.text = "custom caption";
+        assertFalse(FbdSourceCanvasSkin.shouldUse(orientation));
+
+        MainActivity.Widget sunrise = block("FBD CRAFT SUNRISE", "SR");
+        sunrise.extraFields.put("craftSunriseMode", "SS");
+        assertEquals("SS", FbdSourceCanvasSkin.sunriseCaption(sunrise));
+        assertFalse(FbdSourceCanvasSkin.shouldUse(sunrise));
+        sunrise.text = "SS";
+        assertTrue(FbdSourceCanvasSkin.shouldUse(sunrise));
+        sunrise.text = "custom caption";
+        assertFalse(FbdSourceCanvasSkin.shouldUse(sunrise));
     }
 
     @Test public void sourceGeometryAlignsNativePinContacts() {
@@ -55,6 +79,10 @@ public class FbdSourceNativeCanvasSkinTest {
         assertEquals(.5f, MainActivity.fbdTerminalFraction("FBD RS", "Q", true), .00001f);
         assertEquals(.5f, FbdSourceCanvasSkin.inputY("FBD CRAFT BLINK", "IN"), 0.00001f);
         assertEquals(5f/6f, FbdSourceCanvasSkin.inputY("FBD CRAFT BLINK", "PT"), 0.00001f);
+        assertArrayEquals(new String[0], MainActivity.knownFbdPins("FBD CRAFT SENSOR ORIENTATION", false));
+        assertArrayEquals(new String[]{"Q"}, MainActivity.knownFbdPins("FBD CRAFT SENSOR ORIENTATION", true));
+        assertArrayEquals(new String[0], MainActivity.knownFbdPins("FBD CRAFT SUNRISE", false));
+        assertArrayEquals(new String[]{"Q"}, MainActivity.knownFbdPins("FBD CRAFT SUNRISE", true));
     }
 
     @Test public void editableCustomAppearanceNeverForcedIntoSourceSkin() {
