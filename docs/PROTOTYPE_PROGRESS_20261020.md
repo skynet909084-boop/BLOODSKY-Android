@@ -346,3 +346,12 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 - PR [#168](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/168) adds FC05/FC06 single coil/register writes, FC0F/FC10 batch writes, and FC22 mask writes to `ModbusRtuClient`, then exposes them through the USB session/connection. RTU replies must pass CRC and exact acknowledgement checks; the transaction keeps the existing bounded deadline.
 - Exact-head APK/JUnit [#1175](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39406473632) and Android 11 UI smoke [#808](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39406651996) passed. The smoke is the existing quick FBD regression, not a USB hardware test.
 - PR #168 was merged into `prototype/all-in-one-20261020` as `e337bd86e9cb4af4480d34815abea1c500e55338`. Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`. Project bindings/UI and physical adapter acceptance remain open.
+
+
+## Manual USB RTU screen — 20 Oct 2026
+
+- Added a home-menu entry for a separate USB serial Modbus RTU screen. The operator refreshes supported devices, chooses one adapter, selects baud/parity/stop bits, and explicitly connects; Android USB permission is requested for that selection.
+- Added manual FC03/FC04 register reads with unit/address/quantity validation and visible results, plus disconnect. No project widget binding is activated, and this screen does not issue writes.
+- Back to home, explicit disconnect, and Activity destruction close the owned session. A generation guard closes a late successful connect if the operator has already left the screen.
+- Python suite: 164 tests passed after preparing the pinned Craft reference resources. Local Android Gradle tests/build were not available (no wrapper or installed Gradle); exact-head GitHub Actions APK/JUnit and Android UI smoke are pending.
+- No physical USB adapter or visual parity comparison against Craft was performed. Stable `main` remains pinned at `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
