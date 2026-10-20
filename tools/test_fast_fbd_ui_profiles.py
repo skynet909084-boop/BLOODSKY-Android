@@ -12,7 +12,7 @@ class FastFbdUiGateTests(unittest.TestCase):
         ast.parse(script)
         for evidence in (
                 "Добавить: FBD И", "Добавить: FBD Таймер",
-                "Свойства: FBD CRAFT TIMER", "Время таймера, мс",
+                "Свойства: FBD Таймер", "Время таймера, мс",
                 "Инвертировать выход BOOL", "Связать FBD",
                 "saved_connections()", "Инвертировать BOOL-связь FBD…",
                 "Отменить связь FBD", "am', 'force-stop",

@@ -71,7 +71,7 @@ class FastFbdSmoke(Smoke):
 
         # Edit and retain a non-round exact millisecond timer preset.
         adb('shell', 'input', 'tap', str(tx), str(ty))
-        self.wait_node('Свойства: FBD CRAFT TIMER')
+        self.wait_node('Свойства: FBD Таймер')
         self.replace_property_input('Время таймера, мс', '2345')
         self.tap('Применить')
         self.wait_node(description='Редактор экрана')
