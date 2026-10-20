@@ -61,7 +61,7 @@ Target: original KaScada Craft 1.0.7 functionality and appearance with BLOODSKY 
 - Source-confirmed system registers/device configuration. ID7 dynamic text reads a global/system bit, and imported ID8 numeric input reads UINT16/INT16 plus source-ordered big-endian Float32 from the system bank. Opt-in writes are limited to user addresses 10–1999 (Float32 starts 10–1998); service writes 0–9, gateway destinations and the other typed UI bindings remain open. Do not accept PR45's unsupported register/timing claims as implementation specifications; see `docs/KASKADA_SYSTEM_REGISTERS_AUDIT_20261019.md`.
 - Real Android USB/Bluetooth transport integration and lifecycle/permissions/reconnect checks; current RTU stream helpers and CRC tests are not hardware support.
 - Original operator password/screen-lock/PDF behavior and intentional foreground-service/background behavior remain open after the basic guarded mode in PR65. Network devices/server UI, remote control and other original integrations must be backed by implementations and tests, not only menu items.
-- Review remaining PR38/44 changes in focused main-based increments. ZIP corrections were ported separately; these old branches must not replace current Activity/TCP/FBD code wholesale.
+- Legacy PR38/44/46/69 were closed after review: their USB transport lacks serial-driver configuration, their media transaction design is superseded, and their FBD graph model is obsolete. Preserve only source-backed ideas for focused follow-up; do not merge those branches wholesale.
 
 ## Device and release gates
 
@@ -164,3 +164,11 @@ Design an additive SQLite-backed catalog migration that imports existing SharedP
 - Reviewed the newly supplied `KaScada_v1.0.7(107)_base_src.zip` as a local reference; it identifies package `ru.kascada.modbus`, version name/code `1.0.7 (107)`, apktool `2.4.0-250528`, minSdk 21 and targetSdk 29.
 - Archive SHA-256: `92d12206bde746f5a76c89e0c3311119287b14bb26cdc8ca36d515e2fca01f7a`; 16,138 entries (189,680,352 bytes expanded), including 10,331 primary smali files and 670 secondary-dex smali files. This is a decoded source tree, not a buildable Android project or the original APK.
 - Keep this snapshot as source evidence for targeted implementation and parity checks. Do not copy the full decompilation or user project archives into the public repository. The user’s own project ZIP acceptance stays at final-app validation.
+
+
+## Integration cleanup — 2026-10-20
+
+- Removed the unused cloud coding-agent and DeepSeek workflow files from `prototype/all-in-one-20261020`. Kept APK/unit, UI smoke, archive inspector, source audits and emulator evidence workflows; generic Copilot setup remains available.
+- Closed superseded PRs #38, #44, #46, #69, #73 and #74 with a reason in each PR. The in-flight Craft probe PRs #149–151 remain open for their evidence; they do not merge app code.
+- The old PR head branch refs are retained in GitHub history for now. Main remains pinned at `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`; integration work stays isolated on `prototype/all-in-one-20261020`.
+- User project archives remain reserved for final-app acceptance, per the project direction.
