@@ -692,7 +692,7 @@ class Smoke:
         active = json.loads({n.get('name'): n.text for n in ET.fromstring(prefs)}['active_project'])
         widget = active['screens'][0]['widgets'][0]
         canvas = self.wait_node(description='Редактор экрана')
-        left, top, _, _ = map(int, re.findall(r'\\d+', canvas.get('bounds')))
+        left, top, _, _ = map(int, re.findall(r'\d+', canvas.get('bounds')))
         adb('shell', 'input', 'tap', str(int(left + widget['x'] + widget['w'] / 2)),
             str(int(top + widget['y'] + widget['h'] / 2)))
         self.wait_node('Свойства: Многопозиционное фото')
