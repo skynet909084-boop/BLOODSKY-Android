@@ -21,9 +21,9 @@ This file is the durable handoff for continuing the Craft 1.0.7 parity work with
 - Local Python suite: 149/149 passed after `python tools/prepare_craft_resources.py` materialized pinned Craft resources; generated resources were cleaned afterward.
 - Android APK/JUnit run #1123: passed — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39358988336
 - Quick original Craft probe #154: passed its focused route, 8 states / 7 transitions; `coverage_complete=false` by design — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39358988371 (artifact 12236104710).
-- Full Android 11 UI smoke #758: in progress at the emulator exercise step — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39358988319
-- Full original Craft 1.0.7 emulator probe #155: in progress at offline UI traversal — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39359626632
-- These checks run against exact commit `56ff22926c43e088cf59d4825ad5c13bef594b98`. Record final outcomes here; diagnose and fix real failures before treating the gate as complete.
+- Full Android 11 UI smoke #758 attempt 1 was cancelled during the emulator script after opening `bloodsky-custom.png`; logs show no test verdict or assertion failure, and an artifact was uploaded (ID 12236389349). The job limit is 35 minutes, so the cancellation was not the configured timeout. Attempt 2 has been requested and is pending — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39358988319
+- Full original Craft 1.0.7 emulator probe #155 remains in progress at offline UI traversal — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39359626632
+- The APK/JUnit and quick probe checks run against exact commit `56ff22926c43e088cf59d4825ad5c13bef594b98`. The UI and Craft full-profile runs also target that product-code head; the UI rerun is a new attempt against the same snapshot. Record final outcomes here; diagnose and fix real failures before treating the gate as complete.
 
 ## Source and documentation baseline
 
