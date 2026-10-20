@@ -123,7 +123,7 @@ jobs:
             adb shell svc wifi disable || true
             adb shell svc data disable || true
             adb install -r build/KaScada-Craft-1.0.7.apk
-            python tools/original_craft_longpress_probe.py build-reports/original-craft-1.0.7-longpress-${{ matrix.direction }} ${{ github.event_name == 'workflow_dispatch' && inputs.profile == 'full' && '--full' || '' }} --direction=${{ matrix.direction }}
+            python tools/original_craft_longpress_probe.py build-reports/original-craft-1.0.7-longpress-${{ matrix.direction }} ${{ ((github.event_name == 'workflow_dispatch' && inputs.profile == 'full') || (github.event_name == 'pull_request' && matrix.direction == 'fbd')) && '--full' || '' }} --direction=${{ matrix.direction }}
       - name: Upload rebuilt APK and full UI evidence
         if: always()
         uses: actions/upload-artifact@v4
