@@ -147,7 +147,7 @@ class Smoke:
         (self.output / 'media-index.txt').write_text(observed)
         raise AssertionError('Custom image was not indexed by MediaStore')
 
-    def wait_for_saved_main_activity(self, timeout=15):
+    def wait_for_saved_main_activity(self, timeout=30):
         deadline = time.monotonic() + timeout
         last_dump = ''
         while time.monotonic() < deadline:
@@ -159,13 +159,18 @@ class Smoke:
                 end = next((i for i in range(index + 1, len(lines))
                             if 'ActivityRecord{' in lines[i]), len(lines))
                 record = '\n'.join(lines[index:end])
-                if re.search(r'\bmHaveState=true\b', record) and re.search(r'\bstate=STOPPED\b', record):
+                has_media_state = ('mIcicle=Bundle' in record
+                                   and 'restore_media_picker=true' in record)
+                if (has_media_state
+                        and re.search(r'\bmHaveState=true\b', record)
+                        and re.search(r'\bstate=STOPPED\b', record)):
+                    (self.output / 'media-picker-activity-state.txt').write_text(record)
                     return
             time.sleep(0.25)
         diagnostic = self.output / 'media-picker-activity-state.txt'
         diagnostic.write_text(last_dump)
         raise AssertionError(
-            'MainActivity did not reach STOPPED with saved state before process termination; '
+            'MainActivity did not reach STOPPED with the media-picker state Bundle before process termination; '
             'see ' + str(diagnostic)
         )
 
