@@ -338,4 +338,4 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 ### Final status
 
 - PR [#167](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/167) was merged into `prototype/all-in-one-20261020` as merge commit `c34ab0811460c244d648f58c56ddbfd93d6c0379`. The prototype now includes the USB serial API slice; stable `main` remains pinned to `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
-- The current prototype tip is documentation-only commit `23defd13e623d672ee2a31b3caed5f797786b38b`, which restores the complete progress log after the prior long-file transfer was truncated. No application code changed after the successful exact-head build and smoke run.
+- A documentation-only follow-up restored the complete progress log after the prior long-file transfer was truncated and recorded this final status. No application code changed after the successful exact-head build and smoke run.
