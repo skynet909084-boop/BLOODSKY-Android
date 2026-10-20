@@ -18,7 +18,7 @@ class OriginalSourceContractsTests(unittest.TestCase):
         self.zip_path = self.repo_root / "reference/craft-reference.zip"
         self.contracts_path = self.repo_root / "docs/ORIGINAL_APK_SOURCE_CONTRACTS.json"
         self.decoded_dir = self.repo_root / "build/craft-reference"
-        self.app_dir = self.repo_root / "app/src/main/java"
+        self.app_dir = self.repo_root / "app/src/main"
         self.fixtures_dir = self.repo_root / "reference/fixtures"
 
     def test_reference_zip_sha256(self):
@@ -41,44 +41,23 @@ class OriginalSourceContractsTests(unittest.TestCase):
         self.assertIn("backlog_stages", data)
 
     def test_verify_contracts_execution(self):
-        """Verification tool must pass on the source state available in this branch."""
-        macro_editor_present = (self.repo_root / "app/src/main/res/layout/kc_macro_library_card.xml").exists()
-        expected_used = 17 if macro_editor_present else 12
-
-        if macro_editor_present:
-            contracts_path = self.contracts_path
-            temp_dir = None
-        else:
-            # The consolidated ledger includes the macro editor's five additional
-            # Craft image aliases; validate this pre-merge branch against its own
-            # 12-image source state without mutating the committed ledger.
-            temp_dir = tempfile.TemporaryDirectory()
-            contracts_path = Path(temp_dir.name) / "contracts.json"
-            contracts_data = json.loads(self.contracts_path.read_text(encoding="utf-8"))
-            contracts_data["image_aliases_status"]["directly_referenced_in_bloodsky_app"] = expected_used
-            contracts_data["image_aliases_status"]["packaged_but_unused_in_bloodsky"] = 152 - expected_used
-            contracts_path.write_text(json.dumps(contracts_data), encoding="utf-8")
-
-        try:
-            res = verify_contracts(
-                self.zip_path,
-                contracts_path,
-                self.decoded_dir,
-                self.app_dir,
-                self.fixtures_dir
-            )
-        finally:
-            if temp_dir is not None:
-                temp_dir.cleanup()
+        """Verify the contract counts against Java and Android resource XML references."""
+        res = verify_contracts(
+            self.zip_path,
+            self.contracts_path,
+            self.decoded_dir,
+            self.app_dir,
+            self.fixtures_dir
+        )
 
         self.assertEqual(res["status"], "OK")
         self.assertEqual(res["total_images"], 152)
-        self.assertEqual(res["referenced_images"], expected_used)
-        self.assertEqual(res["unused_images"], 152 - expected_used)
+        self.assertEqual(res["referenced_images"], 17)
+        self.assertEqual(res["unused_images"], 135)
 
     def test_cited_call_sites_exist_in_main_activity(self):
         """Every cited BLOODSKY call-site method must exist in MainActivity.java."""
-        main_activity_path = self.app_dir / "com/bloodsky/hmi/MainActivity.java"
+        main_activity_path = self.app_dir / "java/com/bloodsky/hmi/MainActivity.java"
         self.assertTrue(main_activity_path.exists(), "MainActivity.java missing")
         main_code = main_activity_path.read_text(encoding="utf-8", errors="replace")
 
