@@ -30,6 +30,50 @@ def main_activity_has_saved_instance_state(record):
             and re.search(r'\bstate=STOPPED\b', record))
 
 
+def linux_process_state(stat_record):
+    """Return /proc/<pid>/stat state, accounting for spaces in the process name."""
+    close = stat_record.rfind(')')
+    if close < 0:
+        raise ValueError('Malformed /proc process stat record')
+    fields = stat_record[close + 1:].strip().split()
+    if not fields:
+        raise ValueError('Missing process state in /proc stat record')
+    return fields[0]
+
+
+def wait_for_app_process_exit(package, pids, timeout=5):
+    """Confirm each original app PID exited or became a zombie after SIGKILL.
+
+    `pidof` can continue to report a zombie during Android's brief reap window.
+    A failed `kill` can therefore mean the target has already exited, not that it
+    survived. Inspect each original PID instead of treating that race as failure.
+    """
+    if not pids:
+        raise ValueError('At least one app process ID is required')
+    deadline = time.monotonic() + timeout
+    last_states = {}
+    while True:
+        for pid in pids:
+            probe = subprocess.run(
+                ['adb', 'shell', 'run-as', package, 'cat', '/proc/' + pid + '/stat'],
+                capture_output=True, text=True, timeout=45, check=False)
+            if probe.returncode != 0:
+                error = (probe.stderr or probe.stdout).strip()
+                if 'No such file or directory' in error or 'No such process' in error:
+                    last_states[pid] = None
+                    continue
+                raise RuntimeError('Could not inspect app process ' + pid + ': ' + error)
+            last_states[pid] = linux_process_state(probe.stdout)
+        active = {pid: state for pid, state in last_states.items()
+                  if state is not None and state != 'Z'}
+        if not active:
+            return last_states
+        if time.monotonic() >= deadline:
+            raise RuntimeError('Application process survived kill request: '
+                               + repr(active))
+        time.sleep(0.25)
+
+
 def matching_nodes(xml, text=None, class_name=None, description=None, resource_id=None):
     nodes = ET.fromstring(xml).iter('node')
     return [n for n in nodes if (text is None or n.get('text', '').casefold() == text.casefold())
@@ -497,8 +541,7 @@ class Smoke:
                 'source': source_idx, 'target': target_idx,
                 'sourcePin': 'Q', 'targetPin': 'IN',
                 'sourceSignalType': 'BOOL', 'targetSignalType': 'BOOL'}.items()):
-            raise AssertionError('Named Q -> IN wire was not saved correctly: ' + repr(links))
-        self.capture('04q-fbd-named-pin-wire')
+            raise AssertionError('Named Q -> IN wire was not saved correctly: ' + repr(links))        self.capture('04q-fbd-named-pin-wire')
         # Original-style FBD long-press commands must be present, and
         # opening/canceling the menu cannot mutate the saved FBD graph.
         adb('shell', 'input', 'swipe', str(sx), str(sy), str(sx), str(sy), '800')
@@ -839,24 +882,18 @@ class Smoke:
         kill_result = subprocess.run(
             ['adb', 'shell', 'run-as', PACKAGE, 'kill', '-9', *app_pids],
             capture_output=True, text=True, timeout=45)
-        # The Activity can disappear between the PID lookup and kill. Treat that
-        # race as success only when pidof confirms the package process is gone.
-        deadline = time.monotonic() + 5
-        while True:
-            process_check = subprocess.run(
-                ['adb', 'shell', 'pidof', PACKAGE],
-                capture_output=True, text=True, timeout=45)
-            if process_check.returncode != 0 and not process_check.stderr.strip():
-                break
-            if process_check.returncode != 0 and process_check.stderr.strip():
-                raise RuntimeError(
-                    'Could not verify process termination: ' + process_check.stderr.strip())
-            if not process_check.stdout.strip():
-                break
-            if time.monotonic() >= deadline:
-                detail = kill_result.stderr.strip() or process_check.stdout.strip()
-                raise RuntimeError('Application process survived kill request: ' + detail)
-            time.sleep(0.25)
+        # A stale zombie can remain in pidof briefly after SIGKILL. Confirm that
+        # every original PID has exited or reached Z before selecting the file.
+        try:
+            wait_for_app_process_exit(PACKAGE, app_pids)
+        except RuntimeError as failure:
+            (self.output / 'process-termination.txt').write_text(
+                'kill stdout: ' + kill_result.stdout + '\\n'
+                + 'kill stderr: ' + kill_result.stderr + '\\n'
+                + 'kill returncode: ' + str(kill_result.returncode) + '\\n'
+                + str(failure) + '\\n'
+                + adb('shell', 'ps', '-A', '-o', 'PID,STAT,NAME'))
+            raise
         self.tap_document('bloodsky-custom.png')
         self.wait_node('Свойства: Многопозиционное фото', timeout=30)
         self.wait_node('Restored_label', timeout=10)
@@ -997,8 +1034,7 @@ class Smoke:
         self.tap('Выбрать файл…')
         self.tap(description='Show roots')
         self.tap('Downloads')
-        self.capture('04f-document-picker')
-        self.tap_document('bloodsky-custom.png')
+        self.capture('04f-document-picker')        self.tap_document('bloodsky-custom.png')
         self.wait_node('Своё изображение')
         self.tap('Применить')
         self.wait_node(description='Изображение ON')

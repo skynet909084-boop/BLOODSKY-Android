@@ -3,7 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from android_ui_smoke import Smoke
-from android_ui_smoke import center, matching_nodes, preferences_are_empty, properties_scroll_node, property_input_matches, property_scroll_up, keyboard_is_shown, document_nodes, main_activity_has_saved_instance_state
+from android_ui_smoke import center, matching_nodes, preferences_are_empty, properties_scroll_node, property_input_matches, property_scroll_up, keyboard_is_shown, document_nodes, main_activity_has_saved_instance_state, linux_process_state, wait_for_app_process_exit
 
 class AndroidSmokeHelpersTests(unittest.TestCase):
     def test_observed_enabled_ui_targets_and_uppercase_russian(self):
@@ -33,6 +33,26 @@ class AndroidSmokeHelpersTests(unittest.TestCase):
             record.replace("state=STOPPED", "state=RESUMED")))
         self.assertFalse(main_activity_has_saved_instance_state(
             record.replace("mIcicle=Bundle[mParcelledData.dataSize=3652] ", "")))
+
+    def test_linux_process_state_handles_parenthesized_process_names(self):
+        self.assertEqual('Z', linux_process_state('10971 (com.bloodsky hmi) Z 1 2 3'))
+
+    def test_app_process_kill_race_accepts_zombie_or_reaped_pid(self):
+        from types import SimpleNamespace
+        with patch('android_ui_smoke.subprocess.run', side_effect=[
+                SimpleNamespace(returncode=0, stdout='10971 (com.bloodsky.hmi) Z 1 2 3', stderr=''),
+                SimpleNamespace(returncode=1, stdout='', stderr='cat: /proc/10972/stat: No such file or directory')]):
+            states = wait_for_app_process_exit('com.bloodsky.hmi', ['10971', '10972'])
+        self.assertEqual({'10971': 'Z', '10972': None}, states)
+
+    def test_app_process_termination_gate_rejects_a_live_original_pid(self):
+        from types import SimpleNamespace
+        with patch('android_ui_smoke.subprocess.run', return_value=SimpleNamespace(
+                returncode=0, stdout='10971 (com.bloodsky.hmi) S 1 2 3', stderr='')), \
+             patch('android_ui_smoke.time.monotonic', side_effect=[0, 1]), \
+             patch('android_ui_smoke.time.sleep'):
+            with self.assertRaisesRegex(RuntimeError, "'10971': 'S'"):
+                wait_for_app_process_exit('com.bloodsky.hmi', ['10971'], timeout=0.5)
 
     def test_icon_is_targeted_by_accessibility_description(self):
         xml = '<hierarchy><node text="" content-desc="Калькулятор" class="android.widget.ImageButton" enabled="true" bounds="[10,20][110,80]"/></hierarchy>'
