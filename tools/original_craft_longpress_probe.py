@@ -16,6 +16,7 @@ from PIL import Image
 from original_craft_probe_state import is_project_loading
 from original_craft_longpress_state import (
     LONG_PRESS_MS, action_identity, actions_for_controls, remember_state, safe_field_value, touch_command,
+    visible_state_attributes,
 )
 
 OUT = Path(sys.argv[1])
@@ -204,9 +205,9 @@ def visible_state(root):
             text = "<clock>"
         if loading and cls.endswith("ImageView"):
             continue
-        out.append((n.attrib.get("resource-id", ""), cls, text,
-                    n.attrib.get("content-desc", ""), n.attrib.get("bounds", ""),
-                    n.attrib.get("checked", ""), n.attrib.get("selected", "")))
+        attributes = dict(n.attrib)
+        attributes["text"] = text
+        out.append(visible_state_attributes(attributes))
     return out
 
 
