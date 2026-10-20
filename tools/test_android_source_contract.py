@@ -184,6 +184,13 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("isFbd(screen.widgets.get(source))", load_method)
         self.assertIn("isFbd(screen.widgets.get(target))", load_method)
 
+    def test_canceled_media_picker_cleans_only_new_unreferenced_copies(self):
+        self.assertIn("ProjectMediaService.storeSelectedMediaCopy(", self.source)
+        self.assertIn("cleanupPendingMediaCopies(properties)", self.source)
+        self.assertIn("cleanupUnreferencedMediaCopy(projectJson, copy)", self.source)
+        self.assertIn("waitingDialog != activePropertiesDialog", self.source)
+        self.assertIn("if (copy == null || !copy.created) return", self.source)
+
     def test_legacy_media_migration_is_checked_before_opening_project(self):
         load_start = self.source.index("private boolean loadProject()")
         load_end = self.source.index("public static void validateImportedProjectStatic(", load_start)
