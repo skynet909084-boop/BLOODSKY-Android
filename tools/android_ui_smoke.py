@@ -834,11 +834,10 @@ class Smoke:
         app_pids = adb('shell', 'pidof', PACKAGE).strip().split()
         if not app_pids:
             raise AssertionError('Application process is missing while DocumentsUI is open')
-        # am kill is implemented as force-stop on this Android 11 emulator and
-        # discards the ActivityRecord's saved state. Kill the background PID so
-        # the task and the Bundle captured when DocumentsUI opened remain intact.
+        # Signal the debuggable app process as its own UID. This preserves the task
+        # and the Bundle captured when DocumentsUI opened while avoiding shell UID denial.
         kill_result = subprocess.run(
-            ['adb', 'shell', 'kill', '-9', *app_pids],
+            ['adb', 'shell', 'run-as', PACKAGE, 'kill', '-9', *app_pids],
             capture_output=True, text=True, timeout=45)
         # The Activity can disappear between the PID lookup and kill. Treat that
         # race as success only when pidof confirms the package process is gone.
