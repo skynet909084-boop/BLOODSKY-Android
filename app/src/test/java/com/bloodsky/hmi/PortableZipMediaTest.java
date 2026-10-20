@@ -649,15 +649,16 @@ public class PortableZipMediaTest {
                 copy.projectPath.substring("media/".length()));
         assertTrue(stored.isFile());
 
-        String escapedPath = copy.projectPath.replace("/", "\\/");
-        String savedProjectJson = "{\\\"screens\\\":[{\\\"widgets\\\":[{\\\"pathOrNameOn\\\":\\\""
-                + escapedPath + "\\\"}]}]}";
+        String savedProjectJson = new JSONObject().put("screens",
+                new JSONArray().put(new JSONObject().put("pathOrNameOn", copy.projectPath)))
+                .toString().replace("/", "\\/");
         assertFalse(ProjectMediaService.deleteUnreferencedSelectedMedia(
                 rootDir, projectJson, copy.projectPath, savedProjectJson));
         assertTrue("Referenced media must remain available after applying widget properties", stored.isFile());
 
         assertTrue(ProjectMediaService.deleteUnreferencedSelectedMedia(
-                rootDir, projectJson, copy.projectPath, "{\\\"screens\\\":[]}"));
+                rootDir, projectJson, copy.projectPath,
+                new JSONObject().put("screens", new JSONArray()).toString()));
         assertFalse(stored.exists());
     }
 }
