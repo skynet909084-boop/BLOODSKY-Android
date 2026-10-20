@@ -125,3 +125,20 @@ The source findings and extraction tests do not implement INT/FLOAT arithmetic, 
 - Compared the full inventory against `prototype/all-in-one-20261020` and checked open PR heads/bases. Deleted `feat/fbd-75-pin-semantics`: its head was 621 commits behind the prototype with no branch-only commits and no open-PR dependency. Rechecked the ref after deletion; it is absent.
 - Retained `feat/craft-screen-navigation-import-20261018` even though its head is 53 commits behind the prototype, because it remains the base of open PR #149. All other non-PR-head branches still have branch-only commits; spot checks of 13 changed-file sets found no file-blob-complete duplicate suitable for cleanup. Open PR heads and their base branches remain intact.
 - Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+
+### Quick profile check after de-duplication — run #167 (9/10 directions complete)
+
+All nine available `ui-audit.json` files had `unique_state_signatures == states_captured`, no probe error, and terminated at the depth/control/cycle boundary rather than the state cap. Each reported `coverage_limited=true`, `coverage_complete=false`, and one project-loading-stalled state; this is a helper regression check, not a complete Craft coverage claim. The network artifact is still pending.
+
+| Direction | States / unique | Transitions | Long presses | Seconds | Loading stalls |
+|---|---:|---:|---:|---:|---:|
+| FBD | 5 / 5 | 19 | 3 | 248.8 | 1 |
+| Components | 10 / 10 | 32 | 15 | 484.1 | 1 |
+| Runtime | 5 / 5 | 19 | 2 | 221.6 | 1 |
+| Exit policy | 12 / 12 | 28 | 7 | 386.3 | 1 |
+| Project create | 7 / 7 | 22 | 6 | 318.8 | 1 |
+| Macros | 11 / 11 | 26 | 7 | 368.4 | 1 |
+| Import paste | 10 / 10 | 29 | 3 | 320.2 | 1 |
+| Devices | 11 / 11 | 26 | 7 | 357.8 | 1 |
+| Import QR | 8 / 8 | 26 | 7 | 333.7 | 1 |
