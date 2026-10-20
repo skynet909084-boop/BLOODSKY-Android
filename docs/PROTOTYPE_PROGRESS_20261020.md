@@ -339,3 +339,10 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 
 - PR [#167](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/167) was merged into `prototype/all-in-one-20261020` as merge commit `c34ab0811460c244d648f58c56ddbfd93d6c0379`. The prototype now includes the USB serial API slice; stable `main` remains pinned to `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
 - A documentation-only follow-up restored the complete progress log after the prior long-file transfer was truncated and recorded this final status. No application code changed after the successful exact-head build and smoke run.
+
+
+## USB Modbus RTU writes — 20 Oct 2026
+
+- PR [#168](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/168) adds FC05/FC06 single coil/register writes, FC0F/FC10 batch writes, and FC22 mask writes to `ModbusRtuClient`, then exposes them through the USB session/connection. RTU replies must pass CRC and exact acknowledgement checks; the transaction keeps the existing bounded deadline.
+- Exact-head APK/JUnit [#1175](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39406473632) and Android 11 UI smoke [#808](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39406651996) passed. The smoke is the existing quick FBD regression, not a USB hardware test.
+- PR #168 was merged into `prototype/all-in-one-20261020` as `e337bd86e9cb4af4480d34815abea1c500e55338`. Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`. Project bindings/UI and physical adapter acceptance remain open.
