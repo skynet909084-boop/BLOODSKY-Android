@@ -188,3 +188,10 @@ All nine available `ui-audit.json` files had `unique_state_signatures == states_
 | Exit policy | 15 / 15 | 61 | 35 | 2 | 953.2 | 0 | limited; depth/control/cycle boundary |
 
 The artifact completed without probe errors or runtime-cap hit. Its project seed was not attempted, appropriate to this exit-policy path. `coverage_complete=false`; this is not full Craft coverage. The other eight directions remain in progress.
+
+
+## Portable project media review — 20 Oct 2026
+
+- Reviewed open PRs [#38](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/38) and [#44](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/44). Their base chains are legacy branches; do not merge them wholesale into the unified prototype.
+- The prototype already contains `ProjectMediaService` and wires it into the UI paths: `MainActivity` resolves media for runtime playback/read, calls `importProjectBundle` on project import, and `exportProjectZipBundle` for ZIP export. The service currently uses stable project identity, per-import media generations, bounded reads, media resolution and staged publication/rollback. Its tests include basename collisions and metadata/background preservation, rejection/rollback cases, sources-deleted image/audio resolution followed by re-export, traversal rejection and generation replacement.
+- This supersedes the older service/test payload in PR #44; preserve the open legacy refs for now, but do not duplicate or merge them. The actual original-project acceptance remains open: import → edit → save → export → reopen for each supplied archive, including screens, background/media, bindings, FBD, network and device-slot records. Existing synthetic media tests are not that acceptance.
