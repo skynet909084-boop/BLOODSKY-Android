@@ -296,7 +296,7 @@
         "register",
         "bit"
       ],
-      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.playSoundAlert",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.playCraftAlarmAlert",
       "status": "partial",
       "evidence": "ToneGenerator fallback; missing embedded sound asset trigger."
     },
