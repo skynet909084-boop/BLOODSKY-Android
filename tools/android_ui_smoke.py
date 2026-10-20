@@ -709,10 +709,20 @@ class Smoke:
         adb('shell', 'input', 'text', 'Restored_label')
 
         self.prepare_custom_image()
-        xml = self.dump()
-        pickers = matching_nodes(xml, text='Выбрать файл…')
-        if len(pickers) < 2:
-            raise AssertionError('Expected image path fields and document pickers')
+        if keyboard_is_shown(adb('shell', 'dumpsys', 'input_method')):
+            adb('shell', 'input', 'keyevent', '4')
+        pickers = []
+        for _ in range(12):
+            xml = self.dump()
+            pickers = matching_nodes(xml, text='Выбрать файл…')
+            if pickers:
+                break
+            scroll = properties_scroll_node(xml)
+            left, top, right, bottom = map(int, re.findall(r'\\d+', scroll.get('bounds')))
+            x = (left + right) // 2
+            adb('shell', 'input', 'swipe', str(x), str(bottom - 100), str(x), str(top + 100), '300')
+        if not pickers:
+            raise AssertionError('Image media picker button is not reachable in the properties form')
         x, y = center(pickers[0].get('bounds'))
         adb('shell', 'input', 'tap', str(x), str(y))
         self.tap(description='Show roots')
