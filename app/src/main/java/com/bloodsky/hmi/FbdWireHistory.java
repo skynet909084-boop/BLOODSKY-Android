@@ -39,7 +39,14 @@ public final class FbdWireHistory {
      */
     public void recordBefore(Object screen, List<MainActivity.FbdConnection> current) throws Exception {
         if (screen == null || current == null) throw new IllegalArgumentException("Missing FBD graph");
-        String before = snapshot(current);
+        recordSnapshotBefore(screen, snapshot(current));
+    }
+
+    /** Record a prevalidated graph snapshot after a surrounding transaction saves successfully. */
+    void recordSnapshotBefore(Object screen, String before) throws Exception {
+        if (screen == null || before == null) throw new IllegalArgumentException("Missing FBD graph snapshot");
+        // Reject malformed history snapshots before they can poison the undo chain.
+        deserialize(before);
         if (screenKey != screen) {
             clear();
             screenKey = screen;

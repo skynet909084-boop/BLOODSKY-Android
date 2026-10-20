@@ -7905,16 +7905,9 @@ public class MainActivity extends Activity {
                 .setItems(labels.toArray(new String[0]), (dialog, selected) -> {
                     FbdConnection edge = candidates.get(selected);
                     if (!screen.connections.contains(edge)) return;
-                    try {
-                        fbdWireHistory.recordBefore(screen, screen.connections);
-                    } catch (Exception invalid) {
-                        Toast.makeText(this, "Не удалось сохранить историю FBD", Toast.LENGTH_LONG).show();
-                        return;
-                    }
-                    if (disconnectFbdEdge(screen.connections, edge)) {
-                        persistProject();
-                        if (editor != null) editor.invalidate();
-                        Toast.makeText(this, "Связь FBD удалена", Toast.LENGTH_SHORT).show();
+                    if (screen.connections.contains(edge)) {
+                        commitFbdWireEdit(screen, () -> disconnectFbdEdge(screen.connections, edge),
+                                "Связь FBD удалена");
                     }
                 }).setNegativeButton("Отмена", null).show();
     }
@@ -8250,16 +8243,37 @@ public class MainActivity extends Activity {
                 return;
             }
         }
+        commitFbdWireEdit(screen, () -> screen.connections.add(edge), "Связь FBD добавлена");
+    }
+
+    /** Save a typed wire mutation before publishing its undo step to the editor history. */
+    private boolean commitFbdWireEdit(Screen screen, Runnable mutation, String successMessage) {
+        if (screen == null || currentScreenIndex < 0 || currentScreenIndex >= screens.size()
+                || screens.get(currentScreenIndex) != screen) return false;
+        JSONObject originalProjectFields = null;
         try {
-            fbdWireHistory.recordBefore(screen, screen.connections);
-        } catch (Exception invalid) {
-            Toast.makeText(this, "Не удалось сохранить историю FBD", Toast.LENGTH_LONG).show();
-            return;
+            originalProjectFields = projectExtraFields == null
+                    ? null : new JSONObject(projectExtraFields.toString());
+            boolean saved = FbdWireEditTransaction.apply(screen, screen.connections, fbdWireHistory,
+                    mutation, () -> persistProjectNow(true));
+            if (!saved) {
+                projectExtraFields = originalProjectFields;
+                saveActiveScreen();
+                if (editor != null) editor.invalidate();
+                Toast.makeText(this, "Изменение FBD не сохранено", Toast.LENGTH_LONG).show();
+                return false;
+            }
+            if (editor != null) editor.invalidate();
+            Toast.makeText(this, successMessage, Toast.LENGTH_SHORT).show();
+            return true;
+        } catch (Exception failure) {
+            projectExtraFields = originalProjectFields;
+            saveActiveScreen();
+            if (editor != null) editor.invalidate();
+            Toast.makeText(this, "Не удалось изменить FBD: " + failure.getMessage(),
+                    Toast.LENGTH_LONG).show();
+            return false;
         }
-        screen.connections.add(edge);
-        persistProject();
-        if (editor != null) editor.invalidate();
-        Toast.makeText(this, "Связь FBD добавлена", Toast.LENGTH_SHORT).show();
     }
 
     private void connectFbdWidgets(int source, int target) {
