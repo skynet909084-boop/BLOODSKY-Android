@@ -108,3 +108,12 @@ The source findings and extraction tests do not implement INT/FLOAT arithmetic, 
 - PR [#69](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/69) remains intentionally unmerged. Its ordered/untyped graph drawing and transaction work must be decomposed against the richer prototype FBD implementation before selective porting; rerun APK/JUnit and Android UI smoke on each accepted port.
 - Continue reviewing the remaining Craft 1.0.7 direction artifacts, then raise the FBD probe cap/termination strategy where evidence shows meaningful unexplored states. Keep the original emulator branch until the audit is complete.
 - Stable `main` remains unchanged.
+
+
+## Craft probe state de-duplication — 20 Oct 2026
+
+- Reviewing all ten artifacts from full run [#165](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39379411369) exposed a probe defect: `capture_state` checked whether a signature was already in `seen`, but never inserted newly captured signatures. Repeated visible screens therefore consumed the 100-state budget. The #165 metrics above remain valid as partial evidence, but they are not a reliable count of unique UI states.
+- PR [#151](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/151), head `d4b9af4d7821675b0d1d0afdb652f717dcae26f6`, now records unique signatures before accepting a state, removes duplicate XML captures, and adds a unit regression for first/duplicate/new signatures.
+- Exact-head Android APK/JUnit run [#1157](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39384363621) passed. Ten-direction quick emulator run [#167](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39384363374) is running; manual full-profile retest [#168](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39384420617) is also running on the same head. Neither retest has been accepted yet; inspect each artifact's unique-state count and coverage flags after completion.
+- Deleted temporary branch `fix/craft-probe-state-dedup-20261020` after its changes were ported to #151. Rechecked that the temporary ref, merged timer/RTU refs, and superseded RTU ref are absent. #151/#150/#149 remain open because their evidence and acceptance gates are unfinished.
+- Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
