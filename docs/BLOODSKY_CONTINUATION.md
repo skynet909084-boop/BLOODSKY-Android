@@ -7,7 +7,7 @@ This file is the durable handoff for continuing the Craft 1.0.7 parity work with
 - Repository: `skynet909084-boop/BLOODSKY-Android`.
 - Active branch: `feat/craft-screen-navigation-import-20261018`, PR #143, stacked on PR #142 → #141 → #139 → #76.
 - Stable `main` is untouched. Do not merge PRs, delete branches, or rebase stacked work as part of routine progress; preserve branch dependencies and review them first.
-- The ID8 test/documentation follow-up is committed as `4f3a6c605f9fb03d9da032ce3ae453dbab24e301` on the same PR branch. APK/JUnit #1130 passed on this exact head; full UI #764 and Craft probe #161 are still running.
+- Last committed head is `927172ccb9223be761364f0d59adce85d97ecc5d`. APK/JUnit #1131 and Craft quick probe #162 passed there; #162 reached 8 states / 7 transitions and is not full coverage. Android 11 full smoke #765 passed on that head — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39367727663 (artifact 12240597645, SHA-256 `27722ac8fa92377353e83344c3ecddeeaa195a3e47120d27ad5a464e1dfa815c`). Local source-backed Float32 ID8 changes and matching audit updates are in progress; the Python suite passed 149/149 after preparing the pinned resource set, but these Java changes are not yet committed or CI-verified.
 - Persist each focused, reviewed change to GitHub on the active feature branch and update this handoff after meaningful gates. Do not rely on chat memory as the project record.
 
 ## Latest completed changes
@@ -34,12 +34,6 @@ This file is the durable handoff for continuing the Craft 1.0.7 parity work with
 
 ## GitHub Actions / Gradle review (2026-10-20)
 
-- The suggested “Build with Gradle” repository, `gradle/gradle-build-action`, says its v3 action was superseded by `gradle/actions/setup-gradle`; current workflows already use `gradle/actions/setup-gradle@v4` with Gradle 8.9. The pinned v4 action provides Gradle User Home caching, so adding the legacy action would duplicate setup rather than speed up the build. References: https://github.com/gradle/gradle-build-action and https://github.com/gradle/actions/tree/v4/setup-gradle.
-- The suggested wrapper updater creates PRs for checked-in Gradle Wrapper files. This repository currently has no `gradlew`, `gradlew.bat`, `gradle-wrapper.properties`, or `gradle-wrapper.jar`, so there is nothing for it to update. Defer that scheduled PR workflow until the project adopts a checked-in wrapper; CI currently pins Gradle 8.9 centrally in `gradle/actions/setup-gradle`.
-- No action change was made from these recommendations: the cache/setup action is already present, and introducing a wrapper automation without a wrapper would add noise instead of removing build friction.
-
-## GitHub Actions / Gradle review (2026-10-20)
-
 - The suggested “Build with Gradle” repository, `gradle/gradle-build-action`, says its v3 action was superseded by `gradle/actions/setup-gradle`; current workflows already use `gradle/actions/setup-gradle@v4` with Gradle 8.9. The pinned v4 action configures Gradle User Home caching, so adding the legacy action would duplicate setup rather than speed up the build. References: https://github.com/gradle/gradle-build-action and https://github.com/gradle/actions/tree/v4/setup-gradle.
 - The suggested wrapper updater creates PRs for checked-in Gradle Wrapper files. This repository currently has no `gradlew`, `gradlew.bat`, `gradle-wrapper.properties`, or `gradle-wrapper.jar`, so there is nothing for it to update. Defer that scheduled PR workflow until the project adopts a checked-in wrapper; CI currently pins Gradle 8.9 centrally in `gradle/actions/setup-gradle`.
 - No action change was made from these recommendations: the cache/setup action is already present, and introducing wrapper automation without a wrapper would add noise instead of removing build friction.
@@ -53,7 +47,7 @@ This file is the durable handoff for continuing the Craft 1.0.7 parity work with
 ## Open work queue
 
 1. Finish and record full Craft probe #155. The full UI smoke passed at #760; rerun it on the current code head after commit.
-2. Extend source-confirmed typed system bindings beyond dynamic-text bit reads (starting with numeric inputs), and implement the remaining internal/system gateway behavior while preserving explicit opt-in and fail-closed import semantics.
+2. Finish the ID8 numeric-input source-binding work (UINT16/INT16 and big-endian Float32 read/write), then continue the remaining internal/system gateway behavior with explicit opt-in and fail-closed import semantics.
 3. Complete legacy macro round-trip and execution behavior only where supported by Craft source/fixtures; unknown child blocks must remain preserved and fail closed.
 4. Complete Modbus RTU Bluetooth/USB adapters, reconnect/lifecycle handling, and physical-device acceptance; the current RTU client core is stream-level only.
 5. Continue the manual + screenshots + pinned-decompilation gap audit across component properties, editor/settings/device screens, FBD behavior and persistence; implement verified gaps in focused changes with regression coverage.

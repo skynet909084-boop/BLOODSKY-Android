@@ -23,11 +23,19 @@ public class CraftSystemNumericWidgetBindingTest {
         assertEquals("-23", CraftSystemNumericWidgetBinding.readIntegerState(widget, bank));
     }
 
-    @Test public void serviceAndFloatBindingsDoNotWriteThroughThisPath() throws Exception {
+    @Test public void serviceWritesRemainDisabledAndFloatReadsSourceOrder() throws Exception {
         CraftSystemRegisterBank bank = new CraftSystemRegisterBank();
         JSONObject service = numericWidget(9, CraftNumericInput.INTEGER,
                 CraftNumericInput.UNSIGNED_16, true);
         JSONObject floating = numericWidget(120, CraftNumericInput.FLOAT32,
+                CraftNumericInput.UNSIGNED_16, false);
+        JSONObject serviceFloat = numericWidget(9, CraftNumericInput.FLOAT32,
+                CraftNumericInput.UNSIGNED_16, true);
+        JSONObject invalidFloatRead = numericWidget(1999, CraftNumericInput.FLOAT32,
+                CraftNumericInput.UNSIGNED_16, false);
+        JSONObject overflowFloat = numericWidget(Integer.MAX_VALUE, CraftNumericInput.FLOAT32,
+                CraftNumericInput.UNSIGNED_16, true);
+        JSONObject badFloat = numericWidget(1999, CraftNumericInput.FLOAT32,
                 CraftNumericInput.UNSIGNED_16, true);
         JSONObject outOfRange = numericWidget(2000, CraftNumericInput.INTEGER,
                 CraftNumericInput.UNSIGNED_16, true);
@@ -35,18 +43,49 @@ public class CraftSystemNumericWidgetBindingTest {
                 CraftNumericInput.UNSIGNED_16, true);
         JSONObject lastUserRegister = numericWidget(1999, CraftNumericInput.INTEGER,
                 CraftNumericInput.UNSIGNED_16, true);
+        JSONObject lastFloatPair = numericWidget(1998, CraftNumericInput.FLOAT32,
+                CraftNumericInput.UNSIGNED_16, true);
+        JSONObject partialFloatPair = numericWidget(1999, CraftNumericInput.FLOAT32,
+                CraftNumericInput.UNSIGNED_16, true);
 
         assertNotNull(CraftSystemNumericWidgetBinding.readIntegerState(service, bank));
         assertFalse(CraftSystemNumericWidgetBinding.canWriteInteger(service));
         assertFalse(CraftSystemNumericWidgetBinding.writeInteger(service, 5, bank));
         assertNull(CraftSystemNumericWidgetBinding.readIntegerState(floating, bank));
-        assertFalse(CraftSystemNumericWidgetBinding.canWriteInteger(floating));
-        assertFalse(CraftSystemNumericWidgetBinding.writeInteger(floating, 5, bank));
+        assertFalse(CraftSystemNumericWidgetBinding.canWrite(floating));
+        assertFalse(CraftSystemNumericWidgetBinding.writeValue(floating, 5, bank));
+        bank.writeWord(120, 0x4148);
+        bank.writeWord(121, 0x0000);
+        floating.put("craftNumericDecimals", 2);
+        assertEquals("12.5", CraftSystemNumericWidgetBinding.readFloatState(floating, bank));
+        assertEquals("12.5", CraftSystemNumericWidgetBinding.readState(floating, bank));
+        floating.put("craftNumericEnabled", true);
+        assertTrue(CraftSystemNumericWidgetBinding.canWrite(floating));
+        assertTrue(CraftSystemNumericWidgetBinding.writeValue(floating, 23.125d, bank));
+        assertEquals(23.125f, bank.readFloat32(120, false, false), 0.00001f);
+        CraftServiceRegisters.global().clear();
+        CraftServiceRegisters.global().writeArrayWord(0, 0x3f80);
+        CraftServiceRegisters.global().writeArrayWord(1, 0x0000);
+        bank.writeWord(10, 0x0000);
+        JSONObject firstFloat = numericWidget(0, CraftNumericInput.FLOAT32,
+                CraftNumericInput.UNSIGNED_16, false);
+        assertEquals("1.0", CraftSystemNumericWidgetBinding.readFloatState(firstFloat, bank));
+        assertNotNull(CraftSystemNumericWidgetBinding.readFloatState(serviceFloat, bank));
+        assertNull(CraftSystemNumericWidgetBinding.readFloatState(invalidFloatRead, bank));
+        assertFalse(CraftSystemNumericWidgetBinding.canWrite(serviceFloat));
+        assertFalse(CraftSystemNumericWidgetBinding.writeValue(serviceFloat, 1.5d, bank));
+        CraftServiceRegisters.global().clear();
+        assertNull(CraftSystemNumericWidgetBinding.readFloatState(badFloat, bank));
+        assertFalse(CraftSystemNumericWidgetBinding.canWrite(badFloat));
+        assertNull(CraftSystemNumericWidgetBinding.readFloatState(overflowFloat, bank));
+        assertFalse(CraftSystemNumericWidgetBinding.canWrite(overflowFloat));
         assertNull(CraftSystemNumericWidgetBinding.readIntegerState(outOfRange, bank));
         assertFalse(CraftSystemNumericWidgetBinding.canWriteInteger(outOfRange));
         assertFalse(CraftSystemNumericWidgetBinding.writeInteger(outOfRange, 5, bank));
         assertTrue(CraftSystemNumericWidgetBinding.canWriteInteger(firstUserRegister));
         assertTrue(CraftSystemNumericWidgetBinding.canWriteInteger(lastUserRegister));
+        assertTrue(CraftSystemNumericWidgetBinding.canWrite(lastFloatPair));
+        assertFalse(CraftSystemNumericWidgetBinding.canWrite(partialFloatPair));
     }
 
     @Test public void unsupportedSlotOrWidgetNeverActivates() throws Exception {
@@ -58,9 +97,9 @@ public class CraftSystemNumericWidgetBindingTest {
                 CraftNumericInput.UNSIGNED_16, true);
         wrongType.put("craftComponentId", 7);
 
-        assertNull(CraftSystemNumericWidgetBinding.readIntegerState(device, bank));
+        assertNull(CraftSystemNumericWidgetBinding.readState(device, bank));
         assertFalse(CraftSystemNumericWidgetBinding.canWriteInteger(device));
-        assertNull(CraftSystemNumericWidgetBinding.readIntegerState(wrongType, bank));
+        assertNull(CraftSystemNumericWidgetBinding.readState(wrongType, bank));
         assertFalse(CraftSystemNumericWidgetBinding.canWriteInteger(wrongType));
     }
 

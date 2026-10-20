@@ -18,7 +18,7 @@ public final class CraftSystemNumericWidgetBinding {
                 && resolution.optInt("sourceSlot", -1) == GLOBAL_SOURCE_SLOT;
     }
 
-    /** Craft ID8 integer mode reads one 16-bit system word; Float32 remains disabled. */
+    /** Craft ID8 integer mode reads one 16-bit system word. */
     public static String readIntegerState(JSONObject fields, CraftSystemRegisterBank bank) {
         if (!isSupportedInteger(fields) || bank == null) return null;
         int address = address(fields);
@@ -29,12 +29,39 @@ public final class CraftSystemNumericWidgetBinding {
         return Integer.toString(value);
     }
 
+    /** Craft ID8 Float32 mode reads two consecutive words in source-confirmed big-endian order. */
+    public static String readFloatState(JSONObject fields, CraftSystemRegisterBank bank) {
+        if (!isSupportedFloat(fields) || bank == null) return null;
+        int address = address(fields);
+        if (address < 0 || address >= CraftSystemRegisterBank.SIZE - 1) return null;
+        int first = CraftSystemRegisterAccess.readInt(address, bank);
+        int second = CraftSystemRegisterAccess.readInt(address + 1, bank);
+        float value = FbdCraftRegisterCodec.floatValue(first & 0xffff, second & 0xffff);
+        return CraftNumericInput.truncateFloatDisplay(value, fields);
+    }
+
+    /** State display for either source-confirmed local ID8 mode. */
+    public static String readState(JSONObject fields, CraftSystemRegisterBank bank) {
+        return fields != null && fields.optInt("craftNumericMode", CraftNumericInput.INTEGER)
+                == CraftNumericInput.FLOAT32 ? readFloatState(fields, bank) : readIntegerState(fields, bank);
+    }
+
     /** Only opt-in integer writes to project-owned registers are enabled. */
     public static boolean canWriteInteger(JSONObject fields) {
         if (!isSupportedInteger(fields) || !fields.optBoolean("craftNumericEnabled", false)) return false;
         int address = address(fields);
         return address >= CraftSystemRegisterBank.FIRST_USER_REGISTER
                 && address < CraftSystemRegisterBank.SIZE;
+    }
+
+    /** Only explicitly enabled integer or Float32 writes to project user words are enabled. */
+    public static boolean canWrite(JSONObject fields) {
+        if (fields == null || !fields.optBoolean("craftNumericEnabled", false)) return false;
+        if (isSupportedInteger(fields)) return canWriteInteger(fields);
+        if (!isSupportedFloat(fields)) return false;
+        int address = address(fields);
+        return address >= CraftSystemRegisterBank.FIRST_USER_REGISTER
+                && address < CraftSystemRegisterBank.SIZE - 1;
     }
 
     public static boolean writeInteger(JSONObject fields, double value,
@@ -44,9 +71,26 @@ public final class CraftSystemNumericWidgetBinding {
         return CraftSystemRegisterAccess.writeInt(address(fields), word, bank);
     }
 
+    public static boolean writeValue(JSONObject fields, double value,
+                                     CraftSystemRegisterBank bank) {
+        if (!canWrite(fields) || bank == null) return false;
+        int address = address(fields);
+        if (isSupportedInteger(fields)) {
+            return writeInteger(fields, value, bank);
+        }
+        float checked = (float) CraftNumericInput.parseCommit(Double.toString(value), fields);
+        bank.writeFloat32(address, checked, false, false);
+        return true;
+    }
+
     private static boolean isSupportedInteger(JSONObject fields) {
         return isGlobalSystemBinding(fields)
                 && fields.optInt("craftNumericMode", CraftNumericInput.INTEGER) == CraftNumericInput.INTEGER;
+    }
+
+    private static boolean isSupportedFloat(JSONObject fields) {
+        return isGlobalSystemBinding(fields)
+                && fields.optInt("craftNumericMode", CraftNumericInput.INTEGER) == CraftNumericInput.FLOAT32;
     }
 
     private static int address(JSONObject fields) {

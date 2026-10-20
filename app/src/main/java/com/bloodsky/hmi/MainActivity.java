@@ -1221,7 +1221,7 @@ public class MainActivity extends Activity {
                 craftSystemTextUpdates.put(i, systemTextState);
                 continue;
             }
-            String systemNumericState = CraftSystemNumericWidgetBinding.readIntegerState(
+            String systemNumericState = CraftSystemNumericWidgetBinding.readState(
                     snapshotExtras.get(i), systemRegisterBank);
             if (systemNumericState != null) {
                 craftSystemNumericUpdates.put(i, systemNumericState);
@@ -3948,7 +3948,7 @@ public class MainActivity extends Activity {
             craftNumericEnabledField = new android.widget.CheckBox(this); craftNumericEnabledField.setText("Разрешить ввод после настройки привязки");
             craftNumericEnabledField.setChecked(w.extraFields.optBoolean("craftNumericEnabled", false)); form.addView(craftNumericEnabledField);
             TextView numericHelp = new TextView(this);
-            numericHelp.setText("Связь Craft сохранена выключенной. Системный источник слота 100 читает локальный регистр; целочисленная запись в регистры 10–1999 доступна после явного разрешения ввода. Для TCP укажи свой holding-регистр. Пароль хранится в Android Keystore.");
+            numericHelp.setText("Связь Craft сохранена выключенной. Системный источник слота 100 читает локальные слова; запись целых в регистры 10–1999 и Float32 в пары 10–1998 доступна после явного разрешения ввода. Для TCP укажи свой holding-регистр. Пароль хранится в Android Keystore.");
             form.addView(numericHelp);
         } else {
             craftNumericMinField = craftNumericMaxField = craftNumericDecimalsField = craftNumericPasswordField = null;
@@ -8955,9 +8955,9 @@ public class MainActivity extends Activity {
                 Toast.makeText(MainActivity.this, "Открой свойства ID 8 и явно разреши ввод", Toast.LENGTH_LONG).show(); return;
             }
             boolean craftSystemBinding = CraftSystemNumericWidgetBinding.isGlobalSystemBinding(widget.extraFields);
-            if (craftSystemBinding && !CraftSystemNumericWidgetBinding.canWriteInteger(widget.extraFields)) {
+            if (craftSystemBinding && !CraftSystemNumericWidgetBinding.canWrite(widget.extraFields)) {
                 Toast.makeText(MainActivity.this,
-                        "Для системной связи Craft пока доступен только целочисленный ввод в пользовательский регистр 10–1999",
+                        "Для системной связи Craft ввод доступен в пользовательские регистры 10–1999 (Float32 — до 1998)",
                         Toast.LENGTH_LONG).show(); return;
             }
             boolean passwordRequired = widget.extraFields.optBoolean("craftNumericPasswordRequired", false);
@@ -8981,7 +8981,7 @@ public class MainActivity extends Activity {
                     + " – " + widget.extraFields.optDouble("craftNumericMax", 1000)); form.addView(range);
             String initial = liveValues.get(widgetIndex);
             if (craftSystemBinding) {
-                String systemValue = CraftSystemNumericWidgetBinding.readIntegerState(widget.extraFields, systemRegisterBank);
+                String systemValue = CraftSystemNumericWidgetBinding.readState(widget.extraFields, systemRegisterBank);
                 if (systemValue != null) initial = systemValue;
             }
             if (initial == null || initial.startsWith("ERR") || initial.startsWith("CFG")) initial = widget.text;
@@ -9010,7 +9010,7 @@ public class MainActivity extends Activity {
                 if (binding == null) {
                     if (craftSystemBinding) {
                         if (!operatorMode || !activityResumed || !widgets.contains(widget)
-                                || !CraftSystemNumericWidgetBinding.writeInteger(widget.extraFields, next, systemRegisterBank)) {
+                                || !CraftSystemNumericWidgetBinding.writeValue(widget.extraFields, next, systemRegisterBank)) {
                             Toast.makeText(MainActivity.this, "Не удалось записать системный регистр", Toast.LENGTH_LONG).show(); return;
                         }
                     }

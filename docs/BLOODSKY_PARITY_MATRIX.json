@@ -86,7 +86,7 @@
           "name": "Numeric Input (Craft component ID 8 / CustomComponents.i)",
           "status": "partial",
           "criteria": "Bounded integer or Float32 entry, numeric state display, and write-back to an explicitly configured endpoint.",
-          "audit_note": "Imported ID8 reads Craft system slot 100; opt-in integer writes target only project registers 10–1999. Float32 system bindings, service writes, and visual/device acceptance remain open. Corrected tests and APK build passed in exact-head run #1130 on `4f3a6c6`; full UI #764 is running. ID8-specific UI comparison and device acceptance remain open. See docs/CRAFT_COMPONENT_ID_FACTORY_MATRIX_20261018.md and docs/KASKADA_SYSTEM_REGISTERS_AUDIT_20261019.md."
+          "audit_note": "Imported ID8 reads Craft system slot 100 as UINT16/INT16 and source-ordered big-endian Float32 (read starts 0–1998); opt-in writes target only project registers 10–1999, with Float32 pairs starting 10–1998. Service writes and visual/device acceptance remain open. APK/JUnit #1131 passed on `927172c`; focused Craft probe #162 passed but is incomplete (8 states / 7 transitions); Android 11 full smoke #765 passed on `927172c` (run 39367727663). ID8-specific UI comparison and device acceptance remain open. See docs/CRAFT_COMPONENT_ID_FACTORY_MATRIX_20261018.md and docs/KASKADA_SYSTEM_REGISTERS_AUDIT_20261019.md."
         },
         {
           "id": "widget.linear_setpoint",

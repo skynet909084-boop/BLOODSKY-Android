@@ -56,4 +56,4 @@ Android APK run #900 passed the unit suite and debug build. Android 11 smoke #56
 
 ## Update — Craft system-register bindings (2026-10-20)
 
-Imported component ID 8 (`CustomComponents.i`) now reads UINT16/INT16 state from Craft source slot 100. Its write path requires the existing explicit operator-input opt-in and targets only project system registers 10–1999. Float32 system bindings, service-register writes 0–9, and equal-density visual/device acceptance remain open. See `docs/KASKADA_SYSTEM_REGISTERS_AUDIT_20261019.md` for the source pin and boundary details.
+Imported component ID 8 (`CustomComponents.i`) now reads UINT16/INT16 and Float32 state from Craft source slot 100. Float32 reads use the source-confirmed big-endian word order and valid read starts 0–1998, including reads that cross service/user address 9/10. Writes require explicit operator-input opt-in and target only project system registers 10–1999 (Float32 starts 10–1998); service-register writes 0–9 and equal-density visual/device acceptance remain open. See `docs/KASKADA_SYSTEM_REGISTERS_AUDIT_20261019.md` for the source pin and boundary details.
