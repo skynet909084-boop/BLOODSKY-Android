@@ -476,5 +476,92 @@ public class PortableZipMediaTest {
     }
 
 
+
+    @Test
+    public void sanitizedCraftSampleProjectsPreserveSourceAndMediaAcrossZipRoundTrip() throws Exception {
+        byte[] fixtureImage = new byte[]{11, 22, 33, 44, 55, 66};
+        String catalogJson;
+        try (InputStream input = PortableZipMediaTest.class.getResourceAsStream("/craft_samples.json")) {
+            assertNotNull("Craft fixture catalog must be on the test classpath", input);
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            byte[] buffer = new byte[4096];
+            int count;
+            while ((count = input.read(buffer)) != -1) bytes.write(buffer, 0, count);
+            catalogJson = new String(bytes.toByteArray(), StandardCharsets.UTF_8);
+        }
+
+        JSONObject catalog = new JSONObject(catalogJson);
+        String[] names = new String[]{"home", "gitH", "пож"};
+        int[] componentCounts = new int[]{24, 65, 124};
+        int[] screenCounts = new int[]{16, 16, 20};
+
+        for (int fixture = 0; fixture < names.length; fixture++) {
+            String name = names[fixture];
+            String sourceJson = catalog.getString(name);
+            JSONObject source = new JSONObject(sourceJson);
+            assertEquals(componentCounts[fixture], source.getJSONArray("TableComponent").length());
+
+            byte[] inputZip = createCraftProjectZip(sourceJson, "fixture.png", fixtureImage);
+            final String[] importedJson = new String[1];
+            ProjectMediaService.importProjectBundle(rootDir, new ByteArrayInputStream(inputZip), json -> {
+                importedJson[0] = json;
+                return true;
+            });
+            assertNotNull(importedJson[0]);
+            MainActivity.validateImportedProjectStatic(importedJson[0]);
+
+            JSONObject imported = new JSONObject(importedJson[0]);
+            JSONObject craftSource = imported.getJSONObject("craftSource");
+            assertEquals(source.toString(), craftSource.toString());
+            assertEquals(componentCounts[fixture], craftSource.getJSONArray("TableComponent").length());
+            assertEquals(source.getJSONArray("TableConnections").length(),
+                    craftSource.getJSONArray("TableConnections").length());
+            assertEquals(screenCounts[fixture], imported.getJSONArray("screens").length());
+
+            String firstBackground = imported.getJSONArray("screens").getJSONObject(0)
+                    .optString("backgroundImagePath", "");
+            if (!firstBackground.isEmpty()) {
+                assertArrayEquals(fixtureImage, java.nio.file.Files.readAllBytes(
+                        ProjectMediaService.resolveMediaFile(rootDir, imported.toString(), firstBackground).toPath()));
+            }
+
+            imported.put("projectName", imported.optString("projectName") + " edited");
+            File savedProject = tempFolder.newFile("craft-fixture-" + name + ".json");
+            MainActivity.saveProjectAtomic(savedProject, imported.toString());
+            String reopened = MainActivity.loadProjectAtomic(savedProject);
+            MainActivity.validateImportedProjectStatic(reopened);
+            assertEquals(imported.optString("projectName"), new JSONObject(reopened).optString("projectName"));
+
+            ProjectMediaService.MediaResolver resolver = mediaPath -> java.nio.file.Files.readAllBytes(
+                    ProjectMediaService.resolveMediaFile(rootDir, reopened, mediaPath).toPath());
+            ByteArrayOutputStream exportedZip = new ByteArrayOutputStream();
+            ProjectMediaService.exportProjectZipBundle(exportedZip, reopened, resolver);
+
+            final String[] reimportedJson = new String[1];
+            ProjectMediaService.importProjectBundle(rootDir,
+                    new ByteArrayInputStream(exportedZip.toByteArray()), json -> {
+                        reimportedJson[0] = json;
+                        return true;
+                    });
+            assertNotNull(reimportedJson[0]);
+            MainActivity.validateImportedProjectStatic(reimportedJson[0]);
+
+            JSONObject reimported = new JSONObject(reimportedJson[0]);
+            assertEquals(imported.optString("projectName"), reimported.optString("projectName"));
+            assertEquals(craftSource.toString(), reimported.getJSONObject("craftSource").toString());
+            assertEquals(componentCounts[fixture],
+                    reimported.getJSONObject("craftSource").getJSONArray("TableComponent").length());
+            assertEquals(screenCounts[fixture], reimported.getJSONArray("screens").length());
+
+            String exportedBackground = reimported.getJSONArray("screens").getJSONObject(0)
+                    .optString("backgroundImagePath", "");
+            if (!firstBackground.isEmpty()) {
+                assertTrue(exportedBackground.startsWith("media/"));
+                assertArrayEquals(fixtureImage, java.nio.file.Files.readAllBytes(
+                        ProjectMediaService.resolveMediaFile(rootDir, reimported.toString(), exportedBackground).toPath()));
+            }
+        }
+    }
+
 }
 
