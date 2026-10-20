@@ -7905,7 +7905,7 @@ public class MainActivity extends Activity {
                 .setItems(labels.toArray(new String[0]), (dialog, selected) -> {
                     FbdConnection edge = candidates.get(selected);
                     if (!screen.connections.contains(edge)) return;
-                    if (disconnectFbdEdge(screen.connections, edge)) {
+                    if (screen.connections.contains(edge)) {
                         commitFbdWireEdit(screen, () -> disconnectFbdEdge(screen.connections, edge),
                                 "Связь FBD удалена");
                     }
