@@ -202,3 +202,10 @@ The artifact completed without probe errors or runtime-cap hit. Its project seed
 - Decompiled-source/Smali follow-up confirms the `mbCanvas.m(...)` factory explicitly handles IDs 1 and 2, then IDs 4–28; ID 3 falls through to its default branch, brings the existing canvases forward, and returns `null`. Reload, import and paste/copy call sites use this factory, so this path has no visible component mapping for ID 3.
 - Enumerated concrete `CustomComponents` classes expose IDs 1, 2 and 4–28; the helper class with ID 14 is a chart helper, not evidence for component ID 3. This still does **not** prove ID 3 is absent app-wide.
 - Keep unsupported ID 3 import fail-closed; do not invent a class or run behavior. Remaining source work: search all other component registries/factories, palette/resource adapters and original `.pro` samples for positive ID 3 evidence. Only a supported class+fields+behavior mapping should justify implementation.
+
+
+### ID 3 search in supplied project samples — 20 Oct 2026
+
+- Parsed the Library-provided projects `home2.pro`, `gitH.pro`, `пож.pro`, and `дом 2025.pro` embedded in its ZIP. Counts: 65, 65, 124 and 346 `TableComponent` records respectively; none contains a record with `componentId=3`.
+- `home2.zip` and `gitH.zip` each contain the paired `.pro` plus one image; their `.pro` files differ. `пож.zip` contains only an empty directory entry, while its separate `.pro` is the 124-component source. The 346-component `дом 2025.pro` is embedded in `дом 2025.zip`.
+- These examples provide no positive mapping for ID 3; absence in these projects does not resolve the app-wide mapping question. Keep it fail-closed and continue registry/factory/resource search.
