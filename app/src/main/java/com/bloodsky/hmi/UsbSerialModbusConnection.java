@@ -58,6 +58,39 @@ public final class UsbSerialModbusConnection implements Closeable {
         }
     }
 
+    public void writeSingleCoil(int unit, int address, boolean value) throws IOException {
+        write(() -> session.writeSingleCoil(unit, address, value));
+    }
+
+    public void writeSingle(int unit, int address, int value) throws IOException {
+        write(() -> session.writeSingle(unit, address, value));
+    }
+
+    public void writeMultipleCoils(int unit, int address, int[] values) throws IOException {
+        write(() -> session.writeMultipleCoils(unit, address, values));
+    }
+
+    public void writeMultiple(int unit, int address, int[] values) throws IOException {
+        write(() -> session.writeMultiple(unit, address, values));
+    }
+
+    public void writeMask(int unit, int address, int andMask, int orMask) throws IOException {
+        write(() -> session.writeMask(unit, address, andMask, orMask));
+    }
+
+    private void write(IoWrite operation) throws IOException {
+        if (closed.get()) throw new IOException("USB serial connection is closed");
+        try {
+            operation.run();
+        } catch (IOException failure) {
+            try { close(); } catch (IOException closeFailure) { failure.addSuppressed(closeFailure); }
+            throw failure;
+        }
+    }
+
+    @FunctionalInterface
+    private interface IoWrite { void run() throws IOException; }
+
     @Override public void close() throws IOException {
         if (!closed.compareAndSet(false, true)) return;
         IOException failure = null;
