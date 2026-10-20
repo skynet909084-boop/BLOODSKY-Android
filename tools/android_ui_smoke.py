@@ -22,6 +22,14 @@ def adb(*args, binary=False):
     return result.stdout if binary else result.stdout.decode('utf-8', errors='replace')
 
 
+def main_activity_has_saved_instance_state(record):
+    # dumpsys reports that a parcelled Bundle exists but does not expose its keys.
+    # The picker restoration itself is verified after process recreation.
+    return ('mIcicle=Bundle' in record
+            and re.search(r'\bmHaveState=true\b', record)
+            and re.search(r'\bstate=STOPPED\b', record))
+
+
 def matching_nodes(xml, text=None, class_name=None, description=None, resource_id=None):
     nodes = ET.fromstring(xml).iter('node')
     return [n for n in nodes if (text is None or n.get('text', '').casefold() == text.casefold())
@@ -183,11 +191,7 @@ class Smoke:
                 end = next((i for i in range(index + 1, len(lines))
                             if 'ActivityRecord{' in lines[i]), len(lines))
                 record = '\n'.join(lines[index:end])
-                has_media_state = ('mIcicle=Bundle' in record
-                                   and 'restore_media_picker=true' in record)
-                if (has_media_state
-                        and re.search(r'\bmHaveState=true\b', record)
-                        and re.search(r'\bstate=STOPPED\b', record)):
+                if main_activity_has_saved_instance_state(record):
                     (self.output / 'media-picker-activity-state.txt').write_text(record)
                     return
             time.sleep(0.25)
@@ -823,7 +827,7 @@ class Smoke:
         # DocumentsUI exposes both the current breadcrumb and the root folder row
         # as "Downloads"; choose the clickable root row's title explicitly.
         self.tap('Downloads', resource_id='android:id/title')
-        # Android 12 can take longer than API 30 to finish the outgoing Activity
+        # The outgoing Activity transition must finish before process termination.
         # transition. Kill the process only after ActivityTaskManager confirms the
         # suspended MainActivity is STOPPED and its saved instance state is present.
         self.wait_for_saved_main_activity()

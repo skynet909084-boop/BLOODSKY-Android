@@ -3,7 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from android_ui_smoke import Smoke
-from android_ui_smoke import center, matching_nodes, preferences_are_empty, properties_scroll_node, property_input_matches, property_scroll_up, keyboard_is_shown, document_nodes
+from android_ui_smoke import center, matching_nodes, preferences_are_empty, properties_scroll_node, property_input_matches, property_scroll_up, keyboard_is_shown, document_nodes, main_activity_has_saved_instance_state
 
 class AndroidSmokeHelpersTests(unittest.TestCase):
     def test_observed_enabled_ui_targets_and_uppercase_russian(self):
@@ -23,6 +23,16 @@ class AndroidSmokeHelpersTests(unittest.TestCase):
         nodes = matching_nodes(xml, text='Downloads', resource_id='android:id/title')
         self.assertEqual(1, len(nodes))
         self.assertEqual((70, 120), center(nodes[0].get('bounds')))
+
+    def test_parcelled_stopped_activity_state_does_not_require_visible_bundle_keys(self):
+        record = ("ActivityRecord{com.bloodsky.hmi/.MainActivity} "
+                  "mHaveState=true mIcicle=Bundle[mParcelledData.dataSize=3652] "
+                  "state=STOPPED stopped=true")
+        self.assertTrue(main_activity_has_saved_instance_state(record))
+        self.assertFalse(main_activity_has_saved_instance_state(
+            record.replace("state=STOPPED", "state=RESUMED")))
+        self.assertFalse(main_activity_has_saved_instance_state(
+            record.replace("mIcicle=Bundle[mParcelledData.dataSize=3652] ", "")))
 
     def test_icon_is_targeted_by_accessibility_description(self):
         xml = '<hierarchy><node text="" content-desc="Калькулятор" class="android.widget.ImageButton" enabled="true" bounds="[10,20][110,80]"/></hierarchy>'
