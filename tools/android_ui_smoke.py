@@ -158,8 +158,8 @@ class Smoke:
                     continue
                 end = next((i for i in range(index + 1, len(lines))
                             if 'ActivityRecord{' in lines[i]), len(lines))
-                record = '\\n'.join(lines[index:end])
-                if re.search(r'\\bmHaveState=true\\b', record) and re.search(r'\\bstate=STOPPED\\b', record):
+                record = '\n'.join(lines[index:end])
+                if re.search(r'\bmHaveState=true\b', record) and re.search(r'\bstate=STOPPED\b', record):
                     return
             time.sleep(0.25)
         diagnostic = self.output / 'media-picker-activity-state.txt'
