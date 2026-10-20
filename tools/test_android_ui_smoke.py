@@ -3,15 +3,65 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from android_ui_smoke import Smoke
-from android_ui_smoke import center, matching_nodes, preferences_are_empty, properties_scroll_node, property_input_matches, property_scroll_up, keyboard_is_shown, document_nodes
+from android_ui_smoke import center, matching_nodes, preferences_are_empty, properties_scroll_node, property_input_matches, property_scroll_up, keyboard_is_shown, document_nodes, main_activity_has_saved_instance_state, linux_process_state, wait_for_app_process_exit, kill_background_app_process
 
 class AndroidSmokeHelpersTests(unittest.TestCase):
+    def test_background_process_kill_uses_activity_manager(self):
+        from types import SimpleNamespace
+        with patch('android_ui_smoke.subprocess.run', return_value=SimpleNamespace(
+                returncode=0, stdout='', stderr='')) as run:
+            result = kill_background_app_process('com.bloodsky.hmi')
+        self.assertEqual(0, result.returncode)
+        run.assert_called_once_with(['adb', 'shell', 'am', 'kill', 'com.bloodsky.hmi'],
+                                    capture_output=True, text=True, timeout=45)
+
     def test_observed_enabled_ui_targets_and_uppercase_russian(self):
         xml = '<hierarchy><node text="СОЗДАТЬ НОВЫЙ ПРОЕКТ" class="android.widget.Button" enabled="true" bounds="[10,20][110,80]"/><node text="Создать новый проект" enabled="false" bounds="[10,20][110,80]"/></hierarchy>'
         nodes = matching_nodes(xml, 'Создать новый проект')
         self.assertEqual(1, len(nodes))
         self.assertEqual((60, 50), center(nodes[0].get('bounds')))
         self.assertEqual([], matching_nodes(xml, class_name='android.widget.EditText'))
+
+    def test_documentsui_downloads_selects_root_row_not_breadcrumb(self):
+        xml = ('<hierarchy>'
+               '<node text="Downloads" resource-id="com.android.documentsui:id/breadcrumb_text" '
+               'class="android.widget.TextView" enabled="true" bounds="[0,20][120,60]"/>'
+               '<node text="Downloads" resource-id="android:id/title" '
+               'class="android.widget.TextView" enabled="true" bounds="[10,100][130,140]"/>'
+               '</hierarchy>')
+        nodes = matching_nodes(xml, text='Downloads', resource_id='android:id/title')
+        self.assertEqual(1, len(nodes))
+        self.assertEqual((70, 120), center(nodes[0].get('bounds')))
+
+    def test_parcelled_stopped_activity_state_does_not_require_visible_bundle_keys(self):
+        record = ("ActivityRecord{com.bloodsky.hmi/.MainActivity} "
+                  "mHaveState=true mIcicle=Bundle[mParcelledData.dataSize=3652] "
+                  "state=STOPPED stopped=true")
+        self.assertTrue(main_activity_has_saved_instance_state(record))
+        self.assertFalse(main_activity_has_saved_instance_state(
+            record.replace("state=STOPPED", "state=RESUMED")))
+        self.assertFalse(main_activity_has_saved_instance_state(
+            record.replace("mIcicle=Bundle[mParcelledData.dataSize=3652] ", "")))
+
+    def test_linux_process_state_handles_parenthesized_process_names(self):
+        self.assertEqual('Z', linux_process_state('10971 (com.bloodsky hmi) Z 1 2 3'))
+
+    def test_app_process_kill_race_accepts_zombie_or_reaped_pid(self):
+        from types import SimpleNamespace
+        with patch('android_ui_smoke.subprocess.run', side_effect=[
+                SimpleNamespace(returncode=0, stdout='10971 (com.bloodsky.hmi) Z 1 2 3', stderr=''),
+                SimpleNamespace(returncode=1, stdout='', stderr='cat: /proc/10972/stat: No such file or directory')]):
+            states = wait_for_app_process_exit('com.bloodsky.hmi', ['10971', '10972'])
+        self.assertEqual({'10971': 'Z', '10972': None}, states)
+
+    def test_app_process_termination_gate_rejects_a_live_original_pid(self):
+        from types import SimpleNamespace
+        with patch('android_ui_smoke.subprocess.run', return_value=SimpleNamespace(
+                returncode=0, stdout='10971 (com.bloodsky.hmi) S 1 2 3', stderr='')), \
+             patch('android_ui_smoke.time.monotonic', side_effect=[0, 1]), \
+             patch('android_ui_smoke.time.sleep'):
+            with self.assertRaisesRegex(RuntimeError, "'10971': 'S'"):
+                wait_for_app_process_exit('com.bloodsky.hmi', ['10971'], timeout=0.5)
 
     def test_icon_is_targeted_by_accessibility_description(self):
         xml = '<hierarchy><node text="" content-desc="Калькулятор" class="android.widget.ImageButton" enabled="true" bounds="[10,20][110,80]"/></hierarchy>'
@@ -77,6 +127,17 @@ class AndroidSmokeHelpersTests(unittest.TestCase):
                               ('shell', 'CLASSPATH=/data/local/tmp/bloodsky-ui-input.jar',
                                'app_process', '/system/bin', 'BloodskyFingerTap', '200', '150')],
                              [c.args for c in command.call_args_list])
+
+    def test_fbd_wire_wait_polls_until_persisted_state_matches(self):
+        expected = [{'source': 4, 'target': 5, 'sourcePin': 'Q',
+                     'targetPin': 'IN', 'inverted': True}]
+        with TemporaryDirectory() as folder, patch('android_ui_smoke.time.sleep') as sleep:
+            smoke = Smoke(Path(folder))
+            with patch.object(smoke, 'saved_connections',
+                              side_effect=[[], [], expected]) as read:
+                self.assertEqual(expected, smoke.wait_for_saved_connections(expected))
+            self.assertEqual(3, read.call_count)
+            self.assertEqual(2, sleep.call_count)
 
     def test_custom_image_waits_for_media_index_before_picker(self):
         with TemporaryDirectory() as folder, patch('android_ui_smoke.adb', side_effect=['', '', 'No result found.', 'Row: 0 _display_name=bloodsky-custom.png']) as command, patch('android_ui_smoke.time.sleep'):

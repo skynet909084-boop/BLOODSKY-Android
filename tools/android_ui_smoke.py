@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import subprocess
 import time
+import traceback
 import xml.etree.ElementTree as ET
 
 PACKAGE = 'com.bloodsky.hmi'
@@ -21,11 +22,75 @@ def adb(*args, binary=False):
     return result.stdout if binary else result.stdout.decode('utf-8', errors='replace')
 
 
-def matching_nodes(xml, text=None, class_name=None, description=None):
+def main_activity_has_saved_instance_state(record):
+    # dumpsys reports that a parcelled Bundle exists but does not expose its keys.
+    # The picker restoration itself is verified after process recreation.
+    return ('mIcicle=Bundle' in record
+            and re.search(r'\bmHaveState=true\b', record)
+            and re.search(r'\bstate=STOPPED\b', record))
+
+
+def linux_process_state(stat_record):
+    """Return /proc/<pid>/stat state, accounting for spaces in the process name."""
+    close = stat_record.rfind(')')
+    if close < 0:
+        raise ValueError('Malformed /proc process stat record')
+    fields = stat_record[close + 1:].strip().split()
+    if not fields:
+        raise ValueError('Missing process state in /proc stat record')
+    return fields[0]
+
+
+def wait_for_app_process_exit(package, pids, timeout=5):
+    """Confirm each original app PID exited or became a zombie after SIGKILL.
+
+    `pidof` can continue to report a zombie during Android's brief reap window.
+    A failed `kill` can therefore mean the target has already exited, not that it
+    survived. Inspect each original PID instead of treating that race as failure.
+    """
+    if not pids:
+        raise ValueError('At least one app process ID is required')
+    deadline = time.monotonic() + timeout
+    last_states = {}
+    while True:
+        for pid in pids:
+            probe = subprocess.run(
+                ['adb', 'shell', 'run-as', package, 'cat', '/proc/' + pid + '/stat'],
+                capture_output=True, text=True, timeout=45, check=False)
+            if probe.returncode != 0:
+                error = (probe.stderr or probe.stdout).strip()
+                if 'No such file or directory' in error or 'No such process' in error:
+                    last_states[pid] = None
+                    continue
+                raise RuntimeError('Could not inspect app process ' + pid + ': ' + error)
+            last_states[pid] = linux_process_state(probe.stdout)
+        active = {pid: state for pid, state in last_states.items()
+                  if state is not None and state != 'Z'}
+        if not active:
+            return last_states
+        if time.monotonic() >= deadline:
+            raise RuntimeError('Application process survived kill request: '
+                               + repr(active))
+        time.sleep(0.25)
+
+
+def kill_background_app_process(package):
+    """Ask ActivityManager to kill the stopped app while retaining its task state.
+
+    `run-as ... kill` executes under the app SELinux domain and cannot signal
+    the app process, even though it has the same Linux UID. `am kill` runs as
+    shell and is specifically intended for background processes.
+    """
+    return subprocess.run(['adb', 'shell', 'am', 'kill', package],
+                          capture_output=True, text=True, timeout=45)
+
+
+def matching_nodes(xml, text=None, class_name=None, description=None, resource_id=None):
     nodes = ET.fromstring(xml).iter('node')
     return [n for n in nodes if (text is None or n.get('text', '').casefold() == text.casefold())
             and (class_name is None or n.get('class') == class_name)
             and (description is None or n.get('content-desc') == description)
+            and (resource_id is None or n.get('resource-id') == resource_id)
             and n.get('enabled') == 'true' and n.get('bounds') != '[0,0][0,0]']
 
 
@@ -37,6 +102,19 @@ def center(bounds):
     if right <= left or bottom <= top:
         raise ValueError('Empty UI bounds: ' + bounds)
     return (left + right) // 2, (top + bottom) // 2
+
+
+def fbd_widget_interior_tap_point(canvas_left, canvas_top, widget):
+    """Tap well inside the FBD hit rectangle, away from its pin gutter and drag grips.
+
+    The corner of the source block is not a reliable tap target on Android 12:
+    the renderer paints pin leads and a padded skin near that edge.
+    Coordinates remain relative to the UIAutomator canvas bounds.
+    """
+    return (
+        round(canvas_left + widget['x'] + widget['w'] * 0.40),
+        round(canvas_top + widget['y'] + widget['h'] * 0.50),
+    )
 
 
 def preferences_are_empty(xml):
@@ -107,13 +185,13 @@ class Smoke:
         adb('shell', 'uiautomator', 'dump', '/sdcard/bloodsky-ui.xml')
         return adb('shell', 'cat', '/sdcard/bloodsky-ui.xml')
 
-    def wait_node(self, text=None, class_name=None, timeout=30, description=None, focused=None):
+    def wait_node(self, text=None, class_name=None, timeout=30, description=None, focused=None, resource_id=None):
         deadline = time.monotonic() + timeout
         last = ''
         while time.monotonic() < deadline:
             try:
                 last = self.dump()
-                nodes = matching_nodes(last, text, class_name, description)
+                nodes = matching_nodes(last, text, class_name, description, resource_id)
                 if len(nodes) == 1 and (focused is None or nodes[0].get('focused') == str(focused).lower()):
                     return nodes[0]
                 if len(nodes) > 1:
@@ -124,10 +202,19 @@ class Smoke:
         (self.output / 'last-ui.xml').write_text(last)
         raise AssertionError('UI target not found: ' + str(text or description or class_name))
 
-    def tap(self, text=None, class_name=None, description=None):
-        node = self.wait_node(text, class_name, description=description)
+    def tap(self, text=None, class_name=None, description=None, resource_id=None):
+        node = self.wait_node(text, class_name, description=description, resource_id=resource_id)
         x, y = center(node.get('bounds'))
         adb('shell', 'input', 'tap', str(x), str(y))
+
+    def finger_tap(self, x, y):
+        """Inject an 80 ms real-touch event through the already installed driver.
+
+        Android 12's shell 'input tap' can report a touch tool type UNKNOWN.
+        Exercise FBD Canvas with FINGER just like a person using the editor.
+        """
+        adb('shell', 'CLASSPATH=/data/local/tmp/bloodsky-ui-input.jar',
+            'app_process', '/system/bin', 'BloodskyFingerTap', str(x), str(y))
 
     def prepare_custom_image(self):
         # ADB push alone does not index the image in API30 MediaStore. The
@@ -146,6 +233,29 @@ class Smoke:
             time.sleep(0.3)
         (self.output / 'media-index.txt').write_text(observed)
         raise AssertionError('Custom image was not indexed by MediaStore')
+
+    def wait_for_saved_main_activity(self, timeout=30):
+        deadline = time.monotonic() + timeout
+        last_dump = ''
+        while time.monotonic() < deadline:
+            last_dump = adb('shell', 'dumpsys', 'activity', 'activities')
+            lines = last_dump.splitlines()
+            for index, line in enumerate(lines):
+                if 'ActivityRecord{' not in line or 'com.bloodsky.hmi/.MainActivity' not in line:
+                    continue
+                end = next((i for i in range(index + 1, len(lines))
+                            if 'ActivityRecord{' in lines[i]), len(lines))
+                record = '\n'.join(lines[index:end])
+                if main_activity_has_saved_instance_state(record):
+                    (self.output / 'media-picker-activity-state.txt').write_text(record)
+                    return
+            time.sleep(0.25)
+        diagnostic = self.output / 'media-picker-activity-state.txt'
+        diagnostic.write_text(last_dump)
+        raise AssertionError(
+            'MainActivity did not reach STOPPED with the media-picker state Bundle before process termination; '
+            'see ' + str(diagnostic)
+        )
 
     def tap_document(self, filename):
         xml = self.dump()
@@ -168,8 +278,7 @@ class Smoke:
             if bounds and bounds == previous:
                 x, y = center(bounds)
                 print('Opening document', filename, 'at', x, y, flush=True)
-                adb('shell', 'CLASSPATH=/data/local/tmp/bloodsky-ui-input.jar',
-                    'app_process', '/system/bin', 'BloodskyFingerTap', str(x), str(y))
+                self.finger_tap(x, y)
                 attempts += 1
                 for _ in range(3):
                     xml = self.dump()
@@ -228,7 +337,24 @@ class Smoke:
         if keyboard_is_shown(adb('shell', 'dumpsys', 'input_method')):
             adb('shell', 'input', 'keyevent', '4')
 
+    def capture_project_media_listing(self, stage):
+        result = subprocess.run(
+            ['adb', 'shell', 'run-as', PACKAGE, 'find', 'files/projects', '-maxdepth', '5', '-type', 'f'],
+            capture_output=True, timeout=45, check=False)
+        details = {
+            'returncode': result.returncode,
+            'stdout': result.stdout.decode('utf-8', errors='replace'),
+            'stderr': result.stderr.decode('utf-8', errors='replace'),
+        }
+        (self.output / ('media-files-' + stage + '.json')).write_text(
+            json.dumps(details, indent=2, sort_keys=True))
+
+    def checkpoint(self, name):
+        (self.output / 'last-checkpoint.txt').write_text(name + '\n')
+
     def capture(self, name):
+        if name != 'failure':
+            self.checkpoint('capture:' + name)
         (self.output / (name + '.png')).write_bytes(adb('exec-out', 'screencap', '-p', binary=True))
         (self.output / (name + '.xml')).write_text(self.dump())
 
@@ -290,6 +416,30 @@ class Smoke:
         xml = adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml')
         active = json.loads({n.get('name'): n.text for n in ET.fromstring(xml)}['active_project'])
         return active['screens'][0].get('connections', [])
+
+    def wait_for_saved_connections(self, expected, timeout=10):
+        """Poll persisted project state after asynchronous UI taps and dialogs."""
+        deadline = time.monotonic() + timeout
+        observed = None
+        while time.monotonic() < deadline:
+            observed = self.saved_connections()
+            if observed == expected:
+                return observed
+            time.sleep(0.2)
+        raise AssertionError('Timed out waiting for saved FBD connections; expected='
+                             + repr(expected) + '; last=' + repr(observed))
+
+    def wait_for_saved_connection_count(self, expected, timeout=10):
+        deadline = time.monotonic() + timeout
+        observed = None
+        while time.monotonic() < deadline:
+            observed = self.saved_connections()
+            if len(observed) == expected:
+                return observed
+            time.sleep(0.2)
+        raise AssertionError('Timed out waiting for saved connection count '
+                             + str(expected) + '; last count='
+                             + str(None if observed is None else len(observed)))
 
     def check_fbd_palette_and_properties(self, saved_widgets):
         baseline = saved_widgets()
@@ -383,15 +533,21 @@ class Smoke:
         source, target = expected[source_idx], expected[target_idx]
         canvas = self.wait_node(description='Редактор экрана')
         left, top, _, _ = map(int, re.findall(r'\d+', canvas.get('bounds')))
+        sx, sy = fbd_widget_interior_tap_point(left, top, source)
+        tx, ty = fbd_widget_interior_tap_point(left, top, target)
         self.tap_editor_menu_item('Связать FBD')
-        adb('shell', 'input', 'tap', str(round(left+source['x']+9)), str(round(top+source['y']+9)))
-        adb('shell', 'input', 'tap', str(round(left+target['x']+target['w']/2)),
-            str(round(top+target['y']+target['h']/2)))
+        self.checkpoint('fbd-link:source-finger-tap')
+        self.finger_tap(sx, sy)
+        self.checkpoint('fbd-link:target-finger-tap')
+        self.finger_tap(tx, ty)
+        self.checkpoint('fbd-link:await-source-pin-dialog')
         self.wait_node('Выход FBD')
         self.tap('Q')
         self.wait_node('Вход FBD')
         self.tap('IN')
-        links = self.saved_connections()
+        # The dialog tap is injected asynchronously; wait for the synchronous
+        # project write to become visible before asserting its pin metadata.
+        links = self.wait_for_saved_connection_count(1)
         if len(links) != 1 or any(links[0].get(k) != value for k, value in {
                 'source': source_idx, 'target': target_idx,
                 'sourcePin': 'Q', 'targetPin': 'IN',
@@ -400,7 +556,6 @@ class Smoke:
         self.capture('04q-fbd-named-pin-wire')
         # Original-style FBD long-press commands must be present, and
         # opening/canceling the menu cannot mutate the saved FBD graph.
-        sx, sy = round(left+source['x']+9), round(top+source['y']+9)
         adb('shell', 'input', 'swipe', str(sx), str(sy), str(sx), str(sy), '800')
         self.wait_node('Соединить с…')
         self.wait_node('Инвертировать связь BOOL…')
@@ -411,10 +566,15 @@ class Smoke:
             raise AssertionError('Canceling FBD context actions changed saved wires')
         if saved_widgets() != expected:
             raise AssertionError('Adding a wire changed component properties')
+        # Start the drag well inside the block body. The upper-left pin/skin
+        # gutter is not a reliable pointer target on Android 12.
         adb('shell', 'input', 'swipe',
-            str(round(left+source['x']+9)), str(round(top+source['y']+9)),
-            str(round(left+source['x']+39)), str(round(top+source['y']+19)), '310')
+            str(sx), str(sy), str(sx+64), str(sy+32), '310')
+        drag_deadline = time.monotonic() + 10
         dragged_widgets = saved_widgets()
+        while dragged_widgets == expected and time.monotonic() < drag_deadline:
+            time.sleep(0.2)
+            dragged_widgets = saved_widgets()
         if dragged_widgets == expected:
             raise AssertionError('FBD drag did not persist new geometry')
         for idx, widget in enumerate(dragged_widgets):
@@ -444,37 +604,30 @@ class Smoke:
         self.tap_editor_menu_item('Инвертировать BOOL-связь FBD…')
         self.wait_node('Инверсия связи FBD (BOOL)')
         self.tap(str(source_idx+1) + ':Q → ' + str(target_idx+1) + ':IN  обычная')
-        inverted = self.saved_connections()
-        if len(inverted) != 1 or not inverted[0].get('inverted'):
-            raise AssertionError('Named BOOL wire inversion was not persisted')
+        inverted = [dict(links[0], inverted=True)]
+        self.wait_for_saved_connections(inverted)
         if {k: v for k, v in inverted[0].items() if k != 'inverted'} != links[0]:
             raise AssertionError('Wire inversion changed other saved metadata')
         self.capture('04v-fbd-inverted-bool-wire')
         self.tap_editor_menu_item('Отменить связь FBD')
-        if self.saved_connections() != links:
-            raise AssertionError('Undo did not restore normal BOOL wire metadata')
+        self.wait_for_saved_connections(links)
         self.tap_editor_menu_item('Повторить связь FBD')
-        if self.saved_connections() != inverted:
-            raise AssertionError('Redo did not restore inverted BOOL wire metadata')
+        self.wait_for_saved_connections(inverted)
         self.tap_editor_menu_item('Отменить связь FBD')
-        if self.saved_connections() != links:
-            raise AssertionError('Second undo failed to restore normal BOOL wire')
+        self.wait_for_saved_connections(links)
         self.tap_editor_menu_item('Удалить связь FBD…')
         label = (str(source_idx+1) + ': ' + source['text'] + ' → '
                  + str(target_idx+1) + ': ' + target['text'] + ' [Q → IN]')
         self.wait_node('Удалить связь FBD')
         self.tap(label)
-        if self.saved_connections():
-            raise AssertionError('FBD disconnect did not persist removal')
+        self.wait_for_saved_connections([])
         self.capture('04s-fbd-disconnected')
         # Undo must restore the same fully typed connection, not a generic wire.
         self.tap_editor_menu_item('Отменить связь FBD')
-        if self.saved_connections() != links:
-            raise AssertionError('FBD undo failed to restore Q -> IN with all metadata')
+        self.wait_for_saved_connections(links)
         self.capture('04t-fbd-undo-restored')
         self.tap_editor_menu_item('Повторить связь FBD')
-        if self.saved_connections():
-            raise AssertionError('FBD redo failed to remove the restored wire')
+        self.wait_for_saved_connections([])
         self.capture('04u-fbd-redo-disconnected')
         adb('shell', 'am', 'force-stop', PACKAGE)
         adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
@@ -726,15 +879,34 @@ class Smoke:
         x, y = center(pickers[0].get('bounds'))
         adb('shell', 'input', 'tap', str(x), str(y))
         self.tap(description='Show roots')
-        self.tap('Downloads')
-        time.sleep(1)
+        # DocumentsUI exposes both the current breadcrumb and the root folder row
+        # as "Downloads"; choose the clickable root row's title explicitly.
+        self.tap('Downloads', resource_id='android:id/title')
+        # The outgoing Activity transition must finish before process termination.
+        # transition. Kill the process only after ActivityTaskManager confirms the
+        # suspended MainActivity is STOPPED and its saved instance state is present.
+        self.wait_for_saved_main_activity()
         app_pids = adb('shell', 'pidof', PACKAGE).strip().split()
         if not app_pids:
             raise AssertionError('Application process is missing while DocumentsUI is open')
-        # am kill is implemented as force-stop on this Android 11 emulator and
-        # discards the ActivityRecord's saved state. Kill the background PID so
-        # the task and the Bundle captured when DocumentsUI opened remain intact.
-        adb('shell', 'kill', '-9', *app_pids)
+        # ActivityManager can kill the stopped app from shell while preserving
+        # the task and the Bundle captured when DocumentsUI opened.
+        kill_result = kill_background_app_process(PACKAGE)
+        if kill_result.returncode != 0:
+            raise RuntimeError('ActivityManager could not kill the stopped app: '
+                               + (kill_result.stderr or kill_result.stdout).strip())
+        # A stale zombie can remain in pidof briefly. Confirm every original PID
+        # exited or reached Z before selecting the file.
+        try:
+            wait_for_app_process_exit(PACKAGE, app_pids)
+        except RuntimeError as failure:
+            (self.output / 'process-termination.txt').write_text(
+                'kill stdout: ' + kill_result.stdout + '\n'
+                + 'kill stderr: ' + kill_result.stderr + '\n'
+                + 'kill returncode: ' + str(kill_result.returncode) + '\n'
+                + str(failure) + '\n'
+                + adb('shell', 'ps', '-A', '-o', 'PID,STAT,NAME'))
+            raise
         self.tap_document('bloodsky-custom.png')
         self.wait_node('Свойства: Многопозиционное фото', timeout=30)
         self.wait_node('Restored_label', timeout=10)
@@ -881,6 +1053,7 @@ class Smoke:
         self.tap('Применить')
         self.wait_node(description='Изображение ON')
         self.capture('04f-custom-state-image')
+        self.capture_project_media_listing('image-dialog-dismissed')
         adb('shell', 'input', 'keyevent', '4')
         self.wait_node('Свойства: Индикатор')
         self.replace_property_input('Положение X', '40.125')
@@ -895,27 +1068,50 @@ class Smoke:
             raise AssertionError('Invalid properties edit partially mutated geometry')
         self.replace_property_input('Ширина элемента', '160.375')
         self.capture('04a-fractional-properties')
+        self.checkpoint('fractional:apply-click')
         self.tap('Применить')
+        self.checkpoint('fractional:editor-after-apply')
         self.wait_node(description='Редактор экрана')
+        self.capture_project_media_listing('properties-applied')
+        self.checkpoint('fractional:back-click')
         adb('shell', 'input', 'keyevent', '4')
+        self.checkpoint('fractional:home-after-back')
         self.wait_node('Создать новый проект')
+        self.checkpoint('fractional:force-stop')
         adb('shell', 'am', 'force-stop', PACKAGE)
         adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
+        self.checkpoint('fractional:restarted-home')
         self.tap('Загрузить проект')
+        self.checkpoint('fractional:project-list')
         self.tap(PROJECT)
+        self.checkpoint('fractional:editor-after-reopen')
         self.wait_node(description='Редактор экрана')
+        self.capture_project_media_listing('project-reopened')
         persisted = adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml')
-        after = json.loads({n.get('name'): n.text for n in ET.fromstring(persisted)}['active_project'])['screens'][0]['widgets'][0]
+        active_after = json.loads({n.get('name'): n.text for n in ET.fromstring(persisted)}['active_project'])
+        after = active_after['screens'][0]['widgets'][0]
         expected = dict(x=40.125, y=50.875, w=160.375, h=140.625)
+        self.checkpoint('fractional:geometry-loaded:' + json.dumps({k: after.get(k) for k in expected}, sort_keys=True))
         if any(after[key] != value for key, value in expected.items()):
-            raise AssertionError('Fractional property edit did not survive process restart')
+            raise AssertionError('Fractional property edit did not survive process restart: expected='
+                                 + repr(expected) + ' actual=' + repr({k: after.get(k) for k in expected}))
         state_images = after.get('other', after)
         if isinstance(state_images, str):
             state_images = json.loads(state_images)
-        if not state_images.get('pathOrNameOn', '').startswith('content://') or state_images.get('pathOrNameOff') != 'blue':
-            raise AssertionError('Selected ON/OFF images did not survive process restart')
+        selected_path = state_images.get('pathOrNameOn', '')
+        match = re.fullmatch(r'media/asset_([0-9a-f]{64})\.png', selected_path)
+        if not match or state_images.get('pathOrNameOff') != 'blue':
+            raise AssertionError('Selected ON/OFF images did not survive process restart: ' + repr(state_images))
         if not state_images.get('isImageUserOn') or state_images.get('isImageUserOff'):
-            raise AssertionError('Builtin/custom image flags were not retained')
+            raise AssertionError('Builtin/custom image flags were not retained: ' + repr(state_images))
+        storage_id = active_after.get('storageId', '')
+        if not storage_id:
+            raise AssertionError('Reloaded project has no stable storage ID for its media asset')
+        project_id = 'proj_' + hashlib.sha256(('sid_' + storage_id).encode()).hexdigest()[:16]
+        asset_bytes = adb('shell', 'run-as', PACKAGE, 'cat',
+                          'files/projects/' + project_id + '/' + selected_path, binary=True)
+        if hashlib.sha256(asset_bytes).hexdigest() != match.group(1):
+            raise AssertionError('Selected project image asset is missing or its contents do not match its path hash')
         self.capture('04b-fractional-reopened')
         canvas = self.wait_node(description='Редактор экрана')
         left, top, _, _ = map(int, re.findall(r'\d+', canvas.get('bounds')))
@@ -936,25 +1132,35 @@ class Smoke:
             xml = adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml')
             active = json.loads({n.get('name'): n.text for n in ET.fromstring(xml)}['active_project'])
             return active['screens'][0]['widgets']
+        def wait_for_saved_widget_count(expected, timeout=10):
+            deadline = time.monotonic() + timeout
+            observed = None
+            while time.monotonic() < deadline:
+                observed = saved_widgets()
+                if len(observed) == expected:
+                    return observed
+                time.sleep(0.2)
+            raise AssertionError('Timed out waiting for saved widget count '
+                                 + str(expected) + '; last count='
+                                 + str(None if observed is None else len(observed)))
         self.tap(description='Копировать')
         self.tap(description='Вставить')
-        copied = saved_widgets()
-        if len(copied) != 5:
-            raise AssertionError('Copy/paste did not add exactly one component')
+        copied = wait_for_saved_widget_count(5)
+
         expected_copy = {k: v for k, v in copied[0].items() if k not in ('x', 'y')}
         if {k: v for k, v in copied[-1].items() if k not in ('x', 'y')} != expected_copy:
             raise AssertionError('Clipboard lost indicator properties or media')
         self.tap(description='Вырезать')
-        if len(saved_widgets()) != 4:
-            raise AssertionError('Cut did not remove selected copy')
+        wait_for_saved_widget_count(4)
+
         self.tap(description='Вставить')
-        pasted = saved_widgets()
-        if len(pasted) != 5 or {k: v for k, v in pasted[-1].items() if k not in ('x', 'y')} != expected_copy:
+        pasted = wait_for_saved_widget_count(5)
+        if {k: v for k, v in pasted[-1].items() if k not in ('x', 'y')} != expected_copy:
             raise AssertionError('Cut/paste lost copied indicator properties')
         self.capture('04i-pasted-indicator')
         self.tap(description='Вырезать')
         self.tap(description='Вырезать')  # No selection: must leave the clipboard/project intact.
-        if saved_widgets() != copied[:4]:
+        if wait_for_saved_widget_count(4) != copied[:4]:
             raise AssertionError('Cut changed unrelated components or accepted an empty selection')
         # Editor clicks edit a button; only operator taps may activate it.
         baseline = saved_widgets()
@@ -1054,8 +1260,17 @@ def main():
     smoke = Smoke(args.output)
     try:
         smoke.run(args.apk)
-    except Exception:
+    except Exception as exc:
         try:
+            (args.output / 'failure.txt').write_text(type(exc).__name__ + ': ' + str(exc) + '\\n\\n' + traceback.format_exc())
+            try:
+                (args.output / 'failure-activity.txt').write_text(adb('shell', 'dumpsys', 'activity', 'activities'))
+            except Exception as diagnostic_error:
+                (args.output / 'failure-activity.txt').write_text('diagnostic failed: ' + repr(diagnostic_error))
+            try:
+                (args.output / 'failure-project.xml').write_text(adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml'))
+            except Exception as diagnostic_error:
+                (args.output / 'failure-project.xml').write_text('diagnostic failed: ' + repr(diagnostic_error))
             smoke.capture('failure')
             (args.output / 'logcat.txt').write_text(adb('logcat', '-d', '-t', '1500'))
         except Exception:
