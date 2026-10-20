@@ -358,5 +358,119 @@ public class PortableZipMediaTest {
         assertNotEquals(prior, ProjectMediaService.resolveMediaFile(rootDir, second[0], "media/state.png"));
     }
 
+
+    private static byte[] createCraftProjectZip(String projectJson, String mediaPath, byte[] mediaBytes) throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(out)) {
+            zip.putNextEntry(new ZipEntry("TableNameProject.json"));
+            zip.write(projectJson.getBytes(StandardCharsets.UTF_8));
+            zip.closeEntry();
+            zip.putNextEntry(new ZipEntry(mediaPath));
+            zip.write(mediaBytes);
+            zip.closeEntry();
+        }
+        return out.toByteArray();
+    }
+
+    @Test
+    public void testCraftZipUnknownSourceAndId3PlaceholderSurviveEditAndMediaRoundTrip() throws Exception {
+        byte[] sourceImage = new byte[]{0, 1, 2, 3, 10, 20, 30, (byte) 255};
+        JSONObject background = new JSONObject()
+                .put("screen1IsColor", false)
+                .put("screen1PathImage", "bg.png")
+                .put("screen1Color", -1)
+                .put("vendorBackground", new JSONArray().put("legacy").put(7));
+        JSONObject projectMeta = new JSONObject()
+                .put("name", "Sanitized Craft ZIP")
+                .put("countScreen", 1)
+                .put("jsTableNameProject_screenBackground", background)
+                .put("vendorProjectField", new JSONObject().put("plant", "demo").put("revision", 23));
+        JSONObject numericComponent = new JSONObject()
+                .put("componentId", 4)
+                .put("text", "Before edit")
+                .put("x", "12.5").put("y", "8").put("width", "90").put("height", "30")
+                .put("textSize", "18").put("colorText", "#112233").put("colorBackground", "#00000000")
+                .put("jsTableComponent_connectionInfo", new JSONObject()
+                        .put("posDeviceNetworkInList", 5).put("addressRegister", 12).put("typeRequest", 1)
+                        .put("vendorBindingField", new JSONArray().put("unknown").put(41)))
+                .put("jsTableComponent_other", new JSONObject()
+                        .put("numScreen", 1).put("digit", 2)
+                        .put("vendorOther", new JSONObject().put("mode", "preserve").put("flags", new JSONArray().put(1).put(3))))
+                .put("vendorComponentField", "retain-me");
+        JSONObject unresolvedId3 = new JSONObject()
+                .put("componentId", 3)
+                .put("text", "Unknown Craft item")
+                .put("x", "4").put("y", "50").put("width", "70").put("height", "24")
+                .put("textSize", "14").put("colorText", "#ffffff").put("colorBackground", "#00000000")
+                .put("jsTableComponent_connectionInfo", new JSONObject().put("vendorId3Field", "preserve"))
+                .put("jsTableComponent_other", new JSONObject().put("numScreen", 1).put("vendorId3Other", true));
+        JSONObject source = new JSONObject()
+                .put("TableNameProject", projectMeta)
+                .put("TableComponent", new JSONArray().put(numericComponent).put(unresolvedId3))
+                .put("TableConnections", new JSONArray())
+                .put("vendorTopLevel", new JSONObject().put("sequence", new JSONArray().put(4).put(3).put(1)));
+        String sourceCraftJson = source.toString();
+        byte[] inputZip = createCraftProjectZip(sourceCraftJson, "bg.png", sourceImage);
+
+        final String[] initiallyImported = new String[1];
+        ProjectMediaService.importProjectBundle(rootDir, new ByteArrayInputStream(inputZip), json -> {
+            initiallyImported[0] = json;
+            return true;
+        });
+        assertNotNull(initiallyImported[0]);
+        MainActivity.validateImportedProjectStatic(initiallyImported[0]);
+        JSONObject first = new JSONObject(initiallyImported[0]);
+        JSONObject sourceBeforeEdit = first.getJSONObject("craftSource");
+        assertTrue(sourceBeforeEdit.getJSONObject("TableNameProject").has("vendorProjectField"));
+        assertEquals("retain-me", sourceBeforeEdit.getJSONArray("TableComponent")
+                .getJSONObject(0).getString("vendorComponentField"));
+        assertTrue(sourceBeforeEdit.getJSONArray("TableComponent").getJSONObject(0)
+                .getJSONObject("jsTableComponent_other").has("vendorOther"));
+        assertEquals("preserve", sourceBeforeEdit.getJSONArray("TableComponent").getJSONObject(1)
+                .getJSONObject("jsTableComponent_connectionInfo").getString("vendorId3Field"));
+
+        JSONObject firstScreen = first.getJSONArray("screens").getJSONObject(0);
+        assertEquals("bg.png", firstScreen.getString("backgroundImagePath"));
+        assertArrayEquals(sourceImage, java.nio.file.Files.readAllBytes(
+                ProjectMediaService.resolveMediaFile(rootDir, first.toString(), firstScreen.getString("backgroundImagePath")).toPath()));
+
+        JSONArray widgets = firstScreen.getJSONArray("widgets");
+        assertEquals(2, widgets.length());
+        assertTrue("Unknown numeric ID 3 must stay visibly fail-closed",
+                widgets.getJSONObject(1).optBoolean("craftUnsupportedComponent", false));
+        widgets.getJSONObject(0).put("text", "Edited in acceptance test");
+
+        File savedProject = tempFolder.newFile("craft-roundtrip.json");
+        MainActivity.saveProjectAtomic(savedProject, first.toString());
+        String reopened = MainActivity.loadProjectAtomic(savedProject);
+        MainActivity.validateImportedProjectStatic(reopened);
+        assertEquals("Edited in acceptance test", new JSONObject(reopened).getJSONArray("screens")
+                .getJSONObject(0).getJSONArray("widgets").getJSONObject(0).getString("text"));
+
+        ProjectMediaService.MediaResolver resolver = path -> java.nio.file.Files.readAllBytes(
+                ProjectMediaService.resolveMediaFile(rootDir, reopened, path).toPath());
+        ByteArrayOutputStream exportedZip = new ByteArrayOutputStream();
+        ProjectMediaService.exportProjectZipBundle(exportedZip, reopened, resolver);
+
+        final String[] reimported = new String[1];
+        ProjectMediaService.importProjectBundle(rootDir,
+                new ByteArrayInputStream(exportedZip.toByteArray()), json -> {
+                    reimported[0] = json;
+                    return true;
+                });
+        assertNotNull(reimported[0]);
+        MainActivity.validateImportedProjectStatic(reimported[0]);
+        JSONObject second = new JSONObject(reimported[0]);
+        assertEquals("Edited in acceptance test", second.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0).getString("text"));
+        assertEquals("bg.png", second.getJSONArray("screens").getJSONObject(0).getString("backgroundImagePath"));
+        assertEquals(sourceBeforeEdit.toString(), second.getJSONObject("craftSource").toString());
+        assertTrue(second.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets").getJSONObject(1)
+                .optBoolean("craftUnsupportedComponent", false));
+        assertArrayEquals(sourceImage, java.nio.file.Files.readAllBytes(ProjectMediaService.resolveMediaFile(
+                rootDir, second.toString(), second.getJSONArray("screens").getJSONObject(0).getString("backgroundImagePath")).toPath()));
+    }
+
+
 }
 
