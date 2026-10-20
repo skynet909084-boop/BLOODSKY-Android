@@ -63,6 +63,14 @@ def actions_for_controls(controls, direction: str):
             *filter(lambda action: action["kind"] != "long_press", focused)]
 
 
+def remember_state(seen: set[str], signature: str) -> bool:
+    """Remember one observed accessibility state, returning false for duplicates."""
+    if signature in seen:
+        return False
+    seen.add(signature)
+    return True
+
+
 def action_identity(action):
     """Identify one control gesture so a DFS path cannot repeat a UI toggle forever."""
     node = action["node"]
