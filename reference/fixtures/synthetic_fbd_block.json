@@ -1,0 +1,15 @@
+{
+  "_comment": "SYNTHETIC FIXTURE - CLEARLY LABELLED FOR TESTING ONLY",
+  "block_id": "synthetic_fb_timer",
+  "block_type": "FB_TIMER",
+  "mode": "TON",
+  "preset_time_ms": 5000,
+  "inputs": [
+    {"pin": 0, "name": "IN", "type": "BOOL"},
+    {"pin": 1, "name": "PT", "type": "INT32"}
+  ],
+  "outputs": [
+    {"pin": 0, "name": "Q", "type": "BOOL"},
+    {"pin": 1, "name": "ET", "type": "INT32"}
+  ]
+}
