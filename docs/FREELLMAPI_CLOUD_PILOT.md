@@ -1,6 +1,10 @@
 # BLOODSKY cloud AI pilot
 
-This branch is an isolated cloud coding pilot. It preserves the stable Android application. The first agent task may only add new JUnit regression tests; broader product edits remain outside this pilot.
+## Status — paused, 2026-10-20
+
+The pilot is paused. Its `cloud-ai-preflight.yml` and `cloud-ai-agent.yml` workflows were removed during repository cleanup. No code-writing agent runs automatically. The remaining scripts and details below are retained as historical/audit material; do not treat the old setup instructions or run records as an active automation path.
+
+Historically, the pilot was designed as an isolated cloud coding experiment that preserved the stable Android application. Its initial task scope was limited to adding JUnit regression tests; broader product edits were outside that pilot.
 
 ## Architecture
 
@@ -12,7 +16,7 @@ FreeLLMAPI is the model router; `tools/cloud_coding_agent.py` is the coding agen
 
 The first workflow had only `workflow_dispatch`. A new dispatch workflow must exist on the default branch before GitHub offers manual dispatch; merely adding it to a PR does not run it. Commit `7892939` added the `pull_request` trigger. Exact head `eedd963` has confirmed successful preflight run [39011103827](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39011103827) and Android build run [39011103848](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39011103848). These establish static validation/build only, not provider inference. Earlier emulator runs were superseded by successive PR updates.
 
-Both cloud workflows now watch the cloud implementation, tests and documentation. Preflight concurrency is scoped per PR/ref so one branch cannot cancel another branch's check. Keep each final commit unchanged until its checks complete.
+At that time, both cloud workflows watched the cloud implementation, tests and documentation, with preflight concurrency scoped per PR/ref. Those workflow files have since been removed; this describes the former setup only.
 
 ## Reproducible router contract
 
@@ -24,7 +28,7 @@ The real router forwards a completion request to a deterministic local fixture o
 
 An anonymous, no-account path is now documented in [ANONYMOUS_FREE_AI_PROOF.md](ANONYMOUS_FREE_AI_PROOF.md). Actual OVH inference through the pinned router and independent Python/JUnit/APK validation were confirmed in [run 39013819242](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39013819242). That path needs no provider key or payment method. The Groq configuration below remains a separate optional mode.
 
-After this workflow is accepted onto the default branch, the repository owner can select **BLOODSKY FreeLLMAPI agent → Run workflow → mode: live**. Keep `publish: false` for the first inference proof.
+Historical setup instructions: if the owner deliberately restores and reviews the workflows, a live run would require the documented free-tier safeguards. The workflows are currently absent and cannot be dispatched from GitHub.
 
 Required repository configuration:
 
@@ -48,6 +52,6 @@ The router listens on host loopback only. Its generated encryption key, dashboar
 
 Private repositories may have GitHub Actions minute limits or charges. Stop when free usage is exhausted; do not silently enable paid usage.
 
-## Current state
+## Historical state and validation evidence
 
 The initial preflight is confirmed on `eedd963`; PR #70's final router fixture, unit/APK and API30 emulator checks passed on `7f2bba6` before merge. Anonymous real inference and independent test/APK validation are confirmed by the run linked above. Groq live mode, its account/billing configuration, and actual automatic draft publication remain unverified until their own successful runs are inspected. Absence of a live run must never be reported as a successful inference. Android physical-device and visual-parity claims remain governed by their existing checks.

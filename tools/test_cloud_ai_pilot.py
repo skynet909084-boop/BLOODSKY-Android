@@ -9,7 +9,7 @@ CHECKER = ROOT / "tools" / "check_cloud_ai_pilot.py"
 
 
 class CloudAiPilotTests(unittest.TestCase):
-    def test_preflight_safety_contract(self):
+    def test_retired_pilot_disabled_state_contract(self):
         result = subprocess.run(
             [sys.executable, str(CHECKER)],
             cwd=ROOT,
@@ -20,13 +20,13 @@ class CloudAiPilotTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
-    def test_preflight_remains_read_only(self):
-        workflow = (ROOT / ".github/workflows/cloud-ai-preflight.yml").read_text()
-        self.assertIn("contents: read", workflow)
-        self.assertIn("pull_request:", workflow)
-        self.assertNotIn("pull_request_target:", workflow)
-        self.assertNotIn("contents: write", workflow)
-        self.assertNotIn("secrets.", workflow)
+    def test_retired_agent_workflows_are_absent_and_status_is_explicit(self):
+        for name in ("cloud-ai-preflight.yml", "cloud-ai-agent.yml"):
+            self.assertFalse((ROOT / ".github/workflows" / name).exists(), name)
+        status = (ROOT / "docs/FREELLMAPI_CLOUD_PILOT.md").read_text().lower()
+        self.assertIn("pilot is paused", status)
+        self.assertIn("workflows were removed", status)
+        self.assertIn("no code-writing agent runs automatically", status)
 
 
 if __name__ == "__main__":
