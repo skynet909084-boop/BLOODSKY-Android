@@ -2268,18 +2268,37 @@ public class MainActivity extends Activity {
             pendingMediaField = null;
             if (resultCode != RESULT_OK || data == null || data.getData() == null || target == null) return;
             Uri selected = data.getData();
-            try {
-                int readGrant = data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION;
-                if (readGrant == 0) throw new SecurityException("Read access not granted");
-                getContentResolver().takePersistableUriPermission(selected, readGrant);
-                try (InputStream in = getContentResolver().openInputStream(selected)) {
-                    if (in == null) throw new IOException("File unavailable");
-                }
-                target.setText(selected.toString());
-                imageCache.remove(selected.toString());
-            } catch (Exception ex) {
-                Toast.makeText(this, "Нет постоянного доступа к файлу. Выберите другой файл.", Toast.LENGTH_LONG).show();
+            int readGrant = data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION;
+            if (readGrant == 0) {
+                Toast.makeText(this, "Нет доступа к выбранному файлу. Выберите другой файл.", Toast.LENGTH_LONG).show();
+                return;
             }
+            try { getContentResolver().takePersistableUriPermission(selected, readGrant); }
+            catch (SecurityException | IllegalArgumentException ignored) {
+                /* The selected bytes are copied into private project storage below. */
+            }
+            String projectJson = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
+            modbusExecutor.execute(() -> {
+                try (InputStream in = getContentResolver().openInputStream(selected)) {
+                    String displayName = selectedMediaDisplayName(selected);
+                    String projectPath = ProjectMediaService.storeSelectedMedia(
+                            getFilesDir(), projectJson, displayName, in);
+                    runOnUiThread(() -> {
+                        if (isFinishing() || isDestroyed()) return;
+                        target.setText(projectPath);
+                        imageCache.remove(selected.toString());
+                        imageCache.remove(projectPath);
+                        Toast.makeText(this, "Файл сохранён в проект", Toast.LENGTH_SHORT).show();
+                    });
+                } catch (Exception ex) {
+                    android.util.Log.e("BLOODSKY", "Selected project media could not be stored", ex);
+                    runOnUiThread(() -> {
+                        if (isFinishing() || isDestroyed()) return;
+                        Toast.makeText(this, "Не удалось сохранить файл в проект: "
+                                + ex.getMessage(), Toast.LENGTH_LONG).show();
+                    });
+                }
+            });
             return;
         }
         if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
@@ -2340,6 +2359,20 @@ public class MainActivity extends Activity {
         } else if (requestCode == REQUEST_IMPORT_PROJECT) {
             importProjectBundle(uri);
         }
+    }
+
+    private String selectedMediaDisplayName(Uri uri) {
+        try (android.database.Cursor cursor = getContentResolver().query(uri,
+                new String[]{android.provider.OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int column = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
+                if (column >= 0) {
+                    String name = cursor.getString(column);
+                    if (name != null && !name.trim().isEmpty()) return name;
+                }
+            }
+        } catch (Exception ignored) { }
+        return uri == null ? "media.bin" : uri.getLastPathSegment();
     }
 
 
