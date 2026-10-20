@@ -6912,20 +6912,83 @@ public class MainActivity extends Activity {
         if (cacheValid[index]) return cacheValues[index];
         boolean result = evaluateFbdBlockUncached(widgetsList, connectionsList, index, visiting, cacheValid, cacheValues, cacheNumeric);
         if (isFbdBlockOutputInverted(widgetsList.get(index))
-                && (hasCompleteCraftGateInputs(widgetsList, connectionsList, index)
-                    || isCraftRegisterBoolean(widgetsList.get(index).type))) result = !result;
+                && hasCompleteInvertibleBooleanInputs(widgetsList, connectionsList, index)) result = !result;
         cacheValues[index] = result;
         cacheValid[index] = true;
         return result;
     }
 
-    /** Craft's inherited `invertOut` is source-backed for the original Boolean gates. */
+    /** Craft's inherited `invertOut` is supported only for source-backed Boolean Q outputs. */
     public static boolean supportsFbdBlockOutputInversion(String type) {
         if (type == null) return false;
         String canonical = canonicalFbdBlockType(type);
         return "FBD AND".equals(canonical) || "FBD OR".equals(canonical)
                 || "FBD XOR".equals(canonical) || "FBD CRAFT VAR BOOL".equals(canonical)
-                || (isCraftNamedVariableSource(canonical) && craftNamedVariableKind(canonical) == 1);
+                || (isCraftNamedVariableSource(canonical) && craftNamedVariableKind(canonical) == 1)
+                || "FBD RS".equals(canonical)
+                || "FBD CRAFT T".equals(canonical)
+                || "FBD CRAFT TIMER".equals(canonical)
+                || "FBD CRAFT BLINK".equals(canonical)
+                || "FBD CRAFT COMPARE".equals(canonical)
+                || "FBD CRAFT COMPARE FLOAT".equals(canonical)
+                || "FBD CRAFT CHANGE I".equals(canonical)
+                || "FBD CRAFT CHANGE F".equals(canonical);
+    }
+
+    private static boolean hasCompleteInvertibleBooleanInputs(List<Widget> widgets,
+                                                               List<FbdConnection> connections,
+                                                               int targetIndex) {
+        if (widgets == null || targetIndex < 0 || targetIndex >= widgets.size()) return false;
+        Widget target = widgets.get(targetIndex);
+        if (isCraftRegisterBoolean(target.type)
+                || (isCraftNamedVariableSource(target.type) && craftNamedVariableKind(target.type) == 1))
+            return true;
+        if ("FBD AND".equals(canonicalFbdBlockType(target.type))
+                || "FBD OR".equals(canonicalFbdBlockType(target.type))
+                || "FBD XOR".equals(canonicalFbdBlockType(target.type)))
+            return hasCompleteCraftGateInputs(widgets, connections, targetIndex);
+        if (!supportsFbdBlockOutputInversion(target.type) || connections == null) return false;
+
+        String[] required = knownFbdPins(target.type, false);
+        if (required.length == 0) return false;
+        java.util.Set<String> requiredPins = new java.util.HashSet<>();
+        java.util.Set<String> connectedPins = new java.util.HashSet<>();
+        for (String pin : required) requiredPins.add(canonicalFbdPinName(pin));
+        int legacyInputs = 0;
+        boolean sawNamed = false, sawLegacy = false;
+        for (FbdConnection edge : connections) {
+            if (edge == null || edge.target != targetIndex) continue;
+            if (edge.source < 0 || edge.source >= widgets.size() || edge.extraFields == null) return false;
+            String targetPin = canonicalFbdPinName(edge.extraFields.optString("targetPin", ""));
+            if (targetPin.isEmpty()) { sawLegacy = true; legacyInputs++; }
+            else {
+                sawNamed = true;
+                if (!requiredPins.contains(targetPin) || !connectedPins.add(targetPin)) return false;
+            }
+        }
+        if (sawNamed && sawLegacy) return false;
+        if (sawNamed ? connectedPins.size() != requiredPins.size()
+                : legacyInputs != requiredPins.size()) return false;
+
+        int legacyIndex = 0;
+        for (FbdConnection edge : connections) {
+            if (edge == null || edge.target != targetIndex) continue;
+            Widget source = widgets.get(edge.source);
+            if (source == null) return false;
+            String sourcePin = canonicalFbdPinName(edge.extraFields.optString("sourcePin", ""));
+            String targetPin = canonicalFbdPinName(edge.extraFields.optString("targetPin", ""));
+            if (targetPin.isEmpty()) targetPin = canonicalFbdPinName(required[legacyIndex++]);
+            String[] sourcePins = knownFbdPins(source.type, true);
+            if (sourcePin.isEmpty()) {
+                if (sourcePins.length != 1) return false;
+                sourcePin = canonicalFbdPinName(sourcePins[0]);
+            }
+            String sourceSignal = knownFbdPinType(source.type, sourcePin, true);
+            String targetSignal = knownFbdPinType(target.type, targetPin, false);
+            if (sourceSignal == null || targetSignal == null || !sourceSignal.equals(targetSignal))
+                return false;
+        }
+        return true;
     }
 
     private static boolean hasCompleteCraftGateInputs(List<Widget> widgets,
