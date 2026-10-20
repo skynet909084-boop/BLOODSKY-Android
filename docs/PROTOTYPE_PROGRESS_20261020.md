@@ -87,7 +87,20 @@ The source findings and extraction tests do not implement INT/FLOAT arithmetic, 
 - Superseded PR [#136](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/136) was closed unmerged; its old branch was deleted after the validated prototype replacement landed.
 - PR [#162](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/162) merged as `efc4a057114b414744391a2989d8b1c657dd4fd1`. It adds a one-line regression check for Craft's localized FBD timer palette/property labels; APK/JUnit run [#1156](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39381967912) passed, and corrected Android smoke [#784](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39381333825) passed before a base-only sync. Artifact [#783](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39380654662) established the observed property header is `Свойства: FBD Таймер`; the serialized type is `FBD CRAFT TIMER`.
 - Deleted the merged #160 and #162 feature refs and the old RTU regression ref after checking that its `ModbusRtuTest.java` blob matched the prototype and its remaining differences were the corrected timer smoke label/test. Deleted refs were verified absent.
-- Full Craft run [#165](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39379411369) completed successfully at the workflow level across all ten directions. The FBD artifact was reviewed: it captured 100 states and 99 transitions, executed 19 long presses, and reported `coverage_limited=true`, `coverage_complete=false`, and `termination_reason=state_limit` (the 3000-second runtime limit was not hit). Project seed succeeded and no project-loading stalls were recorded. This is useful broad evidence, but not complete traversal; the other nine direction artifacts still need review before any coverage claim.
+- Full Craft run [#165](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39379411369) completed successfully at workflow level across all ten directions. All ten artifacts were reviewed. Each ran offline, seeded its project successfully, captured 100 states / 99 transitions, and ended at `state_limit` with `coverage_limited=true` and `coverage_complete=false`; none hit the 3000-second runtime limit. Long-press actions executed: FBD 19, components 9, runtime 14, exit-policy 2, project-create 14, macros 9, import-paste 2, devices 12, network 56, import-qr 14. Only import-qr recorded one project-loading stall. Treat this as broad partial navigation evidence, not complete coverage.
+
+| Craft direction | States / transitions | Long presses | Seconds | Stalls | Result |
+|---|---:|---:|---:|---:|---|
+| FBD | 100 / 99 | 19 | 1529.3 | 0 | state limit |
+| Components | 100 / 99 | 9 | 1833.5 | 0 | state limit |
+| Runtime | 100 / 99 | 14 | 1402.0 | 0 | state limit |
+| Exit policy | 100 / 99 | 2 | 1685.5 | 0 | state limit |
+| Project create | 100 / 99 | 14 | 1468.4 | 0 | state limit |
+| Macros | 100 / 99 | 9 | 1352.6 | 0 | state limit |
+| Import paste | 100 / 99 | 2 | 1539.7 | 0 | state limit |
+| Devices | 100 / 99 | 12 | 1332.1 | 0 | state limit |
+| Network | 100 / 99 | 56 | 1816.2 | 0 | state limit |
+| Import QR | 100 / 99 | 14 | 1747.1 | 1 | state limit |
 - Latest branch inventory after this cleanup: 31 branches and 9 open PRs. Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
 
 ## Next integration queue
