@@ -5,8 +5,8 @@
   "total_original_image_assets": 152,
   "image_aliases_status": {
     "total_packaged_in_apk": 152,
-    "directly_referenced_in_bloodsky_app": 17,
-    "packaged_but_unused_in_bloodsky": 135,
+    "directly_referenced_in_bloodsky_app": 49,
+    "packaged_but_unused_in_bloodsky": 103,
     "verification_note": "Strictly verified against production Java and resource XML by tools/verify_original_source_contracts.py"
   },
   "system_registers": {
