@@ -30,7 +30,7 @@ class FastFbdSmoke(Smoke):
         # Exercise the manual USB RTU screen without depending on attached hardware.
         self.tap('USB Serial • Modbus RTU')
         self.wait_node('BLOODSKY • USB SERIAL RTU')
-        scroll_bounds = list(map(int, re.findall(r'\\d+', self.wait_node(class_name='android.widget.ScrollView').get('bounds'))))
+        scroll_bounds = list(map(int, re.findall(r'\d+', self.wait_node(class_name='android.widget.ScrollView').get('bounds'))))
         left, top, right, bottom = scroll_bounds
         connect_button = []
         for _ in range(4):
@@ -39,7 +39,7 @@ class FastFbdSmoke(Smoke):
             time.sleep(0.2)
             connect_button = matching_nodes(self.dump(), text='Подключить выбранный адаптер')
             if connect_button:
-                b = list(map(int, re.findall(r'\\d+', connect_button[0].get('bounds'))))
+                b = list(map(int, re.findall(r'\d+', connect_button[0].get('bounds'))))
                 if b[1] >= top and b[3] <= bottom:
                     break
             connect_button = []
