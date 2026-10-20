@@ -292,3 +292,16 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 - PR #69 остаётся открытым и не слит: переносить целиком несовместимую старую FBD-модель нельзя. Узкий rollback уже реализован и принят через #163.
 - Full Craft UI probe #171 остаётся только частичным навигационным evidence: все 10 jobs успешны, но все направления имеют `coverage_limited=true` и `coverage_complete=false`; полной UI-паритетности не заявлять.
 - `main` не менялась и остаётся `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+
+## Branch convergence review — 20 Oct 2026
+
+- Confirmed current integration head: `prototype/all-in-one-20261020` at `cd9188fe757fdcd917b515bd1dcc3e2b5db6ac96`. Stable `main` remains exactly `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+- There are 9 open PRs: #151, #150, #149, #74, #73, #69, #46, #44 and #38. They are not nine ready-to-merge feature batches; several are probe-only, stacked on older heads, or superseded by newer prototype implementations.
+- #149–#151 are original-Craft emulator probe/tooling branches. Keep them separate from app runtime until their artifacts are accepted; they provide evidence, not application features.
+- #69 is not safe to merge wholesale. Its ordered/untyped graph and ordinal pin/inversion model conflicts with the prototype's typed, named-pin graph. The current prototype already has source-aware FBD menus, timer units/modes and selected-edge edits; the narrow save-failure rollback was adapted and merged through #163.
+- #44's older ZIP media service is superseded by the prototype's generation-based media service and newer ZIP acceptance coverage (#164–#166). #46's backup/rename transaction is based on the older service model and must not overwrite generation isolation without a separate demonstrated bug.
+- #73 adds timer-boundary assertions already present in `FbdPropertyEditsTest`; importing it would duplicate existing coverage. #74 is cloud-agent tooling stacked on the old #69 branch, not an app-runtime feature.
+- #38 is a legacy batch branch. Do not merge its old MainActivity wholesale; map any remaining unique feature against current code before porting.
+- User direction: prioritize consolidating app implementation now. Testing the user's original project archives is deferred to final-app acceptance; do not add those raw archives to the public repository.
+- Next integration rule: port only a clearly missing, bounded feature from a branch, or mark it superseded after confirming equivalent current code/tests. Run exact-head APK/JUnit and UI smoke for runtime/UI changes; leave `main` untouched.
