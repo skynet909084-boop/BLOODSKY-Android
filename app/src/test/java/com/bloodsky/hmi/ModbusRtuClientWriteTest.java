@@ -48,11 +48,11 @@ public class ModbusRtuClientWriteTest {
     @Test public void validatesUnitRangesQuantitiesAndValuesBeforeWriting() throws Exception {
         ByteArrayOutputStream sent = new ByteArrayOutputStream();
         try (ModbusRtuClient client = new ModbusRtuClient(new ByteArrayInputStream(new byte[0]), sent, 500)) {
-            assertInvalid(client -> client.writeSingle(0, 0, 1));
-            assertInvalid(client -> client.writeSingle(1, 65535, 1));
-            assertInvalid(client -> client.writeMultiple(1, 0, new int[124]));
-            assertInvalid(client -> client.writeSingle(1, 1, 65536));
-            assertInvalid(client -> client.writeMultipleCoils(1, 0, new int[] {0, 2}));
+            assertInvalid(candidate -> candidate.writeSingle(0, 0, 1));
+            assertInvalid(candidate -> candidate.writeSingle(1, 65535, 1));
+            assertInvalid(candidate -> candidate.writeMultiple(1, 0, new int[124]));
+            assertInvalid(candidate -> candidate.writeSingle(1, 1, 65536));
+            assertInvalid(candidate -> candidate.writeMultipleCoils(1, 0, new int[] {0, 2}));
             assertEquals(0, sent.size());
         }
     }
