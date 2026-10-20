@@ -3,6 +3,7 @@ package com.bloodsky.hmi;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.RectF;
 
 /**
@@ -39,6 +40,7 @@ public final class FbdSourceCanvasSkin {
                 || "FBD CRAFT SENSOR SPEED".equals(type)
                 || "FBD CRAFT SUNRISE".equals(type)
                 || "FBD CRAFT ODTEMP".equals(type)
+                || isCraftVariable(type)
                 || MainActivity.isCraftMqttSubscriber(type) || MainActivity.isCraftMqttPublisher(type);
     }
 
@@ -72,6 +74,7 @@ public final class FbdSourceCanvasSkin {
                 : "FBD CRAFT SENSOR SPEED".equals(w.type) ? "SM"
                 : "FBD CRAFT SUNRISE".equals(w.type) ? sunriseCaption(w)
                 : "FBD CRAFT ODTEMP".equals(w.type) ? "DT"
+                : isCraftVariable(w.type) ? variableCaption(w)
                 : "FBD CRAFT COMPARE".equals(w.type) ? w.compareOperator
                 : MainActivity.isCraftMqttSubscriber(w.type) ? "MQTT_S"
                 : MainActivity.isCraftMqttPublisher(w.type) ? "MQTT_P"
@@ -81,6 +84,7 @@ public final class FbdSourceCanvasSkin {
                 : isTimer(w.type) ? FbdDurationUnits.modeForType(w.type) : "XOR";
         // Preserve manually edited labels by falling back to the editable skin.
         return w.text == null || w.text.isEmpty() || defaultCaption.equals(w.text)
+                || isDefaultVariableCaption(w)
                 || ("FBD CRAFT T".equals(w.type)
                     && ("T".equals(w.text) || "R".equals(w.text) || "F".equals(w.text)));
     }
@@ -109,6 +113,98 @@ public final class FbdSourceCanvasSkin {
                 || "FBD CRAFT TIMER".equals(type) || "FBD CRAFT MX".equals(type);
     }
 
+    private static boolean isCraftVariable(String type) {
+        return MainActivity.isCraftRegisterSource(type) || MainActivity.isCraftRegisterSink(type)
+                || MainActivity.isCraftNamedVariableSource(type)
+                || MainActivity.isCraftNamedVariableSink(type);
+    }
+
+    static String variableCaption(MainActivity.Widget widget) {
+        String type = widget.type;
+        if (MainActivity.isCraftNamedVariableSource(type) || MainActivity.isCraftNamedVariableSink(type)) {
+            String name = widget.extraFields.optString("craftVariableName",
+                    widget.extraFields.optString("name", ""));
+            return name.isEmpty() ? "var name" : name;
+        }
+        if (MainActivity.isCraftRegisterSource(type)
+                && widget.extraFields.optBoolean("craftVarConstantMode", false))
+            return widget.extraFields.optString("craftVarConstant", "0");
+        String reg = widget.extraFields.optString("reg", "0");
+        return type.endsWith("BOOL") ? "S#" + reg + "."
+                + widget.extraFields.optInt("craftVarBit", 0) : "S#" + reg;
+    }
+
+    private static boolean isBooleanCraftVariable(String type) { return type.endsWith("BOOL"); }
+    private static boolean isCraftVariableSource(String type) {
+        return MainActivity.isCraftRegisterSource(type) || MainActivity.isCraftNamedVariableSource(type);
+    }
+    private static int craftVariableShape(String type) {
+        if (MainActivity.isCraftNamedVariableSource(type)) return 4;
+        if (MainActivity.isCraftNamedVariableSink(type)) return 5;
+        if (type.endsWith("FLOAT")) return 3;
+        if (type.endsWith("INT")) return 2;
+        return 1;
+    }
+    private static boolean isDefaultVariableCaption(MainActivity.Widget w) {
+        if (!isCraftVariable(w.type)) return false;
+        String text = w.text == null ? "" : w.text;
+        return text.isEmpty() || text.equals(variableCaption(w)) || "VAR".equals(text)
+                || "VAR_INT".equals(text) || "VAR_FLOAT".equals(text) || "S#".equals(text)
+                || "S#_INT".equals(text) || "S#_FLOAT".equals(text) || "var name".equals(text);
+    }
+
+    private static void drawCraftVariable(Canvas canvas, Paint brush, MainActivity.Widget w, float density) {
+        float stroke = Math.max(1f, density), pin = Math.max(5f, 10f * density);
+        boolean source = isCraftVariableSource(w.type);
+        int shape = craftVariableShape(w.type);
+        float x0 = w.x, x1 = w.x + w.w, y0 = w.y, y1 = w.y + w.h, cy = (y0 + y1) / 2f;
+        float left = source ? x0 + stroke : x0 + pin, right = source ? x1 - pin : x1 - stroke;
+        RectF body = new RectF(left, y0 + stroke, right, y1 - stroke);
+        Paint.Style oldStyle = brush.getStyle(); Paint.Align oldAlign = brush.getTextAlign();
+        int oldColor = brush.getColor(); float oldSize = brush.getTextSize(), oldWidth = brush.getStrokeWidth();
+        boolean oldAA = brush.isAntiAlias(); Path shapePath = new Path();
+        try {
+            brush.setAntiAlias(true); brush.setStrokeWidth(stroke);
+            if (shape == 4) {
+                shapePath.moveTo(left, body.top); shapePath.lineTo(right - pin, body.top);
+                shapePath.lineTo(right, cy); shapePath.lineTo(right - pin, body.bottom);
+                shapePath.lineTo(left, body.bottom); shapePath.close();
+            } else if (shape == 5) {
+                shapePath.moveTo(left, cy); shapePath.lineTo(left + pin, body.top);
+                shapePath.lineTo(right, body.top); shapePath.lineTo(right, body.bottom);
+                shapePath.lineTo(left + pin, body.bottom); shapePath.close();
+            } else if (shape == 3) {
+                float bevel = Math.min(body.height() / 2f, 12f * density);
+                shapePath.moveTo(body.left + bevel, body.top); shapePath.lineTo(body.right - bevel, body.top);
+                shapePath.lineTo(body.right, cy); shapePath.lineTo(body.right - bevel, body.bottom);
+                shapePath.lineTo(body.left + bevel, body.bottom); shapePath.lineTo(body.left, cy); shapePath.close();
+            }
+            brush.setStyle(Paint.Style.FILL); brush.setColor(Color.rgb(136, 136, 136));
+            if (shape == 2) canvas.drawRoundRect(body, pin, pin, brush);
+            else if (shape >= 3) canvas.drawPath(shapePath, brush);
+            else canvas.drawRect(body, brush);
+            brush.setStyle(Paint.Style.STROKE); brush.setColor(Color.BLACK);
+            if (shape == 2) canvas.drawRoundRect(body, pin, pin, brush);
+            else if (shape >= 3) canvas.drawPath(shapePath, brush);
+            else canvas.drawRect(body, brush);
+            if (!source) canvas.drawLine(x0, cy, left, cy, brush);
+            else if (isBooleanCraftVariable(w.type) && MainActivity.isFbdBlockOutputInverted(w)) {
+                float radius = 3.5f * density, cx = right + radius;
+                canvas.drawLine(cx + radius, cy, x1, cy, brush); canvas.drawCircle(cx, cy, radius, brush);
+            } else canvas.drawLine(right, cy, x1, cy, brush);
+            String caption = variableCaption(w);
+            brush.setStyle(Paint.Style.FILL); brush.setColor(Color.WHITE); brush.setTextAlign(Paint.Align.CENTER);
+            float size = Math.min(14f * density, Math.max(7f * density, w.h * .45f));
+            brush.setTextSize(size);
+            float available = Math.max(1, body.width() - 8 * density), measured = brush.measureText(caption);
+            if (measured > available && measured > 0) brush.setTextSize(Math.max(6f * density, size * available / measured));
+            canvas.drawText(caption, (left + right) / 2f, cy - (brush.ascent() + brush.descent()) / 2f, brush);
+        } finally {
+            brush.setStyle(oldStyle); brush.setTextAlign(oldAlign); brush.setColor(oldColor);
+            brush.setTextSize(oldSize); brush.setStrokeWidth(oldWidth); brush.setAntiAlias(oldAA);
+        }
+    }
+
     static String orientationCaption(MainActivity.Widget widget) {
         int axis = Math.max(1, Math.min(3, widget.extraFields.optInt("craftSensorAxis",
                 widget.extraFields.optInt("type", 1))));
@@ -132,6 +228,7 @@ public final class FbdSourceCanvasSkin {
 
     public static void draw(Canvas canvas, Paint brush, MainActivity.Widget w, float density) {
         if (!shouldUse(w)) return;
+        if (isCraftVariable(w.type)) { drawCraftVariable(canvas, brush, w, density); return; }
         float pin = Math.max(5, 10 * density);
         boolean simpleSource = "FBD CRAFT SENSOR ORIENTATION".equals(w.type)
                 || "FBD CRAFT SENSOR LIGHT".equals(w.type)
