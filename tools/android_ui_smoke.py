@@ -837,7 +837,27 @@ class Smoke:
         # am kill is implemented as force-stop on this Android 11 emulator and
         # discards the ActivityRecord's saved state. Kill the background PID so
         # the task and the Bundle captured when DocumentsUI opened remain intact.
-        adb('shell', 'kill', '-9', *app_pids)
+        kill_result = subprocess.run(
+            ['adb', 'shell', 'kill', '-9', *app_pids],
+            capture_output=True, text=True, timeout=45)
+        # The Activity can disappear between the PID lookup and kill. Treat that
+        # race as success only when pidof confirms the package process is gone.
+        deadline = time.monotonic() + 5
+        while True:
+            process_check = subprocess.run(
+                ['adb', 'shell', 'pidof', PACKAGE],
+                capture_output=True, text=True, timeout=45)
+            if process_check.returncode != 0 and not process_check.stderr.strip():
+                break
+            if process_check.returncode != 0 and process_check.stderr.strip():
+                raise RuntimeError(
+                    'Could not verify process termination: ' + process_check.stderr.strip())
+            if not process_check.stdout.strip():
+                break
+            if time.monotonic() >= deadline:
+                detail = kill_result.stderr.strip() or process_check.stdout.strip()
+                raise RuntimeError('Application process survived kill request: ' + detail)
+            time.sleep(0.25)
         self.tap_document('bloodsky-custom.png')
         self.wait_node('Свойства: Многопозиционное фото', timeout=30)
         self.wait_node('Restored_label', timeout=10)
