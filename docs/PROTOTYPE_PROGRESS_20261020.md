@@ -4,7 +4,7 @@
 
 - Working integration branch: `prototype/all-in-one-20261020`
 - Stable `main` was not changed.
-- Current prototype head before this checkpoint: `d02bcaf86eafd6435af26d896dfa6939ff5c0714`
+- Current prototype code head before the source-view audit checkpoint: `3dbe9cb6e4e9ef3c2e8706595aa49663bb81f1d6`
 - The unified app already contains the current project importer, FBD work, component imports, HMI/runtime changes and media handling described in `KASCADA_FULL_PARITY_AUDIT_20261018.md`.
 
 ## Added in this checkpoint
@@ -52,3 +52,13 @@ The source findings and extraction tests do not implement INT/FLOAT arithmetic, 
 - Dispatched the exhaustive long-press matrix [#165](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39379411369) from `test/original-craft-long-press-20261019`.
 - Dispatched the exhaustive traversal with stable loading-state detection [#166](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39379432124) from `fix/original-emulator-loading-detection-20261019`.
 - Both full runs were in progress at this update. Review per-direction `ui-audit.json` and artifact coverage before treating any direction as complete.
+
+
+## Source-view audit and picker follow-up — 20 Oct 2026
+
+- Merged PR [#161](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/161) into the prototype as `3dbe9cb6e4e9ef3c2e8706595aa49663bb81f1d6`. It clarifies the source-backed unresolved Craft component ID 3 factory mapping in the existing matrix; no runtime code changed.
+- Ported the MediaStore/document-picker hardening from #136 into PR [#160](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/160), preserving newer prototype smoke coverage. It scans and waits for the fixture, resolves exact grid/list filename nodes, requires app return, adds regressions, and selects the full UI profile for this branch family.
+- PR #160 exact-head `309f159a7c45c7a79ebfa285ece23f32b58d8858`: APK/JUnit run [#1152](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39379640455) and full Android UI run [#782](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39379640479) are queued. Keep #136 until these exact-head checks pass; then close it as superseded and remove its branch.
+- Removed the merged #161 branch and the old source-view audit branch after verifying no open PR dependency and confirming all their changed file blobs match the prototype. Branch refs were rechecked absent. Inventory: 46 branches; 12 open PRs. Unique unfinished work remains.
+- Full Craft 1.0.7 UI probes #165 and #166 are still running their ten independent directions each; review direction artifacts and `ui-audit.json` coverage before claiming any pass.
+- Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
