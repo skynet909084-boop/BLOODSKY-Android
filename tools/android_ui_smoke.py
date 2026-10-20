@@ -143,6 +143,15 @@ class Smoke:
         x, y = center(node.get('bounds'))
         adb('shell', 'input', 'tap', str(x), str(y))
 
+    def finger_tap(self, x, y):
+        """Inject an 80 ms real-touch event through the already installed driver.
+
+        Android 12's shell 'input tap' can report a touch tool type UNKNOWN.
+        Exercise FBD Canvas with FINGER just like a person using the editor.
+        """
+        adb('shell', 'CLASSPATH=/data/local/tmp/bloodsky-ui-input.jar',
+            'app_process', '/system/bin', 'BloodskyFingerTap', str(x), str(y))
+
     def prepare_custom_image(self):
         # ADB push alone does not index the image in API30 MediaStore. The
         # Downloads image-filter view can remain empty until a media scan.
@@ -209,8 +218,7 @@ class Smoke:
             if bounds and bounds == previous:
                 x, y = center(bounds)
                 print('Opening document', filename, 'at', x, y, flush=True)
-                adb('shell', 'CLASSPATH=/data/local/tmp/bloodsky-ui-input.jar',
-                    'app_process', '/system/bin', 'BloodskyFingerTap', str(x), str(y))
+                self.finger_tap(x, y)
                 attempts += 1
                 for _ in range(3):
                     xml = self.dump()
@@ -442,10 +450,13 @@ class Smoke:
         canvas = self.wait_node(description='Редактор экрана')
         left, top, _, _ = map(int, re.findall(r'\d+', canvas.get('bounds')))
         sx, sy = fbd_widget_interior_tap_point(left, top, source)
+        tx, ty = fbd_widget_interior_tap_point(left, top, target)
         self.tap_editor_menu_item('Связать FBD')
-        adb('shell', 'input', 'tap', str(sx), str(sy))
-        adb('shell', 'input', 'tap', str(round(left+target['x']+target['w']/2)),
-            str(round(top+target['y']+target['h']/2)))
+        self.checkpoint('fbd-link:source-finger-tap')
+        self.finger_tap(sx, sy)
+        self.checkpoint('fbd-link:target-finger-tap')
+        self.finger_tap(tx, ty)
+        self.checkpoint('fbd-link:await-source-pin-dialog')
         self.wait_node('Выход FBD')
         self.tap('Q')
         self.wait_node('Вход FBD')
