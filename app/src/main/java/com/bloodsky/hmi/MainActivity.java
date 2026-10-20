@@ -8948,7 +8948,6 @@ public class MainActivity extends Activity {
         float downX, downY, startX, startY, startW, startH;
         float marqueeX, marqueeY;
         float groupMinX, groupMinY, groupMaxX, groupMaxY;
-        long downAt;
         boolean dragging;
         boolean resizing;
         boolean marqueeActive;
@@ -9842,7 +9841,6 @@ public class MainActivity extends Activity {
             int action = event.getActionMasked();
             if (action == MotionEvent.ACTION_DOWN) {
                 downX = x; downY = y; marqueeX = x; marqueeY = y;
-                downAt = SystemClock.elapsedRealtime();
                 dragging = false; resizing = false; marqueeActive = false; selected = -1;
                 dragOrigins.clear();
                 boolean hit = false;
@@ -9943,7 +9941,8 @@ public class MainActivity extends Activity {
                     }
                 } else if (dragging) {
                     persistProject();
-                } else if (selected >= 0 && SystemClock.elapsedRealtime() - downAt >= 550L) {
+                } else if (selected >= 0 && EditorTouchTiming.isLongPress(
+                        event.getDownTime(), event.getEventTime())) {
                     showWidgetContextMenu();
                 } else if (selected >= 0 && fbdWireMode) {
                     Widget picked = widgets.get(selected);
