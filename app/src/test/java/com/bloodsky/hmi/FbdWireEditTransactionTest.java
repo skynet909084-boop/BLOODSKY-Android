@@ -54,6 +54,25 @@ public class FbdWireEditTransactionTest {
         assertEquals("metadata", restored.getJSONObject("customWireData").getString("keep"));
     }
 
+    @Test public void failedDisconnectSaveRestoresSelectedTypedEdge() throws Exception {
+        Object screen = new Object();
+        List<MainActivity.FbdConnection> edges = new ArrayList<>();
+        edges.add(edge(0, 1));
+        String before = FbdWireHistory.snapshot(edges);
+        FbdWireHistory history = new FbdWireHistory();
+
+        boolean saved = FbdWireEditTransaction.apply(screen, edges, history,
+                () -> edges.remove(0), () -> false);
+
+        assertFalse(saved);
+        assertEquals(before, FbdWireHistory.snapshot(edges));
+        JSONObject restored = MainActivity.connectionToJson(edges.get(0));
+        assertEquals("Q", restored.getString("sourcePin"));
+        assertEquals("IN1", restored.getString("targetPin"));
+        assertEquals("metadata", restored.getJSONObject("customWireData").getString("keep"));
+        assertFalse(history.canUndo(screen));
+    }
+
     @Test public void saveExceptionRestoresGraphBeforePropagatingFailure() throws Exception {
         Object screen = new Object();
         List<MainActivity.FbdConnection> edges = new ArrayList<>();
