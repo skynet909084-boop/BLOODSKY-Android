@@ -260,7 +260,8 @@ class Smoke:
         (self.output / 'last-checkpoint.txt').write_text(name + '\\n')
 
     def capture(self, name):
-        self.checkpoint('capture:' + name)
+        if name != 'failure':
+            self.checkpoint('capture:' + name)
         (self.output / (name + '.png')).write_bytes(adb('exec-out', 'screencap', '-p', binary=True))
         (self.output / (name + '.xml')).write_text(self.dump())
 
@@ -957,10 +958,17 @@ class Smoke:
         state_images = after.get('other', after)
         if isinstance(state_images, str):
             state_images = json.loads(state_images)
-        if not state_images.get('pathOrNameOn', '').startswith('content://') or state_images.get('pathOrNameOff') != 'blue':
-            raise AssertionError('Selected ON/OFF images did not survive process restart')
+        selected_path = state_images.get('pathOrNameOn', '')
+        match = re.fullmatch(r'media/asset_([0-9a-f]{64})\\.png', selected_path)
+        if not match or state_images.get('pathOrNameOff') != 'blue':
+            raise AssertionError('Selected ON/OFF images did not survive process restart: ' + repr(state_images))
         if not state_images.get('isImageUserOn') or state_images.get('isImageUserOff'):
             raise AssertionError('Builtin/custom image flags were not retained: ' + repr(state_images))
+        project_id = 'proj_' + hashlib.sha256(('sid_' + after.get('storageId', '')).encode()).hexdigest()[:16]
+        asset_bytes = adb('shell', 'run-as', PACKAGE, 'cat',
+                          'files/projects/' + project_id + '/' + selected_path, binary=True)
+        if hashlib.sha256(asset_bytes).hexdigest() != match.group(1):
+            raise AssertionError('Selected project image asset is missing or its contents do not match its path hash')
         self.capture('04b-fractional-reopened')
         canvas = self.wait_node(description='Редактор экрана')
         left, top, _, _ = map(int, re.findall(r'\d+', canvas.get('bounds')))
