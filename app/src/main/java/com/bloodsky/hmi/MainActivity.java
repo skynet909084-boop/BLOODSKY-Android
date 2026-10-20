@@ -336,23 +336,19 @@ public class MainActivity extends Activity {
 
     private void playCraftAlarmAlert(String alarmKey, String pathOrUri, int craftAlarmSoundIndex, boolean loop) {
         stopCraftAlarmAlert(alarmKey);
-        MediaPlayer player = null;
+        MediaPlayer player = new MediaPlayer();
         try {
             int alarmResource = craftAlarmResource(craftAlarmSoundIndex);
             if (alarmResource != 0) {
-                player = MediaPlayer.create(this, alarmResource);
-                if (player == null) return;
+                player.setDataSource(this, Uri.parse("android.resource://" + getPackageName() + "/" + alarmResource));
             } else if (pathOrUri != null && pathOrUri.startsWith("content://")) {
-                player = new MediaPlayer();
                 player.setDataSource(this, Uri.parse(pathOrUri));
-                player.prepare();
             } else if (pathOrUri != null && !pathOrUri.trim().isEmpty() && !"Аларм".equals(pathOrUri)) {
                 String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
                 java.io.File file = ProjectMediaService.resolveMediaFile(getFilesDir(), json, pathOrUri);
-                player = new MediaPlayer();
                 player.setDataSource(file.getAbsolutePath());
-                player.prepare();
             } else {
+                player.release();
                 ToneGenerator tone = new ToneGenerator(AudioManager.STREAM_ALARM, 80);
                 tone.startTone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 350);
                 craftAlarmTones.put(alarmKey, tone);
@@ -360,32 +356,69 @@ public class MainActivity extends Activity {
             }
             player.setLooping(loop);
             MediaPlayer activePlayer = player;
+            player.setOnPreparedListener(prepared -> {
+                if (craftAlarmPlayers.get(alarmKey) != prepared) return;
+                if (!activityResumed || isFinishing() || isDestroyed()) {
+                    stopCraftAlarmAlert(alarmKey);
+                    return;
+                }
+                try {
+                    prepared.start();
+                } catch (Exception ex) {
+                    if (craftAlarmPlayers.get(alarmKey) == prepared) {
+                        craftAlarmPlayers.remove(alarmKey);
+                        releaseCraftAlarmPlayer(prepared);
+                        android.util.Log.e("BLOODSKY", "Craft alarm start error", ex);
+                        playCraftAlarmFallbackTone(alarmKey, ToneGenerator.TONE_PROP_BEEP, 250);
+                    }
+                }
+            });
             player.setOnCompletionListener(completed -> {
                 if (craftAlarmPlayers.get(alarmKey) == completed) {
                     craftAlarmPlayers.remove(alarmKey);
-                    try { completed.release(); } catch (Exception ignored) { }
+                    releaseCraftAlarmPlayer(completed);
                 }
             });
+            player.setOnErrorListener((failed, what, extra) -> {
+                if (craftAlarmPlayers.get(alarmKey) == failed) {
+                    craftAlarmPlayers.remove(alarmKey);
+                    releaseCraftAlarmPlayer(failed);
+                    android.util.Log.e("BLOODSKY", "Craft alarm error: " + what + "/" + extra);
+                    playCraftAlarmFallbackTone(alarmKey, ToneGenerator.TONE_PROP_BEEP, 250);
+                }
+                return true;
+            });
             craftAlarmPlayers.put(alarmKey, activePlayer);
-            player.start();
+            player.prepareAsync();
         } catch (Exception ex) {
-            if (player != null) {
-                try { player.release(); } catch (Exception ignored) { }
-            }
+            if (craftAlarmPlayers.get(alarmKey) == player) craftAlarmPlayers.remove(alarmKey);
+            releaseCraftAlarmPlayer(player);
             android.util.Log.e("BLOODSKY", "Craft alarm error", ex);
-            try {
-                ToneGenerator tone = new ToneGenerator(AudioManager.STREAM_ALARM, 80);
-                tone.startTone(ToneGenerator.TONE_PROP_BEEP, 250);
-                craftAlarmTones.put(alarmKey, tone);
-            } catch (Exception ignored) { }
+            playCraftAlarmFallbackTone(alarmKey, ToneGenerator.TONE_PROP_BEEP, 250);
         }
+    }
+
+    private void playCraftAlarmFallbackTone(String alarmKey, int toneType, int durationMs) {
+        if (!activityResumed || isFinishing() || isDestroyed()) return;
+        try {
+            ToneGenerator tone = new ToneGenerator(AudioManager.STREAM_ALARM, 80);
+            if (!tone.startTone(toneType, durationMs)) {
+                tone.release();
+                return;
+            }
+            craftAlarmTones.put(alarmKey, tone);
+        } catch (Exception ignored) { }
+    }
+
+    private static void releaseCraftAlarmPlayer(MediaPlayer player) {
+        try { player.stop(); } catch (Exception ignored) { }
+        try { player.release(); } catch (Exception ignored) { }
     }
 
     private void stopCraftAlarmAlert(String alarmKey) {
         MediaPlayer player = craftAlarmPlayers.remove(alarmKey);
         if (player != null) {
-            try { player.stop(); } catch (Exception ignored) { }
-            try { player.release(); } catch (Exception ignored) { }
+            releaseCraftAlarmPlayer(player);
         }
         ToneGenerator tone = craftAlarmTones.remove(alarmKey);
         if (tone != null) {
@@ -396,8 +429,7 @@ public class MainActivity extends Activity {
 
     private void stopAllCraftAlarmPlayback() {
         for (MediaPlayer player : new java.util.ArrayList<>(craftAlarmPlayers.values())) {
-            try { player.stop(); } catch (Exception ignored) { }
-            try { player.release(); } catch (Exception ignored) { }
+            releaseCraftAlarmPlayer(player);
         }
         craftAlarmPlayers.clear();
         for (ToneGenerator tone : new java.util.ArrayList<>(craftAlarmTones.values())) {
