@@ -274,6 +274,8 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 
 В таблице шесть направлений завершились по 3000-секундному runtime cap; фактическое elapsed может превышать его из-за teardown и записи отчёта. Четыре завершились на границе глубины/контролов/цикла. Import QR и import paste дали по одному stalled state. Успешный статус job означает успешное выполнение probe и загрузку артефакта, не завершение покрытия и не UI-паритет.
 
+Разбор stall-снимков: оба флага относятся к краткому loading overlay на побочном пути создания проекта, а не к подтверждённой длительной блокировке. В Import QR `state-004` показывает меню проекта на PNG, несмотря на XML с `Загрузка проекта, подождите...`; следующий `state-005` после альтернативного CANCEL пути также уже содержит меню. В Import paste `state-009` показывает редактор/тост `The project default Created`, а следующий `state-010` — меню проекта. Логи не содержат исключений. Probe ставит флаг regex-проверкой в момент снимка; 90-секундный persistence wait работает только внутри `seed_project()`, а seed для этих двух направлений не запускался. Это transient loading-overlay observations, не evidence о persistent hang.
+
 
 ## P1 sanitized Craft ZIP acceptance — 20 Oct 2026
 
