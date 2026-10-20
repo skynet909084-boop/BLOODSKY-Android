@@ -441,3 +441,11 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 - Exact-head Android 11 UI smoke [#838](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39423529942) passed. The current quick profile does not specifically kill the Activity while DocumentsUI is open, so that exact lifecycle handoff still lacks dedicated emulator coverage.
 - Merged into `prototype/all-in-one-20261020` as `396b820a6343b9ac5b60158cfc9cb79e3f1c8c78`. Stable `main` remains pinned at `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
 
+
+## Media picker process-death smoke — 20 Oct 2026
+
+- PR [#182](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/182) adds full Android 11 UI coverage for restoring the multi-position photo properties dialog, pending caption, and original image field after a PNG is selected from DocumentsUI following app-process death.
+- Run [#842](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39424628594) failed because the smoke used `am kill`; on this Android 11 emulator it force-stopped the package, and logcat recorded `Force removing ActivityRecord ... app died, no saved state`. This test-driver command discarded the Activity state that the scenario was meant to exercise.
+- Fixed the smoke on a separate branch by terminating the background process PID directly, leaving the task and its saved Activity state available to Android. PR [#183](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/183) was used to validate and transfer that exact commit.
+- On exact HEAD `caad4946432f6c72b66864db9ca9bfb10878d747`, APK/JUnit [#1203](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39427122797) and full Android 11 UI smoke [#843](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39427122767) passed. The follow-up APK/JUnit triggered on PR #182 also passed [#1204](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39427959933).
+- PR #182 merged into `prototype/all-in-one-20261020` as `755f020b1ecbdf3aaf04b7b13356cb8c1a6ad6b5`. Stable `main` remains at `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
