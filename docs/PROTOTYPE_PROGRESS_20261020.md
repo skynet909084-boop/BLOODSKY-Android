@@ -536,3 +536,9 @@ Eight open PRs were found. #188, #191, #192 and #197 target `prototype/all-in-on
 - Focused local helper suite for PR #188: 24/24 PASS. Full local Python suite on this scratch checkout: 175 tests, FAIL (4 failures, 2 errors) because the clone lacks generated original drawable/reference assets that CI prepares with `tools/prepare_craft_resources.py`; this is NOT a pass. The exact-head GitHub run performs resource preparation before the full suite. Local Gradle/SDK remain unavailable; rely on exact-head GitHub APK/JUnit and smoke jobs.
 - Original full profile run #174 (39504354431) has verified/downloaded the published APK and SHA, rebuilt the fallback decompilation, and remains in Android API 30 traversal. No runtime test outcomes have been marked PASS yet.
 - Readiness remains 5/139; K107 matrix remains 0 PASS / 0 FAIL / 0 BLOCKED / 550 WAITING / 0 retest. Stable `main` unchanged.
+
+
+### Follow-up correction
+
+- PR #191's intermediate regression fix at `5a5e3c2f938d2d4550d1cde5c4823ceee2d97300` still expected two slashes in a Python raw string; run #1258 correctly caught that test defect. The expected raw string is now corrected to one slash in `830ec27c712d3a9679c51fed3997e69a8f1757a5`; exact-head APK/JUnit #1259 (run 39507061681) is running and UI #894 (run 39507061334) is queued. Do not treat the failed intermediate run as evidence about app behavior.
+- PR #188 exact-head APK/JUnit #1256 (run 39506790310) is green, including prepared-resource Python tests, Android tests and APK build. Android API 30 UI run #891 (39506790196) remains in progress.
