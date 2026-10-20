@@ -78,6 +78,17 @@ class AndroidSmokeHelpersTests(unittest.TestCase):
                                'app_process', '/system/bin', 'BloodskyFingerTap', '200', '150')],
                              [c.args for c in command.call_args_list])
 
+    def test_fbd_wire_wait_polls_until_persisted_state_matches(self):
+        expected = [{'source': 4, 'target': 5, 'sourcePin': 'Q',
+                     'targetPin': 'IN', 'inverted': True}]
+        with TemporaryDirectory() as folder, patch('android_ui_smoke.time.sleep') as sleep:
+            smoke = Smoke(Path(folder))
+            with patch.object(smoke, 'saved_connections',
+                              side_effect=[[], [], expected]) as read:
+                self.assertEqual(expected, smoke.wait_for_saved_connections(expected))
+            self.assertEqual(3, read.call_count)
+            self.assertEqual(2, sleep.call_count)
+
     def test_custom_image_waits_for_media_index_before_picker(self):
         with TemporaryDirectory() as folder, patch('android_ui_smoke.adb', side_effect=['', '', 'No result found.', 'Row: 0 _display_name=bloodsky-custom.png']) as command, patch('android_ui_smoke.time.sleep'):
             Smoke(Path(folder)).prepare_custom_image()
