@@ -49,7 +49,7 @@ public class ModbusRtuClientWriteTest {
         ByteArrayOutputStream sent = new ByteArrayOutputStream();
         try (ModbusRtuClient client = new ModbusRtuClient(new ByteArrayInputStream(new byte[0]), sent, 500)) {
             assertInvalid(candidate -> candidate.writeSingle(0, 0, 1));
-            assertInvalid(candidate -> candidate.writeSingle(1, 65535, 1));
+            assertInvalid(candidate -> candidate.writeMultiple(1, 65535, new int[] {1, 2}));
             assertInvalid(candidate -> candidate.writeMultiple(1, 0, new int[124]));
             assertInvalid(candidate -> candidate.writeSingle(1, 1, 65536));
             assertInvalid(candidate -> candidate.writeMultipleCoils(1, 0, new int[] {0, 2}));
