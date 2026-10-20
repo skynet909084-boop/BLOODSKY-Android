@@ -6,6 +6,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.util.Arrays;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.*;
 
@@ -90,6 +93,26 @@ public class UsbSerialSessionTest {
         assertEquals(1, port.closeCount);
     }
 
+    @Test public void detachDuringReadUnblocksAndClosesPortExactlyOnce() throws Exception {
+        FakePort port = new FakePort(new byte[0]);
+        port.blockReadUntilClosed = true;
+        UsbSerialSession session = UsbSerialSession.open(port, settings(), 500);
+        AtomicReference<IOException> readFailure = new AtomicReference<>();
+        Thread reader = new Thread(() -> {
+            try { session.read(1, 3, 0, 1); }
+            catch (IOException failure) { readFailure.set(failure); }
+        }, "usb-serial-detach-test");
+        reader.start();
+        boolean readStarted = port.readStarted.await(1, TimeUnit.SECONDS);
+        session.close();
+        reader.join(1000);
+        assertTrue("USB read did not start", readStarted);
+        assertFalse("Read did not exit after the port detached", reader.isAlive());
+        assertNotNull("The detached read should fail", readFailure.get());
+        session.close();
+        assertEquals(1, port.closeCount);
+    }
+
     @Test public void validatesSettingsBeforeUsingPort() throws Exception {
         FakePort port = new FakePort(new byte[0]);
         try {
@@ -115,7 +138,9 @@ public class UsbSerialSessionTest {
         final byte[] incoming;
         final ByteArrayOutputStream written = new ByteArrayOutputStream();
         int offset, baud, dataBits, stopBits, parity, readTimeout, writeTimeout, closeCount;
-        boolean failConfigure, failWrite, timeoutOnRead;
+        boolean failConfigure, failWrite, timeoutOnRead, blockReadUntilClosed, closed;
+        final CountDownLatch readStarted = new CountDownLatch(1);
+        final CountDownLatch closedSignal = new CountDownLatch(1);
 
         FakePort(byte[] incoming) { this.incoming = Arrays.copyOf(incoming, incoming.length); }
         @Override public void configure(int baud, int dataBits, int stopBits, int parity) throws IOException {
@@ -125,6 +150,17 @@ public class UsbSerialSessionTest {
         @Override public int read(byte[] buffer, int timeoutMs) throws IOException {
             readTimeout = timeoutMs;
             if (timeoutOnRead) throw new SocketTimeoutException("read timed out");
+            if (blockReadUntilClosed) {
+                readStarted.countDown();
+                try {
+                    if (!closedSignal.await(timeoutMs, TimeUnit.MILLISECONDS))
+                        throw new SocketTimeoutException("read timed out before USB detach");
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException("read interrupted", interrupted);
+                }
+                if (closed) throw new IOException("USB device detached");
+            }
             int count = Math.min(buffer.length, incoming.length - offset);
             if (count <= 0) return 0;
             System.arraycopy(incoming, offset, buffer, 0, count);
@@ -136,7 +172,7 @@ public class UsbSerialSessionTest {
             if (failWrite) throw new IOException("write failed");
             written.write(buffer, 0, length);
         }
-        @Override public void close() { closeCount++; }
+        @Override public void close() { closeCount++; closed = true; closedSignal.countDown(); }
     }
 
     private static byte[] response(int unit, int function, byte[] payload) {
