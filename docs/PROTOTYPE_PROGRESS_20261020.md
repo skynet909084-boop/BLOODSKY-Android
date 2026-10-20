@@ -305,3 +305,10 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 - #38 is a legacy batch branch. Do not merge its old MainActivity wholesale; map any remaining unique feature against current code before porting.
 - User direction: prioritize consolidating app implementation now. Testing the user's original project archives is deferred to final-app acceptance; do not add those raw archives to the public repository.
 - Next integration rule: port only a clearly missing, bounded feature from a branch, or mark it superseded after confirming equivalent current code/tests. Run exact-head APK/JUnit and UI smoke for runtime/UI changes; leave `main` untouched.
+
+
+### USB/RTU branch check — 20 Oct 2026
+
+- Inspected the USB portion of legacy PR #38 against the current prototype. It manually opens the first attached USB device, selects the first interface and bulk endpoints, and sends a fixed single-register request. The dialog stores baud/parity/stop-bit settings, but this code does not apply them through a serial driver. The current app has no USB serial library or USB transport integration; `ModbusRtuClient` is only a protocol client over already-open byte streams.
+- Do not merge the PR #38 USB code as-is or report USB RTU as implemented. The supported next implementation must use a serial driver, request Android USB permission, apply serial parameters, and connect the existing `ModbusRtuClient` to the opened port; device hardware acceptance remains a separate gate.
+- User direction: defer original project archive testing to final-app acceptance and prioritize app implementation/convergence meanwhile.
