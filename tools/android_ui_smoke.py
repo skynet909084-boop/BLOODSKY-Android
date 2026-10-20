@@ -949,7 +949,8 @@ class Smoke:
         self.checkpoint('fractional:editor-after-reopen')
         self.wait_node(description='Редактор экрана')
         persisted = adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml')
-        after = json.loads({n.get('name'): n.text for n in ET.fromstring(persisted)}['active_project'])['screens'][0]['widgets'][0]
+        active_after = json.loads({n.get('name'): n.text for n in ET.fromstring(persisted)}['active_project'])
+        after = active_after['screens'][0]['widgets'][0]
         expected = dict(x=40.125, y=50.875, w=160.375, h=140.625)
         self.checkpoint('fractional:geometry-loaded:' + json.dumps({k: after.get(k) for k in expected}, sort_keys=True))
         if any(after[key] != value for key, value in expected.items()):
@@ -964,7 +965,10 @@ class Smoke:
             raise AssertionError('Selected ON/OFF images did not survive process restart: ' + repr(state_images))
         if not state_images.get('isImageUserOn') or state_images.get('isImageUserOff'):
             raise AssertionError('Builtin/custom image flags were not retained: ' + repr(state_images))
-        project_id = 'proj_' + hashlib.sha256(('sid_' + after.get('storageId', '')).encode()).hexdigest()[:16]
+        storage_id = active_after.get('storageId', '')
+        if not storage_id:
+            raise AssertionError('Reloaded project has no stable storage ID for its media asset')
+        project_id = 'proj_' + hashlib.sha256(('sid_' + storage_id).encode()).hexdigest()[:16]
         asset_bytes = adb('shell', 'run-as', PACKAGE, 'cat',
                           'files/projects/' + project_id + '/' + selected_path, binary=True)
         if hashlib.sha256(asset_bytes).hexdigest() != match.group(1):
