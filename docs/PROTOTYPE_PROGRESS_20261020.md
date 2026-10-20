@@ -355,3 +355,11 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 - Back to home, explicit disconnect, and Activity destruction close the owned session. A generation guard closes a late successful connect if the operator has already left the screen.
 - Python suite: 164 tests passed after preparing the pinned Craft reference resources. Local Android Gradle tests/build were not available (no wrapper or installed Gradle); exact-head GitHub Actions APK/JUnit and Android UI smoke are pending.
 - No physical USB adapter or visual parity comparison against Craft was performed. Stable `main` remains pinned at `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+
+## Manual USB RTU screen accepted — 20 Oct 2026
+
+- PR [#169](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/169) merged to `prototype/all-in-one-20261020` as `d42f24aa30f90454bb912cb23c1e7005da593df8`. It adds an explicit manual USB serial Modbus RTU screen for device selection, line settings, connect/disconnect, and FC03/FC04 reads. Imported project bindings remain inactive; no writes are issued by this UI.
+- Exact-head APK/JUnit [#1176](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39407984324) passed Python checks, Android unit tests, and debug APK build. Existing Android 11 quick UI smoke [#810](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39407984254) passed; that profile did not navigate to the USB screen.
+- PR [#170](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/170) then added a hardware-independent USB screen navigation check to the quick UI profile. It merged as `2a63e73ce8d0306f12b604df0be8fbac3a9e183f`; exact-head APK/JUnit [#1177](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39408807345) and Android 11 smoke [#811](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39408807324) both passed. The smoke opened the screen, scrolled to Connect, captured it, and returned home.
+- No USB permission grant, serial transaction, physical adapter, or original-app visual parity was tested. Stable `main` remains pinned at `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
