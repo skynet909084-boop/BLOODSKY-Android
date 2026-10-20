@@ -718,7 +718,7 @@ class Smoke:
             if pickers:
                 break
             scroll = properties_scroll_node(xml)
-            left, top, right, bottom = map(int, re.findall(r'\\d+', scroll.get('bounds')))
+            left, top, right, bottom = map(int, re.findall(r'\d+', scroll.get('bounds')))
             x = (left + right) // 2
             adb('shell', 'input', 'swipe', str(x), str(bottom - 100), str(x), str(top + 100), '300')
         if not pickers:
