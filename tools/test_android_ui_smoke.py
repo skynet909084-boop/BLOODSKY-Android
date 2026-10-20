@@ -3,9 +3,18 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from android_ui_smoke import Smoke
-from android_ui_smoke import center, matching_nodes, preferences_are_empty, properties_scroll_node, property_input_matches, property_scroll_up, keyboard_is_shown, document_nodes, main_activity_has_saved_instance_state, linux_process_state, wait_for_app_process_exit
+from android_ui_smoke import center, matching_nodes, preferences_are_empty, properties_scroll_node, property_input_matches, property_scroll_up, keyboard_is_shown, document_nodes, main_activity_has_saved_instance_state, linux_process_state, wait_for_app_process_exit, kill_background_app_process
 
 class AndroidSmokeHelpersTests(unittest.TestCase):
+    def test_background_process_kill_uses_activity_manager(self):
+        from types import SimpleNamespace
+        with patch('android_ui_smoke.subprocess.run', return_value=SimpleNamespace(
+                returncode=0, stdout='', stderr='')) as run:
+            result = kill_background_app_process('com.bloodsky.hmi')
+        self.assertEqual(0, result.returncode)
+        run.assert_called_once_with(['adb', 'shell', 'am', 'kill', 'com.bloodsky.hmi'],
+                                    capture_output=True, text=True, timeout=45)
+
     def test_observed_enabled_ui_targets_and_uppercase_russian(self):
         xml = '<hierarchy><node text="СОЗДАТЬ НОВЫЙ ПРОЕКТ" class="android.widget.Button" enabled="true" bounds="[10,20][110,80]"/><node text="Создать новый проект" enabled="false" bounds="[10,20][110,80]"/></hierarchy>'
         nodes = matching_nodes(xml, 'Создать новый проект')
