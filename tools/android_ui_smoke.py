@@ -541,7 +541,8 @@ class Smoke:
                 'source': source_idx, 'target': target_idx,
                 'sourcePin': 'Q', 'targetPin': 'IN',
                 'sourceSignalType': 'BOOL', 'targetSignalType': 'BOOL'}.items()):
-            raise AssertionError('Named Q -> IN wire was not saved correctly: ' + repr(links))        self.capture('04q-fbd-named-pin-wire')
+            raise AssertionError('Named Q -> IN wire was not saved correctly: ' + repr(links))
+        self.capture('04q-fbd-named-pin-wire')
         # Original-style FBD long-press commands must be present, and
         # opening/canceling the menu cannot mutate the saved FBD graph.
         adb('shell', 'input', 'swipe', str(sx), str(sy), str(sx), str(sy), '800')
@@ -888,10 +889,10 @@ class Smoke:
             wait_for_app_process_exit(PACKAGE, app_pids)
         except RuntimeError as failure:
             (self.output / 'process-termination.txt').write_text(
-                'kill stdout: ' + kill_result.stdout + '\\n'
-                + 'kill stderr: ' + kill_result.stderr + '\\n'
-                + 'kill returncode: ' + str(kill_result.returncode) + '\\n'
-                + str(failure) + '\\n'
+                'kill stdout: ' + kill_result.stdout + '\n'
+                + 'kill stderr: ' + kill_result.stderr + '\n'
+                + 'kill returncode: ' + str(kill_result.returncode) + '\n'
+                + str(failure) + '\n'
                 + adb('shell', 'ps', '-A', '-o', 'PID,STAT,NAME'))
             raise
         self.tap_document('bloodsky-custom.png')
@@ -1034,7 +1035,8 @@ class Smoke:
         self.tap('Выбрать файл…')
         self.tap(description='Show roots')
         self.tap('Downloads')
-        self.capture('04f-document-picker')        self.tap_document('bloodsky-custom.png')
+        self.capture('04f-document-picker')
+        self.tap_document('bloodsky-custom.png')
         self.wait_node('Своё изображение')
         self.tap('Применить')
         self.wait_node(description='Изображение ON')
