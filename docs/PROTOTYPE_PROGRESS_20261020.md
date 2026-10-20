@@ -427,3 +427,9 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 - PR #178 moved Craft alarm playback to \`MediaPlayer.prepareAsync()\` for built-in, provider URI and project media sources. Prepared/error/completion callbacks verify player identity; lifecycle and fallback paths release owned resources. Exact-head APK/JUnit #1197 and Android 11 UI smoke #836 passed. The local Python suite passed 165 tests; \`git diff --check\` passed. Merged into \`prototype/all-in-one-20261020\` as \`da16f5345901699ed1f29e74da7e6d2015396126\`.
 - The local container has no \`gradle\` executable or Gradle wrapper, so Android validation came from the exact-head CI runs. Physical USB adapter testing remains separate; the new test simulates detach through a fake serial port.
 - Stable \`main\` remains pinned at \`b11fbb9b9bdb35cacbcd466d57d414071d94aa5e\`.
+
+## Canceled project media cleanup — 2026-10-20
+
+- PR #180 tracks whether a picker copy created a new file and removes it on property-dialog dismissal only if the saved active project does not reference that generated path. Dedupe results and any saved JSON reference are retained. A late picker-copy callback also cleans its new unreferenced file if its dialog is already gone.
+- Exact-head APK/JUnit #1198 and Android 11 UI smoke #837 passed. The Python source contract and JUnit cover dialog callback wiring, dedupe, saved-reference preservation and deletion of an unreferenced copy. Merged into \`prototype/all-in-one-20261020\` as \`3dcc7ad5801565bd956e6c18c1a4f172a0588e9a\`.
+- Restoring the open properties dialog and picker target after Activity recreation remains separate work. Stable \`main\` remains pinned at \`b11fbb9b9bdb35cacbcd466d57d414071d94aa5e\`.
