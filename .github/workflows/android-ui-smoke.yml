@@ -55,7 +55,7 @@ jobs:
     # Other feature→feature PRs use fast FBD verification; integration/main PRs,
     # push→main and manually dispatched default runs use the full UI suite.
     env:
-      BLOODSKY_UI_PROFILE: ${{ github.event_name == 'pull_request' && github.base_ref != 'main' && github.base_ref != 'feat/craft-project-json-import-20261018' && 'quick' || (github.event_name == 'workflow_dispatch' && inputs.ui_profile == 'quick' && 'quick' || 'full') }}
+      BLOODSKY_UI_PROFILE: ${{ github.event_name == 'pull_request' && !startsWith(github.head_ref, 'fix/document-picker-') && github.base_ref != 'main' && github.base_ref != 'feat/craft-project-json-import-20261018' && 'quick' || (github.event_name == 'workflow_dispatch' && inputs.ui_profile == 'quick' && 'quick' || 'full') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
