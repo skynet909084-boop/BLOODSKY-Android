@@ -52,8 +52,8 @@ class OriginalSourceContractsTests(unittest.TestCase):
 
         self.assertEqual(res["status"], "OK")
         self.assertEqual(res["total_images"], 152)
-        self.assertEqual(res["referenced_images"], 17)
-        self.assertEqual(res["unused_images"], 135)
+        self.assertEqual(res["referenced_images"], 49)
+        self.assertEqual(res["unused_images"], 103)
 
     def test_cited_call_sites_exist_in_main_activity(self):
         """Every cited BLOODSKY call-site method must exist in MainActivity.java."""
