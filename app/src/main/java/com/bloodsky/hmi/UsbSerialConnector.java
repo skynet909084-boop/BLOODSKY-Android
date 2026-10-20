@@ -78,10 +78,25 @@ public final class UsbSerialConnector {
     }
 
     private final class ConnectTask extends FutureTask<UsbSerialModbusConnection> {
-        private final AtomicReference<UsbSerialModbusConnection> opened = new AtomicReference<>();
+        private final AtomicReference<UsbSerialModbusConnection> opened;
+        private final AtomicBoolean cancelled;
 
         ConnectTask(String selectedDeviceName, UsbSerialSettings settings, int timeoutMs) {
-            super((Callable<UsbSerialModbusConnection>) () -> connectNow(selectedDeviceName, settings, timeoutMs));
+            this(selectedDeviceName, settings, timeoutMs,
+                    new AtomicReference<>(), new AtomicBoolean());
+        }
+
+        private ConnectTask(String selectedDeviceName, UsbSerialSettings settings, int timeoutMs,
+                           AtomicReference<UsbSerialModbusConnection> opened, AtomicBoolean cancelled) {
+            super((Callable<UsbSerialModbusConnection>) () -> UsbSerialConnector.this.connectNow(
+                    selectedDeviceName, settings, timeoutMs, opened, cancelled));
+            this.opened = opened;
+            this.cancelled = cancelled;
+        }
+
+        @Override public boolean cancel(boolean mayInterruptIfRunning) {
+            cancelled.set(true);
+            return super.cancel(mayInterruptIfRunning);
         }
 
         @Override protected void done() {
@@ -91,48 +106,51 @@ public final class UsbSerialConnector {
             }
         }
 
-        private UsbSerialModbusConnection connectNow(String selectedDeviceName, UsbSerialSettings settings,
-                                                      int timeoutMs) throws Exception {
-            UsbSerialDriver driver = findDriver(selectedDeviceName);
-            if (driver == null || driver.getPorts().isEmpty()) {
-                throw new IOException("Selected USB serial port is no longer available");
-            }
-            UsbDevice device = driver.getDevice();
-            if (!usbManager.hasPermission(device)) requestPermission(device);
-            if (isCancelled() || Thread.currentThread().isInterrupted()) {
+    }
+
+    private UsbSerialModbusConnection connectNow(String selectedDeviceName, UsbSerialSettings settings,
+                                                  int timeoutMs,
+                                                  AtomicReference<UsbSerialModbusConnection> opened,
+                                                  AtomicBoolean cancelled) throws Exception {
+        UsbSerialDriver driver = findDriver(selectedDeviceName);
+        if (driver == null || driver.getPorts().isEmpty()) {
+            throw new IOException("Selected USB serial port is no longer available");
+        }
+        UsbDevice device = driver.getDevice();
+        if (!usbManager.hasPermission(device)) requestPermission(device);
+        if (cancelled.get() || Thread.currentThread().isInterrupted()) {
+            throw new InterruptedException("USB serial connection was cancelled");
+        }
+
+        UsbDeviceConnection usbConnection = usbManager.openDevice(device);
+        if (usbConnection == null) throw new IOException("Could not open selected USB device");
+        UsbSerialPort port = driver.getPorts().get(0);
+        boolean portOwnedBySession = false;
+        boolean usbOwnedByConnection = false;
+        try {
+            port.open(usbConnection);
+            portOwnedBySession = true;
+            UsbSerialSession session = UsbSerialSession.open(new LibraryPort(port), settings, timeoutMs);
+            if (cancelled.get() || Thread.currentThread().isInterrupted()) {
+                session.close();
                 throw new InterruptedException("USB serial connection was cancelled");
             }
-
-            UsbDeviceConnection usbConnection = usbManager.openDevice(device);
-            if (usbConnection == null) throw new IOException("Could not open selected USB device");
-            UsbSerialPort port = driver.getPorts().get(0);
-            boolean portOwnedBySession = false;
-            boolean usbOwnedByConnection = false;
-            try {
-                port.open(usbConnection);
-                portOwnedBySession = true;
-                UsbSerialSession session = UsbSerialSession.open(new LibraryPort(port), settings, timeoutMs);
-                if (isCancelled() || Thread.currentThread().isInterrupted()) {
-                    session.close();
-                    throw new InterruptedException("USB serial connection was cancelled");
-                }
-                UsbSerialModbusConnection connection = new UsbSerialModbusConnection(
-                        context, device, usbConnection, session);
-                usbOwnedByConnection = true;
-                opened.set(connection);
-                if (isCancelled()) {
-                    opened.compareAndSet(connection, null);
-                    connection.close();
-                    throw new InterruptedException("USB serial connection was cancelled");
-                }
-                return connection;
-            } catch (Exception failure) {
-                if (!portOwnedBySession) {
-                    try { port.close(); } catch (IOException closeFailure) { failure.addSuppressed(closeFailure); }
-                }
-                if (!usbOwnedByConnection) usbConnection.close();
-                throw failure;
+            UsbSerialModbusConnection connection = new UsbSerialModbusConnection(
+                    context, device, usbConnection, session);
+            usbOwnedByConnection = true;
+            opened.set(connection);
+            if (cancelled.get()) {
+                opened.compareAndSet(connection, null);
+                connection.close();
+                throw new InterruptedException("USB serial connection was cancelled");
             }
+            return connection;
+        } catch (Exception failure) {
+            if (!portOwnedBySession) {
+                try { port.close(); } catch (IOException closeFailure) { failure.addSuppressed(closeFailure); }
+            }
+            if (!usbOwnedByConnection) usbConnection.close();
+            throw failure;
         }
     }
 
