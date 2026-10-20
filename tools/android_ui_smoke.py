@@ -74,6 +74,17 @@ def wait_for_app_process_exit(package, pids, timeout=5):
         time.sleep(0.25)
 
 
+def kill_background_app_process(package):
+    """Ask ActivityManager to kill the stopped app while retaining its task state.
+
+    `run-as ... kill` executes under the app SELinux domain and cannot signal
+    the app process, even though it has the same Linux UID. `am kill` runs as
+    shell and is specifically intended for background processes.
+    """
+    return subprocess.run(['adb', 'shell', 'am', 'kill', package],
+                          capture_output=True, text=True, timeout=45)
+
+
 def matching_nodes(xml, text=None, class_name=None, description=None, resource_id=None):
     nodes = ET.fromstring(xml).iter('node')
     return [n for n in nodes if (text is None or n.get('text', '').casefold() == text.casefold())
@@ -878,13 +889,14 @@ class Smoke:
         app_pids = adb('shell', 'pidof', PACKAGE).strip().split()
         if not app_pids:
             raise AssertionError('Application process is missing while DocumentsUI is open')
-        # Signal the debuggable app process as its own UID. This preserves the task
-        # and the Bundle captured when DocumentsUI opened while avoiding shell UID denial.
-        kill_result = subprocess.run(
-            ['adb', 'shell', 'run-as', PACKAGE, 'kill', '-9', *app_pids],
-            capture_output=True, text=True, timeout=45)
-        # A stale zombie can remain in pidof briefly after SIGKILL. Confirm that
-        # every original PID has exited or reached Z before selecting the file.
+        # ActivityManager can kill the stopped app from shell while preserving
+        # the task and the Bundle captured when DocumentsUI opened.
+        kill_result = kill_background_app_process(PACKAGE)
+        if kill_result.returncode != 0:
+            raise RuntimeError('ActivityManager could not kill the stopped app: '
+                               + (kill_result.stderr or kill_result.stdout).strip())
+        # A stale zombie can remain in pidof briefly. Confirm every original PID
+        # exited or reached Z before selecting the file.
         try:
             wait_for_app_process_exit(PACKAGE, app_pids)
         except RuntimeError as failure:
