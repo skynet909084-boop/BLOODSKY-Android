@@ -420,3 +420,10 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 - Android unit tests cover copy, dedupe, project isolation, resolving references, empty files, and size limits. Local Python suite: 164 passed. APK/JUnit #1193 and Android 11 UI smoke #831 passed on exact head `3d77e6e3a1148b03dc92f244a242778fcea6023d`.
 - PR #177 merged into `prototype/all-in-one-20261020` as `42984dd2b33979133e7ead5f66405f1f31bc2265`. Activity recreation does not restore an open property dialog or pending picker target; canceling edits can leave an unreferenced private copy. Previously saved external content URI references are unchanged.
 - Stable `main` remains pinned at `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+## Craft alarm asynchronous playback and USB detach test — 2026-10-20
+
+- PR #179 added a latch-backed fake-port regression for USB RTU detach during an active read. Closing the session unblocks the read and closes the port exactly once. Exact-head APK/JUnit #1195 and Android 11 UI smoke #833 passed. Merged into \`prototype/all-in-one-20261020\` as \`3b65ccc4cc12c3773fce51e09e35330799238e49\`.
+- PR #178 moved Craft alarm playback to \`MediaPlayer.prepareAsync()\` for built-in, provider URI and project media sources. Prepared/error/completion callbacks verify player identity; lifecycle and fallback paths release owned resources. Exact-head APK/JUnit #1197 and Android 11 UI smoke #836 passed. The local Python suite passed 165 tests; \`git diff --check\` passed. Merged into \`prototype/all-in-one-20261020\` as \`da16f5345901699ed1f29e74da7e6d2015396126\`.
+- The local container has no \`gradle\` executable or Gradle wrapper, so Android validation came from the exact-head CI runs. Physical USB adapter testing remains separate; the new test simulates detach through a fake serial port.
+- Stable \`main\` remains pinned at \`b11fbb9b9bdb35cacbcd466d57d414071d94aa5e\`.
