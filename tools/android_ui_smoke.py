@@ -141,7 +141,7 @@ class Smoke:
         while time.monotonic() < deadline:
             observed = adb('shell', 'content', 'query', '--uri',
                            'content://media/external/images/media', '--projection', '_display_name')
-            if re.search(r'_display_name=bloodsky-custom\\.png(?:,|$)', observed, re.MULTILINE):
+            if re.search(r'_display_name=bloodsky-custom\.png(?:,|$)', observed, re.MULTILINE):
                 return
             time.sleep(0.3)
         (self.output / 'media-index.txt').write_text(observed)
