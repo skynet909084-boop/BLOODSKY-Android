@@ -13,6 +13,17 @@ class AndroidSmokeHelpersTests(unittest.TestCase):
         self.assertEqual((60, 50), center(nodes[0].get('bounds')))
         self.assertEqual([], matching_nodes(xml, class_name='android.widget.EditText'))
 
+    def test_documentsui_downloads_selects_root_row_not_breadcrumb(self):
+        xml = ('<hierarchy>'
+               '<node text="Downloads" resource-id="com.android.documentsui:id/breadcrumb_text" '
+               'class="android.widget.TextView" enabled="true" bounds="[0,20][120,60]"/>'
+               '<node text="Downloads" resource-id="android:id/title" '
+               'class="android.widget.TextView" enabled="true" bounds="[10,100][130,140]"/>'
+               '</hierarchy>')
+        nodes = matching_nodes(xml, text='Downloads', resource_id='android:id/title')
+        self.assertEqual(1, len(nodes))
+        self.assertEqual((70, 120), center(nodes[0].get('bounds')))
+
     def test_icon_is_targeted_by_accessibility_description(self):
         xml = '<hierarchy><node text="" content-desc="Калькулятор" class="android.widget.ImageButton" enabled="true" bounds="[10,20][110,80]"/></hierarchy>'
         self.assertEqual(1, len(matching_nodes(xml, description='Калькулятор')))

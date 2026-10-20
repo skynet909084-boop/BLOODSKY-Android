@@ -22,11 +22,12 @@ def adb(*args, binary=False):
     return result.stdout if binary else result.stdout.decode('utf-8', errors='replace')
 
 
-def matching_nodes(xml, text=None, class_name=None, description=None):
+def matching_nodes(xml, text=None, class_name=None, description=None, resource_id=None):
     nodes = ET.fromstring(xml).iter('node')
     return [n for n in nodes if (text is None or n.get('text', '').casefold() == text.casefold())
             and (class_name is None or n.get('class') == class_name)
             and (description is None or n.get('content-desc') == description)
+            and (resource_id is None or n.get('resource-id') == resource_id)
             and n.get('enabled') == 'true' and n.get('bounds') != '[0,0][0,0]']
 
 
@@ -121,13 +122,13 @@ class Smoke:
         adb('shell', 'uiautomator', 'dump', '/sdcard/bloodsky-ui.xml')
         return adb('shell', 'cat', '/sdcard/bloodsky-ui.xml')
 
-    def wait_node(self, text=None, class_name=None, timeout=30, description=None, focused=None):
+    def wait_node(self, text=None, class_name=None, timeout=30, description=None, focused=None, resource_id=None):
         deadline = time.monotonic() + timeout
         last = ''
         while time.monotonic() < deadline:
             try:
                 last = self.dump()
-                nodes = matching_nodes(last, text, class_name, description)
+                nodes = matching_nodes(last, text, class_name, description, resource_id)
                 if len(nodes) == 1 and (focused is None or nodes[0].get('focused') == str(focused).lower()):
                     return nodes[0]
                 if len(nodes) > 1:
@@ -138,8 +139,8 @@ class Smoke:
         (self.output / 'last-ui.xml').write_text(last)
         raise AssertionError('UI target not found: ' + str(text or description or class_name))
 
-    def tap(self, text=None, class_name=None, description=None):
-        node = self.wait_node(text, class_name, description=description)
+    def tap(self, text=None, class_name=None, description=None, resource_id=None):
+        node = self.wait_node(text, class_name, description=description, resource_id=resource_id)
         x, y = center(node.get('bounds'))
         adb('shell', 'input', 'tap', str(x), str(y))
 
@@ -819,7 +820,9 @@ class Smoke:
         x, y = center(pickers[0].get('bounds'))
         adb('shell', 'input', 'tap', str(x), str(y))
         self.tap(description='Show roots')
-        self.tap('Downloads')
+        # DocumentsUI exposes both the current breadcrumb and the root folder row
+        # as "Downloads"; choose the clickable root row's title explicitly.
+        self.tap('Downloads', resource_id='android:id/title')
         # Android 12 can take longer than API 30 to finish the outgoing Activity
         # transition. Kill the process only after ActivityTaskManager confirms the
         # suspended MainActivity is STOPPED and its saved instance state is present.
