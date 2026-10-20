@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 12103)
-Total output lines: 336
-
 # BLOODSKY unified prototype — progress checkpoint (2026-10-20)
 
 ## Unified target
@@ -172,7 +169,71 @@ All nine available `ui-audit.json` files had `unique_state_signatures == states_
 | Network | 11 / 11 | 34 | 33 | 2 | 524.9 | 1 |
 | Devices | 8 / 8 | 24 | 31 | 3 | 322.6 | 1 |
 
-- Dispatched full-profile run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39388319775) against the same exact head; it is in …2103 tokens truncated…`). Это отдельный palette adapter, но он не связывает числовой ID 3 с классом. В двух DEX Smali-деревьях literal search нашёл все прямые `CustomComponents/...-><init>` места: вне самих компонентов они относятся к `mbCanvas`/его palette пути и helper-классам; поиски `Class.forName/newInstance`, `ClassLoader.loadClass`, `Constructor.newInstance` и `Method.invoke` не выявили отражённого создания компонентов. Это ограниченный поиск точных Smali opcode/reference patterns, не доказательство отсутствия произвольного obfuscated/indirect пути. Числовая фабрика остаётся fail-closed для ID 3.
+- Dispatched full-profile run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39388319775) against the same exact head; it is in progress. Its artifacts must be reviewed per direction before accepting any coverage claim.
+- Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+
+### Interim checkpoint for full Craft run #171
+
+This historical checkpoint was superseded when run #171 finished. The final per-direction audit table and coverage limits are recorded under “Обновление статуса полного Craft UI probe #171 — финальный разбор” below. No active probe jobs remain.
+
+PR [#69](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/69) remains a draft and unmerged. Its old-base checks do not validate the current prototype, and GitHub reported `mergeable=false` against the then-current base. Its generic inverter/ordinal pin model conflicts with the richer typed graph; the narrower failed-save rollback was adapted to current code in draft PR #163. Do not merge PR #69 wholesale.
+
+Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+
+## Portable project media review — 20 Oct 2026
+
+- Reviewed open PRs [#38](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/38) and [#44](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/44). Their base chains are legacy branches; do not merge them wholesale into the unified prototype.
+- The prototype already contains `ProjectMediaService` and wires it into the UI paths: `MainActivity` resolves media for runtime playback/read, calls `importProjectBundle` on project import, and `exportProjectZipBundle` for ZIP export. The service currently uses stable project identity, per-import media generations, bounded reads, media resolution and staged publication/rollback. Its tests include basename collisions and metadata/background preservation, rejection/rollback cases, sources-deleted image/audio resolution followed by re-export, traversal rejection and generation replacement.
+- This supersedes the older service/test payload in PR #44; preserve the open legacy refs for now, but do not duplicate or merge them. The actual original-project acceptance remains open: import → edit → save → export → reopen for each supplied archive, including screens, background/media, bindings, FBD, network and device-slot records. Existing synthetic media tests are not that acceptance.
+
+
+## Craft component ID 3 source follow-up — 20 Oct 2026
+
+- Decompiled-source/Smali follow-up confirms the `mbCanvas.m(...)` factory explicitly handles IDs 1 and 2, then IDs 4–28; ID 3 falls through to its default branch, brings the existing canvases forward, and returns `null`. Reload, import and paste/copy call sites use this factory, so this path has no visible component mapping for ID 3.
+- Enumerated concrete `CustomComponents` classes expose IDs 1, 2 and 4–28; the helper class with ID 14 is a chart helper, not evidence for component ID 3. This still does **not** prove ID 3 is absent app-wide.
+- Keep unsupported ID 3 import fail-closed; do not invent a class or run behavior. Remaining source work: search all other component registries/factories, palette/resource adapters and original `.pro` samples for positive ID 3 evidence. Only a supported class+fields+behavior mapping should justify implementation.
+
+
+### ID 3 search in supplied project samples — 20 Oct 2026
+
+- Parsed the Library-provided projects `home2.pro`, `gitH.pro`, `пож.pro`, and `дом 2025.pro` embedded in its ZIP. Counts: 65, 65, 124 and 346 `TableComponent` records respectively; none contains a record with `componentId=3`.
+- `home2.zip` and `gitH.zip` each contain the paired `.pro` plus one image; their `.pro` files differ. `пож.zip` contains only an empty directory entry, while its separate `.pro` is the 124-component source. The 346-component `дом 2025.pro` is embedded in `дом 2025.zip`.
+- These examples provide no positive mapping for ID 3; absence in these projects does not resolve the app-wide mapping question. Keep it fail-closed and continue registry/factory/resource search.
+
+
+## Original project acceptance gap — 20 Oct 2026
+
+- Existing sanitized CI fixtures cover `home.pro` (24 components), `gitH.pro` (65 components) and standalone `пож.pro` (124 components). PR #166 now runs these through ZIP import → atomic save/reopen → export → re-import, checking component/screen counts, Craft source records and background bytes. It uses a fixture image payload and does not prove the original archives' exact media mapping or full runtime bindings.
+- The separately supplied `home2` and `дом 2025` archives remain outside this CI acceptance; `дом 2025` contains 346 component records. `пож.zip` has no media payload.
+- Remaining acceptance: add sanitized immutable versions of `home2` and `дом 2025` with checksums and expected record/screen/connection counts; verify unknown fields, inactive legacy bindings, original media/backgrounds, device slots and runtime bindings around a deterministic single-field edit. Keep missing-media, size/path, rollback and CRC failure checks intact. Add a focused API30 UI restart pass for a representative original-project fixture.
+- Do not claim original-project parity until these fixture-based gates pass. No raw Library archive has been copied into the repository.
+
+
+### FBD PR #69 selective-port review — 20 Oct 2026
+
+- Current prototype FBD is substantially richer than PR #69's original ordered/untyped graph: it retains named typed pins and unknown edge metadata; validates pin compatibility, occupancy, duplicate endpoints and cycles; renders a broader Craft block set; and already has source-aware timer modes, units and BLINK behavior. The prototype also has its own `invertOut`/`craftTimerUnit` schema. Do not port PR #69's generic boolean inverter, `bloodskyFbdInvertOut`, ordinal pin layout, old timer schema or remove-all-outgoing-edge behavior; those conflict with current semantics or lose edge-selection precision.
+- A narrow gap remains: current FBD connect and selected-edge disconnect mutate the graph and call `persistProject()`, which ignores the boolean returned by `persistProjectNow(false)`. Existing output inversion already performs a rollback. A future fix should snapshot only the typed edge graph and project metadata, use synchronous persistence result, restore safely on failure, and keep undo/redo history coherent. Add injected-save-failure tests for connect and disconnect, then run exact-head APK/JUnit and API30 UI smoke.
+- PR #69 remains open, draft and `mergeable=false`; its old-base checks are not evidence for the current prototype. Do not merge wholesale.
+
+
+#### Source archive manifest for future fixtures
+
+| Source project | Components | Used screen IDs (component counts) | Declared screens | `TableConnections` records | Device slots |
+|---|---:|---|---:|---:|---:|
+| `home2.pro` and paired ZIP | 65 | 1 (53), 2 (7), 3 (5) | 16 | 3 | 16 |
+| `gitH.pro` and paired ZIP | 65 | 1 (53), 2 (7), 3 (5) | 16 | 3 | 16 |
+| `пож.pro` (ZIP has no project/media payload) | 124 | 1 (21), 20 (103) | 16 | 1 | 16 |
+| `дом 2025.pro` embedded in ZIP | 346 | 1 (87), 3 (188), 4 (71) | 16 | 2 | 16 |
+
+These are record counts only; they do not assert the supported runtime semantics of each device/component or prove archive round-trip acceptance.
+
+
+## Обновление: приложенная декомпиляция Craft 1.0.7 — 20 Oct 2026
+
+- Проверен приложенный пользователем Apktool/JADX source archive; SHA-256: `92d12206bde746f5a76c89e0c3311119287b14bb26cdc8ca36d515e2fca01f7a`. Файл остался в пользовательском scratch и не копировался в репозиторий.
+- Независимый Smali cross-check: `smali/ru/himik/nightscream/kascada/mbCanvas.smali`, числовая фабрика `mbCanvas.m(...)`. Условия отдельно обрабатывают IDs 1 и 2; packed-switch покрывает 4–28; default для ID 3 поднимает существующие canvas views и возвращает `null`. Обнаружен и второй маршрут создания `private l(String,int,int,int)`: он выбирает palette-компоненты по строковым именам (`FB_TRIGGER`, `FB_XOR`, `MQTT_PUBLISHER`, `CustomGateway` и др.), создаёт соответствующие классы и сохраняет views в `MyApplication.D` (`SparseArray`). Это отдельный palette adapter, но он не связывает числовой ID 3 с классом. В двух DEX Smali-деревьях literal search нашёл все прямые `CustomComponents/...-><init>` места: вне самих компонентов они относятся к `mbCanvas`/его palette пути и helper-классам; поиски `Class.forName/newInstance`, `ClassLoader.loadClass`, `Constructor.newInstance` и `Method.invoke` не выявили отражённого создания компонентов. Это ограниченный поиск точных Smali opcode/reference patterns, не доказательство отсутствия произвольного obfuscated/indirect пути. Числовая фабрика остаётся fail-closed для ID 3.
 - Ни в приложенных проектных примерах, ни в ранее изученных пользовательских примерах не найдено положительного соответствия ID 3. Числовая фабрика и строковая palette adapter проверены; поиск точных reflective class-construction patterns также завершён. Оставить ID 3 видимым неподдерживаемым/отключённым placeholder и не назначать тип по догадке. Осталось найти реальный Craft проект/каталог с таким ID либо подтверждение из другой версии приложения.
 
 ## Обновление: FBD rollback PR #163 — 20 Oct 2026
