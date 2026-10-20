@@ -22,4 +22,10 @@ The supplied Craft 1.0.7 decompilation confirms USB serial probing for CDC ACM, 
 
 ## Dependency decision
 
-The audited USB serial library is only a candidate. Before adding it, check its official release/API against this repository's Android/Gradle configuration, then pin a version and test the build. Until that is done, neither the library nor physical USB support is part of BLOODSKY.
+The upstream `mik3y/usb-serial-for-android` 3.11.0 release was checked against the app's `minSdk 23` and Java 17 configuration. Its documented API supplies device probing, permission handoff, `open`, `read`, `write`, and `setParameters`; its license is MIT. The pinned artifact is `com.github.mik3y:usb-serial-for-android:3.11.0` from JitPack. Keep the upstream MIT notice in `docs/THIRD_PARTY_NOTICES.md`.
+
+## Implementation checkpoint
+
+The prototype branch now contains `UsbSerialSettings`, `UsbSerialConnector`, `UsbSerialSession`, and `UsbSerialModbusConnection`. Callers enumerate supported serial devices and pass the selected Android device name explicitly; the connector requests permission, configures the selected port, adapts it to `ModbusRtuClient`, and closes resources on cancellation, detach, I/O failure, or explicit close. The async API uses `Future` to retain Android API 23 compatibility.
+
+This is a transport API slice, not the complete project device manager: no editor UI starts the connection, imported project bindings remain inactive, USB read/write remains Modbus RTU read-only (FC01–FC04), and no physical adapter has been tested. Exact-head Android tests/build and UI smoke are required before treating the slice as accepted.

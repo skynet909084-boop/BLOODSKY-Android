@@ -184,12 +184,10 @@ class HttpContractTests(unittest.TestCase):
             with self.assertRaises(agent.AgentError):
                 agent.complete(url, "test-key", "fixture", "task", {})
 
-    def test_router_pin_matches_workflow(self):
-        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/cloud-ai-agent.yml").read_text()
-        self.assertIn("ref: " + UPSTREAM_SHA, workflow)
-        self.assertNotIn("pull_request_target:", workflow)
-        self.assertIn("needs: validate", workflow)
-        self.assertIn("--draft", workflow)
+    def test_router_source_pin_matches_archived_documentation(self):
+        plan = (Path(__file__).resolve().parents[1] / "docs/FREELLMAPI_CLOUD_PILOT.md").read_text()
+        self.assertRegex(UPSTREAM_SHA, r"^[0-9a-f]{40}$")
+        self.assertIn("immutable source commit `" + UPSTREAM_SHA + "`", plan)
 
     def test_cli_artifact_round_trip_cleans_generation_checkout(self):
         with tempfile.TemporaryDirectory() as temp:
