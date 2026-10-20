@@ -147,6 +147,28 @@ class Smoke:
         (self.output / 'media-index.txt').write_text(observed)
         raise AssertionError('Custom image was not indexed by MediaStore')
 
+    def wait_for_saved_main_activity(self, timeout=15):
+        deadline = time.monotonic() + timeout
+        last_dump = ''
+        while time.monotonic() < deadline:
+            last_dump = adb('shell', 'dumpsys', 'activity', 'activities')
+            lines = last_dump.splitlines()
+            for index, line in enumerate(lines):
+                if 'ActivityRecord{' not in line or 'com.bloodsky.hmi/.MainActivity' not in line:
+                    continue
+                end = next((i for i in range(index + 1, len(lines))
+                            if 'ActivityRecord{' in lines[i]), len(lines))
+                record = '\\n'.join(lines[index:end])
+                if re.search(r'\\bmHaveState=true\\b', record) and re.search(r'\\bstate=STOPPED\\b', record):
+                    return
+            time.sleep(0.25)
+        diagnostic = self.output / 'media-picker-activity-state.txt'
+        diagnostic.write_text(last_dump)
+        raise AssertionError(
+            'MainActivity did not reach STOPPED with saved state before process termination; '
+            'see ' + str(diagnostic)
+        )
+
     def tap_document(self, filename):
         xml = self.dump()
         list_buttons = [n for n in matching_nodes(xml, description='List view')
@@ -727,7 +749,10 @@ class Smoke:
         adb('shell', 'input', 'tap', str(x), str(y))
         self.tap(description='Show roots')
         self.tap('Downloads')
-        time.sleep(1)
+        # Android 12 can take longer than API 30 to finish the outgoing Activity
+        # transition. Kill the process only after ActivityTaskManager confirms the
+        # suspended MainActivity is STOPPED and its saved instance state is present.
+        self.wait_for_saved_main_activity()
         app_pids = adb('shell', 'pidof', PACKAGE).strip().split()
         if not app_pids:
             raise AssertionError('Application process is missing while DocumentsUI is open')
