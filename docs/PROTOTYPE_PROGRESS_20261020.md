@@ -406,3 +406,17 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 - Added strict `usb://<unit>/<register>` endpoints for Craft register variable sources and `FBD Вход`. Zero-based register addresses and standard 3xxxx/4xxxx prefixes map to FC03/FC04; invalid units, quantities, addresses, and URI components fail closed. Other widget integrations continue to accept TCP only.
 - The selected USB RTU session now remains open when returning to home so an operator can load a project; reopening USB settings, disconnecting, or destroying the Activity closes it. USB polling and Craft register variable writes share the existing serialized Modbus executor. Missing sessions surface `ERR: USB RTU не подключён`. Imported Craft metadata is preserved and never auto-converted to an active USB URI.
 - Added parser unit tests and updated the home lifecycle source contract. Local Python suite: 164 tests passed; `git diff --check` passed. Local Android unit tests/APK build are not available because this checkout has no Gradle wrapper or installed Gradle. Exact-head APK/JUnit #1186 and #1187 passed, as did Android 11 UI smoke #825. PR #175 merged to `prototype/all-in-one-20261020` as `976b0afbdb2086132fb38bc05aeb8e37d0480aa2`. No physical USB adapter or original-app visual comparison was performed. Stable `main` remains pinned at `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+
+### Craft BOOL output inversion — 2026-10-20
+
+- Extended Craft `invertOut` evaluation to source-backed BOOL Q blocks: RS, trigger, timer/BLINK, compare, and change detectors. Inversion applies only with complete, type-compatible inputs; numeric outputs stay closed.
+- Added regression coverage for compare inversion, incomplete wiring, mismatched signal types, and numeric output exclusions. Local Python suite: 164 passed. APK/JUnit #1188 and Android 11 UI smoke #826 passed on exact head `1f2aaa27bac7b3ce9519a3e21f9bd5e2695b7626`.
+- PR #176 merged into `prototype/all-in-one-20261020` as `9d8c792328da7e81b8e1431da1c1b4c0d2ba2630`. Craft bubble geometry remains unverified against original screenshots.
+
+### Project media picker portability — 2026-10-20
+
+- New image/audio selections are copied off the UI thread into the active project's private media generation and referenced by relative `media/asset_<sha256>.<ext>` paths. Copies are deduplicated, atomic, bounded by 10 MiB per file/total and 2,048 files; the property editor waits for pending copies before Apply. Existing ZIP packaging handles these paths.
+- Android unit tests cover copy, dedupe, project isolation, resolving references, empty files, and size limits. Local Python suite: 164 passed. APK/JUnit #1193 and Android 11 UI smoke #831 passed on exact head `3d77e6e3a1148b03dc92f244a242778fcea6023d`.
+- PR #177 merged into `prototype/all-in-one-20261020` as `42984dd2b33979133e7ead5f66405f1f31bc2265`. Activity recreation does not restore an open property dialog or pending picker target; canceling edits can leave an unreferenced private copy. Previously saved external content URI references are unchanged.
+- Stable `main` remains pinned at `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
