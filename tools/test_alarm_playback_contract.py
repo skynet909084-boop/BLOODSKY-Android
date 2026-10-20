@@ -30,6 +30,7 @@ class CraftAlarmPlaybackContractTests(unittest.TestCase):
         self.assertIn("setOnErrorListener", play)
         self.assertIn("craftAlarmPlayers.get(alarmKey) != prepared", play)
         self.assertIn("craftAlarmPlayers.get(alarmKey) == failed", play)
+        self.assertIn("MediaPlayer player = null;\n        try {\n            player = new MediaPlayer();", play)
         self.assertNotIn("player.prepare()", play)
         self.assertNotIn("MediaPlayer.create(", play)
 
