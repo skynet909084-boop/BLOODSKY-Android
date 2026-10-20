@@ -2,6 +2,7 @@ import unittest
 
 from original_craft_longpress_state import (
     action_identity, actions_for_controls, remember_state, safe_field_value, touch_command,
+    visible_state_attributes,
 )
 
 
@@ -12,6 +13,14 @@ class CraftLongPressStateTest(unittest.TestCase):
         self.assertFalse(remember_state(seen, "screen-a"))
         self.assertTrue(remember_state(seen, "screen-b"))
         self.assertEqual({"screen-a", "screen-b"}, seen)
+
+    def test_visible_state_keeps_interaction_and_long_press_flags(self):
+        base = {"package": "ru.kascada.modbus", "resource-id": "timer", "class": "TextView",
+                "text": "Timer", "bounds": "[0,0][100,40]"}
+        signature = visible_state_attributes(base)
+        self.assertEqual(signature, visible_state_attributes(dict(base)))
+        self.assertNotEqual(signature, visible_state_attributes({**base, "long-clickable": "true"}))
+        self.assertNotEqual(signature, visible_state_attributes({**base, "enabled": "false"}))
 
     def test_long_press_only_for_accessibility_marked_controls(self):
         controls = [
