@@ -502,7 +502,7 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 - Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
 
 
-## Checkpoint — 21 Oct 2026
+## Checkpoint — 20 Oct 2026
 
 - Reviewed PR #192's static audit: 550 unique sequential K107 IDs and correct source identity/count checks. All 550 remain waiting for live Android evidence. Its exact-head APK/JUnit run #1249 passed; PR is marked ready for human review and remains unmerged.
 - Diagnosed PR #188 Android UI smoke failure: the app process was already killed, but `pidof` returned a stale PID. Updated the gate to inspect each original PID's `/proc/<pid>/stat`; reaped/zombie PIDs pass termination, live PIDs still fail. Added focused tests. Full local Python suite passed on the clean local patch; Gradle is unavailable locally. The first remote attempt exposed a malformed transferred file; the complete source and test files were restored from the clean local commit. APK/JUnit #1252 passed on the corrected exact head; Android UI smoke #889 is still running.
@@ -524,6 +524,6 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 - #151 is a draft stacked on #150. APK/JUnit and probe workflow #172 completed, but the artifact audit records incomplete coverage (no direction met `coverage_complete`). Keep its direction and long-press observations as partial evidence.
 - PR #198 introduces a focused exact-release APK attempt and a single-shell runner, but touches the same probe workflow family. Do not merge its workflow changes independently of #149–#151; reconcile the helpers and preserve their distinct direction/long-press coverage after #174's artifact is available.
 
-### Open PR inventory checked on 21 Oct 2026
+### Open PR inventory checked on 20 Oct 2026
 
 Eight open PRs were found. #188, #191, #192 and #197 target `prototype/all-in-one-20261020` and are ready for review; #198 targets the same branch but remains draft while the original emulator run is active. #149, #150 and #151 are draft research PRs stacked on older feature/probe branches; #149 is not mergeable to the integration target, and #150/#151 depend on that stack. No PR targets `main`.
