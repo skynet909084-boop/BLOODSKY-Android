@@ -224,3 +224,15 @@ The artifact completed without probe errors or runtime-cap hit. Its project seed
 - Current prototype FBD is substantially richer than PR #69's original ordered/untyped graph: it retains named typed pins and unknown edge metadata; validates pin compatibility, occupancy, duplicate endpoints and cycles; renders a broader Craft block set; and already has source-aware timer modes, units and BLINK behavior. The prototype also has its own `invertOut`/`craftTimerUnit` schema. Do not port PR #69's generic boolean inverter, `bloodskyFbdInvertOut`, ordinal pin layout, old timer schema or remove-all-outgoing-edge behavior; those conflict with current semantics or lose edge-selection precision.
 - A narrow gap remains: current FBD connect and selected-edge disconnect mutate the graph and call `persistProject()`, which ignores the boolean returned by `persistProjectNow(false)`. Existing output inversion already performs a rollback. A future fix should snapshot only the typed edge graph and project metadata, use synchronous persistence result, restore safely on failure, and keep undo/redo history coherent. Add injected-save-failure tests for connect and disconnect, then run exact-head APK/JUnit and API30 UI smoke.
 - PR #69 remains open, draft and `mergeable=false`; its old-base checks are not evidence for the current prototype. Do not merge wholesale.
+
+
+#### Source archive manifest for future fixtures
+
+| Source project | Components | Used screen IDs (component counts) | Declared screens | `TableConnections` records | Device slots |
+|---|---:|---|---:|---:|---:|
+| `home2.pro` and paired ZIP | 65 | 1 (53), 2 (7), 3 (5) | 16 | 3 | 16 |
+| `gitH.pro` and paired ZIP | 65 | 1 (53), 2 (7), 3 (5) | 16 | 3 | 16 |
+| `пож.pro` (ZIP has no project/media payload) | 124 | 1 (21), 20 (103) | 16 | 1 | 16 |
+| `дом 2025.pro` embedded in ZIP | 346 | 1 (87), 3 (188), 4 (71) | 16 | 2 | 16 |
+
+These are record counts only; they do not assert the supported runtime semantics of each device/component or prove archive round-trip acceptance.
