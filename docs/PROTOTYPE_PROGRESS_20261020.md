@@ -64,4 +64,13 @@ The source findings and extraction tests do not implement INT/FLOAT arithmetic, 
 - Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
 
 - Audited the leftover `codex/rtu-response-regressions-20261019` branch: its RTU test content already matches the prototype, but the quick FBD smoke retained the wrong timer property header. Ported the exact Craft title correction and a regression assertion in PR [#162](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/162). Exact-head APK/JUnit [#1153](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39380654628) and quick UI smoke [#783](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39380654662) are queued.
-- Current inventory after the two safe audit-ref deletions: 47 branches, 13 open PRs. Keep the leftover RTU branch until #162 passes, then remove it after verifying its content is fully represented in the prototype.
+- Current inventory after this cleanup: 44 branches, 12 open PRs. Keep the leftover RTU branch until #162 passes, then remove it after verifying its content is fully represented in the prototype.
+
+
+## Legacy media consolidation — 20 Oct 2026
+
+- Verified that the prototype already contains the tested `LegacyProjectMediaMigrator`, its JUnit suite, the fail-closed open flow, the PNG pixel probe, and the API30 UI scenario that checks the migrated image before and after process restart. Core migrator and test files match the validated PR #93 tree; the prototype's surrounding MainActivity and media service are newer.
+- Closed draft PR [#93](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/93) without merging it into `main`; its implementation was already consolidated in the prototype and its exact-head APK/JUnit + UI checks had passed.
+- Removed the superseded refs `fix/project-legacy-media-migration`, `fix/project-migration-referenced-media-missing`, and `test/project-legacy-media-android-e2e` after confirming #94 was merged and #95/#96 closed, then verified all three refs absent.
+- Current branch inventory: 44 branches; 12 open PRs. Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+- Latest checks: #160 APK/JUnit passed and full UI is running; #162 APK/JUnit and UI are running; Craft #165's ten UI directions are still running. Redundant run #166 is cancelled.
