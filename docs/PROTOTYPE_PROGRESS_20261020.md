@@ -527,3 +527,12 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 ### Open PR inventory checked on 20 Oct 2026
 
 Eight open PRs were found. #188, #191, #192 and #197 target `prototype/all-in-one-20261020` and are ready for review; #198 targets the same branch but remains draft while the original emulator run is active. #149, #150 and #151 are draft research PRs stacked on older feature/probe branches; #149 is not mergeable to the integration target, and #150/#151 depend on that stack. No PR targets `main`.
+
+
+## 20 Oct follow-up checkpoint — smoke-driver fixes
+
+- PR #188 artifact 12301994921 (run 39503536963) showed the process survived because Android SELinux denied `run-as ... kill -9` (AVC `sigkill` denial). Updated the stopped-app recreation test to use `adb shell am kill` via ActivityManager and added an exact-command unit test. Branch head: `3db9176e97d3b931762aebbf1634dcf9986da410`; exact-head APK/JUnit #1256 (run 39506790310) and UI smoke #891 (run 39506790196) are running.
+- PR #191 artifact 12302969381 (run 39504722101) showed the Craft Wi-Fi option is literally `Wi-Fi\\3G\\4G`; the smoke selector had encoded two backslashes. Updated it to match observed XML and added a regression test. The first CI attempt caught an over-escaped test fixture; that was corrected before the latest head `5a5e3c2f938d2d4550d1cde5c4823ceee2d97300`. Exact-head APK/JUnit #1258 (run 39506898438) and UI smoke #893 (run 39506898456) are pending/in progress. Do not accept the PR until both finish green.
+- Focused local helper suite for PR #188: 24/24 PASS. Full local Python suite on this scratch checkout: 175 tests, FAIL (4 failures, 2 errors) because the clone lacks generated original drawable/reference assets that CI prepares with `tools/prepare_craft_resources.py`; this is NOT a pass. The exact-head GitHub run performs resource preparation before the full suite. Local Gradle/SDK remain unavailable; rely on exact-head GitHub APK/JUnit and smoke jobs.
+- Original full profile run #174 (39504354431) has verified/downloaded the published APK and SHA, rebuilt the fallback decompilation, and remains in Android API 30 traversal. No runtime test outcomes have been marked PASS yet.
+- Readiness remains 5/139; K107 matrix remains 0 PASS / 0 FAIL / 0 BLOCKED / 550 WAITING / 0 retest. Stable `main` unchanged.
