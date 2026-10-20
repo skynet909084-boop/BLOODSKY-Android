@@ -322,3 +322,12 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 - Reviewed the newly supplied decoded source archive (SHA-256 `92d12206bde746f5a76c89e0c3311119287b14bb26cdc8ca36d515e2fca01f7a`). It exposes Craft's USB serial call path and supported CDC ACM, CH34x, CP21xx, FTDI and Prolific drivers. Craft requests USB permission, opens a serial port, applies baud/data/stop/parity settings, then exchanges RTU frames.
 - BLOODSKY still has a stream-level `ModbusRtuClient`, without USB host permission/driver ownership or a device lifecycle. Implement that adapter as the next focused code slice; do not transplant old PR #38 wholesale. Require fake-port tests, exact-head APK/JUnit and UI evidence before calling the runtime path integrated. Hardware acceptance remains separate.
 - This checkpoint changed documentation/workflows only; no Android code changed and no new APK run was started.
+
+
+## USB serial RTU implementation checkpoint — 20 Oct 2026
+
+- Starting point confirmed at `prototype/all-in-one-20261020` SHA `663ec0fdf62ec1be6ec224b45cfc7ea15f82e7ec`; `main` remains pinned to `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+- Local feature branch `feature/usb-serial-rtu-20261020` contains commit `e855961d93ee5d61890725d9f355dd22fd999902`. It adds the pinned upstream `usb-serial-for-android` 3.11.0 dependency and MIT attribution, optional USB-host feature declaration, validated serial framing settings, an explicit-device USB permission/open/detach lifecycle, a serial-port adapter around `ModbusRtuClient`, and fake-port JVM tests for RTU request/response, UART mapping, timeout/error and close behavior.
+- The connector is an API slice only: it exposes device enumeration and cancellable connection creation, but no editor UI or project-binding integration is enabled. Imported USB bindings remain inactive. RTU read support remains FC01–FC04; write functions and physical adapter behavior are not implemented/verified by this change.
+- Validation attempted locally: `git diff --check` passed. Python discovery ran 164 tests and reported 4 failures / 26 errors tied to missing generated Craft reference files and removed workflow/resource expectations; the failing cases did not target the new Java code. Android unit tests/APK build could not run because this environment has no Gradle executable, Gradle wrapper, Java compiler, or configured Android SDK.
+- Exact-head GitHub validation is pending publication of the feature branch. No change was made to the remote prototype or stable `main` in this checkpoint.
