@@ -47,7 +47,6 @@
       <com.bloodsky.hmi.OriginalFbdDrawing android:id="@+id/kc_logic_tab_fb_mqtt_publisher" android:background="#00ffffff" android:padding="5.0dp" android:layout_width="60.0dp" android:layout_height="50.0dp" android:layout_toRightOf="@+id/kc_logic_tab_fb_mqtt_subscriber" android:layout_below="@+id/kc_logic_tab_el_compare_float" android:tag="MQTT_PUBLISHER" />
     </RelativeLayout>
   </ScrollView>
-  <TextView android:id="@+id/kc_logic_extended_components" android:layout_width="wrap_content" android:layout_height="60.0dp" android:layout_gravity="bottom|center_horizontal" android:background="#333333" android:clickable="true" android:focusable="true" android:gravity="center" android:minWidth="150.0dp" android:paddingLeft="12.0dp" android:paddingRight="12.0dp" android:text="Другие элементы" android:textColor="#ffffffff" android:textSize="14.0sp" />
   <ImageView android:id="@+id/kc_logic_switch_layout" android:background="@drawable/kc_tab_page3" android:layout_width="60.0dp" android:layout_height="60.0dp" android:layout_gravity="bottom|end" />
   <ImageView android:id="@+id/kc_logic_close" android:background="@drawable/kc_arrow_left" android:layout_width="60.0dp" android:layout_height="60.0dp" android:layout_gravity="bottom|start" />
 </FrameLayout>
