@@ -63,7 +63,7 @@ This file is the durable handoff for continuing the Craft 1.0.7 parity work with
 ## Latest resume checkpoint — 2026-10-20
 
 - Text-only continuation requested; continue the BLOODSKY work in this thread without voice interaction.
-- Working branch: `prototype/all-in-one-20261020`; latest commit: `a58997cde57b29f90242298b64274910845fba62`. Stable `main` stays pinned at `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+- Working branch: `prototype/all-in-one-20261020`; latest Android code/test commit remains `2a6fda2b864dfeed437dd11e390672fe308394ce`. Later commits only updated documentation and removed unused agent workflows. Stable `main` stays pinned at `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
 - Cleanup: removed the five cloud-agent/DeepSeek workflows from the prototype and closed superseded PRs #38/#44/#46/#69/#73/#74. PRs #149–151 remain open for Craft UI probe evidence. GitHub still has 43 refs; the stale heads are retained, not deleted.
 - New source evidence from `KaScada_v1.0.7(107)_base_src.zip` (SHA-256 `92d12206bde746f5a76c89e0c3311119287b14bb26cdc8ca36d515e2fca01f7a`): Craft probes USB serial drivers (CDC ACM, CH34x, CP21xx, FTDI, Prolific), requests permission, opens the port, applies all four serial parameters and runs RTU I/O through it. Detailed call path and test boundary are in `docs/TRANSPORT_CONNECTIVITY_AUDIT_20261019.md`.
 - Next implementation: add a USB serial owner/adapter around `ModbusRtuClient`, including permission result, baud/data/stop/parity mapping, cancellation and detach/lifecycle close. Keep the old #38 implementation as reference only. Add fake-port tests first; then run APK/JUnit and Android UI checks on that exact head. Physical adapter acceptance remains required.
