@@ -1,13 +1,13 @@
 {
-  "version": "1.0.1",
+  "version": "1.0.2",
   "target_application": "KaScada Craft 1.0.7",
   "archive_sha256": "316da0335dc4ea0c8f2d8c14550118ba33bd0e95d7c926f67ed848429c554cdd",
   "total_original_image_assets": 152,
   "image_aliases_status": {
     "total_packaged_in_apk": 152,
-    "directly_referenced_in_bloodsky_app": 12,
-    "packaged_but_unused_in_bloodsky": 140,
-    "verification_note": "Strictly verified against base commit d17e043789ba72041d0784406d3b64366b8ffd0d app/ source tree by tools/verify_original_source_contracts.py"
+    "directly_referenced_in_bloodsky_app": 17,
+    "packaged_but_unused_in_bloodsky": 135,
+    "verification_note": "Strictly verified against the consolidated app source tree by tools/verify_original_source_contracts.py"
   },
   "system_registers": {
     "device_id": 0,
