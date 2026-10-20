@@ -74,6 +74,9 @@ public class MainActivity extends Activity {
     private String pendingArchiveProjectId, pendingArchiveWidgetKey, pendingArchiveTitle;
     private EditText pendingMediaField;
     private AlertDialog activePropertiesDialog;
+    private LinearLayout activePropertiesForm;
+    private int pendingMediaWidgetIndex = -1;
+    private String pendingMediaFieldPath;
     private int pendingMediaCopyCount;
     private final Map<AlertDialog, List<PendingMediaCopy>> pendingMediaCopies = new java.util.IdentityHashMap<>();
     private String projectName = "Мой проект";
@@ -247,7 +250,129 @@ public class MainActivity extends Activity {
         } catch (Exception ex) {
             android.util.Log.e("BLOODSKY", "TTS init error", ex);
         }
-        showHome();
+        if (!restoreMediaPickerState(state)) showHome();
+    }
+
+    private static final String STATE_RESTORE_MEDIA_PICKER = "restore_media_picker";
+    private static final String STATE_MEDIA_WIDGET_INDEX = "media_widget_index";
+    private static final String STATE_MEDIA_FIELD_PATH = "media_field_path";
+    private static final String STATE_MEDIA_FORM_PATHS = "media_form_paths";
+    private static final String STATE_MEDIA_FORM_TYPES = "media_form_types";
+    private static final String STATE_MEDIA_FORM_VALUES = "media_form_values";
+
+    @Override protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        if (pendingMediaField == null || activePropertiesDialog == null
+                || activePropertiesForm == null || editor == null) return;
+        String fieldPath = viewPath(activePropertiesForm, pendingMediaField, "");
+        if (fieldPath == null) return;
+        ArrayList<String> paths = new ArrayList<>();
+        ArrayList<String> types = new ArrayList<>();
+        ArrayList<String> values = new ArrayList<>();
+        collectPropertyFormState(activePropertiesForm, "", paths, types, values);
+        outState.putBoolean(STATE_RESTORE_MEDIA_PICKER, true);
+        outState.putInt(STATE_MEDIA_WIDGET_INDEX, editor.selected);
+        outState.putString(STATE_MEDIA_FIELD_PATH, fieldPath);
+        outState.putStringArrayList(STATE_MEDIA_FORM_PATHS, paths);
+        outState.putStringArrayList(STATE_MEDIA_FORM_TYPES, types);
+        outState.putStringArrayList(STATE_MEDIA_FORM_VALUES, values);
+    }
+
+    private boolean restoreMediaPickerState(Bundle state) {
+        if (state == null || !state.getBoolean(STATE_RESTORE_MEDIA_PICKER, false) || !loadProject()) return false;
+        showEditor();
+        int widgetIndex = state.getInt(STATE_MEDIA_WIDGET_INDEX, -1);
+        if (editor == null || widgetIndex < 0 || widgetIndex >= widgets.size()) return false;
+        editor.selected = widgetIndex;
+        editor.selectedWidgets.clear();
+        editor.selectedWidgets.add(widgetIndex);
+        editSelectedWidget();
+        if (activePropertiesDialog == null || activePropertiesForm == null) return false;
+        restorePropertyFormState(activePropertiesForm,
+                state.getStringArrayList(STATE_MEDIA_FORM_PATHS),
+                state.getStringArrayList(STATE_MEDIA_FORM_TYPES),
+                state.getStringArrayList(STATE_MEDIA_FORM_VALUES));
+        View target = findViewByPath(activePropertiesForm, state.getString(STATE_MEDIA_FIELD_PATH, ""));
+        if (!(target instanceof EditText)) return false;
+        pendingMediaField = (EditText) target;
+        pendingMediaWidgetIndex = widgetIndex;
+        pendingMediaFieldPath = state.getString(STATE_MEDIA_FIELD_PATH);
+        return true;
+    }
+
+    private static void collectPropertyFormState(View view, String path, ArrayList<String> paths,
+            ArrayList<String> types, ArrayList<String> values) {
+        String type = null, value = null;
+        if (view instanceof EditText) {
+            type = "text";
+            value = ((EditText) view).getText().toString();
+        } else if (view instanceof android.widget.CheckBox) {
+            type = "check";
+            value = Boolean.toString(((android.widget.CheckBox) view).isChecked());
+        } else if (view instanceof Spinner) {
+            type = "spinner";
+            value = Integer.toString(((Spinner) view).getSelectedItemPosition());
+        }
+        if (type != null) {
+            paths.add(path);
+            types.add(type);
+            values.add(value);
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                String childPath = path.isEmpty() ? Integer.toString(i) : path + "." + i;
+                collectPropertyFormState(group.getChildAt(i), childPath, paths, types, values);
+            }
+        }
+    }
+
+    private static void restorePropertyFormState(View root, ArrayList<String> paths,
+            ArrayList<String> types, ArrayList<String> values) {
+        if (paths == null || types == null || values == null
+                || paths.size() != types.size() || paths.size() != values.size()) return;
+        for (int i = 0; i < paths.size(); i++) {
+            View view = findViewByPath(root, paths.get(i));
+            String type = types.get(i), value = values.get(i);
+            if ("text".equals(type) && view instanceof EditText) ((EditText) view).setText(value);
+            else if ("check".equals(type) && view instanceof android.widget.CheckBox)
+                ((android.widget.CheckBox) view).setChecked(Boolean.parseBoolean(value));
+            else if ("spinner".equals(type) && view instanceof Spinner) {
+                Spinner spinner = (Spinner) view;
+                try {
+                    int position = Integer.parseInt(value);
+                    if (position >= 0 && position < spinner.getCount()) spinner.setSelection(position);
+                } catch (NumberFormatException ignored) {}
+            }
+        }
+    }
+
+    private static View findViewByPath(View root, String path) {
+        if (root == null) return null;
+        if (path == null || path.isEmpty()) return root;
+        View current = root;
+        for (String part : path.split("\\.")) {
+            if (!(current instanceof ViewGroup)) return null;
+            int index;
+            try { index = Integer.parseInt(part); }
+            catch (NumberFormatException invalid) { return null; }
+            ViewGroup group = (ViewGroup) current;
+            if (index < 0 || index >= group.getChildCount()) return null;
+            current = group.getChildAt(index);
+        }
+        return current;
+    }
+
+    private static String viewPath(View root, View target, String path) {
+        if (root == target) return path;
+        if (!(root instanceof ViewGroup)) return null;
+        ViewGroup group = (ViewGroup) root;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            String childPath = path.isEmpty() ? Integer.toString(i) : path + "." + i;
+            String found = viewPath(group.getChildAt(i), target, childPath);
+            if (found != null) return found;
+        }
+        return null;
     }
 
     @Override protected void onResume() {
@@ -2281,6 +2406,8 @@ public class MainActivity extends Activity {
         intent.setType(mimeType);
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
         pendingMediaField = field;
+        pendingMediaWidgetIndex = editor == null ? -1 : editor.selected;
+        pendingMediaFieldPath = activePropertiesForm == null ? null : viewPath(activePropertiesForm, field, "");
         try {
             startActivityForResult(intent, REQUEST_PICK_MEDIA);
         } catch (Exception ex) {
@@ -5075,9 +5202,13 @@ public class MainActivity extends Activity {
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Применить", null).create();
         activePropertiesDialog = properties;
+        activePropertiesForm = form;
         pendingMediaCopyCount = 0;
         properties.setOnDismissListener(dismissed -> {
-            if (activePropertiesDialog == properties) activePropertiesDialog = null;
+            if (activePropertiesDialog == properties) {
+                activePropertiesDialog = null;
+                activePropertiesForm = null;
+            }
             cleanupPendingMediaCopies(properties);
         });
         properties.setOnShowListener(shown -> properties.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(clicked -> {
