@@ -523,3 +523,7 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 - #150 is a draft stacked on #149's probe branch. APK/JUnit passed; its supplemental emulator run was cancelled.
 - #151 is a draft stacked on #150. APK/JUnit and probe workflow #172 completed, but the artifact audit records incomplete coverage (no direction met `coverage_complete`). Keep its direction and long-press observations as partial evidence.
 - PR #198 introduces a focused exact-release APK attempt and a single-shell runner, but touches the same probe workflow family. Do not merge its workflow changes independently of #149–#151; reconcile the helpers and preserve their distinct direction/long-press coverage after #174's artifact is available.
+
+### Open PR inventory checked on 21 Oct 2026
+
+Eight open PRs were found. #188, #191, #192 and #197 target `prototype/all-in-one-20261020` and are ready for review; #198 targets the same branch but remains draft while the original emulator run is active. #149, #150 and #151 are draft research PRs stacked on older feature/probe branches; #149 is not mergeable to the integration target, and #150/#151 depend on that stack. No PR targets `main`.
