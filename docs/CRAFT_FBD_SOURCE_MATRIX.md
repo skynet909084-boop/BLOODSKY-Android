@@ -23,6 +23,7 @@ Source: decompiled APK artifact `11912849123`, `jadx/sources/ru/himik/nightscrea
 | Sensor_Light | Yes | #888888 rectangle, black stroke | LM label; one centered Q output | Runtime integrated; default visual source skin added, parity partial |
 | Sensor_Speed | Yes | #888888 rectangle, black stroke | SM label; one centered Q output | Runtime integrated; default visual source skin added, parity partial |
 | Sunrise_GPS | Yes | #888888 rectangle, black stroke | SR/SS label selected by `type`; one centered Q output | Runtime integrated; default visual source skin added, parity partial |
+| ODTEMP | Yes | #888888 rectangle, black stroke | DT label; one centered Q output; source `draw12` | Runtime integrated; default visual source skin added, parity partial |
 | FB_MX | Yes | Same with header/divider | BOOL enable, Integer index, Integer output | Runtime integrated; visual partial |
 | FB_POW | Yes | Same with header/divider | Three-section layout | Existing runtime; visual partial |
 | FB_ARRAY | No local onDraw | Inherited | EN, DT, ID inputs and Q output; shared Integer register store | Runtime integrated; inherited visual approximation |

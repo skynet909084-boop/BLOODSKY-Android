@@ -38,6 +38,7 @@ public final class FbdSourceCanvasSkin {
                 || "FBD CRAFT SENSOR LIGHT".equals(type)
                 || "FBD CRAFT SENSOR SPEED".equals(type)
                 || "FBD CRAFT SUNRISE".equals(type)
+                || "FBD CRAFT ODTEMP".equals(type)
                 || MainActivity.isCraftMqttSubscriber(type) || MainActivity.isCraftMqttPublisher(type);
     }
 
@@ -70,6 +71,7 @@ public final class FbdSourceCanvasSkin {
                 : "FBD CRAFT SENSOR LIGHT".equals(w.type) ? "LM"
                 : "FBD CRAFT SENSOR SPEED".equals(w.type) ? "SM"
                 : "FBD CRAFT SUNRISE".equals(w.type) ? sunriseCaption(w)
+                : "FBD CRAFT ODTEMP".equals(w.type) ? "DT"
                 : "FBD CRAFT COMPARE".equals(w.type) ? w.compareOperator
                 : MainActivity.isCraftMqttSubscriber(w.type) ? "MQTT_S"
                 : MainActivity.isCraftMqttPublisher(w.type) ? "MQTT_P"
@@ -134,7 +136,8 @@ public final class FbdSourceCanvasSkin {
         boolean simpleSource = "FBD CRAFT SENSOR ORIENTATION".equals(w.type)
                 || "FBD CRAFT SENSOR LIGHT".equals(w.type)
                 || "FBD CRAFT SENSOR SPEED".equals(w.type)
-                || "FBD CRAFT SUNRISE".equals(w.type);
+                || "FBD CRAFT SUNRISE".equals(w.type)
+                || "FBD CRAFT ODTEMP".equals(w.type);
         float x0 = w.x, x1 = w.x + w.w, y0 = w.y, y1 = w.y + w.h;
         float left = x0 + (simpleSource ? Math.max(1, density) : pin), right = x1 - pin;
         RectF body = simpleSource
@@ -175,7 +178,7 @@ public final class FbdSourceCanvasSkin {
             String[] outputPins = MainActivity.knownFbdPins(w.type, true);
             for (String port : outputPins) {
                 float yy = y0 + w.h * MainActivity.fbdTerminalFraction(w.type, port, true);
-                if ("Q".equals(port) && MainActivity.isFbdBlockOutputInverted(w)) {
+                if ("Q".equals(port) && !simpleSource && MainActivity.isFbdBlockOutputInverted(w)) {
                     float radius = 3.5f * density;
                     float cx = right + radius;
                     canvas.drawLine(cx + radius, yy, x1, yy, brush);
@@ -222,6 +225,7 @@ public final class FbdSourceCanvasSkin {
                     : "FBD CRAFT SENSOR LIGHT".equals(w.type) ? "LM"
                     : "FBD CRAFT SENSOR SPEED".equals(w.type) ? "SM"
                     : "FBD CRAFT SUNRISE".equals(w.type) ? sunriseCaption(w)
+                    : "FBD CRAFT ODTEMP".equals(w.type) ? "DT"
                     : "FBD CRAFT COMPARE".equals(w.type) ? w.compareOperator
                     : FbdDurationUnits.modeForType(w.type);
             float center = simpleSource ? (x0 + w.w / 2f - pin / 2f) : (left + right) / 2f;

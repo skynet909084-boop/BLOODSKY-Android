@@ -27,6 +27,7 @@ public class FbdSourceNativeCanvasSkinTest {
         assertTrue(FbdSourceCanvasSkin.supports("FBD CRAFT SENSOR LIGHT"));
         assertTrue(FbdSourceCanvasSkin.supports("FBD CRAFT SENSOR SPEED"));
         assertTrue(FbdSourceCanvasSkin.supports("FBD CRAFT SUNRISE"));
+        assertTrue(FbdSourceCanvasSkin.supports("FBD CRAFT ODTEMP"));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT CTU", "CTU 16 bit")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT T", "T")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT BLINK", "BLINK")));
@@ -40,6 +41,7 @@ public class FbdSourceNativeCanvasSkinTest {
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT SENSOR LIGHT", "LM")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT SENSOR SPEED", "SM")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT SUNRISE", "SR")));
+        assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT ODTEMP", "DT")));
     }
 
     @Test public void sensorAndSunriseLabelsFollowImportedSourceModes() throws Exception {
@@ -91,6 +93,8 @@ public class FbdSourceNativeCanvasSkinTest {
         assertArrayEquals(new String[]{"Q"}, MainActivity.knownFbdPins("FBD CRAFT SENSOR SPEED", true));
         assertArrayEquals(new String[0], MainActivity.knownFbdPins("FBD CRAFT SUNRISE", false));
         assertArrayEquals(new String[]{"Q"}, MainActivity.knownFbdPins("FBD CRAFT SUNRISE", true));
+        assertArrayEquals(new String[0], MainActivity.knownFbdPins("FBD CRAFT ODTEMP", false));
+        assertArrayEquals(new String[]{"Q"}, MainActivity.knownFbdPins("FBD CRAFT ODTEMP", true));
     }
 
     @Test public void editableCustomAppearanceNeverForcedIntoSourceSkin() {

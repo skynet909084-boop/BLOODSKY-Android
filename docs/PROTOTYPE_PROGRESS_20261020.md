@@ -370,12 +370,23 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 - Added default source-backed canvas rendering for `FBD CRAFT SENSOR ORIENTATION` and `FBD CRAFT SUNRISE`, based on original `Sensor_Orientation.onDraw/onMeasure`, `Sunrise_GPS.onDraw/onMeasure`, and `OriginalFbdDrawing.draw11`.
 - The caption follows imported axis (`ORIENTATION_X/Y/Z`) and sunrise mode (`SR/SS`). Source-shaped gray body, black outline, and centered Q output are retained; a user-edited caption still uses the editable BLOODSKY appearance.
 - Added JUnit regressions for type coverage, dynamic labels, and custom-caption fallback. Updated the source matrix; the rows remain partial visual parity because there is no same-density side-by-side comparison.
-- Local Python gate passed: 164 tests. `gradle testDebugUnitTest --stacktrace` and `gradle assembleDebug --stacktrace` were attempted but could not run because Gradle and a wrapper are absent. Exact-head Android CI is required for validation.
-- Stable `main` remains pinned at `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+- PR [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/171) merged to `prototype/all-in-one-20261020` as `62fc2cf91af0355ccaf34ccceae8bdb9e8b56454`.
+- Exact-head APK/JUnit [#1179](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39410385567) passed Python checks, all 503 Android unit tests, and debug APK build. Exact-head Android 11 smoke [#817](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39410545060) passed.
+- Initial APK run #1178 found a test-fixture mismatch: the fixture selected `SS` while retaining text `SR`. The test now asserts custom-caption fallback and then source skin for `SS`; rerun #1179 passed.
+- Local Gradle is unavailable in this checkout. Same-density side-by-side comparison was not performed; visual parity remains partial. Stable `main` remains pinned at `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
 
 
 ## Craft light and speed source drawings — 20 Oct 2026
 
 - Extended the same original `draw11` default source skin to `FBD CRAFT SENSOR LIGHT` (`LM`) and `FBD CRAFT SENSOR SPEED` (`SM`). Both expose only the original centered `Q` output and no inputs.
 - Added type/default-caption/pin regression assertions and source matrix rows. No project fields or runtime behavior changed.
-- Validation and exact-head CI are pending; visual parity remains partial until same-density comparison.
+- PR [#172](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/172) merged as `4311ca8d242008f220f0b065be91b09b927e5496`.
+- Exact-head APK/JUnit [#1180](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39411272536) and Android 11 smoke [#818](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39411272541) passed. Local Python gate also passed 164 tests; Gradle is unavailable in the checkout.
+- Visual parity remains partial until same-density comparison.
+
+
+## Craft ODTEMP source drawing — 20 Oct 2026
+
+- Added ODTEMP's original `draw12` default drawing to the same simple source skin: fixed `DT` label, gray body, black outline, and one centered `Q` output. Its source drawing does not add an inversion bubble, so the simple-source rendering suppresses it.
+- Added regression coverage for source type, default caption, and pin contract. Runtime and project metadata are unchanged.
+- Local Python gate passed 164 tests and `git diff --check` passed. Exact-head Android validation is pending; visual parity remains partial until same-density comparison.
