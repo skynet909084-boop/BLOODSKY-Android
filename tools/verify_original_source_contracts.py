@@ -56,9 +56,9 @@ def verify_contracts(
     # Extract referenced suffixes (e.g. R.drawable.kc_lamp_green, a Java string
     # alias, or @drawable/kc_lamp_green in an Android resource XML file).
     direct_refs = (
-        set(re.findall(r'\\bR\\.drawable\\.kc_([a-z0-9_]+)\\b', java_code))
-        | set(re.findall(r'\"kc_([a-z0-9_]+)\"', java_code))
-        | set(re.findall(r'@drawable/kc_([a-z0-9_]+)\\b', xml_code))
+        set(re.findall(r'\bR\.drawable\.kc_([a-z0-9_]+)\b', java_code))
+        | set(re.findall(r'"kc_([a-z0-9_]+)"', java_code))
+        | set(re.findall(r'@drawable/kc_([a-z0-9_]+)\b', xml_code))
     )
 
     used = []
