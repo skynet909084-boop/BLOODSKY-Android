@@ -27,6 +27,27 @@ class FastFbdSmoke(Smoke):
         adb('shell', 'pm', 'clear', PACKAGE)
         adb('logcat', '-c')
         adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
+        # Exercise the manual USB RTU screen without depending on attached hardware.
+        self.tap('USB Serial • Modbus RTU')
+        self.wait_node('BLOODSKY • USB SERIAL RTU')
+        scroll_bounds = list(map(int, re.findall(r'\\d+', self.wait_node(class_name='android.widget.ScrollView').get('bounds'))))
+        left, top, right, bottom = scroll_bounds
+        connect_button = []
+        for _ in range(4):
+            adb('shell', 'input', 'swipe', str((left + right) // 2), str(bottom - 40),
+                str((left + right) // 2), str(top + 40), '250')
+            time.sleep(0.2)
+            connect_button = matching_nodes(self.dump(), text='Подключить выбранный адаптер')
+            if connect_button:
+                b = list(map(int, re.findall(r'\\d+', connect_button[0].get('bounds'))))
+                if b[1] >= top and b[3] <= bottom:
+                    break
+            connect_button = []
+        if len(connect_button) != 1:
+            raise AssertionError('Manual USB screen did not expose its explicit Connect button after scrolling')
+        self.capture('manual-usb-rtu-screen')
+        self.tap('‹ Назад')
+        self.wait_node('Создать новый проект')
         self.tap('Создать новый проект')
         self.tap(class_name='android.widget.EditText')
         adb('shell', 'input', 'text', PROJECT)
@@ -119,6 +140,7 @@ class FastFbdSmoke(Smoke):
             raise AssertionError('Android crash detected')
         elapsed = round(time.monotonic() - started, 2)
         checks = [
+            'manual USB RTU screen opens from home and returns without hardware',
             'real Android 11 app launch and project creation',
             'original FBD AND and Craft timer palette entries',
             'cancel context menu without mutation',
