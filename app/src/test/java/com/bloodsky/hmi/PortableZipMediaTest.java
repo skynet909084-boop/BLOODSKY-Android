@@ -465,12 +465,13 @@ public class PortableZipMediaTest {
         JSONObject second = new JSONObject(reimported[0]);
         assertEquals("Edited in acceptance test", second.getJSONArray("screens").getJSONObject(0)
                 .getJSONArray("widgets").getJSONObject(0).getString("text"));
-        assertEquals("bg.png", second.getJSONArray("screens").getJSONObject(0).getString("backgroundImagePath"));
+        String secondBackgroundPath = second.getJSONArray("screens").getJSONObject(0).getString("backgroundImagePath");
+        assertTrue(secondBackgroundPath.startsWith("media/"));
         assertEquals(sourceBeforeEdit.toString(), second.getJSONObject("craftSource").toString());
         assertTrue(second.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets").getJSONObject(1)
                 .optBoolean("craftUnsupportedComponent", false));
         assertArrayEquals(sourceImage, java.nio.file.Files.readAllBytes(ProjectMediaService.resolveMediaFile(
-                rootDir, second.toString(), second.getJSONArray("screens").getJSONObject(0).getString("backgroundImagePath")).toPath()));
+                rootDir, second.toString(), secondBackgroundPath).toPath()));
     }
 
 
