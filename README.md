@@ -15,10 +15,11 @@ The current prototype includes:
 - the original 40-preview FBD catalogue with source-backed native logic, math/conversion, timer, trigger, register, MX/ARRAY and selected sensor/MQTT integrations; unsupported previews remain disabled;
 - original indicator ON/OFF image menus, built-in lamps and custom document-provider images retained after process restart;
 - a Modbus TCP register scanner for FC03/FC04;
+- a manual USB serial Modbus RTU screen with explicit adapter selection, line settings, connect/disconnect, and FC03/FC04 reads;
 - periodic polling of widgets with `tcp://host:port/unit/address` bindings;
 - typed FBD pins and graph validation, Craft `.mcr` import/export, graph capture/editing for BLOODSKY-authored macros, including bounded nesting of validated graph-backed macros, and per-instance nested graph execution. Opaque original Craft macro children are preserved but not executed.
 
-This is still a working prototype, not yet a complete Kaskada Craft replacement. The exact original UI has not been verified pixel-for-pixel against the decompiled APK and reference screenshots. Full component/property parity, execution of opaque original Craft macro children, Modbus RTU binding into project widgets, broader protocol compatibility, physical-device testing and a signed release build remain open work. The prototype now has an explicit USB serial connection API over the tested RTU client; it does not automatically activate imported bindings and still needs exact-head CI and hardware acceptance.
+This is still a working prototype, not yet a complete Kaskada Craft replacement. The exact original UI has not been verified pixel-for-pixel against the decompiled APK and reference screenshots. Full component/property parity, execution of opaque original Craft macro children, Modbus RTU binding into project widgets, broader protocol compatibility, physical-device testing and a signed release build remain open work. USB RTU can be tested from its manual screen, but no project binding starts it automatically; exact-head CI and hardware acceptance are still required.
 
 Current accepted milestones, implementation gaps and device/release gates: [execution status](docs/BLOODSKY_EXECUTION_STATUS.md).
 The current source-backed, page-by-page functional audit and remaining implementation plan are in [Kaskada full parity audit](docs/KASCADA_FULL_PARITY_AUDIT_20261018.md); the machine-readable matrix is intentionally conservative and marks source/runtime or device parity as partial until its acceptance gate passes.
