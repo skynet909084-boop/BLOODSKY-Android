@@ -468,6 +468,7 @@ public class PortableZipMediaTest {
         String secondBackgroundPath = second.getJSONArray("screens").getJSONObject(0).getString("backgroundImagePath");
         assertTrue(secondBackgroundPath.startsWith("media/"));
         assertEquals(sourceBeforeEdit.toString(), second.getJSONObject("craftSource").toString());
+        assertEquals(2, second.getJSONObject("craftSource").getJSONArray("TableComponent").length());
         assertTrue(second.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets").getJSONObject(1)
                 .optBoolean("craftUnsupportedComponent", false));
         assertArrayEquals(sourceImage, java.nio.file.Files.readAllBytes(ProjectMediaService.resolveMediaFile(
