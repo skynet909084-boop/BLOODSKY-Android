@@ -12,11 +12,14 @@ import time
 import xml.etree.ElementTree as ET
 from collections import Counter, deque
 from pathlib import Path
+import os
 from PIL import Image
 
 OUT = Path(sys.argv[1])
 OUT.mkdir(parents=True, exist_ok=True)
 PACKAGE = "ru.kascada.modbus"
+APK_SOURCE = os.environ.get("KASCADA_PROBE_APK_SOURCE", "unknown")
+APK_SHA256 = os.environ.get("KASCADA_PROBE_APK_SHA256", "")
 ADB_TIMEOUT = 45
 PROFILE = "quick" if "--full" not in sys.argv[2:] else "full"
 MAX_STATES = 12 if PROFILE == "quick" else 300
@@ -315,6 +318,8 @@ quick_goal_reached = False
 def save_checkpoint(complete=False):
     report = {
         "app_package": PACKAGE,
+        "apk_source": APK_SOURCE,
+        "apk_sha256": APK_SHA256,
         "offline": True,
         "profile": PROFILE,
         "execution_finished": complete,
