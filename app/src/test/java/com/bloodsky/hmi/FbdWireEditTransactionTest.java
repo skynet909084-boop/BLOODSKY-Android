@@ -51,7 +51,7 @@ public class FbdWireEditTransactionTest {
         JSONObject restored = MainActivity.connectionToJson(edges.get(0));
         assertEquals("Q", restored.getString("sourcePin"));
         assertEquals("IN1", restored.getString("targetPin"));
-        assertEquals("keep", restored.getJSONObject("customWireData").getString("keep"));
+        assertEquals("metadata", restored.getJSONObject("customWireData").getString("keep"));
     }
 
     @Test public void saveExceptionRestoresGraphBeforePropagatingFailure() throws Exception {
