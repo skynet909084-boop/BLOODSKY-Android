@@ -1,11 +1,18 @@
 import unittest
 
 from original_craft_longpress_state import (
-    action_identity, actions_for_controls, safe_field_value, touch_command,
+    action_identity, actions_for_controls, remember_state, safe_field_value, touch_command,
 )
 
 
 class CraftLongPressStateTest(unittest.TestCase):
+    def test_state_signatures_are_recorded_and_duplicates_are_rejected(self):
+        seen = set()
+        self.assertTrue(remember_state(seen, "screen-a"))
+        self.assertFalse(remember_state(seen, "screen-a"))
+        self.assertTrue(remember_state(seen, "screen-b"))
+        self.assertEqual({"screen-a", "screen-b"}, seen)
+
     def test_long_press_only_for_accessibility_marked_controls(self):
         controls = [
             {"x": 10, "y": 20, "text": "Timer", "long_clickable": True},
