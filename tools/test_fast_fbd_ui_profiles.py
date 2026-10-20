@@ -24,8 +24,10 @@ class FastFbdUiGateTests(unittest.TestCase):
     def test_feature_pr_emulator_is_not_restarted_for_each_push(self):
         workflow = (ROOT / '.github/workflows/android-ui-smoke.yml').read_text(encoding='utf-8')
         self.assertIn("github.base_ref != 'main' && github.base_ref != 'feat/craft-project-json-import-20261018' && 'quick'", workflow)
-        self.assertIn("github.base_ref == 'main' || github.base_ref == 'feat/craft-project-json-import-20261018' || github.event.action != 'synchronize'", workflow)
+        self.assertIn("github.base_ref == 'main' || github.base_ref == 'feat/craft-project-json-import-20261018' || contains(github.head_ref, 'android12') || github.event.action != 'synchronize'", workflow)
         self.assertIn('types: [opened, reopened, synchronize, ready_for_review]', workflow)
+        self.assertIn("BLOODSKY_ANDROID_API", workflow)
+        self.assertIn("contains(github.head_ref, 'android12') && '31'", workflow)
         self.assertIn("inputs.ui_profile == 'quick'", workflow)
         self.assertIn("|| 'full'", workflow)
         self.assertIn("default: full", workflow)
