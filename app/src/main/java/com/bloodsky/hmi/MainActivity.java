@@ -3948,7 +3948,7 @@ public class MainActivity extends Activity {
             craftNumericEnabledField = new android.widget.CheckBox(this); craftNumericEnabledField.setText("Разрешить ввод после настройки привязки");
             craftNumericEnabledField.setChecked(w.extraFields.optBoolean("craftNumericEnabled", false)); form.addView(craftNumericEnabledField);
             TextView numericHelp = new TextView(this);
-            numericHelp.setText("Старая связь Craft выключена. Укажи свой TCP holding-регистр; пароль хранится в Android Keystore.");
+            numericHelp.setText("Связь Craft сохранена выключенной. Системный источник слота 100 читает локальный регистр; целочисленная запись в регистры 10–1999 доступна после явного разрешения ввода. Для TCP укажи свой holding-регистр. Пароль хранится в Android Keystore.");
             form.addView(numericHelp);
         } else {
             craftNumericMinField = craftNumericMaxField = craftNumericDecimalsField = craftNumericPasswordField = null;

@@ -7,7 +7,7 @@ This file is the durable handoff for continuing the Craft 1.0.7 parity work with
 - Repository: `skynet909084-boop/BLOODSKY-Android`.
 - Active branch: `feat/craft-screen-navigation-import-20261018`, PR #143, stacked on PR #142 → #141 → #139 → #76.
 - Stable `main` is untouched. Do not merge PRs, delete branches, or rebase stacked work as part of routine progress; preserve branch dependencies and review them first.
-- Local branch and origin refs last pointed to `b5e62e8e6284de5265185b07b2a5cb9d61cb8721`; the current ID8 implementation and audit refresh are being prepared for one batched GitHub commit.
+- The ID8 test/documentation follow-up is based on `7bb8bb356f1a8e87f98ed681ad036075250232a1` and targets the same PR branch. After its commit, check the branch ref and exact-head Actions before taking the next parity slice.
 - Persist each focused, reviewed change to GitHub on the active feature branch and update this handoff after meaningful gates. Do not rely on chat memory as the project record.
 
 ## Latest completed changes
@@ -16,7 +16,7 @@ This file is the durable handoff for continuing the Craft 1.0.7 parity work with
 - `cf2b430` — corrected the system gateway audit to reflect the actual implementation boundary.
 - `56ff229` — fixed the Android UI smoke selector to expect the Craft-localized FBD timer title (`Свойства: FBD Таймер`). This was a test selector bug, not an app defect.
 - `efdef6a`/`b5e62e8` — imported Craft component ID 7 (`CustomDynText`) reads a bit from the local system-register bank when `posDeviceNetworkInList=100` and `typeRequest=1`; network bindings and output widgets remain disabled. Evidence: pinned `CustomComponents/CustomDynText.java#getStringAddress` selects request 1 and label `S#<address>` for system slots; `q/d/b.java#G` reads the configured address bit. Regression coverage is in `CraftSystemWidgetBindingTest`.
-- Local uncommitted ID8 slice: imported Craft numeric input reads the exact system word for source slot 100, with UINT16/INT16 display; writes require the existing explicit input opt-in and are limited to integer mode and project registers 10–1999. Float32 and writes to service registers 0–9 stay disabled. Source evidence: pinned `CustomComponents/i.java#getInitConnectionInfo`, `setValue`, and `mbCanvas.t`; tests are in `CraftSystemNumericWidgetBindingTest`. Exact-head CI is pending after the current UI run completed.
+- `7bb8bb3` — imported Craft ID8 reads the exact system word for source slot 100, with UINT16/INT16 display; writes require the existing explicit input opt-in and are limited to integer mode and project registers 10–1999. Float32 and writes to service registers 0–9 stay disabled. Source evidence: pinned `CustomComponents/i.java#getInitConnectionInfo`, `setValue`, and `mbCanvas.t`; tests are in `CraftSystemNumericWidgetBindingTest`.
 
 ## Verification snapshot for `56ff229`
 
@@ -27,8 +27,22 @@ This file is the durable handoff for continuing the Craft 1.0.7 parity work with
 - Full original Craft 1.0.7 emulator probe #155 remains in progress on exact product head `56ff22926c43e088cf59d4825ad5c13bef594b98` — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39359626632
 - On intermediate head `efdef6ac75a1bbd558808cacd53d5779f2634868`, the APK/JUnit run failed only because the new test expected service bit 15 to be 1 after `setCharging(true)`. Craft stores `!charging` in that bit; the manual defines 0 = charging and 1 = not charging. The test was corrected in `b5e62e8e6284de5265185b07b2a5cb9d61cb8721` to assert 1 after `setCharging(false)` and restore its prior value.
 - Exact head `b5e62e8e6284de5265185b07b2a5cb9d61cb8721`: Android APK/JUnit/build passed — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39364083355; focused Craft probe passed — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39364083373; Android 11 UI smoke #762 passed — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39364083422.
-- The full manually dispatched original Craft traversal #155 remains in progress on old product head `56ff22926c43e088cf59d4825ad5c13bef594b98`, in “Install, launch and traverse original UI offline” — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39359626632. Do not treat the focused route as complete coverage.
-- The local environment has no `gradle` executable or wrapper. Python suite passed 149/149 after `python tools/prepare_craft_resources.py` materialized pinned Craft resources; generated files were removed. The corrected Android tests are verified by the exact-head CI above.
+- Initial exact-head run on `7bb8bb356f1a8e87f98ed681ad036075250232a1`: APK/JUnit #1129 found two fixture assertions to correct — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39365707344. Android 11 full UI smoke #763 passed on that same product head — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39365707406; its 9.4 MB diagnostic artifact is 12239996717, SHA-256 `3ade30cec0ad08c3612c7e6eae63dc0cc480ab25d42223433bb42ce2f9409904`. The follow-up corrects the test fixtures and extends the documentation; APK/JUnit validation remains pending on the new head.
+- Quick original Craft probe #160 completed on `7bb8bb3`: 8 states / 7 transitions in 47.4 seconds; `execution_finished=true`, `coverage_complete=false`; artifact 12239129480 — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39365707332/artifacts/12239129480.
+- Full manually dispatched original Craft traversal #155 remains active on older product head `56ff22926c43e088cf59d4825ad5c13bef594b98` — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39359626632. Do not treat either quick route as complete coverage.
+- The local environment has no `gradle` executable or wrapper. Python suite passed 149/149 after `python tools/prepare_craft_resources.py` materialized pinned Craft resources; generated files were removed. The corrected Android fixture assertions await the follow-up exact-head CI run; the full Android 11 UI smoke passed on parent `7bb8bb3` as run #763.
+
+## GitHub Actions / Gradle review (2026-10-20)
+
+- The suggested “Build with Gradle” repository, `gradle/gradle-build-action`, says its v3 action was superseded by `gradle/actions/setup-gradle`; current workflows already use `gradle/actions/setup-gradle@v4` with Gradle 8.9. The pinned v4 action provides Gradle User Home caching, so adding the legacy action would duplicate setup rather than speed up the build. References: https://github.com/gradle/gradle-build-action and https://github.com/gradle/actions/tree/v4/setup-gradle.
+- The suggested wrapper updater creates PRs for checked-in Gradle Wrapper files. This repository currently has no `gradlew`, `gradlew.bat`, `gradle-wrapper.properties`, or `gradle-wrapper.jar`, so there is nothing for it to update. Defer that scheduled PR workflow until the project adopts a checked-in wrapper; CI currently pins Gradle 8.9 centrally in `gradle/actions/setup-gradle`.
+- No action change was made from these recommendations: the cache/setup action is already present, and introducing a wrapper automation without a wrapper would add noise instead of removing build friction.
+
+## GitHub Actions / Gradle review (2026-10-20)
+
+- The suggested “Build with Gradle” repository, `gradle/gradle-build-action`, says its v3 action was superseded by `gradle/actions/setup-gradle`; current workflows already use `gradle/actions/setup-gradle@v4` with Gradle 8.9. The pinned v4 action configures Gradle User Home caching, so adding the legacy action would duplicate setup rather than speed up the build. References: https://github.com/gradle/gradle-build-action and https://github.com/gradle/actions/tree/v4/setup-gradle.
+- The suggested wrapper updater creates PRs for checked-in Gradle Wrapper files. This repository currently has no `gradlew`, `gradlew.bat`, `gradle-wrapper.properties`, or `gradle-wrapper.jar`, so there is nothing for it to update. Defer that scheduled PR workflow until the project adopts a checked-in wrapper; CI currently pins Gradle 8.9 centrally in `gradle/actions/setup-gradle`.
+- No action change was made from these recommendations: the cache/setup action is already present, and introducing wrapper automation without a wrapper would add noise instead of removing build friction.
 
 ## Source and documentation baseline
 

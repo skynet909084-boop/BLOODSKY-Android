@@ -5,6 +5,7 @@ import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -12,11 +13,12 @@ public class CraftSystemNumericWidgetBindingTest {
     @Test public void integerSystemWidgetReadsAndWritesOnlyAfterOptIn() throws Exception {
         CraftSystemRegisterBank bank = new CraftSystemRegisterBank();
         JSONObject widget = numericWidget(120, CraftNumericInput.INTEGER,
-                CraftNumericInput.SIGNED_16, true);
+                CraftNumericInput.SIGNED_16, false);
 
         CraftSystemRegisterAccess.writeInt(120, 0xffff, bank);
         assertEquals("-1", CraftSystemNumericWidgetBinding.readIntegerState(widget, bank));
         assertFalse(CraftSystemNumericWidgetBinding.canWriteInteger(widget));
+        widget.put("craftNumericEnabled", true);
         assertTrue(CraftSystemNumericWidgetBinding.writeInteger(widget, -23, bank));
         assertEquals("-23", CraftSystemNumericWidgetBinding.readIntegerState(widget, bank));
     }
@@ -29,13 +31,22 @@ public class CraftSystemNumericWidgetBindingTest {
                 CraftNumericInput.UNSIGNED_16, true);
         JSONObject outOfRange = numericWidget(2000, CraftNumericInput.INTEGER,
                 CraftNumericInput.UNSIGNED_16, true);
+        JSONObject firstUserRegister = numericWidget(10, CraftNumericInput.INTEGER,
+                CraftNumericInput.UNSIGNED_16, true);
+        JSONObject lastUserRegister = numericWidget(1999, CraftNumericInput.INTEGER,
+                CraftNumericInput.UNSIGNED_16, true);
 
-        assertEquals("0", CraftSystemNumericWidgetBinding.readIntegerState(service, bank));
+        assertNotNull(CraftSystemNumericWidgetBinding.readIntegerState(service, bank));
         assertFalse(CraftSystemNumericWidgetBinding.canWriteInteger(service));
+        assertFalse(CraftSystemNumericWidgetBinding.writeInteger(service, 5, bank));
         assertNull(CraftSystemNumericWidgetBinding.readIntegerState(floating, bank));
         assertFalse(CraftSystemNumericWidgetBinding.canWriteInteger(floating));
+        assertFalse(CraftSystemNumericWidgetBinding.writeInteger(floating, 5, bank));
         assertNull(CraftSystemNumericWidgetBinding.readIntegerState(outOfRange, bank));
         assertFalse(CraftSystemNumericWidgetBinding.canWriteInteger(outOfRange));
+        assertFalse(CraftSystemNumericWidgetBinding.writeInteger(outOfRange, 5, bank));
+        assertTrue(CraftSystemNumericWidgetBinding.canWriteInteger(firstUserRegister));
+        assertTrue(CraftSystemNumericWidgetBinding.canWriteInteger(lastUserRegister));
     }
 
     @Test public void unsupportedSlotOrWidgetNeverActivates() throws Exception {

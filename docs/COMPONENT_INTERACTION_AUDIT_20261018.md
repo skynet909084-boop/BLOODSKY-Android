@@ -53,3 +53,7 @@ The archive source call sites in `mbCanvas` dispatch type 15 for the main archiv
 ## Validation boundary
 
 Android APK run #900 passed the unit suite and debug build. Android 11 smoke #561 passed the three-dot menu path and ID 15 palette/property/history path; its screenshots are in the run artifact. Follow-up #562 checks wrapped menu captions and accessible ID 15 channel controls. This still does not establish every widget ID, source interaction parity, mock-peer behavior or full side-by-side visual parity.
+
+## Update — Craft system-register bindings (2026-10-20)
+
+Imported component ID 8 (`CustomComponents.i`) now reads UINT16/INT16 state from Craft source slot 100. Its write path requires the existing explicit operator-input opt-in and targets only project system registers 10–1999. Float32 system bindings, service-register writes 0–9, and equal-density visual/device acceptance remain open. See `docs/KASKADA_SYSTEM_REGISTERS_AUDIT_20261019.md` for the source pin and boundary details.

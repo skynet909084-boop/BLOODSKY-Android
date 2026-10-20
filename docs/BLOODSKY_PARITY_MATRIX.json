@@ -82,11 +82,11 @@
           "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
-          "id": "widget.setpoint",
-          "name": "Numeric Setpoint / Adjuster (CustomComponents.i)",
+          "id": "widget.numeric_input",
+          "name": "Numeric Input (Craft component ID 8 / CustomComponents.i)",
           "status": "partial",
-          "criteria": "Adjustable setpoint with +/- controls, numerical display, and register write-back.",
-          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
+          "criteria": "Bounded integer or Float32 entry, numeric state display, and write-back to an explicitly configured endpoint.",
+          "audit_note": "Imported ID8 reads Craft system slot 100; opt-in integer writes target only project registers 10–1999. Float32 system bindings, service writes, and visual/device acceptance remain open. Corrected tests await exact-head CI; full Android 11 smoke #763 passed on parent `7bb8bb3`. See docs/CRAFT_COMPONENT_ID_FACTORY_MATRIX_20261018.md and docs/KASKADA_SYSTEM_REGISTERS_AUDIT_20261019.md."
         },
         {
           "id": "widget.linear_setpoint",
