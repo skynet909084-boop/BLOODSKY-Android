@@ -227,6 +227,32 @@ public class PortableZipMediaTest {
     }
 
     @Test
+    public void canceledPickerCopyDeletesOnlyNewUnreferencedFile() throws Exception {
+        String project = new JSONObject().put("id", "picker-cancel").toString();
+        byte[] bytes = "cancel-cleanup-media".getBytes(StandardCharsets.UTF_8);
+        ProjectMediaService.SelectedMediaCopy created;
+        try (InputStream input = new ByteArrayInputStream(bytes)) {
+            created = ProjectMediaService.storeSelectedMediaCopy(rootDir, project, "alarm.wav", input);
+        }
+        ProjectMediaService.SelectedMediaCopy deduplicated;
+        try (InputStream input = new ByteArrayInputStream(bytes)) {
+            deduplicated = ProjectMediaService.storeSelectedMediaCopy(rootDir, project, "alarm.wav", input);
+        }
+        assertTrue(created.created);
+        assertFalse(deduplicated.created);
+        assertEquals(created.projectPath, deduplicated.projectPath);
+        File stored = ProjectMediaService.resolveMediaFile(rootDir, project, created.projectPath);
+
+        String savedReference = new JSONObject().put("unknownPreservedField", created.projectPath).toString();
+        assertFalse(ProjectMediaService.deleteUnreferencedSelectedMedia(
+                rootDir, project, created.projectPath, savedReference));
+        assertTrue("A saved project reference must preserve the media file", stored.isFile());
+        assertTrue(ProjectMediaService.deleteUnreferencedSelectedMedia(
+                rootDir, project, created.projectPath, new JSONObject().toString()));
+        assertFalse(stored.exists());
+    }
+
+    @Test
     public void testImportRollbackOnCommitOrMediaFailure() throws Exception {
         File file1 = tempFolder.newFile("sample.png");
         byte[] content1 = "SAMPLE_PNG_DATA".getBytes(StandardCharsets.UTF_8);

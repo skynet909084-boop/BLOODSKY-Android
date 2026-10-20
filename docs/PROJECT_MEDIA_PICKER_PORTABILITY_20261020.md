@@ -4,6 +4,6 @@ Newly selected image and audio files are copied into the active project's privat
 
 The copy is bounded to 10 MiB per selected file and 10 MiB total in the active media generation, with a 2,048-file limit. Identical content with the same normalized extension is deduplicated. Files are written to a same-directory temporary file, flushed to disk, then renamed into place. The property editor's Apply button stays disabled until queued copies finish. Existing project references and older media generations are preserved.
 
-This slice does not restore an open property dialog or its pending picker target after Activity recreation. Canceling the property dialog after selecting a file can leave an unreferenced private media file; cleanup is deferred because generations may still be referenced by saved projects. Previously saved external content URIs are not migrated by this change.
+This slice does not restore an open property dialog or its pending picker target after Activity recreation. Canceling properties deletes only a newly created copy that remains unreferenced in the saved active project; deduplicated files and any saved reference are retained. Previously saved external content URIs are not migrated by this change.
 
-Validation is recorded in the related pull request; Android provider behavior still needs emulator/device acceptance.
+The related pull request adds unit coverage for new-copy tracking, dedupe, referenced-file preservation and canceled-copy deletion. Android provider behavior still needs emulator/device acceptance.

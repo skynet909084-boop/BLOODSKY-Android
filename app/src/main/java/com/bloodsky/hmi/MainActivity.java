@@ -75,6 +75,7 @@ public class MainActivity extends Activity {
     private EditText pendingMediaField;
     private AlertDialog activePropertiesDialog;
     private int pendingMediaCopyCount;
+    private final Map<AlertDialog, List<PendingMediaCopy>> pendingMediaCopies = new java.util.IdentityHashMap<>();
     private String projectName = "Мой проект";
     private JSONObject projectExtraFields = new JSONObject();
     private final CraftSystemRegisterBank systemRegisterBank = new CraftSystemRegisterBank();
@@ -2322,13 +2323,19 @@ public class MainActivity extends Activity {
             modbusExecutor.execute(() -> {
                 try (InputStream in = getContentResolver().openInputStream(selected)) {
                     String displayName = selectedMediaDisplayName(selected);
-                    String projectPath = ProjectMediaService.storeSelectedMedia(
+                    ProjectMediaService.SelectedMediaCopy copy = ProjectMediaService.storeSelectedMediaCopy(
                             getFilesDir(), projectJson, displayName, in);
                     runOnUiThread(() -> {
-                        if (isFinishing() || isDestroyed()) return;
-                        target.setText(projectPath);
+                        if (isFinishing() || isDestroyed() || waitingDialog == null
+                                || waitingDialog != activePropertiesDialog || !waitingDialog.isShowing()) {
+                            cleanupUnreferencedMediaCopy(projectJson, copy);
+                            finishPendingMediaCopy(waitingDialog);
+                            return;
+                        }
+                        target.setText(copy.projectPath);
                         imageCache.remove(selected.toString());
-                        imageCache.remove(projectPath);
+                        imageCache.remove(copy.projectPath);
+                        trackPendingMediaCopy(waitingDialog, projectJson, copy);
                         finishPendingMediaCopy(waitingDialog);
                         Toast.makeText(this, "Файл сохранён в проект", Toast.LENGTH_SHORT).show();
                     });
@@ -2409,6 +2416,52 @@ public class MainActivity extends Activity {
         pendingMediaCopyCount = Math.max(0, pendingMediaCopyCount - 1);
         Button apply = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
         if (apply != null) apply.setEnabled(pendingMediaCopyCount == 0);
+    }
+
+    private static final class PendingMediaCopy {
+        final String projectJson;
+        final String projectPath;
+        PendingMediaCopy(String projectJson, String projectPath) {
+            this.projectJson = projectJson;
+            this.projectPath = projectPath;
+        }
+    }
+
+    private void trackPendingMediaCopy(AlertDialog dialog, String projectJson,
+                                       ProjectMediaService.SelectedMediaCopy copy) {
+        if (copy == null || !copy.created) return;
+        List<PendingMediaCopy> copies = pendingMediaCopies.get(dialog);
+        if (copies == null) {
+            copies = new ArrayList<>();
+            pendingMediaCopies.put(dialog, copies);
+        }
+        copies.add(new PendingMediaCopy(projectJson, copy.projectPath));
+    }
+
+    private void cleanupUnreferencedMediaCopy(String projectJson,
+                                              ProjectMediaService.SelectedMediaCopy copy) {
+        if (copy == null || !copy.created) return;
+        String savedProjectJson = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
+        try {
+            ProjectMediaService.deleteUnreferencedSelectedMedia(
+                    getFilesDir(), projectJson, copy.projectPath, savedProjectJson);
+        } catch (IOException cleanupFailure) {
+            android.util.Log.w("BLOODSKY", "Could not remove canceled project media", cleanupFailure);
+        }
+    }
+
+    private void cleanupPendingMediaCopies(AlertDialog dialog) {
+        List<PendingMediaCopy> copies = pendingMediaCopies.remove(dialog);
+        if (copies == null || copies.isEmpty()) return;
+        String savedProjectJson = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
+        for (PendingMediaCopy copy : copies) {
+            try {
+                ProjectMediaService.deleteUnreferencedSelectedMedia(
+                        getFilesDir(), copy.projectJson, copy.projectPath, savedProjectJson);
+            } catch (IOException cleanupFailure) {
+                android.util.Log.w("BLOODSKY", "Could not remove canceled project media", cleanupFailure);
+            }
+        }
     }
 
     private String selectedMediaDisplayName(Uri uri) {
@@ -5025,6 +5078,7 @@ public class MainActivity extends Activity {
         pendingMediaCopyCount = 0;
         properties.setOnDismissListener(dismissed -> {
             if (activePropertiesDialog == properties) activePropertiesDialog = null;
+            cleanupPendingMediaCopies(properties);
         });
         properties.setOnShowListener(shown -> properties.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(clicked -> {
                     final WidgetGeometryEdits geometry;
