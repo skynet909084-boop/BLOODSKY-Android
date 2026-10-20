@@ -255,3 +255,36 @@ These are record counts only; they do not assert the supported runtime semantics
 - Проверка run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39388319775) подтверждает head `0406c01c2440d65cd726967744a3d45a27eb04dc`. На момент записи завершены 3 из 10 направлений: FBD, exit-policy и macros; остальные 7 ещё в работе.
 - Для FBD: 16/16 уникальных состояний, 115 переходов, 230 доступных long-press controls / 82 выполненных long presses, 1766.4 с, 0 stalled states. Для exit-policy: 15/15, 61, 35/2, 953.2 с, 0 stalls. Для macros: 5/5, 32, 29/3, 484.6 с, 0 stalls. Во всех трёх отчётах нет probe errors; прогоны остановились на depth/control/cycle boundary с `coverage_complete=false`. Это навигационные наблюдения, не доказательство полного UI-паритета.
 - После завершения оставшихся семи направлений перепроверить каждый `ui-audit.json`, добавить все 10 строк и сохранить фактические ограничения покрытия. Главная ветка остаётся на зафиксированном SHA `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+
+
+### Дополнение к source audit ID 3 — 20 Oct 2026
+
+- В двух DEX-деревьях найдено 27 классов, реализующих `CustomComponents/z` и `getIdComponent()`. Их constructor defaults для возвращаемого ID соответствуют 1, 2 и 4–28; ни один default не задаёт ID 3. В нескольких классах соответствующее поле может позднее получить значение из parsed/passed data, поэтому это не раскрывает смысл сериализованного ID 3 и не заменяет поиск реального проекта/каталога с таким ID.
+
+
+## Обновление статуса полного Craft UI probe #171 — финальный разбор
+
+Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39388319775) завершился с успехом для всех 10 jobs. Каждый артефакт указывает на один и тот же probe SHA `0406c01c2440d65cd726967744a3d45a27eb04dc`. В каждой строке ниже `unique states = captured states`, `probe_error=""`; однако все отчёты отмечают `coverage_limited=true` и `coverage_complete=false`.
+
+| Направление | Состояния / уникальные | Переходы | Long-press controls / actions | Секунды | Stalls | Seed | Остановка |
+|---|---:|---:|---:|---:|---:|---|---|
+| FBD | 16 / 16 | 115 | 230 / 82 | 1766.4 | 0 | success (21.2s) | depth/control/cycle limit |
+| Exit policy | 15 / 15 | 61 | 35 / 2 | 953.2 | 0 | не запускался | depth/control/cycle limit |
+| Macros | 5 / 5 | 32 | 29 / 3 | 484.6 | 0 | success (26.6s) | depth/control/cycle limit |
+| Runtime | 22 / 22 | 134 | 479 / 109 | 2839.3 | 0 | success (26.4s) | depth/control/cycle limit |
+| Network | 22 / 22 | 151 | 478 / 134 | 3003.8 | 0 | success (22.0s) | runtime limit |
+| Components | 36 / 36 | 177 | 263 / 34 | 3004.1 | 0 | success (22.2s) | runtime limit |
+| Import QR | 26 / 26 | 141 | 426 / 118 | 3092.0 | 1 | не запускался | runtime limit |
+| Devices | 22 / 22 | 136 | 403 / 97 | 3077.0 | 0 | success (26.0s) | runtime limit |
+| Project create | 20 / 20 | 133 | 452 / 117 | 3055.8 | 0 | success (24.0s) | runtime limit |
+| Import paste | 30 / 30 | 161 | 427 / 111 | 3090.8 | 1 | не запускался | runtime limit |
+
+В таблице шесть направлений завершились по 3000-секундному runtime cap; фактическое elapsed может превышать его из-за teardown и записи отчёта. Четыре завершились на границе глубины/контролов/цикла. Import QR и import paste дали по одному stalled state. Успешный статус job означает успешное выполнение probe и загрузку артефакта, не завершение покрытия и не UI-паритет.
+
+
+## P1 sanitized Craft ZIP acceptance — 20 Oct 2026
+
+- Draft PR [#164](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/164) добавляет in-memory sanitized Craft ZIP через production import bundle, редактирование, atomic save/reopen, export и повторный import. Тест сравнивает сохранённое `craftSource`, проверяет vendor-поля, fail-closed placeholder для неизвестного ID 3 и исходные байты фонового media.
+- Exact-head APK/JUnit [#1165](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39394794516) прошёл на `744a199f91d2a728dfc778cfbe349a067fc1b190`. UI smoke #791 пропущен path filter, так как PR меняет только тесты; производственный/runtime-код не изменён. PR оставлен draft, не слит.
+- Этот gate закрывает один синтетический sanitized ZIP путь, а не acceptance пользовательских `home2`/`дом 2025` архивов. Подлинные пользовательские архивы не добавлялись в репозиторий.
