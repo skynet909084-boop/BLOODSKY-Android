@@ -173,21 +173,13 @@ All nine available `ui-audit.json` files had `unique_state_signatures == states_
 - Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
 
 
-### Full-profile Craft run #171 — active checkpoint
+### Interim checkpoint for full Craft run #171
 
-- Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39388319775) is running on probe head `0406c01c2440d65cd726967744a3d45a27eb04dc`. The latest check shows 9 of 10 direction jobs in progress and `macros` completed successfully; the other artifacts are not published yet.
-- Reviewed the available `macros` artifact: 5 captured / 5 unique states, 32 transitions, 29 long-pressable controls, 3 long presses, no loading stall and no probe error. It ended at `depth_control_or_cycle_limit`, with `coverage_limited=true` and `coverage_complete=false`. This is partial navigation evidence only.
-- PR [#69](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/69) remains a draft and unmerged. Its exact head `f8f167c78190c06bcb7b726ec613e6dce02e2402` passed APK/JUnit [#396](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39016734417) and UI smoke [#64](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39016734410) on its old base. After retargeting, current PR metadata reports `mergeable=false`; its five commits are based at `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`, while the current PR base is `63bffdd0c2a966c6dbc059b14fee508af3c44fa6`. Do not merge. Decompose and port selected functionality against the current model, then run exact-head APK/JUnit and UI smoke.
-- Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+This historical checkpoint was superseded when run #171 finished. The final per-direction audit table and coverage limits are recorded under “Обновление статуса полного Craft UI probe #171 — финальный разбор” below. No active probe jobs remain.
 
+PR [#69](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/69) remains a draft and unmerged. Its old-base checks do not validate the current prototype, and GitHub reported `mergeable=false` against the then-current base. Its generic inverter/ordinal pin model conflicts with the richer typed graph; the narrower failed-save rollback was adapted to current code in draft PR #163. Do not merge PR #69 wholesale.
 
-#### #171 artifact update — exit-policy
-
-| Direction | States / unique | Transitions | Long-press controls | Long presses | Seconds | Loading stalls | Coverage |
-|---|---:|---:|---:|---:|---:|---:|---|
-| Exit policy | 15 / 15 | 61 | 35 | 2 | 953.2 | 0 | limited; depth/control/cycle boundary |
-
-The artifact completed without probe errors or runtime-cap hit. Its project seed was not attempted, appropriate to this exit-policy path. `coverage_complete=false`; this is not full Craft coverage. The other eight directions remain in progress.
+Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
 
 
 ## Portable project media review — 20 Oct 2026
@@ -242,7 +234,7 @@ These are record counts only; they do not assert the supported runtime semantics
 
 - Проверен приложенный пользователем Apktool/JADX source archive; SHA-256: `92d12206bde746f5a76c89e0c3311119287b14bb26cdc8ca36d515e2fca01f7a`. Файл остался в пользовательском scratch и не копировался в репозиторий.
 - Независимый Smali cross-check: `smali/ru/himik/nightscream/kascada/mbCanvas.smali`, числовая фабрика `mbCanvas.m(...)`. Условия отдельно обрабатывают IDs 1 и 2; packed-switch покрывает 4–28; default для ID 3 поднимает существующие canvas views и возвращает `null`. Обнаружен и второй маршрут создания `private l(String,int,int,int)`: он выбирает palette-компоненты по строковым именам (`FB_TRIGGER`, `FB_XOR`, `MQTT_PUBLISHER`, `CustomGateway` и др.), создаёт соответствующие классы и сохраняет views в `MyApplication.D` (`SparseArray`). Это отдельный palette adapter, но он не связывает числовой ID 3 с классом. В двух DEX Smali-деревьях literal search нашёл все прямые `CustomComponents/...-><init>` места: вне самих компонентов они относятся к `mbCanvas`/его palette пути и helper-классам; поиски `Class.forName/newInstance`, `ClassLoader.loadClass`, `Constructor.newInstance` и `Method.invoke` не выявили отражённого создания компонентов. Это ограниченный поиск точных Smali opcode/reference patterns, не доказательство отсутствия произвольного obfuscated/indirect пути. Числовая фабрика остаётся fail-closed для ID 3.
-- Ни в приложенных проектных примерах, ни в ранее изученных пользовательских примерах не найдено положительного соответствия ID 3. Оставить его видимым неподдерживаемым/отключённым placeholder; не назначать тип по догадке. Поиск других palette/resource adapters и app-wide регистрации остаётся открытым.
+- Ни в приложенных проектных примерах, ни в ранее изученных пользовательских примерах не найдено положительного соответствия ID 3. Числовая фабрика и строковая palette adapter проверены; поиск точных reflective class-construction patterns также завершён. Оставить ID 3 видимым неподдерживаемым/отключённым placeholder и не назначать тип по догадке. Осталось найти реальный Craft проект/каталог с таким ID либо подтверждение из другой версии приложения.
 
 ## Обновление: FBD rollback PR #163 — 20 Oct 2026
 
