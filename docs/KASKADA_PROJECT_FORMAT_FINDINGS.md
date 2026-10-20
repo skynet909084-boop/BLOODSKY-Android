@@ -71,3 +71,23 @@ For BLOODSKY, preserve the ordered device-slot array, resolve each component's s
 Do not validate `posDeviceNetworkInList` only as an array index. The original app's connection-settings click handler explicitly writes integer `100` to this field for a dedicated control (`r/h0.smali`, click ID `0x7f090141`); the same model field is serialized as `posDeviceNetworkInList` by component JSON writers such as `CustomComponents/w.smali`. This confirms that `100` is an intentional special state exposed by the original UI, not automatically a malformed or stale slot reference. The exact user-facing label of that control has not yet been recovered.
 
 The supplied local archives contain this value in multiple components, so preserving it is required for lossless import/export. BLOODSKY should retain `100` as an opaque/reserved binding state and must not clamp it to the current `deviceNetwork` length, reinterpret it as slot 100, or silently replace it with `-1`. The original runtime path is now source-confirmed: `mbCanvas.F(...)` checks for 100 and routes the binding object to the app's global register manager instead of indexing the network-device list. BLOODSKY already preserves this source binding and maps it to its internal/global register bucket 8 in `CraftNetworkBindingResolver`; `CraftProjectImporterTest.preservesGlobalRegisterBindingWithoutActivatingDeviceSlot100` verifies round-trip preservation and confirms it is not activated as device slot 100. No importer code change is needed for this case.
+
+
+## Проверка двух экспортированных проектов — 2026-10-19
+
+Сопоставлены два предоставленных Craft ZIP-архива. Сетевые адреса, пароли и значения регистров не записывались.
+
+| Структура архива | Проект A | Проект B |
+|---|---:|---:|
+| Экраны | 16 | 16 |
+| Строки `deviceNetwork` | 16 | 16 |
+| `countDevice` | 1 | 7 |
+| Записи `TableComponent` | 65 | 346 |
+| Виджеты с `connectionInfo` | 46 | 75 |
+| Привязки к слоту 0 | 45 | 13 |
+| Привязки со значением 100 | 1 | 62 |
+| Строки `TableConnections` | 3 | 2 |
+
+В обоих ZIP JSON проекта находится во вложенном файле с расширением `.pro` рядом с JPG. В первом проекте отдельный `.pro` совпадает с копией внутри архива. Повторяющийся `connectionsId=2` встречается в разных строках `TableConnections`, поэтому это значение нельзя использовать как уникальный ключ. Число `countDevice` не совпадает с размером массива `deviceNetwork`; оба поля нужно переносить отдельно. Привязки виджетов через `posDeviceNetworkInList` не являются рёбрами FBD из `TableConnections`/графа.
+
+Эти числа — контрольные характеристики двух образцов, а не универсальные ограничения формата. Тест ZIP round-trip дополнительно проверяет сохранение трёх независимых слоёв: упорядоченных слотов устройств, непрозрачной привязки виджета и связей FBD на уровне экрана.
