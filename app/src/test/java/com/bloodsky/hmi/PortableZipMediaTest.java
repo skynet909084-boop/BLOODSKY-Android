@@ -639,5 +639,26 @@ public class PortableZipMediaTest {
         }
     }
 
+
+    @Test
+    public void cleanupKeepsSelectedMediaReferencedThroughEscapedJsonPath() throws Exception {
+        String projectJson = new JSONObject().put("id", "cleanup-project").toString();
+        ProjectMediaService.SelectedMediaCopy copy = ProjectMediaService.storeSelectedMediaCopy(
+                rootDir, projectJson, "image.png", new ByteArrayInputStream(new byte[]{1, 2, 3, 4}));
+        File stored = new File(ProjectMediaService.getProjectMediaDir(rootDir, projectJson),
+                copy.projectPath.substring("media/".length()));
+        assertTrue(stored.isFile());
+
+        String escapedPath = copy.projectPath.replace("/", "\\/");
+        String savedProjectJson = "{\\\"screens\\\":[{\\\"widgets\\\":[{\\\"pathOrNameOn\\\":\\\""
+                + escapedPath + "\\\"}]}]}";
+        assertFalse(ProjectMediaService.deleteUnreferencedSelectedMedia(
+                rootDir, projectJson, copy.projectPath, savedProjectJson));
+        assertTrue("Referenced media must remain available after applying widget properties", stored.isFile());
+
+        assertTrue(ProjectMediaService.deleteUnreferencedSelectedMedia(
+                rootDir, projectJson, copy.projectPath, "{\\\"screens\\\":[]}"));
+        assertFalse(stored.exists());
+    }
 }
 
