@@ -433,3 +433,11 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 - PR #180 tracks whether a picker copy created a new file and removes it on property-dialog dismissal only if the saved active project does not reference that generated path. Dedupe results and any saved JSON reference are retained. A late picker-copy callback also cleans its new unreferenced file if its dialog is already gone.
 - Exact-head APK/JUnit #1198 and Android 11 UI smoke #837 passed. The Python source contract and JUnit cover dialog callback wiring, dedupe, saved-reference preservation and deletion of an unreferenced copy. Merged into \`prototype/all-in-one-20261020\` as \`3dcc7ad5801565bd956e6c18c1a4f172a0588e9a\`.
 - Restoring the open properties dialog and picker target after Activity recreation remains separate work. Stable \`main\` remains pinned at \`b11fbb9b9bdb35cacbcd466d57d414071d94aa5e\`.
+
+## Media property picker Activity restoration — 20 Oct 2026
+
+- PR [#181](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/181) restores the widget properties dialog after Activity recreation while the system media picker is open. It saves the selected widget, media field path, and pending EditText, checkbox, and spinner values, then reopens the editor and dialog before the picker result is handled.
+- Exact-head APK/JUnit run [#1199](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39423529824) passed on `df0529c61eb0a1f8e0096afcb02cd8300117bd7f`; debug APK artifact [12264592473](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39423529824).
+- Exact-head Android 11 UI smoke [#838](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39423529942) passed. The current quick profile does not specifically kill the Activity while DocumentsUI is open, so that exact lifecycle handoff still lacks dedicated emulator coverage.
+- Merged into `prototype/all-in-one-20261020` as `396b820a6343b9ac5b60158cfc9cb79e3f1c8c78`. Stable `main` remains pinned at `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
