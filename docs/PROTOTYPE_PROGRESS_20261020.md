@@ -179,3 +179,12 @@ All nine available `ui-audit.json` files had `unique_state_signatures == states_
 - Reviewed the available `macros` artifact: 5 captured / 5 unique states, 32 transitions, 29 long-pressable controls, 3 long presses, no loading stall and no probe error. It ended at `depth_control_or_cycle_limit`, with `coverage_limited=true` and `coverage_complete=false`. This is partial navigation evidence only.
 - PR [#69](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/69) remains a draft and unmerged. Its exact head `f8f167c78190c06bcb7b726ec613e6dce02e2402` passed APK/JUnit [#396](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39016734417) and UI smoke [#64](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39016734410) on its old base. After retargeting, current PR metadata reports `mergeable=false`; its five commits are based at `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`, while the current PR base is `63bffdd0c2a966c6dbc059b14fee508af3c44fa6`. Do not merge. Decompose and port selected functionality against the current model, then run exact-head APK/JUnit and UI smoke.
 - Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+
+#### #171 artifact update — exit-policy
+
+| Direction | States / unique | Transitions | Long-press controls | Long presses | Seconds | Loading stalls | Coverage |
+|---|---:|---:|---:|---:|---:|---:|---|
+| Exit policy | 15 / 15 | 61 | 35 | 2 | 953.2 | 0 | limited; depth/control/cycle boundary |
+
+The artifact completed without probe errors or runtime-cap hit. Its project seed was not attempted, appropriate to this exit-policy path. `coverage_complete=false`; this is not full Craft coverage. The other eight directions remain in progress.
