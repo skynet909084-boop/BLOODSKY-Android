@@ -158,7 +158,7 @@ class OriginalSourceContractsTests(unittest.TestCase):
                 '  int res = R.drawable.kc_lamp_green;\n'
                 '  void addWidget() {}\n'
                 '  void adjustSetpoint() {}\n'
-                '  void playSoundAlert() {}\n'
+                '  void playCraftAlarmAlert() {}\n'
                 '  void activateScreen() {}\n'
                 '  void loadCachedBitmap() {}\n'
                 '  void speakVoiceAnnouncement() {}\n'
