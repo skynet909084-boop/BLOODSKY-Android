@@ -43,7 +43,7 @@ Source: decompiled APK artifact `11912849123`, `jadx/sources/ru/himik/nightscrea
 
 - Original `FB_AND.onDraw`: `V.set(T, U, width-T, height-U)`; draw fill `-7829368` and stroke `-16777216`. Input port Y = `height/4` and `3*height/4`. Output Y = `(height/3)/2 + height/3` (integer arithmetic).
 - Original `FB_XOR`, `FB_RS`, `FB_TIMER`: divider at `height/3`; vertical divider at `width/2` from header to bottom. Input port lines are **conditional on nonempty labels M and O**; output line is conditional on nonempty label Q. Text baseline is determined by `a0`, not arbitrary font centering.
-- Original `FB_AND` and `FB_XOR`: output inversion bubble only if `f8973e && R == 1`. This behavior is **not yet faithfully implemented** in BLOODSKY.
+- Original `FB_AND` and `FB_XOR`: output inversion bubble only if `f8973e && R == 1`. BLOODSKY evaluates persisted `invertOut` for supported BOOL Q blocks when their required, type-compatible inputs are connected. The class-specific bubble visibility and geometry still need screenshot parity verification.
 - The existing BLOODSKY FBD types are not one-to-one with the original classes (e.g. CTD and NAND variants). **Do not claim they are original until class/mode mapping is verified.**
 
 ## Work required before full-clone claim
