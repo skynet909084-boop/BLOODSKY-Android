@@ -257,7 +257,7 @@ class Smoke:
             adb('shell', 'input', 'keyevent', '4')
 
     def checkpoint(self, name):
-        (self.output / 'last-checkpoint.txt').write_text(name + '\\n')
+        (self.output / 'last-checkpoint.txt').write_text(name + '\n')
 
     def capture(self, name):
         if name != 'failure':
@@ -959,7 +959,7 @@ class Smoke:
         if isinstance(state_images, str):
             state_images = json.loads(state_images)
         selected_path = state_images.get('pathOrNameOn', '')
-        match = re.fullmatch(r'media/asset_([0-9a-f]{64})\\.png', selected_path)
+        match = re.fullmatch(r'media/asset_([0-9a-f]{64})\.png', selected_path)
         if not match or state_images.get('pathOrNameOff') != 'blue':
             raise AssertionError('Selected ON/OFF images did not survive process restart: ' + repr(state_images))
         if not state_images.get('isImageUserOn') or state_images.get('isImageUserOff'):
