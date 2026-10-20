@@ -389,4 +389,13 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 
 - Added ODTEMP's original `draw12` default drawing to the same simple source skin: fixed `DT` label, gray body, black outline, and one centered `Q` output. Its source drawing does not add an inversion bubble, so the simple-source rendering suppresses it.
 - Added regression coverage for source type, default caption, and pin contract. Runtime and project metadata are unchanged.
-- Local Python gate passed 164 tests and `git diff --check` passed. Exact-head Android validation is pending; visual parity remains partial until same-density comparison.
+- Exact-head APK/JUnit [#1181](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39412029438) passed Python checks, all 503 Android unit tests, and debug APK build. Exact-head Android 11 smoke [#819](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39412029888) passed.
+- Local Python gate passed 164 tests and `git diff --check` passed. Visual parity remains partial until same-density comparison. PR [#173](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/173) merged as `585c8529397bf2d2c19b2541dee0c72552d654fd`.
+
+
+## Craft variable block source drawings — 20 Oct 2026
+
+- Added default source-shaped drawings for all eight register and named-variable block types: BOOL, INT, FLOAT, input and output, and named variable input/output.
+- Shape follows the source family: rectangle for BOOL, rounded rectangle for INT, beveled body for FLOAT, and directional polygons for named variables. Captions follow imported `reg`, `bit`, constant, and variable-name fields; custom captions remain editable.
+- Added regressions for the full type family, metadata-derived captions, custom-caption fallback, and pin contracts. Source matrix marks parity partial pending same-density comparison.
+- Local Python tools suite passed 164 tests and `git diff --check` passed. Exact-head Android APK/JUnit and UI smoke are pending.
