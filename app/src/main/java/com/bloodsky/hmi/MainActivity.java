@@ -336,8 +336,9 @@ public class MainActivity extends Activity {
 
     private void playCraftAlarmAlert(String alarmKey, String pathOrUri, int craftAlarmSoundIndex, boolean loop) {
         stopCraftAlarmAlert(alarmKey);
-        MediaPlayer player = new MediaPlayer();
+        MediaPlayer player = null;
         try {
+            player = new MediaPlayer();
             int alarmResource = craftAlarmResource(craftAlarmSoundIndex);
             if (alarmResource != 0) {
                 player.setDataSource(this, Uri.parse("android.resource://" + getPackageName() + "/" + alarmResource));
@@ -392,7 +393,7 @@ public class MainActivity extends Activity {
             player.prepareAsync();
         } catch (Exception ex) {
             if (craftAlarmPlayers.get(alarmKey) == player) craftAlarmPlayers.remove(alarmKey);
-            releaseCraftAlarmPlayer(player);
+            if (player != null) releaseCraftAlarmPlayer(player);
             android.util.Log.e("BLOODSKY", "Craft alarm error", ex);
             playCraftAlarmFallbackTone(alarmKey, ToneGenerator.TONE_PROP_BEEP, 250);
         }
