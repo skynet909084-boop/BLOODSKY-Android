@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import subprocess
 import time
+import traceback
 import xml.etree.ElementTree as ET
 
 PACKAGE = 'com.bloodsky.hmi'
@@ -255,7 +256,11 @@ class Smoke:
         if keyboard_is_shown(adb('shell', 'dumpsys', 'input_method')):
             adb('shell', 'input', 'keyevent', '4')
 
+    def checkpoint(self, name):
+        (self.output / 'last-checkpoint.txt').write_text(name + '\\n')
+
     def capture(self, name):
+        self.checkpoint('capture:' + name)
         (self.output / (name + '.png')).write_bytes(adb('exec-out', 'screencap', '-p', binary=True))
         (self.output / (name + '.xml')).write_text(self.dump())
 
@@ -925,27 +930,37 @@ class Smoke:
             raise AssertionError('Invalid properties edit partially mutated geometry')
         self.replace_property_input('Ширина элемента', '160.375')
         self.capture('04a-fractional-properties')
+        self.checkpoint('fractional:apply-click')
         self.tap('Применить')
+        self.checkpoint('fractional:editor-after-apply')
         self.wait_node(description='Редактор экрана')
+        self.checkpoint('fractional:back-click')
         adb('shell', 'input', 'keyevent', '4')
+        self.checkpoint('fractional:home-after-back')
         self.wait_node('Создать новый проект')
+        self.checkpoint('fractional:force-stop')
         adb('shell', 'am', 'force-stop', PACKAGE)
         adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/.MainActivity')
+        self.checkpoint('fractional:restarted-home')
         self.tap('Загрузить проект')
+        self.checkpoint('fractional:project-list')
         self.tap(PROJECT)
+        self.checkpoint('fractional:editor-after-reopen')
         self.wait_node(description='Редактор экрана')
         persisted = adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml')
         after = json.loads({n.get('name'): n.text for n in ET.fromstring(persisted)}['active_project'])['screens'][0]['widgets'][0]
         expected = dict(x=40.125, y=50.875, w=160.375, h=140.625)
+        self.checkpoint('fractional:geometry-loaded:' + json.dumps({k: after.get(k) for k in expected}, sort_keys=True))
         if any(after[key] != value for key, value in expected.items()):
-            raise AssertionError('Fractional property edit did not survive process restart')
+            raise AssertionError('Fractional property edit did not survive process restart: expected='
+                                 + repr(expected) + ' actual=' + repr({k: after.get(k) for k in expected}))
         state_images = after.get('other', after)
         if isinstance(state_images, str):
             state_images = json.loads(state_images)
         if not state_images.get('pathOrNameOn', '').startswith('content://') or state_images.get('pathOrNameOff') != 'blue':
             raise AssertionError('Selected ON/OFF images did not survive process restart')
         if not state_images.get('isImageUserOn') or state_images.get('isImageUserOff'):
-            raise AssertionError('Builtin/custom image flags were not retained')
+            raise AssertionError('Builtin/custom image flags were not retained: ' + repr(state_images))
         self.capture('04b-fractional-reopened')
         canvas = self.wait_node(description='Редактор экрана')
         left, top, _, _ = map(int, re.findall(r'\d+', canvas.get('bounds')))
@@ -1084,8 +1099,17 @@ def main():
     smoke = Smoke(args.output)
     try:
         smoke.run(args.apk)
-    except Exception:
+    except Exception as exc:
         try:
+            (args.output / 'failure.txt').write_text(type(exc).__name__ + ': ' + str(exc) + '\\n\\n' + traceback.format_exc())
+            try:
+                (args.output / 'failure-activity.txt').write_text(adb('shell', 'dumpsys', 'activity', 'activities'))
+            except Exception as diagnostic_error:
+                (args.output / 'failure-activity.txt').write_text('diagnostic failed: ' + repr(diagnostic_error))
+            try:
+                (args.output / 'failure-project.xml').write_text(adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml'))
+            except Exception as diagnostic_error:
+                (args.output / 'failure-project.xml').write_text('diagnostic failed: ' + repr(diagnostic_error))
             smoke.capture('failure')
             (args.output / 'logcat.txt').write_text(adb('logcat', '-d', '-t', '1500'))
         except Exception:
