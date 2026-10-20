@@ -278,6 +278,99 @@ public class ProjectMediaService {
         return out.toByteArray();
     }
 
+    /** Copies a picker-selected file into this project's private media generation. */
+    public static String storeSelectedMedia(File filesDir, String projectJson,
+                                            String displayName, InputStream input) throws IOException {
+        byte[] bytes = readBoundedMedia(input);
+        if (bytes.length == 0) throw new IOException("Selected media file is empty");
+        File directory;
+        try { directory = getProjectMediaDir(filesDir, projectJson); }
+        catch (RuntimeException invalidProject) {
+            throw new IOException("Project has no stable media identity", invalidProject);
+        }
+        if (!directory.isDirectory()) throw new IOException("Project media directory unavailable");
+
+        String extension = safeMediaExtension(displayName);
+        String name = "asset_" + sha256(bytes) + extension;
+        File destination = new File(directory, name).getCanonicalFile();
+        String base = directory.getCanonicalPath();
+        if (!destination.getPath().startsWith(base + File.separator))
+            throw new IOException("Unsafe selected media path");
+        if (destination.exists()) {
+            if (!destination.isFile() || !fileMatchesBytes(destination, bytes))
+                throw new IOException("Selected media hash collision");
+            return "media/" + name;
+        }
+
+        long existingBytes = 0;
+        int existingFiles = 0;
+        java.util.ArrayDeque<File> pending = new java.util.ArrayDeque<>();
+        pending.add(directory);
+        while (!pending.isEmpty()) {
+            File current = pending.removeFirst();
+            File[] children = current.listFiles();
+            if (children == null) throw new IOException("Cannot inspect project media directory");
+            for (File child : children) {
+                if (child.isDirectory()) pending.addLast(child);
+                else if (child.isFile()) {
+                    existingFiles++;
+                    long length = child.length();
+                    if (length > MAX_BUNDLE_BYTES || existingBytes > MAX_BUNDLE_BYTES - length)
+                        throw new IOException("Project media exceeds size limit");
+                    existingBytes += length;
+                }
+            }
+        }
+        if (existingFiles >= 2048) throw new IOException("Project media file count limit reached");
+        if (existingBytes + bytes.length > MAX_BUNDLE_BYTES)
+            throw new IOException("Project media exceeds size limit");
+
+        File temporary = File.createTempFile(".selected_media_", ".tmp", directory);
+        boolean published = false;
+        try {
+            try (FileOutputStream output = new FileOutputStream(temporary)) {
+                output.write(bytes);
+                output.getFD().sync();
+            }
+            if (!temporary.renameTo(destination)) {
+                if (destination.isFile() && fileMatchesBytes(destination, bytes))
+                    return "media/" + name;
+                throw new IOException("Could not publish selected media");
+            }
+            published = true;
+            return "media/" + name;
+        } finally {
+            if (!published && temporary.exists()) temporary.delete();
+        }
+    }
+
+    private static String safeMediaExtension(String displayName) {
+        if (displayName == null) return ".bin";
+        String name = displayName.replace('\\', '/');
+        name = name.substring(name.lastIndexOf('/') + 1);
+        int dot = name.lastIndexOf('.');
+        if (dot < 0 || dot == name.length() - 1 || name.length() - dot > 11) return ".bin";
+        String extension = name.substring(dot + 1).toLowerCase(Locale.ROOT);
+        return extension.matches("[a-z0-9]{1,10}") ? "." + extension : ".bin";
+    }
+
+    private static String sha256(byte[] bytes) throws IOException {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(bytes);
+            StringBuilder value = new StringBuilder(64);
+            for (byte item : digest) value.append(String.format(Locale.ROOT, "%02x", item));
+            return value.toString();
+        } catch (java.security.NoSuchAlgorithmException unavailable) {
+            throw new IOException("SHA-256 unavailable", unavailable);
+        }
+    }
+
+    private static boolean fileMatchesBytes(File file, byte[] expected) throws IOException {
+        try (InputStream input = new FileInputStream(file)) {
+            return java.util.Arrays.equals(expected, readBoundedMedia(input));
+        }
+    }
+
     public static File resolveMediaFile(File filesDir, String projectJson, String path) throws IOException {
         if (path == null || path.trim().isEmpty()) throw new java.io.FileNotFoundException("Empty media path");
         File direct = new File(path.trim());

@@ -11,6 +11,7 @@ The current prototype includes:
 - widget property editing and preservation of unknown JSON metadata;
 - compact original toolbar and a separate foreground operator mode with guarded runtime gestures;
 - local project persistence plus portable ZIP image/audio import/export and JSON export;
+- picker-selected image and audio files are copied into private project media storage and referenced by project-relative paths, so new selections remain available if the provider grant is revoked;
 - original APK home background/buttons, calculator, supported five-category palette and selection-action icons, with recorded source provenance;
 - the original 40-preview FBD catalogue with source-backed native logic, math/conversion, timer, trigger, register, MX/ARRAY and selected sensor/MQTT integrations; unsupported previews remain disabled;
 - original indicator ON/OFF image menus, built-in lamps and custom document-provider images retained after process restart;
