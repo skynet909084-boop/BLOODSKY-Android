@@ -21,6 +21,21 @@ class FastFbdUiGateTests(unittest.TestCase):
         self.assertIn("'2345'", script)
         self.assertNotIn("self.tap(description='Добавить: FBD CRAFT TIMER')", script)
 
+    def test_fbd_source_tap_targets_body_not_pin_gutter(self):
+        # Regression from Android 12 UI smoke #859. The source's upper-left
+        # pin/skin gutter did not select the block, leaving link mode active.
+        import sys
+        sys.path.insert(0, str(ROOT / 'tools'))
+        from android_ui_smoke import fbd_widget_interior_tap_point
+
+        source = {'x': 1085, 'y': 175, 'w': 525, 'h': 266}
+        x, y = fbd_widget_interior_tap_point(0, 140, source)
+        self.assertEqual((x, y), (1295, 448))
+        self.assertGreater(x, source['x'] + 22)
+        self.assertLess(x, source['x'] + source['w'] - 22)
+        self.assertGreater(y, 140 + source['y'] + 22)
+        self.assertLess(y, 140 + source['y'] + source['h'] - 22)
+
     def test_feature_pr_emulator_is_not_restarted_for_each_push(self):
         workflow = (ROOT / '.github/workflows/android-ui-smoke.yml').read_text(encoding='utf-8')
         self.assertIn("github.base_ref != 'main' && github.base_ref != 'feat/craft-project-json-import-20261018' && 'quick'", workflow)
