@@ -9,6 +9,8 @@ import org.junit.rules.TemporaryFolder;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.util.HashMap;
+import java.util.Map;
 import java.nio.charset.StandardCharsets;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -127,6 +129,61 @@ public class ProjectPersistenceTest {
             zos.closeEntry();
         }
         MainActivity.importProjectFromZip(new ByteArrayInputStream(baos.toByteArray()));
+    }
+
+    @Test
+    public void zipEntryNameValidatorRejectsPlatformAndAmbiguousPaths() {
+        for (String path : new String[]{"/absolute.json", "C:/drive.json", "folder/../escape.json",
+                "folder/./dot.json", "folder//empty-segment.json", "folder\\windows.json",
+                "bad" + ((char) 0) + "name.json"}) {
+            assertFalse(path, MainActivity.isSafeProjectArchiveEntryName(path));
+        }
+    }
+
+    @Test
+    public void zipEntryNameValidatorAllowsDotDotInsideFilenameAndDirectoryEntries() {
+        assertTrue(MainActivity.isSafeProjectArchiveEntryName("media/config..old.png"));
+        assertTrue(MainActivity.isSafeProjectArchiveEntryName("media/icons/"));
+    }
+
+    @Test
+    public void failedZipImportDoesNotPartiallyPublishExtractedMedia() throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (ZipOutputStream zos = new ZipOutputStream(baos)) {
+            zos.putNextEntry(new ZipEntry("media/new-image.png"));
+            zos.write(new byte[]{1, 2, 3});
+            zos.closeEntry();
+            zos.putNextEntry(new ZipEntry("TableNameProject.json"));
+            zos.write("{invalid-json".getBytes(StandardCharsets.UTF_8));
+            zos.closeEntry();
+        }
+        Map<String, byte[]> media = new HashMap<>();
+        media.put("existing.png", new byte[]{9});
+        try {
+            MainActivity.importProjectFromZip(new ByteArrayInputStream(baos.toByteArray()), media);
+            fail("Malformed project JSON must be rejected");
+        } catch (Exception expected) {
+            assertEquals(1, media.size());
+            assertArrayEquals(new byte[]{9}, media.get("existing.png"));
+            assertFalse(media.containsKey("new-image.png"));
+        }
+    }
+
+    @Test
+    public void zipImportRejectsExcessiveEntryCount() throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (ZipOutputStream zos = new ZipOutputStream(baos)) {
+            for (int i = 0; i <= 20_000; i++) {
+                zos.putNextEntry(new ZipEntry("entry-" + i));
+                zos.closeEntry();
+            }
+        }
+        try {
+            MainActivity.importProjectFromZip(new ByteArrayInputStream(baos.toByteArray()));
+            fail("An archive with excessive entries must be rejected");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage().contains("entry count"));
+        }
     }
 
     @Test
