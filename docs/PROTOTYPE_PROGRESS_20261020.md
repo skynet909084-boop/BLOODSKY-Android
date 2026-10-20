@@ -372,3 +372,10 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 - Added JUnit regressions for type coverage, dynamic labels, and custom-caption fallback. Updated the source matrix; the rows remain partial visual parity because there is no same-density side-by-side comparison.
 - Local Python gate passed: 164 tests. `gradle testDebugUnitTest --stacktrace` and `gradle assembleDebug --stacktrace` were attempted but could not run because Gradle and a wrapper are absent. Exact-head Android CI is required for validation.
 - Stable `main` remains pinned at `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+
+## Craft light and speed source drawings — 20 Oct 2026
+
+- Extended the same original `draw11` default source skin to `FBD CRAFT SENSOR LIGHT` (`LM`) and `FBD CRAFT SENSOR SPEED` (`SM`). Both expose only the original centered `Q` output and no inputs.
+- Added type/default-caption/pin regression assertions and source matrix rows. No project fields or runtime behavior changed.
+- Validation and exact-head CI are pending; visual parity remains partial until same-density comparison.
