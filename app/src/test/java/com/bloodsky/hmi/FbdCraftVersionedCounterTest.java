@@ -107,6 +107,10 @@ public class FbdCraftVersionedCounterTest {
         assertEquals(432, imported.counterValue);
         assertTrue(imported.craftLastPlus);
         assertTrue(imported.craftLastMinus);
+        MainActivity.Widget heldPlus = widget("FBD Вход");
+        heldPlus.inputValue = true;
+        assertEquals("Reopening while + remains high must not recount",
+                432, scan(Arrays.asList(heldPlus, widget("FBD Вход"), widget("FBD Вход"), imported), namedEdges()));
         assertEquals("keep", MainActivity.widgetToJson(imported).getString("vendorExtra"));
         MainActivity.Widget oldNativeProject = MainActivity.widgetFromJson(new JSONObject()
                 .put("type", "FBD CRAFT CTU")
