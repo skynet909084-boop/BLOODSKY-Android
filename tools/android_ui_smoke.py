@@ -357,6 +357,18 @@ class Smoke:
         active = json.loads({n.get('name'): n.text for n in ET.fromstring(xml)}['active_project'])
         return active['screens'][0].get('connections', [])
 
+    def wait_for_saved_connection_count(self, expected, timeout=10):
+        deadline = time.monotonic() + timeout
+        observed = None
+        while time.monotonic() < deadline:
+            observed = self.saved_connections()
+            if len(observed) == expected:
+                return observed
+            time.sleep(0.2)
+        raise AssertionError('Timed out waiting for saved connection count '
+                             + str(expected) + '; last count='
+                             + str(None if observed is None else len(observed)))
+
     def check_fbd_palette_and_properties(self, saved_widgets):
         baseline = saved_widgets()
         self.tap(description='Добавить элемент')
@@ -461,7 +473,9 @@ class Smoke:
         self.tap('Q')
         self.wait_node('Вход FBD')
         self.tap('IN')
-        links = self.saved_connections()
+        # The dialog tap is injected asynchronously; wait for the synchronous
+        # project write to become visible before asserting its pin metadata.
+        links = self.wait_for_saved_connection_count(1)
         if len(links) != 1 or any(links[0].get(k) != value for k, value in {
                 'source': source_idx, 'target': target_idx,
                 'sourcePin': 'Q', 'targetPin': 'IN',
