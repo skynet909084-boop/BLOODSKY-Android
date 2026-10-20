@@ -287,7 +287,7 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 
 ## Финальная интеграционная проверка текущего prototype — 20 Oct 2026
 
-- Prototype head: `2a6fda2b864dfeed437dd11e390672fe308394ce`. PR #163 FBD rollback, PR #164 sanitized ZIP acceptance, PR #165 интеграционная проверка и PR #166 round-trip трёх sanitized fixtures слиты только в `prototype/all-in-one-20261020`.
+- Последний code/test integration commit: `2a6fda2b864dfeed437dd11e390672fe308394ce`; этот progress-log checkpoint записан отдельным documentation-only commit. PR #163 FBD rollback, PR #164 sanitized ZIP acceptance, PR #165 интеграционная проверка и PR #166 round-trip трёх sanitized fixtures слиты только в `prototype/all-in-one-20261020`.
 - Интегрированный PR #165 прошёл APK/JUnit #1166 и Android 11 UI smoke #794 на merge ref; PR #166 прошёл exact-head APK/JUnit #1167. UI smoke #797 для #166 выполняется отдельно после merge и не заменяет JUnit.
 - PR #69 остаётся открытым и не слит: переносить целиком несовместимую старую FBD-модель нельзя. Узкий rollback уже реализован и принят через #163.
 - Full Craft UI probe #171 остаётся только частичным навигационным evidence: все 10 jobs успешны, но все направления имеют `coverage_limited=true` и `coverage_complete=false`; полной UI-паритетности не заявлять.
