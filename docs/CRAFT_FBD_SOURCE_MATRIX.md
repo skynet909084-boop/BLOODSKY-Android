@@ -30,6 +30,14 @@ Source: decompiled APK artifact `11912849123`, `jadx/sources/ru/himik/nightscrea
 | FB_CTU | No local onDraw | Inherited | Inspect base class | Not matched |
 | FB_MACRO | No local onDraw | Inherited | Inspect base class | Not matched |
 | FB_SEL | No local onDraw | Inherited | Integer select with typed inputs | Runtime integrated; inherited visual approximation |
+| Var | Yes, draw0 | Gray rectangle, black stroke | Register/bit or constant label; Q output with optional invert bubble | Runtime integrated; default source drawing added, parity partial |
+| VarOut | Yes, draw1 | Gray rectangle, black stroke | S# address label; IN contact | Runtime integrated; default source drawing added, parity partial |
+| VarInt | Yes, draw2 | Gray rounded rectangle, black stroke | Register or constant label; Q output | Runtime integrated; default source drawing added, parity partial |
+| VarOutInt | Yes, draw3 | Gray rounded rectangle, black stroke | S# address label; IN contact | Runtime integrated; default source drawing added, parity partial |
+| VarFloat | Yes, draw4 | Gray beveled polygon, black stroke | Register or constant label; Q output | Runtime integrated; default source drawing added, parity partial |
+| VarOutFloat | Yes, draw5 | Gray beveled polygon, black stroke | S# address label; IN contact | Runtime integrated; default source drawing added, parity partial |
+| VarNameIn | Yes, draw6 | Right-facing gray arrow shape, black stroke | Variable name; Q output | Runtime integrated; default source drawing added, parity partial |
+| VarNameOut | Yes, draw7 | Left-facing gray arrow shape, black stroke | Variable name; IN contact | Runtime integrated; default source drawing added, parity partial |
 
 ## Geometry and semantics verified
 
