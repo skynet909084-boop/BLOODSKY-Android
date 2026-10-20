@@ -24,6 +24,8 @@ public class FbdSourceNativeCanvasSkinTest {
         assertTrue(FbdSourceCanvasSkin.supports("FBD CRAFT CHANGE F"));
         assertTrue(FbdSourceCanvasSkin.supports("FBD CRAFT MOVE"));
         assertTrue(FbdSourceCanvasSkin.supports("FBD CRAFT SENSOR ORIENTATION"));
+        assertTrue(FbdSourceCanvasSkin.supports("FBD CRAFT SENSOR LIGHT"));
+        assertTrue(FbdSourceCanvasSkin.supports("FBD CRAFT SENSOR SPEED"));
         assertTrue(FbdSourceCanvasSkin.supports("FBD CRAFT SUNRISE"));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT CTU", "CTU 16 bit")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT T", "T")));
@@ -35,6 +37,8 @@ public class FbdSourceNativeCanvasSkinTest {
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT MOVE", "MOVE")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT COMPARE", ">")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT SENSOR ORIENTATION", "ORIENTATION_X")));
+        assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT SENSOR LIGHT", "LM")));
+        assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT SENSOR SPEED", "SM")));
         assertTrue(FbdSourceCanvasSkin.shouldUse(block("FBD CRAFT SUNRISE", "SR")));
     }
 
@@ -81,6 +85,10 @@ public class FbdSourceNativeCanvasSkinTest {
         assertEquals(5f/6f, FbdSourceCanvasSkin.inputY("FBD CRAFT BLINK", "PT"), 0.00001f);
         assertArrayEquals(new String[0], MainActivity.knownFbdPins("FBD CRAFT SENSOR ORIENTATION", false));
         assertArrayEquals(new String[]{"Q"}, MainActivity.knownFbdPins("FBD CRAFT SENSOR ORIENTATION", true));
+        assertArrayEquals(new String[0], MainActivity.knownFbdPins("FBD CRAFT SENSOR LIGHT", false));
+        assertArrayEquals(new String[]{"Q"}, MainActivity.knownFbdPins("FBD CRAFT SENSOR LIGHT", true));
+        assertArrayEquals(new String[0], MainActivity.knownFbdPins("FBD CRAFT SENSOR SPEED", false));
+        assertArrayEquals(new String[]{"Q"}, MainActivity.knownFbdPins("FBD CRAFT SENSOR SPEED", true));
         assertArrayEquals(new String[0], MainActivity.knownFbdPins("FBD CRAFT SUNRISE", false));
         assertArrayEquals(new String[]{"Q"}, MainActivity.knownFbdPins("FBD CRAFT SUNRISE", true));
     }

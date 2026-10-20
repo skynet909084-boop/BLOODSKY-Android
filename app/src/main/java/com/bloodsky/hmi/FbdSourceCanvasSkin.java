@@ -35,6 +35,8 @@ public final class FbdSourceCanvasSkin {
                 || "FBD CRAFT ABS".equals(type) || "FBD CRAFT INT TO FLOAT".equals(type)
                 || "FBD CRAFT FLOAT TO INT".equals(type)
                 || "FBD CRAFT SENSOR ORIENTATION".equals(type)
+                || "FBD CRAFT SENSOR LIGHT".equals(type)
+                || "FBD CRAFT SENSOR SPEED".equals(type)
                 || "FBD CRAFT SUNRISE".equals(type)
                 || MainActivity.isCraftMqttSubscriber(type) || MainActivity.isCraftMqttPublisher(type);
     }
@@ -65,6 +67,8 @@ public final class FbdSourceCanvasSkin {
                 : "FBD CRAFT INT TO FLOAT".equals(w.type) ? "INT->FL"
                 : "FBD CRAFT FLOAT TO INT".equals(w.type) ? "FL->INT"
                 : "FBD CRAFT SENSOR ORIENTATION".equals(w.type) ? orientationCaption(w)
+                : "FBD CRAFT SENSOR LIGHT".equals(w.type) ? "LM"
+                : "FBD CRAFT SENSOR SPEED".equals(w.type) ? "SM"
                 : "FBD CRAFT SUNRISE".equals(w.type) ? sunriseCaption(w)
                 : "FBD CRAFT COMPARE".equals(w.type) ? w.compareOperator
                 : MainActivity.isCraftMqttSubscriber(w.type) ? "MQTT_S"
@@ -128,6 +132,8 @@ public final class FbdSourceCanvasSkin {
         if (!shouldUse(w)) return;
         float pin = Math.max(5, 10 * density);
         boolean simpleSource = "FBD CRAFT SENSOR ORIENTATION".equals(w.type)
+                || "FBD CRAFT SENSOR LIGHT".equals(w.type)
+                || "FBD CRAFT SENSOR SPEED".equals(w.type)
                 || "FBD CRAFT SUNRISE".equals(w.type);
         float x0 = w.x, x1 = w.x + w.w, y0 = w.y, y1 = w.y + w.h;
         float left = x0 + (simpleSource ? Math.max(1, density) : pin), right = x1 - pin;
@@ -213,6 +219,8 @@ public final class FbdSourceCanvasSkin {
                     : "FBD CRAFT INT TO FLOAT".equals(w.type) ? "INT->FL"
                     : "FBD CRAFT FLOAT TO INT".equals(w.type) ? "FL->INT"
                     : "FBD CRAFT SENSOR ORIENTATION".equals(w.type) ? orientationCaption(w)
+                    : "FBD CRAFT SENSOR LIGHT".equals(w.type) ? "LM"
+                    : "FBD CRAFT SENSOR SPEED".equals(w.type) ? "SM"
                     : "FBD CRAFT SUNRISE".equals(w.type) ? sunriseCaption(w)
                     : "FBD CRAFT COMPARE".equals(w.type) ? w.compareOperator
                     : FbdDurationUnits.modeForType(w.type);
