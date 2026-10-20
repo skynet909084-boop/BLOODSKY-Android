@@ -56,3 +56,16 @@ JADX output has known decompilation errors. The committed reduced `craft-referen
 - The included driver family covers CDC ACM, CH34x, CP21xx, FTDI and Prolific serial devices. The port contract exposes 5–8 data bits, 1/1.5/2 stop bits and none/odd/even/mark/space parity. The Wi-Fi-to-USB bridge constructor starts with 9600 baud, 8 data bits, 2 stop bits and no parity; treat that as that bridge's default, not a universal RTU requirement.
 - This confirms the missing BLOODSKY slice is an Android USB host/permission/driver owner around the stream-level protocol client. The integration must preserve exact settings, handle permission denial/detach/cancellation, close the port on lifecycle stop and connect the byte stream to `ModbusRtuClient`. Test the adapter with a fake serial-port boundary before emulator/device acceptance; hardware checks remain required.
 - The current upstream `mik3y/usb-serial-for-android` release page lists v3.11.0, and its documented port API uses the same `setParameters` shape. It is a candidate dependency, not yet added; verify its license, repository resolution and timeout/close behavior in BLOODSKY before selecting it. [Upstream release](https://github.com/mik3y/usb-serial-for-android/releases) · [Port API](https://github.com/mik3y/usb-serial-for-android/blob/master/usbSerialForAndroid/src/main/java/com/hoho/android/usbserial/driver/UsbSerialPort.java).
+
+
+## Current BLOODSKY USB code status — re-audited 20 Oct 2026
+
+The statements above that BLOODSKY has no USB host/serial runtime describe the earlier checkpoint and are superseded by the current prototype source tree. At prototype HEAD `88759f28f39d04e7bacbe7c7155a808453ba8cc0`:
+
+- `UsbSerialConnector` enumerates supported devices using `UsbSerialProber`, opens only the explicitly selected device, requests Android USB permission, configures the chosen UART settings off the UI thread, and owns cancellation/cleanup.
+- `UsbSerialSession` bridges the selected port into `ModbusRtuClient`; `UsbSerialModbusConnection` exposes RTU read and write methods and closes on detach/I/O failure.
+- `MainActivity` has a manual USB diagnostics screen for discover/connect/disconnect/read. The operator register-write path also dispatches USB-bound mappings to this connection.
+- `UsbSerialSessionTest` exercises settings, RTU read/write, timeout, I/O failure, detach-unblock and idempotent close with a fake port; `UsbSerialBindingTest` checks endpoint parsing and limits.
+- No physical USB adapter is available. Android UsbManager permission broadcasts, device enumeration, Activity/UI lifecycle, real detach and PLC interoperability have not been accepted on hardware. A full persistent 16-device manager is a separate open requirement.
+
+Accordingly the current status is **code implemented, verification incomplete**; mock-port tests are not hardware acceptance. The source audit above remains valid for Craft behavior and for the earlier BLOODSKY checkpoint, but its old “missing USB” status must not be used for the current prototype.
