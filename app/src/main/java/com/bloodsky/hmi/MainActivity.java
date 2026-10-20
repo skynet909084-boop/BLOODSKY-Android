@@ -828,8 +828,8 @@ public class MainActivity extends Activity {
             modbusExecutor.execute(() -> {
                 try {
                     int[] values = connection.read(unit, function, address, count);
-                    StringBuilder report = new StringBuilder("FC").append(function).append(" • адрес ").append(address).append("\\n");
-                    for (int i = 0; i < values.length; i++) report.append(address + i).append(": ").append(values[i]).append(i + 1 == values.length ? "" : "\\n");
+                    StringBuilder report = new StringBuilder("FC").append(function).append(" • адрес ").append(address).append("\n");
+                    for (int i = 0; i < values.length; i++) report.append(address + i).append(": ").append(values[i]).append(i + 1 == values.length ? "" : "\n");
                     runOnUiThread(() -> result.setText(report.toString()));
                 } catch (Exception error) {
                     runOnUiThread(() -> { if (manualUsbConnection == connection && !connection.isOpen()) manualUsbConnection = null; result.setText("Ошибка Modbus RTU: " + errorMessage(error)); });
