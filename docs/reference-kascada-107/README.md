@@ -51,17 +51,21 @@ The repository already has [Original Craft 1.0.7 emulator probe](https://github.
 
 Run the workflow explicitly from the GitHub Actions page (`Run workflow`, choose the working branch and `full` profile). Then inspect completion, artifact evidence, traversal coverage and crash logs; map specific observed actions to K107 IDs. An unfinished run is not 550 passed tests. Network stays disabled and real external hardware is not simulated.
 
-## Binary archive locations and provenance (2026-10-21)
+## Original APK and full source archives (verified GitHub Release, 2026-10-21)
 
-| Reference | Availability | Size | SHA-256 |
+The user confirmed permission to publish both files. They are stored as **release assets**, not copied into the normal Git history. GitHub reports the same SHA-256 digests as the independently examined user uploads.
+
+| Artifact | Download | Size (bytes) | GitHub SHA-256 |
 | --- | --- | ---: | --- |
-| User-supplied original KaScada Smart Craft 1.0.7 APK | Already in [public GitHub Release `kascada-analysis-1`](https://github.com/skynet909084-boop/BLOODSKY-Android/releases/tag/kascada-analysis-1) | 63,296,727 bytes | `11464db76f59393ccf698f57e60af1756756ffc78cb315d43052ae92adb50d4f` |
-| User-supplied full `KaScada_v1.0.7(107)_base_src.zip` | **Not committed to repository nor attached to a permanent release**; available only in current uploaded-file workspace until moved with appropriate distribution permissions | ~68 MiB | `92d12206bde746f5a76c89e0c3311119287b14bb26cdc8ca36d515e2fca01f7a` |
-| Curated `reference/craft-reference.zip` | Committed on development branch; reduced selection only, **not the full decompile** | 6,871,095 bytes | `316da0335dc4ea0c8f2d8c14550118ba33bd0e95d7c926f67ed848429c554cdd` |
-| GitHub Actions full decompilation artifact | [Run 38600957172](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/38600957172), artifact `11912849123`; **temporary** with reported expiration `2026-10-21T16:48:12Z` | 136,446,209 bytes compressed artifact | No checksum asserted |
+| Original KaScada Smart Craft 1.0.7 APK | [KaScada.Smart.Craft.1.0.7.08.02.2026.apk](https://github.com/skynet909084-boop/BLOODSKY-Android/releases/download/kascada-analysis-1/KaScada.Smart.Craft.1.0.7.08.02.2026.apk) | 63,296,727 | `11464db76f59393ccf698f57e60af1756756ffc78cb315d43052ae92adb50d4f` |
+| User-supplied full decoded ZIP | [KaScada_v1.0.7.107._base_src.zip](https://github.com/skynet909084-boop/BLOODSKY-Android/releases/download/kascada-analysis-1/KaScada_v1.0.7.107._base_src.zip) | 70,442,686 | `92d12206bde746f5a76c89e0c3311119287b14bb26cdc8ca36d515e2fca01f7a` |
+| Curated build-time reference archive | [reference/craft-reference.zip](../../reference/craft-reference.zip) | 6,871,095 | `316da0335dc4ea0c8f2d8c14550118ba33bd0e95d7c926f67ed848429c554cdd` |
 
-### Storage decision and legal boundary
+[Open the release containing both original files](https://github.com/skynet909084-boop/BLOODSKY-Android/releases/tag/kascada-analysis-1).
 
-This is a **public** repository. The reference APK and decompiled third-party source are not automatically redistributable under the BLOODSKY project's rights. Confirm distribution authorization before publishing the full ZIP (or making additional public copies of APK/source), and consider reviewing the existing public APK Release's status. Until authorization is confirmed, store a full private development copy in a **private** GitHub repository or other access-controlled archive and keep only checksums/metadata/derived interoperability test cases here. A private repository still requires compliance with applicable licenses and law.
+**File naming:** the user's ZIP upload was named `KaScada_v1.0.7(107)_base_src.zip`. GitHub Release uses `KaScada_v1.0.7.107._base_src.zip`; matching SHA-256 verifies the binary content despite the renamed asset.
 
-Large files are better attached as GitHub Release assets (or tracked with Git LFS where versioned source is essential) than added as ordinary 60–70 MiB Git blobs. Use independently computed hashes on upload and retrieval; don't treat a source ZIP as a runnable APK. Do not commit original binaries to this documentation PR.
+The earlier GitHub Actions artifact `BLOODSKY-Kaskada-decompiled` (run [38600957172](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/38600957172)) has time-limited retention; it is no longer the sole source of the full reference code. The pinned `reference/craft-reference.zip` remains the lightweight subset used by Android CI.
+
+**Provenance/verification rule:** keep the published ZIP byte-for-byte immutable as a reference, check SHA-256 after each retrieval, and continue verifying ambiguous JADX against Smali. Treat APK/runtime and decoded-source observations as separate evidence. The presence of the original files does **not** mark any of the 550 interactive tests as passed. For complete behavioral testing, run the [original-app Android probe](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/workflows/original-craft-emulator.yml), retain screenshot/UI-tree evidence, and reconcile specific cases with BLOODSKY.
+
