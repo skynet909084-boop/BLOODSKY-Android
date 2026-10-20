@@ -363,3 +363,12 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 - Exact-head APK/JUnit [#1176](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39407984324) passed Python checks, Android unit tests, and debug APK build. Existing Android 11 quick UI smoke [#810](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39407984254) passed; that profile did not navigate to the USB screen.
 - PR [#170](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/170) then added a hardware-independent USB screen navigation check to the quick UI profile. It merged as `2a63e73ce8d0306f12b604df0be8fbac3a9e183f`; exact-head APK/JUnit [#1177](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39408807345) and Android 11 smoke [#811](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39408807324) both passed. The smoke opened the screen, scrolled to Connect, captured it, and returned home.
 - No USB permission grant, serial transaction, physical adapter, or original-app visual parity was tested. Stable `main` remains pinned at `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+
+## Craft sensor block source drawings — 20 Oct 2026
+
+- Added default source-backed canvas rendering for `FBD CRAFT SENSOR ORIENTATION` and `FBD CRAFT SUNRISE`, based on original `Sensor_Orientation.onDraw/onMeasure`, `Sunrise_GPS.onDraw/onMeasure`, and `OriginalFbdDrawing.draw11`.
+- The caption follows imported axis (`ORIENTATION_X/Y/Z`) and sunrise mode (`SR/SS`). Source-shaped gray body, black outline, and centered Q output are retained; a user-edited caption still uses the editable BLOODSKY appearance.
+- Added JUnit regressions for type coverage, dynamic labels, and custom-caption fallback. Updated the source matrix; the rows remain partial visual parity because there is no same-density side-by-side comparison.
+- Local Python gate passed: 164 tests. `gradle testDebugUnitTest --stacktrace` and `gradle assembleDebug --stacktrace` were attempted but could not run because Gradle and a wrapper are absent. Exact-head Android CI is required for validation.
+- Stable `main` remains pinned at `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
