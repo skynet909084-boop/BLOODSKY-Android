@@ -236,3 +236,22 @@ The artifact completed without probe errors or runtime-cap hit. Its project seed
 | `дом 2025.pro` embedded in ZIP | 346 | 1 (87), 3 (188), 4 (71) | 16 | 2 | 16 |
 
 These are record counts only; they do not assert the supported runtime semantics of each device/component or prove archive round-trip acceptance.
+
+
+## Обновление: приложенная декомпиляция Craft 1.0.7 — 20 Oct 2026
+
+- Проверен приложенный пользователем Apktool/JADX source archive; SHA-256: `92d12206bde746f5a76c89e0c3311119287b14bb26cdc8ca36d515e2fca01f7a`. Файл остался в пользовательском scratch и не копировался в репозиторий.
+- Независимый Smali cross-check: `smali/ru/himik/nightscream/kascada/mbCanvas.smali`, фабрика `mbCanvas.m(...)`. Условия отдельно обрабатывают IDs 1 и 2; packed-switch покрывает 4–28; default для ID 3 поднимает существующие canvas views и возвращает `null`. Прямые `new-instance` для конкретных классов `CustomComponents` вне самого `mbCanvas` не выявили второй фабрики: найденные экземпляры компонентов создаются в `mbCanvas`; прочие классы используют базовые/helper-типы. Это подтверждает fail-closed поведение данного пути, но не доказывает отсутствие ID 3 в каждой ветке приложения или динамической регистрации.
+- Ни в приложенных проектных примерах, ни в ранее изученных пользовательских примерах не найдено положительного соответствия ID 3. Оставить его видимым неподдерживаемым/отключённым placeholder; не назначать тип по догадке. Поиск других palette/resource adapters и app-wide регистрации остаётся открытым.
+
+## Обновление: FBD rollback PR #163 — 20 Oct 2026
+
+- Создан узкий draft PR [#163](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/163) в `prototype/all-in-one-20261020`, head `8f7b71339fea7dc65d1afc339e6febbeaa75df10`. Он переносит только атомарность сохранения connect/disconnect рёбер в модель текущего прототипа: неуспешная запись или исключение восстанавливает typed edge JSON и метаданные; undo snapshot добавляется только после успешного сохранения.
+- Точный head прошёл APK/JUnit [#1162](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39392446480). API 30 smoke [#786](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39392008943) прошёл на runtime-identical commit `6568d9a92a6246f31d2548340956a8420b879db4`; последующие коммиты PR меняли только тесты. PR остаётся draft и не влит.
+- PR #69 по-прежнему не вливать целиком: его старая модель рёбер и инвертора несовместима с более богатой текущей FBD-моделью. #163 — адаптированный узкий фикс, а не перенос PR #69.
+
+## Обновление статуса полного Craft UI probe #171 — 20 Oct 2026
+
+- Проверка run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39388319775) подтверждает head `0406c01c2440d65cd726967744a3d45a27eb04dc`. На момент записи завершены 3 из 10 направлений: FBD, exit-policy и macros; остальные 7 ещё в работе.
+- Для FBD: 16/16 уникальных состояний, 115 переходов, 230 доступных long-press controls / 82 выполненных long presses, 1766.4 с, 0 stalled states. Для exit-policy: 15/15, 61, 35/2, 953.2 с, 0 stalls. Для macros: 5/5, 32, 29/3, 484.6 с, 0 stalls. Во всех трёх отчётах нет probe errors; прогоны остановились на depth/control/cycle boundary с `coverage_complete=false`. Это навигационные наблюдения, не доказательство полного UI-паритета.
+- После завершения оставшихся семи направлений перепроверить каждый `ui-audit.json`, добавить все 10 строк и сохранить фактические ограничения покрытия. Главная ветка остаётся на зафиксированном SHA `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
