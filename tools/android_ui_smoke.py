@@ -728,7 +728,13 @@ class Smoke:
         self.tap(description='Show roots')
         self.tap('Downloads')
         time.sleep(1)
-        adb('shell', 'am', 'kill', PACKAGE)
+        app_pids = adb('shell', 'pidof', PACKAGE).strip().split()
+        if not app_pids:
+            raise AssertionError('Application process is missing while DocumentsUI is open')
+        # am kill is implemented as force-stop on this Android 11 emulator and
+        # discards the ActivityRecord's saved state. Kill the background PID so
+        # the task and the Bundle captured when DocumentsUI opened remain intact.
+        adb('shell', 'kill', '-9', *app_pids)
         self.tap_document('bloodsky-custom.png')
         self.wait_node('Свойства: Многопозиционное фото', timeout=30)
         self.wait_node('Restored_label', timeout=10)
