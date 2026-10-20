@@ -74,3 +74,8 @@ The source findings and extraction tests do not implement INT/FLOAT arithmetic, 
 - Removed the superseded refs `fix/project-legacy-media-migration`, `fix/project-migration-referenced-media-missing`, and `test/project-legacy-media-android-e2e` after confirming #94 was merged and #95/#96 closed, then verified all three refs absent.
 - Current branch inventory: 44 branches; 12 open PRs. Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
 - Latest checks: #160 APK/JUnit passed and full UI is running; #162 APK/JUnit and UI are running; Craft #165's ten UI directions are still running. Redundant run #166 is cancelled.
+
+## FBD integration follow-up
+
+- Retargeted draft PR [#69](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/69) from `main` to `prototype/all-in-one-20261020` so its source drawing/editor transaction work is evaluated against the unified app. Its exact head `f8f167c78190c06bcb7b726ec613e6dce02e2402` previously passed APK/JUnit run [#396](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39016734417) and Android 11 smoke [#64](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39016734410) against its old `main` base.
+- After retarget, GitHub reports `mergeable=false`; no PR #69 code was merged. Its MainActivity/editor changes need a deliberate integration pass against the newer prototype, followed by exact-head APK/JUnit and UI checks. Keep the branch and draft open; `main` stays unchanged.
