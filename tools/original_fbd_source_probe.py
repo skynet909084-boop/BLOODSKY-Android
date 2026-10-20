@@ -24,7 +24,7 @@ MAX_EVIDENCE_FILES = 60
 # Evidence extraction is intentionally conservative. Literal labels and call-site
 # names are clues, not proofs of runtime pin direction or electrical semantics.
 CONTRACT_SOURCES = ("FB_CTU.java", "FB_RS.java", "FB_TIMER.java", "FB_TRIGGER.java")
-CONTRACT_LABELS = frozenset(("+", "-", "R", "S", "Q", "QN", "IN", "OUT", "PT",
+CONTRACT_LABELS = frozenset(("+", "-", "R", "S", "Q", "QN", "IN", "OUT", "MS", "PT",
                              "PV", "CU", "CD", "LD", "TON", "TOF", "TP", "CTU",
                              "RS", "SR", "AND", "OR", "BOOL", "FLOAT", "INT"))
 CONTRACT_METHODS = frozenset(("getValue", "setValue", "getName", "setName",
@@ -38,7 +38,7 @@ MAX_CONTRACT_OCCURRENCES = 64
 EXPECTED_ORIGINAL_LABEL_SEQUENCE = {
     "FB_CTU.java": ("CTU", "+", "-", "R", "Q"),
     "FB_RS.java": ("RS", "R", "S", "Q"),
-    "FB_TIMER.java": ("TON", "IN", "Q", "TOF", "TP"),
+    "FB_TIMER.java": ("TON", "IN", "MS", "Q", "TOF", "TP"),
 }
 
 

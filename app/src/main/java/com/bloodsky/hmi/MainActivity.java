@@ -27,6 +27,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.ScrollView;
@@ -1506,22 +1508,170 @@ public class MainActivity extends Activity {
     }
 
     private void showCraftMacroTools() {
-        new AlertDialog.Builder(this).setTitle("Макросы Craft (.mcr)")
-                .setItems(new String[]{"Импортировать .mcr в проект", "Экспортировать .mcr из проекта",
-                                "Добавить макрос на схему", "Создать макрос из выбранного блока"},
-                        (dialog, which) -> {
-                            if (which == 0) {
-                                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-                                intent.addCategory(Intent.CATEGORY_OPENABLE);
-                                intent.setType("*/*");
-                                try { startActivityForResult(intent, REQUEST_IMPORT_CRAFT_MACRO); }
-                                catch (Exception failure) {
-                                    Toast.makeText(this, "Не удалось открыть выбор файла", Toast.LENGTH_LONG).show();
-                                }
-                            } else if (which == 1) exportCraftMacroFromCatalog();
-                            else if (which == 2) addCraftMacroFromCatalog();
-                            else createCraftMacroFromSelection();
-                        }).setNegativeButton("Закрыть", null).show();
+        final android.app.Dialog dialog = new android.app.Dialog(this,
+                android.R.style.Theme_Material_NoActionBar_Fullscreen);
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setBackgroundColor(Color.rgb(35, 35, 35));
+
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(dp(8), dp(4), dp(8), dp(4));
+        Button back = new Button(this);
+        back.setText("‹");
+        back.setTextSize(24);
+        back.setContentDescription("Вернуться к FBD");
+        back.setAllCaps(false);
+        back.setOnClickListener(v -> {
+            dialog.dismiss();
+            showFbdPalette();
+        });
+        header.addView(back, new LinearLayout.LayoutParams(dp(56), dp(48)));
+
+        TextView title = new TextView(this);
+        title.setText("Макросы");
+        title.setTextColor(Color.rgb(237, 176, 59));
+        title.setTextSize(18);
+        title.setGravity(Gravity.CENTER_VERTICAL);
+        title.setPadding(dp(8), 0, 0, 0);
+        header.addView(title, new LinearLayout.LayoutParams(0, dp(48), 1f));
+
+        Button more = new Button(this);
+        more.setText("⋮");
+        more.setTextSize(22);
+        more.setContentDescription("Действия с макросами");
+        more.setAllCaps(false);
+        more.setOnClickListener(anchor -> {
+            android.widget.PopupMenu menu = new android.widget.PopupMenu(this, anchor);
+            menu.getMenu().add("Создать из выбранного FBD-блока")
+                    .setOnMenuItemClickListener(item -> {
+                        dialog.dismiss();
+                        createCraftMacroFromSelection();
+                        return true;
+                    });
+            menu.getMenu().add("Импорт .mcr").setOnMenuItemClickListener(item -> {
+                dialog.dismiss();
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("*/*");
+                try { startActivityForResult(intent, REQUEST_IMPORT_CRAFT_MACRO); }
+                catch (Exception failure) {
+                    Toast.makeText(this, "Не удалось открыть выбор файла", Toast.LENGTH_LONG).show();
+                }
+                return true;
+            });
+            android.view.MenuItem export = menu.getMenu().add("Экспорт .mcr");
+            try { export.setEnabled(FbdCraftMacroCatalog.names(projectExtraFields).length > 0); }
+            catch (Exception invalidCatalog) { export.setEnabled(false); }
+            export.setOnMenuItemClickListener(item -> {
+                dialog.dismiss();
+                exportCraftMacroFromCatalog();
+                return true;
+            });
+            menu.getMenu().add("Другие элементы BLOODSKY").setOnMenuItemClickListener(item -> {
+                dialog.dismiss();
+                showExtendedWidgetMenu();
+                return true;
+            });
+            menu.show();
+        });
+        header.addView(more, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        page.addView(header, new LinearLayout.LayoutParams(-1, dp(56)));
+
+        String[] names;
+        try { names = FbdCraftMacroCatalog.names(projectExtraFields); }
+        catch (Exception invalidCatalog) {
+            names = new String[0];
+            Toast.makeText(this, "Каталог макросов повреждён", Toast.LENGTH_LONG).show();
+        }
+
+        FrameLayout library = new FrameLayout(this);
+        page.addView(library, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+        scroll.setFillViewport(true);
+        android.widget.GridLayout grid = new android.widget.GridLayout(this);
+        int columns = Math.max(1, (int) ((getResources().getDisplayMetrics().widthPixels
+                / getResources().getDisplayMetrics().density) / 180f));
+        grid.setColumnCount(columns);
+        grid.setPadding(dp(16), dp(16), dp(16), dp(16));
+
+        for (String macroName : names) {
+            FbdCraftMacroDefinition definition;
+            try { definition = FbdCraftMacroCatalog.find(projectExtraFields, macroName); }
+            catch (Exception invalid) { definition = null; }
+            if (definition == null) continue;
+
+            View card = getLayoutInflater().inflate(R.layout.kc_macro_library_card, grid, false);
+            android.graphics.drawable.GradientDrawable cardBackground =
+                    new android.graphics.drawable.GradientDrawable();
+            cardBackground.setColor(Color.WHITE);
+            cardBackground.setCornerRadius(dp(8));
+            card.setBackground(cardBackground);
+            card.setElevation(0f);
+
+            TextView cardTitle = card.findViewById(R.id.kc_macro_library_title);
+            cardTitle.setText(definition.getName());
+            card.setContentDescription("Добавить макрос: " + definition.getName());
+            final FbdCraftMacroDefinition selectedDefinition = definition;
+            card.setOnClickListener(v -> {
+                try {
+                    addCraftMacroWidget(selectedDefinition);
+                    dialog.dismiss();
+                } catch (Exception failure) {
+                    Toast.makeText(this, "Не удалось добавить макрос", Toast.LENGTH_LONG).show();
+                }
+            });
+
+            android.widget.GridLayout.LayoutParams cardParams =
+                    new android.widget.GridLayout.LayoutParams(
+                            android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED),
+                            android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED));
+            cardParams.width = dp(100);
+            cardParams.height = dp(100);
+            cardParams.setMargins(dp(16), dp(16), dp(16), dp(16));
+            grid.addView(card, cardParams);
+        }
+        scroll.addView(grid, new android.widget.ScrollView.LayoutParams(-1, -2));
+        library.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
+
+        if (names.length == 0) {
+            TextView empty = new TextView(this);
+            empty.setText("Библиотека макросов пуста");
+            empty.setTextColor(Color.WHITE);
+            empty.setTextSize(20);
+            empty.setGravity(Gravity.CENTER);
+            empty.setContentDescription("Библиотека макросов пуста");
+            library.addView(empty, new FrameLayout.LayoutParams(-1, -1));
+        }
+
+        ImageView switchPage = new ImageView(this);
+        switchPage.setBackgroundResource(R.drawable.kc_tab_page1);
+        switchPage.setContentDescription("Палитра компонентов");
+        switchPage.setOnClickListener(v -> {
+            dialog.dismiss();
+            showAddWidgetMenu();
+        });
+        switchPage.setOnLongClickListener(v -> {
+            dialog.dismiss();
+            showFbdPalette();
+            return true;
+        });
+        FrameLayout.LayoutParams switchParams =
+                new FrameLayout.LayoutParams(dp(60), dp(60), Gravity.BOTTOM | Gravity.END);
+        library.addView(switchPage, switchParams);
+
+        dialog.setContentView(page);
+        dialog.show();
+        android.view.Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(
+                    Color.rgb(35, 35, 35)));
+            window.setLayout(android.view.WindowManager.LayoutParams.MATCH_PARENT,
+                    android.view.WindowManager.LayoutParams.MATCH_PARENT);
+        }
     }
 
     private void addCraftMacroFromCatalog() {
@@ -1585,8 +1735,12 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "У выбранного блока нет проверенного выхода", Toast.LENGTH_LONG).show();
             return;
         }
-        EditText name = propertyField(output.text == null || output.text.trim().isEmpty()
-                ? "Macro" : output.text.trim(), InputType.TYPE_CLASS_TEXT);
+        String suggestedName = output.text == null || output.text.trim().isEmpty()
+                ? "Macro" : output.text.trim();
+        if (suggestedName.length() > 10) suggestedName = suggestedName.substring(0, 10);
+        EditText name = propertyField(suggestedName, InputType.TYPE_CLASS_TEXT);
+        name.setFilters(new android.text.InputFilter[]{
+                new android.text.InputFilter.LengthFilter(10)});
         new AlertDialog.Builder(this).setTitle("Создать макрос из схемы")
                 .setMessage("Вложенная схема будет взята от выбранного блока до его входных источников.")
                 .setView(name).setNegativeButton("Отмена", null)
@@ -1640,8 +1794,16 @@ public class MainActivity extends Activity {
             int target = pending.remove(pending.size() - 1);
             if (target < 0 || target >= sourceWidgets.size() || included[target]) continue;
             Widget widget = sourceWidgets.get(target);
-            if (!isFbdWidget(widget) || "FBD CRAFT MACRO".equals(canonicalFbdBlockType(widget.type)))
-                throw new IllegalArgumentException("Nested Craft macro blocks cannot be captured yet");
+            if (!isFbdWidget(widget))
+                throw new IllegalArgumentException("Нельзя включить в макрос неподдерживаемый блок");
+            if ("FBD CRAFT MACRO".equals(canonicalFbdBlockType(widget.type))) {
+                FbdCraftMacroDefinition nested = macroDefinition(widget);
+                JSONObject nestedGraph = nested == null ? null
+                        : nested.toJson().optJSONObject("bloodskyGraph");
+                if (nestedGraph == null)
+                    throw new IllegalArgumentException(
+                            "Вложенный макрос должен иметь проверенный граф BLOODSKY");
+            }
             included[target] = true;
             for (FbdConnection edge : sourceConnections)
                 if (edge != null && edge.target == target) pending.add(edge.source);
@@ -3503,7 +3665,9 @@ public class MainActivity extends Activity {
     }
 
     private void showFbdPalette() {
-        OriginalFbdPalette.show(this, this::addWidget, this::showAddWidgetMenu, this::showExtendedWidgetMenu);
+        OriginalFbdPalette.show(this, this::addWidget, this::showAddWidgetMenu,
+                this::showCraftMacroTools, this::createCraftMacroFromSelection,
+                this::showExtendedWidgetMenu);
     }
 
     private void showExtendedWidgetMenu() {
@@ -3581,7 +3745,7 @@ public class MainActivity extends Activity {
         list.setOrientation(LinearLayout.VERTICAL);
         list.setPadding(dp(8), dp(4), dp(8), dp(4));
         Button macroTools = new Button(this);
-        macroTools.setText("Импорт / экспорт Craft .mcr");
+        macroTools.setText("Редактор макросов  ›");
         macroTools.setAllCaps(false);
         macroTools.setOnClickListener(v -> showCraftMacroTools());
         list.addView(macroTools, new LinearLayout.LayoutParams(-1, -2));
@@ -6244,7 +6408,7 @@ public class MainActivity extends Activity {
         if (kind.equals("FBD CRAFT TIMER")) {
             if (output && "Q".equals(name)) return "BOOL";
             if (!output && "IN".equals(name)) return "BOOL";
-            if (!output && "PT".equals(name)) return "NUMBER";
+            if (!output && ("MS".equals(name) || "PT".equals(name))) return "NUMBER";
         }
         if (kind.equals("FBD CRAFT ARITHMETIC INT")
                 || kind.equals("FBD CRAFT ARITHMETIC FLOAT")) {
@@ -6736,10 +6900,19 @@ public class MainActivity extends Activity {
         return Math.round(raw);
     }
 
-    /** Source Craft FB_TIMER takes an Integer PT and scales it by the selected unit. */
+    /** Original FB_TIMER.f() returns without changing state until IN and MS resolve. */
+    public static boolean fbdCraftTimerInputsReady(List<Double> values, List<String> pins) {
+        double input = fbdNumericPinValue(values, pins, "IN", 0, Double.NaN);
+        double millis = fbdNumericPinValue(values, pins, "MS", 1, Double.NaN);
+        if (Double.isNaN(millis)) millis = fbdNumericPinValue(values, pins, "PT", 1, Double.NaN);
+        return Double.isFinite(input) && FbdCraftIntegerSelector.exactInteger(millis) != null;
+    }
+
+    /** Original FB_TIMER takes an Integer MS input; PT remains a legacy BLOODSKY alias. */
     public static long fbdCraftTimerPresetMs(List<Double> values, List<String> pins,
                                              int configuredMs, String unit) {
-        double raw = fbdNumericPinValue(values, pins, "PT", -1, Double.NaN);
+        double raw = fbdNumericPinValue(values, pins, "MS", -1, Double.NaN);
+        if (Double.isNaN(raw)) raw = fbdNumericPinValue(values, pins, "PT", -1, Double.NaN);
         if (Double.isNaN(raw)) return Math.max(1, Math.min(3600000, configuredMs));
         Integer exact = FbdCraftIntegerSelector.exactInteger(raw);
         if (exact == null) return Math.max(1, Math.min(3600000, configuredMs));
@@ -7402,6 +7575,10 @@ public class MainActivity extends Activity {
             return next.output;
         }
         if ("FBD CRAFT TIMER".equals(canonicalType)) {
+            if (!fbdCraftTimerInputsReady(numInputs, inputPins)) {
+                cacheNumeric[index] = Double.NaN;
+                return false;
+            }
             boolean input = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
             long presetMs = fbdCraftTimerPresetMs(numInputs, inputPins, widget.timerPresetMs,
                     widget.extraFields.optString("craftTimerUnit", "MS"));
@@ -8033,9 +8210,10 @@ public class MainActivity extends Activity {
             return output ? new String[]{"OUT"} : new String[]{"IN"};
         if ("FBD CRAFT POW".equals(kind))
             return output ? new String[]{"Q"} : new String[]{"X", "Y"};
+        if ("FBD CRAFT TIMER".equals(kind))
+            return output ? new String[]{"Q"} : new String[]{"IN", "MS"};
         if ("FBD TON".equals(kind) || "FBD TOF".equals(kind)
-                || "FBD TP".equals(kind) || "FBD CRAFT BLINK".equals(kind)
-                || "FBD CRAFT TIMER".equals(kind))
+                || "FBD TP".equals(kind) || "FBD CRAFT BLINK".equals(kind))
             return output ? new String[]{"Q"} : new String[]{"IN", "PT"};
         return new String[0];
     }

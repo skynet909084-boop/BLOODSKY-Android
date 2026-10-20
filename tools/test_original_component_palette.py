@@ -30,7 +30,7 @@ class OriginalComponentPaletteTests(unittest.TestCase):
                 source = ROOT / 'build/craft-reference/apktool/res/drawable' / matches[0].name.removeprefix('kc_')
                 self.assertEqual(source.read_bytes(), matches[0].read_bytes())
         self.assertIn('view.setEnabled(false)', code)
-        self.assertIn('this::showExtendedWidgetMenu', (ROOT / 'app/src/main/java/com/bloodsky/hmi/MainActivity.java').read_text())
+        self.assertIn('this::showFbdPalette', (ROOT / 'app/src/main/java/com/bloodsky/hmi/MainActivity.java').read_text())
 
     def test_bound_components_are_existing_types_and_background_has_own_action(self):
         code = (ROOT / 'app/src/main/java/com/bloodsky/hmi/OriginalComponentPalette.java').read_text()

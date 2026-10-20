@@ -6,6 +6,7 @@ import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Gravity;
 import android.view.Window;
 import android.view.WindowManager;
 
@@ -13,10 +14,11 @@ import android.view.WindowManager;
 public final class OriginalFbdPalette {
     private OriginalFbdPalette() {}
     public static void show(Activity activity, OriginalComponentPalette.Selection add,
-                            Runnable components, Runnable extended) {
+                            Runnable components, Runnable macroEditor, Runnable createMacro, Runnable extended) {
         Dialog dialog=new Dialog(activity,android.R.style.Theme_Material_NoActionBar_Fullscreen);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         dialog.setContentView(R.layout.kc_fragment_component_logic_bar);
+        addExtendedComponentsAction(activity, dialog, extended);
         disablePreviews((ViewGroup)dialog.findViewById(android.R.id.content));
         bind(dialog,R.id.kc_logic_tab_el_and,"FBD И","И",add);
         bind(dialog,R.id.kc_logic_tab_el_or,"FBD ИЛИ","ИЛИ",add);
@@ -59,7 +61,15 @@ public final class OriginalFbdPalette {
         bindNative(dialog,R.id.kc_logic_tab_fb_abs,"ABS",add);
         bindNative(dialog,R.id.kc_logic_tab_fb_int_to_float,"IntToFloat",add);
         bindNative(dialog,R.id.kc_logic_tab_fb_float_to_int,"FloatToInt",add);
-        action(dialog,R.id.kc_logic_switch_layout,"Другие элементы BLOODSKY",extended);
+        View macroTile=dialog.findViewById(R.id.kc_logic_tab_fb_macro);
+        if(macroTile!=null) {
+            macroTile.setEnabled(true);
+            macroTile.setAlpha(1f);
+            action(dialog,R.id.kc_logic_tab_fb_macro,
+                    "Создать макрос из выбранного FBD-блока",createMacro);
+        }
+        action(dialog,R.id.kc_logic_switch_layout,"Редактор макросов",macroEditor);
+
         View back=dialog.findViewById(R.id.kc_logic_close);
         if(back!=null) action(dialog,R.id.kc_logic_close,"Палитра компонентов",components);
         dialog.show();
@@ -70,6 +80,32 @@ public final class OriginalFbdPalette {
             window.setLayout(WindowManager.LayoutParams.MATCH_PARENT,WindowManager.LayoutParams.MATCH_PARENT);
         }
     }
+    private static void addExtendedComponentsAction(Activity activity, Dialog dialog, Runnable extended) {
+        android.widget.FrameLayout content = dialog.findViewById(android.R.id.content);
+        android.widget.TextView button = new android.widget.TextView(activity);
+        button.setText("Другие элементы");
+        button.setContentDescription("Другие элементы BLOODSKY");
+        button.setTextColor(Color.WHITE);
+        button.setTextSize(14f);
+        button.setGravity(Gravity.CENTER);
+        button.setPadding(dp(activity, 12), 0, dp(activity, 12), 0);
+        button.setBackground(new ColorDrawable(Color.rgb(51, 51, 51)));
+        button.setClickable(true);
+        button.setFocusable(true);
+        button.setOnClickListener(view -> {
+            dialog.dismiss();
+            extended.run();
+        });
+        android.widget.FrameLayout.LayoutParams params = new android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(activity, 60),
+                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        content.addView(button, params);
+    }
+
+    private static int dp(Activity activity, int value) {
+        return (int) (value * activity.getResources().getDisplayMetrics().density + 0.5f);
+    }
+
     /**
      * Exact original FB preview tag -> a tested BLOODSKY FBD terminal contract.
      * Never fall back to similarly named but incompatible extended widgets:

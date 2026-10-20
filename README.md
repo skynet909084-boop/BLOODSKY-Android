@@ -16,7 +16,7 @@ The current prototype includes:
 - original indicator ON/OFF image menus, built-in lamps and custom document-provider images retained after process restart;
 - a Modbus TCP register scanner for FC03/FC04;
 - periodic polling of widgets with `tcp://host:port/unit/address` bindings;
-- typed FBD pins and graph validation, Craft `.mcr` import/export, graph capture/editing for BLOODSKY-authored macros, and per-instance nested graph execution. Opaque original Craft macro children are preserved but not executed.
+- typed FBD pins and graph validation, Craft `.mcr` import/export, graph capture/editing for BLOODSKY-authored macros, including bounded nesting of validated graph-backed macros, and per-instance nested graph execution. Opaque original Craft macro children are preserved but not executed.
 
 This is still a working prototype, not yet a complete Kaskada Craft replacement. The exact original UI has not been verified pixel-for-pixel against the decompiled APK and reference screenshots. Full component/property parity, execution of opaque original Craft macro children, Modbus RTU, broader protocol compatibility, physical-device testing and a signed release build remain open work.
 
@@ -26,7 +26,7 @@ The current source-backed, page-by-page functional audit and remaining implement
 ## Editor and operator controls
 
 - Use the bottom-left component icon to open the palette. Tap a component to edit properties; long-press it for the context menu. The bottom strip provides cut/copy/paste/alignment.
-- The component palette page corner opens the FBD catalogue; its next page opens other BLOODSKY elements. Supported source-backed entries add native FBD blocks; dimmed entries remain unavailable. Back dismisses the wide catalogue.
+- The component palette page corner opens the FBD catalogue; the FBD page corner opens the third page, the macro editor. It creates macros from a selected FBD output and its upstream graph, lists project macros, and adds or imports/exports them. Other BLOODSKY elements remain available from that editor. Supported source-backed entries add native FBD blocks; dimmed entries remain unavailable. Back dismisses the wide catalogue.
 - Long-press an FBD block for wiring, inversion, timer/property actions, and other commands. Long-press a macro with an embedded BLOODSKY graph and choose **Редактировать вложенный граф** to edit it; assign its output pin from a verified block, then save through validation. Opaque original Craft child records are not executed.
 - Timer/counter presets and comparison properties reject invalid input while keeping the form and saved project unchanged. Comparison accepts decimal comma and `=`/`<>` aliases.
 - The original play icon starts operator mode; the stop icon returns to editing. Runtime hides editing tools, grid/selection handles and FBD editor visuals. Short taps operate existing controls; dragging and long-pressing do not edit or activate them.

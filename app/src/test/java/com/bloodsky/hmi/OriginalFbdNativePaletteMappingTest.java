@@ -163,10 +163,10 @@ public class OriginalFbdNativePaletteMappingTest {
         String timer = OriginalFbdPalette.nativeTypeForOriginalTag("FB_TIMER");
         assertEquals("FBD CRAFT TIMER", timer);
         assertEquals("TON", OriginalFbdPalette.nativeLabelForOriginalTag("FB_TIMER"));
-        assertArrayEquals(new String[]{"IN", "PT"}, MainActivity.knownFbdPins(timer, false));
+        assertArrayEquals(new String[]{"IN", "MS"}, MainActivity.knownFbdPins(timer, false));
         assertArrayEquals(new String[]{"Q"}, MainActivity.knownFbdPins(timer, true));
         assertEquals("BOOL", MainActivity.knownFbdPinType(timer, "IN", false));
-        assertEquals("NUMBER", MainActivity.knownFbdPinType(timer, "PT", false));
+        assertEquals("NUMBER", MainActivity.knownFbdPinType(timer, "MS", false));
         assertEquals("BOOL", MainActivity.knownFbdPinType(timer, "Q", true));
 
         String[] sourceTags = {"SIN", "ABS", "IntToFloat", "FloatToInt"};
