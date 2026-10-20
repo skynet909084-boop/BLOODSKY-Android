@@ -677,6 +677,80 @@ class Smoke:
         self.wait_node('Создать новый проект')
 
 
+    def check_media_picker_activity_recreation(self):
+        project = 'Media_Restore_Project'
+        self.tap('Создать новый проект')
+        self.tap(class_name='android.widget.EditText')
+        adb('shell', 'input', 'text', project)
+        self.tap('Создать')
+        self.wait_node(description='Редактор экрана')
+        self.tap(description='Добавить элемент')
+        self.tap(description='Добавить: Многопозиционное фото')
+        self.wait_node(description='Редактор экрана')
+
+        prefs = adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml')
+        active = json.loads({n.get('name'): n.text for n in ET.fromstring(prefs)}['active_project'])
+        widget = active['screens'][0]['widgets'][0]
+        canvas = self.wait_node(description='Редактор экрана')
+        left, top, _, _ = map(int, re.findall(r'\d+', canvas.get('bounds')))
+        adb('shell', 'input', 'tap', str(int(left + widget['x'] + widget['w'] / 2)),
+            str(int(top + widget['y'] + widget['h'] / 2)))
+        self.wait_node('Свойства: Многопозиционное фото')
+
+        # Change the unsaved widget caption and then recreate the Activity while
+        # DocumentsUI is open. The picker result must return to this form and field.
+        xml = self.dump()
+        edit_fields = matching_nodes(xml, class_name='android.widget.EditText')
+        if not edit_fields:
+            raise AssertionError('Media widget properties form has no editable caption')
+        x, y = center(edit_fields[0].get('bounds'))
+        adb('shell', 'input', 'tap', str(x), str(y))
+        adb('shell', 'input', 'keycombination', '113', '29')
+        adb('shell', 'input', 'text', 'Restored_label')
+
+        self.prepare_custom_image()
+        if keyboard_is_shown(adb('shell', 'dumpsys', 'input_method')):
+            adb('shell', 'input', 'keyevent', '4')
+        pickers = []
+        for _ in range(12):
+            xml = self.dump()
+            pickers = matching_nodes(xml, text='Выбрать файл…')
+            if pickers:
+                break
+            scroll = properties_scroll_node(xml)
+            left, top, right, bottom = map(int, re.findall(r'\d+', scroll.get('bounds')))
+            x = (left + right) // 2
+            adb('shell', 'input', 'swipe', str(x), str(bottom - 100), str(x), str(top + 100), '300')
+        if not pickers:
+            raise AssertionError('Image media picker button is not reachable in the properties form')
+        x, y = center(pickers[0].get('bounds'))
+        adb('shell', 'input', 'tap', str(x), str(y))
+        self.tap(description='Show roots')
+        self.tap('Downloads')
+        time.sleep(1)
+        app_pids = adb('shell', 'pidof', PACKAGE).strip().split()
+        if not app_pids:
+            raise AssertionError('Application process is missing while DocumentsUI is open')
+        # am kill is implemented as force-stop on this Android 11 emulator and
+        # discards the ActivityRecord's saved state. Kill the background PID so
+        # the task and the Bundle captured when DocumentsUI opened remain intact.
+        adb('shell', 'kill', '-9', *app_pids)
+        self.tap_document('bloodsky-custom.png')
+        self.wait_node('Свойства: Многопозиционное фото', timeout=30)
+        self.wait_node('Restored_label', timeout=10)
+        self.capture('07-media-picker-activity-restored')
+        self.tap('Применить')
+        self.wait_node(description='Редактор экрана')
+
+        prefs = adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml')
+        active = json.loads({n.get('name'): n.text for n in ET.fromstring(prefs)}['active_project'])
+        restored = active['screens'][0]['widgets'][0]
+        image_paths = restored.get('imagePathStates', [])
+        if restored.get('text') != 'Restored_label':
+            raise AssertionError('Unsaved widget caption did not survive Activity recreation')
+        if not image_paths or not image_paths[0].startswith('media/asset_'):
+            raise AssertionError('Selected image did not return to its original media field')
+
     def run(self, apk):
         serial = adb('get-serialno').strip()
         if not serial.startswith('emulator-') or adb('shell', 'getprop', 'ro.kernel.qemu').strip() != '1':
@@ -960,12 +1034,13 @@ class Smoke:
         self.capture('06-after-deletion')
         self.check_legacy_media_migration_on_device()
         self.check_craft_archive_widget_on_device()
+        self.check_media_picker_activity_recreation()
         crashes = adb('logcat', '-d', '-b', 'crash')
         (self.output / 'crash-log.txt').write_text(crashes)
         if PACKAGE in crashes:
             raise AssertionError('Application crash recorded')
         (self.output / 'result.json').write_text(json.dumps({'result': 'passed', 'package': PACKAGE,
-                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'original five-category palette', 'palette add indicator/button/text/progress', 'original 40-preview FBD palette and return/extended navigation', 'FBD AND/TON add and restart', 'FBD non-overlapping initial block positions', 'FBD typed Q-IN wiring, drag, restart, disconnect, undo and redo', 'invalid timer preset leaves project and form unchanged', 'exact valid timer preset preserves other fields', 'process restart', 'reload four palette-created components', 'invalid geometry leaves dialog/project unchanged', 'fractional properties survive second process restart', 'original ON/OFF dialogs and builtin state selection', 'custom document-provider image and persisted URI grant after process restart', 'original compact toolbar and hide/reveal', 'editor button opens properties without activation', 'operator drag and long-press cannot edit or activate', 'runtime button on/off and persistence after restart', 'stop and Back restore editor tools', 'confirmed deletion', 'legacy media bytes preserved and visible PNG rendered across restart', 'Craft ID 15 palette, property dialog and local history on Android 11'],
+                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'original five-category palette', 'palette add indicator/button/text/progress', 'original 40-preview FBD palette and return/extended navigation', 'FBD AND/TON add and restart', 'FBD non-overlapping initial block positions', 'FBD typed Q-IN wiring, drag, restart, disconnect, undo and redo', 'invalid timer preset leaves project and form unchanged', 'exact valid timer preset preserves other fields', 'process restart', 'reload four palette-created components', 'invalid geometry leaves dialog/project unchanged', 'fractional properties survive second process restart', 'original ON/OFF dialogs and builtin state selection', 'custom document-provider image and persisted URI grant after process restart', 'original compact toolbar and hide/reveal', 'editor button opens properties without activation', 'operator drag and long-press cannot edit or activate', 'runtime button on/off and persistence after restart', 'stop and Back restore editor tools', 'confirmed deletion', 'legacy media bytes preserved and visible PNG rendered across restart', 'Craft ID 15 palette, property dialog and local history on Android 11', 'media picker Activity recreation restores the open properties form and selected image field'],
                 'api_level': adb('shell', 'getprop', 'ro.build.version.sdk').strip(),
                 'display_size': adb('shell', 'wm', 'size').strip(),
                 'display_density': adb('shell', 'wm', 'density').strip()}, indent=2))
