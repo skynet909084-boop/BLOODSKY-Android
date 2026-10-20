@@ -2304,7 +2304,7 @@ public class MainActivity extends Activity {
                     runOnUiThread(() -> {
                         if (isFinishing() || isDestroyed()) return;
                         finishPendingMediaCopy(waitingDialog);
-                        Toast.makeText(this, "Не удалось сохранить файл в проект: 
+                        Toast.makeText(this, "Не удалось сохранить файл в проект: "
                                 + ex.getMessage(), Toast.LENGTH_LONG).show();
                     });
                 }
