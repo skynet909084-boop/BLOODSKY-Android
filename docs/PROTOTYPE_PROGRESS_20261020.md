@@ -470,3 +470,13 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 - Updated the single readiness matrix to status “Код реализован, проверки не завершены”; total readiness remains 3.6% because this criterion has no full acceptance weight until the Android/device gates pass. Updated the transport audit to separate current source from its historical checkpoint.
 - Next USB step is Android instrumentation for permission/denial/cancellation and real detach, followed by physical adapter/PLC acceptance when hardware is available. This does not close the separate 16-slot device-manager requirement.
 
+
+
+## USB transport acceptance evidence corrected — 20 Oct 2026
+
+- The prototype’s USB transport and explicit project bindings were already implemented before this audit. Confirmed merged slices: #167 (connector/session), #168 (RTU writes), #169–170 (manual UI and navigation smoke), #175 (explicit USB endpoints through supported HMI/FBD register paths), and #179 (active-read detach regression). Exact APK/JUnit and relevant Android UI smoke runs passed: #1170/#801, #1175/#808, #1176–1177/#810–811, #1186–1187/#825, and #1195/#833. Details are recorded in `USB_SERIAL_IMPLEMENTATION_SLICE_20261020.md`.
+- The USB fake-port tests are not physical-device proof. Android UsbManager permission/broadcast instrumentation, Activity lifecycle at the permission boundary, and real adapter/PLC read/write/unplug/reconnect remain open. No adapter is currently available. The 16-slot manager is still a separate requirement.
+- PR [#186](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/186) reconciled the old transport audit and readiness row with current source; code status is “implemented, verification incomplete” and overall weighted readiness remains **3.6%**.
+- APK/JUnit run #1205’s first attempt failed before Gradle because Google’s command-line-tools download returned HTTP 502. The targeted second attempt passed. This applies to the research PR #151 merge ref and does not substitute for product prototype validation.
+- Original Craft probe #172: nine of ten directions have completed successfully; the FBD direction is still running the full profile. No completion/coverage claim until its `ui-audit.json` is inspected.
+

@@ -1,10 +1,10 @@
 # USB serial integration slice — 2026-10-20
 
-This is the next focused implementation slice for the existing umbrella task [#35](https://github.com/skynet909084-boop/BLOODSKY-Android/issues/35). It narrows the first code change; it does not mark USB support implemented.
+This document began as the focused implementation slice for the existing umbrella task [#35](https://github.com/skynet909084-boop/BLOODSKY-Android/issues/35). The first transport/UI/binding slices have since been implemented; current code and verification status are recorded below. Physical hardware acceptance is still open.
 
-## Evidence and current boundary
+## Craft source evidence and initial BLOODSKY gap (historical)
 
-The supplied Craft 1.0.7 decompilation confirms USB serial probing for CDC ACM, CH34x, CP21xx, FTDI and Prolific, a permission request, port open, serial parameter configuration, then Modbus RTU I/O. BLOODSKY currently has a stream-level RTU client, but no Android USB host enumeration, permission flow, serial-port lifecycle, or runtime binding from an imported project. The old PR #38 raw USB-channel approach is not a safe base because it omits serial-driver configuration.
+When this slice was proposed, the supplied Craft 1.0.7 decompilation confirmed USB serial probing for CDC ACM, CH34x, CP21xx, FTDI and Prolific, a permission request, port open, serial parameter configuration, then Modbus RTU I/O. At that earlier checkpoint BLOODSKY only had the stream RTU client. The old PR #38 raw USB-channel approach is not a safe base because it omits serial-driver configuration.
 
 ## First implementation slice
 
@@ -33,3 +33,25 @@ The prototype now also has a separate manual USB RTU screen in the home menu. Th
 ## Explicit project binding follow-up
 
 `usb://<unit>/<register>` is now supported for Craft register variable sources, Craft register variable outputs, and `FBD Вход` only. Standard 3xxxx/4xxxx prefixes select FC04/FC03; other addresses are zero-based. The operator must enter the endpoint and explicitly select/connect the local adapter. The Activity keeps that selected session while returning home to load a project, then closes it on USB settings re-entry, explicit disconnect, or Activity destruction. Missing sessions fail visibly. Imported Craft connection metadata remains untouched and inactive. Parser coverage and exact-head CI are required before merging; physical adapter communication remains an open hardware gate.
+
+
+## Current implementation and validation — 20 Oct 2026
+
+USB-serial support now exists in the unified prototype. The implementation was integrated in these independently checked slices:
+
+- PR [#167](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/167): selected-device USB connector, Android permission, UART configuration, RTU session and fake-port tests. APK/JUnit [#1170](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39404204508) and Android UI smoke [#801](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39404400404) passed.
+- PR [#168](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/168): RTU write APIs FC05/06/0F/10/22, CRC and acknowledgement checks. APK/JUnit [#1175](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39406473632) and UI smoke [#808](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39406651996) passed.
+- PRs [#169](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/169) and [#170](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/170): manual USB screen for explicit adapter selection/configuration/connection/read/disconnect and Android 11 navigation smoke. APK/JUnit [#1176](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39407984324), [#1177](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39408807345), UI smoke [#810](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39407984254) and [#811](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39408807324) passed.
+- PR [#175](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/175): explicit `usb://<unit>/<register>` bindings for selected USB RTU session, including supported Craft variable source/output and FBD input paths. APK/JUnit [#1186](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39415056759), [#1187](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39415113998) and Android 11 UI smoke [#825](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39415114000) passed.
+- PR [#179](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/179): fake-port test for a detach during an active read; APK/JUnit [#1195](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39419308463) and UI smoke [#833](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39419309643) passed.
+
+`UsbSerialSessionTest` exercises serial framing, RTU read/write, timeout, I/O failure, detach unblocking and idempotent close with a fake port. `UsbSerialBindingTest` exercises explicit endpoint parsing. The manual diagnostics screen exposes FC03/FC04 reads. Project register bindings can route supported writes through the explicitly selected session. Imported Craft connection metadata is not silently activated: the operator must configure an explicit local endpoint and select the device.
+
+## Remaining USB acceptance
+
+- Android UsbManager integration instrumentation: enumerate/choose, permission grant/denial, cancellation, attach/detach broadcasts and Activity recreation/finish cleanup. Existing fake-port tests do not cover the Android broadcast/permission stack.
+- The user currently has no USB-serial adapter. Physical acceptance with a supported USB-RS485 adapter and known PLC/device must cover read, write acknowledgement, unplug and reconnect when hardware is available.
+- A full persistent Craft device manager with up to 16 transport slots is still a separate requirement. The manual USB screen and explicit binding route do not complete that manager.
+- Equal-density visual comparison with Craft remains open.
+
+The USB implementation is therefore **code implemented, automatic fake-port/binding tests passed, Android permission and physical hardware acceptance incomplete**. Do not report real USB hardware as tested.
