@@ -500,3 +500,19 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 - The Craft probe artifact audit is recorded in [CRAFT_PROBE_172_ARTIFACT_AUDIT_20261020.md](CRAFT_PROBE_172_ARTIFACT_AUDIT_20261020.md): all ten artifacts were opened, but all ten report `coverage_complete=false`; no direction is exhaustive.
 - Android 12 UI smoke run [#861](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39452421413) remains the next gate for PR #188. It is running on PR head `eefa0469b8a2193c8c4dc836f59af5b31032c52d`, based before subsequent prototype commits. Do not merge it until the full run passes and the branch is synchronized with the current prototype head.
 - Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+
+## Checkpoint — 21 Oct 2026
+
+- Reviewed PR #192's static audit: 550 unique sequential K107 IDs and correct source identity/count checks. All 550 remain waiting for live Android evidence. Its exact-head APK/JUnit run #1249 passed; PR is marked ready for human review and remains unmerged.
+- Diagnosed PR #188 Android UI smoke failure: the app process was already killed, but `pidof` returned a stale PID. Updated the gate to inspect each original PID's `/proc/<pid>/stat`; reaped/zombie PIDs pass termination, live PIDs still fail. Added focused tests. Full local Python suite passed on the clean local patch; Gradle is unavailable locally. The first remote attempt exposed a malformed transferred file; the complete source and test files were restored from the clean local commit. New exact-head APK/UI workflows #1252/#889 are pending.
+- Diagnosed PR #191 UI artifact: indicator media path was persisted but the project-owned image bytes were absent after reload. Added `commitPendingMediaCopy` on the PR branch and created P0 issue #195. APK/JUnit #1250 passed; Android 11 UI smoke #887 was still running at checkpoint. Do not accept until exact-head smoke confirms on-disk file and SHA.
+- Reviewed original emulator workflow. It installs a reconstructed, debug-signed APK from a pinned decompilation artifact, not the exact Release APK. `full` saves a UI report but not the BFS frontier for future continuation. Created issue #196 to add direct-release hash verification, resumable checkpoints, K107 evidence mapping and cap-aware reporting. The full Android 11/API 30 run was not launched in this Work checkpoint.
+- No changes to `main`. The unified readiness estimate remains 5/139 (3.6%); pending checks are not treated as accepted functionality. Original-source matrix is 0 PASS, 0 FAIL, 0 BLOCKED, 550 WAITING, 0 retest.
+
+### Next exact actions
+
+1. Poll APK/JUnit #1252 and UI smoke #889 on PR #188 head `eca37f20a6c334eeb6aecbf3339502797b42b921`; if green, review the artifact and update PR #188 status.
+2. Poll Android UI smoke #887 on PR #191 head `a26e9988b06fd7d89ce3c007bc118eff833c6907`; use the saved failure screenshot/XML and verify project directory bytes after reload.
+3. Implement issue #196 on an isolated branch. Start the full profile only after the workflow hashes and attempts the exact Release APK, and persist/resume its frontier and per-K107 evidence.
+4. Keep PR #192 unmerged until human review; merge only into `prototype/all-in-one-20261020` after required checks. Never modify `main`.
