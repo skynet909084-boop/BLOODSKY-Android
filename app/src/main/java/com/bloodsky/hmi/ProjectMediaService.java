@@ -304,7 +304,7 @@ public class ProjectMediaService {
 
         long existingBytes = 0;
         int existingFiles = 0;
-        java.io.ArrayDeque<File> pending = new java.io.ArrayDeque<>();
+        java.util.ArrayDeque<File> pending = new java.util.ArrayDeque<>();
         pending.add(directory);
         while (!pending.isEmpty()) {
             File current = pending.removeFirst();
