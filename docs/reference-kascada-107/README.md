@@ -27,8 +27,8 @@ Old emulator recordings can substantiate individual cases only after an auditor 
 
 | Area | Observation | Action | Acceptance |
 | --- | --- | --- | --- |
-| HMI switch | `OriginalComponentPalette.java` binds `kc_picker_tab_switch` to a generic Button, so selecting a switch does not establish Craft switch semantics | P1: add a real switch model, source-backed property UI and tests | Original switch states and register writes agree, including save/import/reopen |
-| Numeric indicator | `kc_picker_tab_digital_indicator` currently adds a Text widget; visual placeholder is not proof of numeric indicator parity | P1: source-backed widget type/format and bound-value rendering | Check signed/unsigned/float formats, range, geometry and device read |
+| HMI switch | `OriginalComponentPalette.java` binds `kc_picker_tab_switch` to a generic Button, so selecting a switch does not establish Craft switch semantics | P1: [Issue #193](https://github.com/skynet909084-boop/BLOODSKY-Android/issues/193) — add a real switch model, source-backed property UI and tests | Original switch states and register writes agree, including save/import/reopen |
+| Numeric indicator | `kc_picker_tab_digital_indicator` currently adds a Text widget; visual placeholder is not proof of numeric indicator parity | P1: [Issue #194](https://github.com/skynet909084-boop/BLOODSKY-Android/issues/194) — source-backed widget type/format and bound-value rendering | Check signed/unsigned/float formats, range, geometry and device read |
 | Missing palette entries | GIF, Camera, WebView and voice-recognition entries are explicitly disabled in `OriginalComponentPalette.java` | P1/P2: implement independently with permissions, safe runtime behaviour and tests | Available only once genuine implementation works on device |
 | Project network settings | PR [#191](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/191) introduces source-backed network device/server UI but is not yet merged into the working branch at this import | Avoid duplicate concurrent patches; review that PR and its exact-head CI first | Original import round-trip, 16 slots, endpoint handling, no unverified transport activation |
 | Operator/device parity | Existing audits show partial transport/runtime support and no completed hardware or same-density original-vs-BLOODSKY parity | Keep device/hardware gates open; use API 30 original + current BLOODSKY smoke fixtures | Screenshot/gesture comparisons, real serial/Modbus tests, no misleading PASS |
@@ -44,3 +44,9 @@ These are *development targets*, not claims that a code change is already implem
 5. Only update the unified acceptance matrix after **its** independent acceptance requirements are satisfied.
 
 The source-inventory validator `tools/test_kascada_107_reference.py` checks IDs, coverage and provenance; it **does not** substitute for functional tests.
+
+## Existing executable original-app emulator route
+
+The repository already has [Original Craft 1.0.7 emulator probe](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/workflows/original-craft-emulator.yml), with a manual `workflow_dispatch` input `profile: full` and an Android 11/API 30 emulator. It rebuilds the pinned original decompilation, debug-signs it, runs the offline `tools/original_craft_emulator_probe.py --full` traversal, and uploads a short-retention artifact with screenshots, UI XML and logs. This is a **reconstructed/debug-signed** APK, not an installed byte-identical copy of the user's original APK; record that distinction with every screenshot. Existing [emulator audit](../CRAFT_1_0_7_EMULATOR_AUDIT_20261018.md) shows that some past runs terminated before final JSON.
+
+Run the workflow explicitly from the GitHub Actions page (`Run workflow`, choose the working branch and `full` profile). Then inspect completion, artifact evidence, traversal coverage and crash logs; map specific observed actions to K107 IDs. An unfinished run is not 550 passed tests. Network stays disabled and real external hardware is not simulated.
