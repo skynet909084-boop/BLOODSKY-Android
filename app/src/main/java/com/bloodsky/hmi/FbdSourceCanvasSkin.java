@@ -34,6 +34,8 @@ public final class FbdSourceCanvasSkin {
                 || "FBD CRAFT POW".equals(type) || "FBD CRAFT SIN".equals(type)
                 || "FBD CRAFT ABS".equals(type) || "FBD CRAFT INT TO FLOAT".equals(type)
                 || "FBD CRAFT FLOAT TO INT".equals(type)
+                || "FBD CRAFT SENSOR ORIENTATION".equals(type)
+                || "FBD CRAFT SUNRISE".equals(type)
                 || MainActivity.isCraftMqttSubscriber(type) || MainActivity.isCraftMqttPublisher(type);
     }
 
@@ -62,6 +64,8 @@ public final class FbdSourceCanvasSkin {
                 : "FBD CRAFT ABS".equals(w.type) ? "ABS"
                 : "FBD CRAFT INT TO FLOAT".equals(w.type) ? "INT->FL"
                 : "FBD CRAFT FLOAT TO INT".equals(w.type) ? "FL->INT"
+                : "FBD CRAFT SENSOR ORIENTATION".equals(w.type) ? orientationCaption(w)
+                : "FBD CRAFT SUNRISE".equals(w.type) ? sunriseCaption(w)
                 : "FBD CRAFT COMPARE".equals(w.type) ? w.compareOperator
                 : MainActivity.isCraftMqttSubscriber(w.type) ? "MQTT_S"
                 : MainActivity.isCraftMqttPublisher(w.type) ? "MQTT_P"
@@ -99,6 +103,17 @@ public final class FbdSourceCanvasSkin {
                 || "FBD CRAFT TIMER".equals(type) || "FBD CRAFT MX".equals(type);
     }
 
+    static String orientationCaption(MainActivity.Widget widget) {
+        int axis = Math.max(1, Math.min(3, widget.extraFields.optInt("craftSensorAxis",
+                widget.extraFields.optInt("type", 1))));
+        return axis == 2 ? "ORIENTATION_Y" : axis == 3 ? "ORIENTATION_Z" : "ORIENTATION_X";
+    }
+
+    static String sunriseCaption(MainActivity.Widget widget) {
+        return widget.extraFields.optString("craftSunriseMode",
+                widget.extraFields.optInt("type", 1) == 2 ? "SS" : "SR");
+    }
+
     /** Decompiled original FB_CTU=draw9 and FB_RS/FB_TRIGGER=draw8. */
     private static boolean hasNativeHeader(String type) {
         return "FBD CRAFT CTU".equals(type) || "FBD CRAFT SEL".equals(type)
@@ -112,9 +127,13 @@ public final class FbdSourceCanvasSkin {
     public static void draw(Canvas canvas, Paint brush, MainActivity.Widget w, float density) {
         if (!shouldUse(w)) return;
         float pin = Math.max(5, 10 * density);
+        boolean simpleSource = "FBD CRAFT SENSOR ORIENTATION".equals(w.type)
+                || "FBD CRAFT SUNRISE".equals(w.type);
         float x0 = w.x, x1 = w.x + w.w, y0 = w.y, y1 = w.y + w.h;
-        float left = x0 + pin, right = x1 - pin;
-        RectF body = new RectF(left, y0, right, y1);
+        float left = x0 + (simpleSource ? Math.max(1, density) : pin), right = x1 - pin;
+        RectF body = simpleSource
+                ? new RectF(left, y0 + Math.max(1, density), right, y1 - Math.max(1, density))
+                : new RectF(left, y0, right, y1);
         Paint.Style priorStyle = brush.getStyle();
         float priorSize = brush.getTextSize();
         float priorWidth = brush.getStrokeWidth();
@@ -193,9 +212,11 @@ public final class FbdSourceCanvasSkin {
                     : "FBD CRAFT ABS".equals(w.type) ? "ABS"
                     : "FBD CRAFT INT TO FLOAT".equals(w.type) ? "INT->FL"
                     : "FBD CRAFT FLOAT TO INT".equals(w.type) ? "FL->INT"
+                    : "FBD CRAFT SENSOR ORIENTATION".equals(w.type) ? orientationCaption(w)
+                    : "FBD CRAFT SUNRISE".equals(w.type) ? sunriseCaption(w)
                     : "FBD CRAFT COMPARE".equals(w.type) ? w.compareOperator
                     : FbdDurationUnits.modeForType(w.type);
-            float center = (left + right) / 2f;
+            float center = simpleSource ? (x0 + w.w / 2f - pin / 2f) : (left + right) / 2f;
             if (divided) {
                 canvas.drawText(name, center, y0 + w.h * headerFraction / 2f
                         - (brush.ascent() + brush.descent()) / 2f, brush);
