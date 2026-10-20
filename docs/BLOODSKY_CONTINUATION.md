@@ -24,7 +24,9 @@ This file is the durable handoff for continuing the Craft 1.0.7 parity work with
 - Quick original Craft probe #157: passed its focused route, 8 states / 7 transitions in 47.9 seconds; `coverage_complete=false` by design — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39360336281 (artifact 12237655437).
 - Full Android 11 UI smoke #760: passed on `c5b166c` — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39360336162
 - Full original Craft 1.0.7 emulator probe #155 remains in progress on exact product head `56ff22926c43e088cf59d4825ad5c13bef594b98` — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39359626632
-- The above Android/Craft runs predate the current code slice. The local environment has no `gradle` executable or wrapper; the next PR push must provide the Android compile/JUnit gate for its exact head. Do not report the current patch as Android-verified until then.
+- Exact new head `efdef6ac75a1bbd558808cacd53d5779f2634868`: quick Craft probe #157 passed — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39363667130; full Android UI smoke is still running — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39363667121; Android APK/JUnit run #39363667171 failed only in the new test `systemServiceBitsAreReadFromCraftServiceRegisterProvider` — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39363667171.
+- The failing assertion expected bit 15 to be 1 after `setCharging(true)`. Craft's service provider intentionally stores `!charging` in that bit (the manual defines 0 = charging, 1 = not charging); the test now checks 1 after `setCharging(false)` and restores its prior value. Rerun the APK/JUnit gate on the follow-up head before calling this change verified.
+- The local environment has no `gradle` executable or wrapper. Python suite passed 149/149 after `python tools/prepare_craft_resources.py` materialized pinned Craft resources; generated files were removed. Do not report Android verification until the exact-head rerun passes.
 
 ## Source and documentation baseline
 

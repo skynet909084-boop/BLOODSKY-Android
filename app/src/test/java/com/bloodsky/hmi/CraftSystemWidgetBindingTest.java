@@ -20,8 +20,8 @@ public class CraftSystemWidgetBindingTest {
     @Test public void systemServiceBitsAreReadFromCraftServiceRegisterProvider() throws Exception {
         CraftSystemRegisterBank bank = new CraftSystemRegisterBank();
         CraftServiceRegisters service = FbdCraftRegisterStore.serviceRegisters();
-        boolean wasCharging = service.readRawBit(0, 15) != 0;
-        service.setCharging(true);
+        boolean wasCharging = service.readRawBit(0, 15) == 0;
+        service.setCharging(false);
         JSONObject widget = dynamicTextWidget(0, 15, 1, "global", 100);
 
         assertEquals("1", CraftSystemWidgetBinding.readDynamicTextState(widget, bank));
