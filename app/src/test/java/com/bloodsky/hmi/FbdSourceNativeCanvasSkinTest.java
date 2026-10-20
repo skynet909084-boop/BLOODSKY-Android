@@ -51,7 +51,7 @@ public class FbdSourceNativeCanvasSkinTest {
         MainActivity.Widget sunrise = block("FBD CRAFT SUNRISE", "SR");
         sunrise.extraFields.put("craftSunriseMode", "SS");
         assertEquals("SS", FbdSourceCanvasSkin.sunriseCaption(sunrise));
-        assertTrue(FbdSourceCanvasSkin.shouldUse(sunrise));
+        assertFalse(FbdSourceCanvasSkin.shouldUse(sunrise));
         sunrise.text = "SS";
         assertTrue(FbdSourceCanvasSkin.shouldUse(sunrise));
         sunrise.text = "custom caption";
