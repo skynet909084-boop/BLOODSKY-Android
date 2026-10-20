@@ -19,7 +19,11 @@ from original_fbd_source_probe import (
 TARGETS = ("FB_CTU.java", "FB_RS.java", "FB_TIMER.java", "FB_TRIGGER.java")
 OPTIONAL = ("FB_BLINK.java", "FB_CTD.java", "FB_SR.java",
             "FB_MOVE.java", "FB_SEL.java", "FB_COMPARE.java",
-            "FB_POW.java", "FB_MX.java", "FB_ARRAY.java", "FB_MACRO.java")
+            "FB_POW.java", "FB_MX.java", "FB_ARRAY.java", "FB_MACRO.java",
+            "FB_ARITHMETIC_INT.java", "FB_ARITHMETIC_FLOAT.java",
+            "FB_COMPARE_FLOAT.java", "FB_CHANGE_I.java", "FB_CHANGE_F.java",
+            "SIN.java", "LOG.java", "ABS.java",
+            "IntToFloat.java", "FloatToInt.java", "WordToFloat.java")
 MAX_ARCHIVE_FILES = 5000
 MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
 MAX_EVIDENCE_LINES = 96
@@ -141,7 +145,9 @@ def generate_report(archive_path, expected_sha256=EXPECTED_SHA256):
         "scope": "read-only static evidence; do not equate labels with behavior",
         "pending_acceptance": ["FB_MACRO nested graph editing, typed interfaces, persistence and isolated namespaces",
                                "remaining original palette actions and hardware I/O behavior",
-                               "same-density visual parity and complete original project lifecycle"],
+                               "same-density visual parity and complete original project lifecycle",
+                               "Original INT/FLOAT arithmetic modes, overflow, float NaN/Infinity and source operator state",
+                               "CHANGE_I/CHANGE_F numeric threshold/edge behavior and FLOAT comparator modes"],
     }
 
 
