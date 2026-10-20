@@ -7,7 +7,7 @@ This file is the durable handoff for continuing the Craft 1.0.7 parity work with
 - Repository: `skynet909084-boop/BLOODSKY-Android`.
 - Active branch: `feat/craft-screen-navigation-import-20261018`, PR #143, stacked on PR #142 → #141 → #139 → #76.
 - Stable `main` is untouched. Do not merge PRs, delete branches, or rebase stacked work as part of routine progress; preserve branch dependencies and review them first.
-- Local checkout was clean and matched `origin/feat/craft-screen-navigation-import-20261018` at `56ff22926c43e088cf59d4825ad5c13bef594b98` when this handoff was written.
+- Local checkout matched `origin/feat/craft-screen-navigation-import-20261018` at `c5b166c0a8779febc67f46505d160e4a239b8c5d` before the current read-only system-widget change.
 - Persist each focused, reviewed change to GitHub on the active feature branch and update this handoff after meaningful gates. Do not rely on chat memory as the project record.
 
 ## Latest completed changes
@@ -15,15 +15,16 @@ This file is the durable handoff for continuing the Craft 1.0.7 parity work with
 - `6d05c18` — ID19 can read an explicitly configured local Craft system-register range through `system://register/N` (0–1999) and copy it to an explicitly configured TCP holding-register destination. System-register destinations/writes are unsupported; imported bindings remain disabled.
 - `cf2b430` — corrected the system gateway audit to reflect the actual implementation boundary.
 - `56ff229` — fixed the Android UI smoke selector to expect the Craft-localized FBD timer title (`Свойства: FBD Таймер`). This was a test selector bug, not an app defect.
+- Current uncommitted slice: imported Craft component ID 7 (`CustomDynText`) can read a bit from the local system-register bank when `posDeviceNetworkInList=100` and `typeRequest=1`; network bindings and output widgets remain disabled. Evidence: pinned `CustomComponents/CustomDynText.java#getStringAddress` selects request 1 and label `S#<address>` for system slots; `q/d/b.java#G` reads the configured address bit. Regression coverage is in `CraftSystemWidgetBindingTest`.
 
 ## Verification snapshot for `56ff229`
 
-- Local Python suite: 149/149 passed after `python tools/prepare_craft_resources.py` materialized pinned Craft resources; generated resources were cleaned afterward.
-- Android APK/JUnit run #1123: passed — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39358988336
-- Quick original Craft probe #154: passed its focused route, 8 states / 7 transitions; `coverage_complete=false` by design — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39358988371 (artifact 12236104710).
-- Full Android 11 UI smoke #758 attempt 1 was cancelled during the emulator script after opening `bloodsky-custom.png`; logs show no test verdict or assertion failure, and an artifact was uploaded (ID 12236389349). The job limit is 35 minutes, so the cancellation was not the configured timeout. Attempt 2 has been requested and is pending — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39358988319
-- Full original Craft 1.0.7 emulator probe #155 remains in progress at offline UI traversal — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39359626632
-- The APK/JUnit and quick probe checks run against exact commit `56ff22926c43e088cf59d4825ad5c13bef594b98`. The UI and Craft full-profile runs also target that product-code head; the UI rerun is a new attempt against the same snapshot. Record final outcomes here; diagnose and fix real failures before treating the gate as complete.
+- Local Python suite: 149/149 passed after `python tools/prepare_craft_resources.py` materialized pinned Craft resources; generated resources were removed afterward.
+- Android APK/JUnit run #1125: passed on docs-only head `c5b166c` — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39360336164
+- Quick original Craft probe #157: passed its focused route, 8 states / 7 transitions in 47.9 seconds; `coverage_complete=false` by design — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39360336281 (artifact 12237655437).
+- Full Android 11 UI smoke #760: passed on `c5b166c` — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39360336162
+- Full original Craft 1.0.7 emulator probe #155 remains in progress on exact product head `56ff22926c43e088cf59d4825ad5c13bef594b98` — https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39359626632
+- The above Android/Craft runs predate the current code slice. The local environment has no `gradle` executable or wrapper; the next PR push must provide the Android compile/JUnit gate for its exact head. Do not report the current patch as Android-verified until then.
 
 ## Source and documentation baseline
 
@@ -33,8 +34,8 @@ This file is the durable handoff for continuing the Craft 1.0.7 parity work with
 
 ## Open work queue
 
-1. Finish and record full UI smoke #758 and Craft probe #155. Continue from any uncovered/failing state, then rerun the affected gate on the new exact head.
-2. Implement source-confirmed typed bindings from non-FBD components to Craft system registers and the remaining internal/system gateway behavior, preserving explicit opt-in and fail-closed import semantics.
+1. Finish and record full Craft probe #155. The full UI smoke passed at #760; rerun it on the current code head after commit.
+2. Extend source-confirmed typed system bindings beyond dynamic-text bit reads (starting with numeric inputs), and implement the remaining internal/system gateway behavior while preserving explicit opt-in and fail-closed import semantics.
 3. Complete legacy macro round-trip and execution behavior only where supported by Craft source/fixtures; unknown child blocks must remain preserved and fail closed.
 4. Complete Modbus RTU Bluetooth/USB adapters, reconnect/lifecycle handling, and physical-device acceptance; the current RTU client core is stream-level only.
 5. Continue the manual + screenshots + pinned-decompilation gap audit across component properties, editor/settings/device screens, FBD behavior and persistence; implement verified gaps in focused changes with regression coverage.

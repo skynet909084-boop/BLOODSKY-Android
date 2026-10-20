@@ -1199,6 +1199,7 @@ public class MainActivity extends Activity {
         final List<Integer> gatewayIndices = new ArrayList<>();
         final List<Integer> bitGatewayIndices = new ArrayList<>();
         final List<Integer> archiveTriggerIndices = new ArrayList<>();
+        final Map<Integer, String> craftSystemTextUpdates = new HashMap<>();
         for (int i = 0; i < snapshotWidgets.size(); i++) {
             Widget widget = snapshotWidgets.get(i);
             if ("Шлюз битовый".equals(widget.type)) {
@@ -1213,6 +1214,12 @@ public class MainActivity extends Activity {
                     && !snapshotExtras.get(i).optString("craftArchiveTriggerBinding", "").trim().isEmpty())
                 archiveTriggerIndices.add(i);
             if (isCraftRegisterSink(widget.type)) continue;
+            String systemTextState = CraftSystemWidgetBinding.readDynamicTextState(
+                    snapshotExtras.get(i), systemRegisterBank);
+            if (systemTextState != null) {
+                craftSystemTextUpdates.put(i, systemTextState);
+                continue;
+            }
             boolean craftSource = isCraftRegisterSource(widget.type);
             if (craftSource && widget.extraFields.optBoolean("craftVarConstantMode", false)) continue;
             int quantity = craftSource && isCraftRegisterFloat(widget.type) ? 2 : 1;
@@ -1232,12 +1239,14 @@ public class MainActivity extends Activity {
             if (binding != null && binding.startsWith("tcp://")
                     && parseBinding(i, binding) == null) invalidBindings.put(i, "CFG");
         }
-        if (requests.isEmpty() && invalidBindings.isEmpty() && gatewayIndices.isEmpty() && bitGatewayIndices.isEmpty()) return;
+        if (requests.isEmpty() && invalidBindings.isEmpty() && craftSystemTextUpdates.isEmpty()
+                && gatewayIndices.isEmpty() && bitGatewayIndices.isEmpty()) return;
         modbusPollInFlight = true;
         try {
             modbusExecutor.execute(() -> {
             try {
                 final Map<Integer, String> updates = new HashMap<>(invalidBindings);
+                updates.putAll(craftSystemTextUpdates);
                 for (BindingRequest request : requests) {
                     if (!pollSession.accepts(sessionToken)) return;
                     String value;
