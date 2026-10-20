@@ -42,12 +42,12 @@ class OriginalSourceContractsTests(unittest.TestCase):
 
     def test_verify_contracts_execution(self):
         """Verification tool must pass on repo state and report OK."""
-        # Check if local app source directory has the 12 references from main
+        # Source refs expand with the consolidated Craft macro palette.
         java_files = list(self.app_dir.rglob("*.java"))
         java_code = "\n".join(p.read_text(encoding="utf-8", errors="replace") for p in java_files)
         direct_refs = set(re.findall(r'\bR\.drawable\.kc_([a-z0-9_]+)\b', java_code)) | set(re.findall(r'\"kc_([a-z0-9_]+)\"', java_code))
 
-        if len(direct_refs) == 12:
+        if len(direct_refs) == 13:
             res = verify_contracts(
                 self.zip_path,
                 self.contracts_path,
@@ -56,7 +56,7 @@ class OriginalSourceContractsTests(unittest.TestCase):
                 self.fixtures_dir
             )
         else:
-            # On unmerged local branch before PR44 merge, supply mock app dir with the 12 references
+            # Keep the audit reproducible while the macro palette is not in this branch's source tree.
             with tempfile.TemporaryDirectory() as tmpdir:
                 mock_app_dir = Path(tmpdir)
                 mock_java_dir = mock_app_dir / "com/bloodsky/hmi"
@@ -65,10 +65,10 @@ class OriginalSourceContractsTests(unittest.TestCase):
                 # Copy MainActivity.java
                 orig_main = (self.app_dir / "com/bloodsky/hmi/MainActivity.java").read_text(encoding="utf-8")
                 mock_refs = (
-                    "\n// MOCK 12 MAIN REFS FOR LOCAL UNMERGED BRANCH:\n"
-                    "// R.drawable.kc_lamp_green R.drawable.kc_lamp_red R.drawable.kc_lamp_yellow R.drawable.kc_lamp_blue R.drawable.kc_lamp_off\n"
-                    "// R.drawable.kc_menu_app_bar R.drawable.kc_button R.drawable.kc_button2 R.drawable.kc_button3 R.drawable.kc_arrow_right R.drawable.kc_arrow_left\n"
-                    "// R.drawable.kc_minus\n"
+                    "\n// MOCK 13 IMAGE ALIASES FOR UNMERGED SOURCE TREE:\n"
+                    "// R.drawable.kc_background_button R.drawable.kc_lamp_blue R.drawable.kc_lamp_green R.drawable.kc_lamp_off\n"
+                    "// R.drawable.kc_lamp_red R.drawable.kc_lamp_yellow R.drawable.kc_main_background_small R.drawable.kc_menu_app_bar\n"
+                    "// R.drawable.kc_menu_bar_component R.drawable.kc_start R.drawable.kc_stop R.drawable.kc_tab_page1 R.drawable.kc_warning_32\n"
                 )
                 (mock_java_dir / "MainActivity.java").write_text(orig_main + mock_refs, encoding="utf-8")
 
@@ -82,8 +82,8 @@ class OriginalSourceContractsTests(unittest.TestCase):
 
         self.assertEqual(res["status"], "OK")
         self.assertEqual(res["total_images"], 152)
-        self.assertEqual(res["referenced_images"], 12)
-        self.assertEqual(res["unused_images"], 140)
+        self.assertEqual(res["referenced_images"], 17)
+        self.assertEqual(res["unused_images"], 135)
 
     def test_cited_call_sites_exist_in_main_activity(self):
         """Every cited BLOODSKY call-site method must exist in MainActivity.java."""
