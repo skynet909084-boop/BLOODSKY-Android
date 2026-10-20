@@ -9,6 +9,12 @@ on:
         type: choice
         default: full
         options: [full, quick]
+      api_level:
+        description: "Android API image (31 is Android 12)"
+        required: true
+        type: choice
+        default: '30'
+        options: ['30', '31', '32']
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review]
     paths:
@@ -55,7 +61,8 @@ jobs:
     # Other feature→feature PRs use fast FBD verification; integration/main PRs,
     # push→main and manually dispatched default runs use the full UI suite.
     env:
-      BLOODSKY_UI_PROFILE: ${{ github.event_name == 'pull_request' && !startsWith(github.head_ref, 'fix/document-picker-') && github.base_ref != 'main' && github.base_ref != 'feat/craft-project-json-import-20261018' && 'quick' || (github.event_name == 'workflow_dispatch' && inputs.ui_profile == 'quick' && 'quick' || 'full') }}
+      BLOODSKY_UI_PROFILE: ${{ github.event_name == 'pull_request' && !contains(github.head_ref, 'android12') && !startsWith(github.head_ref, 'fix/document-picker-') && github.base_ref != 'main' && github.base_ref != 'feat/craft-project-json-import-20261018' && 'quick' || (github.event_name == 'workflow_dispatch' && inputs.ui_profile == 'quick' && 'quick' || 'full') }}
+      BLOODSKY_ANDROID_API: ${{ github.event_name == 'workflow_dispatch' && inputs.api_level || (contains(github.head_ref, 'android12') && '31' || '30') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -84,10 +91,10 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Install and exercise APK on Android 11
+      - name: Install and exercise APK on Android ${{ env.BLOODSKY_ANDROID_API }}
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
-          api-level: 30
+          api-level: ${{ env.BLOODSKY_ANDROID_API }}
           target: default
           arch: x86_64
           profile: Nexus 6
@@ -103,8 +110,9 @@ jobs:
           {
             echo "## BLOODSKY Android UI"
             echo "- Profile: $BLOODSKY_UI_PROFILE"
+            echo "- Android API: $BLOODSKY_ANDROID_API"
             echo "- Commit: $GITHUB_SHA"
-            echo "- To run full on a feature branch: Actions → BLOODSKY Android UI smoke → Run workflow → ui_profile=full"
+            echo "- To run full on Android 12: Actions → BLOODSKY Android UI smoke → Run workflow → ui_profile=full, api_level=31"
             echo "- PRs targeting main always use full"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Save UI screenshots and diagnostics
