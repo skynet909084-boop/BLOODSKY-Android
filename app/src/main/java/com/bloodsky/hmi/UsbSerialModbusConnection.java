@@ -47,6 +47,7 @@ public final class UsbSerialModbusConnection implements Closeable {
     }
 
     public String getDeviceName() { return device.getDeviceName(); }
+    public boolean isOpen() { return !closed.get(); }
 
     public int[] read(int unit, int functionCode, int startAddress, int quantity) throws IOException {
         if (closed.get()) throw new IOException("USB serial connection is closed");
