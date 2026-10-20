@@ -19,6 +19,8 @@ Source: decompiled APK artifact `11912849123`, `jadx/sources/ru/himik/nightscrea
 | FB_CHANGE_I | Yes | Same with header/divider | Three-section layout | Runtime integrated; visual partial |
 | FB_CHANGE_F | Yes | Same with header/divider | Three-section layout | Runtime integrated; visual partial |
 | FB_MOVE | Yes | Same with header/divider | Three-section layout | Runtime integrated; visual partial |
+| Sensor_Orientation | Yes | #888888 rectangle, black stroke | ORIENTATION_X/Y/Z label selected by `type`; one centered Q output | Runtime integrated; default visual source skin added, parity partial |
+| Sunrise_GPS | Yes | #888888 rectangle, black stroke | SR/SS label selected by `type`; one centered Q output | Runtime integrated; default visual source skin added, parity partial |
 | FB_MX | Yes | Same with header/divider | BOOL enable, Integer index, Integer output | Runtime integrated; visual partial |
 | FB_POW | Yes | Same with header/divider | Three-section layout | Existing runtime; visual partial |
 | FB_ARRAY | No local onDraw | Inherited | EN, DT, ID inputs and Q output; shared Integer register store | Runtime integrated; inherited visual approximation |
