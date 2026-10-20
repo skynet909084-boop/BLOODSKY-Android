@@ -43,11 +43,23 @@ def verify_contracts(
     if len(images) != 152:
         raise ValueError(f"Expected 152 original image files, found {len(images)}")
 
-    java_files = list(app_source_dir.rglob("*.java"))
+    # Scan the full app source tree. Java can reference drawables through
+    # R.drawable or string aliases; resource XML can reference the same assets
+    # through @drawable. Both are direct packaged-resource usages.
+    java_root = app_source_dir / "java" if (app_source_dir / "java").is_dir() else app_source_dir
+    res_root = app_source_dir / "res" if (app_source_dir / "res").is_dir() else app_source_dir
+    java_files = list(java_root.rglob("*.java"))
+    xml_files = list(res_root.rglob("*.xml"))
     java_code = "\n".join(p.read_text(encoding="utf-8", errors="replace") for p in java_files)
+    xml_code = "\n".join(p.read_text(encoding="utf-8", errors="replace") for p in xml_files)
 
-    # Extract referenced suffixes (e.g. lamp_green from R.drawable.kc_lamp_green or "kc_lamp_green")
-    direct_refs = set(re.findall(r'\bR\.drawable\.kc_([a-z0-9_]+)\b', java_code)) | set(re.findall(r'\"kc_([a-z0-9_]+)\"', java_code))
+    # Extract referenced suffixes (e.g. R.drawable.kc_lamp_green, a Java string
+    # alias, or @drawable/kc_lamp_green in an Android resource XML file).
+    direct_refs = (
+        set(re.findall(r'\\bR\\.drawable\\.kc_([a-z0-9_]+)\\b', java_code))
+        | set(re.findall(r'\"kc_([a-z0-9_]+)\"', java_code))
+        | set(re.findall(r'@drawable/kc_([a-z0-9_]+)\\b', xml_code))
+    )
 
     used = []
     unused = []
@@ -81,7 +93,7 @@ def verify_contracts(
         )
 
     # 5. Verify cited BLOODSKY production call sites exist in MainActivity.java
-    main_activity_path = app_source_dir / "com/bloodsky/hmi/MainActivity.java"
+    main_activity_path = java_root / "com/bloodsky/hmi/MainActivity.java"
     if main_activity_path.exists():
         main_code = main_activity_path.read_text(encoding="utf-8", errors="replace")
         cited_call_sites = set()
