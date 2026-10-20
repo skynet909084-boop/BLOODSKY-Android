@@ -75,7 +75,7 @@
 - Не менять `main` до отдельного разрешения. Следующий пакет: получить артефакт полного Craft FBD probe #172, завершить привязку FBD ID/pins к source behavior, затем выбрать узкий недостающий runtime критерий из этой матрицы и добавить его с exact-head JUnit/APK/UI gates.
 
 
-## Проверка 21.10.2026 — открытые PR и новые доказательства
+## Проверка 20.10.2026 — открытые PR и новые доказательства
 
 - PR [#192](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/192) прошёл статическое ревью: матрица оригинала содержит 550 последовательных уникальных ID, все 550 имеют статус `WAITING_FOR_ANDROID_RUNTIME`; инвентарь подтверждает APK SHA-256 `11464db76f59393ccf698f57e60af1756756ffc78cb315d43052ae92adb50d4f`, package/version и 27 HMI + 40 Logic entries. APK/JUnit #1249 успешен на head `5b6717ceb03a357ade2d7e544376484e03e11f73`; PR готов к человеческому ревью, не объединён.
 - PR [#191](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/191) UI smoke артефакт зафиксировал потерю выбранного media-файла в каталоге проекта после сохранения/перезагрузки. Issue [#195](https://github.com/skynet909084-boop/BLOODSKY-Android/issues/195) описывает воспроизведение и критерий P0; фикс добавлен в head `a26e9988b06fd7d89ce3c007bc118eff833c6907`. APK/JUnit прошёл, Android 11 UI smoke остаётся в работе; до exact-head UI PASS критерий не закрыт.
