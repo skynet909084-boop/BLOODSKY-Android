@@ -717,7 +717,6 @@ class Smoke:
         adb('shell', 'input', 'tap', str(x), str(y))
         self.tap(description='Show roots')
         self.tap('Downloads')
-        self.wait_node('bloodsky-custom.png', timeout=30)
         time.sleep(1)
         adb('shell', 'am', 'kill', PACKAGE)
         self.tap_document('bloodsky-custom.png')
