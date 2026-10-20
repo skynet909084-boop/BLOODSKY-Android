@@ -205,9 +205,9 @@ Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
 
 ## Original project acceptance gap — 20 Oct 2026
 
-- Existing sanitized CI fixtures cover `home.pro` (24 components), `gitH.pro` (65 components) and standalone `пож.pro` (124 components). They check import/save/reopen, but do not establish ZIP media round-trip or full runtime bindings.
-- Newly supplied `home2` and `дом 2025` archives are not yet represented in that CI acceptance; `дом 2025` contains 346 component records. `пож.zip` has no media payload.
-- Next acceptance package: add sanitized immutable fixtures with checksums and expected record/screen/connection counts; perform import → deterministic single-field edit → save → ZIP export → re-import → reopen; assert component/connection metadata, unknown fields, inactive legacy bindings, media bytes/backgrounds, screen counts and device slots are preserved except for the explicit edit. Keep missing-media, size/path, rollback and CRC failure checks intact. Add a focused API30 UI restart pass for a representative fixture.
+- Existing sanitized CI fixtures cover `home.pro` (24 components), `gitH.pro` (65 components) and standalone `пож.pro` (124 components). PR #166 now runs these through ZIP import → atomic save/reopen → export → re-import, checking component/screen counts, Craft source records and background bytes. It uses a fixture image payload and does not prove the original archives' exact media mapping or full runtime bindings.
+- The separately supplied `home2` and `дом 2025` archives remain outside this CI acceptance; `дом 2025` contains 346 component records. `пож.zip` has no media payload.
+- Remaining acceptance: add sanitized immutable versions of `home2` and `дом 2025` with checksums and expected record/screen/connection counts; verify unknown fields, inactive legacy bindings, original media/backgrounds, device slots and runtime bindings around a deterministic single-field edit. Keep missing-media, size/path, rollback and CRC failure checks intact. Add a focused API30 UI restart pass for a representative original-project fixture.
 - Do not claim original-project parity until these fixture-based gates pass. No raw Library archive has been copied into the repository.
 
 
@@ -239,7 +239,7 @@ These are record counts only; they do not assert the supported runtime semantics
 ## Обновление: FBD rollback PR #163 — 20 Oct 2026
 
 - Создан узкий draft PR [#163](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/163) в `prototype/all-in-one-20261020`, head `8f7b71339fea7dc65d1afc339e6febbeaa75df10`. Он переносит только атомарность сохранения connect/disconnect рёбер в модель текущего прототипа: неуспешная запись или исключение восстанавливает typed edge JSON и метаданные; undo snapshot добавляется только после успешного сохранения.
-- Точный head прошёл APK/JUnit [#1162](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39392446480). API 30 smoke [#786](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39392008943) прошёл на runtime-identical commit `6568d9a92a6246f31d2548340956a8420b879db4`; последующие коммиты PR меняли только тесты. PR остаётся draft и не влит.
+- Точный head прошёл APK/JUnit [#1162](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39392446480). API 30 smoke [#786](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39392008943) прошёл на runtime-identical commit `6568d9a92a6246f31d2548340956a8420b879db4`; последующие коммиты PR меняли только тесты. PR #163 принят и squash-слит в prototype как `91e9996b6fb4904ae2429b1d217604b8a32aa0e5`.
 - PR #69 по-прежнему не вливать целиком: его старая модель рёбер и инвертора несовместима с более богатой текущей FBD-моделью. #163 — адаптированный узкий фикс, а не перенос PR #69.
 
 ## Обновление статуса полного Craft UI probe #171 — 20 Oct 2026
@@ -279,6 +279,16 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 
 ## P1 sanitized Craft ZIP acceptance — 20 Oct 2026
 
-- Draft PR [#164](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/164) добавляет in-memory sanitized Craft ZIP через production import bundle, редактирование, atomic save/reopen, export и повторный import. Тест сравнивает сохранённое `craftSource`, проверяет vendor-поля, fail-closed placeholder для неизвестного ID 3 и исходные байты фонового media.
-- Exact-head APK/JUnit [#1165](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39394794516) прошёл на `744a199f91d2a728dfc778cfbe349a067fc1b190`. UI smoke #791 пропущен path filter, так как PR меняет только тесты; производственный/runtime-код не изменён. PR оставлен draft, не слит.
-- Этот gate закрывает один синтетический sanitized ZIP путь, а не acceptance пользовательских `home2`/`дом 2025` архивов. Подлинные пользовательские архивы не добавлялись в репозиторий.
+- PR [#164](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/164) добавил in-memory sanitized Craft ZIP через production import bundle, редактирование, atomic save/reopen, export и повторный import. Тест сравнивает сохранённое `craftSource`, проверяет vendor-поля, fail-closed placeholder для неизвестного ID 3 и исходные байты фонового media. PR слит в prototype как `822f4fb1a60872bf85c4f7077655fa1745185c09`; exact-head APK/JUnit [#1165](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39394794516) прошёл на `744a199f91d2a728dfc778cfbe349a067fc1b190`. UI smoke #791 пропущен path filter, так как менялись только тесты.
+- PR [#165](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/165) добавил явную проверку сохранения обеих исходных Craft component rows на интегрированной базе; APK/JUnit [#1166](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39395670323) и Android 11 UI smoke [#794](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39395670292) прошли. PR слит как `b8c0c84860ecc6a5ecbc290d2d3199861e6420ad`.
+- PR [#166](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/166) расширил ZIP round-trip на три обезличенных каталожных fixture `home`, `gitH`, `пож`: проверяются 24/65/124 component rows, 16/16/20 screens, исходный `craftSource`, явное изменение проекта и байты background media. Exact-head APK/JUnit [#1167](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39396050898) passed; PR слит в prototype как `2a6fda2b864dfeed437dd11e390672fe308394ce`. UI smoke #797 запущен отдельно и проверяется.
+- Эти sanitized fixtures закрывают ZIP round-trip для трёх проектных JSON-примеров, но не полную приёмку отсутствующих `home2` и `дом 2025` архивов, runtime bindings или аппаратного поведения. Оригинальные пользовательские архивы не добавлялись в репозиторий.
+
+
+## Финальная интеграционная проверка текущего prototype — 20 Oct 2026
+
+- Prototype head: `2a6fda2b864dfeed437dd11e390672fe308394ce`. PR #163 FBD rollback, PR #164 sanitized ZIP acceptance, PR #165 интеграционная проверка и PR #166 round-trip трёх sanitized fixtures слиты только в `prototype/all-in-one-20261020`.
+- Интегрированный PR #165 прошёл APK/JUnit #1166 и Android 11 UI smoke #794 на merge ref; PR #166 прошёл exact-head APK/JUnit #1167. UI smoke #797 для #166 выполняется отдельно после merge и не заменяет JUnit.
+- PR #69 остаётся открытым и не слит: переносить целиком несовместимую старую FBD-модель нельзя. Узкий rollback уже реализован и принят через #163.
+- Full Craft UI probe #171 остаётся только частичным навигационным evidence: все 10 jobs успешны, но все направления имеют `coverage_limited=true` и `coverage_complete=false`; полной UI-паритетности не заявлять.
+- `main` не менялась и остаётся `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
