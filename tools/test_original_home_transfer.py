@@ -28,7 +28,10 @@ class OriginalHomeTransferTests(unittest.TestCase):
         self.assertIn('connection.read(unit, function, address, count)', usb)
         self.assertIn('action("Отключить"', usb)
         self.assertIn('screenGeneration != manualUsbScreenGeneration', usb)
-        self.assertIn('closeManualUsbConnection()', home)
+        # Keep the explicitly selected RTU session while the operator loads a project from home.
+        self.assertNotIn('closeManualUsbConnection()', home)
+        self.assertIn('closeManualUsbConnection()', usb)
+        self.assertIn('closeManualUsbConnection()', source.split('protected void onDestroy()', 1)[1].split('@Override', 1)[0])
         back = source.split('public void onBackPressed()', 1)[1].split('private String currentScreenName()', 1)[0]
         self.assertIn('if (manualUsbScreenVisible) { showHome(); return; }', back)
         self.assertIn('R.drawable.kc_main_background_small', home)
