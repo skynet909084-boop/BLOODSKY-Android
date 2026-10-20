@@ -177,6 +177,56 @@ public class PortableZipMediaTest {
     }
 
     @Test
+    public void selectedMediaIsCopiedIntoProjectStorageAndDeduplicated() throws Exception {
+        String projectA = new JSONObject().put("id", "picker-a").toString();
+        String projectB = new JSONObject().put("id", "picker-b").toString();
+        byte[] imageBytes = "portable-picker-image".getBytes(StandardCharsets.UTF_8);
+
+        String pathA;
+        try (InputStream input = new ByteArrayInputStream(imageBytes)) {
+            pathA = ProjectMediaService.storeSelectedMedia(rootDir, projectA, "shared/photo.PNG", input);
+        }
+        String repeated;
+        try (InputStream input = new ByteArrayInputStream(imageBytes)) {
+            repeated = ProjectMediaService.storeSelectedMedia(rootDir, projectA, "renamed.png", input);
+        }
+        String pathB;
+        try (InputStream input = new ByteArrayInputStream(imageBytes)) {
+            pathB = ProjectMediaService.storeSelectedMedia(rootDir, projectB, "photo.png", input);
+        }
+
+        assertEquals(pathA, repeated);
+        assertTrue(pathA.startsWith("media/asset_"));
+        assertTrue(pathA.endsWith(".png"));
+        assertFalse(pathA.contains("content://"));
+        File storedA = ProjectMediaService.resolveMediaFile(rootDir, projectA, pathA);
+        File storedB = ProjectMediaService.resolveMediaFile(rootDir, projectB, pathB);
+        assertNotEquals(storedA.getCanonicalPath(), storedB.getCanonicalPath());
+        assertArrayEquals(imageBytes, java.nio.file.Files.readAllBytes(storedA.toPath()));
+        assertArrayEquals(imageBytes, java.nio.file.Files.readAllBytes(storedB.toPath()));
+        assertEquals(1, ProjectMediaService.getProjectMediaDir(rootDir, projectA).listFiles().length);
+    }
+
+    @Test
+    public void selectedMediaRejectsEmptyAndOversizedFiles() throws Exception {
+        String project = new JSONObject().put("id", "picker-limits").toString();
+        try {
+            ProjectMediaService.storeSelectedMedia(rootDir, project, "empty.png", new ByteArrayInputStream(new byte[0]));
+            fail("Empty selected media must be rejected");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage().contains("empty"));
+        }
+        try {
+            ProjectMediaService.storeSelectedMedia(rootDir, project, "large.bin",
+                    new ByteArrayInputStream(new byte[ProjectMediaService.MAX_BUNDLE_BYTES + 1]));
+            fail("Oversized selected media must be rejected");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage().contains("size limit"));
+        }
+        assertEquals(0, ProjectMediaService.getProjectMediaDir(rootDir, project).listFiles().length);
+    }
+
+    @Test
     public void testImportRollbackOnCommitOrMediaFailure() throws Exception {
         File file1 = tempFolder.newFile("sample.png");
         byte[] content1 = "SAMPLE_PNG_DATA".getBytes(StandardCharsets.UTF_8);
