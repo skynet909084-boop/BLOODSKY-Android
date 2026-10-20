@@ -19,7 +19,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Pure-Java Modbus RTU read client over an already-open serial byte stream.
+ * Pure-Java Modbus RTU client over an already-open serial byte stream.
  *
  * <p>Each exchange has one wall-clock deadline covering request write, flush, and the complete
  * response. A timed-out client is aborted and cannot be reused: serial framing is no longer
@@ -66,6 +66,119 @@ public final class ModbusRtuClient implements Closeable {
         ensureOpen();
         validateRead(unit, functionCode, startAddress, quantity);
         Future<int[]> exchange = ioExecutor.submit(() -> exchange(unit, functionCode, startAddress, quantity));
+        return await(exchange);
+    }
+
+    /** Writes a single coil using Modbus FC05. */
+    public synchronized void writeSingleCoil(int unit, int address, boolean value) throws IOException {
+        validateWriteRequest(unit, address, 1, 1);
+        int encoded = value ? 0xff00 : 0;
+        executeWrite(unit, 5, address, u16Bytes(encoded), concat(u16Bytes(address), u16Bytes(encoded)));
+    }
+
+    /** Writes one holding register using Modbus FC06. */
+    public synchronized void writeSingle(int unit, int address, int value) throws IOException {
+        validateWriteRequest(unit, address, 1, 1);
+        validateValue(value);
+        executeWrite(unit, 6, address, u16Bytes(value), concat(u16Bytes(address), u16Bytes(value)));
+    }
+
+    /** Writes packed coils using Modbus FC0F. Values must be boolean 0/1. */
+    public synchronized void writeMultipleCoils(int unit, int address, int[] values) throws IOException {
+        if (values == null) throw new IllegalArgumentException("Coil values are required");
+        int[] snapshot = values.clone();
+        validateWriteRequest(unit, address, snapshot.length, 1968);
+        for (int value : snapshot) {
+            if (value != 0 && value != 1) throw new IllegalArgumentException("Coil values must be 0 or 1");
+        }
+        int byteCount = (snapshot.length + 7) / 8;
+        ByteArrayOutputStream payload = new ByteArrayOutputStream(5 + byteCount);
+        DataOutputStream out = new DataOutputStream(payload);
+        out.writeShort(snapshot.length);
+        out.writeByte(byteCount);
+        for (int byteIndex = 0; byteIndex < byteCount; byteIndex++) {
+            int packed = 0;
+            for (int bit = 0; bit < 8; bit++) {
+                int valueIndex = byteIndex * 8 + bit;
+                if (valueIndex < snapshot.length && snapshot[valueIndex] == 1) packed |= 1 << bit;
+            }
+            out.writeByte(packed);
+        }
+        executeWrite(unit, 15, address, payload.toByteArray(),
+                concat(u16Bytes(address), u16Bytes(snapshot.length)));
+    }
+
+    /** Writes holding registers using Modbus FC10. */
+    public synchronized void writeMultiple(int unit, int address, int[] values) throws IOException {
+        if (values == null) throw new IllegalArgumentException("Register values are required");
+        int[] snapshot = values.clone();
+        validateWriteRequest(unit, address, snapshot.length, 123);
+        for (int value : snapshot) validateValue(value);
+        ByteArrayOutputStream payload = new ByteArrayOutputStream(5 + snapshot.length * 2);
+        DataOutputStream out = new DataOutputStream(payload);
+        out.writeShort(snapshot.length);
+        out.writeByte(snapshot.length * 2);
+        for (int value : snapshot) out.writeShort(value);
+        executeWrite(unit, 16, address, payload.toByteArray(),
+                concat(u16Bytes(address), u16Bytes(snapshot.length)));
+    }
+
+    /** Atomically updates selected bits in a holding register using Modbus FC22 (0x16). */
+    public synchronized void writeMask(int unit, int address, int andMask, int orMask) throws IOException {
+        validateWriteRequest(unit, address, 1, 1);
+        validateValue(andMask);
+        validateValue(orMask);
+        byte[] masks = concat(u16Bytes(andMask), u16Bytes(orMask));
+        executeWrite(unit, 22, address, masks, concat(u16Bytes(address), masks));
+    }
+
+    private void executeWrite(int unit, int functionCode, int address,
+                              byte[] requestData, byte[] expectedEchoData) throws IOException {
+        ensureOpen();
+        byte[] requestPdu = new byte[3 + requestData.length];
+        requestPdu[0] = (byte) functionCode;
+        requestPdu[1] = (byte) (address >>> 8);
+        requestPdu[2] = (byte) address;
+        System.arraycopy(requestData, 0, requestPdu, 3, requestData.length);
+        Future<Void> transaction = ioExecutor.submit(() -> {
+            exchangeWrite(unit, functionCode, requestPdu, expectedEchoData);
+            return null;
+        });
+        await(transaction);
+    }
+
+    private void exchangeWrite(int unit, int functionCode, byte[] requestPdu,
+                               byte[] expectedEchoData) throws IOException {
+        output.write(withCrc(unit, requestPdu));
+        output.flush();
+        byte[] header = new byte[2];
+        readFully(header, 0, header.length);
+        if ((header[0] & 0xff) != unit) {
+            throw new IOException("Unexpected Modbus RTU unit ID: " + (header[0] & 0xff));
+        }
+        int responseFunction = header[1] & 0xff;
+        if (responseFunction == (functionCode | 0x80)) {
+            byte[] exceptionTail = new byte[3];
+            readFully(exceptionTail, 0, exceptionTail.length);
+            byte[] body = concat(header, new byte[] {exceptionTail[0]});
+            verifyCrc(body, new byte[] {exceptionTail[1], exceptionTail[2]}, "exception");
+            throw new ModbusException(functionCode, exceptionTail[0] & 0xff);
+        }
+        if (responseFunction != functionCode) {
+            throw new IOException("Unexpected Modbus RTU function code: " + responseFunction);
+        }
+        byte[] echo = new byte[expectedEchoData.length];
+        readFully(echo, 0, echo.length);
+        byte[] crcBytes = new byte[2];
+        readFully(crcBytes, 0, crcBytes.length);
+        byte[] body = concat(header, echo);
+        verifyCrc(body, crcBytes, "write response");
+        if (!java.util.Arrays.equals(echo, expectedEchoData)) {
+            throw new IOException("Modbus RTU write acknowledgement does not match the request");
+        }
+    }
+
+    private <T> T await(Future<T> exchange) throws IOException {
         try {
             return exchange.get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException timeout) {
@@ -88,6 +201,37 @@ public final class ModbusRtuClient implements Closeable {
             if (cause instanceof RuntimeException) throw (RuntimeException) cause;
             throw new IOException("Modbus RTU transaction failed", cause);
         }
+    }
+
+    private static byte[] withCrc(int unit, byte[] pdu) {
+        byte[] frame = new byte[1 + pdu.length + 2];
+        frame[0] = (byte) unit;
+        System.arraycopy(pdu, 0, frame, 1, pdu.length);
+        int crc = crc16(frame, frame.length - 2);
+        frame[frame.length - 2] = (byte) crc;
+        frame[frame.length - 1] = (byte) (crc >>> 8);
+        return frame;
+    }
+
+    private static byte[] u16Bytes(int value) {
+        return new byte[] {(byte) (value >>> 8), (byte) value};
+    }
+
+    private static byte[] concat(byte[] left, byte[] right) {
+        byte[] result = java.util.Arrays.copyOf(left, left.length + right.length);
+        System.arraycopy(right, 0, result, left.length, right.length);
+        return result;
+    }
+
+    private static void validateWriteRequest(int unit, int address, int quantity, int maximum) {
+        if (unit < 1 || unit > 247) throw new IllegalArgumentException("Unit ID must be 1..247");
+        if (address < 0 || address > 65535) throw new IllegalArgumentException("Address must be 0..65535");
+        if (quantity < 1 || quantity > maximum) throw new IllegalArgumentException("Invalid Modbus write quantity");
+        if ((long) address + quantity > 65536L) throw new IllegalArgumentException("Modbus address range overflow");
+    }
+
+    private static void validateValue(int value) {
+        if (value < -32768 || value > 65535) throw new IllegalArgumentException("Value does not fit a 16-bit register");
     }
 
     private int[] exchange(int unit, int functionCode, int startAddress, int quantity) throws IOException {

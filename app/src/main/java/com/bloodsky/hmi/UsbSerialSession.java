@@ -102,6 +102,38 @@ final class UsbSerialSession implements Closeable {
         }
     }
 
+    void writeSingleCoil(int unit, int address, boolean value) throws IOException {
+        write(() -> client.writeSingleCoil(unit, address, value));
+    }
+
+    void writeSingle(int unit, int address, int value) throws IOException {
+        write(() -> client.writeSingle(unit, address, value));
+    }
+
+    void writeMultipleCoils(int unit, int address, int[] values) throws IOException {
+        write(() -> client.writeMultipleCoils(unit, address, values));
+    }
+
+    void writeMultiple(int unit, int address, int[] values) throws IOException {
+        write(() -> client.writeMultiple(unit, address, values));
+    }
+
+    void writeMask(int unit, int address, int andMask, int orMask) throws IOException {
+        write(() -> client.writeMask(unit, address, andMask, orMask));
+    }
+
+    private void write(IoWrite operation) throws IOException {
+        try {
+            operation.run();
+        } catch (IOException failure) {
+            try { close(); } catch (IOException closeFailure) { failure.addSuppressed(closeFailure); }
+            throw failure;
+        }
+    }
+
+    @FunctionalInterface
+    private interface IoWrite { void run() throws IOException; }
+
     private void ensureOpen() throws IOException {
         if (portClosed.get()) throw new IOException("USB serial port is closed");
     }

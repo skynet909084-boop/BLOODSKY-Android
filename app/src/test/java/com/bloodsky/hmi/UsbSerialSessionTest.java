@@ -26,6 +26,15 @@ public class UsbSerialSessionTest {
         assertEquals(1, port.closeCount);
     }
 
+    @Test public void sendsAndVerifiesRegisterWritesThroughTheSerialPort() throws Exception {
+        FakePort port = new FakePort(writeResponse(17, new byte[] {6, 1, 2, 0x12, 0x34}));
+        try (UsbSerialSession session = UsbSerialSession.open(port, settings(), 800)) {
+            session.writeSingle(17, 0x0102, 0x1234);
+        }
+        assertArrayEquals(writeResponse(17, new byte[] {6, 1, 2, 0x12, 0x34}), port.written.toByteArray());
+        assertEquals(1, port.closeCount);
+    }
+
     @Test public void supportsEveryDriverParityAndOneAndOneAndHalfStopBits() throws Exception {
         for (UsbSerialSettings.Parity parity : UsbSerialSettings.Parity.values()) {
             for (int stopBits : new int[] {1, 2, 3}) {
@@ -138,6 +147,17 @@ public class UsbSerialSessionTest {
         System.arraycopy(payload, 0, pdu, 3, payload.length);
         int crc = ModbusRtuClient.crc16(pdu, pdu.length);
         byte[] result = Arrays.copyOf(pdu, pdu.length + 2);
+        result[result.length - 2] = (byte) crc;
+        result[result.length - 1] = (byte) (crc >>> 8);
+        return result;
+    }
+
+    private static byte[] writeResponse(int unit, byte[] pdu) {
+        byte[] body = new byte[pdu.length + 1];
+        body[0] = (byte) unit;
+        System.arraycopy(pdu, 0, body, 1, pdu.length);
+        int crc = ModbusRtuClient.crc16(body, body.length);
+        byte[] result = Arrays.copyOf(body, body.length + 2);
         result[result.length - 2] = (byte) crc;
         result[result.length - 1] = (byte) (crc >>> 8);
         return result;
