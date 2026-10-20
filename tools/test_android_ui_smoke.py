@@ -78,6 +78,37 @@ class AndroidSmokeHelpersTests(unittest.TestCase):
                                'app_process', '/system/bin', 'BloodskyFingerTap', '200', '150')],
                              [c.args for c in command.call_args_list])
 
+    def test_custom_image_waits_for_media_index_before_picker(self):
+        with TemporaryDirectory() as folder, patch('android_ui_smoke.adb', side_effect=['', '', 'No result found.', 'Row: 0 _display_name=bloodsky-custom.png']) as command, patch('android_ui_smoke.time.sleep'):
+            Smoke(Path(folder)).prepare_custom_image()
+            self.assertEqual(4, command.call_count)
+            self.assertIn('android.intent.action.MEDIA_SCANNER_SCAN_FILE', command.call_args_list[1].args)
+
+    def test_unindexed_image_fails_with_diagnostics(self):
+        with TemporaryDirectory() as folder, patch('android_ui_smoke.adb', return_value='No result found.'), patch('android_ui_smoke.time.monotonic', side_effect=[0, 0, 31]), patch('android_ui_smoke.time.sleep'):
+            with self.assertRaisesRegex(AssertionError, 'not indexed'):
+                Smoke(Path(folder)).prepare_custom_image()
+            self.assertEqual('No result found.', (Path(folder) / 'media-index.txt').read_text())
+
+    def test_grid_document_selection_waits_for_app_return(self):
+        grid = '<hierarchy><node package="com.android.documentsui" content-desc="bloodsky-custom.png, 15 kB" enabled="true" bounds="[50,100][350,300]"/></hierarchy>'
+        app = '<hierarchy><node package="com.bloodsky.hmi"/></hierarchy>'
+        with TemporaryDirectory() as folder, patch('android_ui_smoke.adb') as command:
+            smoke = Smoke(Path(folder))
+            with patch.object(smoke, 'dump', side_effect=[grid, grid, grid, '<hierarchy/>', app]) as dump:
+                smoke.tap_document('bloodsky-custom.png')
+            self.assertEqual(5, dump.call_count)
+            self.assertEqual('200', command.call_args.args[-1])
+
+    def test_ambiguous_grid_documents_fail_without_tapping(self):
+        node = '<node package="com.android.documentsui" content-desc="bloodsky-custom.png, 15 kB" enabled="true" bounds="[50,100][350,300]"/>'
+        with TemporaryDirectory() as folder, patch('android_ui_smoke.adb') as command:
+            smoke = Smoke(Path(folder))
+            with patch.object(smoke, 'dump', return_value='<hierarchy>' + node + node + '</hierarchy>'):
+                with self.assertRaisesRegex(AssertionError, 'Ambiguous document'):
+                    smoke.tap_document('bloodsky-custom.png')
+            command.assert_not_called()
+
     def test_deletion_requires_both_active_and_catalog_to_be_empty(self):
         self.assertTrue(preferences_are_empty('<map><string name="project_catalog_v1">{}</string></map>'))
         self.assertFalse(preferences_are_empty('<map><string name="active_project">{}</string></map>'))
