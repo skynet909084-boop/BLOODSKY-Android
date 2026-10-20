@@ -50,3 +50,18 @@ The source-inventory validator `tools/test_kascada_107_reference.py` checks IDs,
 The repository already has [Original Craft 1.0.7 emulator probe](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/workflows/original-craft-emulator.yml), with a manual `workflow_dispatch` input `profile: full` and an Android 11/API 30 emulator. It rebuilds the pinned original decompilation, debug-signs it, runs the offline `tools/original_craft_emulator_probe.py --full` traversal, and uploads a short-retention artifact with screenshots, UI XML and logs. This is a **reconstructed/debug-signed** APK, not an installed byte-identical copy of the user's original APK; record that distinction with every screenshot. Existing [emulator audit](../CRAFT_1_0_7_EMULATOR_AUDIT_20261018.md) shows that some past runs terminated before final JSON.
 
 Run the workflow explicitly from the GitHub Actions page (`Run workflow`, choose the working branch and `full` profile). Then inspect completion, artifact evidence, traversal coverage and crash logs; map specific observed actions to K107 IDs. An unfinished run is not 550 passed tests. Network stays disabled and real external hardware is not simulated.
+
+## Binary archive locations and provenance (2026-10-21)
+
+| Reference | Availability | Size | SHA-256 |
+| --- | --- | ---: | --- |
+| User-supplied original KaScada Smart Craft 1.0.7 APK | Already in [public GitHub Release `kascada-analysis-1`](https://github.com/skynet909084-boop/BLOODSKY-Android/releases/tag/kascada-analysis-1) | 63,296,727 bytes | `11464db76f59393ccf698f57e60af1756756ffc78cb315d43052ae92adb50d4f` |
+| User-supplied full `KaScada_v1.0.7(107)_base_src.zip` | **Not committed to repository nor attached to a permanent release**; available only in current uploaded-file workspace until moved with appropriate distribution permissions | ~68 MiB | `92d12206bde746f5a76c89e0c3311119287b14bb26cdc8ca36d515e2fca01f7a` |
+| Curated `reference/craft-reference.zip` | Committed on development branch; reduced selection only, **not the full decompile** | 6,871,095 bytes | `316da0335dc4ea0c8f2d8c14550118ba33bd0e95d7c926f67ed848429c554cdd` |
+| GitHub Actions full decompilation artifact | [Run 38600957172](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/38600957172), artifact `11912849123`; **temporary** with reported expiration `2026-10-21T16:48:12Z` | 136,446,209 bytes compressed artifact | No checksum asserted |
+
+### Storage decision and legal boundary
+
+This is a **public** repository. The reference APK and decompiled third-party source are not automatically redistributable under the BLOODSKY project's rights. Confirm distribution authorization before publishing the full ZIP (or making additional public copies of APK/source), and consider reviewing the existing public APK Release's status. Until authorization is confirmed, store a full private development copy in a **private** GitHub repository or other access-controlled archive and keep only checksums/metadata/derived interoperability test cases here. A private repository still requires compliance with applicable licenses and law.
+
+Large files are better attached as GitHub Release assets (or tracked with Git LFS where versioned source is essential) than added as ordinary 60–70 MiB Git blobs. Use independently computed hashes on upload and retrieval; don't treat a source ZIP as a runnable APK. Do not commit original binaries to this documentation PR.
