@@ -5899,6 +5899,10 @@ public class MainActivity extends Activity {
         obj.put("type", w.type); obj.put("text", w.text);
         obj.put("connectionInfo", w.connectionInfo == null ? "" : w.connectionInfo);
         obj.put("inputValue", w.inputValue); obj.put("buttonState", w.buttonState); obj.put("rsState", w.rsState); obj.put("counterPreset", w.counterPreset); obj.put("counterValue", w.counterValue); obj.put("counterLastInput", w.counterLastInput);
+        if ("FBD CRAFT CTU".equals(w.type)) {
+            obj.put("craftLastPlus", w.craftLastPlus);
+            obj.put("craftLastMinus", w.craftLastMinus);
+        }
         obj.put("timerPresetMs", w.timerPresetMs); obj.put("timerStartedAt", w.timerStartedAt);
         obj.put("compareA", w.compareA); obj.put("compareB", w.compareB); obj.put("compareOperator", w.compareOperator);
         obj.put("minValue", w.minValue); obj.put("maxValue", w.maxValue);
@@ -5946,6 +5950,10 @@ public class MainActivity extends Activity {
         w.type = obj.optString("type", "Текст"); w.text = obj.optString("text", "Надпись");
         w.connectionInfo = obj.optString("connectionInfo", "");
         w.inputValue = obj.optBoolean("inputValue", false); w.buttonState = obj.optBoolean("buttonState", false); w.rsState = obj.optBoolean("rsState", false); w.counterPreset = Math.max(1, Math.min(1000000, obj.optInt("counterPreset", 1))); w.counterValue = Math.max(0, Math.min(1000000, obj.optInt("counterValue", 0))); w.counterLastInput = obj.optBoolean("counterLastInput", false);
+        if ("FBD CRAFT CTU".equals(w.type)) {
+            w.craftLastPlus = obj.optBoolean("craftLastPlus", false);
+            w.craftLastMinus = obj.optBoolean("craftLastMinus", false);
+        }
         w.timerPresetMs = Math.max(1, Math.min(3600000, obj.optInt("timerPresetMs", 1000)));
         w.timerStartedAt = obj.optLong("timerStartedAt", 0L);
         w.compareA = obj.optDouble("compareA", 0.0); w.compareB = obj.optDouble("compareB", 0.0);
@@ -8816,8 +8824,8 @@ public class MainActivity extends Activity {
         public int counterPreset = 1;
         public int counterValue = 0;
         public boolean counterLastInput = false;
-        // Native Craft edge flags are transient operator runtime only;
-        // their absence from JSON protects old project schemas on save/copy.
+        // Native Craft edge flags persist only on native CTU records so a saved
+        // held input cannot be counted again after reopening the project.
         boolean craftLastPlus = false;
         boolean craftLastMinus = false;
         // Original FB_TRIGGER mode T resets to Q=false on a fresh instance.

@@ -91,7 +91,7 @@ public class FbdCraftVersionedCounterTest {
         assertEquals(65535, scan(nodes, namedEdges()));
     }
 
-    @Test public void legacyCtuContractAndJsonRemainUnchanged() throws Exception {
+    @Test public void nativeCtuPersistsItsEdgeLatchesWithoutChangingLegacyCtuContract() throws Exception {
         assertArrayEquals(new String[]{"CU", "R", "PV"},
                 MainActivity.knownFbdPins("FBD CTU", false));
         assertEquals("BOOL", MainActivity.knownFbdPinType("FBD CTU", "Q", true));
@@ -101,13 +101,31 @@ public class FbdCraftVersionedCounterTest {
         saved.craftLastMinus = true;
         saved.extraFields.put("vendorExtra", "keep");
         JSONObject json = MainActivity.widgetToJson(saved);
-        assertFalse(json.has("craftLastPlus"));
-        assertFalse(json.has("craftLastMinus"));
+        assertTrue(json.getBoolean("craftLastPlus"));
+        assertTrue(json.getBoolean("craftLastMinus"));
         MainActivity.Widget imported = MainActivity.widgetFromJson(json);
         assertEquals(432, imported.counterValue);
-        assertFalse(imported.craftLastPlus);
-        assertFalse(imported.craftLastMinus);
+        assertTrue(imported.craftLastPlus);
+        assertTrue(imported.craftLastMinus);
+        MainActivity.Widget heldPlus = widget("FBD Вход");
+        heldPlus.inputValue = true;
+        assertEquals("Reopening while + remains high must not recount",
+                432, scan(Arrays.asList(heldPlus, widget("FBD Вход"), widget("FBD Вход"), imported), namedEdges()));
         assertEquals("keep", MainActivity.widgetToJson(imported).getString("vendorExtra"));
+        MainActivity.Widget oldNativeProject = MainActivity.widgetFromJson(new JSONObject()
+                .put("type", "FBD CRAFT CTU")
+                .put("counterValue", 432));
+        assertFalse("Old projects default missing edge flags to false", oldNativeProject.craftLastPlus);
+        assertFalse(oldNativeProject.craftLastMinus);
+        MainActivity.Widget legacy = widget("FBD CTU");
+        legacy.counterValue = 12;
+        legacy.counterLastInput = true;
+        JSONObject legacyJson = MainActivity.widgetToJson(legacy);
+        assertFalse(legacyJson.has("craftLastPlus"));
+        assertFalse(legacyJson.has("craftLastMinus"));
+        MainActivity.Widget restoredLegacy = MainActivity.widgetFromJson(legacyJson);
+        assertEquals(12, restoredLegacy.counterValue);
+        assertTrue(restoredLegacy.counterLastInput);
         // State is integer and readable by existing HMI fbd://N presentation.
         assertEquals("432.0", FbdResultBinding.resolve(
                 "fbd://1", Arrays.asList(imported),
