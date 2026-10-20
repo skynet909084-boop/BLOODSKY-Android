@@ -15,7 +15,7 @@ from pathlib import Path
 from PIL import Image
 from original_craft_probe_state import is_project_loading
 from original_craft_longpress_state import (
-    LONG_PRESS_MS, action_identity, actions_for_controls, safe_field_value, touch_command,
+    LONG_PRESS_MS, action_identity, actions_for_controls, remember_state, safe_field_value, touch_command,
 )
 
 OUT = Path(sys.argv[1])
@@ -378,7 +378,7 @@ def capture_state(path):
     loading_stalled = is_project_loading(root)
     visible = visible_state(root)
     signature = hashlib.sha256(json.dumps(visible, ensure_ascii=False).encode()).hexdigest()
-    if signature in seen:
+    if not remember_state(seen, signature):
         (OUT / f"{label}.xml").unlink(missing_ok=True)
         return None
 
