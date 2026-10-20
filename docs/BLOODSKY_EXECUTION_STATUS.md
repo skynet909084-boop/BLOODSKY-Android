@@ -157,3 +157,10 @@ Design an additive SQLite-backed catalog migration that imports existing SharedP
 - Exact code/test head `29897268747cf246558e155a7c1a6b7d310664c1`: Android unit tests, archive inspector, and debug APK passed in Actions run [#827](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39140908453).
 - Added fail-closed Craft ID 23 import mapping: an explicit disabled placeholder preserves the original opaque `craftOther` and connection fields; no imported stream starts. JUnit regressions verify metadata round-trip, blank-label behavior and disabled runtime flag.
 - Scope remains a URL validator plus import placeholder only. No editor/player/lifecycle integration or decoder/device acceptance is claimed. Imported credentials remain in preserved Craft source data; define secure-storage/export handling before any runtime activation.
+
+
+## Supplied KaScada source snapshot — 2026-10-20
+
+- Reviewed the newly supplied `KaScada_v1.0.7(107)_base_src.zip` as a local reference; it identifies package `ru.kascada.modbus`, version name/code `1.0.7 (107)`, apktool `2.4.0-250528`, minSdk 21 and targetSdk 29.
+- Archive SHA-256: `92d12206bde746f5a76c89e0c3311119287b14bb26cdc8ca36d515e2fca01f7a`; 16,138 entries (189,680,352 bytes expanded), including 10,331 primary smali files and 670 secondary-dex smali files. This is a decoded source tree, not a buildable Android project or the original APK.
+- Keep this snapshot as source evidence for targeted implementation and parity checks. Do not copy the full decompilation or user project archives into the public repository. The user’s own project ZIP acceptance stays at final-app validation.
