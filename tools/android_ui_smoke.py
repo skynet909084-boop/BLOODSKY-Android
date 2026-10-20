@@ -40,6 +40,19 @@ def center(bounds):
     return (left + right) // 2, (top + bottom) // 2
 
 
+def fbd_widget_interior_tap_point(canvas_left, canvas_top, widget):
+    """Tap well inside the FBD hit rectangle, away from its pin gutter and drag grips.
+
+    The corner of the source block is not a reliable tap target on Android 12:
+    the renderer paints pin leads and a padded skin near that edge.
+    Coordinates remain relative to the UIAutomator canvas bounds.
+    """
+    return (
+        round(canvas_left + widget['x'] + widget['w'] * 0.40),
+        round(canvas_top + widget['y'] + widget['h'] * 0.50),
+    )
+
+
 def preferences_are_empty(xml):
     root = ET.fromstring(xml)
     values = {node.get('name'): node.text for node in root}
@@ -428,8 +441,9 @@ class Smoke:
         source, target = expected[source_idx], expected[target_idx]
         canvas = self.wait_node(description='Редактор экрана')
         left, top, _, _ = map(int, re.findall(r'\d+', canvas.get('bounds')))
+        sx, sy = fbd_widget_interior_tap_point(left, top, source)
         self.tap_editor_menu_item('Связать FBD')
-        adb('shell', 'input', 'tap', str(round(left+source['x']+9)), str(round(top+source['y']+9)))
+        adb('shell', 'input', 'tap', str(sx), str(sy))
         adb('shell', 'input', 'tap', str(round(left+target['x']+target['w']/2)),
             str(round(top+target['y']+target['h']/2)))
         self.wait_node('Выход FBD')
@@ -445,7 +459,6 @@ class Smoke:
         self.capture('04q-fbd-named-pin-wire')
         # Original-style FBD long-press commands must be present, and
         # opening/canceling the menu cannot mutate the saved FBD graph.
-        sx, sy = round(left+source['x']+9), round(top+source['y']+9)
         adb('shell', 'input', 'swipe', str(sx), str(sy), str(sx), str(sy), '800')
         self.wait_node('Соединить с…')
         self.wait_node('Инвертировать связь BOOL…')
