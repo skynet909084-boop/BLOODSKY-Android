@@ -73,6 +73,8 @@ public class MainActivity extends Activity {
     private byte[] pendingCraftMacroExport;
     private String pendingArchiveProjectId, pendingArchiveWidgetKey, pendingArchiveTitle;
     private EditText pendingMediaField;
+    private AlertDialog activePropertiesDialog;
+    private int pendingMediaCopyCount;
     private String projectName = "Мой проект";
     private JSONObject projectExtraFields = new JSONObject();
     private final CraftSystemRegisterBank systemRegisterBank = new CraftSystemRegisterBank();
@@ -2278,6 +2280,12 @@ public class MainActivity extends Activity {
                 /* The selected bytes are copied into private project storage below. */
             }
             String projectJson = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
+            AlertDialog waitingDialog = activePropertiesDialog;
+            if (waitingDialog != null && waitingDialog.isShowing()) {
+                pendingMediaCopyCount++;
+                Button apply = waitingDialog.getButton(AlertDialog.BUTTON_POSITIVE);
+                if (apply != null) apply.setEnabled(false);
+            }
             modbusExecutor.execute(() -> {
                 try (InputStream in = getContentResolver().openInputStream(selected)) {
                     String displayName = selectedMediaDisplayName(selected);
@@ -2288,13 +2296,15 @@ public class MainActivity extends Activity {
                         target.setText(projectPath);
                         imageCache.remove(selected.toString());
                         imageCache.remove(projectPath);
+                        finishPendingMediaCopy(waitingDialog);
                         Toast.makeText(this, "Файл сохранён в проект", Toast.LENGTH_SHORT).show();
                     });
                 } catch (Exception ex) {
                     android.util.Log.e("BLOODSKY", "Selected project media could not be stored", ex);
                     runOnUiThread(() -> {
                         if (isFinishing() || isDestroyed()) return;
-                        Toast.makeText(this, "Не удалось сохранить файл в проект: "
+                        finishPendingMediaCopy(waitingDialog);
+                        Toast.makeText(this, "Не удалось сохранить файл в проект: 
                                 + ex.getMessage(), Toast.LENGTH_LONG).show();
                     });
                 }
@@ -2359,6 +2369,13 @@ public class MainActivity extends Activity {
         } else if (requestCode == REQUEST_IMPORT_PROJECT) {
             importProjectBundle(uri);
         }
+    }
+
+    private void finishPendingMediaCopy(AlertDialog dialog) {
+        if (dialog == null || dialog != activePropertiesDialog) return;
+        pendingMediaCopyCount = Math.max(0, pendingMediaCopyCount - 1);
+        Button apply = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+        if (apply != null) apply.setEnabled(pendingMediaCopyCount == 0);
     }
 
     private String selectedMediaDisplayName(Uri uri) {
@@ -4971,6 +4988,11 @@ public class MainActivity extends Activity {
                 .setView(propertyScroll)
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Применить", null).create();
+        activePropertiesDialog = properties;
+        pendingMediaCopyCount = 0;
+        properties.setOnDismissListener(dismissed -> {
+            if (activePropertiesDialog == properties) activePropertiesDialog = null;
+        });
         properties.setOnShowListener(shown -> properties.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(clicked -> {
                     final WidgetGeometryEdits geometry;
                     final FbdPropertyEdits fbd;
