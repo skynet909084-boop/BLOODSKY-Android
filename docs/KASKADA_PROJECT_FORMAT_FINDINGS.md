@@ -91,3 +91,17 @@ The supplied local archives contain this value in multiple components, so preser
 В обоих ZIP JSON проекта находится во вложенном файле с расширением `.pro` рядом с JPG. В первом проекте отдельный `.pro` совпадает с копией внутри архива. Повторяющийся `connectionsId=2` встречается в разных строках `TableConnections`, поэтому это значение нельзя использовать как уникальный ключ. Число `countDevice` не совпадает с размером массива `deviceNetwork`; оба поля нужно переносить отдельно. Привязки виджетов через `posDeviceNetworkInList` не являются рёбрами FBD из `TableConnections`/графа.
 
 Эти числа — контрольные характеристики двух образцов, а не универсальные ограничения формата. Тест ZIP round-trip дополнительно проверяет сохранение трёх независимых слоёв: упорядоченных слотов устройств, непрозрачной привязки виджета и связей FBD на уровне экрана.
+
+
+## Cross-check with the saved standalone projects
+
+Aggregates below were read from the supplied `.pro` files; transport endpoints, passwords, register values, and phone numbers are deliberately omitted.
+
+| Project file | Declared screens | Component rows | `deviceNetwork` slots | Component binding fields | Binding value 100 | `TableConnections` rows |
+|---|---:|---:|---:|---:|---:|---:|
+| `home2.pro` | 16 | 65 | 16 | 46 | 1 | 3 |
+| `gitH.pro` | 16 | 65 | 16 | 46 | 1 | 3 |
+| `home.pro` | 16 | 24 | 16 | 24 | 0 | 1 |
+| `пож.pro` | 16 | 124 | 16 | 32 | 31 | 1 |
+
+The four projects all keep `countDevice` separate from their 16 serialized network slots; its value in these files is 1. The repeated connector-kind IDs in `home2.pro` and `gitH.pro` are not unique endpoint identifiers. The `100` binding occurrences resolve to the global-register route as described above, so tests must verify that they survive round-trip without becoming device slot 100.
