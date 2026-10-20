@@ -256,6 +256,18 @@ class Smoke:
         if keyboard_is_shown(adb('shell', 'dumpsys', 'input_method')):
             adb('shell', 'input', 'keyevent', '4')
 
+    def capture_project_media_listing(self, stage):
+        result = subprocess.run(
+            ['adb', 'shell', 'run-as', PACKAGE, 'find', 'files/projects', '-maxdepth', '5', '-type', 'f'],
+            capture_output=True, timeout=45, check=False)
+        details = {
+            'returncode': result.returncode,
+            'stdout': result.stdout.decode('utf-8', errors='replace'),
+            'stderr': result.stderr.decode('utf-8', errors='replace'),
+        }
+        (self.output / ('media-files-' + stage + '.json')).write_text(
+            json.dumps(details, indent=2, sort_keys=True))
+
     def checkpoint(self, name):
         (self.output / 'last-checkpoint.txt').write_text(name + '\n')
 
@@ -917,6 +929,7 @@ class Smoke:
         self.tap('Применить')
         self.wait_node(description='Изображение ON')
         self.capture('04f-custom-state-image')
+        self.capture_project_media_listing('image-dialog-dismissed')
         adb('shell', 'input', 'keyevent', '4')
         self.wait_node('Свойства: Индикатор')
         self.replace_property_input('Положение X', '40.125')
@@ -935,6 +948,7 @@ class Smoke:
         self.tap('Применить')
         self.checkpoint('fractional:editor-after-apply')
         self.wait_node(description='Редактор экрана')
+        self.capture_project_media_listing('properties-applied')
         self.checkpoint('fractional:back-click')
         adb('shell', 'input', 'keyevent', '4')
         self.checkpoint('fractional:home-after-back')
@@ -948,6 +962,7 @@ class Smoke:
         self.tap(PROJECT)
         self.checkpoint('fractional:editor-after-reopen')
         self.wait_node(description='Редактор экрана')
+        self.capture_project_media_listing('project-reopened')
         persisted = adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml')
         active_after = json.loads({n.get('name'): n.text for n in ET.fromstring(persisted)}['active_project'])
         after = active_after['screens'][0]['widgets'][0]
