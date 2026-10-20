@@ -1,0 +1,68 @@
+# BLOODSKY — единая матрица готовности
+
+Дата сверки: 2026-10-20  
+Базовая ветка: `prototype/all-in-one-20261020`  
+Закреплённый `main`: `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e` (не изменялся).
+
+Эта матрица заменяет несогласованные проценты из отдельных аудитов. Статус ставится по конкретному критерию и наблюдаемому доказательству; старое описание в документации не отменяет более новые тесты. Наличие класса, импортируемого поля или проходящей сборки само по себе не означает приёмку.
+
+## Метод общего процента
+
+Приоритеты задают вес: P0 = 5, P1 = 3, P2 = 1. Общая готовность вычисляется один раз для всего приложения:
+
+`100 × сумма весов строк со статусом «Принято полностью» / сумма весов всех строк`.
+
+Частичная реализация и автоматические проверки не дают долю зачёта: критерий считается закрытым только при выполнении всей строки. Строки «Код реализован, проверки не завершены», «Проверено автоматически» и «Реализовано частично» остаются в знаменателе. Неизвестные исходные функции не включаются как реализуемые требования до подтверждения источником. Физическое оборудование и визуальная сверка отмечены отдельными воротами, а не подменяются симуляцией/сборкой.
+
+На этой ревизии полностью принят один узкий сценарий восстановления редактора после гибели процесса. Сумма весов всех строк — **139**, полностью принятый вес — **5**, единый результат — **3,6%** (округление до одного знака). Это доля закрытых критериев, а не прогноз объёма работ.
+
+## Матрица
+
+| ID | Приоритет | Требование и критерий закрытия | Статус | Доказательство на 20.10.2026 | Что остаётся до приёмки |
+|---|---|---|---|---|---|
+| APP-01 | P0 | Один APK объединённого приложения собирается с актуальной ветки | Проверено автоматически | APK/JUnit #1203 на кодовом HEAD `caad4946432f6c72b66864db9ca9bfb10878d747`; позднее изменился только журнал | Новый APK для последующих изменений; установка/обновление на физическом Android 12 |
+| HMI-01 | P0 | Создание проекта, экранов и базовое открытие/сохранение | Проверено автоматически | JUnit и Android UI smoke; см. текущие workflow Android APK/UI | Полный оригинальный workflow, настройки/пароли и сравнение экранов |
+| HMI-02 | P0 | Несохранённый диалог свойств, текст и выбор медиа переживают завершение процесса с открытым DocumentsUI | Принято полностью | Exact-head Android 11 UI smoke #843 и APK/JUnit #1203; PNG выбран после гибели фонового PID, восстановлены диалог, несохранённая подпись и исходное поле | Другие диалоги/поворот/восстановление, дополнительные API и устройства |
+| HMI-03 | P1 | Массовое выделение, групповой перенос, размеры, выравнивание/распределение и undo соответствуют Craft | Реализовано частично | `BLOODSKY_EDITOR_PARITY_MATRIX.md`, `COMPONENT_INTERACTION_AUDIT_20261018.md` | Полные операции, геометрия и same-density UI сравнение |
+| HMI-04 | P1 | Контекстные меню, копирование/вставка, отмена неудачной записи и провода FBD сохраняют связи | Проверено автоматически | `FbdWireEditTransactionTest`, `FbdWireHistoryTest`, editor interaction suites | Полный UI маршрут Craft и визуальная геометрия |
+| HMI-05 | P1 | Операторский режим, переходы экранов, полноэкранный режим, поворот и restart работают совместно | Реализовано частично | Базовые runtime/UI сценарии в Android smoke; точечное восстановление HMI-02 принято отдельно | Полная матрица жизненного цикла и устройство |
+| PROJ-01 | P0 | Импорт/сохранение/экспорт/повторный импорт сохраняет структуру оригинальных `.pro/.zip`, неизвестные поля и все ресурсы | Код реализован, проверки не завершены | `CraftProjectImporterTest`, `ProjectMediaServiceTest`; синтетические round-trip и media rollback проверки | Полный round-trip каждого оригинального архива, все экраны/связи/слоты/медиа и runtime |
+| PROJ-02 | P1 | Повреждённые/большие архивы, совпадающие имена, отсутствующее медиа, traversal и повторный импорт обрабатываются безопасно | Проверено автоматически | Importer/media tests покрывают path traversal, bounded reads, rollback, collision и replacement | Отдельная приёмка оригинальных пользовательских архивов |
+| PROJ-03 | P1 | Поставленные примеры home, gitH и пож проходят воспроизводимый полный пользовательский цикл | Код реализован, проверки не завершены | Прогресс фиксирует sanitized fixtures и importer round-trip | Воспроизвести точные архивы пользователя; добавить home2/дом 2025 и deterministic edit/runtime assertions |
+| FBD-01 | P0 | AND/OR/XOR/NOT/RS, trigger, timer TON/TOF/TP/BLINK и CTU режимы имеют оригинальные pins, порядок, reset/edge semantics | Реализовано частично | `FbdLogicTest`, native timer/transitions, BLINK, CTU/versioned counter tests, source matrices | CTU +/−/R и RS source-order acceptance; полный source class → graph mapping и оригинальные проекты |
+| FBD-02 | P0 | Типизированные INT/FLOAT, арифметика, сравнения, преобразования, переполнение, NaN и деление на ноль соответствуют Craft | Проверено автоматически | `FbdTypedArithmeticTest`, `FbdCraftMathTest`, compare/conversion suites, exact-head APK/JUnit | Сверка всех source cases, exceptional-value parity и реальный проектный runtime |
+| FBD-03 | P1 | MOVE/SEL/MX/ARRAY/POW/SIN/LOG/ABS/переменные и сенсорные блоки имеют верные настройки/сериализацию/вычисление | Реализовано частично | Для части блоков имеются source/runtime JUnit и palette evidence; see `CRAFT_FBD_SOURCE_MATRIX.md` | Закрыть блок за блоком все 4 уровня: свойства, сохранение, исполнение, вид |
+| FBD-04 | P0 | Вложенные FB_MACRO хранят внутренние узлы/пины/связи и вычисляются после повторного открытия | Проверено автоматически | `FbdCraftMacroDefinitionTest`, `FbdCraftMacroGraphAdapterTest`, macro contract fixture | Оригинальный проект с вложенными макросами, редактирование и исполнение end-to-end |
+| FBD-05 | P0 | Редактор FBD перемещает/соединяет/отключает провода, сохраняет undo и корректную геометрию после reopen | Проверено автоматически | Wire transaction/history/runtime geometry tests | Полное same-density сравнение Craft и длинные UI сценарии |
+| FBD-06 | P1 | Craft palette IDs 101–140, pin labels/directions, skins, menus и property dialogs сверены по исходнику | Реализовано частично | `CRAFT_FBD_SOURCE_MATRIX.md`, palette/source tests; Craft probe run #172 в процессе | Завершить артефакт полного UI probe и сравнение всех состояний |
+| SYS-01 | P0 | Адреса 0–9 системных регистров вызывают подтверждённые сервисные функции и сохраняют ограничения/побочные эффекты Craft | Реализовано частично | `CraftSystemRegisterAccess`, `CraftServiceRegisters`, service-write tests/source notes | Покрыть каждый регистр исходными сценариями; неизвестные/опасные команды держать выключенными |
+| SYS-02 | P0 | Пользовательские регистры 10–1999, bit access, FLOAT byte/word order и JSON restore работают с границами/атомарностью | Проверено автоматически | `CraftSystemRegisterBankTest`, `CraftSystemRegisterAccess`, register codec/store suites | Связать полный HMI/FBD runtime и доказать сохранение реальных проектов |
+| SYS-03 | P1 | Системные переменные, типы/единицы/частота обновления и взаимодействие с FBD/HMI сверены с Craft | Реализовано частично | Numeric/widget binding tests и source-backed audits | Полная карта исходника/Smali и интеграционные приёмочные сценарии |
+| COMP-01 | P0 | Заводские виджеты Craft ID 1–28 имеют подтверждённые factory mapping, свойства, отображение, сохранение и исполнение | Реализовано частично | `CRAFT_COMPONENT_ID_FACTORY_MATRIX_20261018.md`; import/runtime suites; ID 3 оставлен fail-closed | Довести каждый ID по четырём уровням; ID 3 остаётся неизвестным до положительного источника |
+| COMP-02 | P1 | Кнопки, переключатели, слайдеры, задатчики и списки работают в подтверждённых режимах и корректно сохраняются | Реализовано частично | `BLOODSKY_PARITY_MATRIX.json`, source-specific widget tests | Визуальная parity, hardware binding и полные настройки |
+| COMP-03 | P1 | Статический/динамический текст, изображения 16 состояний, GIF, графики, тренды и архивирование | Реализовано частично | Import mappings и отдельные widget/runtime suites | Все форматы/режимы, запись архива, свойства и визуальная приёмка |
+| COMP-04 | P1 | Цифровые/битовые индикаторы, шкалы, измерители, звук и тревоги совпадают по состояниям и lifecycle | Реализовано частично | Alarm/audio source-contract and runtime tests | Одновременные тревоги, аппаратное воспроизведение и точный экранный вид |
+| COMP-05 | P1 | SMS, RTSP, WebView, телефон/email, голос и остальные factory компоненты безопасно исполняются либо fail-closed | Реализовано частично | Некоторые SMS/Telegram paths implemented; unsupported imported RTSP остаётся disabled; matrix records disabled IDs | Каждый компонент: импорт → конфигурация → согласие/permissions → runtime → lifecycle; не назначать ID 3 |
+| COMP-06 | P2 | Визуальная геометрия и оформление всех оригинальных компонентов сравнены с Craft при равных плотности/разрешении | Код реализован, проверки не завершены | Source canvas skin/palette checks не являются screenshot parity | Снять парные screenshot и закрыть отклонения по каждому классу |
+| MOD-01 | P0 | Modbus TCP FC01/02/03/04/05/06/15/16/22, validation, timeouts/errors/reconnect и HMI/FBD binding | Реализовано частично | `ModbusTcpClient` and TCP regression/write-confirmation suites | Симуляторные end-to-end сценарии на всех widgets/FBD; lifecycle/reconnect |
+| MOD-02 | P1 | Modbus RTU stream framing, CRC, Unit ID, response sizes, exceptions and write frames | Проверено автоматически | RTU helper/client JUnit includes fragmented/invalid frames and write logic | Не считать тесты helper аппаратным serial транспортом |
+| MOD-03 | P0 | USB-serial RTU: adapter discovery, permission, configuration, read/write, disconnect/reconnect | Не реализовано | Transport audit; USB adapter not available | Реализовать путь с Android permissions и затем испытать физическим адаптером/PLC |
+| MOD-04 | P1 | Bluetooth Classic SPP: paired device picker, permission, RTU and reconnect | Не реализовано | Transport audit source findings | Реализация и испытания на парном Bluetooth устройстве |
+| DEV-01 | P1 | Craft device manager с 16 сохранёнными слотами и назначенными transport/bindings | Реализовано частично | Source audit confirms Craft limit; current app has TCP endpoints but no complete slot manager | Реализовать и проверить slots 1–16, save/reopen and endpoint mapping |
+| LOCAL-01 | P1 | Local Modbus Slave, local web/API, confirmed Wi-Fi–USB bridge and archive access | Реализовано частично | Transport/connectivity audit | Реализовать подтверждённые исходные функции с безопасной авторизацией; end-to-end tests |
+| EXTRA-01 | P2 | Telegram, email/SMS notifications and smart-home integrations are optional, permissioned and reconnect safely | Реализовано частично | Telegram/SMS code and tests; current parity audit | Complete integrations and offline-core isolation; Home Assistant/Xiaomi/Yandex acceptance |
+| EXTRA-02 | P2 | Voice assistant recognises local/online commands, reports state and requires confirmation for equipment writes | Реализовано частично | Existing optional speech/AI code is recorded in current audit | Demonstrate offline mode, permission UX, explicit confirmation and state query |
+| REL-01 | P0 | Data survives update, process death, Activity recreation and app restart without corruption | Реализовано частично | HMI-02 proves one media picker process-death scenario; importer/store suites cover other local cases | Upgrade install, rotation, cold restart and multi-project end-to-end |
+| VIS-01 | P0 | Main screen, project manager, editor, dialogs, components and operator mode visually match Craft 1.0.7 | Код реализован, проверки не завершены | Existing screenshots/UI smoke cover selected workflows only | Same-resolution/density comparison of all required screens and controls |
+| HW-01 | P0 | Modbus TCP/RTU, USB, Bluetooth and PLC interoperability accepted on physical hardware | Код реализован, проверки не завершены | Mock/simulator/JUnit only; physical USB-serial adapter unavailable | Test real adapters, PLC, disconnection and recovery; record model/OS/results |
+| DIST-01 | P1 | Development APK includes all merged prototype features and is retrievable with traceable commit/tests | Проверено автоматически | APK artifact from workflow #1203; debug APK only | Build/publish artifact for new app-code HEAD; install/update test on Android 12 |
+| RELEASE-01 | P0 | Final single APK passes full acceptance and is released only after source, device, project, visual and hardware gates | Реализовано частично | No final release claimed; user requires no unverified stable release | Close all mandatory rows and publish signed release only after full acceptance |
+
+## Особенности интерпретации
+
+- «Проверено автоматически» означает только перечисленные автоматические проверки, а не аппаратное/визуальное принятие.
+- Синтетические importer fixtures не заменяют сквозные тесты реальных оригинальных проектов.
+- UI probe оригинала измеряет только переходы, перечисленные в его артефакте; `coverage_complete=false` не является полным покрытием.
+- Прогон #182 и его test-driver исправление относятся к одному сценарию Activity restore; его нельзя распространять на всю lifecycle-приёмку.
+- Физический USB/Bluetooth/PLC не объявляется проверенным до реального устройства.
+- Не менять `main` до отдельного разрешения. Следующий пакет: получить артефакт полного Craft FBD probe #172, завершить привязку FBD ID/pins к source behavior, затем выбрать узкий недостающий runtime критерий из этой матрицы и добавить его с exact-head JUnit/APK/UI gates.
