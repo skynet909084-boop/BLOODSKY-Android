@@ -21,6 +21,19 @@ class CraftAlarmPlaybackContractTests(unittest.TestCase):
         self.assertIn("craftAlarmPlayers.put(alarmKey, activePlayer)", play)
         self.assertIn("craftAlarmTones.put(alarmKey, tone)", play)
 
+    def test_media_players_prepare_asynchronously_and_ignore_stale_callbacks(self):
+        play = self.source.split("private void playCraftAlarmAlert(", 1)[1].split(
+            "private void playCraftAlarmFallbackTone(", 1
+        )[0]
+        self.assertIn("player.prepareAsync()", play)
+        self.assertIn("setOnPreparedListener", play)
+        self.assertIn("setOnErrorListener", play)
+        self.assertIn("craftAlarmPlayers.get(alarmKey) != prepared", play)
+        self.assertIn("craftAlarmPlayers.get(alarmKey) == failed", play)
+        self.assertIn("MediaPlayer player = null;\n        try {\n            player = new MediaPlayer();", play)
+        self.assertNotIn("player.prepare()", play)
+        self.assertNotIn("MediaPlayer.create(", play)
+
     def test_stopping_one_widget_does_not_stop_other_alarm_players(self):
         stop_one = self.source.split("private void stopCraftAlarmAlert(", 1)[1].split(
             "private void stopAllCraftAlarmPlayback(", 1
@@ -42,10 +55,14 @@ class CraftAlarmPlaybackContractTests(unittest.TestCase):
         stop_all = self.source.split("private void stopAllCraftAlarmPlayback()", 1)[1].split(
             "private void stopCurrentScreenAlarms()", 1
         )[0]
-        self.assertIn("player.release()", stop_all)
+        self.assertIn("releaseCraftAlarmPlayer(player)", stop_all)
         self.assertIn("tone.release()", stop_all)
         self.assertIn("craftAlarmPlayers.clear()", stop_all)
         self.assertIn("craftAlarmTones.clear()", stop_all)
+        release = self.source.split("private static void releaseCraftAlarmPlayer(", 1)[1].split(
+            "private void stopCraftAlarmAlert(", 1
+        )[0]
+        self.assertIn("player.release()", release)
 
 
 if __name__ == "__main__":
