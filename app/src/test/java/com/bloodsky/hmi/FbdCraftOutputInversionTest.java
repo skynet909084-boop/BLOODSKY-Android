@@ -55,13 +55,47 @@ public class FbdCraftOutputInversionTest {
         assertTrue(evaluate(Arrays.asList(left, right, restored), edges, 2));
     }
 
-    @Test public void sourceNumericOutputsAndUnportedGenericBlocksStayNonInvertible() throws Exception {
+    @Test public void sourceBooleanOutputsAreInvertibleButNumericOutputsStayClosed() throws Exception {
         assertTrue(MainActivity.supportsFbdBlockOutputInversion("FBD XOR"));
-        assertFalse(MainActivity.supportsFbdBlockOutputInversion("FBD CRAFT TIMER"));
-        assertFalse(MainActivity.supportsFbdBlockOutputInversion("FBD CRAFT CHANGE I"));
+        for (String type : new String[]{"FBD RS", "FBD CRAFT T", "FBD CRAFT TIMER", "FBD CRAFT BLINK",
+                "FBD CRAFT COMPARE", "FBD CRAFT COMPARE FLOAT", "FBD CRAFT CHANGE I", "FBD CRAFT CHANGE F"})
+            assertTrue("Craft BOOL output should preserve invertOut: " + type,
+                    MainActivity.supportsFbdBlockOutputInversion(type));
+        assertFalse(MainActivity.supportsFbdBlockOutputInversion("FBD CRAFT CTU"));
+        assertFalse(MainActivity.supportsFbdBlockOutputInversion("FBD CRAFT ARITHMETIC INT"));
         assertFalse(MainActivity.supportsFbdBlockOutputInversion("FBD CRAFT MOVE"));
         assertFalse(MainActivity.supportsFbdBlockOutputInversion("FBD Таймер"));
         assertFalse(MainActivity.supportsFbdBlockOutputInversion("FBD Вход"));
         assertFalse(MainActivity.toggleFbdBlockOutputInversion(block("FBD CRAFT MOVE")));
+    }
+
+    @Test public void importedCompareInversionUsesOnlyCompleteNamedInputs() throws Exception {
+        MainActivity.Widget left = block("FBD CRAFT VAR INT");
+        left.extraFields.put("craftVarConstantMode", true);
+        left.extraFields.put("craftVarConstant", "8");
+        MainActivity.Widget right = block("FBD CRAFT VAR INT");
+        right.extraFields.put("craftVarConstantMode", true);
+        right.extraFields.put("craftVarConstant", "5");
+        MainActivity.Widget compare = block("FBD CRAFT COMPARE");
+        compare.compareOperator = ">";
+        compare.extraFields.put("invertOut", true);
+        List<MainActivity.Widget> widgets = Arrays.asList(left, right, compare);
+        List<MainActivity.FbdConnection> edges = Arrays.asList(
+                MainActivity.pinnedFbdConnection(0, "Q", 2, "IN1"),
+                MainActivity.pinnedFbdConnection(1, "Q", 2, "IN2"));
+
+        assertFalse(evaluate(widgets, edges, 2));
+        assertFalse(evaluate(widgets, Arrays.asList(edges.get(0)), 2));
+
+        MainActivity.Widget boolLeft = block("FBD Вход");
+        boolLeft.inputValue = true;
+        MainActivity.Widget boolRight = block("FBD Вход");
+        boolRight.inputValue = true;
+        List<MainActivity.Widget> mismatched = Arrays.asList(boolLeft, boolRight, compare);
+        List<MainActivity.FbdConnection> wrongTypes = Arrays.asList(
+                MainActivity.pinnedFbdConnection(0, "Q", 2, "IN1"),
+                MainActivity.pinnedFbdConnection(1, "Q", 2, "IN2"));
+        // A complete but invalid typed graph must not turn the evaluator's safe false into true.
+        assertFalse(evaluate(mismatched, wrongTypes, 2));
     }
 }
