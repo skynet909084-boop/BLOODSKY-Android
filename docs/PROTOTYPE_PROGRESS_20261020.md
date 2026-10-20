@@ -148,4 +148,26 @@ All nine available `ui-audit.json` files had `unique_state_signatures == states_
 
 - A further code review found the first de-dup implementation keyed visible text/geometry but omitted interaction attributes. PR #151 now includes package, hint, enabled/clickable/long-clickable, focus, checked/selected, scrollable, and related accessibility fields in each node signature; a unit regression verifies that changing `long-clickable` or `enabled` creates a distinct signature.
 - Quick artifacts from superseded head `d4b9af4d7821675b0d1d0afdb652f717dcae26f6` (run #167) and the partial full run #168 are historical evidence only. They were cancelled after the signature was strengthened; the provisional table above must not be used as final acceptance evidence.
-- Latest probe head: `0406c01c2440d65cd726967744a3d45a27eb04dc`. Exact-head APK/JUnit run [#1159](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39386327606) and fresh ten-direction quick probe [#170](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39386327522) are running. If both pass, dispatch a new full-profile run from this exact head before accepting any Craft coverage.
+- Latest probe head: `0406c01c2440d65cd726967744a3d45a27eb04dc`. Exact-head APK/JUnit run [#1159](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39386327606) passed. Fresh quick probe [#170](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39386327522) passed all ten directions; artifact-level results and the full-profile follow-up are recorded below.
+
+
+### Exact-head quick probe results and full-profile follow-up — 20 Oct 2026
+
+- All 10 directions on head `0406c01c2440d65cd726967744a3d45a27eb04dc` completed successfully in quick run [#170](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39386327522); the exact-head APK/JUnit run [#1159](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39386327606) also passed.
+- All ten `ui-audit.json` files report unique signatures equal to captured states, no probe error, and zero or one project-loading stall. Every quick run stopped at the depth/control/cycle boundary with `coverage_limited=true` and `coverage_complete=false`. This confirms the dedup/signature fix and probe execution; it does not establish complete Craft UI coverage.
+
+| Direction | States / unique | Transitions | Long-press controls | Long presses | Seconds | Loading stalls |
+|---|---:|---:|---:|---:|---:|---:|
+| Import paste | 18 / 18 | 46 | 12 | 3 | 630.5 | 0 |
+| Project create | 10 / 10 | 31 | 32 | 2 | 492.1 | 1 |
+| Import QR | 11 / 11 | 34 | 33 | 2 | 534.6 | 1 |
+| Exit policy | 13 / 13 | 36 | 33 | 2 | 537.7 | 1 |
+| FBD | 9 / 9 | 32 | 6 | 3 | 449.3 | 1 |
+| Runtime | 11 / 11 | 34 | 33 | 2 | 502.6 | 1 |
+| Macros | 9 / 9 | 22 | 8 | 3 | 322.4 | 0 |
+| Components | 11 / 11 | 28 | 143 | 8 | 383.5 | 0 |
+| Network | 11 / 11 | 34 | 33 | 2 | 524.9 | 1 |
+| Devices | 8 / 8 | 24 | 31 | 3 | 322.6 | 1 |
+
+- Dispatched full-profile run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39388319775) against the same exact head; it is in progress. Its artifacts must be reviewed per direction before accepting any coverage claim.
+- Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
