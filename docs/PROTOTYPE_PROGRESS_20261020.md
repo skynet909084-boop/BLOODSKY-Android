@@ -516,3 +516,10 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 2. Poll PR #191 exact-head checks #39504722170/#39504722101 after the slot-count test correction; inspect the artifact for the 16-slot cap and server association.
 3. Implement issue #196 on an isolated branch. Start the full profile only after the workflow hashes and attempts the exact Release APK, and persist/resume its frontier and per-K107 evidence.
 4. Keep PR #192 unmerged until human review; merge only into `prototype/all-in-one-20261020` after required checks. Never modify `main`.
+
+### Legacy probe branch dependency review
+
+- #149 is a draft based on `feat/craft-screen-navigation-import-20261018` and is not mergeable to the integration branch as-is. Its APK build passed; its original Craft emulator and supplemental runs were cancelled.
+- #150 is a draft stacked on #149's probe branch. APK/JUnit passed; its supplemental emulator run was cancelled.
+- #151 is a draft stacked on #150. APK/JUnit and probe workflow #172 completed, but the artifact audit records incomplete coverage (no direction met `coverage_complete`). Keep its direction and long-press observations as partial evidence.
+- PR #198 introduces a focused exact-release APK attempt and a single-shell runner, but touches the same probe workflow family. Do not merge its workflow changes independently of #149–#151; reconcile the helpers and preserve their distinct direction/long-press coverage after #174's artifact is available.
