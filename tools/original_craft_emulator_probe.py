@@ -23,9 +23,10 @@ DIRECTION = next((arg.partition("=")[2] for arg in sys.argv[2:] if arg.startswit
 MAX_STATES = 20 if PROFILE == "quick" else 300
 MAX_DEPTH = 4 if PROFILE == "quick" else 12
 MAX_QUEUED = 240
-MAX_ACTIONS_PER_STATE = 6 if PROFILE == "quick" else 240
+MAX_ACTIONS_PER_STATE = 6 if PROFILE == "quick" else 64
 MAX_RUNTIME_SECONDS = 0 if PROFILE == "quick" else 5 * 3600 + 45 * 60
-WAIT = 2.0
+WAIT = 0.5
+SEED_EDITOR_DIRECTIONS = {"project-create", "components", "fbd", "macros", "devices", "network", "runtime"}
 
 
 def adb(*args: str, check: bool = True) -> str:
@@ -208,6 +209,7 @@ def save_checkpoint(complete=False):
         "transitions_visited": len(transition_rows),
         "elapsed_seconds": round(time.time() - started, 1),
         "project_loading_stalled_states": sum(1 for row in state_rows if row["project_loading_stalled"]),
+        "project_seed": project_seed_result,
         "states": state_rows,
         "transitions": transition_rows,
         "runtime_error_log": "android-runtime-errors.log",
@@ -278,6 +280,104 @@ def capture_state(path):
     return label, signature, prioritize_actions(actions, DIRECTION)
 
 
+project_seed_result = {"attempted": False, "success": None, "elapsed_seconds": 0.0, "failure": ""}
+
+def _label(node):
+    return " ".join((node.get("text", ""), node.get("description", ""),
+                     node.get("hint", ""), node.get("resource_id", ""))).strip().casefold()
+
+
+def _find_control(root, predicate):
+    return next((node for node in controls(root) if predicate(_label(node), node)), None)
+
+
+def _wait_screen_change(previous, timeout=15.0, wait_out_loading=False):
+    deadline = time.time() + timeout
+    latest = None
+    while time.time() < deadline:
+        time.sleep(1.0)
+        latest, _, _ = dump_ui("seed-check", capture_screenshot=False)
+        loading = is_project_loading(latest)
+        signature = hashlib.sha256(json.dumps(
+            visible_state(latest), ensure_ascii=False).encode()).hexdigest()
+        if (wait_out_loading and not loading) or (not wait_out_loading and signature != previous and not loading):
+            return latest, True
+    return latest, False
+
+
+def _seed_tap(root, predicate):
+    node = _find_control(root, predicate)
+    if node is None:
+        return root, False
+    before = hashlib.sha256(json.dumps(
+        visible_state(root), ensure_ascii=False).encode()).hexdigest()
+    adb("shell", "input", "tap", str(node["x"]), str(node["y"]))
+    time.sleep(WAIT)
+    latest, changed = _wait_screen_change(before)
+    return (latest if latest is not None else root), changed
+
+
+def seed_project():
+    """Create one project before spending time on editor navigation."""
+    global project_seed_result
+    started_seed = time.time()
+    project_seed_result = {"attempted": True, "success": False,
+                           "elapsed_seconds": 0.0, "failure": ""}
+    root, _, _ = dump_ui("seed-start", capture_screenshot=True)
+    root, changed = _seed_tap(
+        root, lambda label, node: "create a new project" in label or "создать новый проект" in label)
+    if not changed:
+        project_seed_result["failure"] = "new-project-entry-not-found-or-no-transition"
+        return False
+
+    portrait = _find_control(root, lambda label, node: "portrait orientation" in label or "портретная ориентация" in label)
+    if portrait:
+        before = hashlib.sha256(json.dumps(visible_state(root), ensure_ascii=False).encode()).hexdigest()
+        adb("shell", "input", "tap", str(portrait["x"]), str(portrait["y"]))
+        time.sleep(WAIT)
+        latest, _ = _wait_screen_change(before)
+        if latest is not None:
+            root = latest
+
+    field = _find_control(root, lambda label, node: node.get("field", False))
+    if field is None:
+        project_seed_result["failure"] = "project-name-field-not-found"
+        return False
+    adb("shell", "input", "tap", str(field["x"]), str(field["y"]))
+    time.sleep(0.2)
+    adb("shell", "input", "text", "CraftAudit")
+    adb("shell", "input", "keyevent", "4")
+    time.sleep(WAIT)
+    root, _, _ = dump_ui("seed-named-project", capture_screenshot=True)
+
+    submit = _find_control(root, lambda label, node: (node.get("text", "").strip().casefold() in {"create", "создать"} or node.get("content-desc", "").strip().casefold() in {"create", "создать"} or node.get("resource_id", "").rsplit("/", 1)[-1].casefold() in {"create", "создать"}))
+    if submit is None:
+        project_seed_result["failure"] = "create-submit-not-found"
+        return False
+    adb("shell", "input", "tap", str(submit["x"]), str(submit["y"]))
+    time.sleep(WAIT)
+
+    deadline = time.time() + 90.0
+    last_screenshot = -10
+    while time.time() < deadline:
+        elapsed = int(time.time() - started_seed)
+        root, _, _ = dump_ui("seed-create-%03d" % elapsed,
+                             capture_screenshot=(elapsed - last_screenshot >= 10))
+        if elapsed - last_screenshot >= 10:
+            last_screenshot = elapsed
+        if not is_project_loading(root):
+            project_seed_result["success"] = True
+            project_seed_result["elapsed_seconds"] = round(time.time() - started_seed, 1)
+            print("project seed reached a non-loading screen after %.1fs" %
+                  project_seed_result["elapsed_seconds"], flush=True)
+            return True
+        time.sleep(2.0)
+
+    project_seed_result["elapsed_seconds"] = round(time.time() - started_seed, 1)
+    project_seed_result["failure"] = "project-loading-persisted-for-90-seconds"
+    print("project seed still loading after 90s; preserving evidence and skipping blind traversal", flush=True)
+    return False
+
 runtime_limit_hit = False
 coverage_limited = False
 
@@ -346,7 +446,12 @@ def full_walk():
 
 
 fresh_start()
-fast_walk([])
+seed_ok = True
+if PROFILE == "full" and DIRECTION in SEED_EDITOR_DIRECTIONS:
+    seed_ok = seed_project()
+    save_checkpoint()
+if seed_ok:
+    fast_walk([])
 remaining_frontier = 0
 
 # Capture all uncaught Android Java exceptions from this audit session.

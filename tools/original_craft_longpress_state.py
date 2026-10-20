@@ -15,6 +15,24 @@ _LONG_PRESS_FOCUS = {
 
 LONG_PRESS_MS = 1000
 
+_VISIBLE_STATE_ATTRIBUTES = (
+    "package", "resource-id", "class", "text", "content-desc", "hint", "bounds",
+    "checked", "selected", "enabled", "clickable", "long-clickable", "focusable",
+    "focused", "scrollable", "checkable", "password", "context-clickable", "dismissable",
+)
+
+
+def visible_state_attributes(attributes):
+    """Return stable visible and interactive fields used to identify a UI state."""
+    return tuple(attributes.get(name, "") for name in _VISIBLE_STATE_ATTRIBUTES)
+
+
+def _is_auxiliary_calculator(action):
+    node = action["node"]
+    resource = node.get("resource_id", "").rsplit("/", 1)[-1].casefold()
+    label = action.get("label", "").casefold()
+    return resource in {"calc", "calculator"} or "calculator" in label
+
 
 def actions_for_controls(controls, direction: str):
     """Create taps for navigation and long presses only for explicitly marked views."""
@@ -35,18 +53,41 @@ def actions_for_controls(controls, direction: str):
                             "label": f"LONG PRESS: {label}"})
 
     terms = _LONG_PRESS_FOCUS.get(direction)
-    if terms:
-        indexed = list(enumerate(actions))
-        indexed.sort(key=lambda pair: (
-            pair[1]["kind"] != "long_press",
-            not any(term in pair[1]["label"].casefold() for term in terms),
-            pair[0],
-        ))
-        return [action for _, action in indexed]
-
     focused = prioritize_actions(actions, direction)
+    # The calculator opens an unrelated keypad flow for focused audits.
+    # Keep it available during FBD exploration, where calc blocks may matter.
+    if direction != "fbd":
+        focused = [action for action in focused if not _is_auxiliary_calculator(action)]
+    if terms:
+        # Long-press a direction-matched target first when one is present.
+        # Otherwise navigate toward that section before exploring unrelated
+        # long-clickable controls such as the calculator button.
+        matching_long_presses = [
+            action for action in focused
+            if action["kind"] == "long_press"
+            and any(term in action["label"].casefold() for term in terms)
+        ]
+        return [*matching_long_presses,
+                *(action for action in focused if action not in matching_long_presses)]
+
     return [*filter(lambda action: action["kind"] == "long_press", focused),
             *filter(lambda action: action["kind"] != "long_press", focused)]
+
+
+def remember_state(seen: set[str], signature: str) -> bool:
+    """Remember one observed accessibility state, returning false for duplicates."""
+    if signature in seen:
+        return False
+    seen.add(signature)
+    return True
+
+
+def action_identity(action):
+    """Identify one control gesture so a DFS path cannot repeat a UI toggle forever."""
+    node = action["node"]
+    return (action["kind"], node.get("resource_id", ""), node.get("text", ""),
+            node.get("description", ""), node.get("hint", ""), node.get("class", ""),
+            node.get("bounds", ""))
 
 
 def touch_command(action, duration_ms: int = LONG_PRESS_MS):
@@ -56,3 +97,20 @@ def touch_command(action, duration_ms: int = LONG_PRESS_MS):
     if action["kind"] == "long_press":
         return ["shell", "input", "swipe", x, y, x, y, str(duration_ms)]
     return ["shell", "input", "tap", x, y]
+
+
+
+def safe_field_value(hint: str | None):
+    """Return a generic probe value only for a clearly identified field hint."""
+    hint = (hint or "").strip().casefold()
+    if not hint:
+        return None
+    if any(x in hint for x in ("парол", "password", "ключ", "token")):
+        return "test"
+    if any(x in hint for x in ("имя проекта", "название проекта", "project name", "project title")):
+        return "CraftAudit"
+    if any(x in hint for x in ("порт", "port", "unit id", "slave id", "колич", "count")):
+        return "1"
+    if any(x in hint for x in ("адрес", "address", "host", "ip")):
+        return "127.0.0.1"
+    return None

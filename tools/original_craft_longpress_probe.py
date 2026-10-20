@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import re
 import subprocess
@@ -14,21 +15,23 @@ from pathlib import Path
 from PIL import Image
 from original_craft_probe_state import is_project_loading
 from original_craft_longpress_state import (
-    LONG_PRESS_MS, actions_for_controls, touch_command,
+    LONG_PRESS_MS, action_identity, actions_for_controls, remember_state, safe_field_value, touch_command,
+    visible_state_attributes,
 )
 
 OUT = Path(sys.argv[1])
 OUT.mkdir(parents=True, exist_ok=True)
 PACKAGE = "ru.kascada.modbus"
-ADB_TIMEOUT = 45
+ADB_TIMEOUT = 15
 PROFILE = "quick" if "--full" not in sys.argv[2:] else "full"
 DIRECTION = next((arg.partition("=")[2] for arg in sys.argv[2:] if arg.startswith("--direction=")), "balanced")
-MAX_STATES = 20 if PROFILE == "quick" else 300
-MAX_DEPTH = 4 if PROFILE == "quick" else 12
+MAX_STATES = 25 if PROFILE == "quick" else 100
+MAX_DEPTH = 5 if PROFILE == "quick" else 8
 MAX_QUEUED = 240
-MAX_ACTIONS_PER_STATE = 6 if PROFILE == "quick" else 240
-MAX_RUNTIME_SECONDS = 0 if PROFILE == "quick" else 5 * 3600 + 45 * 60
-WAIT = 2.0
+MAX_ACTIONS_PER_STATE = 5 if PROFILE == "quick" else 12
+MAX_RUNTIME_SECONDS = 0 if PROFILE == "quick" else 50 * 60
+WAIT = 0.5
+SEED_EDITOR_DIRECTIONS = {"project-create", "components", "fbd", "macros", "devices", "network", "runtime"}
 
 
 def adb(*args: str, check: bool = True) -> str:
@@ -42,6 +45,36 @@ def adb(*args: str, check: bool = True) -> str:
     return p.stdout.strip()
 
 
+def save_screenshot(png: Path) -> bool:
+    """Save a verified screenshot, retrying transient adb output failures."""
+    png.unlink(missing_ok=True)
+    last_error = "empty screenshot output"
+    for attempt in range(2):
+        try:
+            result = subprocess.run(
+                ["adb", "exec-out", "screencap", "-p"],
+                capture_output=True, timeout=ADB_TIMEOUT,
+            )
+            if result.returncode != 0:
+                last_error = result.stderr.decode(errors="replace").strip() or f"adb exit {result.returncode}"
+            elif not result.stdout:
+                last_error = "empty screenshot output"
+            else:
+                with Image.open(io.BytesIO(result.stdout)) as image:
+                    image.verify()
+                png.write_bytes(result.stdout)
+                return True
+        except subprocess.TimeoutExpired:
+            last_error = f"adb screenshot timed out after {ADB_TIMEOUT}s"
+        except (OSError, SyntaxError, ValueError) as exc:
+            last_error = f"invalid PNG: {exc}"
+        if attempt == 0:
+            time.sleep(0.25)
+    print(f"warning: screenshot unavailable for {png.name}: {last_error}", flush=True)
+    png.unlink(missing_ok=True)
+    return False
+
+
 def dump_ui(label: str, capture_screenshot: bool = True):
     remote = "/sdcard/craft-audit-window.xml"
     adb("shell", "uiautomator", "dump", remote, check=False)
@@ -53,9 +86,7 @@ def dump_ui(label: str, capture_screenshot: bool = True):
         root = ET.Element("hierarchy")
     png = OUT / f"{label}.png"
     if capture_screenshot:
-        with png.open("wb") as f:
-            subprocess.run(["adb", "exec-out", "screencap", "-p"], stdout=f,
-                           check=False, timeout=ADB_TIMEOUT)
+        save_screenshot(png)
     return root, local.read_text(errors="replace") if local.exists() else "", png
 
 
@@ -124,18 +155,12 @@ def perform(action):
         adb(*touch_command(action, LONG_PRESS_MS))
         if node.get("field") and action["kind"] == "tap":
             time.sleep(0.3)
-            hint = (node.get("hint", "") + " " + node.get("text", "")).lower()
-            if any(x in hint for x in ("парол", "password", "ключ", "token")):
-                value = "test"
-            elif any(x in hint for x in ("имя проекта", "название проекта", "project name", "project title")):
-                value = "CraftAudit"
-            elif any(x in hint for x in ("порт", "port", "unit", "id", "колич", "count")):
-                value = "1"
-            elif any(x in hint for x in ("адрес", "address", "host", "ip")):
-                value = "127.0.0.1"
-            else:
-                value = "1"
-            adb("shell", "input", "text", value)
+            # Only enter generic probe data when the accessibility hint clearly
+            # identifies a known field. In particular, never append "1" to an
+            # existing screen name: that created Screen1, Screen11, ... branches.
+            value = safe_field_value(node.get("hint", ""))
+            if value is not None:
+                adb("shell", "input", "text", value)
             adb("shell", "input", "keyevent", "4")
     time.sleep(WAIT)
 
@@ -180,9 +205,9 @@ def visible_state(root):
             text = "<clock>"
         if loading and cls.endswith("ImageView"):
             continue
-        out.append((n.attrib.get("resource-id", ""), cls, text,
-                    n.attrib.get("content-desc", ""), n.attrib.get("bounds", ""),
-                    n.attrib.get("checked", ""), n.attrib.get("selected", "")))
+        attributes = dict(n.attrib)
+        attributes["text"] = text
+        out.append(visible_state_attributes(attributes))
     return out
 
 
@@ -190,6 +215,105 @@ seen = set()
 state_rows = []
 transition_rows = []
 started = time.time()
+
+
+project_seed_result = {"attempted": False, "success": None, "elapsed_seconds": 0.0, "failure": ""}
+
+def _label(node):
+    return " ".join((node.get("text", ""), node.get("description", ""),
+                     node.get("hint", ""), node.get("resource_id", ""))).strip().casefold()
+
+
+def _find_control(root, predicate):
+    return next((node for node in controls(root) if predicate(_label(node), node)), None)
+
+
+def _wait_screen_change(previous, timeout=15.0, wait_out_loading=False):
+    deadline = time.time() + timeout
+    latest = None
+    while time.time() < deadline:
+        time.sleep(1.0)
+        latest, _, _ = dump_ui("seed-check", capture_screenshot=False)
+        loading = is_project_loading(latest)
+        signature = hashlib.sha256(json.dumps(
+            visible_state(latest), ensure_ascii=False).encode()).hexdigest()
+        if (wait_out_loading and not loading) or (not wait_out_loading and signature != previous and not loading):
+            return latest, True
+    return latest, False
+
+
+def _seed_tap(root, predicate):
+    node = _find_control(root, predicate)
+    if node is None:
+        return root, False
+    before = hashlib.sha256(json.dumps(
+        visible_state(root), ensure_ascii=False).encode()).hexdigest()
+    adb("shell", "input", "tap", str(node["x"]), str(node["y"]))
+    time.sleep(WAIT)
+    latest, changed = _wait_screen_change(before)
+    return (latest if latest is not None else root), changed
+
+
+def seed_project():
+    """Create one project before spending time on editor navigation."""
+    global project_seed_result
+    started_seed = time.time()
+    project_seed_result = {"attempted": True, "success": False,
+                           "elapsed_seconds": 0.0, "failure": ""}
+    root, _, _ = dump_ui("seed-start", capture_screenshot=True)
+    root, changed = _seed_tap(
+        root, lambda label, node: "create a new project" in label or "создать новый проект" in label)
+    if not changed:
+        project_seed_result["failure"] = "new-project-entry-not-found-or-no-transition"
+        return False
+
+    portrait = _find_control(root, lambda label, node: "portrait orientation" in label or "портретная ориентация" in label)
+    if portrait:
+        before = hashlib.sha256(json.dumps(visible_state(root), ensure_ascii=False).encode()).hexdigest()
+        adb("shell", "input", "tap", str(portrait["x"]), str(portrait["y"]))
+        time.sleep(WAIT)
+        latest, _ = _wait_screen_change(before)
+        if latest is not None:
+            root = latest
+
+    field = _find_control(root, lambda label, node: node.get("field", False))
+    if field is None:
+        project_seed_result["failure"] = "project-name-field-not-found"
+        return False
+    adb("shell", "input", "tap", str(field["x"]), str(field["y"]))
+    time.sleep(0.2)
+    adb("shell", "input", "text", "CraftAudit")
+    adb("shell", "input", "keyevent", "4")
+    time.sleep(WAIT)
+    root, _, _ = dump_ui("seed-named-project", capture_screenshot=True)
+
+    submit = _find_control(root, lambda label, node: (node.get("text", "").strip().casefold() in {"create", "создать"} or node.get("content-desc", "").strip().casefold() in {"create", "создать"} or node.get("resource_id", "").rsplit("/", 1)[-1].casefold() in {"create", "создать"}))
+    if submit is None:
+        project_seed_result["failure"] = "create-submit-not-found"
+        return False
+    adb("shell", "input", "tap", str(submit["x"]), str(submit["y"]))
+    time.sleep(WAIT)
+
+    deadline = time.time() + 90.0
+    last_screenshot = -10
+    while time.time() < deadline:
+        elapsed = int(time.time() - started_seed)
+        root, _, _ = dump_ui("seed-create-%03d" % elapsed,
+                             capture_screenshot=(elapsed - last_screenshot >= 10))
+        if elapsed - last_screenshot >= 10:
+            last_screenshot = elapsed
+        if not is_project_loading(root):
+            project_seed_result["success"] = True
+            project_seed_result["elapsed_seconds"] = round(time.time() - started_seed, 1)
+            print("project seed reached a non-loading screen after %.1fs" %
+                  project_seed_result["elapsed_seconds"], flush=True)
+            return True
+        time.sleep(2.0)
+
+    project_seed_result["elapsed_seconds"] = round(time.time() - started_seed, 1)
+    project_seed_result["failure"] = "project-loading-persisted-for-90-seconds"
+    print("project seed still loading after 90s; preserving evidence and skipping blind traversal", flush=True)
+    return False
 
 
 def save_checkpoint(complete=False):
@@ -205,10 +329,13 @@ def save_checkpoint(complete=False):
         "runtime_limit_hit": runtime_limit_hit,
         "coverage_limited": coverage_limited,
         "coverage_complete": (not runtime_limit_hit and not coverage_limited
-                              and len(state_rows) < MAX_STATES),
-        "termination_reason": ("runtime_limit" if runtime_limit_hit else
+                              and not probe_error and len(state_rows) < MAX_STATES),
+        "probe_error": probe_error,
+        "termination_reason": ("adb_timeout" if "timed out after" in probe_error else
+                               "adb_or_probe_error" if probe_error else
+                               "runtime_limit" if runtime_limit_hit else
                                "state_limit" if len(state_rows) >= MAX_STATES else
-                               "depth_or_control_limit" if coverage_limited else "frontier_exhausted"),
+                               "depth_control_or_cycle_limit" if coverage_limited else "frontier_exhausted"),
         "states_captured": len(state_rows),
         "unique_state_signatures": len(seen),
         "transitions_visited": len(transition_rows),
@@ -216,20 +343,22 @@ def save_checkpoint(complete=False):
         "long_press_actions_executed": sum(1 for row in transition_rows if row["kind"] == "long_press"),
         "elapsed_seconds": round(time.time() - started, 1),
         "project_loading_stalled_states": sum(1 for row in state_rows if row["project_loading_stalled"]),
+        "repeated_actions_pruned": cycle_pruned_actions,
+        "project_seed": project_seed_result,
         "states": state_rows,
         "transitions": transition_rows,
         "runtime_error_log": "android-runtime-errors.log",
         "limitations": [
             "Quick profile visits at most 20 unique states, depth 4, and 6 controls per state.",
-            "Full profile explores up to 300 unique states with depth 12, up to 240 controls per state, and a 5h45m limit so artifact upload has time before the six-hour runner cap.",
+            "Full profile explores up to 100 unique states with depth 8, up to 12 actions per state, and a 50-minute limit so artifact upload has time.",
             "Full traversal uses one app session with Back navigation and de-duplicates identical visible accessibility states; identical screens with different hidden data may merge.",
-            "Depth, per-screen action, state, or wall-clock caps are recorded as incomplete coverage rather than a complete audit.",
+            "Depth, per-screen action, state, wall-clock caps, and repeated-action cycle pruning are recorded as incomplete coverage rather than a complete audit.",
             "Only views marked long-clickable=true in the Android accessibility tree receive a one-second stationary long press.",
             "The quick profile follows clickable accessibility controls, text fields, and explicitly long-clickable views, so custom canvas targets may be absent.",
             "Screenshots and accessibility trees are flushed to the report after each unique state.",
             "Unavailable Bluetooth and USB hardware is not simulated.",
             "Generic values are entered only into visible text fields to reveal subsequent screens; they are not valid device credentials.",
-            "Project loading is observed for 2 seconds; a persistent loading screen is recorded once and is not expanded into duplicate branches."
+            "Project creation is observed for up to 90 seconds before traversal; persistent loading is recorded once and not expanded into duplicate branches."
         ],
     }
     target = OUT / "ui-audit.json"
@@ -237,8 +366,11 @@ def save_checkpoint(complete=False):
     temporary.write_text(json.dumps(report, ensure_ascii=False, indent=2))
     temporary.replace(target)
     if len(state_rows) % 10 == 0:
-        log = adb("logcat", "-d", "-v", "brief", "AndroidRuntime:E", "*:S", check=False)
-        (OUT / "android-runtime-errors.log").write_text(log)
+        try:
+            log = adb("logcat", "-d", "-v", "brief", "AndroidRuntime:E", "*:S", check=False)
+            (OUT / "android-runtime-errors.log").write_text(log)
+        except RuntimeError as exc:
+            (OUT / "android-runtime-errors.log").write_text(f"Logcat unavailable: {exc}\\n")
 
 
 def capture_state(path):
@@ -247,18 +379,15 @@ def capture_state(path):
     loading_stalled = is_project_loading(root)
     visible = visible_state(root)
     signature = hashlib.sha256(json.dumps(visible, ensure_ascii=False).encode()).hexdigest()
-    if signature in seen:
+    if not remember_state(seen, signature):
         (OUT / f"{label}.xml").unlink(missing_ok=True)
         return None
 
     # Save the expensive screenshot only for a new state; every unique capture
     # still waits WAIT seconds after the preceding action before reaching here.
-    with png.open("wb") as f:
-        subprocess.run(["adb", "exec-out", "screencap", "-p"], stdout=f,
-                       check=False, timeout=ADB_TIMEOUT)
-    loading_stalled = is_project_loading(root)
+    screenshot_ok = save_screenshot(png)
     ctrls = [] if loading_stalled else controls(root)
-    if png.exists() and not loading_stalled:
+    if screenshot_ok and not loading_stalled:
         with Image.open(png) as image:
             width, height = image.size
             normalized = image.crop((0, min(60, height // 10), width, max(height // 10, height - 80))).convert("L").resize((64, 64))
@@ -282,10 +411,12 @@ def capture_state(path):
 
 runtime_limit_hit = False
 coverage_limited = False
+probe_error = ""
+cycle_pruned_actions = 0
 
 
 def fast_walk(path, parent_signature=None):
-    global runtime_limit_hit, coverage_limited
+    global runtime_limit_hit, coverage_limited, cycle_pruned_actions
     if MAX_RUNTIME_SECONDS and time.time() - started >= MAX_RUNTIME_SECONDS:
         runtime_limit_hit = True
         return
@@ -301,7 +432,12 @@ def fast_walk(path, parent_signature=None):
         return
     if len(actions) > MAX_ACTIONS_PER_STATE:
         coverage_limited = True
+    path_action_ids = {action_identity(previous) for previous in path}
     for action in actions[:MAX_ACTIONS_PER_STATE]:
+        if action_identity(action) in path_action_ids:
+            cycle_pruned_actions += 1
+            coverage_limited = True
+            continue
         if len(state_rows) >= MAX_STATES:
             break
         if MAX_RUNTIME_SECONDS and time.time() - started >= MAX_RUNTIME_SECONDS:
@@ -348,12 +484,24 @@ def full_walk():
     return len(queue)
 
 
-fresh_start()
-fast_walk([])
+try:
+    fresh_start()
+    seed_ok = True
+    if PROFILE == "full" and DIRECTION in SEED_EDITOR_DIRECTIONS:
+        seed_ok = seed_project()
+        save_checkpoint()
+    if seed_ok:
+        fast_walk([])
+except RuntimeError as exc:
+    probe_error = str(exc)
+    print(f"Probe stopped safely; preserving partial evidence: {probe_error}", flush=True)
 remaining_frontier = 0
 
-# Capture all uncaught Android Java exceptions from this audit session.
-log = adb("logcat", "-d", "-v", "brief", "AndroidRuntime:E", "*:S", check=False)
+# Capture all uncaught Android Java exceptions from this audit session when ADB is responsive.
+try:
+    log = adb("logcat", "-d", "-v", "brief", "AndroidRuntime:E", "*:S", check=False)
+except RuntimeError as exc:
+    log = f"Logcat unavailable: {exc}\\n"
 (OUT / "android-runtime-errors.log").write_text(log)
 save_checkpoint(complete=True)
 summary = json.loads((OUT / "ui-audit.json").read_text())
