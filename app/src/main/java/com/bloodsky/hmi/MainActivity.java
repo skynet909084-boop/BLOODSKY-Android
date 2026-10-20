@@ -101,7 +101,7 @@ public class MainActivity extends Activity {
         }
     };
     private final ExecutorService modbusExecutor = Executors.newSingleThreadExecutor();
-    private UsbSerialModbusConnection manualUsbConnection;
+    private volatile UsbSerialModbusConnection manualUsbConnection;
     private UsbSerialConnector manualUsbConnector;
     private int manualUsbScreenGeneration;
     private boolean manualUsbScreenVisible;
@@ -490,7 +490,6 @@ public class MainActivity extends Activity {
     private void showHome() {
         manualUsbScreenGeneration++;
         manualUsbScreenVisible = false;
-        closeManualUsbConnection();
         operatorMode = false;
         setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
         stopModbusPolling();
@@ -1207,6 +1206,23 @@ public class MainActivity extends Activity {
         }
     }
 
+    private BindingRequest parseProjectBinding(int widgetIndex, String binding, int quantity) {
+        UsbSerialBinding usb = UsbSerialBinding.parse(binding, quantity);
+        if (usb != null)
+            return new BindingRequest(widgetIndex, "", 0, usb.unit, usb.address,
+                    usb.functionCode, usb.quantity, true);
+        return parseBinding(widgetIndex, binding, quantity);
+    }
+
+    private int[] readBoundRegisters(BindingRequest request) throws IOException {
+        if (!request.usb)
+            return new ModbusTcpClient(request.host, request.port).read(
+                    request.unit, request.address, request.quantity, request.functionCode);
+        UsbSerialModbusConnection connection = manualUsbConnection;
+        if (connection == null || !connection.isOpen()) throw new IOException("USB RTU не подключён");
+        return connection.read(request.unit, request.functionCode, request.address, request.quantity);
+    }
+
     private void startModbusPolling() {
         stopModbusPolling();
         if (!activityResumed || editor == null) return;
@@ -1357,7 +1373,10 @@ public class MainActivity extends Activity {
             if (craftSource && widget.extraFields.optBoolean("craftVarConstantMode", false)) continue;
             int quantity = craftSource && isCraftRegisterFloat(widget.type) ? 2 : 1;
             if ("Архив Craft".equals(widget.type)) quantity = archiveReadQuantity(widget);
-            BindingRequest request = parseBinding(i, widget.connectionInfo, quantity);
+            boolean usbProjectBindingAllowed = craftSource || "FBD Вход".equals(widget.type);
+            BindingRequest request = usbProjectBindingAllowed
+                    ? parseProjectBinding(i, widget.connectionInfo, quantity)
+                    : parseBinding(i, widget.connectionInfo, quantity);
             if (request == null) continue;
             String key = request.registerKey();
             BindingRequest existing = groupedRequests.get(key);
@@ -1369,8 +1388,13 @@ public class MainActivity extends Activity {
         final Map<Integer, String> invalidBindings = new HashMap<>();
         for (int i = 0; i < snapshotWidgets.size(); i++) {
             String binding = snapshotWidgets.get(i).connectionInfo;
-            if (binding != null && binding.startsWith("tcp://")
-                    && parseBinding(i, binding) == null) invalidBindings.put(i, "CFG");
+            boolean usbProjectBindingAllowed = isCraftRegisterSource(snapshotWidgets.get(i).type)
+                    || "FBD Вход".equals(snapshotWidgets.get(i).type);
+            if (binding != null && binding.startsWith("tcp://") && parseBinding(i, binding) == null)
+                invalidBindings.put(i, "CFG");
+            else if (usbProjectBindingAllowed && binding != null && binding.startsWith("usb://")
+                    && parseProjectBinding(i, binding,
+                    isCraftRegisterFloat(snapshotWidgets.get(i).type) ? 2 : 1) == null) invalidBindings.put(i, "CFG");
         }
         if (requests.isEmpty() && invalidBindings.isEmpty() && craftSystemTextUpdates.isEmpty()
                 && craftSystemNumericUpdates.isEmpty()
@@ -1386,8 +1410,7 @@ public class MainActivity extends Activity {
                     if (!pollSession.accepts(sessionToken)) return;
                     String value;
                     try {
-                        int[] words = new ModbusTcpClient(request.host, request.port).read(
-                                request.unit, request.address, request.quantity, request.functionCode);
+                        int[] words = readBoundRegisters(request);
                         StringBuilder rawWords = new StringBuilder();
                         for (int i = 0; i < words.length; i++) {
                             if (i > 0) rawWords.append(',');
@@ -1606,12 +1629,18 @@ public class MainActivity extends Activity {
         final List<Integer> widgetIndices = new ArrayList<>();
         final int port, unit, address, functionCode, quantity;
         final String host;
+        final boolean usb;
         BindingRequest(int widgetIndex, String host, int port, int unit, int address, int functionCode, int quantity) {
+            this(widgetIndex, host, port, unit, address, functionCode, quantity, false);
+        }
+        BindingRequest(int widgetIndex, String host, int port, int unit, int address, int functionCode,
+                       int quantity, boolean usb) {
             this.widgetIndices.add(widgetIndex);
             this.host = host; this.port = port; this.unit = unit;
-            this.address = address; this.functionCode = functionCode; this.quantity = quantity;
+            this.address = address; this.functionCode = functionCode; this.quantity = quantity; this.usb = usb;
         }
         String registerKey() {
+            if (usb) return "usb/" + unit + "/" + address + "/FC" + functionCode + "/" + quantity;
             return host.toLowerCase(java.util.Locale.ROOT) + ":" + port + "/" + unit + "/" + address + "/FC" + functionCode + "/" + quantity;
         }
     }
@@ -3751,6 +3780,14 @@ public class MainActivity extends Activity {
             boundCount++;
             String state = liveValues.get(i);
             if (binding.startsWith("tcp://") && parseBinding(i, binding) == null) state = "CFG — неверный адрес";
+            else if (binding.startsWith("usb://")
+                    && !(isCraftRegisterSource(widget.type) || isCraftRegisterSink(widget.type) || "FBD Вход".equals(widget.type)))
+                state = "CFG — USB RTU доступен для FBD register variables и FBD Вход";
+            else if (binding.startsWith("usb://")
+                    && parseProjectBinding(i, binding, isCraftRegisterFloat(widget.type) ? 2 : 1) == null)
+                state = "CFG — неверный USB RTU адрес";
+            else if (binding.startsWith("usb://") && (manualUsbConnection == null || !manualUsbConnection.isOpen()))
+                state = "ERR: USB RTU не подключён";
             else if (state == null) state = "Ожидание ответа";
             if ((state != null && state.startsWith("ERR")) || (state != null && state.startsWith("CFG"))) errorCount++;
             else if ("Ожидание ответа".equals(state)) pendingCount++;
@@ -4128,6 +4165,10 @@ public class MainActivity extends Activity {
         form.addView(connectionLabel);
         EditText connectionField = propertyField(w.connectionInfo == null ? "" : w.connectionInfo, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         connectionField.setHint("tcp://192.168.1.10:502/1/40001 (FC03/FC04) или fbd://N (номер блока с 1)");
+        if (isCraftRegisterSource(w.type) || isCraftRegisterSink(w.type))
+            connectionField.setHint("TCP: tcp://192.168.1.10:502/1/40001 · USB RTU: usb://1/40001 (явно подключи адаптер)");
+        else if ("FBD Вход".equals(w.type))
+            connectionField.setHint("TCP: tcp://192.168.1.10:502/1/40001 · USB RTU: usb://1/40001");
         form.addView(connectionField);
         String sourceBindingText = CraftNetworkBindingResolver.display(
                 w.extraFields.optJSONObject("craftBindingResolution"));
@@ -7835,12 +7876,14 @@ public class MainActivity extends Activity {
     private void scheduleCraftRegisterWrite(Widget widget, int widgetIndex, double value) {
         if (!operatorMode || widget == null || widget.craftRegisterWritePending
                 || !Double.isFinite(value) || widget.connectionInfo == null) return;
-        BindingRequest request = parseBinding(widgetIndex, widget.connectionInfo,
+        BindingRequest request = parseProjectBinding(widgetIndex, widget.connectionInfo,
                 isCraftRegisterFloat(widget.type) ? 2 : 1);
         if (request == null || request.functionCode != 3) return;
+        final UsbSerialModbusConnection selectedUsbConnection = request.usb ? manualUsbConnection : null;
         String key = widget.connectionInfo + "|" + value + "|" + widget.extraFields.optInt("craftVarBit", 0)
                 + "|" + widget.extraFields.optBoolean("craftSwapWord", false)
-                + "|" + widget.extraFields.optBoolean("craftSwapByte", false);
+                + "|" + widget.extraFields.optBoolean("craftSwapByte", false)
+                + (request.usb ? "|usbSession=" + System.identityHashCode(selectedUsbConnection) : "");
         if (key.equals(widget.craftRegisterLastWriteKey)
                 || android.os.SystemClock.elapsedRealtime() < widget.craftRegisterRetryAt) return;
         boolean bool = isCraftRegisterBoolean(widget.type), floating = isCraftRegisterFloat(widget.type);
@@ -7868,12 +7911,22 @@ public class MainActivity extends Activity {
             modbusExecutor.execute(() -> {
                 String error = null;
                 try {
-                    ModbusTcpClient client = new ModbusTcpClient(request.host, request.port);
-                    if (writeBool) client.writeMask(unit, address,
-                            FbdCraftRegisterCodec.bitWriteAndMask(bit),
-                            FbdCraftRegisterCodec.bitWriteOrMask(bit, value != 0.0));
-                    else if (writeFloat) client.writeMultiple(unit, address, writeWords);
-                    else client.writeSingle(unit, address, writeInt);
+                    if (request.usb) {
+                        UsbSerialModbusConnection connection = selectedUsbConnection;
+                        if (connection == null || !connection.isOpen()) throw new IOException("USB RTU не подключён");
+                        if (writeBool) connection.writeMask(unit, address,
+                                FbdCraftRegisterCodec.bitWriteAndMask(bit),
+                                FbdCraftRegisterCodec.bitWriteOrMask(bit, value != 0.0));
+                        else if (writeFloat) connection.writeMultiple(unit, address, writeWords);
+                        else connection.writeSingle(unit, address, writeInt);
+                    } else {
+                        ModbusTcpClient client = new ModbusTcpClient(request.host, request.port);
+                        if (writeBool) client.writeMask(unit, address,
+                                FbdCraftRegisterCodec.bitWriteAndMask(bit),
+                                FbdCraftRegisterCodec.bitWriteOrMask(bit, value != 0.0));
+                        else if (writeFloat) client.writeMultiple(unit, address, writeWords);
+                        else client.writeSingle(unit, address, writeInt);
+                    }
                 } catch (Exception failure) { error = "ERR: " + describeModbusError(failure); }
                 final String writeError = error;
                 runOnUiThread(() -> {
