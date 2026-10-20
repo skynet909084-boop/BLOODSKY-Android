@@ -351,7 +351,7 @@ public class MainActivity extends Activity {
         if (root == null) return null;
         if (path == null || path.isEmpty()) return root;
         View current = root;
-        for (String part : path.split("\\\\.")) {
+        for (String part : path.split("\\.")) {
             if (!(current instanceof ViewGroup)) return null;
             int index;
             try { index = Integer.parseInt(part); }
