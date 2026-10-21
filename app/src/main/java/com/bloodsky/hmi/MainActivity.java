@@ -126,6 +126,8 @@ public class MainActivity extends Activity {
             new java.util.concurrent.ConcurrentHashMap<Widget, Boolean>());
     private FbdCraftMqttRuntime craftMqttRuntime;
     private final Map<Integer, String> liveValues = new HashMap<>();
+    private final java.util.Map<Widget, CraftTrendHistory> trendHistories =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
     private boolean modbusPollingActive = false;
     private boolean activityResumed = false;
     private android.hardware.SensorManager fbdSensorManager;
@@ -1738,6 +1740,8 @@ public class MainActivity extends Activity {
                                 || !java.util.Objects.equals(widgets.get(index).connectionInfo, snapshotBindings.get(index))) continue;
                         Widget w = widgets.get(index);
                         liveValues.put(index, entry.getValue());
+                        if (operatorMode && "График / Тренд".equals(w.type))
+                            recordTrendSample(w, entry.getValue());
                         if ("Архив Craft".equals(w.type) && operatorMode && entry.getValue() != null
                                 && !entry.getValue().startsWith("ERR") && !entry.getValue().startsWith("CFG")) {
                             try {
@@ -1825,6 +1829,79 @@ public class MainActivity extends Activity {
         } catch (java.util.concurrent.RejectedExecutionException ignored) {
             modbusPollInFlight = false;
         }
+    }
+
+    private void recordTrendSample(Widget widget, String rawValue) {
+        if (rawValue == null || rawValue.startsWith("ERR") || rawValue.startsWith("CFG")) return;
+        final double value;
+        try { value = Double.parseDouble(rawValue.trim()); }
+        catch (NumberFormatException invalid) { return; }
+        if (!Double.isFinite(value)) return;
+        CraftTrendHistory history = trendHistories.get(widget);
+        if (history == null) {
+            history = new CraftTrendHistory();
+            trendHistories.put(widget, history);
+        }
+        history.append(value, android.os.SystemClock.elapsedRealtime(),
+                widget.extraFields.optLong("craftTrendIntervalMs", 500),
+                widget.extraFields.optInt("craftTrendMaxPoints", 300));
+    }
+
+    private void drawCraftTrendGraph(Canvas canvas, Widget widget, String liveValue, Paint paint) {
+        float left = widget.x + dp(8), top = widget.y + dp(20);
+        float right = widget.x + widget.w - dp(8), bottom = widget.y + widget.h - dp(8);
+        if (right <= left || bottom <= top) return;
+        int oldColor = paint.getColor();
+        float oldWidth = paint.getStrokeWidth(), oldText = paint.getTextSize();
+        Paint.Style oldStyle = paint.getStyle();
+        Paint.Align oldAlign = paint.getTextAlign();
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(widget.extraFields.optInt("craftTrendBackgroundColor", Color.BLACK));
+        canvas.drawRect(left, top, right, bottom, paint);
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(dp(1));
+        paint.setColor(widget.extraFields.optInt("craftTrendLabelsColor", Color.WHITE));
+        canvas.drawRect(left, top, right, bottom, paint);
+        CraftTrendHistory history = trendHistories.get(widget);
+        double[] samples = history == null ? new double[0] : history.snapshotValues();
+        paint.setTextSize(dp(10));
+        paint.setTextAlign(Paint.Align.LEFT);
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(widget.extraFields.optInt("craftTrendLabelsColor", Color.WHITE));
+        String title = widget.text == null || widget.text.trim().isEmpty()
+                ? widget.extraFields.optString("craftTrendSeries1", "ID14") : widget.text;
+        String latest = liveValue != null && !liveValue.startsWith("ERR") && !liveValue.startsWith("CFG")
+                ? liveValue : (samples.length == 0 ? "ожидание привязки"
+                : String.format(java.util.Locale.ROOT, "%.3f", samples[samples.length - 1]));
+        canvas.drawText(title + "  " + latest, left + dp(3), top - dp(5), paint);
+        if (samples.length > 0) {
+            double min = samples[0], max = samples[0];
+            for (double sample : samples) { min = Math.min(min, sample); max = Math.max(max, sample); }
+            if (max - min < 1e-9) { min -= 1; max += 1; }
+            float plotLeft = left + dp(3), plotRight = Math.max(plotLeft, right - dp(3));
+            float plotTop = top + dp(3), plotBottom = Math.max(plotTop, bottom - dp(3));
+            android.graphics.Path line = new android.graphics.Path();
+            for (int sampleIndex = 0; sampleIndex < samples.length; sampleIndex++) {
+                float x = samples.length == 1 ? (plotLeft + plotRight) / 2f
+                        : plotLeft + (plotRight - plotLeft) * sampleIndex / (samples.length - 1f);
+                float y = plotBottom - (float) ((samples[sampleIndex] - min) / (max - min))
+                        * (plotBottom - plotTop);
+                if (sampleIndex == 0) line.moveTo(x, y); else line.lineTo(x, y);
+            }
+            JSONArray colors = widget.extraFields.optJSONArray("craftTrendSeriesColors");
+            paint.setColor(colors == null ? Color.GREEN : colors.optInt(0, Color.GREEN));
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(dp(2));
+            canvas.drawPath(line, paint);
+        } else if (liveValue != null && (liveValue.startsWith("ERR") || liveValue.startsWith("CFG"))) {
+            paint.setColor(Color.rgb(255, 120, 120));
+            canvas.drawText(liveValue, left + dp(3), (top + bottom) / 2f, paint);
+        }
+        paint.setColor(oldColor);
+        paint.setStrokeWidth(oldWidth);
+        paint.setStyle(oldStyle);
+        paint.setTextAlign(oldAlign);
+        paint.setTextSize(oldText);
     }
 
     private static class BindingRequest {
@@ -5750,6 +5827,29 @@ public class MainActivity extends Activity {
             maxValField = null;
         }
 
+        final EditText trendIntervalField;
+        final EditText trendPointCountField;
+        if ("График / Тренд".equals(w.type)
+                && w.extraFields.optInt("craftComponentId", -1) == 14) {
+            TextView trendLabel = new TextView(this);
+            trendLabel.setText("История Craft ID14: период в мс и ограничение точек");
+            trendLabel.setPadding(0, dp(8), 0, 0);
+            form.addView(trendLabel);
+            trendIntervalField = propertyField(Integer.toString(
+                    w.extraFields.optInt("craftTrendIntervalMs", 500)), InputType.TYPE_CLASS_NUMBER);
+            trendIntervalField.setHint("Период выборки (100–60000 мс)");
+            trendIntervalField.setContentDescription("Период выборки графика, миллисекунды");
+            form.addView(trendIntervalField);
+            trendPointCountField = propertyField(Integer.toString(
+                    w.extraFields.optInt("craftTrendMaxPoints", 300)), InputType.TYPE_CLASS_NUMBER);
+            trendPointCountField.setHint("Максимум точек истории (1–2000)");
+            trendPointCountField.setContentDescription("Максимум точек графика");
+            form.addView(trendPointCountField);
+        } else {
+            trendIntervalField = null;
+            trendPointCountField = null;
+        }
+
         final android.widget.CheckBox gaugeShowTextField;
         final EditText gaugeTextSizeField;
         final EditText gaugeTextColorField;
@@ -6562,6 +6662,18 @@ public class MainActivity extends Activity {
                     }
                     if (maxValField != null) {
                         w.maxValue = readDouble(maxValField, w.maxValue);
+                    }
+                    if (trendIntervalField != null) {
+                        try {
+                            CraftTrendGraphProperties.apply(w.extraFields,
+                                    readPositiveInt(trendIntervalField,
+                                            w.extraFields.optInt("craftTrendIntervalMs", 500), false),
+                                    readPositiveInt(trendPointCountField,
+                                            w.extraFields.optInt("craftTrendMaxPoints", 300), false));
+                        } catch (IllegalArgumentException | org.json.JSONException invalid) {
+                            Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show();
+                            return;
+                        }
                     }
                     if (gaugeShowTextField != null) {
                         try {
@@ -10439,17 +10551,7 @@ public class MainActivity extends Activity {
                     paint.setTextSize(dp(11));
                     canvas.drawText(w.text + " " + String.format(java.util.Locale.ROOT, "%.1f", val), w.x + dp(8), w.y + dp(16), paint);
                 } else if ("График / Тренд".equals(w.type)) {
-                    paint.setColor(Color.rgb(51, 65, 85));
-                    paint.setStyle(Paint.Style.STROKE);
-                    paint.setStrokeWidth(dp(1));
-                    canvas.drawRect(w.x + dp(8), w.y + dp(20), w.x + w.w - dp(8), w.y + w.h - dp(8), paint);
-                    paint.setColor(Color.rgb(34, 197, 94));
-                    canvas.drawLine(w.x + dp(10), w.y + w.h - dp(12), w.x + w.w / 2f, w.y + dp(28), paint);
-                    canvas.drawLine(w.x + w.w / 2f, w.y + dp(28), w.x + w.w - dp(10), w.y + w.h - dp(22), paint);
-                    paint.setStyle(Paint.Style.FILL);
-                    paint.setColor(Color.rgb(248, 250, 252));
-                    paint.setTextSize(dp(10));
-                    canvas.drawText(w.text, w.x + dp(10), w.y + dp(15), paint);
+                    drawCraftTrendGraph(canvas, w, liveValues.get(i), paint);
                 } else if ("Индикатор".equals(w.type) || "Двухпозиционный индикатор".equals(w.type)) {
                     String indicatorValue = liveValues.get(i);
                     Bitmap lamp = originalIndicatorBitmap(w, isActiveModbusValue(indicatorValue));
