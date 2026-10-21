@@ -512,3 +512,12 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 - Issue [#208](https://github.com/skynet909084-boop/BLOODSKY-Android/issues/208) records a confirmed storage lifecycle gap: after a project was removed from the saved catalog, all its app-private media generations remained on disk.
 - A focused change removes only that project's hashed private directory after the catalog commit succeeds, validates canonical paths, and keeps other project directories intact. Regression coverage includes two generations, an unrelated project, repeated deletion and missing identity.
 - Local Python suite: 167 passed; `git diff --check`: passed. Gradle unit tests and APK assembly: **NOT RUN** because Gradle and the wrapper are absent. Exact-head Android CI is pending; no UI or device acceptance is claimed.
+
+
+## HMI integration checkpoint — 2026-10-21
+
+- Integration branch head after product merges: `760e9978d91d74f638df093d659db27addd76dcc`. Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+- PR #204 Craft switch and PR #209 project-media cleanup are merged. PR #207 is merged with GIF ID16 and the digital indicator implementation from PR #205 included on the same tree. PR #205 was closed after its feature was integrated through #207; its standalone exact-head rerun did not pass because an archive contract already required the GIF palette.
+- Combined pre-merge exact head `5e13a4e82910375ae748886f07c7f0d42b44d3b9`: APK/JUnit #1295 passed archive inspector, Android unit tests, debug APK build and artifact upload. Combined UI smoke was skipped; do not claim on-device GIF playback or matched-density visual parity.
+- PR #191 network-device editor: exact-head APK/JUnit #1289 passed and Android 11 UI smoke #913 passed on its current head `a9470a3`. PR #191 is still open and conflicts with the updated integration branch. No merge was attempted. Its 16-slot screens, Wi-Fi/RTU editor and server editor are not yet in the integration APK.
+- Next: rebase #191 onto `760e997`, resolve MainActivity and source-contract/test-harness conflicts without dropping the switch/GIF/media changes, then rerun exact-head APK/JUnit and the Android 11 network-editor smoke. Merge only after both pass; run a new aggregate build on the resulting single-app tree.
