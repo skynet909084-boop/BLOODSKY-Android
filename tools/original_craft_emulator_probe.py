@@ -371,7 +371,7 @@ probe_error = ""
 def save_checkpoint(complete=False):
     checkpoint = checkpoint_from_run(
         frontier, seen, state_rows, transition_rows, expanded_paths,
-        APK_PROVENANCE, APK_SHA256, coverage_limited,
+        APK_PROVENANCE, APK_SHA256, coverage_limited, PROFILE,
     )
     atomic_write_json(OUT / "checkpoint.json", checkpoint)
     report = {

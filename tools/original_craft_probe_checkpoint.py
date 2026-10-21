@@ -24,9 +24,10 @@ def atomic_write_json(path: Path, value: dict[str, Any]) -> None:
             os.unlink(temporary)
 
 
-def new_checkpoint(provenance: str, apk_sha256: str) -> dict[str, Any]:
+def new_checkpoint(provenance: str, apk_sha256: str, profile: str = "full") -> dict[str, Any]:
     return {
         "schema_version": SCHEMA_VERSION,
+        "profile": profile,
         "apk_provenance": provenance,
         "apk_sha256": apk_sha256,
         "frontier": [[]],
@@ -42,6 +43,8 @@ def load_checkpoint(path: Path, provenance: str, apk_sha256: str) -> dict[str, A
     data = json.loads(path.read_text(encoding="utf-8"))
     if data.get("schema_version") != SCHEMA_VERSION:
         raise ValueError("unsupported checkpoint schema")
+    if data.get("profile") != "full":
+        raise ValueError("only full-profile checkpoints can be resumed")
     if data.get("apk_provenance") != provenance or data.get("apk_sha256") != apk_sha256:
         raise ValueError("checkpoint APK provenance does not match the installed APK")
     for key in ("frontier", "visited_signatures", "states", "transitions", "expanded_paths"):
@@ -65,9 +68,11 @@ def load_checkpoint(path: Path, provenance: str, apk_sha256: str) -> dict[str, A
 
 
 def checkpoint_from_run(frontier, seen, states, transitions, expanded_paths,
-                        provenance: str, apk_sha256: str, coverage_limited: bool) -> dict[str, Any]:
+                        provenance: str, apk_sha256: str, coverage_limited: bool,
+                        profile: str = "full") -> dict[str, Any]:
     return {
         "schema_version": SCHEMA_VERSION,
+        "profile": profile,
         "apk_provenance": provenance,
         "apk_sha256": apk_sha256,
         "frontier": list(frontier),

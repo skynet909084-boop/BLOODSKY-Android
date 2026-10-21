@@ -61,6 +61,13 @@ class ProbeCheckpointTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "provenance"):
                 load_checkpoint(path, "reconstructed-debug", "d" * 64)
 
+    def test_full_resume_rejects_quick_profile_checkpoint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "checkpoint.json"
+            atomic_write_json(path, new_checkpoint("original-release", "e" * 64, profile="quick"))
+            with self.assertRaisesRegex(ValueError, "full-profile"):
+                load_checkpoint(path, "original-release", "e" * 64)
+
 
 if __name__ == "__main__":
     unittest.main()
