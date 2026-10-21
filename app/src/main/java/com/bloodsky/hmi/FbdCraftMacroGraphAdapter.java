@@ -340,6 +340,11 @@ final class FbdCraftMacroGraphAdapter {
                     child.put("isConstant", widget.optBoolean("craftNamedConstantMode"));
                 if (widget.has("craftNamedConstant"))
                     child.put("constant", widget.optString("craftNamedConstant"));
+            } else if (CraftProjectExporter.isCraftOperatorComponent(componentId)
+                    && widget.has("compareOperator")) {
+                int action = CraftProjectExporter.craftOperatorAction(componentId,
+                        widget.optString("compareOperator", ""));
+                if (action > 0) child.put("compareAction", action);
             }
         }
         return result;

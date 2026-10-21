@@ -404,6 +404,84 @@ public class CraftProjectImporterTest {
         assertEquals("MIN", restored.getJSONObject(1).getString("craftTimerUnit"));
     }
 
+    @Test public void editedFbdOperatorsAndVariablesRoundTripThroughOriginalCraftFields() throws Exception {
+        JSONArray rows = new JSONArray()
+                .put(component(107, new JSONObject().put("numScreen", 1).put("compareAction", 1)
+                        .put("vendorCompare", "keep")))
+                .put(component(110, new JSONObject().put("numScreen", 1).put("compareAction", 1)))
+                .put(component(111, new JSONObject().put("numScreen", 1).put("compareAction", 1)))
+                .put(component(112, new JSONObject().put("numScreen", 1).put("compareAction", 1)))
+                .put(component(101, new JSONObject().put("numScreen", 1).put("bit", 1)
+                        .put("isConstant", false).put("constant", "0")))
+                .put(component(133, new JSONObject().put("numScreen", 1).put("typeVar", 2)
+                        .put("typeVarValue", "OldInput").put("isConstant", false).put("constant", "0")))
+                .put(component(134, new JSONObject().put("numScreen", 1).put("typeVar", 1)
+                        .put("typeVarValue", "OldOutput")))
+                .put(component(117, new JSONObject().put("numScreen", 1).put("type", 1)))
+                .put(component(127, new JSONObject().put("numScreen", 1).put("type", 1)
+                        .put("latitude", 51.5).put("longitude", -0.1)));
+        JSONObject source = new JSONObject()
+                .put("TableNameProject", new JSONObject().put("name", "FBD edits").put("countScreen", 1))
+                .put("TableConnections", new JSONArray()).put("TableComponent", rows);
+        JSONObject imported = new JSONObject(CraftProjectImporter.convert(source.toString()));
+        JSONArray widgets = imported.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets");
+        assertEquals("OldInput", widgets.getJSONObject(5).getString("craftVariableName"));
+        assertEquals("OldOutput", widgets.getJSONObject(6).getString("craftVariableName"));
+        widgets.getJSONObject(0).put("compareOperator", "<");
+        widgets.getJSONObject(1).put("compareOperator", "*");
+        widgets.getJSONObject(2).put("compareOperator", "/");
+        widgets.getJSONObject(3).put("compareOperator", "!=");
+        widgets.getJSONObject(4).put("craftVarBit", 7).put("craftVarConstantMode", true)
+                .put("craftVarConstant", "1");
+        widgets.getJSONObject(5).put("type", "FBD CRAFT VAR NAME IN FLOAT")
+                .put("craftVariableName", "NewInput").put("craftNamedConstantMode", true)
+                .put("craftNamedConstant", "1.25");
+        widgets.getJSONObject(6).put("type", "FBD CRAFT VAR NAME OUT BOOL")
+                .put("craftVariableName", "NewOutput");
+        widgets.getJSONObject(7).put("craftSensorAxis", 3);
+        widgets.getJSONObject(8).put("craftSunriseMode", "SS");
+
+        JSONObject exported = new JSONObject(CraftProjectExporter.export(imported.toString()));
+        JSONArray resultRows = exported.getJSONArray("TableComponent");
+        assertEquals(2, other(resultRows, 0).getInt("compareAction"));
+        assertEquals(3, other(resultRows, 1).getInt("compareAction"));
+        assertEquals(4, other(resultRows, 2).getInt("compareAction"));
+        assertEquals(6, other(resultRows, 3).getInt("compareAction"));
+        assertEquals("keep", other(resultRows, 0).getString("vendorCompare"));
+        assertEquals(7, other(resultRows, 4).getInt("bit"));
+        assertTrue(other(resultRows, 4).getBoolean("isConstant"));
+        assertEquals("1", other(resultRows, 4).getString("constant"));
+        assertEquals(3, other(resultRows, 5).getInt("typeVar"));
+        assertEquals("NewInput", other(resultRows, 5).getString("typeVarValue"));
+        assertEquals("1.25", other(resultRows, 5).getString("constant"));
+        assertEquals(1, other(resultRows, 6).getInt("typeVar"));
+        assertEquals("NewOutput", other(resultRows, 6).getString("typeVarValue"));
+        assertEquals(3, other(resultRows, 7).getInt("type"));
+        assertEquals(2, other(resultRows, 8).getInt("type"));
+
+        JSONArray restored = new JSONObject(CraftProjectImporter.convert(exported.toString()))
+                .getJSONArray("screens").getJSONObject(0).getJSONArray("widgets");
+        assertEquals("<", restored.getJSONObject(0).getString("compareOperator"));
+        assertEquals("*", restored.getJSONObject(1).getString("compareOperator"));
+        assertEquals("/", restored.getJSONObject(2).getString("compareOperator"));
+        assertEquals("!=", restored.getJSONObject(3).getString("compareOperator"));
+        assertEquals("NewInput", restored.getJSONObject(5).getString("craftVariableName"));
+        assertEquals("NewOutput", restored.getJSONObject(6).getString("craftVariableName"));
+        assertEquals(3, restored.getJSONObject(7).getInt("craftSensorAxis"));
+        assertEquals("SS", restored.getJSONObject(8).getString("craftSunriseMode"));
+    }
+
+    private static JSONObject component(int id, JSONObject other) throws Exception {
+        other.put("saveKey", id).put("keyOut", -1).put("numOnIn", -1);
+        return new JSONObject().put("componentId", id).put("text", "FBD " + id)
+                .put("x", id).put("y", 0).put("width", 120).put("height", 76)
+                .put("jsTableComponent_other", other);
+    }
+
+    private static JSONObject other(JSONArray rows, int index) throws Exception {
+        return rows.getJSONObject(index).getJSONObject("jsTableComponent_other");
+    }
+
     @Test public void mapsCraftLabelsButtonsAndImageIndicatorsFromVerifiedComponentClasses() throws Exception {
         String json = "{\"TableNameProject\":{\"name\":\"Widgets\",\"countScreen\":2},\"TableConnections\":[],\"TableComponent\":["
                 + "{\"componentId\":1,\"text\":\"\",\"x\":1,\"y\":2,\"width\":30,\"height\":30,\"jsTableComponent_other\":{\"numScreen\":1,\"imagePosition\":2,\"visibleInWork\":true}},"

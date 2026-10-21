@@ -124,6 +124,37 @@ public final class CraftProjectExporter {
                             if (timeUnit > 0) merged.put("typeTime", timeUnit);
                         }
                     }
+                    int componentId = widget.optInt("craftComponentId", -1);
+                    if (componentId == 101 || componentId == 105 || componentId == 108) {
+                        if (widget.has("craftVarBit")) merged.put("bit", widget.optInt("craftVarBit"));
+                        if (widget.has("craftVarConstantMode"))
+                            merged.put("isConstant", widget.optBoolean("craftVarConstantMode"));
+                        if (widget.has("craftVarConstant"))
+                            merged.put("constant", widget.optString("craftVarConstant"));
+                    }
+                    if (componentId == 133 || componentId == 134) {
+                        if (widget.has("craftVariableName"))
+                            merged.put("typeVarValue", widget.optString("craftVariableName"));
+                        int variableType = craftNamedVariableType(widget.optString("type", ""));
+                        if (variableType > 0) merged.put("typeVar", variableType);
+                        if (widget.has("craftNamedConstantMode"))
+                            merged.put("isConstant", widget.optBoolean("craftNamedConstantMode"));
+                        if (widget.has("craftNamedConstant"))
+                            merged.put("constant", widget.optString("craftNamedConstant"));
+                    }
+                    if (componentId == 117 && widget.has("craftSensorAxis")) {
+                        int axis = widget.optInt("craftSensorAxis", -1);
+                        if (axis >= 1 && axis <= 3) merged.put("type", axis);
+                    }
+                    if (componentId == 119 && widget.has("craftSunriseMode")) {
+                        int mode = craftSunriseType(widget.optString("craftSunriseMode", ""));
+                        if (mode > 0) merged.put("type", mode);
+                    }
+                    if (isCraftOperatorComponent(componentId) && widget.has("compareOperator")) {
+                        int action = craftOperatorAction(componentId,
+                                widget.optString("compareOperator", ""));
+                        if (action > 0) merged.put("compareAction", action);
+                    }
                     Object raw = source.opt("jsTableComponent_other");
                     output.put("jsTableComponent_other", raw instanceof String ? merged.toString() : merged);
                 }
@@ -488,6 +519,36 @@ public final class CraftProjectExporter {
         if ("MS".equals(unit)) return 1;
         if ("SEK".equals(unit)) return 2;
         if ("MIN".equals(unit)) return 3;
+        return 0;
+    }
+    private static int craftNamedVariableType(String widgetType) {
+        if (widgetType.endsWith(" BOOL")) return 1;
+        if (widgetType.endsWith(" INT")) return 2;
+        if (widgetType.endsWith(" FLOAT")) return 3;
+        return 0;
+    }
+    private static int craftSunriseType(String mode) {
+        if ("SR".equals(mode)) return 1;
+        if ("SS".equals(mode)) return 2;
+        return 0;
+    }
+    static boolean isCraftOperatorComponent(int componentId) {
+        return componentId == 107 || componentId == 110 || componentId == 111 || componentId == 112;
+    }
+    static int craftOperatorAction(int componentId, String operator) {
+        if (componentId == 110 || componentId == 111) {
+            if ("+".equals(operator)) return 1;
+            if ("-".equals(operator)) return 2;
+            if ("*".equals(operator)) return 3;
+            if ("/".equals(operator)) return 4;
+            return 0;
+        }
+        if (">".equals(operator)) return 1;
+        if ("<".equals(operator)) return 2;
+        if ("<=".equals(operator)) return 3;
+        if (">=".equals(operator)) return 4;
+        if ("=".equals(operator) || "==".equals(operator)) return 5;
+        if ("<>".equals(operator) || "!=".equals(operator)) return 6;
         return 0;
     }
     private static int longColor(String value) { return (int) Long.parseLong(value.substring(1), 16); }
