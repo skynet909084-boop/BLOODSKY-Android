@@ -5,8 +5,10 @@ import org.json.JSONObject;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /** Writes supported edits back into the original Craft tables while retaining opaque fields. */
@@ -46,9 +48,20 @@ public final class CraftProjectExporter {
             int originalColor = baselineBackgrounds == null ? 0 : baselineBackgrounds.optInt(prefix + "Color", 0);
             if (screen.optInt("backgroundColor", originalColor) != originalColor)
                 backgrounds.put(prefix + "Color", screen.optInt("backgroundColor", originalColor));
-            String oldImage = baselineBackgrounds == null ? "" : baselineBackgrounds.optString(prefix + "PathImage", "");
-            if (!oldImage.equals(screen.optString("backgroundImagePath", "")))
-                throw new IOException("Замена фонового изображения пока не поддерживается экспортом KaScada");
+            String imagePath = screen.optString("backgroundImagePath", "").trim();
+            if (imagePath.isEmpty()) {
+                String sourcePath = backgrounds.optString(prefix + "PathImage", "").trim();
+                if (!backgrounds.optBoolean(prefix + "IsColor", true)
+                        && !sourcePath.isEmpty() && !"0".equals(sourcePath))
+                    throw new IOException("Исходное фоновое изображение недоступно для экспорта KaScada");
+                backgrounds.put(prefix + "IsColor", true);
+            }
+            else {
+                backgrounds.put(prefix + "IsColor", false);
+                String sourcePath = backgrounds.optString(prefix + "PathImage", "").trim();
+                if (sourcePath.isEmpty() || "0".equals(sourcePath))
+                    backgrounds.put(prefix + "PathImage", imagePath);
+            }
 
             JSONArray widgets = screen.optJSONArray("widgets");
             if (widgets == null) throw new IOException("В экране отсутствует список компонентов");
@@ -239,6 +252,51 @@ public final class CraftProjectExporter {
             }
         }
         return paths;
+    }
+
+    /** Maps original Craft filenames to the current BLOODSKY media paths after ZIP rewriting. */
+    public static Map<String, String> mediaPathAliases(String projectJson, JSONObject source) throws Exception {
+        JSONObject project = new JSONObject(projectJson == null ? "{}" : projectJson);
+        Map<String, String> aliases = new HashMap<>();
+        JSONArray screens = project.optJSONArray("screens");
+        JSONObject meta = source.optJSONObject("TableNameProject");
+        JSONObject backgrounds = meta == null ? null : objectValue(meta.opt("jsTableNameProject_screenBackground"));
+        if (screens != null && backgrounds != null) for (int i = 0; i < screens.length(); i++) {
+            JSONObject screen = screens.optJSONObject(i);
+            if (screen == null) continue;
+            int number = screen.optInt("craftScreenNumber", i + 1);
+            String original = backgrounds.optString("screen" + number + "PathImage", "").trim();
+            addAlias(aliases, original, screen.optString("backgroundImagePath", ""));
+        }
+
+        JSONArray rows = source.optJSONArray("TableComponent");
+        if (screens != null && rows != null) for (int s = 0; s < screens.length(); s++) {
+            JSONObject screen = screens.optJSONObject(s);
+            JSONArray widgets = screen == null ? null : screen.optJSONArray("widgets");
+            if (widgets == null) continue;
+            for (int w = 0; w < widgets.length(); w++) {
+                JSONObject widget = widgets.optJSONObject(w);
+                int row = widget == null ? -1 : widget.optInt("craftSourceRow", -1);
+                if (row < 0 || row >= rows.length()) continue;
+                JSONObject other = objectValue(rows.getJSONObject(row).opt("jsTableComponent_other"));
+                addAlias(aliases, other.optString("pathGif", ""), widget.optString("craftGifPath", ""));
+                JSONArray images = widget.optJSONArray("imagePathStates");
+                for (int i = 0; i < 16; i++)
+                    addAlias(aliases, other.optString("pathPic_" + i, ""), images == null ? "" : images.optString(i, ""));
+                JSONArray sounds = widget.optJSONArray("craftSoundPaths");
+                for (int i = 0; i < CraftSoundBank.CHANNELS; i++)
+                    addAlias(aliases, other.optString("pathSound_" + i, ""), sounds == null ? "" : sounds.optString(i, ""));
+            }
+        }
+        return aliases;
+    }
+
+    private static void addAlias(Map<String, String> aliases, String original, String current) {
+        if (original == null || current == null) return;
+        String oldPath = original.trim().replace('\\', '/');
+        String newPath = current.trim().replace('\\', '/');
+        if (!oldPath.isEmpty() && !newPath.isEmpty() && !"0".equals(oldPath) && !oldPath.equals(newPath))
+            aliases.put(oldPath, newPath);
     }
 
     private static JSONObject objectValue(Object value) {
