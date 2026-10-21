@@ -244,12 +244,30 @@ public class CraftProjectMacroImportTest {
         assertFalse(macro.getJSONObject("craftMacroDefinition").has("bloodskyGraph"));
     }
 
-    @Test public void missingOrMismatchedSidecarStaysSafelyUnsupported() throws Exception {
+    @Test public void missingOrMismatchedSidecarRemainsVisibleAsDisabledMacroAndRoundTrips() throws Exception {
         JSONObject withoutSidecar = new JSONObject(CraftProjectImporter.convert(sourceProject().toString()));
         JSONObject placeholder = withoutSidecar.getJSONArray("screens").getJSONObject(0)
                 .getJSONArray("widgets").getJSONObject(0);
-        assertEquals("Текст", placeholder.getString("type"));
+        assertEquals("FBD CRAFT MACRO", placeholder.getString("type"));
+        assertEquals("Макрос Craft — схема .mcr не найдена", placeholder.getString("text"));
+        assertTrue(placeholder.getBoolean("craftMacroUnsupportedExecution"));
         assertTrue(placeholder.getBoolean("craftUnsupportedComponent"));
+        MainActivity.Widget unresolved = MainActivity.widgetFromJson(placeholder);
+        assertEquals(0, MainActivity.knownFbdPins(unresolved, false).length);
+        assertEquals(0, MainActivity.knownFbdPins(unresolved, true).length);
+        double[] unavailable = new double[1];
+        assertFalse(MainActivity.evaluateFbdBlock(java.util.Collections.singletonList(unresolved),
+                java.util.Collections.emptyList(), 0, new boolean[1], new boolean[1],
+                new boolean[1], unavailable));
+        assertTrue(Double.isNaN(unavailable[0]));
+
+        JSONObject exportedWithoutSidecar = new JSONObject(CraftProjectExporter.export(withoutSidecar.toString()));
+        JSONObject preservedOther = exportedWithoutSidecar.getJSONArray("TableComponent").getJSONObject(0)
+                .getJSONObject("jsTableComponent_other");
+        assertEquals(135, exportedWithoutSidecar.getJSONArray("TableComponent").getJSONObject(0)
+                .getInt("componentId"));
+        assertEquals("Scale", preservedOther.getString("name"));
+        assertEquals("42", String.valueOf(preservedOther.get("uniqueId")));
 
         JSONObject mismatched = new JSONObject(new String(supportedMacro(), StandardCharsets.UTF_8))
                 .put("name", "Other");
@@ -259,7 +277,9 @@ public class CraftProjectMacroImportTest {
                 sourceProject().toString(), "Main.pro", sidecars));
         JSONObject widget = converted.getJSONArray("screens").getJSONObject(0)
                 .getJSONArray("widgets").getJSONObject(0);
-        assertEquals("Текст", widget.getString("type"));
+        assertEquals("FBD CRAFT MACRO", widget.getString("type"));
+        assertEquals("Макрос Craft — схема .mcr не найдена", widget.getString("text"));
+        assertTrue(widget.getBoolean("craftMacroUnsupportedExecution"));
         assertTrue(widget.getBoolean("craftUnsupportedComponent"));
     }
 }
