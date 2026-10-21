@@ -1,8 +1,5 @@
 package com.bloodsky.hmi;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
-
 /** Source-backed display rules for KaScada CustomComponents.u (Craft component ID 4). */
 final class OriginalCraftNumericIndicator {
     static final String TYPE = "Цифровой индикатор Craft";
@@ -33,26 +30,57 @@ final class OriginalCraftNumericIndicator {
 
     /** Craft digit is the maximum integer width; divisor selects fixed decimal places. */
     static String format(double value, int digit, int divisor) {
-        return format(value, digit, divisor, false);
+        return format(value, digit, divisor, SIGNED_INT16);
     }
 
+    /** Mirrors CustomComponents.u.f(): INT16/UINT16 padding, Float32 width rules, and INT32 raw text. */
     static String format(double value, int digit, int divisor, boolean floatSource) {
+        return format(value, digit, divisor, floatSource ? FLOAT32 : SIGNED_INT16);
+    }
+
+    static String format(double value, int digit, int divisor, int sourceType) {
         if (!Double.isFinite(value)) return "—";
         int maxIntegerDigits = Math.max(1, Math.min(18, digit));
         int decimalPlaces = Math.max(0, Math.min(9, divisor));
-        BigDecimal decimal = floatSource
-                ? new BigDecimal(Float.toString((float) value)) : BigDecimal.valueOf(value);
-        String number = decimal.setScale(decimalPlaces, RoundingMode.DOWN).toPlainString();
-        int dot = number.indexOf('.');
-        String integer = dot < 0 ? number : number.substring(0, dot);
-        boolean negative = integer.startsWith("-");
-        int digits = integer.length() - (negative ? 1 : 0);
-        if (digits > maxIntegerDigits) {
-            String overflow = repeat('9', maxIntegerDigits);
-            return (negative ? "-" : "") + overflow
-                    + (decimalPlaces == 0 ? "" : "." + repeat('9', decimalPlaces));
+        if (sourceType == SIGNED_INT32) return Long.toString((int) value);
+        if (sourceType == SIGNED_INT16 || sourceType == UINT16) {
+            long integerValue = (long) value;
+            boolean negative = sourceType == SIGNED_INT16 && integerValue < 0;
+            String digits = Long.toString(Math.abs(integerValue));
+            if (digits.length() <= maxIntegerDigits)
+                digits = repeat('0', maxIntegerDigits - digits.length()) + digits;
+            else digits = digits.substring(0, maxIntegerDigits);
+            if (decimalPlaces > 0) {
+                if (decimalPlaces > digits.length()) return "Error...";
+                digits = digits.substring(0, digits.length() - decimalPlaces) + "."
+                        + digits.substring(digits.length() - decimalPlaces);
+            }
+            return (negative ? "-" : "") + digits;
         }
-        return number;
+        if (sourceType != FLOAT32) return "—";
+
+        float floatValue = (float) value;
+        String source = Float.toString(floatValue);
+        int dot = source.indexOf('.');
+        String fraction = dot < 0 ? "" : source.substring(dot + 1);
+        int integerWidth = Integer.toString((int) Math.abs(floatValue)).length();
+        if (decimalPlaces == 0) {
+            if (integerWidth > maxIntegerDigits) return repeat('9', maxIntegerDigits);
+            return source.substring(0, dot < 0 ? source.length() : dot);
+        }
+        if (integerWidth > maxIntegerDigits - decimalPlaces) {
+            StringBuilder overflow = new StringBuilder();
+            for (int i = 0; i < maxIntegerDigits; i++) {
+                if (i == maxIntegerDigits - decimalPlaces) overflow.append('.');
+                overflow.append('9');
+            }
+            return overflow.toString();
+        }
+        if (fraction.length() < decimalPlaces)
+            fraction += repeat('0', decimalPlaces - fraction.length());
+        else if (fraction.length() > decimalPlaces)
+            fraction = fraction.substring(0, decimalPlaces);
+        return (floatValue < 0 ? "-" : "") + (int) Math.abs(floatValue) + "." + fraction;
     }
 
     private static String repeat(char value, int count) {
