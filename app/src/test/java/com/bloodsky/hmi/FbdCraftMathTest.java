@@ -45,20 +45,36 @@ public class FbdCraftMathTest {
     }
 
     @Test public void integerArithmeticRunsThroughNamedGraphPinsAndSurvivesSave() throws Exception {
+        MainActivity.Widget[] readyInputs = new MainActivity.Widget[6];
+        java.util.List<MainActivity.Widget> blocks = new java.util.ArrayList<>();
+        for (int i = 0; i < readyInputs.length; i++) {
+            readyInputs[i] = new MainActivity.Widget();
+            readyInputs[i].type = "FBD Вход";
+            readyInputs[i].inputValue = false;
+            blocks.add(readyInputs[i]);
+        }
         MainActivity.Widget left = new MainActivity.Widget();
         left.type = "FBD CRAFT CTU"; left.counterValue = 65535;
+        blocks.add(left);
         MainActivity.Widget right = new MainActivity.Widget();
         right.type = "FBD CRAFT CTU"; right.counterValue = 1;
+        blocks.add(right);
         MainActivity.Widget add = new MainActivity.Widget();
         add.type = "FBD CRAFT ARITHMETIC INT"; add.compareOperator = "+";
-        java.util.List<MainActivity.Widget> blocks = java.util.Arrays.asList(left, right, add);
-        java.util.List<MainActivity.FbdConnection> wires = java.util.Arrays.asList(
-                MainActivity.pinnedFbdConnection(0, "Q", 2, "IN1"),
-                MainActivity.pinnedFbdConnection(1, "Q", 2, "IN2"));
-        double[] numeric = new double[3];
-        assertFalse(MainActivity.evaluateFbdBlock(blocks, wires, 2,
-                new boolean[3], new boolean[3], new boolean[3], numeric));
-        assertEquals("65535 + 1 wraps through Craft char", 0.0, numeric[2], 0.0);
+        blocks.add(add);
+        java.util.List<MainActivity.FbdConnection> wires = new java.util.ArrayList<>();
+        String[] counterPins = {"+", "-", "R"};
+        for (int pin = 0; pin < counterPins.length; pin++) {
+            wires.add(MainActivity.pinnedFbdConnection(pin, "Q", 6, counterPins[pin]));
+            wires.add(MainActivity.pinnedFbdConnection(pin + 3, "Q", 7, counterPins[pin]));
+        }
+        wires.add(MainActivity.pinnedFbdConnection(6, "Q", 8, "IN1"));
+        wires.add(MainActivity.pinnedFbdConnection(7, "Q", 8, "IN2"));
+        double[] numeric = new double[blocks.size()];
+        assertFalse(MainActivity.evaluateFbdBlock(blocks, wires, 8,
+                new boolean[blocks.size()], new boolean[blocks.size()],
+                new boolean[blocks.size()], numeric));
+        assertEquals("65535 + 1 wraps through Craft char", 0.0, numeric[8], 0.0);
         MainActivity.Widget restored = MainActivity.widgetFromJson(MainActivity.widgetToJson(add));
         assertEquals("FBD CRAFT ARITHMETIC INT", restored.type);
         assertEquals("+", restored.compareOperator);
