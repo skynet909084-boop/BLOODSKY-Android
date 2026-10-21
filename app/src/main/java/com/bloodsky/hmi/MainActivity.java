@@ -1480,7 +1480,7 @@ public class MainActivity extends Activity {
                 widget.extraFields.optInt("craftArchiveChannelCount", 1),
                 widget.extraFields.optString("craftArchiveRecordType", "INT"));
         if (OriginalCraftNumericIndicator.TYPE.equals(widget.type)) {
-            int sourceType = Math.max(0, Math.min(3, widget.extraFields.optInt("craftNumericIndicatorType", 0)));
+            int sourceType = widget.extraFields.optInt("craftNumericIndicatorType", 0);
             return OriginalCraftNumericIndicator.format(OriginalCraftNumericIndicator.decode(words, sourceType),
                     widget.extraFields.optInt("craftNumericIndicatorDigits", 5),
                     widget.extraFields.optInt("craftNumericIndicatorDecimals", 0),
@@ -1610,8 +1610,11 @@ public class MainActivity extends Activity {
             if ("График / Тренд".equals(widget.type)
                     && widget.extraFields.optInt("craftComponentId", -1) == 14)
                 quantity = trendReadQuantity(widget);
-            if (OriginalCraftNumericIndicator.TYPE.equals(widget.type))
-                quantity = OriginalCraftNumericIndicator.readQuantity(widget.extraFields.optInt("craftNumericIndicatorType", 0));
+            if (OriginalCraftNumericIndicator.TYPE.equals(widget.type)) {
+                int sourceType = widget.extraFields.optInt("craftNumericIndicatorType", 0);
+                if (!OriginalCraftNumericIndicator.isSupportedSourceType(sourceType)) continue;
+                quantity = OriginalCraftNumericIndicator.readQuantity(sourceType);
+            }
             if ("Архив Craft".equals(widget.type)) quantity = archiveReadQuantity(widget);
             boolean usbProjectBindingAllowed = craftSource || "FBD Вход".equals(widget.type);
             BindingRequest request = usbProjectBindingAllowed
@@ -1630,13 +1633,18 @@ public class MainActivity extends Activity {
             String binding = snapshotWidgets.get(i).connectionInfo;
             boolean usbProjectBindingAllowed = isCraftRegisterSource(snapshotWidgets.get(i).type)
                     || "FBD Вход".equals(snapshotWidgets.get(i).type);
-            int numericIndicatorQuantity = OriginalCraftNumericIndicator.TYPE.equals(snapshotWidgets.get(i).type)
-                    ? OriginalCraftNumericIndicator.readQuantity(snapshotWidgets.get(i).extraFields
-                    .optInt("craftNumericIndicatorType", 0)) : 1;
+            boolean numericIndicator = OriginalCraftNumericIndicator.TYPE.equals(snapshotWidgets.get(i).type);
+            int numericIndicatorType = numericIndicator
+                    ? snapshotWidgets.get(i).extraFields.optInt("craftNumericIndicatorType", 0) : 0;
+            int numericIndicatorQuantity = numericIndicator
+                    && OriginalCraftNumericIndicator.isSupportedSourceType(numericIndicatorType)
+                    ? OriginalCraftNumericIndicator.readQuantity(numericIndicatorType) : 1;
             if ("График / Тренд".equals(snapshotWidgets.get(i).type)
                     && snapshotWidgets.get(i).extraFields.optInt("craftComponentId", -1) == 14)
                 numericIndicatorQuantity = trendReadQuantity(snapshotWidgets.get(i));
-            if (binding != null && binding.startsWith("tcp://")
+            if (numericIndicator && !OriginalCraftNumericIndicator.isSupportedSourceType(numericIndicatorType))
+                invalidBindings.put(i, "CFG — неизвестный формат Craft");
+            else if (binding != null && binding.startsWith("tcp://")
                     && parseBinding(i, binding, numericIndicatorQuantity) == null)
                 invalidBindings.put(i, "CFG");
             else if (usbProjectBindingAllowed && binding != null && binding.startsWith("usb://")
@@ -5272,11 +5280,16 @@ public class MainActivity extends Activity {
         final android.widget.CheckBox craftIndicatorFontChangeField, craftIndicatorFrameField;
         if (OriginalCraftNumericIndicator.TYPE.equals(w.type)) {
             craftIndicatorTypeField = new Spinner(this);
+            int savedType = w.extraFields.optInt("craftNumericIndicatorType", 0);
+            String[] sourceTypes = OriginalCraftNumericIndicator.isSupportedSourceType(savedType)
+                    ? new String[]{"INT16", "UINT16", "FLOAT32", "INT32"}
+                    : new String[]{"INT16", "UINT16", "FLOAT32", "INT32",
+                            "Неизвестный тип — сохранить исходное значение"};
             craftIndicatorTypeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
                     android.R.layout.simple_spinner_dropdown_item,
-                    new String[]{"INT16", "UINT16", "FLOAT32", "INT32"}));
-            craftIndicatorTypeField.setSelection(Math.max(0, Math.min(3,
-                    w.extraFields.optInt("craftNumericIndicatorType", 0))));
+                    sourceTypes));
+            craftIndicatorTypeField.setSelection(OriginalCraftNumericIndicator.isSupportedSourceType(savedType)
+                    ? savedType : sourceTypes.length - 1);
             craftIndicatorTypeField.setContentDescription("Тип числового значения Craft");
             form.addView(craftIndicatorTypeField);
             craftIndicatorDigitsField = propertyField(Integer.toString(Math.max(1, Math.min(18,
@@ -6853,7 +6866,9 @@ public class MainActivity extends Activity {
                             int decimals = Integer.parseInt(craftIndicatorDecimalsField.getText().toString().trim());
                             if (digits < 1 || digits > 18 || decimals < 0 || decimals > 9)
                                 throw new NumberFormatException();
-                            int sourceType = craftIndicatorTypeField.getSelectedItemPosition();
+                            int selectedType = craftIndicatorTypeField.getSelectedItemPosition();
+                            int sourceType = selectedType == 4
+                                    ? w.extraFields.optInt("craftNumericIndicatorType", 0) : selectedType;
                             w.extraFields.put("craftNumericIndicatorType", sourceType);
                             w.extraFields.put("craftNumericIndicatorDigits", digits);
                             w.extraFields.put("craftNumericIndicatorDecimals", decimals);

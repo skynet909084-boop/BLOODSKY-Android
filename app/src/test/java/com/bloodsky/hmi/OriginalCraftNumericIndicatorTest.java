@@ -3,6 +3,7 @@ package com.bloodsky.hmi;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.fail;
 
 public class OriginalCraftNumericIndicatorTest {
@@ -19,6 +20,11 @@ public class OriginalCraftNumericIndicatorTest {
         try { OriginalCraftNumericIndicator.decode(new int[]{1}, 2); fail("expected incomplete input"); }
         catch (IllegalArgumentException expected) { }
         try { OriginalCraftNumericIndicator.decode(new int[]{1}, 4); fail("expected unknown input"); }
+        catch (IllegalArgumentException expected) { }
+        assertFalse(OriginalCraftNumericIndicator.isSupportedSourceType(4));
+        assertFalse(OriginalCraftNumericIndicator.isSupportedSourceType(-1));
+        assertEquals("—", OriginalCraftNumericIndicator.format(12, 5, 0, 4));
+        try { OriginalCraftNumericIndicator.readQuantity(4); fail("expected unknown input"); }
         catch (IllegalArgumentException expected) { }
     }
 
