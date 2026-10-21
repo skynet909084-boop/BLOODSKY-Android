@@ -28,7 +28,7 @@ Source: decompiled APK artifact `11912849123`, `jadx/sources/ru/himik/nightscrea
 | FB_POW | Yes | Same with header/divider | Three-section layout | Existing runtime; visual partial |
 | FB_ARRAY | No local onDraw | Inherited | EN, DT, ID inputs and Q output; shared Integer register store | Runtime integrated; inherited visual approximation |
 | FB_CTU | No local onDraw | Inherited | Inspect base class | Not matched |
-| FB_MACRO | No local onDraw | Inherited | Inspect base class | Not matched |
+| FB_MACRO | No local onDraw | Inherited | `.mcr` sidecar stores child graph and typed input/output interface | Imports a matching `<name>.mcr`, executes when every child block and edge maps to verified BLOODSKY semantics; unsupported graphs remain visible and non-executable |
 | FB_SEL | No local onDraw | Inherited | Integer select with typed inputs | Runtime integrated; inherited visual approximation |
 | Var | Yes, draw0 | Gray rectangle, black stroke | Register/bit or constant label; Q output with optional invert bubble | Runtime integrated; default source drawing added, parity partial |
 | VarOut | Yes, draw1 | Gray rectangle, black stroke | S# address label; IN contact | Runtime integrated; default source drawing added, parity partial |

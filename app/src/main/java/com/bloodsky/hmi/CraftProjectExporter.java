@@ -26,7 +26,8 @@ public final class CraftProjectExporter {
             throw new IOException("Экспорт KaScada требует исходное число экранов");
 
         // Re-import the source once to distinguish untouched opaque Craft links from edits.
-        JSONObject imported = new JSONObject(CraftProjectImporter.convert(original.toString()));
+        JSONObject baselineSource = sourceWithProjectMacroDefinitions(original, project);
+        JSONObject imported = new JSONObject(CraftProjectImporter.convert(baselineSource.toString()));
         JSONArray importedScreens = imported.getJSONArray("screens");
         boolean[] seen = new boolean[sourceRows.length()];
         List<int[]> sourceRowsByScreen = new ArrayList<>();
@@ -213,6 +214,35 @@ public final class CraftProjectExporter {
                 && widget.optInt("craftComponentId", -1) <= 140;
     }
 
+    /** Reuse validated imported macro definitions to build an exact baseline without ZIP media. */
+    private static JSONObject sourceWithProjectMacroDefinitions(JSONObject original,
+            JSONObject project) throws Exception {
+        JSONObject source = new JSONObject(original.toString());
+        JSONArray rows = source.optJSONArray("TableComponent");
+        JSONArray screens = project.optJSONArray("screens");
+        if (rows == null || screens == null) return source;
+        for (int screenIndex = 0; screenIndex < screens.length(); screenIndex++) {
+            JSONObject screen = screens.optJSONObject(screenIndex);
+            JSONArray widgets = screen == null ? null : screen.optJSONArray("widgets");
+            if (widgets == null) continue;
+            for (int widgetIndex = 0; widgetIndex < widgets.length(); widgetIndex++) {
+                JSONObject widget = widgets.optJSONObject(widgetIndex);
+                if (widget == null || widget.optInt("craftComponentId", -1) != 135) continue;
+                JSONObject definition = widget.optJSONObject("craftMacroDefinition");
+                int row = widget.optInt("craftSourceRow", -1);
+                if (definition == null || row < 0 || row >= rows.length()) continue;
+                JSONObject sourceRow = rows.getJSONObject(row);
+                JSONObject other = objectValue(sourceRow.opt("jsTableComponent_other"));
+                other.put("craftMacroDefinition", new JSONObject(definition.toString()));
+                String mediaPath = widget.optString("craftMacroMediaPath", "").trim();
+                if (!mediaPath.isEmpty()) other.put("craftMacroMediaPath", mediaPath);
+                Object raw = sourceRow.opt("jsTableComponent_other");
+                sourceRow.put("jsTableComponent_other", raw instanceof String ? other.toString() : other);
+            }
+        }
+        return source;
+    }
+
     private static int pinIndex(String[] pins, String requested) {
         for (int i = 0; i < pins.length; i++) if (pins[i].equalsIgnoreCase(requested)) return i;
         return -1;
@@ -241,6 +271,10 @@ public final class CraftProjectExporter {
             JSONObject component = components.optJSONObject(i);
             if (component == null) continue;
             JSONObject other = objectValue(component.opt("jsTableComponent_other"));
+            if (component.optInt("componentId", -1) == 135) {
+                String macroName = other.optString("name", "").trim();
+                if (!macroName.isEmpty()) addPath(paths, macroName + ".mcr");
+            }
             java.util.Iterator<String> keys = other.keys();
             while (keys.hasNext()) {
                 String key = keys.next();
@@ -279,6 +313,11 @@ public final class CraftProjectExporter {
                 int row = widget == null ? -1 : widget.optInt("craftSourceRow", -1);
                 if (row < 0 || row >= rows.length()) continue;
                 JSONObject other = objectValue(rows.getJSONObject(row).opt("jsTableComponent_other"));
+                if (rows.getJSONObject(row).optInt("componentId", -1) == 135) {
+                    String macroName = other.optString("name", "").trim();
+                    if (!macroName.isEmpty()) addAlias(aliases, macroName + ".mcr",
+                            widget.optString("craftMacroMediaPath", ""));
+                }
                 addAlias(aliases, other.optString("pathGif", ""), widget.optString("craftGifPath", ""));
                 JSONArray images = widget.optJSONArray("imagePathStates");
                 for (int i = 0; i < 16; i++)

@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 11888)
+Total output lines: 737
+
 package com.bloodsky.hmi;
 
 import android.graphics.Color;
@@ -197,6 +200,8 @@ public final class CraftProjectImporter {
                                                int screenCount, String archiveParent,
                                                Map<String, byte[]> availableMedia) throws Exception {
         JSONObject widget = new JSONObject();
+        FbdCraftMacroDefinition craftMacro = componentId == 135
+                ? loadCraftMacroSidecar(source, other, archiveParent, availableMedia) : null;
         String type;
         if (componentId == 1) type = OriginalCraftSwitch.TYPE; // CustomComponents.y, eight original switch skins
         else if (componentId == 5) type = "Индикатор"; // Craft two-state image
@@ -228,6 +233,7 @@ public final class CraftProjectImporter {
         else if (componentId == 12 || componentId == 24) type = "Шкала / Стрелка"; // Existing editable gauge; original styling remains partial
         else if (componentId == 18) type = "Входящее SMS"; // CustomComponents.x; opt-in runtime only
         else if (componentId == 27) type = "Распознавание речи Craft"; // visible disabled placeholder; original recognition flow is not yet ported
+        else if (componentId == 135 && craftMacro != null) type = "FBD CRAFT MACRO";
         else {
             String fbdType = FbdCraftMacroGraphAdapter.typeForComponentId(componentId, other);
             type = fbdType == null ? "Текст" : fbdType;
@@ -242,6 +248,7 @@ public final class CraftProjectImporter {
         if (componentId == 25 && displayText.trim().isEmpty()) displayText = other.optString("title", "");
         if (componentId == 26 && displayText.trim().isEmpty()) displayText = "WebView Craft";
         if (componentId == 28 && displayText.trim().isEmpty()) displayText = other.optString("title", "Email Craft");
+        if (componentId == 135) displayText = other.optString("name", displayText);
         widget.put("text", boundedString(displayText, 2000));
         // Craft's device-link encoding differs from BLOODSKY's tcp:// grammar.
         // Keep it for round-trip recovery without activating an unverified binding.
@@ -257,6 +264,17 @@ public final class CraftProjectImporter {
         widget.put("backgroundColor", color(source.opt("colorBackground"), Color.TRANSPARENT));
         widget.put("craftComponentId", componentId);
         widget.put("craftOther", other);
+        if (componentId == 135) {
+            widget.put("craftMacroUnsupportedExecution", craftMacro == null
+                    || !craftMacro.toJson().has("bloodskyGraph"));
+            if (craftMacro != null) {
+                widget.put("craftMacroDefinition", craftMacro.toJson());
+                String macroEntry = other.optString("craftMacroMediaPath", "").trim();
+                if (macroEntry.isEmpty()) macroEntry = findCraftMacroEntry(archiveParent,
+                        other.optString("name", source.optString("text", "")).trim(), availableMedia);
+                if (macroEntry != null) widget.put("craftMacroMediaPath", macroEntry);
+            }
+        }
         if (componentId == 10) {
             widget.put("smsEnabled", false);
             widget.put("craftSmsOption", other.optBoolean("option", false));
@@ -281,112 +299,7 @@ public final class CraftProjectImporter {
         if (componentId == 25) {
             widget.put("craftPushTitle", boundedString(other.optString("title", displayText), 120));
             widget.put("craftPushBody", boundedString(other.optString("body", ""), 2000));
-            widget.put("craftPushTopic", boundedString(other.optString("to", ""), 200));
-            widget.put("craftPushEnabled", false);
-        }
-        if (componentId == 26) {
-            widget.put("craftUnsupportedComponent", true);
-            widget.put("craftWebViewEnabled", false);
-            String[] links = CraftWebViewLinks.read(other);
-            widget.put("craftOther", CraftWebViewLinks.write(other, links));
-            widget.put("craftWebViewLinks", CraftWebViewLinks.toJsonArray(links));
-        }
-        if (componentId == 28) {
-            widget.put("craftUnsupportedComponent", true);
-            widget.put("craftEmailEnabled", false);
-            widget.put("craftEmailTitle", boundedString(other.optString("title", displayText), 120));
-            widget.put("craftEmailBody", boundedString(other.optString("body", ""), 2000));
-            widget.put("craftEmailTo", boundedString(other.optString("emailTo", ""), 320));
-            widget.put("craftEmailCredentialKey", "");
-        }
-        if (componentId == 16) {
-            String sourcePath = other.optString("pathGif", "").trim();
-            String resolvedPath = "";
-            if (!sourcePath.isEmpty() && !"0".equals(sourcePath) && availableMedia != null) {
-                String candidate = archiveRelativeImage(archiveParent, sourcePath, availableMedia);
-                if (candidate != null && availableMedia.containsKey(candidate)) resolvedPath = "media/" + candidate;
-            }
-            widget.put("craftGifPath", resolvedPath);
-        }
-        if (componentId == 17) {
-            JSONArray imagePaths = new JSONArray();
-            for (int state = 0; state < 16; state++) {
-                String sourcePath = other.optString("pathPic_" + state, "").trim();
-                String resolvedPath = "";
-                if (!sourcePath.isEmpty() && !"0".equals(sourcePath) && availableMedia != null) {
-                    String candidate = archiveRelativeImage(archiveParent, sourcePath, availableMedia);
-                    if (candidate != null && availableMedia.containsKey(candidate)) resolvedPath = candidate;
-                }
-                imagePaths.put(resolvedPath);
-            }
-            widget.put("imagePathStates", imagePaths);
-        }
-        if (componentId == 14) {
-            widget.put("craftTrendChannelCount", boundedInt(other.opt("countGraphChannel"), 1, 1, 4));
-            widget.put("craftTrendMaxPoints", boundedInt(other.opt("countPoint"), 300, 1, CraftTrendHistory.MAX_POINTS));
-            widget.put("craftTrendIntervalMs", boundedInt(other.opt("secondPeriod"), 500,
-                    (int) CraftTrendHistory.MIN_INTERVAL_MS, (int) CraftTrendHistory.MAX_INTERVAL_MS));
-            widget.put("craftTrendType", boundedSignedInt(other.opt("typeGraph"), 1, 0, 2));
-            widget.put("craftTrendLabelsColor", color(other.opt("colorLabelsXY"), Color.WHITE));
-            widget.put("craftTrendBackgroundColor", color(other.opt("colorBackground"), Color.BLACK));
-            widget.put("craftTrendSeriesNames", new JSONArray()
-                    .put(boundedString(other.optString("nameSeries1", "1"), 128))
-                    .put(boundedString(other.optString("nameSeries2", "2"), 128))
-                    .put(boundedString(other.optString("nameSeries3", "3"), 128))
-                    .put(boundedString(other.optString("nameSeries4", "4"), 128)));
-            widget.put("craftTrendSeriesColors", new JSONArray()
-                    .put(Color.RED).put(Color.GREEN).put(Color.YELLOW).put(Color.BLUE));
-        }
-        if (componentId == 1) {
-            widget.put("craftSwitchSkin", Math.max(1, Math.min(8, other.optInt("imagePosition", 1))));
-            widget.put("craftSwitchBit", Math.max(0, Math.min(15,
-                    objectValue(source.opt("jsTableComponent_connectionInfo")).optInt("addressBit", 0))));
-            widget.put("craftSwitchBitEnabled", false);
-            widget.put("craftSwitchVisibleInWork", other.optBoolean("visibleInWork", true));
-        }
-        if (componentId == 12) {
-            int gaugeMax = boundedInt(other.opt("max"), 100, 1, 1_000_000);
-            widget.put("minValue", 0);
-            widget.put("maxValue", gaugeMax);
-            widget.put("craftGaugeShowText", other.optBoolean("showText", true));
-            widget.put("craftGaugeTextSize", boundedInt(other.opt("sizeText"), 12, 1, 256));
-            widget.put("craftGaugeTextColor", color(other.opt("colorText"), Color.BLACK));
-            widget.put("craftGaugeInColor", color(other.opt("inColor"), Color.rgb(136, 136, 136)));
-            widget.put("craftGaugeOutColor", color(other.opt("outColor"), Color.parseColor("#FF277454")));
-            widget.put("craftGaugeCenterColor", color(other.opt("centerColor"), Color.BLACK));
-            widget.put("craftGaugeFirstColorPoint", boundedInt(other.opt("firstColorPoint"), 0, 0, gaugeMax));
-            widget.put("craftGaugeSecondColorPoint", boundedInt(other.opt("secondColorPoint"), 0, 0, gaugeMax));
-            widget.put("craftGaugeKind", "threshold");
-        } else if (componentId == 24) {
-            widget.put("minValue", boundedSignedInt(other.opt("minGauge"), 0, -1_000_000, 1_000_000));
-            widget.put("maxValue", boundedInt(other.opt("maxGauge"), 100, -1_000_000, 1_000_000));
-            widget.put("textSizeSp", boundedInt(other.opt("sizeText"), 20, 1, 256));
-            widget.put("craftGaugeTextSize", boundedInt(other.opt("sizeText"), 20, 1, 256));
-            widget.put("craftGaugeScaleCount", boundedInt(other.opt("countTextScale"), 6, 0, 64));
-            widget.put("craftGaugeTextValueColor", color(other.opt("colorTextValue"), Color.BLACK));
-            widget.put("craftGaugeTextScaleColor", color(other.opt("colorTextScale"), Color.BLACK));
-            widget.put("craftGaugeCenterColor", color(other.opt("colorCenterCircle"), Color.parseColor("#BFBFBF")));
-            widget.put("craftGaugeIndicatorColor", color(other.opt("colorIndicator"), Color.BLUE));
-            widget.put("craftGaugeMarkColor", color(other.opt("colorMark"), Color.BLACK));
-            widget.put("craftGaugeLowPercent", boundedInt(other.opt("percentLowScale"), 75, 0, 100));
-            widget.put("craftGaugeMediumPercent", boundedInt(other.opt("percentMediumScale"), 90, 0, 100));
-            widget.put("craftGaugeHideBackground", other.optBoolean("hideBackground", false));
-            widget.put("craftGaugeIndicatorName", boundedString(other.optString("indicatorName", "NormalIndicator"), 64));
-            widget.put("craftGaugeKind", "graduated");
-        }
-        if (componentId == 4) {
-            widget.put("craftNumericIndicatorType", Math.max(0, Math.min(3, other.optInt("type", 0))));
-            widget.put("craftNumericIndicatorDigits", Math.max(1, Math.min(18, other.optInt("digit", 5))));
-            widget.put("craftNumericIndicatorDecimals", Math.max(0, Math.min(9, other.optInt("divisor", 0))));
-            widget.put("craftNumericIndicatorFontChange", other.optBoolean("fontChange", false));
-            widget.put("craftNumericIndicatorFrame", other.optBoolean("enableFrameRegister", false));
-        }
-        if (componentId == 15) {
-            widget.put("craftArchiveChannelCount", boundedInt(other.opt("countChannel"), 1, 1, 4));
-            String archiveType = other.optString("typeRecord", "INT").toUpperCase(java.util.Locale.ROOT);
-            widget.put("craftArchiveRecordType", "FLOAT".equals(archiveType) ? "FLOAT" : "INT");
-            widget.put("craftArchiveIntervalSeconds", 1);
-            widget.put("craftArchiveMaxRows", 10000);
+            wid…1888 tokens truncated…          widget.put("craftArchiveMaxRows", 10000);
         }
         if (componentId >= 101 && componentId <= 140) {
             java.util.Iterator<String> keys = other.keys();
@@ -542,7 +455,8 @@ public final class CraftProjectImporter {
             widget.put("smsMode", "number");
             widget.put("smsBit", 0);
             widget.put("smsStrobeEnabled", false);
-        } else if (!isSupportedComponent(componentId) && FbdCraftMacroGraphAdapter.typeForComponentId(componentId, other) == null) {
+        } else if (!isSupportedComponent(componentId) && craftMacro == null
+                && FbdCraftMacroGraphAdapter.typeForComponentId(componentId, other) == null) {
             widget.put("craftUnsupportedComponent", true);
             widget.put("text", "Компонент Craft " + componentId + ": " + widget.optString("text"));
         }
@@ -626,6 +540,59 @@ public final class CraftProjectImporter {
         if (value instanceof Number) return ((Number) value).intValue();
         try { return Integer.parseInt(String.valueOf(value)); }
         catch (Exception ignored) { return fallback; }
+    }
+
+    private static FbdCraftMacroDefinition loadCraftMacroSidecar(JSONObject source, JSONObject other,
+            String archiveParent, Map<String, byte[]> availableMedia) {
+        JSONObject inlineDefinition = other.optJSONObject("craftMacroDefinition");
+        if (inlineDefinition != null) try {
+            FbdCraftMacroDefinition definition = FbdCraftMacroDefinition.fromJson(inlineDefinition.toString());
+            String name = other.optString("name", source.optString("text", "")).trim();
+            if (!name.isEmpty() && !name.equalsIgnoreCase(definition.getName())) return null;
+            String instanceId = other.optString("uniqueId", "").trim();
+            String definitionId = definition.toJson().optString("uniqueId", "").trim();
+            if (!instanceId.isEmpty() && !definitionId.isEmpty() && !instanceId.equals(definitionId)) return null;
+            return FbdCraftMacroGraphAdapter.expandIfSupported(definition);
+        } catch (Exception invalidInlineDefinition) { return null; }
+        String name = other.optString("name", source.optString("text", "")).trim();
+        String entry = findCraftMacroEntry(archiveParent, name, availableMedia);
+        if (entry == null) return null;
+        byte[] bytes = availableMedia.get(entry);
+        if (bytes == null) return null;
+        try {
+            FbdCraftMacroDefinition definition = FbdCraftMacroDefinition.fromMcrBytes(bytes);
+            JSONObject json = definition.toJson();
+            if (!name.equalsIgnoreCase(definition.getName())) return null;
+            String instanceId = other.optString("uniqueId", "").trim();
+            String definitionId = json.optString("uniqueId", "").trim();
+            if (!instanceId.isEmpty() && !definitionId.isEmpty() && !instanceId.equals(definitionId)) return null;
+            return FbdCraftMacroGraphAdapter.expandIfSupported(definition);
+        } catch (Exception invalidOrUnsupported) {
+            return null;
+        }
+    }
+
+    private static String findCraftMacroEntry(String parent, String name,
+            Map<String, byte[]> availableMedia) {
+        if (availableMedia == null || name == null || name.trim().isEmpty()) return null;
+        String relative = (parent == null || parent.isEmpty() ? "" : parent + "/")
+                + name.trim() + ".mcr";
+        String exact = null;
+        for (String path : availableMedia.keySet()) if (relative.equalsIgnoreCase(path.replace('\\', '/'))) {
+            if (exact != null) return null;
+            exact = path;
+        }
+        if (exact != null) return exact;
+        String basename = name.trim() + ".mcr";
+        String match = null;
+        for (String path : availableMedia.keySet()) {
+            String normalized = path.replace('\\', '/');
+            if (basename.equalsIgnoreCase(normalized.substring(normalized.lastIndexOf('/') + 1))) {
+                if (match != null) return null;
+                match = path;
+            }
+        }
+        return match;
     }
 
     private static String archiveParent(String projectEntryPath) {
