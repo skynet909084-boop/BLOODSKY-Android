@@ -10617,7 +10617,8 @@ public class MainActivity extends Activity {
         List<String> compatible = new ArrayList<>();
         for (String targetPin : targetPins) {
             String targetSignal = knownFbdPinType(targetType, targetPin, false);
-            if (sourceSignal == null || targetSignal == null || sourceSignal.equals(targetSignal))
+            if (sourceSignal == null || targetSignal == null
+                    || FbdCraftPinTypes.compatible(sourceSignal, targetSignal))
                 compatible.add(targetPin);
         }
         return compatible.toArray(new String[0]);
@@ -10630,7 +10631,8 @@ public class MainActivity extends Activity {
         List<String> compatible = new ArrayList<>();
         for (String targetPin : targetPins) {
             String targetSignal = knownFbdPinType(target, targetPin, false);
-            if (sourceSignal == null || targetSignal == null || sourceSignal.equals(targetSignal))
+            if (sourceSignal == null || targetSignal == null
+                    || FbdCraftPinTypes.compatible(sourceSignal, targetSignal))
                 compatible.add(targetPin);
         }
         return compatible.toArray(new String[0]);

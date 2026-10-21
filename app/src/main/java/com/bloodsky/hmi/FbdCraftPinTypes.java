@@ -106,7 +106,8 @@ final class FbdCraftPinTypes {
 
     static boolean compatible(String source, String target) {
         if (source == null || target == null || source.equals(target)) return true;
-        return "NUMBER".equals(source) || "NUMBER".equals(target)
-                || "ANY".equals(source) || "ANY".equals(target);
+        if ("ANY".equals(source) || "ANY".equals(target)) return true;
+        if ("BOOL".equals(source) || "BOOL".equals(target)) return false;
+        return "NUMBER".equals(source) || "NUMBER".equals(target);
     }
 }

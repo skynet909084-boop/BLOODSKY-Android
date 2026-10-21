@@ -13,7 +13,7 @@ public class OriginalFbdNativePaletteMappingTest {
         assertEquals("FBD CRAFT CTU", mapped);
         assertEquals("CTU 16 bit", OriginalFbdPalette.nativeLabelForOriginalTag("FB_CTU"));
         assertArrayEquals(new String[]{"+","-","R"}, MainActivity.knownFbdPins(mapped, false));
-        assertEquals("NUMBER", MainActivity.knownFbdPinType(mapped, "Q", true));
+        assertEquals("INT", MainActivity.knownFbdPinType(mapped, "Q", true));
         assertNotEquals("FBD CTU", mapped);
         assertEquals("BOOL", MainActivity.knownFbdPinType("FBD CTU", "Q", true));
     }

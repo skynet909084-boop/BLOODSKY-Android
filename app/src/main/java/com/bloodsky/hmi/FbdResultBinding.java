@@ -55,7 +55,7 @@ public final class FbdResultBinding {
         if (outputs.length != 1) return "CFG";
         String signal = MainActivity.knownFbdPinType(source.type, outputs[0], true);
         if ("BOOL".equals(signal)) return boolOutputs[index] ? "1" : "0";
-        if ("NUMBER".equals(signal)) {
+        if ("NUMBER".equals(signal) || "INT".equals(signal) || "FLOAT".equals(signal)) {
             double number = numericOutputs[index];
             return Double.isNaN(number) || Double.isInfinite(number) ? "CFG" : Double.toString(number);
         }
