@@ -284,7 +284,7 @@
       ],
       "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.addWidget",
       "status": "partial",
-      "evidence": "Imports Craft range, text/scale flags, size and colors; runtime renders clamped progress, original gradient track/fill and 20-division center scale. PR #217 adds editing of range, show flags, text size/colors, and progress/background colors, round-tripped through native craftOther while preserving unknown keys. Register mapping and device/visual acceptance remain open."
+      "evidence": "Imports Craft range, text/scale flags, size and colors; runtime renders clamped progress, original gradient track/fill and 20-division center scale. PR #217 adds editing of range, show flags, text size/colors, and progress/background colors, round-tripped through native craftOther while preserving unknown keys. PR #218 adds explicit TCP remap guidance and tests that imported Craft device/register metadata stays inactive until a user-provided BLOODSKY binding is saved. Device/visual acceptance remains open."
     },
     {
       "id": "CustomTrend",
