@@ -679,15 +679,20 @@ public class PortableZipMediaTest {
                 .getJSONArray("widgets").getJSONObject(0);
         String selectedPath = ProjectMediaService.storeSelectedMedia(rootDir, project.toString(),
                 "replacement.png", new ByteArrayInputStream(selectedImage));
+        String mediaProject = project.toString();
+        assertArrayEquals(selectedImage, java.nio.file.Files.readAllBytes(
+                ProjectMediaService.resolveMediaFile(rootDir, mediaProject, selectedPath).toPath()));
         JSONObject edited = OriginalIndicator.withImage(widget, true, true, selectedPath);
         widget.put("other", edited.getJSONObject("other"));
         assertEquals("original.png", widget.getJSONObject("craftOther").getString("pathOrNameOn"));
 
         ByteArrayOutputStream exported = new ByteArrayOutputStream();
         String editedJson = project.toString();
-        ProjectMediaService.exportCraftProjectZipBundle(exported, editedJson, path ->
-                java.nio.file.Files.readAllBytes(ProjectMediaService.resolveMediaFile(
-                        rootDir, editedJson, path).toPath()));
+        ProjectMediaService.exportCraftProjectZipBundle(exported, editedJson, path -> {
+            if (selectedPath.equals(path)) return selectedImage;
+            if ("original.png".equals(path)) return originalImage;
+            throw new IOException("Unexpected Craft media path: " + path);
+        });
         Map<String, byte[]> media = new HashMap<>();
         JSONObject reopened = new JSONObject(MainActivity.importProjectFromZip(
                 new ByteArrayInputStream(exported.toByteArray()), media));
