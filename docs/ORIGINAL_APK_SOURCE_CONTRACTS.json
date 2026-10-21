@@ -164,14 +164,22 @@
         "typeRequest"
       ],
       "resources": [
-        "kc_switch1_off.png", "kc_switch1_on.png",
-        "kc_switch2_off.png", "kc_switch2_on.png",
-        "kc_switch3_off.png", "kc_switch3_on.png",
-        "kc_switch4_off.png", "kc_switch4_on.png",
-        "kc_switch5_off.png", "kc_switch5_on.png",
-        "kc_switch6_off.png", "kc_switch6_on.png",
-        "kc_switch7_off.png", "kc_switch7_on.png",
-        "kc_switch8_off.png", "kc_switch8_on.png"
+        "kc_switch1_off.png",
+        "kc_switch1_on.png",
+        "kc_switch2_off.png",
+        "kc_switch2_on.png",
+        "kc_switch3_off.png",
+        "kc_switch3_on.png",
+        "kc_switch4_off.png",
+        "kc_switch4_on.png",
+        "kc_switch5_off.png",
+        "kc_switch5_on.png",
+        "kc_switch6_off.png",
+        "kc_switch6_on.png",
+        "kc_switch7_off.png",
+        "kc_switch7_on.png",
+        "kc_switch8_off.png",
+        "kc_switch8_on.png"
       ],
       "bloodsky_call_site": "com.bloodsky.hmi.OriginalCraftSwitchRenderer",
       "status": "partial",
@@ -276,7 +284,7 @@
       ],
       "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.addWidget",
       "status": "partial",
-      "evidence": "Imports Craft range, text/scale flags, size and colors; runtime renders clamped progress, original gradient track/fill and 20-division center scale. Property editing, register mapping, and device/visual acceptance remain open."
+      "evidence": "Imports Craft range, text/scale flags, size and colors; runtime renders clamped progress, original gradient track/fill and 20-division center scale. PR #217 adds editing of range, show flags, text size/colors, and progress/background colors, round-tripped through native craftOther while preserving unknown keys. Register mapping and device/visual acceptance remain open."
     },
     {
       "id": "CustomTrend",
