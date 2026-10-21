@@ -9642,6 +9642,12 @@ public class MainActivity extends Activity {
             return widget.rsState;
         }
         if ("FBD CRAFT T".equals(widget.type)) {
+            // Craft FB_TRIGGER has no output and does not advance its edge state
+            // until its source input has a connected output.
+            if (!hasCompleteFbdInputConnections(connectionsList, index, "IN")) {
+                cacheNumeric[index] = Double.NaN;
+                return false;
+            }
             String mode = widget.extraFields == null ? "T"
                     : widget.extraFields.optString("craftTriggerMode", "T");
             boolean input = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
