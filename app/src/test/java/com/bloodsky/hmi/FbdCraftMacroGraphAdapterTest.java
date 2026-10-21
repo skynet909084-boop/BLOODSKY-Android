@@ -185,6 +185,40 @@ public class FbdCraftMacroGraphAdapterTest {
         assertEquals("F", widgets.getJSONObject(5).getString("craftTriggerMode"));
     }
 
+    @Test public void exportsEditedMacroFloatOrderAndSensorModesToCraftChildFields() throws Exception {
+        JSONArray children = new JSONArray()
+                .put(new JSONObject().put("componentId", 109).put("x", 0).put("y", 0)
+                        .put("saveKey", 10).put("keyOut", -1).put("isHighRegister", false)
+                        .put("isHighByte", false).put("vendorFloatField", "keep"))
+                .put(new JSONObject().put("componentId", 117).put("x", 0).put("y", 0)
+                        .put("saveKey", 20).put("keyOut", -1).put("type", 1)
+                        .put("vendorAxisField", "keep"))
+                .put(new JSONObject().put("componentId", 119).put("x", 0).put("y", 0)
+                        .put("saveKey", 30).put("keyOut", -1).put("type", 1)
+                        .put("vendorSunriseField", "keep"))
+                .put(new JSONObject().put("componentId", 103).put("x", 0).put("y", 0)
+                        .put("saveKey", 40).put("keyOut", 900));
+        JSONObject root = new JSONObject().put("countIn", 0).put("saveKeyOut", 900)
+                .put("fbInMacros", children);
+        JSONObject graph = FbdCraftMacroGraphAdapter.translate(root, children);
+        assertNotNull(graph);
+        JSONArray widgets = graph.getJSONArray("widgets");
+        widgets.getJSONObject(0).put("craftSwapWord", true).put("craftSwapByte", true);
+        widgets.getJSONObject(1).put("craftSensorAxis", 3);
+        widgets.getJSONObject(2).put("craftSunriseMode", "SS");
+
+        JSONObject exported = FbdCraftMacroGraphAdapter.applyEditedModesToCraftRecords(
+                new JSONObject(root.toString()).put("bloodskyGraph", graph));
+        JSONArray records = exported.getJSONArray("fbInMacros");
+        assertTrue(records.getJSONObject(0).getBoolean("isHighRegister"));
+        assertTrue(records.getJSONObject(0).getBoolean("isHighByte"));
+        assertEquals("keep", records.getJSONObject(0).getString("vendorFloatField"));
+        assertEquals(3, records.getJSONObject(1).getInt("type"));
+        assertEquals("keep", records.getJSONObject(1).getString("vendorAxisField"));
+        assertEquals(2, records.getJSONObject(2).getInt("type"));
+        assertEquals("keep", records.getJSONObject(2).getString("vendorSunriseField"));
+    }
+
     @Test public void preservesMacrosThatNeedScreenLevelIo() throws Exception {
         int[] unsupported = {101, 108, 120, 130, 131, 132, 139, 140};
         for (int id : unsupported) {
