@@ -13,6 +13,7 @@ SOURCE = ROOT / "app/src/main/java/com/bloodsky/hmi/MainActivity.java"
 WORKFLOW = ROOT / ".github/workflows/android-apk.yml"
 TCP_CLIENT = ROOT / "app/src/main/java/com/bloodsky/hmi/ModbusTcpClient.java"
 MEDIA_SERVICE = ROOT / "app/src/main/java/com/bloodsky/hmi/ProjectMediaService.java"
+WIDGET_CLIPBOARD = ROOT / "app/src/main/java/com/bloodsky/hmi/WidgetClipboard.java"
 
 
 class AndroidSourceContractTests(unittest.TestCase):
@@ -21,6 +22,7 @@ class AndroidSourceContractTests(unittest.TestCase):
         cls.source = SOURCE.read_text(encoding="utf-8")
         cls.workflow = WORKFLOW.read_text(encoding="utf-8")
         cls.tcp_client = TCP_CLIENT.read_text(encoding="utf-8")
+        cls.widget_clipboard = WIDGET_CLIPBOARD.read_text(encoding="utf-8")
 
     def test_project_persistence_serializes_screens_and_widgets(self):
         self.assertIn("private void persistProject()", self.source)
@@ -175,13 +177,11 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn('edge.extraFields.put("targetSignalType", targetSignal)', self.source)
 
     def test_deleting_widget_removes_and_reindexes_fbd_edges(self):
-        delete_start = self.source.index("private void deleteSelectedWidget()")
-        delete_end = self.source.index("public static JSONObject widgetToJson", delete_start)
-        delete_method = self.source[delete_start:delete_end]
-        self.assertIn("connection.source == removed || connection.target == removed", delete_method)
-        self.assertIn("if (connection.source > removed) connection.source--;", delete_method)
-        self.assertIn("if (connection.target > removed) connection.target--;", delete_method)
-        self.assertIn("screen.connections.addAll(kept)", delete_method)
+        self.assertIn("WidgetClipboard.deleteSelection(widgets, edges, selection)", self.source)
+        self.assertIn("edge.source == index || edge.target == index", self.widget_clipboard)
+        self.assertIn("if (edge.source > index) edge.source--;", self.widget_clipboard)
+        self.assertIn("if (edge.target > index) edge.target--;", self.widget_clipboard)
+        self.assertIn("FbdResultBinding.afterWidgetRemoved", self.widget_clipboard)
 
     def test_import_rejects_invalid_and_duplicate_fbd_edges_and_cycles(self):
         self.assertIn('throw new IllegalArgumentException("Connection index out of range")', self.source)

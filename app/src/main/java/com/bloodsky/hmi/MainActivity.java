@@ -92,7 +92,7 @@ public class MainActivity extends Activity {
     private final List<Screen> screens = new ArrayList<>();
     private int currentScreenIndex = 0;
     private NestedMacroEditSession nestedMacroEdit;
-    private Widget clipboardWidget;
+    private WidgetClipboard.Bundle clipboardWidgets;
     private boolean operatorMode = false;
     private boolean fbdWireMode = false;
     private final FbdWireHistory fbdWireHistory = new FbdWireHistory();
@@ -860,7 +860,7 @@ public class MainActivity extends Activity {
                 Toast.makeText(this, "Проект удалён, но его медиа не удалось очистить", Toast.LENGTH_LONG).show();
             }
             showHome();
-            if (deletingActive) { widgets.clear(); screens.clear(); projectExtraFields = new JSONObject(); clipboardWidget = null; imageCache.clear(); gifCache.clear(); }
+            if (deletingActive) { widgets.clear(); screens.clear(); projectExtraFields = new JSONObject(); clipboardWidgets = null; imageCache.clear(); gifCache.clear(); }
         } catch (Exception error) { Toast.makeText(this, error.getMessage(), Toast.LENGTH_LONG).show(); }
     }
 
@@ -7441,12 +7441,18 @@ public class MainActivity extends Activity {
     }
 
     private boolean copySelectedWidgetToClipboard() {
-        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
+        if (editor == null || (editor.selectedWidgets.isEmpty()
+                && (editor.selected < 0 || editor.selected >= widgets.size()))) {
             Toast.makeText(this, "Сначала выбери элемент на экране", Toast.LENGTH_SHORT).show();
             return false;
         }
         try {
-            clipboardWidget = widgetFromJson(widgetToJson(widgets.get(editor.selected)));
+            ArrayList<Integer> selection = new ArrayList<>(editor.selectedWidgets);
+            if (selection.isEmpty()) selection.add(editor.selected);
+            List<FbdConnection> edges = screens.isEmpty() || currentScreenIndex < 0
+                    || currentScreenIndex >= screens.size() ? java.util.Collections.emptyList()
+                    : screens.get(currentScreenIndex).connections;
+            clipboardWidgets = WidgetClipboard.capture(widgets, selection, edges);
             return true;
         } catch (Exception error) {
             Toast.makeText(this, "Не удалось скопировать элемент", Toast.LENGTH_SHORT).show();
@@ -7460,27 +7466,29 @@ public class MainActivity extends Activity {
     }
 
     private void pasteWidget() {
-        if (clipboardWidget == null) {
+        if (clipboardWidgets == null || clipboardWidgets.widgets.isEmpty()) {
             Toast.makeText(this, "Сначала скопируй элемент", Toast.LENGTH_SHORT).show();
             return;
         }
         try {
-            Widget copy = widgetFromJson(widgetToJson(clipboardWidget));
-            if ("Архив Craft".equals(copy.type))
-                copy.extraFields.put("craftArchiveKey", java.util.UUID.randomUUID().toString());
-            int offset = dp(24);
-            float maxX = editor == null ? Math.max(0, copy.x + offset) : Math.max(0, editor.getWidth() - copy.w);
-            float maxY = editor == null ? Math.max(0, copy.y + offset) : Math.max(0, editor.getHeight() - copy.h);
-            copy.x = Math.max(0, Math.min(maxX, copy.x + offset));
-            copy.y = Math.max(0, Math.min(maxY, copy.y + offset));
+            float width = editor == null ? Math.max(0, clipboardWidgets.maxX + dp(24)) : editor.getWidth();
+            float height = editor == null ? Math.max(0, clipboardWidgets.maxY + dp(24)) : editor.getHeight();
             fbdWireHistory.clear();
-            widgets.add(copy);
+            int first = widgets.size();
+            ArrayList<Widget> copies = WidgetClipboard.place(clipboardWidgets, width, height, dp(24), first);
+            widgets.addAll(copies);
+            if (!screens.isEmpty() && currentScreenIndex >= 0 && currentScreenIndex < screens.size())
+                screens.get(currentScreenIndex).connections.addAll(
+                        WidgetClipboard.placedConnections(clipboardWidgets, first));
             if (editor != null) {
+                editor.selectedWidgets.clear();
+                for (int index = first; index < widgets.size(); index++) editor.selectedWidgets.add(index);
                 editor.selected = widgets.size() - 1;
                 editor.invalidate();
             }
             persistProject();
-            Toast.makeText(this, "Копия добавлена на экран", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, copies.size() == 1 ? "Копия добавлена на экран"
+                    : "Группа из " + copies.size() + " элементов добавлена", Toast.LENGTH_SHORT).show();
         } catch (Exception error) {
             Toast.makeText(this, "Не удалось вставить элемент", Toast.LENGTH_SHORT).show();
         }
@@ -7523,31 +7531,18 @@ public class MainActivity extends Activity {
     }
 
     private void deleteSelectedWidget() {
-        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
+        if (editor == null || (editor.selectedWidgets.isEmpty()
+                && (editor.selected < 0 || editor.selected >= widgets.size()))) {
             Toast.makeText(this, "Сначала выбери элемент на экране", Toast.LENGTH_SHORT).show();
             return;
         }
-        int removed = editor.selected;
         fbdWireHistory.clear();
-        widgets.remove(removed);
-        // A positional fbd://N reference must never silently switch to a
-        // different source after deletion. Missing sources render CFG.
-        for (Widget survivor : widgets) {
-            survivor.connectionInfo = FbdResultBinding.afterWidgetRemoved(
-                    survivor.connectionInfo, removed);
-        }
-        if (!screens.isEmpty()) {
-            Screen screen = screens.get(currentScreenIndex);
-            List<FbdConnection> kept = new ArrayList<>();
-            for (FbdConnection connection : screen.connections) {
-                if (connection.source == removed || connection.target == removed) continue;
-                if (connection.source > removed) connection.source--;
-                if (connection.target > removed) connection.target--;
-                kept.add(connection);
-            }
-            screen.connections.clear();
-            screen.connections.addAll(kept);
-        }
+        List<FbdConnection> edges = screens.isEmpty() || currentScreenIndex < 0
+                || currentScreenIndex >= screens.size() ? null
+                : screens.get(currentScreenIndex).connections;
+        ArrayList<Integer> selection = new ArrayList<>(editor.selectedWidgets);
+        if (selection.isEmpty()) selection.add(editor.selected);
+        if (WidgetClipboard.deleteSelection(widgets, edges, selection) == 0) return;
         editor.selected = -1;
         editor.selectedWidgets.clear();
         liveValues.clear();
