@@ -8923,7 +8923,13 @@ public class MainActivity extends Activity {
     public static boolean evaluateFbdBlock(List<Widget> widgetsList, List<FbdConnection> connectionsList, int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
         if (index < 0 || index >= widgetsList.size()) return false;
         if (cacheValid[index]) return cacheValues[index];
+        Widget widget = widgetsList.get(index);
+        widget.fbdOutputAvailable = true;
+        widget.fbdOutputAvailabilityExplicit = false;
         boolean result = evaluateFbdBlockUncached(widgetsList, connectionsList, index, visiting, cacheValid, cacheValues, cacheNumeric);
+        if (!widget.fbdOutputAvailabilityExplicit)
+            widget.fbdOutputAvailable = !Double.isNaN(cacheNumeric[index]);
+        widget.fbdOutputAvailabilityExplicit = false;
         if (isFbdBlockOutputInverted(widgetsList.get(index))
                 && hasCompleteInvertibleBooleanInputs(widgetsList, connectionsList, index)) result = !result;
         cacheValues[index] = result;
@@ -9148,8 +9154,16 @@ public class MainActivity extends Activity {
         if (!hasCompleteFbdInputConnections(connections, targetIndex, requiredPins)
                 || widgets == null || inputValues == null || inputValues.size() != requiredPins.length)
             return false;
-        for (Double value : inputValues)
-            if (value == null || !Double.isFinite(value)) return false;
+        int inputIndex = 0;
+        for (FbdConnection edge : connections) {
+            if (edge == null || edge.target != targetIndex) continue;
+            if (inputIndex >= inputValues.size()) return false;
+            Double value = inputValues.get(inputIndex++);
+            if (value == null || (!Double.isFinite(value)
+                    && (edge.source < 0 || edge.source >= widgets.size()
+                    || !widgets.get(edge.source).fbdOutputAvailable))) return false;
+        }
+        if (inputIndex != inputValues.size()) return false;
         java.util.Set<Integer> visiting = new java.util.HashSet<>();
         for (FbdConnection edge : connections) {
             if (edge != null && edge.target == targetIndex
@@ -9358,6 +9372,8 @@ public class MainActivity extends Activity {
         if ("FBD CRAFT MACRO IN".equals(canonicalFbdBlockType(widget.type))) {
             double value = widget.craftMacroInputValid ? widget.craftMacroInputValue : Double.NaN;
             cacheNumeric[index] = value;
+            widget.fbdOutputAvailable = Double.isFinite(value);
+            widget.fbdOutputAvailabilityExplicit = true;
             return Double.isFinite(value) && value != 0.0;
         }
         if (isCraftMqttSubscriber(widget.type)) {
@@ -9390,6 +9406,8 @@ public class MainActivity extends Activity {
                 }
             }
             cacheNumeric[index] = value;
+            widget.fbdOutputAvailable = Double.isFinite(value);
+            widget.fbdOutputAvailabilityExplicit = true;
             return Double.isFinite(value) && value != 0.0;
         }
         if (isCraftNamedVariableSource(widget.type)) {
@@ -9927,6 +9945,10 @@ public class MainActivity extends Activity {
             if ("FBD CRAFT ARITHMETIC FLOAT".equals(widget.type)) {
                 float result = FbdCraftMath.floatArithmetic(l, r, action);
                 cacheNumeric[index] = result;
+                // Craft returns a Float object even when IEEE-754 arithmetic
+                // produces NaN or infinity; neither value means a missing wire.
+                widget.fbdOutputAvailable = true;
+                widget.fbdOutputAvailabilityExplicit = true;
                 return result != 0f;
             }
             return FbdCraftMath.compare(l, r, action);
@@ -10721,6 +10743,10 @@ public class MainActivity extends Activity {
         public boolean inputValue = false;
         public boolean buttonState = false;
         public boolean rsState = false;
+        // Runtime-only distinction between a missing native output and a valid
+        // Float NaN/Infinity produced by Craft IEEE-754 arithmetic.
+        transient boolean fbdOutputAvailable = true;
+        transient boolean fbdOutputAvailabilityExplicit;
         public int counterPreset = 1;
         public int counterValue = 0;
         public boolean counterLastInput = false;

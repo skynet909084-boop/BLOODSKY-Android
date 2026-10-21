@@ -392,6 +392,48 @@ public class FbdDisconnectTest {
         assertTrue("Missing compare input must not advance the trigger", trigger.craftToggleLastInput);
     }
 
+    @Test public void craftFloatCompareAcceptsValidIeeeArithmeticResults() throws Exception {
+        MainActivity.Widget numerator = new MainActivity.Widget();
+        numerator.type = "FBD Вход";
+        MainActivity.Widget denominator = new MainActivity.Widget();
+        denominator.type = "FBD Вход";
+        MainActivity.Widget divide = new MainActivity.Widget();
+        divide.type = "FBD CRAFT ARITHMETIC FLOAT";
+        divide.compareOperator = "/";
+        MainActivity.Widget one = new MainActivity.Widget();
+        one.type = "FBD Вход";
+        one.inputValue = true;
+        MainActivity.Widget compare = new MainActivity.Widget();
+        compare.type = "FBD CRAFT COMPARE FLOAT";
+        compare.compareOperator = ">";
+        MainActivity.Widget trigger = new MainActivity.Widget();
+        trigger.type = "FBD CRAFT T";
+
+        List<MainActivity.Widget> nodes = java.util.Arrays.asList(
+                numerator, denominator, divide, one, compare, trigger);
+        List<MainActivity.FbdConnection> edges = java.util.Arrays.asList(
+                MainActivity.pinnedFbdConnection(0, "Q", 2, "IN1"),
+                MainActivity.pinnedFbdConnection(1, "Q", 2, "IN2"),
+                MainActivity.pinnedFbdConnection(2, "Q", 4, "IN1"),
+                MainActivity.pinnedFbdConnection(3, "Q", 4, "IN2"),
+                MainActivity.pinnedFbdConnection(4, "Q", 5, "IN"));
+
+        for (boolean numeratorValue : new boolean[]{false, true}) {
+            numerator.inputValue = numeratorValue;
+            boolean[] visiting = new boolean[nodes.size()];
+            boolean[] cacheValid = new boolean[nodes.size()];
+            boolean[] cacheValues = new boolean[nodes.size()];
+            double[] cacheNumeric = new double[nodes.size()];
+            assertTrue("Craft comparison accepts valid Float NaN/Infinity results",
+                    MainActivity.evaluateFbdBlock(nodes, edges, 5,
+                            visiting, cacheValid, cacheValues, cacheNumeric));
+            assertTrue("Float arithmetic result is present even when non-finite",
+                    divide.fbdOutputAvailable);
+            assertTrue("Craft toggle consumes the valid comparison result",
+                    trigger.craftToggleOutput);
+        }
+    }
+
     @Test public void tonExecutionUsesNamedInNotFirstIncomingWire() throws Exception {
         MainActivity.Widget first = new MainActivity.Widget();
         first.type = "FBD Вход";
