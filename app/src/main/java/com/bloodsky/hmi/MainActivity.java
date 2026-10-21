@@ -6814,6 +6814,12 @@ public class MainActivity extends Activity {
             return;
         }
         float tip=length*("NormalSmallIndicator".equals(type)?.65f:1f),half=Math.max(dp(2),radius*.045f);
+        if("NeedleIndicator".equals(type)){
+            paint.setStrokeWidth(dp(2));
+            canvas.drawLine(cx-ux*radius*.18f,cy-uy*radius*.18f,
+                    cx+ux*length,cy+uy*length,paint);
+            return;
+        }
         android.graphics.Path p=new android.graphics.Path();
         p.moveTo(cx+ux*tip,cy+uy*tip);
         if("KiteIndicator".equals(type)){
