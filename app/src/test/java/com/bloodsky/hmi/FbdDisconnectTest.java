@@ -264,7 +264,7 @@ public class FbdDisconnectTest {
         assertFalse("Reset must clear the latch", runFbd(nodes, edges, 2));
     }
 
-    @Test public void rsWaitsForBothOriginalInputBlocksBeforeUpdatingOrProducingOutput() {
+    @Test public void rsWaitsForBothOriginalInputBlocksBeforeUpdatingOrProducingOutput() throws Exception {
         MainActivity.Widget set = new MainActivity.Widget();
         set.type = "FBD Вход";
         set.inputValue = true;
