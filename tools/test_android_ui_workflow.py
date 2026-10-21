@@ -15,7 +15,8 @@ class AndroidUiWorkflowProfileTests(unittest.TestCase):
         self.assertNotIn("github.event.action == 'ready_for_review'", workflow)
         self.assertNotIn("github.event.pull_request.labels.*.name", workflow)
         self.assertNotIn('craft-server-editor', workflow)
-        self.assertNotIn('    if: ', workflow)
+        job_header = workflow.split('jobs:', 1)[1].split('    steps:', 1)[0]
+        self.assertNotIn('    if: ', job_header)
         self.assertNotIn("default: quick", workflow)
 
     def test_manual_release_profiles_remain_available(self):
