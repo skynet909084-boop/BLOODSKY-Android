@@ -268,6 +268,59 @@ public class ProjectMediaService {
         }
     }
 
+    /** Exports a source-compatible Craft .pro plus the media at its original relative paths. */
+    public static void exportCraftProjectZipBundle(OutputStream outputStream, String projectJson,
+                                                    MediaResolver resolver) throws IOException {
+        final JSONObject source;
+        final Map<String, byte[]> media = new java.util.LinkedHashMap<>();
+        final byte[] projectBytes;
+        try {
+            String craftJson = CraftProjectExporter.export(projectJson);
+            source = new JSONObject(craftJson);
+            projectBytes = craftJson.getBytes(StandardCharsets.UTF_8);
+            long total = projectBytes.length;
+            for (String path : CraftProjectExporter.referencedMedia(source)) {
+                byte[] bytes = resolver == null ? null : resolver.readMedia(path);
+                if (bytes == null || bytes.length == 0)
+                    throw new IOException("Медиа KaScada отсутствует или недоступно: " + path);
+                if (total > MAX_BUNDLE_BYTES - bytes.length)
+                    throw new IOException("Размер проекта KaScada превышает лимит ZIP");
+                total += bytes.length;
+                media.put(path, bytes);
+            }
+        } catch (IOException error) {
+            throw error;
+        } catch (Exception error) {
+            throw new IOException("Не удалось подготовить исходный проект KaScada", error);
+        }
+
+        OutputStream limitedOutput = new java.io.FilterOutputStream(outputStream) {
+            private long count;
+            @Override public void write(int value) throws IOException {
+                if (++count > MAX_BUNDLE_BYTES) throw new IOException("Compressed ZIP exceeds import limit");
+                out.write(value);
+            }
+            @Override public void write(byte[] bytes, int offset, int length) throws IOException {
+                count += length;
+                if (count > MAX_BUNDLE_BYTES) throw new IOException("Compressed ZIP exceeds import limit");
+                out.write(bytes, offset, length);
+            }
+        };
+        try (java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(limitedOutput)) {
+            zip.putNextEntry(new java.util.zip.ZipEntry("Project.pro"));
+            zip.write(projectBytes);
+            zip.closeEntry();
+            for (Map.Entry<String, byte[]> entry : media.entrySet()) {
+                String path = entry.getKey().replace('\\', '/');
+                if (path.startsWith("/") || path.contains("..")) throw new IOException("Unsafe Craft media path: " + path);
+                zip.putNextEntry(new java.util.zip.ZipEntry(path));
+                zip.write(entry.getValue());
+                zip.closeEntry();
+            }
+            zip.finish();
+        }
+    }
+
     private static String processMediaReference(String origPath, MediaResolver resolver, Map<String, byte[]> archiveMedia, Map<String, String> mediaPathMap) throws IOException {
         if (origPath == null || origPath.trim().isEmpty() || "Аларм".equals(origPath.trim()) || isExactImagePlaceholder(origPath)) return origPath;
         String clean = origPath.trim();
