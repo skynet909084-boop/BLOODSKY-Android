@@ -119,6 +119,11 @@ public class CraftProjectMacroImportTest {
         JSONObject exportedOther = exported.getJSONArray("TableComponent").getJSONObject(0)
                 .getJSONObject("jsTableComponent_other");
         assertEquals("keep-me", exportedOther.getString("vendorOther"));
+        assertTrue("edited macro definition must survive .pro export",
+                exportedOther.has("craftMacroDefinition"));
+        assertEquals("project/Inner.mcr", exportedOther.getJSONObject("craftMacroDefinition")
+                .getJSONObject("bloodskyGraph").getJSONArray("widgets").getJSONObject(0)
+                .getString("craftMacroMediaPath"));
 
         java.io.ByteArrayOutputStream zipBytes = new java.io.ByteArrayOutputStream();
         ProjectMediaService.exportCraftProjectZipBundle(zipBytes, converted.toString(), path -> {

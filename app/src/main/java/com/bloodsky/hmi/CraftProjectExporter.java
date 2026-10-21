@@ -20,7 +20,6 @@ public final class CraftProjectExporter {
         JSONObject original = project.optJSONObject("craftSource");
         if (!CraftProjectImporter.isCraftProject(original))
             throw new IOException("Проект не содержит исходные таблицы KaScada");
-        JSONArray sourceRows = original.getJSONArray("TableComponent");
         JSONArray screens = project.optJSONArray("screens");
         if (screens == null || screens.length() != original.getJSONObject("TableNameProject").optInt("countScreen", 1))
             throw new IOException("Экспорт KaScada требует исходное число экранов");
@@ -28,10 +27,11 @@ public final class CraftProjectExporter {
         // Re-import the source once to distinguish untouched opaque Craft links from edits.
         JSONObject baselineSource = sourceWithProjectMacroDefinitions(original, project);
         JSONObject imported = new JSONObject(CraftProjectImporter.convert(baselineSource.toString()));
+        JSONArray sourceRows = baselineSource.getJSONArray("TableComponent");
         JSONArray importedScreens = imported.getJSONArray("screens");
         boolean[] seen = new boolean[sourceRows.length()];
         List<int[]> sourceRowsByScreen = new ArrayList<>();
-        JSONObject result = new JSONObject(original.toString());
+        JSONObject result = new JSONObject(baselineSource.toString());
         JSONArray outputRows = result.getJSONArray("TableComponent");
         JSONObject meta = result.getJSONObject("TableNameProject");
         meta.put("name", project.optString("projectName", meta.optString("name", "Проект")));
