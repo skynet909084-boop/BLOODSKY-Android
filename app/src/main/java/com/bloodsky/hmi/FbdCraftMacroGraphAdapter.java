@@ -135,7 +135,8 @@ final class FbdCraftMacroGraphAdapter {
             }
             if (type.startsWith("FBD CRAFT VAR NAME ")) {
                 int variableType = child.optInt("typeVar", 2);
-                widget.put("craftVariableName", child.optString("name", ""));
+                widget.put("craftVariableName", child.optString("typeVarValue",
+                        child.optString("name", "")));
                 widget.put("type", namedVariableType(type.contains("OUT"), variableType));
                 if (child.has("isConstant")) widget.put("craftNamedConstantMode", child.optBoolean("isConstant"));
                 if (child.has("constant")) widget.put("craftNamedConstant", String.valueOf(child.opt("constant")));
@@ -279,7 +280,7 @@ final class FbdCraftMacroGraphAdapter {
      * Apply edited native Craft modes from the validated BLOODSKY graph back to
      * their original .mcr child records. Unknown Craft fields remain untouched.
      */
-    static JSONObject applyEditedModesToCraftRecords(JSONObject definition) throws JSONException {
+    static JSONObject applyEditedPropertiesToCraftRecords(JSONObject definition) throws JSONException {
         JSONObject result = new JSONObject(definition.toString());
         JSONObject graph = result.optJSONObject("bloodskyGraph");
         JSONArray widgets = graph == null ? null : graph.optJSONArray("widgets");
@@ -324,6 +325,21 @@ final class FbdCraftMacroGraphAdapter {
             } else if (componentId == 119 && widget.has("craftSunriseMode")) {
                 int mode = sunriseType(widget.optString("craftSunriseMode", ""));
                 if (mode > 0) child.put("type", mode);
+            } else if ((componentId == 101 || componentId == 105 || componentId == 108)) {
+                if (widget.has("craftVarBit")) child.put("bit", widget.optInt("craftVarBit"));
+                if (widget.has("craftVarConstantMode"))
+                    child.put("isConstant", widget.optBoolean("craftVarConstantMode"));
+                if (widget.has("craftVarConstant"))
+                    child.put("constant", widget.optString("craftVarConstant"));
+            } else if (componentId == 133 || componentId == 134) {
+                if (widget.has("craftVariableName"))
+                    child.put("typeVarValue", widget.optString("craftVariableName"));
+                int variableType = namedVariableTypeCode(widget.optString("type", ""));
+                if (variableType > 0) child.put("typeVar", variableType);
+                if (widget.has("craftNamedConstantMode"))
+                    child.put("isConstant", widget.optBoolean("craftNamedConstantMode"));
+                if (widget.has("craftNamedConstant"))
+                    child.put("constant", widget.optString("craftNamedConstant"));
             }
         }
         return result;
@@ -354,6 +370,13 @@ final class FbdCraftMacroGraphAdapter {
     private static int sunriseType(String mode) {
         if ("SR".equals(mode)) return 1;
         if ("SS".equals(mode)) return 2;
+        return 0;
+    }
+
+    private static int namedVariableTypeCode(String widgetType) {
+        if (widgetType.endsWith(" BOOL")) return 1;
+        if (widgetType.endsWith(" INT")) return 2;
+        if (widgetType.endsWith(" FLOAT")) return 3;
         return 0;
     }
 }

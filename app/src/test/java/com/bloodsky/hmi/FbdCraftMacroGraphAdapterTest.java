@@ -207,7 +207,7 @@ public class FbdCraftMacroGraphAdapterTest {
         widgets.getJSONObject(1).put("craftSensorAxis", 3);
         widgets.getJSONObject(2).put("craftSunriseMode", "SS");
 
-        JSONObject exported = FbdCraftMacroGraphAdapter.applyEditedModesToCraftRecords(
+        JSONObject exported = FbdCraftMacroGraphAdapter.applyEditedPropertiesToCraftRecords(
                 new JSONObject(root.toString()).put("bloodskyGraph", graph));
         JSONArray records = exported.getJSONArray("fbInMacros");
         assertTrue(records.getJSONObject(0).getBoolean("isHighRegister"));
@@ -217,6 +217,49 @@ public class FbdCraftMacroGraphAdapterTest {
         assertEquals("keep", records.getJSONObject(1).getString("vendorAxisField"));
         assertEquals(2, records.getJSONObject(2).getInt("type"));
         assertEquals("keep", records.getJSONObject(2).getString("vendorSunriseField"));
+    }
+
+    @Test public void importsAndExportsEditedMacroVariableNamesTypesBitsAndConstants() throws Exception {
+        JSONArray children = new JSONArray()
+                .put(new JSONObject().put("componentId", 101).put("x", 0).put("y", 0)
+                        .put("saveKey", 10).put("keyOut", -1).put("reg", 12).put("bit", 4)
+                        .put("isConstant", false).put("constant", "0"))
+                .put(new JSONObject().put("componentId", 133).put("x", 0).put("y", 0)
+                        .put("saveKey", 20).put("keyOut", -1).put("typeVar", 2)
+                        .put("typeVarValue", "OldInput").put("isConstant", false)
+                        .put("constant", "0"))
+                .put(new JSONObject().put("componentId", 134).put("x", 0).put("y", 0)
+                        .put("saveKey", 30).put("keyOut", -1).put("typeVar", 3)
+                        .put("typeVarValue", "OldOutput"))
+                .put(new JSONObject().put("componentId", 103).put("x", 0).put("y", 0)
+                        .put("saveKey", 40).put("keyOut", 900));
+        JSONObject root = new JSONObject().put("countIn", 0).put("saveKeyOut", 900)
+                .put("fbInMacros", children);
+        JSONObject graph = FbdCraftMacroGraphAdapter.translate(root, children);
+        assertNotNull(graph);
+        JSONArray widgets = graph.getJSONArray("widgets");
+        assertEquals("OldInput", widgets.getJSONObject(1).getString("craftVariableName"));
+        assertEquals("OldOutput", widgets.getJSONObject(2).getString("craftVariableName"));
+        widgets.getJSONObject(0).put("craftVarBit", 7)
+                .put("craftVarConstantMode", true).put("craftVarConstant", "1");
+        widgets.getJSONObject(1).put("type", "FBD CRAFT VAR NAME IN FLOAT")
+                .put("craftVariableName", "NewInput").put("craftNamedConstantMode", true)
+                .put("craftNamedConstant", "1.25");
+        widgets.getJSONObject(2).put("type", "FBD CRAFT VAR NAME OUT INT")
+                .put("craftVariableName", "NewOutput");
+
+        JSONObject exported = FbdCraftMacroGraphAdapter.applyEditedPropertiesToCraftRecords(
+                new JSONObject(root.toString()).put("bloodskyGraph", graph));
+        JSONArray records = exported.getJSONArray("fbInMacros");
+        assertEquals(7, records.getJSONObject(0).getInt("bit"));
+        assertTrue(records.getJSONObject(0).getBoolean("isConstant"));
+        assertEquals("1", records.getJSONObject(0).getString("constant"));
+        assertEquals(3, records.getJSONObject(1).getInt("typeVar"));
+        assertEquals("NewInput", records.getJSONObject(1).getString("typeVarValue"));
+        assertTrue(records.getJSONObject(1).getBoolean("isConstant"));
+        assertEquals("1.25", records.getJSONObject(1).getString("constant"));
+        assertEquals(2, records.getJSONObject(2).getInt("typeVar"));
+        assertEquals("NewOutput", records.getJSONObject(2).getString("typeVarValue"));
     }
 
     @Test public void preservesMacrosThatNeedScreenLevelIo() throws Exception {

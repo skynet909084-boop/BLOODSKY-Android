@@ -395,7 +395,7 @@ public final class CraftProjectExporter {
             Map<String, FbdCraftMacroDefinition> definitions, int depth) throws Exception {
         if (rawDefinition == null || depth >= 8) return;
         JSONObject synchronizedDefinition = FbdCraftMacroGraphAdapter
-                .applyEditedModesToCraftRecords(rawDefinition);
+                .applyEditedPropertiesToCraftRecords(rawDefinition);
         FbdCraftMacroDefinition definition = FbdCraftMacroDefinition.fromJson(
                 synchronizedDefinition.toString());
         String macroPath = definition.getName() + ".mcr";
