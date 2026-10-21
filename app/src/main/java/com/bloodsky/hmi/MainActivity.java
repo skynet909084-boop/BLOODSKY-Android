@@ -9143,9 +9143,13 @@ public class MainActivity extends Activity {
      * a Boolean false by the downstream state machine.
      */
     static boolean hasReadyCraftNativeInputOutputs(List<Widget> widgets,
-            List<FbdConnection> connections, int targetIndex, String... requiredPins) {
+            List<FbdConnection> connections, int targetIndex, List<Double> inputValues,
+            String... requiredPins) {
         if (!hasCompleteFbdInputConnections(connections, targetIndex, requiredPins)
-                || widgets == null) return false;
+                || widgets == null || inputValues == null || inputValues.size() != requiredPins.length)
+            return false;
+        for (Double value : inputValues)
+            if (value == null || !Double.isFinite(value)) return false;
         java.util.Set<Integer> visiting = new java.util.HashSet<>();
         for (FbdConnection edge : connections) {
             if (edge != null && edge.target == targetIndex
@@ -9797,7 +9801,7 @@ public class MainActivity extends Activity {
         if ("FBD RS".equals(widget.type)) {
             // Original FB_RS returns no output and does not scan its latch until both
             // input blocks expose values. Preserve that nullable-output contract.
-            if (!hasReadyCraftNativeInputOutputs(widgetsList, connectionsList, index, "R", "S")) {
+            if (!hasReadyCraftNativeInputOutputs(widgetsList, connectionsList, index, numInputs, "R", "S")) {
                 cacheNumeric[index] = Double.NaN;
                 return false;
             }
@@ -9817,7 +9821,7 @@ public class MainActivity extends Activity {
         if ("FBD CRAFT T".equals(widget.type)) {
             // Craft FB_TRIGGER has no output and does not advance its edge state
             // until its source input has a connected output.
-            if (!hasReadyCraftNativeInputOutputs(widgetsList, connectionsList, index, "IN")) {
+            if (!hasReadyCraftNativeInputOutputs(widgetsList, connectionsList, index, numInputs, "IN")) {
                 cacheNumeric[index] = Double.NaN;
                 return false;
             }
@@ -9852,7 +9856,8 @@ public class MainActivity extends Activity {
             // separate versioned block; legacy BLOODSKY CTU stays unchanged.
             // Craft FB_CTU returns null and skips its scan until all three
             // source contacts have an output; do not treat disconnected pins as false.
-            if (!hasReadyCraftNativeInputOutputs(widgetsList, connectionsList, index, "+", "-", "R")) {
+            if (!hasReadyCraftNativeInputOutputs(widgetsList, connectionsList, index,
+                    numInputs, "+", "-", "R")) {
                 cacheNumeric[index] = Double.NaN;
                 return false;
             }
