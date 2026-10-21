@@ -6,6 +6,8 @@ on:
     paths:
       - '.github/workflows/original-craft-emulator.yml'
       - 'tools/original_craft_emulator_probe.py'
+      - 'tools/original_craft_probe_scenarios.py'
+      - 'tools/test_original_craft_probe_scenarios.py'
       - 'tools/run_original_craft_emulator_probe.sh'
       - 'tools/test_original_craft_emulator_workflow.py'
   workflow_dispatch:
@@ -16,6 +18,12 @@ on:
         type: choice
         options: [quick, full]
         default: quick
+      quick_scenario:
+        description: 'Select one independent, bounded original-app scenario'
+        required: true
+        type: choice
+        default: hmi-id17-properties
+        options: [project-create, hmi-palette, hmi-id17-properties]
 
 permissions:
   contents: read
@@ -66,7 +74,7 @@ jobs:
           script: |
             # Every PR push gets a bounded quick scenario, regardless of branch name.
             # Run a full audit explicitly from Actions > Run workflow > profile: full.
-            bash tools/run_original_craft_emulator_probe.sh build-reports/original-craft-1.0.7 ${{ (github.event_name == 'workflow_dispatch' && inputs.profile == 'full') && '--full' || '' }}
+            bash tools/run_original_craft_emulator_probe.sh build-reports/original-craft-1.0.7 --scenario ${{ github.event_name == 'workflow_dispatch' && inputs.quick_scenario || 'hmi-id17-properties' }} ${{ (github.event_name == 'workflow_dispatch' && inputs.profile == 'full') && '--full' || '' }}
       - name: Upload original APK provenance and UI evidence
         if: always()
         uses: actions/upload-artifact@v4
