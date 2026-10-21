@@ -170,7 +170,12 @@ public class CraftProjectImporterTest {
                                 .put("jsTableComponent_other", new JSONObject()
                                         .put("numScreen", 1).put("indicatorName", "Pressure")
                                         .put("minGauge", -20).put("maxGauge", 300)
-                                        .put("countTextScale", 5).put("hideBackground", true))));
+                                        .put("countTextScale", 5).put("hideBackground", true)
+                                        .put("sizeText", 24).put("colorTextValue", -1)
+                                        .put("colorTextScale", -2).put("colorCenterCircle", -4210753)
+                                        .put("colorIndicator", -16776961).put("colorMark", -16777216)
+                                        .put("percentLowScale", 70).put("percentMediumScale", 88)
+                                        .put("indicatorName", "TriangleIndicator"))));
         JSONObject imported = new JSONObject(CraftProjectImporter.convert(source.toString()));
         JSONArray widgets = imported.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets");
         assertEquals(2, widgets.length());
@@ -196,6 +201,10 @@ public class CraftProjectImporterTest {
         assertEquals(-20.0, graduatedGauge.getDouble("minValue"), 0.001);
         assertEquals(300.0, graduatedGauge.getDouble("maxValue"), 0.001);
         assertEquals(5, graduatedGauge.getJSONObject("craftOther").getInt("countTextScale"));
+        assertEquals(24, graduatedGauge.getInt("craftGaugeTextSize"));
+        assertEquals(-16776961, graduatedGauge.getInt("craftGaugeIndicatorColor"));
+        assertEquals(70, graduatedGauge.getInt("craftGaugeLowPercent"));
+        assertEquals("TriangleIndicator", graduatedGauge.getString("craftGaugeIndicatorName"));
         assertTrue(graduatedGauge.getBoolean("craftGaugeHideBackground"));
         assertEquals("", graduatedGauge.getString("connectionInfo"));
         assertEquals("global", graduatedGauge.getJSONObject("craftBindingResolution").getString("kind"));
