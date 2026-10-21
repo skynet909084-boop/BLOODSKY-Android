@@ -490,6 +490,29 @@ public class CraftProjectImporterTest {
                 .getJSONObject(0).getInt("componentId"));
     }
 
+    @Test public void mapsCraftEightChannelSoundBankAsOptInAndResolvesProjectAudio() throws Exception {
+        String json = "{\"TableNameProject\":{\"name\":\"Sound bank\",\"countScreen\":1},"
+                + "\"TableConnections\":[],\"TableComponent\":["
+                + "{\"componentId\":21,\"text\":\"\",\"x\":1,\"y\":2,\"width\":45,\"height\":45,"
+                + "\"jsTableComponent_connectionInfo\":{\"addressRegister\":\"7\",\"typeRequest\":3},"
+                + "\"jsTableComponent_other\":{\"numScreen\":1,\"pathSound_0\":\"tone0.mp3\","
+                + "\"pathSound_1\":\"missing.mp3\",\"pathSound_2\":\"0\",\"vendorField\":\"keep\"}}]}";
+        java.util.Map<String, byte[]> media = new java.util.HashMap<>();
+        media.put("tone0.mp3", new byte[]{1, 2, 3});
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(json, "project.json", media));
+        JSONObject sound = project.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets").getJSONObject(0);
+        assertEquals("Звуковой сигнал Craft", sound.getString("type"));
+        assertFalse(sound.has("craftUnsupportedComponent"));
+        assertFalse(sound.getBoolean("craftSoundEnabled"));
+        JSONArray paths = sound.getJSONArray("craftSoundPaths");
+        assertEquals(8, paths.length());
+        assertEquals("media/tone0.mp3", paths.getString(0));
+        assertEquals("", paths.getString(1));
+        assertEquals("", paths.getString(2));
+        assertEquals("keep", sound.getJSONObject("craftOther").getString("vendorField"));
+        assertEquals("", sound.getString("connectionInfo"));
+    }
+
     @Test public void mapsCraftBitGatewayAsDisabledAndPreservesItsFunctionAndBitCount() throws Exception {
         String json = "{\"TableNameProject\":{\"name\":\"Bit gateway\",\"countScreen\":1},"
                 + "\"TableConnections\":[],\"TableComponent\":["
