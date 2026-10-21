@@ -68,7 +68,9 @@ class WorkflowSpeedContractTests(unittest.TestCase):
         self.assertIn("11464db76f59393ccf698f57e60af1756756ffc78cb315d43052ae92adb50d4f", workflow)
         self.assertIn("steps.original-apk.outputs.ready != 'true'", workflow)
         self.assertIn("316da0335dc4ea0c8f2d8c14550118ba33bd0e95d7c926f67ed848429c554cdd", workflow)
-        self.assertNotIn("actions/download-artifact@v4", workflow)
+        self.assertIn("actions/download-artifact@v4", workflow)
+        self.assertIn("github.event.inputs.resume_run_id != ''", workflow)
+        self.assertIn("actions: read", workflow)
         self.assertNotIn("38600957172", workflow)
 
     def test_quick_profile_has_five_minute_budget_and_fails_closed(self):

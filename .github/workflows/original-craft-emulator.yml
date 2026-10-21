@@ -11,8 +11,13 @@ on:
         type: choice
         options: [quick, full]
         default: quick
+      resume_run_id:
+        description: 'Prior workflow run ID containing full-profile checkpoint evidence (optional)'
+        required: false
+        type: string
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -25,6 +30,15 @@ jobs:
     timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.profile == 'full' && 360 || 35 }}
     steps:
       - uses: actions/checkout@v4
+      - name: Restore prior full-profile evidence artifact
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.profile == 'full' && github.event.inputs.resume_run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: Original-Craft-1.0.7-probe-evidence
+          run-id: ${{ github.event.inputs.resume_run_id }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          path: build-reports/original-craft-1.0.7
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -105,9 +119,12 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign --ks /tmp/craft-debug.keystore --ks-pass pass:android --key-pass pass:android --out build/KaScada-Craft-1.0.7.apk build/KaScada-Craft-1.0.7-unsigned.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify build/KaScada-Craft-1.0.7.apk
       - name: Verify selected APK and record provenance
+        id: apk-verification
         run: |
           test -s build/KaScada-Craft-1.0.7.apk
-          sha256sum build/KaScada-Craft-1.0.7.apk
+          sha=$(sha256sum build/KaScada-Craft-1.0.7.apk | cut -d' ' -f1)
+          echo "APK SHA-256: $sha"
+          echo "sha256=$sha" >> "$GITHUB_OUTPUT"
       - name: Install probe dependencies
         run: python -m pip install Pillow
       - name: Enable KVM access
@@ -139,6 +156,7 @@ jobs:
             python tools/original_craft_emulator_probe.py build-reports/original-craft-1.0.7 ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.profile == 'full' && '--full' || '' }}
         env:
           ORIGINAL_CRAFT_APK_PROVENANCE: ${{ steps.original-apk.outputs.provenance }}
+          ORIGINAL_CRAFT_APK_SHA256: ${{ steps.apk-verification.outputs.sha256 }}
           ORIGINAL_CRAFT_START_MARKER: ${{ github.workspace }}/build-reports/original-craft-1.0.7/emulator-started-at.txt
       - name: Upload original Craft UI evidence
         if: always()
