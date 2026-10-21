@@ -1479,7 +1479,7 @@ public class MainActivity extends Activity {
             return OriginalCraftNumericIndicator.format(OriginalCraftNumericIndicator.decode(words, sourceType),
                     widget.extraFields.optInt("craftNumericIndicatorDigits", 5),
                     widget.extraFields.optInt("craftNumericIndicatorDecimals", 0),
-                    sourceType == OriginalCraftNumericIndicator.FLOAT32);
+                    sourceType);
         }
         return words.length > 1 ? words[0] + "," + words[1] : Integer.toString(words[0]);
     }

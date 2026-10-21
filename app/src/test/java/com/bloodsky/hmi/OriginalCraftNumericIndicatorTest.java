@@ -23,11 +23,19 @@ public class OriginalCraftNumericIndicatorTest {
     }
 
     @Test public void formatsFractionWidthAndSourceDigitOverflow() {
-        assertEquals("12", OriginalCraftNumericIndicator.format(12.6, 2, 0));
-        assertEquals("12.60", OriginalCraftNumericIndicator.format(12.6, 2, 2));
-        assertEquals("1.24", OriginalCraftNumericIndicator.format(1.24, 3, 2, true));
-        assertEquals("999.99", OriginalCraftNumericIndicator.format(1234.56, 3, 2));
-        assertEquals("-99", OriginalCraftNumericIndicator.format(-123.0, 2, 0));
-        assertEquals("—", OriginalCraftNumericIndicator.format(Double.NaN, 5, 2));
+        assertEquals("00012", OriginalCraftNumericIndicator.format(12, 5, 0,
+                OriginalCraftNumericIndicator.SIGNED_INT16));
+        assertEquals("000.12", OriginalCraftNumericIndicator.format(12, 5, 2,
+                OriginalCraftNumericIndicator.UINT16));
+        assertEquals("-1.24", OriginalCraftNumericIndicator.format(-1.24, 4, 2,
+                OriginalCraftNumericIndicator.FLOAT32));
+        assertEquals("999.99", OriginalCraftNumericIndicator.format(1234.56, 5, 2,
+                OriginalCraftNumericIndicator.FLOAT32));
+        assertEquals("-12", OriginalCraftNumericIndicator.format(-123.0, 2, 0,
+                OriginalCraftNumericIndicator.SIGNED_INT16));
+        assertEquals("-123456", OriginalCraftNumericIndicator.format(-123456, 2, 2,
+                OriginalCraftNumericIndicator.SIGNED_INT32));
+        assertEquals("—", OriginalCraftNumericIndicator.format(Double.NaN, 5, 2,
+                OriginalCraftNumericIndicator.FLOAT32));
     }
 }
