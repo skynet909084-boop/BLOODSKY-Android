@@ -10,9 +10,11 @@ from pathlib import Path
 import re
 import subprocess
 import time
+import traceback
 import xml.etree.ElementTree as ET
 
 PACKAGE = 'com.bloodsky.hmi'
+WIFI_TRANSPORT_LABEL = r'Wi-Fi\3G\4G'
 PROJECT = 'Smoke_Project'
 
 
@@ -21,12 +23,24 @@ def adb(*args, binary=False):
     return result.stdout if binary else result.stdout.decode('utf-8', errors='replace')
 
 
-def matching_nodes(xml, text=None, class_name=None, description=None):
+def matching_nodes(xml, text=None, class_name=None, description=None, resource_id=None):
     nodes = ET.fromstring(xml).iter('node')
     return [n for n in nodes if (text is None or n.get('text', '').casefold() == text.casefold())
             and (class_name is None or n.get('class') == class_name)
             and (description is None or n.get('content-desc') == description)
+            and (resource_id is None or n.get('resource-id') == resource_id)
             and n.get('enabled') == 'true' and n.get('bounds') != '[0,0][0,0]']
+
+
+def network_device_slot_controls(xml):
+    nodes = list(ET.fromstring(xml).iter('node'))
+    counts = [node for node in nodes
+              if node.get('resource-id', '').endswith('craft_textCountDevice')]
+    plus = [node for node in nodes
+            if node.get('resource-id', '').endswith('craft_plus')]
+    if len(counts) != 1 or len(plus) != 1:
+        raise AssertionError('Network device screen must expose one slot count and one add-slot control')
+    return counts[0], plus[0]
 
 
 def center(bounds):
@@ -37,6 +51,22 @@ def center(bounds):
     if right <= left or bottom <= top:
         raise ValueError('Empty UI bounds: ' + bounds)
     return (left + right) // 2, (top + bottom) // 2
+
+
+def project_media_asset_sha256(path):
+    match = re.fullmatch(r'media/asset_([0-9a-f]{64})\.[a-z0-9]{1,10}', path or '')
+    return match.group(1) if match else None
+
+
+def project_catalog_storage_id(xml, project_name):
+    values = {node.get('name'): node.text for node in ET.fromstring(xml)}
+    catalog = json.loads(values.get('project_catalog_v1', '{}'))
+    matches = [project for project in catalog.values()
+               if project.get('projectName') == project_name]
+    if len(matches) != 1:
+        return None
+    storage_id = matches[0].get('storageId', '')
+    return storage_id if storage_id else None
 
 
 def preferences_are_empty(xml):
@@ -74,6 +104,78 @@ def keyboard_is_shown(diagnostics):
     return re.search(r'\bmInputShown=true\b', diagnostics) is not None
 
 
+def kill_background_process_as_app(package, pids):
+    if not pids:
+        raise ValueError('At least one app process ID is required')
+    # The PID can exit between pidof and run-as (observed on API 30). Confirm
+    # whether the process still exists before treating an "unknown pid" result
+    # as a failure. The selected DocumentsUI task is checked after this helper.
+    deadline = time.monotonic() + 5
+    last_error = ''
+    while time.monotonic() < deadline:
+        probe = subprocess.run(['adb', 'shell', 'pidof', package],
+                               capture_output=True, text=True, timeout=45)
+        if probe.returncode != 0 or not probe.stdout.strip():
+            return
+        live_pids = set(probe.stdout.split())
+        targets = [pid for pid in pids if pid in live_pids]
+        if not targets:
+            return
+        killed = subprocess.run(['adb', 'shell', 'run-as', package,
+                                 'kill', '-9', *targets],
+                                capture_output=True, text=True, timeout=45)
+        if killed.returncode != 0:
+            last_error = (killed.stderr or killed.stdout).strip()
+        time.sleep(0.25)
+    raise RuntimeError('Application process survived kill request: '
+                       + (last_error or package))
+
+
+def linux_process_state(stat_record):
+    """Read the state field from /proc/<pid>/stat despite spaces in comm."""
+    close = stat_record.rfind(')')
+    if close < 0:
+        raise ValueError('Malformed /proc process stat record')
+    fields = stat_record[close + 1:].strip().split()
+    if not fields:
+        raise ValueError('Missing process state in /proc stat record')
+    return fields[0]
+
+
+def wait_for_app_process_exit(package, pids, timeout=5):
+    """Confirm original app PIDs have exited or entered zombie state."""
+    if not pids:
+        raise ValueError('At least one app process ID is required')
+    deadline = time.monotonic() + timeout
+    last_states = {}
+    while True:
+        for pid in pids:
+            probe = subprocess.run(
+                ['adb', 'shell', 'run-as', package, 'cat', '/proc/' + pid + '/stat'],
+                capture_output=True, text=True, timeout=45, check=False)
+            if probe.returncode != 0:
+                error = (probe.stderr or probe.stdout).strip()
+                if 'No such file or directory' in error or 'No such process' in error:
+                    last_states[pid] = None
+                    continue
+                raise RuntimeError('Could not inspect app process ' + pid + ': ' + error)
+            last_states[pid] = linux_process_state(probe.stdout)
+        active = {pid: state for pid, state in last_states.items()
+                  if state is not None and state != 'Z'}
+        if not active:
+            return last_states
+        if time.monotonic() >= deadline:
+            raise RuntimeError('Application process survived kill request: '
+                               + repr(active))
+        time.sleep(0.25)
+
+
+def kill_background_app_process(package):
+    """Ask ActivityManager to kill a stopped package process, not force-stop it."""
+    return subprocess.run(['adb', 'shell', 'am', 'kill', package],
+                          capture_output=True, text=True, timeout=45)
+
+
 def property_input_matches(node, value):
     # API 30 accessibility exposes the hint as text for an empty EditText.
     hints = {'Положение X': 'X', 'Положение Y': 'Y',
@@ -107,13 +209,13 @@ class Smoke:
         adb('shell', 'uiautomator', 'dump', '/sdcard/bloodsky-ui.xml')
         return adb('shell', 'cat', '/sdcard/bloodsky-ui.xml')
 
-    def wait_node(self, text=None, class_name=None, timeout=30, description=None, focused=None):
+    def wait_node(self, text=None, class_name=None, timeout=30, description=None, focused=None, resource_id=None):
         deadline = time.monotonic() + timeout
         last = ''
         while time.monotonic() < deadline:
             try:
                 last = self.dump()
-                nodes = matching_nodes(last, text, class_name, description)
+                nodes = matching_nodes(last, text, class_name, description, resource_id)
                 if len(nodes) == 1 and (focused is None or nodes[0].get('focused') == str(focused).lower()):
                     return nodes[0]
                 if len(nodes) > 1:
@@ -124,10 +226,59 @@ class Smoke:
         (self.output / 'last-ui.xml').write_text(last)
         raise AssertionError('UI target not found: ' + str(text or description or class_name))
 
-    def tap(self, text=None, class_name=None, description=None):
-        node = self.wait_node(text, class_name, description=description)
+    def wait_text_fragment(self, fragment, timeout=15):
+        deadline = time.monotonic() + timeout
+        last = ''
+        while time.monotonic() < deadline:
+            last = self.dump()
+            hits = [node for node in ET.fromstring(last).iter('node')
+                    if fragment.casefold() in (node.get('text') or '').casefold()
+                    and node.get('enabled') == 'true' and node.get('bounds') != '[0,0][0,0]']
+            if hits:
+                if len(hits) > 1:
+                    raise AssertionError('Ambiguous UI text fragment: ' + fragment)
+                return hits[0]
+            time.sleep(0.25)
+        (self.output / 'last-ui.xml').write_text(last)
+        raise AssertionError('UI text fragment not found: ' + fragment)
+
+    def wait_for_saved_main_activity(self, timeout=15):
+        """Wait until ActivityTaskManager has saved MainActivity behind DocumentsUI."""
+        deadline = time.monotonic() + timeout
+        last_dump = ''
+        while time.monotonic() < deadline:
+            last_dump = adb('shell', 'dumpsys', 'activity', 'activities')
+            lines = last_dump.splitlines()
+            for index, line in enumerate(lines):
+                if 'ActivityRecord{' not in line or 'com.bloodsky.hmi/.MainActivity' not in line:
+                    continue
+                end = next((i for i in range(index + 1, len(lines))
+                            if 'ActivityRecord{' in lines[i]), len(lines))
+                record = '\n'.join(lines[index:end])
+                if re.search(r'\bmHaveState=true\b', record) and re.search(r'\bstate=STOPPED\b', record):
+                    return
+            time.sleep(0.25)
+        diagnostic = self.output / 'media-picker-activity-state.txt'
+        diagnostic.write_text(last_dump)
+        raise AssertionError(
+            'MainActivity did not reach STOPPED with saved state before process termination; '
+            'see ' + str(diagnostic)
+        )
+
+    def tap(self, text=None, class_name=None, description=None, resource_id=None):
+        node = self.wait_node(text, class_name, description=description, resource_id=resource_id)
         x, y = center(node.get('bounds'))
         adb('shell', 'input', 'tap', str(x), str(y))
+
+    def tap_text_fragment(self, fragment):
+        node = self.wait_text_fragment(fragment)
+        x, y = center(node.get('bounds'))
+        adb('shell', 'input', 'tap', str(x), str(y))
+
+    def long_press_fragment(self, fragment, duration_ms=1000):
+        node = self.wait_text_fragment(fragment)
+        x, y = center(node.get('bounds'))
+        adb('shell', 'input', 'swipe', str(x), str(y), str(x), str(y), str(duration_ms))
 
     def prepare_custom_image(self):
         # ADB push alone does not index the image in API30 MediaStore. The
@@ -228,6 +379,19 @@ class Smoke:
         if keyboard_is_shown(adb('shell', 'dumpsys', 'input_method')):
             adb('shell', 'input', 'keyevent', '4')
 
+    def replace_focused_dialog_input(self, description, value):
+        """Replace a focused dialog field and verify what Android actually typed."""
+        focused = self.wait_node(description=description, class_name='android.widget.EditText',
+                                 focused=True, timeout=10)
+        current = focused.get('text', '')
+        adb('shell', 'input', 'keyevent', '123', *(['67'] * (len(current) + 1)))
+        if value:
+            adb('shell', 'input', 'text', value)
+        changed = self.wait_node(description=description, class_name='android.widget.EditText',
+                                 focused=True, timeout=10)
+        if changed.get('text', '') != value:
+            raise AssertionError('Dialog input did not match requested value: ' + description)
+
     def capture(self, name):
         (self.output / (name + '.png')).write_bytes(adb('exec-out', 'screencap', '-p', binary=True))
         (self.output / (name + '.xml')).write_text(self.dump())
@@ -252,19 +416,95 @@ class Smoke:
         if matching_nodes(xml, text='Дополнительные действия BLOODSKY…'):
             if not self.source_overflow_checked:
                 required_rows = (
-                    'Устройства / серверы', 'Пароль проекта', 'Режим станции: Мастер',
+                    'Сетевые устройства', 'Пароль проекта', 'Режим станции: Мастер',
                     'Показывать тайм-ауты', 'Сетевое управление', 'Работа в фоне')
                 visible_text = {node.get('text', '') for node in ET.fromstring(xml).iter('node')
                                 if node.get('bounds') != '[0,0][0,0]'}
                 missing = [label for label in required_rows if label not in visible_text]
                 if missing:
                     raise AssertionError('Source overflow menu is missing rows: ' + ', '.join(missing))
-                self.tap('Устройства / серверы')
-                self.wait_node('Устройства / серверы проекта')
-                self.tap('Закрыть')
+                self.tap('Сетевые устройства')
+                self.wait_node('Количество:')
+                count_node, plus_node = network_device_slot_controls(self.dump())
+                if count_node.get('text') != '0':
+                    raise AssertionError('A new smoke project must start with zero network-device slots')
+                for expected_count in range(1, 17):
+                    xml = self.dump()
+                    count_node, plus_node = network_device_slot_controls(xml)
+                    if count_node.get('text') != str(expected_count - 1):
+                        raise AssertionError('Network-device count changed unexpectedly before plus: '
+                                             + repr(count_node.get('text')))
+                    x, y = center(plus_node.get('bounds'))
+                    adb('shell', 'input', 'tap', str(x), str(y))
+                    deadline = time.monotonic() + 5
+                    while time.monotonic() < deadline:
+                        count_node, _ = network_device_slot_controls(self.dump())
+                        if count_node.get('text') == str(expected_count):
+                            break
+                        time.sleep(0.2)
+                    else:
+                        raise AssertionError('Adding network-device slot did not reach '
+                                             + str(expected_count))
+                xml = self.dump()
+                count_node, plus_node = network_device_slot_controls(xml)
+                x, y = center(plus_node.get('bounds'))
+                adb('shell', 'input', 'tap', str(x), str(y))
+                time.sleep(0.5)
+                count_node, _ = network_device_slot_controls(self.dump())
+                if count_node.get('text') != '16':
+                    raise AssertionError('Network-device slot count must be capped at 16')
+                self.capture('01b-craft-network-devices')
+                self.tap(description='Сервер устройства 1')
+                self.wait_node('Редактор серверов')
+                self.capture('01c-craft-server-list')
+                self.tap(description='Новое подключение')
+                self.tap(WIFI_TRANSPORT_LABEL)
+                self.capture('01d-craft-wifi-form')
+                ip = self.wait_node(class_name='android.widget.EditText', description='IP адрес подключения')
+                x, y = center(ip.get('bounds'))
+                adb('shell', 'input', 'tap', str(x), str(y))
+                self.wait_node(description='IP адрес подключения', class_name='android.widget.EditText',
+                               focused=True, timeout=10)
+                self.replace_focused_dialog_input('IP адрес подключения', '192.168.0.155')
+                # In landscape Android 11 promotes EditText to a fullscreen IME.
+                # The IME action labelled NEXT reliably moves focus to the port;
+                # tapping the hidden dialog's stale bounds typed into the IP again.
+                adb('shell', 'input', 'keyevent', '66')
+                self.wait_node(description='Порт подключения', class_name='android.widget.EditText',
+                               focused=True, timeout=10)
+                self.replace_focused_dialog_input('Порт подключения', '4001')
+                if keyboard_is_shown(adb('shell', 'dumpsys', 'input_method')):
+                    adb('shell', 'input', 'keyevent', '4')
+                self.wait_node(text='192.168.0.155', class_name='android.widget.EditText',
+                               description='IP адрес подключения')
+                self.wait_node(text='4001', class_name='android.widget.EditText',
+                               description='Порт подключения')
+                self.tap('RTU', class_name='android.widget.CheckBox')
+                self.tap('Создать')
+                self.wait_text_fragment('192.168.0.155')
+                self.wait_text_fragment('4001')
+                prefs = adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml')
+                active = json.loads({n.get('name'): n.text for n in ET.fromstring(prefs)}['active_project'])
+                saved = active.get('craftServerConnections', [])
+                if (len(saved) != 1 or saved[0].get('endpoint') != '192.168.0.155'
+                        or saved[0].get('port') != '4001' or saved[0].get('rtu') is not True):
+                    raise AssertionError('Craft server connection fields were not persisted')
+                self.long_press_fragment('192.168.0.155')
+                self.tap('Редактировать')
+                self.wait_node(text='192.168.0.155', class_name='android.widget.EditText', description='IP адрес подключения')
+                self.wait_node(text='4001', class_name='android.widget.EditText', description='Порт подключения')
+                self.tap('Ок')
+                self.wait_text_fragment('192.168.0.155')
+                self.tap_text_fragment('192.168.0.155')
+                self.wait_node(description='Сервер устройства 1')
+                prefs = adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml')
+                active = json.loads({n.get('name'): n.text for n in ET.fromstring(prefs)}['active_project'])
+                if active.get('craftNetworkDevices', [])[0].get('serverIndex') != 0:
+                    raise AssertionError('Craft server row tap did not assign the selected server to the device slot')
+                self.capture('01e-craft-device-server-assigned')
+                adb('shell', 'input', 'keyevent', '4')
+                self.wait_node(description='Редактор экрана')
                 self.source_overflow_checked = True
-                # Closing the endpoint dialog dismissed the source overflow.
-                # Reopen it once before selecting its nested BLOODSKY actions.
                 self.tap(description='Меню проекта')
             self.tap('Дополнительные действия BLOODSKY…')
         for attempt in range(7):
@@ -726,15 +966,28 @@ class Smoke:
         x, y = center(pickers[0].get('bounds'))
         adb('shell', 'input', 'tap', str(x), str(y))
         self.tap(description='Show roots')
-        self.tap('Downloads')
-        time.sleep(1)
+        # The breadcrumb and roots drawer share this label on API 30.
+        self.tap('Downloads', resource_id='android:id/title')
+        self.wait_for_saved_main_activity()
         app_pids = adb('shell', 'pidof', PACKAGE).strip().split()
         if not app_pids:
             raise AssertionError('Application process is missing while DocumentsUI is open')
-        # am kill is implemented as force-stop on this Android 11 emulator and
-        # discards the ActivityRecord's saved state. Kill the background PID so
-        # the task and the Bundle captured when DocumentsUI opened remain intact.
-        adb('shell', 'kill', '-9', *app_pids)
+        # run-as kill races with Android reaping its target PID. ActivityManager
+        # kills the stopped process while preserving the task's saved state.
+        kill_result = kill_background_app_process(PACKAGE)
+        if kill_result.returncode != 0:
+            raise RuntimeError('ActivityManager could not kill the stopped app: '
+                               + (kill_result.stderr or kill_result.stdout).strip())
+        try:
+            wait_for_app_process_exit(PACKAGE, app_pids)
+        except RuntimeError as failure:
+            (self.output / 'process-termination.txt').write_text(
+                'kill stdout: ' + kill_result.stdout + '\n'
+                + 'kill stderr: ' + kill_result.stderr + '\n'
+                + 'kill returncode: ' + str(kill_result.returncode) + '\n'
+                + str(failure) + '\n'
+                + adb('shell', 'ps', '-A', '-o', 'PID,STAT,NAME'))
+            raise
         self.tap_document('bloodsky-custom.png')
         self.wait_node('Свойства: Многопозиционное фото', timeout=30)
         self.wait_node('Restored_label', timeout=10)
@@ -780,7 +1033,7 @@ class Smoke:
         self.tap(description='Меню проекта')
         # This is the original editor overflow menu: its first row opens the
         # project TCP bindings. Project settings live elsewhere in this build.
-        self.wait_node('Устройства / серверы')
+        self.wait_node('Сетевые устройства')
         self.wait_node('Пароль проекта')
         self.wait_node('Режим станции: Мастер')
         self.wait_node('Показывать тайм-ауты')
@@ -897,6 +1150,10 @@ class Smoke:
         self.capture('04a-fractional-properties')
         self.tap('Применить')
         self.wait_node(description='Редактор экрана')
+        persisted = adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml')
+        storage_id_before_restart = project_catalog_storage_id(persisted, PROJECT)
+        if not storage_id_before_restart:
+            raise AssertionError('Project catalog has no stable storage ID before restart')
         adb('shell', 'input', 'keyevent', '4')
         self.wait_node('Создать новый проект')
         adb('shell', 'am', 'force-stop', PACKAGE)
@@ -905,15 +1162,31 @@ class Smoke:
         self.tap(PROJECT)
         self.wait_node(description='Редактор экрана')
         persisted = adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml')
-        after = json.loads({n.get('name'): n.text for n in ET.fromstring(persisted)}['active_project'])['screens'][0]['widgets'][0]
+        prefs = {n.get('name'): n.text for n in ET.fromstring(persisted)}
+        after = json.loads(prefs['active_project'])['screens'][0]['widgets'][0]
         expected = dict(x=40.125, y=50.875, w=160.375, h=140.625)
         if any(after[key] != value for key, value in expected.items()):
             raise AssertionError('Fractional property edit did not survive process restart')
         state_images = after.get('other', after)
         if isinstance(state_images, str):
             state_images = json.loads(state_images)
-        if not state_images.get('pathOrNameOn', '').startswith('content://') or state_images.get('pathOrNameOff') != 'blue':
-            raise AssertionError('Selected ON/OFF images did not survive process restart')
+        selected_path = state_images.get('pathOrNameOn', '')
+        image_digest = project_media_asset_sha256(selected_path)
+        if image_digest is None or state_images.get('pathOrNameOff') != 'blue':
+            raise AssertionError('Selected ON/OFF project media paths did not survive process restart')
+        storage_id = project_catalog_storage_id(persisted, PROJECT)
+        if not storage_id or storage_id != storage_id_before_restart:
+            raise AssertionError('Reloaded project catalog has no stable storage ID for its selected image')
+        project_id = 'proj_' + hashlib.sha256(('sid_' + storage_id).encode()).hexdigest()[:16]
+        stored_project_files = adb('shell', 'run-as', PACKAGE, 'find', 'files/projects', '-type', 'f')
+        asset_path = 'files/projects/' + project_id + '/' + selected_path
+        if asset_path not in stored_project_files.splitlines():
+            raise AssertionError('Selected media asset is missing from its project directory; stored files: '
+                                 + stored_project_files)
+        asset_bytes = adb('shell', 'run-as', PACKAGE, 'cat',
+                          asset_path, binary=True)
+        if hashlib.sha256(asset_bytes).hexdigest() != image_digest:
+            raise AssertionError('Selected project image asset is missing or its contents do not match its path hash')
         if not state_images.get('isImageUserOn') or state_images.get('isImageUserOff'):
             raise AssertionError('Builtin/custom image flags were not retained')
         self.capture('04b-fractional-reopened')
@@ -930,7 +1203,7 @@ class Smoke:
         self.tap('Отмена')
         self.capture('04h-original-selection-actions')
         # Copy/cut/paste through the actual original action strip. All non-position
-        # fields, including fractional dimensions and custom ON/OFF URI metadata,
+        # fields, including fractional dimensions and project-owned custom ON/OFF media metadata,
         # must survive the clipboard round trip.
         def saved_widgets():
             xml = adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml')
@@ -1040,7 +1313,7 @@ class Smoke:
         if PACKAGE in crashes:
             raise AssertionError('Application crash recorded')
         (self.output / 'result.json').write_text(json.dumps({'result': 'passed', 'package': PACKAGE,
-                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'original five-category palette', 'palette add indicator/button/text/progress', 'original 40-preview FBD palette and return/extended navigation', 'FBD AND/TON add and restart', 'FBD non-overlapping initial block positions', 'FBD typed Q-IN wiring, drag, restart, disconnect, undo and redo', 'invalid timer preset leaves project and form unchanged', 'exact valid timer preset preserves other fields', 'process restart', 'reload four palette-created components', 'invalid geometry leaves dialog/project unchanged', 'fractional properties survive second process restart', 'original ON/OFF dialogs and builtin state selection', 'custom document-provider image and persisted URI grant after process restart', 'original compact toolbar and hide/reveal', 'editor button opens properties without activation', 'operator drag and long-press cannot edit or activate', 'runtime button on/off and persistence after restart', 'stop and Back restore editor tools', 'confirmed deletion', 'legacy media bytes preserved and visible PNG rendered across restart', 'Craft ID 15 palette, property dialog and local history on Android 11', 'media picker Activity recreation restores the open properties form and selected image field'],
+                'checks': ['home actions', 'create', 'original calculator add/divide/multiply/subtract/decimal/clear/delete/reopen', 'original five-category palette', 'palette add indicator/button/text/progress', 'original 40-preview FBD palette and return/extended navigation', 'FBD AND/TON add and restart', 'FBD non-overlapping initial block positions', 'FBD typed Q-IN wiring, drag, restart, disconnect, undo and redo', 'invalid timer preset leaves project and form unchanged', 'exact valid timer preset preserves other fields', 'Craft network device slots and server list navigation', 'Wi-Fi endpoint, port and RTU persistence round trip', 'process restart', 'reload four palette-created components', 'invalid geometry leaves dialog/project unchanged', 'fractional properties survive second process restart', 'original ON/OFF dialogs and builtin state selection', 'custom document-provider image copied into project media and retained after process restart', 'original compact toolbar and hide/reveal', 'editor button opens properties without activation', 'operator drag and long-press cannot edit or activate', 'runtime button on/off and persistence after restart', 'stop and Back restore editor tools', 'confirmed deletion', 'legacy media bytes preserved and visible PNG rendered across restart', 'Craft ID 15 palette, property dialog and local history on Android 11', 'media picker Activity recreation restores the open properties form and selected image field'],
                 'api_level': adb('shell', 'getprop', 'ro.build.version.sdk').strip(),
                 'display_size': adb('shell', 'wm', 'size').strip(),
                 'display_density': adb('shell', 'wm', 'density').strip()}, indent=2))
@@ -1054,8 +1327,22 @@ def main():
     smoke = Smoke(args.output)
     try:
         smoke.run(args.apk)
-    except Exception:
+    except Exception as exc:
         try:
+            (args.output / 'failure.txt').write_text(
+                type(exc).__name__ + ': ' + str(exc) + '\n\n' + traceback.format_exc())
+            try:
+                (args.output / 'failure-activity.txt').write_text(
+                    adb('shell', 'dumpsys', 'activity', 'activities'))
+            except Exception as diagnostic_error:
+                (args.output / 'failure-activity.txt').write_text(
+                    'diagnostic failed: ' + repr(diagnostic_error))
+            try:
+                (args.output / 'failure-project.xml').write_text(
+                    adb('shell', 'run-as', PACKAGE, 'cat', 'shared_prefs/bloodsky_projects.xml'))
+            except Exception as diagnostic_error:
+                (args.output / 'failure-project.xml').write_text(
+                    'diagnostic failed: ' + repr(diagnostic_error))
             smoke.capture('failure')
             (args.output / 'logcat.txt').write_text(adb('logcat', '-d', '-t', '1500'))
         except Exception:

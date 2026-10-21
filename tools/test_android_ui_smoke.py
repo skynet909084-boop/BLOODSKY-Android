@@ -2,10 +2,126 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
+import xml.etree.ElementTree as ET
 from android_ui_smoke import Smoke
-from android_ui_smoke import center, matching_nodes, preferences_are_empty, properties_scroll_node, property_input_matches, property_scroll_up, keyboard_is_shown, document_nodes
+from android_ui_smoke import center, matching_nodes, preferences_are_empty, properties_scroll_node, property_input_matches, property_scroll_up, keyboard_is_shown, document_nodes, kill_background_process_as_app, kill_background_app_process, linux_process_state, wait_for_app_process_exit, project_media_asset_sha256, project_catalog_storage_id, network_device_slot_controls, WIFI_TRANSPORT_LABEL
 
 class AndroidSmokeHelpersTests(unittest.TestCase):
+    def test_saved_activity_gate_accepts_stopped_main_activity_with_saved_state(self):
+        dump = ('ActivityRecord{1 u0 com.bloodsky.hmi/.MainActivity t1}\n'
+                '  mHaveState=true\n  state=STOPPED stopped=true\n'
+                'ActivityRecord{2 u0 com.android.documentsui/.picker.PickActivity t1}')
+        with TemporaryDirectory() as folder:
+            with patch('android_ui_smoke.adb', return_value=dump) as command:
+                Smoke(Path(folder)).wait_for_saved_main_activity()
+            command.assert_called_once_with('shell', 'dumpsys', 'activity', 'activities')
+
+    def test_saved_activity_gate_writes_diagnostics_when_state_is_missing(self):
+        dump = 'ActivityRecord{1 u0 com.bloodsky.hmi/.MainActivity t1}\n  state=PAUSED'
+        with TemporaryDirectory() as folder:
+            with patch('android_ui_smoke.adb', return_value=dump), \
+                 patch('android_ui_smoke.time.monotonic', side_effect=[0, 0, 2]), \
+                 patch('android_ui_smoke.time.sleep'):
+                with self.assertRaisesRegex(AssertionError, 'did not reach STOPPED with saved state'):
+                    Smoke(Path(folder)).wait_for_saved_main_activity(timeout=1)
+                self.assertEqual(dump, (Path(folder) / 'media-picker-activity-state.txt').read_text())
+
+    def test_process_state_parses_spaces_in_proc_comm(self):
+        self.assertEqual('Z', linux_process_state('12502 (com.bloodsky hmi) Z 1 2 3'))
+
+    def test_wait_for_original_app_pids_accepts_reaped_pid_and_zombie(self):
+        from types import SimpleNamespace
+        with patch('android_ui_smoke.subprocess.run', side_effect=[
+                SimpleNamespace(returncode=0, stdout='12502 (com.bloodsky.hmi) Z 1 2 3', stderr=''),
+                SimpleNamespace(returncode=1, stdout='', stderr='cat: /proc/12503/stat: No such file or directory')]):
+            states = wait_for_app_process_exit('com.bloodsky.hmi', ['12502', '12503'])
+        self.assertEqual({'12502': 'Z', '12503': None}, states)
+
+    def test_wait_for_original_app_pids_rejects_live_process(self):
+        from types import SimpleNamespace
+        with patch('android_ui_smoke.subprocess.run', return_value=SimpleNamespace(
+                returncode=0, stdout='12502 (com.bloodsky.hmi) S 1 2 3', stderr='')), \
+             patch('android_ui_smoke.time.monotonic', side_effect=[0, 1]), \
+             patch('android_ui_smoke.time.sleep'):
+            with self.assertRaisesRegex(RuntimeError, "'12502': 'S'"):
+                wait_for_app_process_exit('com.bloodsky.hmi', ['12502'], timeout=0.5)
+
+    def test_background_activity_kill_uses_activity_manager(self):
+        from types import SimpleNamespace
+        with patch('android_ui_smoke.subprocess.run', return_value=SimpleNamespace(
+                returncode=0, stdout='', stderr='')) as command:
+            result = kill_background_app_process('com.bloodsky.hmi')
+        self.assertEqual(0, result.returncode)
+        command.assert_called_once_with(['adb', 'shell', 'am', 'kill', 'com.bloodsky.hmi'],
+                                        capture_output=True, text=True, timeout=45)
+
+    def test_wifi_transport_selector_matches_observed_backslash_label(self):
+        xml = ('<hierarchy><node text="Wi-Fi\\3G\\4G" enabled="true" '
+               'bounds="[10,20][110,80]"/></hierarchy>')
+        self.assertEqual(r'Wi-Fi\3G\4G', WIFI_TRANSPORT_LABEL)
+        self.assertEqual(1, len(matching_nodes(xml, text=WIFI_TRANSPORT_LABEL)))
+
+    def test_network_device_screen_exposes_one_slot_count_and_add_button(self):
+        xml = ('<hierarchy><node resource-id="com.bloodsky.hmi:id/craft_textCountDevice" '
+               'text="0" enabled="true" bounds="[100,10][140,50]"/>'
+               '<node resource-id="com.bloodsky.hmi:id/craft_plus" class="android.widget.ImageView" '
+               'enabled="true" bounds="[200,10][240,50]"/></hierarchy>')
+        count, plus = network_device_slot_controls(xml)
+        self.assertEqual('0', count.get('text'))
+        self.assertEqual('[200,10][240,50]', plus.get('bounds'))
+
+    def test_network_device_slot_controls_fail_closed_on_missing_or_ambiguous_nodes(self):
+        for xml in (
+                '<hierarchy/>',
+                '<hierarchy><node resource-id="com.bloodsky.hmi:id/craft_textCountDevice" text="0"/>'
+                '<node resource-id="com.bloodsky.hmi:id/craft_textCountDevice" text="1"/>'
+                '<node resource-id="com.bloodsky.hmi:id/craft_plus"/></hierarchy>'):
+            with self.subTest(xml=xml), self.assertRaisesRegex(AssertionError, 'one slot count'):
+                network_device_slot_controls(xml)
+
+    def test_project_media_asset_path_returns_digest_only_for_owned_asset_names(self):
+        digest = 'a' * 64
+        self.assertEqual(digest, project_media_asset_sha256('media/asset_' + digest + '.png'))
+        for path in ('content://provider/image/1', '../media/asset_' + digest + '.png',
+                     'media/asset_' + digest + '.PNG', 'media/asset_' + digest):
+            with self.subTest(path=path):
+                self.assertIsNone(project_media_asset_sha256(path))
+
+    def test_project_storage_id_is_read_from_the_persisted_catalog(self):
+        import json
+        import xml.etree.ElementTree as ET
+        storage_id = 'stable-project-id'
+        prefs = ET.Element('map')
+        ET.SubElement(prefs, 'string', {'name': 'active_project'}).text = '{"projectName":"Smoke_Project"}'
+        ET.SubElement(prefs, 'string', {'name': 'project_catalog_v1'}).text = json.dumps({
+            'proj_123': {'projectName': 'Smoke_Project', 'storageId': storage_id}
+        })
+        xml = ET.tostring(prefs, encoding='unicode')
+        self.assertEqual(storage_id, project_catalog_storage_id(xml, 'Smoke_Project'))
+        self.assertIsNone(project_catalog_storage_id(xml, 'Missing_Project'))
+
+    def test_background_process_kill_uses_the_debuggable_app_uid(self):
+        from types import SimpleNamespace
+        with patch('android_ui_smoke.subprocess.run', side_effect=[
+                SimpleNamespace(returncode=0, stdout='1234', stderr=''),
+                SimpleNamespace(returncode=0, stdout='', stderr=''),
+                SimpleNamespace(returncode=0, stdout='', stderr='')]) as command, \
+                patch('android_ui_smoke.time.sleep'):
+            kill_background_process_as_app('com.bloodsky.hmi', ['1234'])
+        self.assertEqual(['adb', 'shell', 'run-as', 'com.bloodsky.hmi', 'kill', '-9', '1234'], command.call_args_list[1].args[0])
+        with self.assertRaisesRegex(ValueError, 'process ID'):
+            kill_background_process_as_app('com.bloodsky.hmi', [])
+
+    def test_background_process_kill_accepts_pid_exit_race_after_confirmation(self):
+        from types import SimpleNamespace
+        with patch('android_ui_smoke.subprocess.run', side_effect=[
+                SimpleNamespace(returncode=0, stdout='1234', stderr=''),
+                SimpleNamespace(returncode=1, stdout='', stderr="kill: unknown pid '1234'"),
+                SimpleNamespace(returncode=1, stdout='', stderr='')]) as command, \
+                patch('android_ui_smoke.time.sleep'):
+            kill_background_process_as_app('com.bloodsky.hmi', ['1234'])
+        self.assertEqual(3, command.call_count)
+
     def test_observed_enabled_ui_targets_and_uppercase_russian(self):
         xml = '<hierarchy><node text="СОЗДАТЬ НОВЫЙ ПРОЕКТ" class="android.widget.Button" enabled="true" bounds="[10,20][110,80]"/><node text="Создать новый проект" enabled="false" bounds="[10,20][110,80]"/></hierarchy>'
         nodes = matching_nodes(xml, 'Создать новый проект')
@@ -17,6 +133,17 @@ class AndroidSmokeHelpersTests(unittest.TestCase):
         xml = '<hierarchy><node text="" content-desc="Калькулятор" class="android.widget.ImageButton" enabled="true" bounds="[10,20][110,80]"/></hierarchy>'
         self.assertEqual(1, len(matching_nodes(xml, description='Калькулятор')))
         self.assertEqual([], matching_nodes(xml, description='Unknown'))
+
+    def test_documentsui_downloads_selects_root_row_not_breadcrumb(self):
+        xml = ('<hierarchy>'
+               '<node text="Downloads" resource-id="com.android.documentsui:id/breadcrumb_text" '
+               'class="android.widget.TextView" enabled="true" bounds="[0,20][120,60]"/>'
+               '<node text="Downloads" resource-id="android:id/title" '
+               'class="android.widget.TextView" enabled="true" bounds="[10,100][130,140]"/>'
+               '</hierarchy>')
+        nodes = matching_nodes(xml, text='Downloads', resource_id='android:id/title')
+        self.assertEqual(1, len(nodes))
+        self.assertEqual((70, 120), center(nodes[0].get('bounds')))
 
     def test_properties_scroll_ignores_scrollable_button_bar(self):
         xml = '<hierarchy><node class="android.widget.ScrollView" resource-id="form"><node class="android.widget.EditText"/></node><node class="android.widget.ScrollView" resource-id="buttons"><node class="android.widget.Button"/></node></hierarchy>'
@@ -133,6 +260,27 @@ class PropertyFocusWaitTests(unittest.TestCase):
                 with self.assertRaises(AssertionError):
                     smoke.wait_node(description='timer', focused=True, timeout=1)
             self.assertIn('focused="false"', (Path(temp) / 'last-ui.xml').read_text())
+
+    def test_dialog_input_replaces_existing_text_and_verifies_focused_value(self):
+        old = ET.fromstring(self.xml('true').replace('text="1000"', 'text="192.168.0.1"'))[0]
+        new = ET.fromstring(self.xml('true').replace('text="1000"', 'text="192.168.0.155"'))[0]
+        with TemporaryDirectory() as temp, patch('android_ui_smoke.adb') as command:
+            smoke = Smoke(Path(temp))
+            with patch.object(smoke, 'wait_node', side_effect=[old, new]):
+                smoke.replace_focused_dialog_input('IP адрес подключения', '192.168.0.155')
+            calls = [item.args for item in command.call_args_list]
+            self.assertEqual(('shell', 'input', 'keyevent', '123', *(['67'] * 12)), calls[0])
+            self.assertEqual(('shell', 'input', 'text', '192.168.0.155'), calls[1])
+
+    def test_dialog_input_rejects_value_not_observed_after_typing(self):
+        old = ET.fromstring(self.xml('true').replace('text="1000"', 'text="502"'))[0]
+        wrong = ET.fromstring(self.xml('true').replace('text="1000"', 'text="5024001"'))[0]
+        with TemporaryDirectory() as temp, patch('android_ui_smoke.adb') as command:
+            smoke = Smoke(Path(temp))
+            with patch.object(smoke, 'wait_node', side_effect=[old, wrong]):
+                with self.assertRaisesRegex(AssertionError, 'did not match requested value'):
+                    smoke.replace_focused_dialog_input('Порт подключения', '4001')
+            self.assertEqual(2, command.call_count)
 
 
 if __name__ == '__main__':

@@ -26,6 +26,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -111,6 +112,8 @@ public class MainActivity extends Activity {
     private UsbSerialConnector manualUsbConnector;
     private int manualUsbScreenGeneration;
     private boolean manualUsbScreenVisible;
+    private String craftNetworkScreen = "";
+    private boolean craftServerListReturnsToDevices;
     private final ExecutorService craftSensorExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService telegramExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService homeAssistantExecutor = Executors.newSingleThreadExecutor();
@@ -133,6 +136,9 @@ public class MainActivity extends Activity {
     private static final int REQUEST_VOICE_PERMISSION = 6201;
     private static final int REQUEST_SMS_SEND_PERMISSION = 6202;
     private static final int REQUEST_SMS_RECEIVE_PERMISSION = 6203;
+    private static final int REQUEST_CRAFT_BLUETOOTH_PERMISSION = 6204;
+    private int pendingCraftBluetoothSlot = -1;
+    private boolean pendingCraftBluetoothReturnsToDevices;
     private android.content.BroadcastReceiver incomingSmsReceiver;
     private boolean smsReceivePermissionRequested;
     private static final int VOICE_LOCAL = 1;
@@ -424,6 +430,12 @@ public class MainActivity extends Activity {
             }
             return;
         }
+        if (requestCode == REQUEST_CRAFT_BLUETOOTH_PERMISSION) {
+            if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED)
+                showCraftBluetoothPicker(pendingCraftBluetoothReturnsToDevices, pendingCraftBluetoothSlot);
+            else Toast.makeText(this, "Список Bluetooth-устройств недоступен без разрешения", Toast.LENGTH_LONG).show();
+            return;
+        }
         if (requestCode != REQUEST_FBD_SPEED_LOCATION) return;
         fbdLocationPermissionRequested = false;
         if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED)
@@ -499,8 +511,7 @@ public class MainActivity extends Activity {
             MediaPlayer activePlayer = player;
             player.setOnPreparedListener(prepared -> {
                 if (craftAlarmPlayers.get(alarmKey) != prepared) return;
-                if (!activityResumed || isFinishing() || isDestroyed()) {
-                    stopCraftAlarmAlert(alarmKey);
+                if (!activityResumed || isFinishing() || isDestroyed()) {                    stopCraftAlarmAlert(alarmKey);
                     return;
                 }
                 try {
@@ -1004,8 +1015,7 @@ public class MainActivity extends Activity {
             } catch (Exception invalid) { result.setText("Проверь Unit ID, адрес и количество регистров."); return; }
             final int function = functionSpinner.getSelectedItemPosition() == 0 ? 3 : 4;
             result.setText("Читаю регистры по Modbus RTU…");
-            modbusExecutor.execute(() -> {
-                try {
+            modbusExecutor.execute(() -> {                try {
                     int[] values = connection.read(unit, function, address, count);
                     StringBuilder report = new StringBuilder("FC").append(function).append(" • адрес ").append(address).append("\n");
                     for (int i = 0; i < values.length; i++) report.append(address + i).append(": ").append(values[i]).append(i + 1 == values.length ? "" : "\n");
@@ -1511,7 +1521,6 @@ public class MainActivity extends Activity {
             return value;
         } finally { if (connection != null) connection.disconnect(); }
     }
-
     private void pollBoundWidgets() {
         final long sessionToken = pollSession.token();
         final EditorCanvas sessionEditor = editor;
@@ -2018,7 +2027,6 @@ public class MainActivity extends Activity {
                     android.view.WindowManager.LayoutParams.MATCH_PARENT);
         }
     }
-
     private void addCraftMacroFromCatalog() {
         try {
             String[] names = FbdCraftMacroCatalog.names(projectExtraFields);
@@ -2519,8 +2527,7 @@ public class MainActivity extends Activity {
             final String archiveWidget = pendingArchiveWidgetKey;
             pendingArchiveProjectId = pendingArchiveWidgetKey = pendingArchiveTitle = null;
             if (archiveProject == null || archiveWidget == null) return;
-            modbusExecutor.execute(() -> {
-                try (OutputStream out = getContentResolver().openOutputStream(uri)) {
+            modbusExecutor.execute(() -> {                try (OutputStream out = getContentResolver().openOutputStream(uri)) {
                     if (out == null) throw new IOException("CSV output unavailable");
                     LocalArchiveStore store = new LocalArchiveStore(this);
                     try { store.writeCsv(archiveProject, archiveWidget, out); }
@@ -2622,6 +2629,31 @@ public class MainActivity extends Activity {
             } catch (IOException cleanupFailure) {
                 android.util.Log.w("BLOODSKY", "Could not remove canceled project media", cleanupFailure);
             }
+        }
+    }
+
+    /** Keep a picker copy once an image-state edit has synchronously saved its reference. */
+    private void commitPendingMediaCopy(String projectPath) {
+        if (projectPath == null || projectPath.isEmpty() || pendingMediaCopies.isEmpty()) return;
+        String activeProject = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
+        String activeProjectId;
+        try { activeProjectId = ProjectMediaService.getOrGenerateProjectId(activeProject); }
+        catch (RuntimeException invalidProject) { return; }
+        java.util.Iterator<Map.Entry<AlertDialog, List<PendingMediaCopy>>> entries =
+                pendingMediaCopies.entrySet().iterator();
+        while (entries.hasNext()) {
+            Map.Entry<AlertDialog, List<PendingMediaCopy>> entry = entries.next();
+            List<PendingMediaCopy> copies = entry.getValue();
+            java.util.Iterator<PendingMediaCopy> pending = copies.iterator();
+            while (pending.hasNext()) {
+                PendingMediaCopy copy = pending.next();
+                if (!projectPath.equals(copy.projectPath)) continue;
+                try {
+                    if (activeProjectId.equals(ProjectMediaService.getOrGenerateProjectId(copy.projectJson)))
+                        pending.remove();
+                } catch (RuntimeException ignored) { }
+            }
+            if (copies.isEmpty()) entries.remove();
         }
     }
 
@@ -2972,8 +3004,8 @@ public class MainActivity extends Activity {
         rows.setOrientation(LinearLayout.VERTICAL);
         rows.setPadding(0, dp(4), 0, dp(4));
         rows.setBackgroundColor(Color.rgb(35, 35, 35));
-        addSourceMenuRow(rows, "Устройства / серверы", "Локальные TCP-привязки проекта", true,
-                this::showBoundProjectDevices);
+        addSourceMenuRow(rows, "Сетевые устройства", "Слоты устройств и редактор серверов Craft", true,
+                this::showCraftNetworkDevices);
         addSourceMenuRow(rows, "Пароль проекта", "Защищённая блокировка проекта пока не подключена", false, null);
         boolean station = projectExtraFields.optInt("stationMode", 0) == 1;
         addSourceMenuRow(rows, station ? "Режим станции: Слейв" : "Режим станции: Мастер",
@@ -3019,8 +3051,7 @@ public class MainActivity extends Activity {
         heading.setTextColor(enabled ? Color.rgb(238, 238, 238) : Color.rgb(142, 142, 142));
         row.addView(heading, new LinearLayout.LayoutParams(-1, -2));
         if (detail != null && !detail.isEmpty()) {
-            TextView caption = new TextView(this);
-            caption.setText(detail); caption.setTextSize(11); caption.setMaxLines(2);
+            TextView caption = new TextView(this);            caption.setText(detail); caption.setTextSize(11); caption.setMaxLines(2);
             caption.setTextColor(enabled ? Color.rgb(174, 174, 174) : Color.rgb(112, 112, 112));
             row.addView(caption, new LinearLayout.LayoutParams(-1, -2));
         }
@@ -3051,6 +3082,378 @@ public class MainActivity extends Activity {
             text.append(endpoint.getKey()).append("  ·  компонентов: ").append(endpoint.getValue()).append('\n');
         new AlertDialog.Builder(this).setTitle("Устройства / серверы проекта")
                 .setMessage(text.toString()).setPositiveButton("Закрыть", null).show();
+    }
+
+    private void showCraftNetworkDevices() {
+        craftNetworkScreen = "devices";
+        View page = getLayoutInflater().inflate(R.layout.craft_layout_device_network, null);
+        androidx.appcompat.widget.Toolbar toolbar = page.findViewById(R.id.craft_network_device_toolbar);
+        toolbar.setTitle(R.string.craft_title); toolbar.setSubtitle(R.string.craft_network_devices);
+        toolbar.setNavigationIcon(androidx.appcompat.R.drawable.abc_ic_ab_back_material);
+        toolbar.setNavigationContentDescription("Назад");
+        toolbar.setNavigationOnClickListener(v -> { saveCraftNetworkDevices(); craftNetworkScreen = ""; showEditor(); });
+        JSONArray devices = CraftServerConnectionStore.devices(projectExtraFields);
+        if (devices.length() == 0) {
+            try {
+                for (int i = 0; i < 16; i++)
+                    devices.put(new JSONObject().put("name", "").put("address", 1).put("serverIndex", -1));
+            }
+            catch (Exception ignored) {}
+        }
+        TextView count = page.findViewById(R.id.craft_textCountDevice);
+        ImageView remove = page.findViewById(R.id.craft_minus), add = page.findViewById(R.id.craft_plus);
+        final int[] renderGeneration = {0};
+        Runnable render = () -> {
+            renderGeneration[0]++;
+            JSONArray current = CraftServerConnectionStore.devices(projectExtraFields);
+            count.setText(Integer.toString(current.length()));
+            for (int i = 0; i < 16; i++) {
+                int slot = i + 1;
+                int rowId = getResources().getIdentifier("craft_tableRow" + slot, "id", getPackageName());
+                View row = page.findViewById(rowId);
+                if (row == null) continue;
+                boolean visible = i < current.length(); row.setVisibility(visible ? View.VISIBLE : View.GONE);
+                if (!visible) continue;
+                JSONObject item = current.optJSONObject(i); if (item == null) item = new JSONObject();
+                EditText name = page.findViewById(getResources().getIdentifier("craft_editNameDevice" + slot, "id", getPackageName()));
+                EditText address = page.findViewById(getResources().getIdentifier("craft_editAddressDevice" + slot, "id", getPackageName()));
+                TextView server = page.findViewById(getResources().getIdentifier("craft_textServerDevice" + slot, "id", getPackageName()));
+                name.setText(item.optString("name", "")); name.setContentDescription("Имя сетевого устройства " + slot);
+                address.setText(Integer.toString(item.optInt("address", 1))); address.setContentDescription("Адрес устройства " + slot);
+                int selected = item.optInt("serverIndex", -1);
+                JSONArray servers = CraftServerConnectionStore.connections(projectExtraFields);
+                JSONObject config = selected >= 0 && selected < servers.length() ? servers.optJSONObject(selected) : null;
+                server.setText(config == null ? "-" : CraftServerConnectionStore.displayEndpoint(config));
+                server.setContentDescription("Сервер устройства " + slot);
+                server.setOnClickListener(v -> { saveCraftNetworkDevices(); showCraftServerList(true, slot - 1); });
+                final int rowIndex = i, generation = renderGeneration[0];
+                name.addTextChangedListener(simpleTextWatcher(value -> { if (generation == renderGeneration[0]) updateCraftDevice(rowIndex, "name", value); }));
+                address.addTextChangedListener(simpleTextWatcher(value -> { if (generation == renderGeneration[0]) updateCraftDevice(rowIndex, "address", value); }));
+            }
+        };
+        render.run();
+        add.setOnClickListener(v -> {
+            JSONArray current = CraftServerConnectionStore.devices(projectExtraFields);
+            if (current.length() >= 16) return;
+            try {
+                current.put(new JSONObject().put("name", "").put("address", 1).put("serverIndex", -1));
+                projectExtraFields.put(CraftServerConnectionStore.DEVICES_KEY, current); render.run();
+            } catch (Exception ignored) { Toast.makeText(this, "Не удалось добавить устройство", Toast.LENGTH_SHORT).show(); }
+        });
+        remove.setOnClickListener(v -> {
+            JSONArray current = CraftServerConnectionStore.devices(projectExtraFields);
+            if (current.length() <= 1) return;
+            JSONArray trimmed = new JSONArray();
+            for (int i = 0; i < current.length() - 1; i++) trimmed.put(current.opt(i));
+            try { projectExtraFields.put(CraftServerConnectionStore.DEVICES_KEY, trimmed); render.run(); }
+            catch (Exception ignored) { Toast.makeText(this, "Не удалось изменить число устройств", Toast.LENGTH_SHORT).show(); }
+        });
+        setContentView(page);
+    }
+
+    private interface TextValueChanged { void changed(String value); }
+    private TextView networkColumnHeading(String text) {
+        TextView heading = new TextView(this); heading.setText(text); heading.setTextColor(Color.rgb(237, 176, 59)); heading.setGravity(Gravity.CENTER); heading.setTextSize(13); return heading;
+    }
+    private android.text.TextWatcher simpleTextWatcher(TextValueChanged changed) {
+        return new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) { changed.changed(s.toString()); }
+            @Override public void afterTextChanged(android.text.Editable s) {}
+        };
+    }
+
+    private void updateCraftDevice(int index, String key, String value) {
+        JSONArray devices = CraftServerConnectionStore.devices(projectExtraFields);
+        JSONObject device = devices.optJSONObject(index);
+        if (device == null) return;
+        try {
+            if ("address".equals(key)) {
+                if (value.trim().isEmpty()) return;
+                int address = Integer.parseInt(value.trim());
+                if (address < 0 || address > 254) return;
+                device.put(key, address);
+            } else device.put(key, value);
+            projectExtraFields.put(CraftServerConnectionStore.DEVICES_KEY, devices);
+        } catch (Exception ignored) {}
+    }
+
+    private void saveCraftNetworkDevices() {
+        if (!persistProjectNow(true)) Toast.makeText(this, "Не удалось сохранить сетевые устройства", Toast.LENGTH_LONG).show();
+    }
+
+    private LinearLayout craftNetworkPage(String title, Runnable back) {
+        LinearLayout page = new LinearLayout(this); page.setOrientation(LinearLayout.VERTICAL); page.setBackgroundColor(Color.rgb(48, 48, 48));
+        androidx.appcompat.widget.Toolbar toolbar = new androidx.appcompat.widget.Toolbar(
+                new android.view.ContextThemeWrapper(this, R.style.CraftToolBarStyle));
+        toolbar.setBackgroundColor(Color.rgb(35, 35, 35)); toolbar.setElevation(dp(8));
+        toolbar.setTitle(R.string.craft_title); toolbar.setSubtitle(title); toolbar.setTitleTextColor(Color.rgb(237, 176, 59));
+        toolbar.setSubtitleTextColor(Color.rgb(187, 187, 187));
+        toolbar.setNavigationIcon(androidx.appcompat.R.drawable.abc_ic_ab_back_material);
+        toolbar.setNavigationContentDescription("Назад"); toolbar.setNavigationOnClickListener(v -> back.run());
+        LinearLayout actions = new LinearLayout(this); actions.setGravity(Gravity.CENTER_VERTICAL); actions.setTag("craftNetworkActions");
+        androidx.appcompat.widget.Toolbar.LayoutParams actionParams = new androidx.appcompat.widget.Toolbar.LayoutParams(-2, -1, Gravity.END | Gravity.CENTER_VERTICAL);
+        toolbar.addView(actions, actionParams);
+        page.addView(toolbar, new LinearLayout.LayoutParams(-1, -2)); return page;
+    }
+
+    private ImageView craftSourceImage(String resource, String description) {
+        ImageView image = new ImageView(this);
+        int id = getResources().getIdentifier(resource, "drawable", getPackageName());
+        if (id != 0) image.setImageResource(id);
+        image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        image.setContentDescription(description);
+        image.setClickable(true);
+        return image;
+    }
+
+    private void showCraftServerList(boolean returnsToDevices, int deviceSlot) {
+        craftNetworkScreen = "servers"; craftServerListReturnsToDevices = returnsToDevices;
+        LinearLayout page = craftNetworkPage("Редактор серверов", () -> leaveCraftServerList());
+        LinearLayout actions = (LinearLayout) page.findViewWithTag("craftNetworkActions");
+        TextView none = new TextView(this); none.setText(R.string.craft_no_connections); none.setTextColor(Color.rgb(187, 187, 187)); none.setGravity(Gravity.CENTER); none.setTextSize(14);
+        none.setOnClickListener(v -> { if (deviceSlot >= 0) assignCraftServer(deviceSlot, -1); leaveCraftServerList(); });
+        ImageView add = craftSourceImage("kc_add3", "Новое подключение");
+        LinearLayout.LayoutParams noneParams = new LinearLayout.LayoutParams(-2, -2); noneParams.rightMargin = dp(10);
+        actions.addView(none, noneParams); actions.addView(add, new LinearLayout.LayoutParams(dp(40), dp(40)));
+        LinearLayout rows = new LinearLayout(this); rows.setOrientation(LinearLayout.VERTICAL);
+        ScrollView scroll = new ScrollView(this); scroll.addView(rows); page.addView(scroll, new LinearLayout.LayoutParams(-1, -1));
+        JSONArray connections = CraftServerConnectionStore.connections(projectExtraFields);
+        for (int i = 0; i < connections.length(); i++) {
+            JSONObject connection = connections.optJSONObject(i); if (connection == null) continue;
+            LinearLayout row = (LinearLayout) getLayoutInflater().inflate(R.layout.craft_server_row, rows, false);
+            ImageView logo = row.findViewById(R.id.craft_logo);
+            TextView name = row.findViewById(R.id.craft_name), pause = row.findViewById(R.id.craft_pause), details = row.findViewById(R.id.craft_server);
+            TextView port = row.findViewById(R.id.craft_port);
+            int icon = getResources().getIdentifier(serverIconResource(connection), "drawable", getPackageName());
+            if (icon != 0) logo.setImageResource(icon);
+            logo.setContentDescription("Тип соединения");
+            int connectionType = connection.optInt("type", 0);
+            String sourceRowName = connectionType == 2 ? connection.optString("endpoint", "")
+                    : connection.optString("name", CraftServerConnectionStore.typeName(connectionType));
+            String sourceRowDetail = connectionType == 2 ? connection.optString("port", "502")
+                    : CraftServerConnectionStore.displayEndpoint(connection);
+            name.setText(sourceRowName); pause.setText(getString(R.string.craft_pause) + "(" + connection.optInt("pause", 0) + ")");
+            details.setText(sourceRowDetail); port.setText("");
+            final int index = i;
+            row.setOnClickListener(v -> {
+                if (deviceSlot < 0) showCraftConnectionEditor(index, deviceSlot);
+                else { assignCraftServer(deviceSlot, index); leaveCraftServerList(); }
+            });
+            row.setOnLongClickListener(v -> {
+                android.widget.PopupMenu menu = new android.widget.PopupMenu(this, row);
+                menu.inflate(R.menu.craft_popup_server_list);
+                menu.setOnMenuItemClickListener(item -> {
+                    if (item.getItemId() == R.id.craft_delete_item) deleteCraftConnection(index, deviceSlot);
+                    else if (item.getItemId() == R.id.craft_edit_item) showCraftConnectionEditor(index, deviceSlot);
+                    return true;
+                }); menu.show(); return true;
+            });
+            rows.addView(row);
+        }
+        add.setOnClickListener(v -> new AlertDialog.Builder(this).setTitle(R.string.craft_new_connection)
+                .setItems(getResources().getStringArray(R.array.craft_new_connection_types), (dialog, which) -> {
+                    int type;
+                    try { type = CraftServerConnectionStore.typeAtOriginalChooserPosition(which); }
+                    catch (IllegalArgumentException invalid) { return; }
+                    if (type == 1) { showCraftBluetoothPicker(returnsToDevices, deviceSlot); return; }
+                    if (type == 3) for (int i = 0; i < connections.length(); i++) if (connections.optJSONObject(i) != null && connections.optJSONObject(i).optInt("type") == 3) {
+                        Toast.makeText(this, "В Craft допускается одна USB-запись", Toast.LENGTH_LONG).show(); return;
+                    }
+                    try { connections.put(CraftServerConnectionStore.newConnection(type)); projectExtraFields.put(CraftServerConnectionStore.CONNECTIONS_KEY, connections); showCraftServerList(returnsToDevices, deviceSlot); showCraftConnectionEditor(connections.length() - 1, deviceSlot, true); }
+                    catch (Exception failure) { Toast.makeText(this, "Не удалось создать подключение", Toast.LENGTH_SHORT).show(); }
+                }).show());
+        setContentView(page);
+    }
+
+    private String serverIconResource(JSONObject connection) {
+        int type = connection.optInt("type", 0);
+        if (type == 1) return "kc_bluetooth";
+        if (type == 2) return connection.optBoolean("rtu", false) ? "kc_wifi_rtu" : "kc_wifi";
+        if (type == 3) return "kc_usb";
+        if (type == 4) return connection.optBoolean("rtu", false) ? "kc_cloud_rtu" : "kc_cloud";
+        return "kc_disable";
+    }
+
+    private void showCraftBluetoothPicker(boolean returnsToDevices, int deviceSlot) {
+        if (android.os.Build.VERSION.SDK_INT >= 31
+                && checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            pendingCraftBluetoothReturnsToDevices = returnsToDevices; pendingCraftBluetoothSlot = deviceSlot;
+            requestPermissions(new String[]{android.Manifest.permission.BLUETOOTH_CONNECT}, REQUEST_CRAFT_BLUETOOTH_PERMISSION);
+            return;
+        }
+        pendingCraftBluetoothSlot = deviceSlot; pendingCraftBluetoothReturnsToDevices = returnsToDevices;
+        craftNetworkScreen = "bluetooth"; craftServerListReturnsToDevices = returnsToDevices;
+        LinearLayout page = craftNetworkPage("Bluetooth", () -> showCraftServerList(returnsToDevices, deviceSlot));
+        LinearLayout rows = new LinearLayout(this); rows.setOrientation(LinearLayout.VERTICAL);
+        ScrollView scroll = new ScrollView(this); scroll.addView(rows); page.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        try {
+            android.bluetooth.BluetoothAdapter adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+            if (adapter == null) throw new IllegalStateException("Bluetooth не поддерживается этим устройством");
+            java.util.Set<android.bluetooth.BluetoothDevice> bonded = adapter.getBondedDevices();
+            if (bonded == null || bonded.isEmpty()) throw new IllegalStateException("Нет сопряжённых Bluetooth-устройств");
+            for (android.bluetooth.BluetoothDevice device : bonded) {
+                String deviceName = device.getName(); String address = device.getAddress();
+                LinearLayout row = new LinearLayout(this); row.setOrientation(LinearLayout.VERTICAL); row.setPadding(dp(18), dp(12), dp(12), dp(12));
+                TextView title = new TextView(this); title.setText(deviceName == null || deviceName.trim().isEmpty() ? "Bluetooth" : deviceName); title.setTextColor(Color.WHITE); title.setTextSize(16);
+                TextView mac = new TextView(this); mac.setText(address); mac.setTextColor(Color.LTGRAY); row.addView(title); row.addView(mac);
+                row.setBackgroundResource(android.R.drawable.list_selector_background);
+                row.setOnClickListener(v -> {
+                    JSONArray list = CraftServerConnectionStore.connections(projectExtraFields);
+                    for (int i = 0; i < list.length(); i++) {
+                        JSONObject existing = list.optJSONObject(i);
+                        if (existing != null && existing.optInt("type") == 1 && address.equalsIgnoreCase(existing.optString("endpoint", ""))) {
+                            Toast.makeText(this, "Это Bluetooth-устройство уже добавлено", Toast.LENGTH_LONG).show(); return;
+                        }
+                    }
+                    try {
+                        JSONObject connection = CraftServerConnectionStore.newConnection(1)
+                                .put("name", title.getText().toString()).put("endpoint", address);
+                        list.put(connection); projectExtraFields.put(CraftServerConnectionStore.CONNECTIONS_KEY, list);
+                        if (!persistProjectNow(true)) { Toast.makeText(this, "Не удалось сохранить устройство", Toast.LENGTH_LONG).show(); return; }
+                        showCraftServerList(returnsToDevices, deviceSlot);
+                    } catch (Exception failure) { Toast.makeText(this, "Не удалось сохранить устройство", Toast.LENGTH_LONG).show(); }
+                });
+                rows.addView(row); View divider = new View(this); divider.setBackgroundColor(Color.rgb(76, 76, 76)); rows.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
+            }
+        } catch (Exception unavailable) {
+            TextView message = new TextView(this); message.setText(unavailable.getMessage() == null ? "Список Bluetooth-устройств недоступен" : unavailable.getMessage());
+            message.setTextColor(Color.LTGRAY); message.setPadding(dp(18), dp(18), dp(18), dp(18)); rows.addView(message);
+        }
+        setContentView(page);
+    }
+
+    private void leaveCraftServerList() {
+        saveCraftNetworkDevices();
+        if (craftServerListReturnsToDevices) showCraftNetworkDevices();
+        else { craftNetworkScreen = ""; showEditor(); }
+    }
+
+    private void assignCraftServer(int slot, int serverIndex) {
+        JSONArray devices = CraftServerConnectionStore.devices(projectExtraFields); JSONObject device = devices.optJSONObject(slot);
+        if (device != null) try { device.put("serverIndex", serverIndex); projectExtraFields.put(CraftServerConnectionStore.DEVICES_KEY, devices); } catch (Exception ignored) {}
+    }
+
+    private void deleteCraftConnection(int index, int deviceSlot) {
+        JSONArray original = CraftServerConnectionStore.connections(projectExtraFields); JSONArray kept = new JSONArray();
+        for (int i = 0; i < original.length(); i++) if (i != index) kept.put(original.opt(i));
+        try { projectExtraFields.put(CraftServerConnectionStore.CONNECTIONS_KEY, kept); } catch (Exception ignored) {}
+        JSONArray devices = CraftServerConnectionStore.devices(projectExtraFields);
+        for (int i = 0; i < devices.length(); i++) { JSONObject d = devices.optJSONObject(i); if (d == null) continue; int n = d.optInt("serverIndex", -1); if (n == index) assignCraftServer(i, -1); else if (n > index) assignCraftServer(i, n - 1); }
+        persistProjectNow(true); showCraftServerList(craftServerListReturnsToDevices, deviceSlot);
+    }
+
+    private void showCraftConnectionEditor(int index, int deviceSlot) {
+        showCraftConnectionEditor(index, deviceSlot, false);
+    }
+
+    private void showCraftConnectionEditor(int index, int deviceSlot, boolean newConnection) {
+        JSONArray connections = CraftServerConnectionStore.connections(projectExtraFields); JSONObject original = connections.optJSONObject(index);
+        if (original == null) return;
+        final int type = original.optInt("type", 0);
+        View form;
+        EditText endpoint = null, port = null, pause, name = null;
+        final Spinner[] serialSettings = new Spinner[4];
+        if (type == 2) {
+            form = getLayoutInflater().inflate(R.layout.craft_dialog_add_wifi, null);
+            endpoint = form.findViewById(R.id.craft_ip); port = form.findViewById(R.id.craft_port);
+            pause = form.findViewById(R.id.craft_pause); CheckBox rtu = form.findViewById(R.id.craft_checkBoxRtu);
+            endpoint.setContentDescription("IP адрес подключения"); endpoint.setText(original.optString("endpoint", ""));
+            port.setContentDescription("Порт подключения"); port.setText(original.optString("port", "502"));
+            pause.setContentDescription("Пауза"); pause.setText(Integer.toString(original.optInt("pause", 0)));
+            rtu.setChecked(original.optBoolean("rtu", false));
+        } else if (type == 1) {
+            LinearLayout bluetoothForm = new LinearLayout(this); bluetoothForm.setOrientation(LinearLayout.VERTICAL); bluetoothForm.setPadding(dp(20), dp(8), dp(20), dp(4)); form = bluetoothForm;
+            name = new EditText(this); name.setHint("Имя устройства"); name.setText(original.optString("name", "Bluetooth")); bluetoothForm.addView(name);
+            endpoint = new EditText(this); endpoint.setHint("Bluetooth MAC-адрес"); endpoint.setInputType(InputType.TYPE_CLASS_TEXT); endpoint.setText(original.optString("endpoint", "")); bluetoothForm.addView(endpoint);
+            pause = new EditText(this); pause.setHint("0"); pause.setInputType(InputType.TYPE_CLASS_NUMBER); pause.setText(Integer.toString(original.optInt("pause", 0))); bluetoothForm.addView(pause);
+            Button paired = new Button(this); paired.setText("Выбрать сопряжённое устройство"); EditText addressField = endpoint, nameField = name;
+            paired.setOnClickListener(v -> showCraftBondedBluetoothDevices(nameField, addressField)); bluetoothForm.addView(paired);
+        } else if (type == 3) {
+            form = getLayoutInflater().inflate(R.layout.craft_dialog_add_usb, null);
+            serialSettings[0] = form.findViewById(R.id.craft_spinnerBaudRate);
+            serialSettings[1] = form.findViewById(R.id.craft_spinnerDataBits);
+            serialSettings[2] = form.findViewById(R.id.craft_spinnerStopBits);
+            serialSettings[3] = form.findViewById(R.id.craft_spinnerParity);
+            pause = form.findViewById(R.id.craft_pause); pause.setContentDescription("Пауза"); pause.setText(Integer.toString(original.optInt("pause", 0)));
+            serialSettings[0].setSelection(selectionOf(serialSettings[0], Integer.toString(original.optInt("baud", 9600))));
+            serialSettings[1].setSelection(selectionOf(serialSettings[1], Integer.toString(original.optInt("dataBits", 8))));
+            int stop = original.optInt("stopBits", 2); serialSettings[2].setSelection(selectionOf(serialSettings[2], stop == 3 ? "1.5" : Integer.toString(stop)));
+            int parity = original.optInt("parity", 0); serialSettings[3].setSelection(Math.max(0, Math.min(parity, serialSettings[3].getCount() - 1)));
+        } else if (type == 4) {
+            form = getLayoutInflater().inflate(R.layout.craft_dialog_add_cloud, null);
+            endpoint = form.findViewById(R.id.craft_identifier); pause = form.findViewById(R.id.craft_pause);
+            CheckBox rtu = form.findViewById(R.id.craft_checkBoxRtu); endpoint.setText(original.optString("endpoint", ""));
+            pause.setContentDescription("Пауза"); pause.setText(Integer.toString(original.optInt("pause", 0))); rtu.setChecked(original.optBoolean("rtu", false));
+        } else {
+            return;
+        }
+        final EditText endpointInput = endpoint, portInput = port, pauseInput = pause, nameInput = name;
+        final Spinner[] serialInputs = serialSettings;
+        final CheckBox rtuInput = type == 2 ? form.findViewById(R.id.craft_checkBoxRtu)
+                : type == 4 ? form.findViewById(R.id.craft_checkBoxRtu) : null;
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setView(form).setNegativeButton("Отмена", null).setPositiveButton(newConnection ? "Создать" : "Ок", null).create();
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            try {
+                String ep = endpointInput == null ? "" : endpointInput.getText().toString().trim();
+                String portText = portInput == null ? "" : portInput.getText().toString().trim();
+                int wait = Integer.parseInt(pauseInput.getText().toString().trim());
+                wait = Math.min(1000, Math.max(0, wait));
+                if (type == 2) { int p = Integer.parseInt(portText); if (ep.isEmpty() || p < 1 || p >= 65535) throw new IllegalArgumentException(); }
+                if (type == 4 && ep.isEmpty()) throw new IllegalArgumentException();
+                String displayName = type == 2 ? ep : type == 1
+                        ? (nameInput.getText().toString().trim().isEmpty() ? "Bluetooth" : nameInput.getText().toString().trim())
+                        : type == 3 ? "Usb" : "KaScada Cloud";
+                original.put("name", displayName);
+                if (type != 3) original.put("endpoint", ep);
+                original.put("pause", wait);
+                if (rtuInput != null) original.put("rtu", rtuInput.isChecked());
+                if (type == 2) original.put("port", portText);
+                if (type == 3) {
+                    original.put("baud", Integer.parseInt(serialInputs[0].getSelectedItem().toString()));
+                    original.put("dataBits", Integer.parseInt(serialInputs[1].getSelectedItem().toString()));
+                    String stop = serialInputs[2].getSelectedItem().toString();
+                    original.put("stopBits", "1.5".equals(stop) ? 3 : Integer.parseInt(stop));
+                    original.put("parity", serialInputs[3].getSelectedItemPosition());
+                }
+                projectExtraFields.put(CraftServerConnectionStore.CONNECTIONS_KEY, connections);
+                if (persistProjectNow(true)) { dialog.dismiss(); showCraftServerList(craftServerListReturnsToDevices, deviceSlot); }
+                else Toast.makeText(this, "Не удалось сохранить подключение", Toast.LENGTH_LONG).show();
+            } catch (Exception invalid) { Toast.makeText(this, type == 2 ? "Проверь IP, порт и паузу" : "Проверь параметры подключения", Toast.LENGTH_LONG).show(); }
+        }));
+        dialog.show();
+    }
+
+    private int selectionOf(Spinner spinner, String value) {
+        for (int i = 0; i < spinner.getCount(); i++)
+            if (value.equals(spinner.getItemAtPosition(i).toString())) return i;
+        return 0;
+    }
+
+    private void showCraftBondedBluetoothDevices(EditText name, EditText address) {
+        try {
+            android.bluetooth.BluetoothAdapter adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+            if (adapter == null) { Toast.makeText(this, "Bluetooth не поддерживается этим устройством", Toast.LENGTH_LONG).show(); return; }
+            java.util.Set<android.bluetooth.BluetoothDevice> bonded = adapter.getBondedDevices();
+            if (bonded == null || bonded.isEmpty()) { Toast.makeText(this, "Нет сопряжённых Bluetooth-устройств", Toast.LENGTH_LONG).show(); return; }
+            java.util.ArrayList<android.bluetooth.BluetoothDevice> devices = new java.util.ArrayList<>(bonded);
+            String[] labels = new String[devices.size()];
+            for (int i = 0; i < devices.size(); i++) {
+                android.bluetooth.BluetoothDevice device = devices.get(i);
+                String deviceName = device.getName();
+                labels[i] = (deviceName == null || deviceName.trim().isEmpty() ? "Bluetooth" : deviceName)
+                        + "\n" + device.getAddress();
+            }
+            new AlertDialog.Builder(this).setTitle("Сопряжённые устройства")
+                    .setItems(labels, (list, which) -> {
+                        android.bluetooth.BluetoothDevice device = devices.get(which);
+                        try { name.setText(device.getName()); address.setText(device.getAddress()); }
+                        catch (SecurityException denied) { Toast.makeText(this, "Нет разрешения на Bluetooth", Toast.LENGTH_LONG).show(); }
+                    }).show();
+        } catch (SecurityException denied) {
+            Toast.makeText(this, "Нет разрешения на список Bluetooth-устройств", Toast.LENGTH_LONG).show();
+        }
     }
 
     private void showEditorAdvancedCommands(View anchor) {
@@ -3147,8 +3550,7 @@ public class MainActivity extends Activity {
 
     private void showYandexSmartHomeItems(List<YandexSmartHomeClient.Item> items,String token) {
         if(items==null||items.isEmpty()){new AlertDialog.Builder(this).setTitle("Яндекс Умный дом").setMessage("Устройства и сценарии не найдены.").setPositiveButton("ОК",null).show();return;}
-        ArrayList<YandexSmartHomeClient.Item> shown=new ArrayList<>(items.subList(0,Math.min(300,items.size())));
-        android.widget.ListView list=new android.widget.ListView(this);list.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_list_item_1,shown));
+        ArrayList<YandexSmartHomeClient.Item> shown=new ArrayList<>(items.subList(0,Math.min(300,items.size())));        android.widget.ListView list=new android.widget.ListView(this);list.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_list_item_1,shown));
         AlertDialog homeDialog=new AlertDialog.Builder(this).setTitle("Яндекс: устройства и сценарии").setView(list).setPositiveButton("Готово",null).create();
         list.setOnItemClickListener((parent,view,position,id)->{
             YandexSmartHomeClient.Item selected=shown.get(position);
@@ -3618,6 +4020,9 @@ public class MainActivity extends Activity {
     @Override public void onBackPressed() {
         if (nestedMacroEdit != null) { closeNestedMacroGraphEditor(); return; }
         if (manualUsbScreenVisible) { showHome(); return; }
+        if ("bluetooth".equals(craftNetworkScreen)) { showCraftServerList(craftServerListReturnsToDevices, pendingCraftBluetoothSlot); return; }
+        if ("servers".equals(craftNetworkScreen)) { leaveCraftServerList(); return; }
+        if ("devices".equals(craftNetworkScreen)) { saveCraftNetworkDevices(); craftNetworkScreen = ""; showEditor(); return; }
         if (editor != null) {
             if (operatorMode) toggleOperatorMode();
             else if (persistProjectNow(true)) showHome();
@@ -3644,8 +4049,7 @@ public class MainActivity extends Activity {
         copy.backgroundColor = source.backgroundColor; copy.textColor = source.textColor; copy.textSizeSp = source.textSizeSp;
         copy.visible = source.visible; copy.showFrame = source.showFrame; copy.autoResizeText = source.autoResizeText;
         for (int i = 0; i < 16; i++) {
-            copy.dynTextStates[i] = source.dynTextStates[i];
-            copy.dynTextColors[i] = source.dynTextColors[i];
+            copy.dynTextStates[i] = source.dynTextStates[i];            copy.dynTextColors[i] = source.dynTextColors[i];
             copy.bitListLabels[i] = source.bitListLabels[i];
             copy.voiceMessages[i] = source.voiceMessages[i];
             copy.imagePathStates[i] = source.imagePathStates[i];
@@ -4144,8 +4548,7 @@ public class MainActivity extends Activity {
                 "FBD — CTD (счёт вниз)", "FBD — R_TRIG", "FBD — F_TRIG",
                 "FBD — Craft CTU 16 бит (+, −, R)",
                 "FBD — Craft T (переключатель по фронту)",
-                "FBD — Craft TIMER (TON / TOF / TP / BLINK)",
-                "FBD — Craft BLINK (мигание)",
+                "FBD — Craft TIMER (TON / TOF / TP / BLINK)",                "FBD — Craft BLINK (мигание)",
                 "FBD — Craft SEL (целочисленный)",
                 "FBD — Craft COMPARE (INT32)",
                 "FBD — Craft CH_I (изменение Integer)",
@@ -4424,6 +4827,7 @@ public class MainActivity extends Activity {
                 Toast.makeText(this, "Не удалось сохранить изображение", Toast.LENGTH_LONG).show();
                 return false;
             }
+            commitPendingMediaCopy(value);
             if (editor != null) editor.invalidate();
             return true;
         } catch (Exception invalid) {
@@ -4735,7 +5139,6 @@ public class MainActivity extends Activity {
             smsRegistersHelp.setText("Читаются последовательные регистры от адреса привязки. Значения подставляются в %1…%8; если номера %n не указаны и нет {value}, значения добавляются в конец через пробел.");
             form.addView(smsRegistersHelp);
         } else { smsPhoneField=null; smsRegisterCountField=null; }
-
         final android.widget.CheckBox incomingSmsEnabledField;
         final EditText incomingSmsSenderField, incomingSmsCommandField, incomingSmsBitField;
         final android.widget.Spinner incomingSmsModeField;
@@ -5234,8 +5637,7 @@ public class MainActivity extends Activity {
                     ? "Craft INT32: оператор >, <, <=, >=, ==, !=; входы IN1/IN2"
                     : "FBD CRAFT COMPARE FLOAT".equals(w.type)
                     ? "Craft FLOAT32: оператор >, <, <=, >=, ==, !=; входы IN1/IN2"
-                    : ("FBD CRAFT ARITHMETIC INT".equals(w.type)
-                            || "FBD CRAFT ARITHMETIC FLOAT".equals(w.type))
+                    : ("FBD CRAFT ARITHMETIC INT".equals(w.type)                            || "FBD CRAFT ARITHMETIC FLOAT".equals(w.type))
                     ? "Craft: оператор +, −, ×, ÷; входы IN1/IN2"
                     : "Числовое сравнение A / оператор / B");
             compareLabel.setPadding(0, dp(10), 0, 0);
@@ -5792,8 +6194,7 @@ public class MainActivity extends Activity {
                     }
                     if ("Битовый список".equals(w.type)) {
                         for (int k = 0; k < 4; k++) {
-                            if (bitLabelFields[k] != null) {
-                                w.bitListLabels[k] = bitLabelFields[k].getText().toString();
+                            if (bitLabelFields[k] != null) {                                w.bitListLabels[k] = bitLabelFields[k].getText().toString();
                             }
                         }
                     }
@@ -6292,8 +6693,7 @@ public class MainActivity extends Activity {
         String json = new String(projectJsonBytes, StandardCharsets.UTF_8);
         JSONObject parsed = new JSONObject(json);
         if (CraftProjectImporter.isCraftProject(parsed)) {
-            json = CraftProjectImporter.convert(json, projectEntryPath, pendingMedia);
-        }
+            json = CraftProjectImporter.convert(json, projectEntryPath, pendingMedia);        }
         validateImportedProjectStatic(json);
         if (extractedMedia != null) {
             for (String path : pendingMedia.keySet()) {
@@ -6793,8 +7193,7 @@ public class MainActivity extends Activity {
             if (widget == null) throw new IllegalArgumentException("Widget must be an object");
             String type = widget.optString("type", "Текст"), label = widget.optString("text", "Надпись");
             if ("FBD CRAFT MACRO".equals(canonicalFbdBlockType(type))) {
-                Widget parsed = widgetFromJson(widget);
-                if (macroDefinition(parsed) == null)
+                Widget parsed = widgetFromJson(widget);                if (macroDefinition(parsed) == null)
                     throw new IllegalArgumentException("FBD macro widget has no valid definition");
             }
             if (type.length() > 100 || label.length() > 2000 || widget.optString("connectionInfo", "").length() > 2000) throw new IllegalArgumentException("Widget field too long");
@@ -7293,8 +7692,7 @@ public class MainActivity extends Activity {
         JSONObject json = edge.extraFields;
         if (!json.has("sourcePin") && !json.has("targetPin")) return true;
         if (!json.has("sourcePin") || !json.has("targetPin")) return false;
-        Object sourcePin = json.opt("sourcePin");
-        Object targetPin = json.opt("targetPin");
+        Object sourcePin = json.opt("sourcePin");        Object targetPin = json.opt("targetPin");
         return sourcePin instanceof String && targetPin instanceof String
                 && !((String) sourcePin).trim().isEmpty()
                 && !((String) targetPin).trim().isEmpty();
@@ -7793,8 +8191,7 @@ public class MainActivity extends Activity {
             else cacheNumeric[index] = numInputs.get(0);
             String connection = widget.connectionInfo == null ? "" : widget.connectionInfo.trim();
             if (Boolean.TRUE.equals(ACTIVE_FBD_SYSTEM_REGISTER_WRITES.get()) && connection.isEmpty()
-                    && Double.isFinite(cacheNumeric[index])) {
-                try {
+                    && Double.isFinite(cacheNumeric[index])) {                try {
                     int address = widget.extraFields.optInt("reg", -1);
                     CraftSystemRegisterBank bank = ACTIVE_FBD_SYSTEM_REGISTER_BANK.get();
                     if (isCraftRegisterBoolean(widget.type)) {
@@ -8293,8 +8690,7 @@ public class MainActivity extends Activity {
             long now = SystemClock.elapsedRealtime();
             FbdTimerTransitions.Step step;
             if ("FBD TON".equals(canonicalType))
-                step = FbdTimerTransitions.ton(input, now, preset, widget.timerStartedAt);
-            else if ("FBD TOF".equals(canonicalType))
+                step = FbdTimerTransitions.ton(input, now, preset, widget.timerStartedAt);            else if ("FBD TOF".equals(canonicalType))
                 step = FbdTimerTransitions.tof(input, now, preset,
                         widget.timerStartedAt, widget.counterLastInput);
             else step = FbdTimerTransitions.tp(input, now, preset,
@@ -8793,8 +9189,7 @@ public class MainActivity extends Activity {
             widget.timerStartedAt = 0L;
             if ("FBD TP".equals(kind) || "FBD TOF".equals(kind))
                 widget.counterLastInput = false;
-        }
-    }
+        }    }
 
     /** Only unsupported legacy block pairs may use anonymous positional connections. */
     public static boolean canUseUnpinnedFbdFallback(String sourceType, String targetType) {
@@ -9303,8 +9698,7 @@ public class MainActivity extends Activity {
                     canvas.drawText(blockTitle, w.x + dp(12), w.y + dp(23), paint);
                     // Never evaluate stateful FBD logic from the editor's paint pass:
                     // drawing alone must not count edges or advance TON/TOF/TP.
-                    paint.setTextSize(dp(11));
-                    paint.setColor(Color.rgb(100, 116, 139));
+                    paint.setTextSize(dp(11));                    paint.setColor(Color.rgb(100, 116, 139));
                     canvas.drawText("OUT = —", w.x + dp(12), w.y + w.h - dp(8), paint);
                     paint.setTextSize(dp(10));
                     paint.setColor(Color.rgb(109, 40, 217));
@@ -9899,8 +10293,7 @@ public class MainActivity extends Activity {
                                 });
                             }
                         });
-                        invalidate();
-                    })
+                        invalidate();                    })
                     .setPositiveButton("Готово", null).setNegativeButton("Закрыть", null).create();
             dialog.show();
         }
@@ -10276,5 +10669,4 @@ public class MainActivity extends Activity {
         }
     }
 }
-
 
