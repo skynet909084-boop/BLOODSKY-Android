@@ -8709,6 +8709,9 @@ public class MainActivity extends Activity {
                 || knownFbdPins(targetType, false).length > 0;
         if ((sourceBlockKnown && sourceKnown == null) || (targetBlockKnown && targetKnown == null)) return false;
         if (sourceKnown != null && targetKnown != null && !sourceKnown.equals(targetKnown)) return false;
+        String sourceExact = FbdCraftPinTypes.typeForBlock(sourceType, sourcePin, true);
+        String targetExact = FbdCraftPinTypes.typeForBlock(targetType, targetPin, false);
+        if (!FbdCraftPinTypes.compatible(sourceExact, targetExact)) return false;
         if (sourceKnown != null && edge.has("sourceSignalType")
                 && !("ANY".equalsIgnoreCase(edge.optString("sourceSignalType"))
                 || sourceKnown.equalsIgnoreCase(edge.optString("sourceSignalType")))) return false;
@@ -8732,6 +8735,9 @@ public class MainActivity extends Activity {
                 || knownFbdPins(targetWidget, false).length > 0;
         if ((sourceBlockKnown && sourceKnown == null) || (targetBlockKnown && targetKnown == null)) return false;
         if (sourceKnown != null && targetKnown != null && !sourceKnown.equals(targetKnown)) return false;
+        String sourceExact = FbdCraftPinTypes.typeForWidget(sourceWidget, sourcePin, true);
+        String targetExact = FbdCraftPinTypes.typeForWidget(targetWidget, targetPin, false);
+        if (!FbdCraftPinTypes.compatible(sourceExact, targetExact)) return false;
         if (sourceKnown != null && edge.has("sourceSignalType")
                 && !("ANY".equalsIgnoreCase(edge.optString("sourceSignalType"))
                 || sourceKnown.equalsIgnoreCase(edge.optString("sourceSignalType")))) return false;
