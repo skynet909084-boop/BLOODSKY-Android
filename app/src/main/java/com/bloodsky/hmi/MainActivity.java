@@ -9160,13 +9160,16 @@ public class MainActivity extends Activity {
         if (widgets == null || sourceIndex < 0 || sourceIndex >= widgets.size()) return false;
         Widget source = widgets.get(sourceIndex);
         String kind = canonicalFbdBlockType(source.type);
+        boolean timer = "FBD CRAFT TIMER".equals(kind);
         String[] required = "FBD RS".equals(kind) ? new String[]{"R", "S"}
                 : "FBD CRAFT CTU".equals(kind) ? new String[]{"+", "-", "R"}
                 : "FBD CRAFT T".equals(kind) ? new String[]{"IN"} : null;
-        if (required == null) return true;
+        if (required == null && !timer) return true;
         if (!visiting.add(sourceIndex)) return false;
         try {
-            if (!hasCompleteFbdInputConnections(connections, sourceIndex, required)) return false;
+            boolean complete = timer ? hasCraftTimerInputConnections(connections, sourceIndex)
+                    : hasCompleteFbdInputConnections(connections, sourceIndex, required);
+            if (!complete) return false;
             for (FbdConnection edge : connections) {
                 if (edge != null && edge.target == sourceIndex
                         && !craftNativeOutputAvailable(widgets, connections, edge.source, visiting))
@@ -9176,6 +9179,30 @@ public class MainActivity extends Activity {
         } finally {
             visiting.remove(sourceIndex);
         }
+    }
+
+    /** Original FB_TIMER needs both IN and MS outputs; PT is accepted for old saved graphs. */
+    private static boolean hasCraftTimerInputConnections(List<FbdConnection> connections, int targetIndex) {
+        if (connections == null || targetIndex < 0) return false;
+        java.util.Set<String> pins = new java.util.HashSet<>();
+        int legacyCount = 0;
+        boolean named = false, legacy = false;
+        for (FbdConnection edge : connections) {
+            if (edge == null || edge.target != targetIndex) continue;
+            if (edge.extraFields == null) return false;
+            String pin = canonicalFbdPinName(edge.extraFields.optString("targetPin", ""));
+            if (pin.isEmpty()) {
+                legacy = true;
+                legacyCount++;
+            } else {
+                named = true;
+                if (!("IN".equals(pin) || "MS".equals(pin) || "PT".equals(pin))
+                        || !pins.add(pin)) return false;
+            }
+        }
+        if (named && legacy) return false;
+        if (!named) return legacyCount == 2;
+        return pins.contains("IN") && (pins.contains("MS") ^ pins.contains("PT"));
     }
 
     /** Imported unnamed graphs retain positional math; new named ones use terminals. */
