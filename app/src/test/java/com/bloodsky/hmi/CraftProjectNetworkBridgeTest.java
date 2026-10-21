@@ -69,4 +69,43 @@ public class CraftProjectNetworkBridgeTest {
         CraftProjectNetworkBridge.sync(project);
         assertEquals(2, project.getJSONObject("craftSource").getJSONArray("TableConnections").length());
     }
+
+    @Test public void deletingConnectorClearsOnlyItsSlotsAndRebindsLaterEndpoints() throws Exception {
+        JSONArray connections = new JSONArray()
+                .put(new JSONObject().put("connectionsId", 2).put("name", "10.0.0.1")
+                        .put("server", new JSONObject().put("server", "1502").toString()))
+                .put(new JSONObject().put("connectionsId", 2).put("name", "10.0.0.2")
+                        .put("server", new JSONObject().put("server", "2502").toString()));
+        JSONArray slots = new JSONArray()
+                .put(new JSONObject().put("num", 0).put("name", "Boiler").put("address", 7)
+                        .put("idServer", 2).put("server", "2502"))
+                .put(new JSONObject().put("num", 1).put("name", "Pump").put("address", 8)
+                        .put("idServer", 2).put("server", "1502"));
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(
+                source(slots.toString(), connections).toString()));
+        JSONArray current = CraftServerConnectionStore.connections(project);
+        JSONArray devices = CraftServerConnectionStore.devices(project);
+
+        // Match MainActivity.deleteCraftConnection: remove index zero, clear its users,
+        // and shift later connector indices so their endpoint identity stays stable.
+        project.put(CraftServerConnectionStore.CONNECTIONS_KEY,
+                new JSONArray().put(current.getJSONObject(1)));
+        devices.getJSONObject(0).put("serverIndex", 0).put("craftServerSelectionTouched", true);
+        devices.getJSONObject(1).put("serverIndex", -1).put("craftServerSelectionTouched", true);
+        CraftProjectNetworkBridge.sync(project);
+
+        JSONObject craft = project.getJSONObject("craftSource");
+        JSONArray nativeConnections = craft.getJSONArray("TableConnections");
+        assertEquals(1, nativeConnections.length());
+        assertEquals("10.0.0.2", nativeConnections.getJSONObject(0).getString("name"));
+        assertEquals("2502", new JSONObject(nativeConnections.getJSONObject(0).getString("server"))
+                .getString("server"));
+        JSONArray nativeDevices = new JSONArray(craft.getJSONObject("TableNameProject")
+                .getString("deviceNetwork"));
+        assertEquals(2, nativeDevices.length());
+        assertEquals(2, nativeDevices.getJSONObject(0).getInt("idServer"));
+        assertEquals("2502", nativeDevices.getJSONObject(0).getString("server"));
+        assertEquals(0, nativeDevices.getJSONObject(1).getInt("idServer"));
+        assertEquals("", nativeDevices.getJSONObject(1).getString("server"));
+    }
 }
