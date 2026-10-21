@@ -279,6 +279,8 @@ public class ProjectMediaService {
             source = new JSONObject(craftJson);
             projectBytes = craftJson.getBytes(StandardCharsets.UTF_8);
             Map<String, String> mediaAliases = CraftProjectExporter.mediaPathAliases(projectJson, source);
+            Map<String, FbdCraftMacroDefinition> editedMacros =
+                    CraftProjectExporter.macroDefinitionsByMediaPath(source);
             long total = projectBytes.length;
             for (String path : CraftProjectExporter.referencedMedia(source)) {
                 byte[] bytes = null;
@@ -297,6 +299,15 @@ public class ProjectMediaService {
                 }
                 if (bytes == null || bytes.length == 0)
                     throw new IOException("Медиа KaScada отсутствует или недоступно: " + path, directFailure);
+                FbdCraftMacroDefinition macro = editedMacros.get(
+                        path.replace('\\', '/').toLowerCase(Locale.ROOT));
+                if (macro != null && macro.toJson().optJSONObject("bloodskyGraph") != null) {
+                    try { bytes = macro.toMcrBytes(); }
+                    catch (org.json.JSONException invalidEditedMacro) {
+                        throw new IOException("Не удалось сохранить граф макроса: " + path,
+                                invalidEditedMacro);
+                    }
+                }
                 if (total > MAX_BUNDLE_BYTES - bytes.length)
                     throw new IOException("Размер проекта KaScada превышает лимит ZIP");
                 total += bytes.length;
