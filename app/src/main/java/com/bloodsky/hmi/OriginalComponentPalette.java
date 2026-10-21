@@ -25,9 +25,10 @@ public final class OriginalComponentPalette {
         bind(dialog, R.id.kc_picker_tab_line_setter, "Линейный задатчик Craft", "Линейный задатчик", add);
         unavailable(dialog, R.id.kc_picker_tab_voice_recognition, "Распознавание речи");
         action(dialog, R.id.kc_picker_tab_digital_indicator, "Добавить: Цифровой индикатор",
-        action(dialog, R.id.kc_picker_tab_alarm, "Добавить: Сигнализатор Craft",
                 () -> add.add(OriginalCraftNumericIndicator.TYPE, "0"));
+        action(dialog, R.id.kc_picker_tab_alarm, "Добавить: Сигнализатор Craft",
                 () -> add.add("Звуковой сигнал", "Аларм"));
+        bind(dialog, R.id.kc_picker_tab_gif, "GIF Craft", "GIF", add);
         bind(dialog, R.id.kc_picker_tab_archive, "Архив Craft", "Архив", add);
         bind(dialog, R.id.kc_picker_tab_gif, "GIF Craft", "GIF", add);
         bind(dialog, R.id.kc_picker_tab_gateway, "Шлюз Craft", "Шлюз", add);
