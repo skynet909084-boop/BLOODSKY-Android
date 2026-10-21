@@ -9137,6 +9137,47 @@ public class MainActivity extends Activity {
         return named ? connected.equals(required) : legacyCount == required.size();
     }
 
+    /**
+     * Craft native RS/CTU/T blocks expose null until every upstream native output
+     * is available. A wire into an incomplete such block must not be treated as
+     * a Boolean false by the downstream state machine.
+     */
+    static boolean hasReadyCraftNativeInputOutputs(List<Widget> widgets,
+            List<FbdConnection> connections, int targetIndex, String... requiredPins) {
+        if (!hasCompleteFbdInputConnections(connections, targetIndex, requiredPins)
+                || widgets == null) return false;
+        java.util.Set<Integer> visiting = new java.util.HashSet<>();
+        for (FbdConnection edge : connections) {
+            if (edge != null && edge.target == targetIndex
+                    && !craftNativeOutputAvailable(widgets, connections, edge.source, visiting))
+                return false;
+        }
+        return true;
+    }
+
+    private static boolean craftNativeOutputAvailable(List<Widget> widgets,
+            List<FbdConnection> connections, int sourceIndex, java.util.Set<Integer> visiting) {
+        if (widgets == null || sourceIndex < 0 || sourceIndex >= widgets.size()) return false;
+        Widget source = widgets.get(sourceIndex);
+        String kind = canonicalFbdBlockType(source.type);
+        String[] required = "FBD RS".equals(kind) ? new String[]{"R", "S"}
+                : "FBD CRAFT CTU".equals(kind) ? new String[]{"+", "-", "R"}
+                : "FBD CRAFT T".equals(kind) ? new String[]{"IN"} : null;
+        if (required == null) return true;
+        if (!visiting.add(sourceIndex)) return false;
+        try {
+            if (!hasCompleteFbdInputConnections(connections, sourceIndex, required)) return false;
+            for (FbdConnection edge : connections) {
+                if (edge != null && edge.target == sourceIndex
+                        && !craftNativeOutputAvailable(widgets, connections, edge.source, visiting))
+                    return false;
+            }
+            return true;
+        } finally {
+            visiting.remove(sourceIndex);
+        }
+    }
+
     /** Imported unnamed graphs retain positional math; new named ones use terminals. */
     public static boolean hasNamedFbdInput(List<String> pins) {
         if (pins == null) return false;
@@ -9729,7 +9770,7 @@ public class MainActivity extends Activity {
         if ("FBD RS".equals(widget.type)) {
             // Original FB_RS returns no output and does not scan its latch until both
             // input blocks expose values. Preserve that nullable-output contract.
-            if (!hasCompleteFbdInputConnections(connectionsList, index, "R", "S")) {
+            if (!hasReadyCraftNativeInputOutputs(widgetsList, connectionsList, index, "R", "S")) {
                 cacheNumeric[index] = Double.NaN;
                 return false;
             }
@@ -9749,7 +9790,7 @@ public class MainActivity extends Activity {
         if ("FBD CRAFT T".equals(widget.type)) {
             // Craft FB_TRIGGER has no output and does not advance its edge state
             // until its source input has a connected output.
-            if (!hasCompleteFbdInputConnections(connectionsList, index, "IN")) {
+            if (!hasReadyCraftNativeInputOutputs(widgetsList, connectionsList, index, "IN")) {
                 cacheNumeric[index] = Double.NaN;
                 return false;
             }
@@ -9784,7 +9825,7 @@ public class MainActivity extends Activity {
             // separate versioned block; legacy BLOODSKY CTU stays unchanged.
             // Craft FB_CTU returns null and skips its scan until all three
             // source contacts have an output; do not treat disconnected pins as false.
-            if (!hasCompleteFbdInputConnections(connectionsList, index, "+", "-", "R")) {
+            if (!hasReadyCraftNativeInputOutputs(widgetsList, connectionsList, index, "+", "-", "R")) {
                 cacheNumeric[index] = Double.NaN;
                 return false;
             }
