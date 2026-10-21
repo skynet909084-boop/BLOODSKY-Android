@@ -15,8 +15,9 @@ public class FbdCraftRegisterGraphTest {
 
     private static double number(List<MainActivity.Widget> nodes,
                                  List<MainActivity.FbdConnection> edges, int index) {
-        int n = nodes.size();
-        return MainActivity.evaluateFbdBlockNumeric(nodes, edges, index,
+        FbdCraftTestGraphs.Graph graph = FbdCraftTestGraphs.withReadyCraftCounters(nodes, edges);
+        int n = graph.widgets.size();
+        return MainActivity.evaluateFbdBlockNumeric(graph.widgets, graph.connections, index,
                 new boolean[n], new boolean[n], new boolean[n], new double[n]);
     }
 
@@ -54,8 +55,9 @@ public class FbdCraftRegisterGraphTest {
     private static double number(List<MainActivity.Widget> nodes,
                                  List<MainActivity.FbdConnection> edges, int index,
                                  CraftSystemRegisterBank userRegisters) {
-        int n = nodes.size();
-        return MainActivity.evaluateFbdBlockNumeric(nodes, edges, index,
+        FbdCraftTestGraphs.Graph graph = FbdCraftTestGraphs.withReadyCraftCounters(nodes, edges);
+        int n = graph.widgets.size();
+        return MainActivity.evaluateFbdBlockNumeric(graph.widgets, graph.connections, index,
                 new boolean[n], new boolean[n], new boolean[n], new double[n], userRegisters);
     }
 
