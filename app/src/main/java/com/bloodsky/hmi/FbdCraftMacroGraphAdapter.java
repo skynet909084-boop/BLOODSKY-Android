@@ -319,10 +319,10 @@ final class FbdCraftMacroGraphAdapter {
                     child.put("isHighRegister", widget.optBoolean("craftSwapWord"));
                 if (widget.has("craftSwapByte"))
                     child.put("isHighByte", widget.optBoolean("craftSwapByte"));
-            } else if (componentId == 117 && widget.has("craftSensorAxis")) {
+            } else if (componentId == 120 && widget.has("craftSensorAxis")) {
                 int axis = widget.optInt("craftSensorAxis", -1);
                 if (axis >= 1 && axis <= 3) child.put("type", axis);
-            } else if (componentId == 119 && widget.has("craftSunriseMode")) {
+            } else if (componentId == 127 && widget.has("craftSunriseMode")) {
                 int mode = sunriseType(widget.optString("craftSunriseMode", ""));
                 if (mode > 0) child.put("type", mode);
             } else if ((componentId == 101 || componentId == 105 || componentId == 108)) {

@@ -142,11 +142,11 @@ public final class CraftProjectExporter {
                         if (widget.has("craftNamedConstant"))
                             merged.put("constant", widget.optString("craftNamedConstant"));
                     }
-                    if (componentId == 117 && widget.has("craftSensorAxis")) {
+                    if (componentId == 120 && widget.has("craftSensorAxis")) {
                         int axis = widget.optInt("craftSensorAxis", -1);
                         if (axis >= 1 && axis <= 3) merged.put("type", axis);
                     }
-                    if (componentId == 119 && widget.has("craftSunriseMode")) {
+                    if (componentId == 127 && widget.has("craftSunriseMode")) {
                         int mode = craftSunriseType(widget.optString("craftSunriseMode", ""));
                         if (mode > 0) merged.put("type", mode);
                     }
