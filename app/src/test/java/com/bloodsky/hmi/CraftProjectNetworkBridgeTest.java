@@ -108,4 +108,34 @@ public class CraftProjectNetworkBridgeTest {
         assertEquals(0, nativeDevices.getJSONObject(1).getInt("idServer"));
         assertEquals("", nativeDevices.getJSONObject(1).getString("server"));
     }
+
+    @Test public void addedAndRemovedDeviceSlotsRoundTripToNativeCraftProject() throws Exception {
+        JSONObject source = source("[]", new JSONArray());
+        source.getJSONObject("TableNameProject").put("countDevice", 0);
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(source.toString()));
+        JSONArray devices = CraftServerConnectionStore.devices(project);
+        assertEquals(0, devices.length());
+
+        devices.put(new JSONObject().put("name", "Boiler").put("address", 7).put("serverIndex", -1));
+        devices.put(new JSONObject().put("name", "Pump").put("address", 8).put("serverIndex", -1));
+        project.put(CraftServerConnectionStore.DEVICES_KEY, devices);
+        CraftProjectNetworkBridge.sync(project);
+
+        JSONObject nativeProject = project.getJSONObject("craftSource").getJSONObject("TableNameProject");
+        JSONArray nativeSlots = new JSONArray(nativeProject.getString("deviceNetwork"));
+        assertEquals(2, nativeProject.getInt("countDevice"));
+        assertEquals(2, nativeSlots.length());
+        assertEquals(0, nativeSlots.getJSONObject(0).getInt("num"));
+        assertEquals("Boiler", nativeSlots.getJSONObject(0).getString("name"));
+        assertEquals(1, nativeSlots.getJSONObject(1).getInt("num"));
+        assertEquals("Pump", nativeSlots.getJSONObject(1).getString("name"));
+
+        project.put(CraftServerConnectionStore.DEVICES_KEY, new JSONArray().put(devices.getJSONObject(0)));
+        CraftProjectNetworkBridge.sync(project);
+        nativeProject = project.getJSONObject("craftSource").getJSONObject("TableNameProject");
+        nativeSlots = new JSONArray(nativeProject.getString("deviceNetwork"));
+        assertEquals(1, nativeProject.getInt("countDevice"));
+        assertEquals(1, nativeSlots.length());
+        assertEquals("Boiler", nativeSlots.getJSONObject(0).getString("name"));
+    }
 }
