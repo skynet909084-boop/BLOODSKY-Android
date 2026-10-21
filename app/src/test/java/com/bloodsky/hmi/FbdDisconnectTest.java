@@ -337,6 +337,35 @@ public class FbdDisconnectTest {
         assertTrue("Missing source output must not release the + edge latch", counter.craftLastPlus);
     }
 
+    @Test public void craftTriggerDoesNotScanWhenItsUpstreamCraftTimerOutputIsUnavailable() {
+        MainActivity.Widget set = new MainActivity.Widget();
+        set.type = "FBD Вход";
+        set.inputValue = true;
+        MainActivity.Widget incompleteRs = new MainActivity.Widget();
+        incompleteRs.type = "FBD RS";
+        MainActivity.Widget ms = new MainActivity.Widget();
+        ms.type = "FBD Вход";
+        ms.inputValue = true;
+        MainActivity.Widget timer = new MainActivity.Widget();
+        timer.type = "FBD CRAFT TIMER";
+        MainActivity.Widget trigger = new MainActivity.Widget();
+        trigger.type = "FBD CRAFT T";
+        trigger.craftToggleLastInput = true;
+
+        List<MainActivity.Widget> nodes = java.util.Arrays.asList(set, incompleteRs, ms, timer, trigger);
+        List<MainActivity.FbdConnection> edges = java.util.Arrays.asList(
+                MainActivity.pinnedFbdConnection(0, "Q", 1, "S"),
+                MainActivity.pinnedFbdConnection(1, "Q", 3, "IN"),
+                MainActivity.pinnedFbdConnection(2, "Q", 3, "MS"),
+                MainActivity.pinnedFbdConnection(3, "Q", 4, "IN"));
+
+        double output = MainActivity.evaluateFbdBlockNumeric(nodes, edges, 4,
+                new boolean[5], new boolean[5], new boolean[5], new double[5]);
+        assertTrue("A timer with a missing source output must remain unavailable", Double.isNaN(output));
+        assertTrue("An unavailable timer output must not clear the trigger edge state",
+                trigger.craftToggleLastInput);
+    }
+
     @Test public void tonExecutionUsesNamedInNotFirstIncomingWire() throws Exception {
         MainActivity.Widget first = new MainActivity.Widget();
         first.type = "FBD Вход";
