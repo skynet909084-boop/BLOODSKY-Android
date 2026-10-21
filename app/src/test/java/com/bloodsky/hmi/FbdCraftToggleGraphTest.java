@@ -54,6 +54,29 @@ public class FbdCraftToggleGraphTest {
         assertTrue(scan(nodes, edges));
     }
 
+    @Test public void nativeTriggerWaitsForConnectedInputBeforeScanning() throws Exception {
+        MainActivity.Widget input = widget("FBD Вход");
+        MainActivity.Widget trigger = widget("FBD CRAFT T");
+        trigger.craftToggleOutput = true;
+        trigger.craftToggleLastInput = false;
+        List<MainActivity.Widget> nodes = Arrays.asList(input, trigger);
+        boolean[] visiting = new boolean[2], valid = new boolean[2], values = new boolean[2];
+        double[] numeric = new double[2];
+
+        assertFalse(MainActivity.evaluateFbdBlock(nodes, Collections.emptyList(), 1,
+                visiting, valid, values, numeric));
+        assertTrue("Unwired Craft trigger has no Q output", Double.isNaN(numeric[1]));
+        assertTrue("An unwired scan must preserve the prior output", trigger.craftToggleOutput);
+        assertFalse(trigger.craftToggleLastInput);
+
+        List<MainActivity.FbdConnection> edges = Collections.singletonList(
+                MainActivity.pinnedFbdConnection(0, "Q", 1, "IN"));
+        assertTrue("Reconnected false input exposes the retained Craft output",
+                MainActivity.evaluateFbdBlock(nodes, edges, 1, new boolean[2],
+                        new boolean[2], new boolean[2], new double[2]));
+        assertTrue(trigger.craftToggleOutput);
+    }
+
     @Test public void newToggleHasFreshRuntimeOnLoadAndNoJsonFields() throws Exception {
         MainActivity.Widget trigger = widget("FBD CRAFT T");
         trigger.craftToggleLastInput = true;
