@@ -4,7 +4,9 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 
 /** Writes supported edits back into the original Craft tables while retaining opaque fields. */
@@ -21,11 +23,11 @@ public final class CraftProjectExporter {
         if (screens == null || screens.length() != original.getJSONObject("TableNameProject").optInt("countScreen", 1))
             throw new IOException("Экспорт KaScada требует исходное число экранов");
 
-        // Connections are still represented by Craft saveKey/keyOut/numOnIn. Until edited
-        // graph writes are supported, compare the editable graph with the imported graph.
+        // Re-import the source once to distinguish untouched opaque Craft links from edits.
         JSONObject imported = new JSONObject(CraftProjectImporter.convert(original.toString()));
         JSONArray importedScreens = imported.getJSONArray("screens");
         boolean[] seen = new boolean[sourceRows.length()];
+        List<int[]> sourceRowsByScreen = new ArrayList<>();
         JSONObject result = new JSONObject(original.toString());
         JSONArray outputRows = result.getJSONArray("TableComponent");
         JSONObject meta = result.getJSONObject("TableNameProject");
@@ -36,9 +38,8 @@ public final class CraftProjectExporter {
         for (int s = 0; s < screens.length(); s++) {
             JSONObject screen = screens.optJSONObject(s);
             JSONObject baselineScreen = importedScreens.optJSONObject(s);
-            if (screen == null || baselineScreen == null
-                    || !sameJson(screen.optJSONArray("connections"), baselineScreen.optJSONArray("connections")))
-                throw new IOException("Изменение FBD-связей пока нельзя экспортировать в формат KaScada");
+            if (screen == null || baselineScreen == null)
+                throw new IOException("Экран проекта повреждён");
             String prefix = "screen" + (s + 1);
             JSONObject baselineBackgrounds = original.getJSONObject("TableNameProject")
                     .optJSONObject("jsTableNameProject_screenBackground");
@@ -51,6 +52,7 @@ public final class CraftProjectExporter {
 
             JSONArray widgets = screen.optJSONArray("widgets");
             if (widgets == null) throw new IOException("В экране отсутствует список компонентов");
+            int[] sourceRowsForScreen = new int[widgets.length()];
             for (int w = 0; w < widgets.length(); w++) {
                 JSONObject widget = widgets.optJSONObject(w);
                 if (widget == null) throw new IOException("Компонент проекта повреждён");
@@ -58,6 +60,7 @@ public final class CraftProjectExporter {
                 if (row < 0 || row >= sourceRows.length() || seen[row])
                     throw new IOException("Добавление, удаление или копирование компонентов пока нельзя экспортировать в KaScada");
                 seen[row] = true;
+                sourceRowsForScreen[w] = row;
                 JSONObject output = outputRows.getJSONObject(row);
                 JSONObject source = sourceRows.getJSONObject(row);
                 JSONObject sourceOther = objectValue(source.opt("jsTableComponent_other"));
@@ -87,13 +90,125 @@ public final class CraftProjectExporter {
                     output.put("jsTableComponent_other", raw instanceof String ? merged.toString() : merged);
                 }
             }
+            sourceRowsByScreen.add(sourceRowsForScreen);
         }
         for (boolean mapped : seen) if (!mapped)
             throw new IOException("Удаление компонентов пока нельзя экспортировать в KaScada");
+        writeFbdConnections(screens, importedScreens, sourceRowsByScreen, sourceRows, outputRows);
         meta.put("countScreen", screens.length());
         if (meta.has("jsTableNameProject_screenBackground"))
             meta.put("jsTableNameProject_screenBackground", backgrounds);
         return result.toString();
+    }
+
+    private static void writeFbdConnections(JSONArray screens, JSONArray importedScreens,
+                                            List<int[]> sourceRowsByScreen, JSONArray sourceRows,
+                                            JSONArray outputRows) throws Exception {
+        for (int screenIndex = 0; screenIndex < screens.length(); screenIndex++) {
+            JSONObject screen = screens.getJSONObject(screenIndex);
+            JSONArray edges = screen.optJSONArray("connections");
+            JSONObject baseline = importedScreens.getJSONObject(screenIndex);
+            if (sameJson(edges, baseline.optJSONArray("connections"))) continue;
+            if (edges == null) throw new IOException("В экране отсутствует список FBD-связей");
+
+            int[] rows = sourceRowsByScreen.get(screenIndex);
+            JSONArray widgets = screen.getJSONArray("widgets");
+            int originalMappedOutgoing = 0;
+            for (int widgetIndex = 0; widgetIndex < rows.length; widgetIndex++) {
+                JSONObject widget = widgets.getJSONObject(widgetIndex);
+                if (!isCraftFbd(widget)) continue;
+                JSONObject sourceOther = objectValue(sourceRows.getJSONObject(rows[widgetIndex])
+                        .opt("jsTableComponent_other"));
+                if (sourceOther.optInt("keyOut", -1) >= 0) originalMappedOutgoing++;
+            }
+            if (originalMappedOutgoing != baseline.optJSONArray("connections").length())
+                throw new IOException("Исходная FBD-связь не имеет однозначного представления для экспорта");
+
+            int[] outgoingCount = new int[rows.length];
+            JSONObject[] outgoing = new JSONObject[rows.length];
+            for (int edgeIndex = 0; edgeIndex < edges.length(); edgeIndex++) {
+                JSONObject edge = edges.optJSONObject(edgeIndex);
+                if (edge == null) throw new IOException("Некорректная FBD-связь");
+                int sourceIndex = edge.optInt("source", -1);
+                int targetIndex = edge.optInt("target", -1);
+                if (sourceIndex < 0 || sourceIndex >= rows.length || targetIndex < 0 || targetIndex >= rows.length
+                        || !isCraftFbd(widgets.getJSONObject(sourceIndex))
+                        || !isCraftFbd(widgets.getJSONObject(targetIndex)))
+                    throw new IOException("Связь должна соединять два исходных блока FBD KaScada");
+                if (++outgoingCount[sourceIndex] > 1)
+                    throw new IOException("KaScada хранит только один исходящий провод у блока");
+                outgoing[sourceIndex] = edge;
+            }
+
+            for (int sourceIndex = 0; sourceIndex < rows.length; sourceIndex++) {
+                JSONObject sourceWidget = widgets.getJSONObject(sourceIndex);
+                if (!isCraftFbd(sourceWidget)) continue;
+                JSONObject sourceRow = sourceRows.getJSONObject(rows[sourceIndex]);
+                JSONObject oldOther = objectValue(sourceRow.opt("jsTableComponent_other"));
+                JSONObject updatedOther = new JSONObject(oldOther.toString());
+                JSONObject edge = outgoing[sourceIndex];
+                if (edge == null) {
+                    if (oldOther.optInt("keyOut", -1) >= 0) {
+                        updatedOther.put("keyOut", -1);
+                        updatedOther.put("numOnIn", -1);
+                        storeOther(outputRows.getJSONObject(rows[sourceIndex]), sourceRow, updatedOther);
+                    }
+                    continue;
+                }
+
+                int targetIndex = edge.getInt("target");
+                JSONObject targetWidget = widgets.getJSONObject(targetIndex);
+                JSONObject targetRow = sourceRows.getJSONObject(rows[targetIndex]);
+                JSONObject targetOther = objectValue(targetRow.opt("jsTableComponent_other"));
+                int targetSaveKey = targetOther.optInt("saveKey", Integer.MIN_VALUE);
+                if (targetSaveKey < 0)
+                    throw new IOException("У целевого блока нет корректного ключа saveKey KaScada");
+                if (!isUniqueSaveKey(targetOther, rows, sourceRows))
+                    throw new IOException("Ключ saveKey целевого блока неоднозначен на экране");
+
+                MainActivity.Widget parsedSource = MainActivity.widgetFromJson(sourceWidget);
+                MainActivity.Widget parsedTarget = MainActivity.widgetFromJson(targetWidget);
+                String[] sourcePins = MainActivity.knownFbdPins(parsedSource, true);
+                String[] targetPins = MainActivity.knownFbdPins(parsedTarget, false);
+                String sourcePin = edge.optString("sourcePin", "");
+                String targetPin = edge.optString("targetPin", "");
+                int inputNumber = pinIndex(targetPins, targetPin) + 1;
+                if (sourcePins.length == 0 || !sourcePins[0].equalsIgnoreCase(sourcePin) || inputNumber < 1
+                        || !MainActivity.hasCompatibleKnownFbdPins(edge, parsedSource, parsedTarget))
+                    throw new IOException("KaScada не может представить выбранные выводы FBD-связи");
+                updatedOther.put("keyOut", targetSaveKey);
+                updatedOther.put("numOnIn", inputNumber);
+                storeOther(outputRows.getJSONObject(rows[sourceIndex]), sourceRow, updatedOther);
+            }
+        }
+    }
+
+    private static boolean isUniqueSaveKey(JSONObject targetOther, int[] screenRows,
+                                           JSONArray sourceRows) throws Exception {
+        int key = targetOther.optInt("saveKey", Integer.MIN_VALUE);
+        int count = 0;
+        for (int row : screenRows) {
+            JSONObject other = objectValue(sourceRows.getJSONObject(row).opt("jsTableComponent_other"));
+            if (other.optInt("saveKey", Integer.MIN_VALUE) == key) count++;
+        }
+        return count == 1 && key >= 0;
+    }
+
+    private static boolean isCraftFbd(JSONObject widget) {
+        return widget != null && widget.optString("type", "").startsWith("FBD ")
+                && widget.optInt("craftComponentId", -1) >= 101
+                && widget.optInt("craftComponentId", -1) <= 140;
+    }
+
+    private static int pinIndex(String[] pins, String requested) {
+        for (int i = 0; i < pins.length; i++) if (pins[i].equalsIgnoreCase(requested)) return i;
+        return -1;
+    }
+
+    private static void storeOther(JSONObject outputRow, JSONObject sourceRow,
+                                   JSONObject other) throws Exception {
+        Object raw = sourceRow.opt("jsTableComponent_other");
+        outputRow.put("jsTableComponent_other", raw instanceof String ? other.toString() : other);
     }
 
     /** Craft media references are kept verbatim in the .pro file and bundled at their original paths. */
