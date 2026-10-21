@@ -28,8 +28,9 @@ public class FbdCraftMoveTest {
 
     private static boolean scan(List<MainActivity.Widget> nodes,
                                 List<MainActivity.FbdConnection> edges) {
-        int n = nodes.size();
-        return MainActivity.evaluateFbdBlock(nodes, edges, 2, new boolean[n],
+        FbdCraftTestGraphs.Graph graph = FbdCraftTestGraphs.withReadyCraftCounters(nodes, edges);
+        int n = graph.widgets.size();
+        return MainActivity.evaluateFbdBlock(graph.widgets, graph.connections, 2, new boolean[n],
                 new boolean[n], new boolean[n], new double[n]);
     }
 
