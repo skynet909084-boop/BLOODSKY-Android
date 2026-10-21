@@ -16,7 +16,8 @@ public final class CraftGraduatedGaugeProperties {
         if (max <= min || countTextScale < 0 || countTextScale > 64
                 || sizeText < 1 || sizeText > 256)
             throw new IllegalArgumentException("Проверь диапазон, число делений и размер текста шкалы");
-        if (percentLowScale < 0 || percentMediumScale > 100
+        if (percentLowScale < 0 || percentLowScale > 100
+                || percentMediumScale < 0 || percentMediumScale > 100
                 || percentLowScale >= percentMediumScale)
             throw new IllegalArgumentException("Границы цветовых зон должны идти по возрастанию от 0 до 100%");
         String safeIndicator = indicatorName == null ? "NormalIndicator" : indicatorName.trim();

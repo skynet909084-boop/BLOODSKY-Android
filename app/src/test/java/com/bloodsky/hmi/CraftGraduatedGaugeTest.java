@@ -75,4 +75,19 @@ public class CraftGraduatedGaugeTest {
             fail("expected validation failure");
         } catch (IllegalArgumentException expected) { }
     }
+
+    @Test public void rejectsColorThresholdsOutsidePercentRange() throws Exception {
+        assertInvalidThresholds(-1, 50);
+        assertInvalidThresholds(101, 102);
+        assertInvalidThresholds(20, -1);
+        assertInvalidThresholds(20, 101);
+    }
+
+    private static void assertInvalidThresholds(int low, int medium) throws Exception {
+        try {
+            CraftGraduatedGaugeProperties.apply(new JSONObject(), 0, 100, 6, 20,
+                    0, 0, 0, 0, 0, low, medium, false, "NormalIndicator");
+            fail("expected percentage range validation failure");
+        } catch (IllegalArgumentException expected) { }
+    }
 }
