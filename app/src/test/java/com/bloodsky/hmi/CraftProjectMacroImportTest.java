@@ -109,6 +109,45 @@ public class CraftProjectMacroImportTest {
                 new CraftSystemRegisterBank(), false);
         assertEquals(31.0, numeric[0], 0.0);
 
+        // Exercise the same validated graph update used by the nested macro editor: edit the
+        // imported Inner constant, then propagate that definition through Outer before saving.
+        FbdCraftMacroDefinition outerDefinition = FbdCraftMacroDefinition.fromJson(
+                imported.getJSONObject("craftMacroDefinition").toString());
+        JSONObject outerGraph = outerDefinition.toJson().getJSONObject("bloodskyGraph");
+        JSONObject innerInstanceJson = outerGraph.getJSONArray("widgets").getJSONObject(0);
+        MainActivity.Widget innerInstance = MainActivity.widgetFromJson(innerInstanceJson);
+        FbdCraftMacroDefinition innerDefinition = FbdCraftMacroDefinition.fromJson(
+                innerInstance.extraFields.getJSONObject("craftMacroDefinition").toString());
+        JSONObject innerGraph = innerDefinition.toJson().getJSONObject("bloodskyGraph");
+        java.util.List<MainActivity.Widget> innerWidgets = new java.util.ArrayList<>();
+        JSONArray innerWidgetJson = innerGraph.getJSONArray("widgets");
+        for (int i = 0; i < innerWidgetJson.length(); i++)
+            innerWidgets.add(MainActivity.widgetFromJson(innerWidgetJson.getJSONObject(i)));
+        innerWidgets.get(0).extraFields.put("craftVarConstant", "47");
+        java.util.List<MainActivity.FbdConnection> innerConnections = new java.util.ArrayList<>();
+        JSONArray innerConnectionJson = innerGraph.getJSONArray("connections");
+        for (int i = 0; i < innerConnectionJson.length(); i++)
+            innerConnections.add(MainActivity.connectionFromJson(
+                    innerConnectionJson.getJSONObject(i)));
+        FbdCraftMacroDefinition editedInner = MainActivity.updateCraftMacroDefinitionGraph(
+                innerDefinition, innerWidgets, innerConnections,
+                innerGraph.getInt("outputNode"), innerGraph.getString("outputPin"));
+        innerInstance.extraFields.put("craftMacroDefinition", editedInner.toJson());
+        JSONObject editedInnerInstance = MainActivity.widgetToJson(innerInstance);
+        java.util.List<MainActivity.Widget> outerWidgets = Collections.singletonList(
+                MainActivity.widgetFromJson(editedInnerInstance));
+        FbdCraftMacroDefinition editedOuter = MainActivity.updateCraftMacroDefinitionGraph(
+                outerDefinition, outerWidgets, Collections.emptyList(),
+                outerGraph.getInt("outputNode"), outerGraph.getString("outputPin"));
+        imported.put("craftMacroDefinition", editedOuter.toJson());
+
+        runtime = MainActivity.widgetFromJson(imported);
+        numeric = new double[1];
+        MainActivity.evaluateFbdBlock(Collections.singletonList(runtime), Collections.emptyList(), 0,
+                new boolean[1], new boolean[1], new boolean[1], numeric,
+                new CraftSystemRegisterBank(), false);
+        assertEquals(47.0, numeric[0], 0.0);
+
         JSONObject exported = new JSONObject(CraftProjectExporter.export(converted.toString()));
         Set<String> referenced = CraftProjectExporter.referencedMedia(exported);
         assertTrue(referenced.contains("Outer.mcr"));
@@ -121,9 +160,12 @@ public class CraftProjectMacroImportTest {
         assertEquals("keep-me", exportedOther.getString("vendorOther"));
         assertTrue("edited macro definition must survive .pro export",
                 exportedOther.has("craftMacroDefinition"));
-        assertEquals("project/Inner.mcr", exportedOther.getJSONObject("craftMacroDefinition")
+        JSONObject exportedInner = exportedOther.getJSONObject("craftMacroDefinition")
+                .getJSONObject("bloodskyGraph").getJSONArray("widgets").getJSONObject(0);
+        assertEquals("project/Inner.mcr", exportedInner.getString("craftMacroMediaPath"));
+        assertEquals("47", exportedInner.getJSONObject("craftMacroDefinition")
                 .getJSONObject("bloodskyGraph").getJSONArray("widgets").getJSONObject(0)
-                .getString("craftMacroMediaPath"));
+                .getString("craftVarConstant"));
 
         java.io.ByteArrayOutputStream zipBytes = new java.io.ByteArrayOutputStream();
         ProjectMediaService.exportCraftProjectZipBundle(zipBytes, converted.toString(), path -> {
@@ -147,6 +189,18 @@ public class CraftProjectMacroImportTest {
         }
         assertNotNull(exportedProject);
         assertArrayEquals(macros.get("project/Inner.mcr"), exportedMedia.get("Inner.mcr"));
+
+        JSONObject reopenedBloodsky = new JSONObject(CraftProjectImporter.convert(
+                new String(exportedProject, StandardCharsets.UTF_8), "Project.pro", exportedMedia));
+        JSONObject reopenedMacro = reopenedBloodsky.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0);
+        MainActivity.Widget reopenedRuntime = MainActivity.widgetFromJson(reopenedMacro);
+        double[] reopenedNumeric = new double[1];
+        MainActivity.evaluateFbdBlock(Collections.singletonList(reopenedRuntime),
+                Collections.emptyList(), 0, new boolean[1], new boolean[1], new boolean[1],
+                reopenedNumeric, new CraftSystemRegisterBank(), false);
+        assertEquals("BLOODSKY .pro plus media round trip must keep the edited nested graph",
+                47.0, reopenedNumeric[0], 0.0);
 
         // Simulate a source-compatible KaScada .pro: BLOODSKY-only inline metadata is absent,
         // so the nested definition must be recovered from the bundled original .mcr files.
