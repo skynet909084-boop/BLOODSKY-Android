@@ -155,6 +155,13 @@ public final class CraftProjectExporter {
                                 widget.optString("compareOperator", ""));
                         if (action > 0) merged.put("compareAction", action);
                     }
+                    if (componentId == 5 && OriginalIndicator.supports(widget.optString("type", ""))) {
+                        JSONObject indicator = OriginalIndicator.settings(widget);
+                        for (String key : new String[]{"isImageUserOff", "isImageUserOn",
+                                "pathOrNameOff", "pathOrNameOn"}) {
+                            if (indicator.has(key)) merged.put(key, indicator.get(key));
+                        }
+                    }
                     Object raw = source.opt("jsTableComponent_other");
                     output.put("jsTableComponent_other", raw instanceof String ? merged.toString() : merged);
                 }
