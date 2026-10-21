@@ -157,7 +157,7 @@ public class MainActivity extends Activity {
         @Override public void onLocationChanged(android.location.Location location) {
             if (location == null || !operatorMode || editor == null) return;
             double kmh = Double.isNaN(location.getSpeed()) ? 0.0 : location.getSpeed() * 3.6;
-            for (Widget widget : widgets) if ("FBD CRAFT SENSOR SPEED".equals(widget.type)) {
+            for (Widget widget : fbdRuntimeWidgetsIncludingMacros(widgets)) if ("FBD CRAFT SENSOR SPEED".equals(widget.type)) {
                 widget.craftSensorValue = kmh; widget.craftSensorValid = true;
             }
             editor.invalidate();
@@ -172,11 +172,11 @@ public class MainActivity extends Activity {
             if (!operatorMode || editor == null || event.values == null) return;
             boolean changed = false;
             if (event.sensor.getType() == android.hardware.Sensor.TYPE_LIGHT && event.values.length > 0) {
-                for (Widget widget : widgets) if ("FBD CRAFT SENSOR LIGHT".equals(widget.type)) {
+                for (Widget widget : fbdRuntimeWidgetsIncludingMacros(widgets)) if ("FBD CRAFT SENSOR LIGHT".equals(widget.type)) {
                     widget.craftSensorValue = Math.max(0, (int)event.values[0]); widget.craftSensorValid = true; changed = true;
                 }
             } else if (event.sensor.getType() == android.hardware.Sensor.TYPE_ORIENTATION && event.values.length >= 3) {
-                for (Widget widget : widgets) if ("FBD CRAFT SENSOR ORIENTATION".equals(widget.type)) {
+                for (Widget widget : fbdRuntimeWidgetsIncludingMacros(widgets)) if ("FBD CRAFT SENSOR ORIENTATION".equals(widget.type)) {
                     widget.craftOrientationValues[0] = event.values[0];
                     widget.craftOrientationValues[1] = event.values[1];
                     widget.craftOrientationValues[2] = event.values[2];
@@ -1285,7 +1285,7 @@ public class MainActivity extends Activity {
     private void startFbdSensors() {
         if (!activityResumed || !operatorMode || editor == null) return;
         boolean neededLight = false, neededOrientation = false, neededSpeed = false;
-        for (Widget widget : widgets) {
+        for (Widget widget : fbdRuntimeWidgetsIncludingMacros(widgets)) {
             neededLight |= "FBD CRAFT SENSOR LIGHT".equals(widget.type);
             neededOrientation |= "FBD CRAFT SENSOR ORIENTATION".equals(widget.type);
             neededSpeed |= "FBD CRAFT SENSOR SPEED".equals(widget.type);
@@ -10116,20 +10116,36 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** Execute a validated, acyclic BLOODSKY macro graph in its own runtime namespace. */
-    private static boolean evaluateCraftMacroBlock(List<Widget> widgetsList,
-            List<FbdConnection> connectionsList, int index, boolean[] visiting,
-            boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
-        Widget macro = widgetsList.get(index);
+    /** Includes runtime children so operator sensor listeners can reach imported macro sensors. */
+    static List<Widget> fbdRuntimeWidgetsIncludingMacros(List<Widget> roots) {
+        List<Widget> result = new ArrayList<>();
+        java.util.Set<Widget> seen = java.util.Collections.newSetFromMap(
+                new java.util.IdentityHashMap<Widget, Boolean>());
+        appendFbdRuntimeWidgets(roots, result, seen, 0);
+        return result;
+    }
+
+    private static void appendFbdRuntimeWidgets(List<Widget> source, List<Widget> result,
+            java.util.Set<Widget> seen, int depth) {
+        if (source == null || depth > 8) return;
+        for (Widget widget : source) {
+            if (widget == null || !seen.add(widget)) continue;
+            result.add(widget);
+            if ("FBD CRAFT MACRO".equals(canonicalFbdBlockType(widget.type))
+                    && ensureCraftMacroRuntimeGraph(widget))
+                appendFbdRuntimeWidgets(widget.craftMacroRuntimeWidgets, result, seen, depth + 1);
+        }
+    }
+
+    private static boolean ensureCraftMacroRuntimeGraph(Widget macro) {
         FbdCraftMacroDefinition definition = macroDefinition(macro);
-        if (definition == null) { cacheNumeric[index] = Double.NaN; return false; }
+        if (definition == null) return false;
         final JSONObject graph;
         try { graph = definition.toJson().optJSONObject("bloodskyGraph"); }
-        catch (Exception invalid) { cacheNumeric[index] = Double.NaN; return false; }
-        if (graph == null) { cacheNumeric[index] = Double.NaN; return false; }
-        if (macro.craftMacroRuntimeGraphSource != graph
-                && (macro.craftMacroRuntimeGraphSource == null
-                    || !macro.craftMacroRuntimeGraphSource.toString().equals(graph.toString()))) {
+        catch (Exception invalid) { return false; }
+        if (graph == null) return false;
+        if (macro.craftMacroRuntimeGraphSource == null
+                || !macro.craftMacroRuntimeGraphSource.toString().equals(graph.toString())) {
             try {
                 JSONArray rawWidgets = graph.getJSONArray("widgets");
                 JSONArray rawConnections = graph.getJSONArray("connections");
@@ -10148,10 +10164,20 @@ public class MainActivity extends Activity {
                 macro.craftMacroRuntimeGraphSource = null;
                 macro.craftMacroRuntimeWidgets = null;
                 macro.craftMacroRuntimeConnections = null;
-                cacheNumeric[index] = Double.NaN;
                 return false;
             }
         }
+        return macro.craftMacroRuntimeWidgets != null && !macro.craftMacroRuntimeWidgets.isEmpty();
+    }
+
+    /** Execute a validated, acyclic BLOODSKY macro graph in its own runtime namespace. */
+    private static boolean evaluateCraftMacroBlock(List<Widget> widgetsList,
+            List<FbdConnection> connectionsList, int index, boolean[] visiting,
+            boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
+        Widget macro = widgetsList.get(index);
+        FbdCraftMacroDefinition definition = macroDefinition(macro);
+        if (definition == null) { cacheNumeric[index] = Double.NaN; return false; }
+        if (!ensureCraftMacroRuntimeGraph(macro)) { cacheNumeric[index] = Double.NaN; return false; }
         List<Widget> nested = macro.craftMacroRuntimeWidgets;
         List<FbdConnection> nestedEdges = macro.craftMacroRuntimeConnections;
         if (nested == null || nested.isEmpty()) { cacheNumeric[index] = Double.NaN; return false; }

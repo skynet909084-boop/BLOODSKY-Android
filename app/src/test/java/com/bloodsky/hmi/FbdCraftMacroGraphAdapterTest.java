@@ -135,6 +135,45 @@ public class FbdCraftMacroGraphAdapterTest {
         }
     }
 
+    @Test public void importedMacroPhoneSensorsJoinOperatorRuntimeSensorPollingSet() throws Exception {
+        int[] ids = {120, 131, 132};
+        String[] types = {"FBD CRAFT SENSOR ORIENTATION", "FBD CRAFT SENSOR LIGHT",
+                "FBD CRAFT SENSOR SPEED"};
+        int[] outputTypes = {3, 2, 3};
+        double[] expected = {271.5, 42.0, 8.25};
+
+        for (int i = 0; i < ids.length; i++) {
+            JSONObject child = new JSONObject().put("componentId", ids[i])
+                    .put("x", 0).put("y", 0).put("saveKey", 50).put("keyOut", 900)
+                    .put("nMcr", "PhoneSensor" + i).put("unIdMcr", 40 + i);
+            if (ids[i] == 120) child.put("type", 3);
+            JSONObject source = new JSONObject().put("name", "PhoneSensor" + i)
+                    .put("uniqueId", 40 + i).put("countIn", 0)
+                    .put("typeOut", outputTypes[i]).put("nameOut", "Q")
+                    .put("saveKeyOut", 900).put("fbInMacros", new JSONArray().put(child));
+            FbdCraftMacroDefinition expanded = FbdCraftMacroGraphAdapter.expandIfSupported(
+                    FbdCraftMacroDefinition.fromJson(source.toString()));
+            assertNotNull("Craft phone sensor ID " + ids[i] + " should be executable",
+                    expanded.toJson().optJSONObject("bloodskyGraph"));
+            MainActivity.Widget macro = MainActivity.widgetFromJson(new JSONObject()
+                    .put("type", "FBD CRAFT MACRO").put("craftMacroDefinition", expanded.toJson()));
+            java.util.List<MainActivity.Widget> runtimeWidgets =
+                    MainActivity.fbdRuntimeWidgetsIncludingMacros(Collections.singletonList(macro));
+            MainActivity.Widget sensor = null;
+            for (MainActivity.Widget candidate : runtimeWidgets)
+                if (types[i].equals(candidate.type)) sensor = candidate;
+            assertNotNull("nested source should be discovered by operator sensor polling", sensor);
+            sensor.craftSensorValid = true;
+            if (ids[i] == 120) sensor.craftOrientationValues[2] = expected[i];
+            else sensor.craftSensorValue = expected[i];
+            double[] numeric = new double[1];
+            MainActivity.evaluateFbdBlock(Collections.singletonList(macro), Collections.emptyList(), 0,
+                    new boolean[1], new boolean[1], new boolean[1], numeric,
+                    new CraftSystemRegisterBank());
+            assertEquals("nested Craft sensor output ID " + ids[i], expected[i], numeric[0], 0.0);
+        }
+    }
+
     @Test public void executesImportedRegisterWritesOnlyDuringOperatorScan() throws Exception {
         JSONObject literal = new JSONObject().put("componentId", 105).put("x", 0).put("y", 0)
                 .put("saveKey", 10).put("keyOut", 20).put("numOnIn", 1)
@@ -334,7 +373,7 @@ public class FbdCraftMacroGraphAdapterTest {
     }
 
     @Test public void preservesMacrosThatNeedScreenLevelIo() throws Exception {
-        int[] unsupported = {120, 130, 131, 132, 139, 140};
+        int[] unsupported = {130, 139, 140};
         for (int id : unsupported) {
             JSONObject root = validMacro();
             root.getJSONArray("fbInMacros").getJSONObject(0).put("componentId", id);

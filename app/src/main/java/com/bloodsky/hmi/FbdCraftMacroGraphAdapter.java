@@ -47,8 +47,10 @@ final class FbdCraftMacroGraphAdapter {
                         return false;
                 } catch (Exception unresolved) { return false; }
             }
-            // These blocks need screen-level polling, subscription, or output scheduling.
-            if (id == 120 || id == 130 || id == 131 || id == 132 || id == 139 || id == 140) return false;
+            // These blocks need network polling, subscription, or output scheduling.
+            // The phone sensors (120/131/132) use the same operator sensor listeners
+            // for top-level and nested macro widgets.
+            if (id == 130 || id == 139 || id == 140) return false;
         }
         return true;
     }
