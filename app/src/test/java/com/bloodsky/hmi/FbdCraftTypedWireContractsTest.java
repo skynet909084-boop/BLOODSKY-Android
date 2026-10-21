@@ -45,6 +45,8 @@ public class FbdCraftTypedWireContractsTest {
         assertEquals("INT", FbdCraftPinTypes.typeForBlock("FBD CRAFT CTU", "Q", true));
         assertTrue(wire("FBD CRAFT CTU", "Q", "FBD CRAFT VAR OUT INT", "IN"));
         assertFalse(wire("FBD CRAFT CTU", "Q", "FBD CRAFT VAR OUT FLOAT", "IN"));
+        assertFalse(wire("FBD CRAFT CTU", "Q", "FBD CRAFT CHANGE F", "F"));
+        assertTrue(wire("FBD CRAFT VAR FLOAT", "Q", "FBD CRAFT CHANGE F", "F"));
     }
 
     @Test public void originalCraftFloatMathPinsRejectIntegerWires() throws Exception {
