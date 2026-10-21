@@ -197,14 +197,16 @@ public final class CraftProjectImporter {
         JSONObject widget = new JSONObject();
         String type;
         if (componentId == 1) type = OriginalCraftSwitch.TYPE; // CustomComponents.y, eight original switch skins
-        else if (componentId == 2 || componentId == 4) type = "Текст"; // label / numeric display
         else if (componentId == 5) type = "Индикатор"; // Craft two-state image
+        else if (componentId == 2) type = "Текст"; // Craft label
+        else if (componentId == 4) type = OriginalCraftNumericIndicator.TYPE; // CustomComponents.u, digital register display
         else if (componentId == 9) type = "Звуковой сигнал"; // CustomComponents.c, looping alarm with five built-in sounds
         else if (componentId == 19) type = "Шлюз Craft"; // CustomComponents.k, source/receive/trigger register gateway
         else if (componentId == 22) type = "Шлюз битовый"; // CustomComponents.l, source/receive/trigger bit gateway
         else if (componentId == 23) type = "Видео RTSP Craft"; // CustomComponents.f; preserve as disabled until source-backed player mapping
         else if (componentId == 13) type = "Линейный задатчик Craft"; // CustomSeekBar
         else if (componentId == 15) type = "Архив Craft"; // local-only history; Craft device links stay disabled until remapped
+        else if (componentId == 16) type = "GIF Craft"; // CustomComponents.n, animated image
         else if (componentId == 17) type = "Многопозиционное фото"; // Craft 16-state image; keep legacy register inactive
         else if (componentId == 20) type = "Список Craft"; // CustomList, 16 selectable bit labels
         else if (componentId == 6 && integer(other.opt("mode"), 0) == 1)
@@ -242,6 +244,15 @@ public final class CraftProjectImporter {
         widget.put("backgroundColor", color(source.opt("colorBackground"), Color.TRANSPARENT));
         widget.put("craftComponentId", componentId);
         widget.put("craftOther", other);
+        if (componentId == 16) {
+            String sourcePath = other.optString("pathGif", "").trim();
+            String resolvedPath = "";
+            if (!sourcePath.isEmpty() && !"0".equals(sourcePath) && availableMedia != null) {
+                String candidate = archiveRelativeImage(archiveParent, sourcePath, availableMedia);
+                if (candidate != null && availableMedia.containsKey(candidate)) resolvedPath = "media/" + candidate;
+            }
+            widget.put("craftGifPath", resolvedPath);
+        }
         if (componentId == 17) {
             JSONArray imagePaths = new JSONArray();
             for (int state = 0; state < 16; state++) {
@@ -273,6 +284,13 @@ public final class CraftProjectImporter {
             widget.put("craftGaugeScaleCount", boundedInt(other.opt("countTextScale"), 0, 0, 64));
             widget.put("craftGaugeHideBackground", other.optBoolean("hideBackground", false));
             widget.put("craftGaugeKind", "graduated");
+        }
+        if (componentId == 4) {
+            widget.put("craftNumericIndicatorType", Math.max(0, Math.min(3, other.optInt("type", 0))));
+            widget.put("craftNumericIndicatorDigits", Math.max(1, Math.min(18, other.optInt("digit", 5))));
+            widget.put("craftNumericIndicatorDecimals", Math.max(0, Math.min(9, other.optInt("divisor", 0))));
+            widget.put("craftNumericIndicatorFontChange", other.optBoolean("fontChange", false));
+            widget.put("craftNumericIndicatorFrame", other.optBoolean("enableFrameRegister", false));
         }
         if (componentId == 15) {
             widget.put("craftArchiveChannelCount", boundedInt(other.opt("countChannel"), 1, 1, 4));
@@ -443,7 +461,7 @@ public final class CraftProjectImporter {
     }
 
     private static boolean isSupportedComponent(int id) {
-        return id == 1 || id == 2 || id == 4 || id == 5 || id == 6 || id == 7 || id == 9 || id == 11 || id == 12 || id == 13 || id == 17 || id == 18 || id == 20 || id == 22 || id == 23 || id == 24;
+        return id == 1 || id == 2 || id == 4 || id == 5 || id == 6 || id == 7 || id == 9 || id == 11 || id == 12 || id == 13 || id == 16 || id == 17 || id == 18 || id == 20 || id == 22 || id == 23 || id == 24;
     }
 
     private static String timerMode(int mode) {

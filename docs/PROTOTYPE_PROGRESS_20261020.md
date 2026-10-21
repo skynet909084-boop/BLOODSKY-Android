@@ -501,6 +501,12 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 - Android 12 UI smoke run [#861](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39452421413) remains the next gate for PR #188. It is running on PR head `eefa0469b8a2193c8c4dc836f59af5b31032c52d`, based before subsequent prototype commits. Do not merge it until the full run passes and the branch is synchronized with the current prototype head.
 - Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
 
+## Craft ID16 GIF component implementation — 21 Oct 2026
+
+- Source review confirmed Craft component ID16 (`CustomComponents.n`) stores `pathGif` and renders an animated image. In the unified BLOODSKY editor, ID16 now has an active palette entry, a media picker, bounded GIF decoding/animation, import path preservation, and portable ZIP export/import support.
+- Regression coverage was added for ID16 import and retained vendor fields, valid/invalid GIF headers, and media ZIP round-trip. Local Python tools: 166 passed. Exact-head APK/JUnit [#1285](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39540901127) and generic Android 11 UI smoke [#909](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39540901118) passed at app-code commit `0f2c923`; that smoke did not exercise GIF playback. Gradle unit tests and APK assembly were **NOT RUN** locally because Gradle is unavailable.
+- No GIF-specific emulator playback or original-vs-BLOODSKY visual comparison was run. COMP-03 remains partial and the unified acceptance result remains 5/139 = 3.6%. Stable `main` remains untouched.
+
 ## Project deletion media cleanup — 21 Oct 2026
 
 - Issue [#208](https://github.com/skynet909084-boop/BLOODSKY-Android/issues/208) records a confirmed storage lifecycle gap: after a project was removed from the saved catalog, all its app-private media generations remained on disk.

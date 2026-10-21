@@ -187,6 +187,20 @@ public class MainActivity extends Activity {
     private final java.util.Map<String, ToneGenerator> craftAlarmTones = new java.util.HashMap<>();
     private TextToSpeech textToSpeech;
     private final java.util.Map<String, Bitmap> imageCache = new java.util.HashMap<>();
+    private final java.util.Map<String, android.graphics.Movie> gifCache = new java.util.HashMap<>();
+
+    private android.graphics.Movie loadCachedMovie(String path) {
+        if (path == null || path.trim().isEmpty()) return null;
+        if (gifCache.containsKey(path)) return gifCache.get(path);
+        android.graphics.Movie movie = null;
+        try {
+            String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
+            movie = CraftGifAsset.decode(readProjectMediaData(path, json));
+        } catch (Exception ignored) { }
+        if (gifCache.size() >= 4) gifCache.clear();
+        gifCache.put(path, movie);
+        return movie;
+    }
 
     private Bitmap loadCachedBitmap(String pathOrUri) {
         if (pathOrUri == null || pathOrUri.trim().isEmpty()) return null;
@@ -816,8 +830,8 @@ public class MainActivity extends Activity {
                 android.util.Log.e("BLOODSKY", "Deleted project media could not be cleaned", cleanupFailure);
                 Toast.makeText(this, "Проект удалён, но его медиа не удалось очистить", Toast.LENGTH_LONG).show();
             }
-            if (deletingActive) { widgets.clear(); screens.clear(); projectExtraFields = new JSONObject(); clipboardWidget = null; imageCache.clear(); }
             showHome();
+            if (deletingActive) { widgets.clear(); screens.clear(); projectExtraFields = new JSONObject(); clipboardWidget = null; imageCache.clear(); gifCache.clear(); }
         } catch (Exception error) { Toast.makeText(this, error.getMessage(), Toast.LENGTH_LONG).show(); }
     }
 
@@ -1416,6 +1430,13 @@ public class MainActivity extends Activity {
         if ("Архив Craft".equals(widget.type)) return CraftArchiveChannels.decode(words,
                 widget.extraFields.optInt("craftArchiveChannelCount", 1),
                 widget.extraFields.optString("craftArchiveRecordType", "INT"));
+        if (OriginalCraftNumericIndicator.TYPE.equals(widget.type)) {
+            int sourceType = Math.max(0, Math.min(3, widget.extraFields.optInt("craftNumericIndicatorType", 0)));
+            return OriginalCraftNumericIndicator.format(OriginalCraftNumericIndicator.decode(words, sourceType),
+                    widget.extraFields.optInt("craftNumericIndicatorDigits", 5),
+                    widget.extraFields.optInt("craftNumericIndicatorDecimals", 0),
+                    sourceType == OriginalCraftNumericIndicator.FLOAT32);
+        }
         return words.length > 1 ? words[0] + "," + words[1] : Integer.toString(words[0]);
     }
 
@@ -1538,6 +1559,8 @@ public class MainActivity extends Activity {
             boolean craftSource = isCraftRegisterSource(widget.type);
             if (craftSource && widget.extraFields.optBoolean("craftVarConstantMode", false)) continue;
             int quantity = craftSource && isCraftRegisterFloat(widget.type) ? 2 : 1;
+            if (OriginalCraftNumericIndicator.TYPE.equals(widget.type))
+                quantity = OriginalCraftNumericIndicator.readQuantity(widget.extraFields.optInt("craftNumericIndicatorType", 0));
             if ("Архив Craft".equals(widget.type)) quantity = archiveReadQuantity(widget);
             boolean usbProjectBindingAllowed = craftSource || "FBD Вход".equals(widget.type);
             BindingRequest request = usbProjectBindingAllowed
@@ -1556,7 +1579,11 @@ public class MainActivity extends Activity {
             String binding = snapshotWidgets.get(i).connectionInfo;
             boolean usbProjectBindingAllowed = isCraftRegisterSource(snapshotWidgets.get(i).type)
                     || "FBD Вход".equals(snapshotWidgets.get(i).type);
-            if (binding != null && binding.startsWith("tcp://") && parseBinding(i, binding) == null)
+            int numericIndicatorQuantity = OriginalCraftNumericIndicator.TYPE.equals(snapshotWidgets.get(i).type)
+                    ? OriginalCraftNumericIndicator.readQuantity(snapshotWidgets.get(i).extraFields
+                    .optInt("craftNumericIndicatorType", 0)) : 1;
+            if (binding != null && binding.startsWith("tcp://")
+                    && parseBinding(i, binding, numericIndicatorQuantity) == null)
                 invalidBindings.put(i, "CFG");
             else if (usbProjectBindingAllowed && binding != null && binding.startsWith("usb://")
                     && parseProjectBinding(i, binding,
@@ -2379,6 +2406,7 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> {
                     if (isFinishing() || isDestroyed()) return;
                     imageCache.clear();
+                    gifCache.clear();
                     if (loadProject()) {
                         showEditor();
                         Toast.makeText(this, "Проект импортирован", Toast.LENGTH_LONG).show();
@@ -2467,6 +2495,7 @@ public class MainActivity extends Activity {
                         target.setText(copy.projectPath);
                         imageCache.remove(selected.toString());
                         imageCache.remove(copy.projectPath);
+                        gifCache.remove(copy.projectPath);
                         trackPendingMediaCopy(waitingDialog, projectJson, copy);
                         finishPendingMediaCopy(waitingDialog);
                         Toast.makeText(this, "Файл сохранён в проект", Toast.LENGTH_SHORT).show();
@@ -4294,6 +4323,16 @@ public class MainActivity extends Activity {
         w.y = dp(50) + (widgets.size() % 6) * dp(22);
         w.w = OriginalIndicator.supports(type) ? dp(40) : dp(160);
         w.h = OriginalIndicator.supports(type) ? dp(40) : dp(58);
+        if (OriginalCraftNumericIndicator.TYPE.equals(type)) {
+            w.w = dp(150); w.h = dp(40);
+            try {
+                w.extraFields.put("craftNumericIndicatorType", OriginalCraftNumericIndicator.SIGNED_INT16);
+                w.extraFields.put("craftNumericIndicatorDigits", 5);
+                w.extraFields.put("craftNumericIndicatorDecimals", 0);
+                w.extraFields.put("craftNumericIndicatorFontChange", false);
+                w.extraFields.put("craftNumericIndicatorFrame", false);
+            } catch (org.json.JSONException ignored) { }
+        }
         if (OriginalCraftSwitch.supports(type)) {
             w.w = dp(80); w.h = dp(80);
             try {
@@ -4314,6 +4353,10 @@ public class MainActivity extends Activity {
                 w.extraFields.put("craftListVisibleInWork", true);
                 w.extraFields.put("craftListCheckNoChange", true);
             } catch (Exception ignored) { }
+        }
+        if ("GIF Craft".equals(type)) {
+            w.w = dp(160); w.h = dp(100);
+            try { w.extraFields.put("craftGifPath", ""); } catch (Exception ignored) { }
         }
         if ("Архив Craft".equals(type)) {
             w.w = dp(200); w.h = dp(72);
@@ -4436,6 +4479,36 @@ public class MainActivity extends Activity {
         form.addView(textLabel);
         EditText textField = propertyField(w.text, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         form.addView(textField);
+        final Spinner craftIndicatorTypeField;
+        final EditText craftIndicatorDigitsField, craftIndicatorDecimalsField;
+        final android.widget.CheckBox craftIndicatorFontChangeField, craftIndicatorFrameField;
+        if (OriginalCraftNumericIndicator.TYPE.equals(w.type)) {
+            craftIndicatorTypeField = new Spinner(this);
+            craftIndicatorTypeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item,
+                    new String[]{"INT16", "UINT16", "FLOAT32", "INT32"}));
+            craftIndicatorTypeField.setSelection(Math.max(0, Math.min(3,
+                    w.extraFields.optInt("craftNumericIndicatorType", 0))));
+            craftIndicatorTypeField.setContentDescription("Тип числового значения Craft");
+            form.addView(craftIndicatorTypeField);
+            craftIndicatorDigitsField = propertyField(Integer.toString(Math.max(1, Math.min(18,
+                    w.extraFields.optInt("craftNumericIndicatorDigits", 5)))), InputType.TYPE_CLASS_NUMBER);
+            craftIndicatorDigitsField.setHint("Разрядов целой части (1–18)"); form.addView(craftIndicatorDigitsField);
+            craftIndicatorDecimalsField = propertyField(Integer.toString(Math.max(0, Math.min(9,
+                    w.extraFields.optInt("craftNumericIndicatorDecimals", 0)))), InputType.TYPE_CLASS_NUMBER);
+            craftIndicatorDecimalsField.setHint("Дробных разрядов (0–9)"); form.addView(craftIndicatorDecimalsField);
+            craftIndicatorFontChangeField = new android.widget.CheckBox(this);
+            craftIndicatorFontChangeField.setText("Системный шрифт");
+            craftIndicatorFontChangeField.setChecked(w.extraFields.optBoolean("craftNumericIndicatorFontChange", false));
+            form.addView(craftIndicatorFontChangeField);
+            craftIndicatorFrameField = new android.widget.CheckBox(this);
+            craftIndicatorFrameField.setText("Рамка по регистру");
+            craftIndicatorFrameField.setChecked(w.extraFields.optBoolean("craftNumericIndicatorFrame", false));
+            form.addView(craftIndicatorFrameField);
+        } else {
+            craftIndicatorTypeField = null; craftIndicatorDigitsField = null; craftIndicatorDecimalsField = null;
+            craftIndicatorFontChangeField = null; craftIndicatorFrameField = null;
+        }
 
         TextView connectionLabel = new TextView(this);
         connectionLabel.setText("Привязка к данным (адрес / регистр / устройство)");
@@ -4525,6 +4598,17 @@ public class MainActivity extends Activity {
             TextView remapHelp = new TextView(this);
             remapHelp.setText("Связь из Craft отключена. Укажи TCP holding-регистр для чтения и записи."); form.addView(remapHelp);
         } else { craftLinearMaxField = null; craftLinearVerticalField = null; }
+        final boolean craftGif = "GIF Craft".equals(w.type);
+        final EditText craftGifPathField;
+        if (craftGif) {
+            TextView gifHelp = new TextView(this);
+            gifHelp.setText("Анимированное изображение Craft (GIF)");
+            form.addView(gifHelp);
+            craftGifPathField = propertyField(w.extraFields.optString("craftGifPath", ""), InputType.TYPE_CLASS_TEXT);
+            craftGifPathField.setHint("Файл GIF в проекте");
+            form.addView(craftGifPathField);
+            addMediaPicker(form, craftGifPathField, "image/gif");
+        } else { craftGifPathField = null; }
         final boolean craftNumericInput = "Числовой ввод Craft".equals(w.type);
         final EditText craftNumericMinField, craftNumericMaxField, craftNumericDecimalsField, craftNumericPasswordField;
         final Spinner craftNumericModeField, craftNumericTypeIntField;
@@ -5363,6 +5447,17 @@ public class MainActivity extends Activity {
                             w.extraFields.put("craftLinearEnabled", linearBinding != null);
                         } catch (Exception ignored) { }
                     }
+                    if (craftGif) {
+                        String gifPath = craftGifPathField.getText().toString().trim();
+                        if (!gifPath.isEmpty() && !gifPath.startsWith("media/")) {
+                            Toast.makeText(this, "Выбери GIF, чтобы сохранить его в проект", Toast.LENGTH_LONG).show(); return;
+                        }
+                        try {
+                            w.extraFields.put("craftGifPath", gifPath);
+                            JSONObject craftOther = w.extraFields.optJSONObject("craftOther");
+                            if (craftOther != null) craftOther.put("pathGif", gifPath);
+                        } catch (Exception ignored) { }
+                    }
                     if (craftNumericInput) {
                         final double min, max;
                         final int decimals;
@@ -5570,6 +5665,29 @@ public class MainActivity extends Activity {
                     }
                     w.text = textField.getText().toString();
                     w.connectionInfo = connectionField.getText().toString().trim();
+                    if (craftIndicatorTypeField != null) {
+                        try {
+                            int digits = Integer.parseInt(craftIndicatorDigitsField.getText().toString().trim());
+                            int decimals = Integer.parseInt(craftIndicatorDecimalsField.getText().toString().trim());
+                            if (digits < 1 || digits > 18 || decimals < 0 || decimals > 9)
+                                throw new NumberFormatException();
+                            int sourceType = craftIndicatorTypeField.getSelectedItemPosition();
+                            w.extraFields.put("craftNumericIndicatorType", sourceType);
+                            w.extraFields.put("craftNumericIndicatorDigits", digits);
+                            w.extraFields.put("craftNumericIndicatorDecimals", decimals);
+                            w.extraFields.put("craftNumericIndicatorFontChange", craftIndicatorFontChangeField.isChecked());
+                            w.extraFields.put("craftNumericIndicatorFrame", craftIndicatorFrameField.isChecked());
+                            JSONObject craftOther = w.extraFields.optJSONObject("craftOther");
+                            if (craftOther == null) craftOther = new JSONObject();
+                            craftOther.put("type", sourceType); craftOther.put("digit", digits);
+                            craftOther.put("divisor", decimals);
+                            craftOther.put("fontChange", craftIndicatorFontChangeField.isChecked());
+                            craftOther.put("enableFrameRegister", craftIndicatorFrameField.isChecked());
+                            w.extraFields.put("craftOther", craftOther);
+                        } catch (Exception invalid) {
+                            Toast.makeText(this, "Проверь разряды индикатора: целая часть 1–18, дробная 0–9", Toast.LENGTH_LONG).show(); return;
+                        }
+                    }
                     if (archiveIntervalField != null) {
                         final int interval, maxRows, channelCount;
                         String triggerBinding = archiveTriggerField.getText().toString().trim();
@@ -6496,6 +6614,7 @@ public class MainActivity extends Activity {
         FbdCraftRegisterStore.clear();
         FbdCraftNamedVariableStore.clear();
         imageCache.clear();
+        gifCache.clear();
         widgets.clear(); screens.clear(); currentScreenIndex = 0;
         projectExtraFields = new JSONObject();
         systemRegisterBank.clear();
@@ -9211,6 +9330,26 @@ public class MainActivity extends Activity {
                     }
                     paint.setStyle(Paint.Style.FILL);
                     }
+                } else if (OriginalCraftNumericIndicator.TYPE.equals(w.type)) {
+                    String value = liveValues.get(i);
+                    if (value == null) value = "0";
+                    boolean failed = value.startsWith("ERR") || value.startsWith("CFG");
+                    android.graphics.Typeface previousTypeface = paint.getTypeface();
+                    android.graphics.Paint.Align previousAlign = paint.getTextAlign();
+                    if (!w.extraFields.optBoolean("craftNumericIndicatorFontChange", false)) {
+                        try { paint.setTypeface(android.graphics.Typeface.createFromAsset(
+                                MainActivity.this.getAssets(), "fonts/sf_digital_readout_heavy.ttf")); }
+                        catch (Exception missingFont) { /* Use the platform font if the source font is unavailable. */ }
+                    }
+                    if (w.extraFields.optBoolean("craftNumericIndicatorFrame", false)) {
+                        paint.setStyle(Paint.Style.STROKE);
+                        paint.setStrokeWidth(dp(1)); paint.setColor(w.textColor);
+                        canvas.drawRect(rect, paint); paint.setStyle(Paint.Style.FILL);
+                    }
+                    paint.setColor(failed ? Color.rgb(185, 28, 28) : w.textColor);
+                    paint.setTextSize(dp(w.textSizeSp)); paint.setTextAlign(Paint.Align.CENTER);
+                    canvas.drawText(value, w.x + w.w / 2f, w.y + w.h / 2f + dp(5), paint);
+                    paint.setTextAlign(previousAlign); paint.setTypeface(previousTypeface);
                 } else if ("Динамический текст".equals(w.type)) {
                     int stateIdx = 0;
                     if (liveValues.containsKey(i)) {
@@ -9412,6 +9551,27 @@ public class MainActivity extends Activity {
                     String navLabel = "🔗 " + w.text + " (Экран " + (w.targetScreenIndex + 1) + ")";
                     if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(16)) / Math.max(4f, navLabel.length() * 0.58f))));
                     canvas.drawText(navLabel, w.x + dp(8), w.y + w.h / 2 + dp(5), paint);
+                } else if ("GIF Craft".equals(w.type)) {
+                    android.graphics.Movie movie = loadCachedMovie(w.extraFields.optString("craftGifPath", ""));
+                    if (movie != null) {
+                        int duration = Math.max(1, movie.duration());
+                        movie.setTime((int) (SystemClock.uptimeMillis() % duration));
+                        int save = canvas.save();
+                        canvas.clipRect(rect);
+                        canvas.translate(rect.left, rect.top);
+                        canvas.scale(rect.width() / movie.width(), rect.height() / movie.height());
+                        movie.draw(canvas, 0, 0);
+                        canvas.restoreToCount(save);
+                        postInvalidateDelayed(33L);
+                    } else {
+                        paint.setColor(Color.rgb(241, 245, 249));
+                        canvas.drawRect(rect, paint);
+                        paint.setColor(Color.rgb(71, 85, 105));
+                        paint.setTextSize(dp(12));
+                        String label = w.extraFields.optString("craftGifPath", "").isEmpty()
+                                ? "Выбери GIF" : "GIF недоступен";
+                        canvas.drawText(label, w.x + dp(8), w.y + w.h / 2 + dp(4), paint);
+                    }
                 } else if ("Многопозиционное фото".equals(w.type)) {
                     int imgIdx = 0;
                     if (liveValues.containsKey(i)) {

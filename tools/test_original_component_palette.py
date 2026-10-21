@@ -44,15 +44,15 @@ class OriginalComponentPaletteTests(unittest.TestCase):
         code = (ROOT / 'app/src/main/java/com/bloodsky/hmi/OriginalComponentPalette.java').read_text()
         for item, widget_type in [
             ('switch', 'Переключатель Craft'),
-            ('digital_indicator', 'Текст'),
             ('alarm', 'Звуковой сигнал'),
+            ('digital_indicator', 'Цифровой индикатор Craft'),
             ('gateway', 'Шлюз Craft'),
             ('gateway_bit', 'Шлюз битовый'),
         ]:
             unique_actions = {
                 'switch': ('Добавить: Переключатель Craft', '() -> add.add(OriginalCraftSwitch.TYPE, "Переключатель")'),
-                'digital_indicator': ('Добавить: Цифровой индикатор', '() -> add.add("Текст", "Цифровой индикатор")'),
                 'alarm': ('Добавить: Сигнализатор Craft', '() -> add.add("Звуковой сигнал", "Аларм")'),
+                'digital_indicator': ('Добавить: Цифровой индикатор', '() -> add.add(OriginalCraftNumericIndicator.TYPE, "0")'),
             }
             if item in unique_actions:
                 label, callback = unique_actions[item]

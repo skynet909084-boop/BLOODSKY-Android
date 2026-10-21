@@ -144,6 +144,27 @@ public class PortableZipMediaTest {
         assertArrayEquals(content2, extractedMedia.get(relKey1));
     }
 
+    @Test public void testGifCraftAssetIsIncludedAndReferenceSurvivesZipRoundTrip() throws Exception {
+        byte[] gifBytes = new byte[]{'G', 'I', 'F', '8', '9', 'a', 1, 2, 3};
+        JSONObject widget = new JSONObject().put("type", "GIF Craft").put("text", "Animation")
+                .put("craftGifPath", "/private/animation.gif");
+        JSONObject project = new JSONObject().put("id", "gif-project")
+                .put("screens", new JSONArray().put(new JSONObject()
+                        .put("name", "Main").put("widgets", new JSONArray().put(widget))));
+        ByteArrayOutputStream zip = new ByteArrayOutputStream();
+        ProjectMediaService.exportProjectZipBundle(zip, project.toString(),
+                path -> "/private/animation.gif".equals(path) ? gifBytes : null);
+
+        Map<String, byte[]> importedMedia = new HashMap<>();
+        JSONObject imported = new JSONObject(MainActivity.importProjectFromZip(
+                new ByteArrayInputStream(zip.toByteArray()), importedMedia));
+        JSONObject importedWidget = imported.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0);
+        String path = importedWidget.getString("craftGifPath");
+        assertTrue(path.startsWith("media/"));
+        assertArrayEquals(gifBytes, importedMedia.get(path.substring("media/".length())));
+    }
+
     @Test
     public void testTwoCyrillicOrUnnamedProjectsIsolated() throws Exception {
         JSONObject projA = createTestProjectJson(null, "Проект 1", null, null, null);
