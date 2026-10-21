@@ -1439,6 +1439,10 @@ public class MainActivity extends Activity {
     }
 
     private String formatPolledValue(Widget widget, int[] words) {
+        if ("График / Тренд".equals(widget.type)
+                && widget.extraFields.optInt("craftComponentId", -1) == 14)
+            return Double.toString(CraftTrendGraphCodec.decodeFirst(words,
+                    widget.extraFields.optInt("craftTrendType", 1)));
         if ("Архив Craft".equals(widget.type)) return CraftArchiveChannels.decode(words,
                 widget.extraFields.optInt("craftArchiveChannelCount", 1),
                 widget.extraFields.optString("craftArchiveRecordType", "INT"));
@@ -1570,6 +1574,9 @@ public class MainActivity extends Activity {
             boolean craftSource = isCraftRegisterSource(widget.type);
             if (craftSource && widget.extraFields.optBoolean("craftVarConstantMode", false)) continue;
             int quantity = craftSource && isCraftRegisterFloat(widget.type) ? 2 : 1;
+            if ("График / Тренд".equals(widget.type)
+                    && widget.extraFields.optInt("craftComponentId", -1) == 14)
+                quantity = CraftTrendGraphCodec.readQuantity(widget.extraFields.optInt("craftTrendType", 1));
             if (OriginalCraftNumericIndicator.TYPE.equals(widget.type))
                 quantity = OriginalCraftNumericIndicator.readQuantity(widget.extraFields.optInt("craftNumericIndicatorType", 0));
             if ("Архив Craft".equals(widget.type)) quantity = archiveReadQuantity(widget);
@@ -1593,6 +1600,10 @@ public class MainActivity extends Activity {
             int numericIndicatorQuantity = OriginalCraftNumericIndicator.TYPE.equals(snapshotWidgets.get(i).type)
                     ? OriginalCraftNumericIndicator.readQuantity(snapshotWidgets.get(i).extraFields
                     .optInt("craftNumericIndicatorType", 0)) : 1;
+            if ("График / Тренд".equals(snapshotWidgets.get(i).type)
+                    && snapshotWidgets.get(i).extraFields.optInt("craftComponentId", -1) == 14)
+                numericIndicatorQuantity = CraftTrendGraphCodec.readQuantity(snapshotWidgets.get(i).extraFields
+                        .optInt("craftTrendType", 1));
             if (binding != null && binding.startsWith("tcp://")
                     && parseBinding(i, binding, numericIndicatorQuantity) == null)
                 invalidBindings.put(i, "CFG");
