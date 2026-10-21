@@ -4,6 +4,8 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.Test;
 
+import java.util.Collections;
+
 import static org.junit.Assert.*;
 
 public class FbdCraftMacroGraphAdapterTest {
@@ -60,6 +62,42 @@ public class FbdCraftMacroGraphAdapterTest {
         assertEquals(103, expanded.toJson().getJSONArray("fbInMacros").getJSONObject(0).getInt("componentId"));
     }
 
+    @Test public void executesImportedRegisterWritesOnlyDuringOperatorScan() throws Exception {
+        JSONObject literal = new JSONObject().put("componentId", 105).put("x", 0).put("y", 0)
+                .put("saveKey", 10).put("keyOut", 20).put("numOnIn", 1)
+                .put("reg", 10).put("isConstant", true).put("constant", 42)
+                .put("nMcr", "WriteUserRegister").put("unIdMcr", 7);
+        JSONObject registerOutput = new JSONObject().put("componentId", 106).put("x", 10).put("y", 0)
+                .put("saveKey", 20).put("keyOut", -1).put("numOnIn", 1)
+                .put("reg", 11).put("nMcr", "WriteUserRegister").put("unIdMcr", 7);
+        JSONObject macroOutput = new JSONObject().put("componentId", 105).put("x", 20).put("y", 0)
+                .put("saveKey", 30).put("keyOut", 900).put("numOnIn", 1)
+                .put("reg", 10).put("isConstant", true).put("constant", 7)
+                .put("nMcr", "WriteUserRegister").put("unIdMcr", 7);
+        JSONObject source = new JSONObject().put("name", "WriteUserRegister").put("uniqueId", 7)
+                .put("countIn", 0).put("typeOut", 2).put("nameOut", "Q").put("saveKeyOut", 900)
+                .put("fbInMacros", new JSONArray().put(literal).put(registerOutput).put(macroOutput));
+        FbdCraftMacroDefinition expanded = FbdCraftMacroGraphAdapter.expandIfSupported(
+                FbdCraftMacroDefinition.fromJson(source.toString()));
+        assertNotNull("register output blocks have executable pins", expanded.toJson().optJSONObject("bloodskyGraph"));
+
+        CraftSystemRegisterBank bank = new CraftSystemRegisterBank();
+        MainActivity.Widget macro = MainActivity.widgetFromJson(new JSONObject()
+                .put("type", "FBD CRAFT MACRO").put("craftMacroDefinition", expanded.toJson()));
+        double[] numeric = new double[1];
+        MainActivity.evaluateFbdBlock(Collections.singletonList(macro), Collections.emptyList(), 0,
+                new boolean[1], new boolean[1], new boolean[1], numeric, bank, false);
+        assertEquals("editor evaluation must not write the system register", 0, bank.readWord(11));
+
+        macro = MainActivity.widgetFromJson(new JSONObject()
+                .put("type", "FBD CRAFT MACRO").put("craftMacroDefinition", expanded.toJson()));
+        numeric = new double[1];
+        MainActivity.evaluateFbdBlock(Collections.singletonList(macro), Collections.emptyList(), 0,
+                new boolean[1], new boolean[1], new boolean[1], numeric, bank, true);
+        assertEquals(42, bank.readWord(11));
+        assertEquals("macro output still follows its declared output key", 7.0, numeric[0], 0.0);
+    }
+
     @Test public void usesVerifiedOutputPinNamesForCraftConverterEdges() throws Exception {
         JSONObject first = new JSONObject().put("componentId", 118).put("x", 0).put("y", 0)
                 .put("saveKey", 50).put("keyOut", 51).put("numOnIn", 1)
@@ -105,7 +143,7 @@ public class FbdCraftMacroGraphAdapterTest {
     }
 
     @Test public void preservesMacrosThatNeedScreenLevelIo() throws Exception {
-        int[] unsupported = {101, 102, 106, 108, 109, 120, 130, 131, 132, 139, 140};
+        int[] unsupported = {101, 108, 120, 130, 131, 132, 139, 140};
         for (int id : unsupported) {
             JSONObject root = validMacro();
             root.getJSONArray("fbInMacros").getJSONObject(0).put("componentId", id);

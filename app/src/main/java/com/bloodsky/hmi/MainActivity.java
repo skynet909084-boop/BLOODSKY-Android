@@ -8891,7 +8891,7 @@ public class MainActivity extends Activity {
                 cacheNumeric, userRegisters, false);
     }
 
-    private static boolean evaluateFbdBlock(List<Widget> widgetsList, List<FbdConnection> connectionsList,
+    static boolean evaluateFbdBlock(List<Widget> widgetsList, List<FbdConnection> connectionsList,
             int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric,
             CraftSystemRegisterBank userRegisters, boolean allowSystemRegisterWrites) {
         CraftSystemRegisterBank previous = setActiveFbdSystemRegisterBank(userRegisters);
@@ -10007,6 +10007,13 @@ public class MainActivity extends Activity {
             boolean[] nestedCacheValues = new boolean[nested.size()];
             double[] nestedCacheNumeric = new double[nested.size()];
             int outputNode = macro.craftMacroRuntimeOutputNode;
+            if (Boolean.TRUE.equals(ACTIVE_FBD_SYSTEM_REGISTER_WRITES.get())) {
+                // Craft executes every child in the active macro instance on each operator scan.
+                // Run hidden side effects and free-running timers as well as the output dependency chain.
+                for (int childIndex = 0; childIndex < nested.size(); childIndex++)
+                    evaluateFbdBlock(nested, nestedEdges, childIndex, nestedVisiting,
+                            nestedCacheValid, nestedCacheValues, nestedCacheNumeric);
+            }
             boolean outputBool = evaluateFbdBlock(nested, nestedEdges, outputNode,
                     nestedVisiting, nestedCacheValid, nestedCacheValues, nestedCacheNumeric);
             double value = nestedCacheNumeric[outputNode];
