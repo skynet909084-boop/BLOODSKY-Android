@@ -5857,17 +5857,28 @@ public class MainActivity extends Activity {
             craftSwapWordField = null; craftSwapByteField = null;
         }
 
-        final EditText[] dynStateFields = new EditText[4];
+        final EditText[] dynStateFields = new EditText[CraftDynamicTextProperties.STATE_COUNT];
+        final EditText[] dynColorFields = new EditText[CraftDynamicTextProperties.STATE_COUNT];
         if ("Динамический текст".equals(w.type)) {
             TextView dynLabel = new TextView(this);
-            dynLabel.setText("Тексты состояний (0–3)");
+            dynLabel.setText("Состояния Craft (0–15): текст и фон");
             dynLabel.setPadding(0, dp(10), 0, 0);
             form.addView(dynLabel);
-            for (int k = 0; k < 4; k++) {
+            for (int k = 0; k < CraftDynamicTextProperties.STATE_COUNT; k++) {
+                TextView stateLabel = new TextView(this);
+                stateLabel.setText("Состояние " + k);
+                stateLabel.setPadding(0, dp(8), 0, 0);
+                form.addView(stateLabel);
                 dynStateFields[k] = propertyField(w.dynTextStates[k], InputType.TYPE_CLASS_TEXT);
-                dynStateFields[k].setHint("Текст состояния " + k);
+                dynStateFields[k].setHint("Текст");
                 form.addView(dynStateFields[k]);
+                dynColorFields[k] = propertyField(CraftDynamicTextProperties.formatColor(w.dynTextColors[k]),
+                        InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
+                dynColorFields[k].setHint("Фон: #AARRGGBB; #00000000 — прозрачный");
+                form.addView(dynColorFields[k]);
             }
+        } else {
+            for (int i = 0; i < dynStateFields.length; i++) dynColorFields[i] = null;
         }
 
         final EditText[] bitLabelFields = new EditText[4];
@@ -6485,6 +6496,12 @@ public class MainActivity extends Activity {
         visibleField.setText("Элемент видим на экране"); visibleField.setChecked(w.visible); form.addView(visibleField);
         android.widget.CheckBox frameField = new android.widget.CheckBox(this);
         frameField.setText("Показывать рамку"); frameField.setChecked(w.showFrame); form.addView(frameField);
+        if ("Динамический текст".equals(w.type)) {
+            for (EditText colorField : dynColorFields) colorField.setEnabled(!frameField.isChecked());
+            frameField.setOnCheckedChangeListener((button, checked) -> {
+                for (EditText colorField : dynColorFields) colorField.setEnabled(!checked);
+            });
+        }
         android.widget.CheckBox autoResizeField = new android.widget.CheckBox(this);
         autoResizeField.setText("Автоподбор размера текста по ширине"); autoResizeField.setChecked(w.autoResizeText); form.addView(autoResizeField);
 
@@ -7011,9 +7028,19 @@ public class MainActivity extends Activity {
                     }
                     if (fbdInputField != null) w.inputValue = fbdInputField.isChecked();
                     if ("Динамический текст".equals(w.type)) {
-                        for (int k = 0; k < 4; k++) {
+                        int[] stateColors = new int[CraftDynamicTextProperties.STATE_COUNT];
+                        try {
+                            for (int k = 0; k < CraftDynamicTextProperties.STATE_COUNT; k++)
+                                stateColors[k] = CraftDynamicTextProperties.parseColor(
+                                        dynColorFields[k].getText().toString());
+                        } catch (IllegalArgumentException invalidColor) {
+                            Toast.makeText(this, invalidColor.getMessage(), Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                        for (int k = 0; k < CraftDynamicTextProperties.STATE_COUNT; k++) {
                             if (dynStateFields[k] != null) {
                                 w.dynTextStates[k] = dynStateFields[k].getText().toString();
+                                w.dynTextColors[k] = stateColors[k];
                             }
                         }
                     }

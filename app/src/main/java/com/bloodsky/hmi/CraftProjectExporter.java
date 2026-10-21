@@ -125,6 +125,29 @@ public final class CraftProjectExporter {
                         }
                     }
                     int componentId = widget.optInt("craftComponentId", -1);
+                    if (componentId == 7) {
+                        JSONArray states = widget.optJSONArray("dynTextStates");
+                        JSONArray colors = widget.optJSONArray("dynTextColors");
+                        if (states == null || colors == null)
+                            throw new IOException("У динамического текста Craft отсутствуют 16 состояний");
+                        CraftDynamicTextProperties.writeCraftFields(merged, states, colors);
+                        if (!widget.has("craftDynamicTextOriginalSize")
+                                || widget.optInt("textSizeSp", 14)
+                                != widget.optInt("craftDynamicTextOriginalSize", 14))
+                            merged.put("sizeText", widget.optInt("textSizeSp", 14));
+                        if (!widget.has("craftDynamicTextOriginalColor")
+                                || widget.optInt("textColor", 0xff1f2937)
+                                != widget.optInt("craftDynamicTextOriginalColor", 0xff1f2937))
+                            merged.put("colorText", widget.optInt("textColor", 0xff1f2937));
+                        if (!widget.has("craftDynamicTextOriginalAutoResize")
+                                || widget.optBoolean("autoResizeText", false)
+                                != widget.optBoolean("craftDynamicTextOriginalAutoResize", false))
+                            merged.put("autoResizeText", widget.optBoolean("autoResizeText", false));
+                        if (!widget.has("craftDynamicTextOriginalFrame")
+                                || widget.optBoolean("showFrame", true)
+                                != widget.optBoolean("craftDynamicTextOriginalFrame", true))
+                            merged.put("enableFrameDynText", widget.optBoolean("showFrame", true));
+                    }
                     if (componentId == 101 || componentId == 105 || componentId == 108) {
                         if (widget.has("craftVarBit")) merged.put("bit", widget.optInt("craftVarBit"));
                         if (widget.has("craftVarConstantMode"))

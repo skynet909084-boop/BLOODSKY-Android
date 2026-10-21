@@ -471,10 +471,19 @@ public final class CraftProjectImporter {
             }
             widget.put("dynTextStates", states);
             widget.put("dynTextColors", colors);
-            widget.put("textSizeSp", boundedInt(other.opt("sizeText"), widget.optInt("textSizeSp", 14), 8, 48));
-            widget.put("textColor", color(other.opt("colorText"), widget.optInt("textColor", Color.rgb(31, 41, 55))));
-            widget.put("autoResizeText", other.optBoolean("autoResizeText", false));
-            widget.put("showFrame", other.optBoolean("enableFrameDynText", true));
+            int dynamicTextSize = boundedInt(other.opt("sizeText"), widget.optInt("textSizeSp", 14), 8, 48);
+            int dynamicTextColor = color(other.opt("colorText"), widget.optInt("textColor", Color.rgb(31, 41, 55)));
+            boolean autoResize = other.optBoolean("autoResizeText", false);
+            boolean showFrame = other.optBoolean("enableFrameDynText", true);
+            widget.put("textSizeSp", dynamicTextSize);
+            widget.put("textColor", dynamicTextColor);
+            widget.put("autoResizeText", autoResize);
+            widget.put("showFrame", showFrame);
+            // Retain source representations when a value is only clamped for editor display.
+            widget.put("craftDynamicTextOriginalSize", dynamicTextSize);
+            widget.put("craftDynamicTextOriginalColor", dynamicTextColor);
+            widget.put("craftDynamicTextOriginalAutoResize", autoResize);
+            widget.put("craftDynamicTextOriginalFrame", showFrame);
         } else if (componentId == 2) {
             widget.put("autoResizeText", other.optBoolean("autoResizeText", false));
             widget.put("showFrame", other.optBoolean("enableFrameLabel", true));
