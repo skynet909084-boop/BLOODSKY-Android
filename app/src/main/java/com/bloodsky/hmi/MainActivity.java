@@ -1494,8 +1494,8 @@ public class MainActivity extends Activity {
         if (!activityResumed || !operatorMode || editor == null) return;
         long now = android.os.SystemClock.elapsedRealtime();
         final EditorCanvas sessionEditor = editor;
-        for (int i = 0; i < widgets.size(); i++) {
-            Widget widget = widgets.get(i);
+        for (Widget widget : fbdRuntimeWidgetsIncludingMacros(widgets)) {
+            int index = widgets.indexOf(widget);
             if (!isCraftOdTempSource(widget.type) || widget.craftOdTempPending
                     || now < widget.craftOdTempNextPollAt) continue;
             String host = widget.extraFields.optString("ip", "10.10.0.1").trim();
@@ -1504,10 +1504,11 @@ public class MainActivity extends Activity {
             if (!isAllowedOdTempHost(host) || (sensorType != 1 && sensorType != 2)
                     || responseType < 1 || responseType > 2) {
                 widget.craftSensorValid = false; widget.craftOdTempNextPollAt = now + 5000L;
-                liveValues.put(i, "CFG"); continue;
+                if (index >= 0) liveValues.put(index, "CFG");
+                continue;
             }
             widget.craftOdTempPending = true; widget.craftOdTempNextPollAt = now + 5000L;
-            final Widget target = widget; final int index = i;
+            final Widget target = widget; final int topLevelIndex = index;
             final int requestedType = sensorType, requestedResponse = responseType;
             try {
                 craftSensorExecutor.execute(() -> {
@@ -1517,14 +1518,15 @@ public class MainActivity extends Activity {
                     final Double result = reading; final String failureText = error;
                     runOnUiThread(() -> {
                         target.craftOdTempPending = false;
-                        if (index >= widgets.size() || widgets.get(index) != target || !operatorMode
+                        if (!fbdRuntimeWidgetsIncludingMacros(widgets).contains(target) || !operatorMode
                                 || !activityResumed || editor != sessionEditor) return;
                         target.craftOdTempNextPollAt = android.os.SystemClock.elapsedRealtime() + 5000L;
                         target.craftSensorValid = result != null && Double.isFinite(result);
                         if (target.craftSensorValid) {
                             target.craftSensorValue = result;
-                            liveValues.put(index, Double.toString(result));
-                        } else liveValues.put(index, failureText == null ? "ERR: ответ датчика" : failureText);
+                            if (topLevelIndex >= 0) liveValues.put(topLevelIndex, Double.toString(result));
+                        } else if (topLevelIndex >= 0) liveValues.put(topLevelIndex,
+                                failureText == null ? "ERR: ответ датчика" : failureText);
                         if (editor != null) editor.invalidate();
                     });
                 });
@@ -3270,8 +3272,11 @@ public class MainActivity extends Activity {
             }
         }
         operatorMode = !operatorMode; fbdWireMode = false; wireSource = -1;
-        if (!operatorMode) for (Widget value : widgets) if (isCraftOdTempSource(value.type)) {
-            value.craftSensorValid = false; value.craftOdTempNextPollAt = 0L;
+        if (!operatorMode) for (Widget value : fbdRuntimeWidgetsIncludingMacros(widgets))
+            if (isCraftOdTempSource(value.type)) {
+                value.craftSensorValid = false;
+                value.craftOdTempNextPollAt = 0L;
+                value.craftOdTempPending = false;
         }
         updateModbusTcpSlaveRuntime();
         showEditor();
