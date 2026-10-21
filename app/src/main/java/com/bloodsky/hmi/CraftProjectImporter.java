@@ -433,6 +433,10 @@ public final class CraftProjectImporter {
                 if (other.has("isConstant")) widget.put("craftVarConstantMode", other.optBoolean("isConstant"));
                 if (other.has("constant")) widget.put("craftVarConstant", String.valueOf(other.opt("constant")));
             }
+            if ("FBD CRAFT VAR OUT FLOAT".equals(type)) {
+                widget.put("craftSwapWord", other.optBoolean("isHighRegister", false));
+                widget.put("craftSwapByte", other.optBoolean("isHighByte", false));
+            }
             if ("FBD CRAFT SENSOR ORIENTATION".equals(type))
                 widget.put("craftSensorAxis", Math.max(1, Math.min(3, other.optInt("type", 1))));
             if ("FBD CRAFT SUNRISE".equals(type))

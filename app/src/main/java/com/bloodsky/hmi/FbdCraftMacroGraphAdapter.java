@@ -126,6 +126,10 @@ final class FbdCraftMacroGraphAdapter {
                 if (child.has("isConstant")) widget.put("craftVarConstantMode", child.optBoolean("isConstant"));
                 if (child.has("constant")) widget.put("craftVarConstant", String.valueOf(child.opt("constant")));
             }
+            if ("FBD CRAFT VAR OUT FLOAT".equals(type)) {
+                widget.put("craftSwapWord", child.optBoolean("isHighRegister", false));
+                widget.put("craftSwapByte", child.optBoolean("isHighByte", false));
+            }
             if (type.startsWith("FBD CRAFT VAR NAME ")) {
                 int variableType = child.optInt("typeVar", 2);
                 widget.put("craftVariableName", child.optString("name", ""));
