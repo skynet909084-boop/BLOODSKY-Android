@@ -289,6 +289,53 @@ public class FbdDisconnectTest {
         assertTrue(latch.rsState);
     }
 
+    @Test public void craftNativeStateBlocksDoNotTreatUnavailableUpstreamOutputAsFalse() throws Exception {
+        MainActivity.Widget set = new MainActivity.Widget();
+        set.type = "FBD Вход";
+        set.inputValue = true;
+        MainActivity.Widget incompleteRs = new MainActivity.Widget();
+        incompleteRs.type = "FBD RS";
+        MainActivity.Widget reset = new MainActivity.Widget();
+        reset.type = "FBD Вход";
+        reset.inputValue = true;
+        MainActivity.Widget downstreamRs = new MainActivity.Widget();
+        downstreamRs.type = "FBD RS";
+        downstreamRs.rsState = true;
+        List<MainActivity.Widget> rsNodes = java.util.Arrays.asList(set, incompleteRs, reset, downstreamRs);
+        List<MainActivity.FbdConnection> rsEdges = java.util.Arrays.asList(
+                MainActivity.pinnedFbdConnection(0, "Q", 1, "S"),
+                MainActivity.pinnedFbdConnection(1, "Q", 3, "S"),
+                MainActivity.pinnedFbdConnection(2, "Q", 3, "R"));
+        assertTrue("An unavailable S output must not reset or otherwise scan downstream RS",
+                runFbd(rsNodes, rsEdges, 3));
+        assertTrue(downstreamRs.rsState);
+
+        MainActivity.Widget countSet = new MainActivity.Widget();
+        countSet.type = "FBD Вход";
+        countSet.inputValue = true;
+        MainActivity.Widget incompleteCountSource = new MainActivity.Widget();
+        incompleteCountSource.type = "FBD RS";
+        MainActivity.Widget minus = new MainActivity.Widget();
+        minus.type = "FBD Вход";
+        MainActivity.Widget countReset = new MainActivity.Widget();
+        countReset.type = "FBD Вход";
+        MainActivity.Widget counter = new MainActivity.Widget();
+        counter.type = "FBD CRAFT CTU";
+        counter.counterValue = 23;
+        counter.craftLastPlus = true;
+        List<MainActivity.Widget> countNodes = java.util.Arrays.asList(
+                countSet, incompleteCountSource, minus, countReset, counter);
+        List<MainActivity.FbdConnection> countEdges = java.util.Arrays.asList(
+                MainActivity.pinnedFbdConnection(0, "Q", 1, "S"),
+                MainActivity.pinnedFbdConnection(1, "Q", 4, "+"),
+                MainActivity.pinnedFbdConnection(2, "Q", 4, "-"),
+                MainActivity.pinnedFbdConnection(3, "Q", 4, "R"));
+        MainActivity.evaluateFbdBlock(countNodes, countEdges, 4, new boolean[5],
+                new boolean[5], new boolean[5], new double[5]);
+        assertEquals("Missing source output must leave the Craft counter untouched", 23, counter.counterValue);
+        assertTrue("Missing source output must not release the + edge latch", counter.craftLastPlus);
+    }
+
     @Test public void tonExecutionUsesNamedInNotFirstIncomingWire() throws Exception {
         MainActivity.Widget first = new MainActivity.Widget();
         first.type = "FBD Вход";
