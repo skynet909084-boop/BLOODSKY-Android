@@ -258,7 +258,7 @@ public final class CraftProjectImporter {
         if (componentId == 1) {
             widget.put("craftSwitchSkin", Math.max(1, Math.min(8, other.optInt("imagePosition", 1))));
             widget.put("craftSwitchBit", Math.max(0, Math.min(15,
-                    objectValue(component.opt("jsTableComponent_connectionInfo")).optInt("addressBit", 0))));
+                    objectValue(source.opt("jsTableComponent_connectionInfo")).optInt("addressBit", 0))));
             widget.put("craftSwitchBitEnabled", false);
             widget.put("craftSwitchVisibleInWork", other.optBoolean("visibleInWork", true));
         }
