@@ -35,7 +35,7 @@ public class CraftModbusTcpSlaveTest {
         assertArrayEquals(new byte[]{3, 4, 0x12, 0x34, (byte) 0xab, (byte) 0xcd},
                 Arrays.copyOfRange(read, 7, read.length));
         byte[] single = response(bank, 6, 0, 10, 0xbe, 0xef);
-        assertArrayEquals(new byte[]{6, 0, 10, 0, (byte) 0xbe, (byte) 0xef},
+        assertArrayEquals(new byte[]{6, 0, 10, (byte) 0xbe, (byte) 0xef},
                 Arrays.copyOfRange(single, 7, single.length));
         assertEquals(0xbeef, bank.readWord(10));
         byte[] multiple = response(bank, 16, 0, 10, 0, 2, 4, 0, 1, 0, 2);
