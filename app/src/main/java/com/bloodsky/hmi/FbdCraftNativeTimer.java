@@ -42,23 +42,23 @@ public final class FbdCraftNativeTimer {
     /**
      * Original f0 codes 1=millisecond, 2=second, 3=UsbId.SILABS_CP2102.
      * The third-unit multiplier is verified as 60000 in pinned original
-     * Connections/Usb/driver/UsbId.java (line 20, SHA256 above).
-     * Unlike native signed-int multiplication, fail closed on overflow.
+     * Connections/Usb/driver/UsbId.java (line 20, SHA256 above). The source
+     * stores the product in an int, so preserve its signed 32-bit wrap and
+     * accept zero/negative values exactly as FB_TIMER.f() does.
      */
     public static long durationMillis(int value, int unitCode) {
         return durationMillis(value, unitCode, VERIFIED_MINUTE_MS);
     }
 
-    /** Compatibility overload: reject third-unit values not verified in Craft source. */
+    /** Compatibility overload: reject third-unit multipliers not verified in Craft source. */
     public static long durationMillis(int value, int unitCode, long verifiedThirdUnit) {
-        if (value < 1) throw new IllegalArgumentException("positive duration required");
         final long factor;
         if (unitCode == 1) factor = 1L;
         else if (unitCode == 2) factor = 1000L;
         else if (unitCode == 3 && verifiedThirdUnit == VERIFIED_MINUTE_MS)
             factor = VERIFIED_MINUTE_MS;
         else throw new IllegalArgumentException("unknown or unverified Craft unit");
-        return Math.multiplyExact(value, factor);
+        return (int) ((long) value * factor);
     }
 
     /** One execution of original FB_TIMER.f() with resolved input values. */
@@ -66,7 +66,6 @@ public final class FbdCraftNativeTimer {
                              long durationMillis) {
         if (previous == null) throw new IllegalArgumentException("missing timer state");
         if (mode < TON || mode > BLINK) throw new IllegalArgumentException("unknown Craft mode");
-        if (durationMillis < 1) throw new IllegalArgumentException("non-positive preset");
         boolean output = previous.output;
         boolean started = previous.started; // original i0
         boolean armed = previous.armed;     // original j0
@@ -125,7 +124,7 @@ public final class FbdCraftNativeTimer {
     /** Whether an operator-mode redraw is needed to advance a running Craft timer. */
     public static boolean needsRedraw(int mode, State state, long nowMillis,
                                       long durationMillis) {
-        if (state == null || durationMillis < 1 || mode < TON || mode > BLINK) return false;
+        if (state == null || mode < TON || mode > BLINK) return false;
         // BLINK alternates in two phases while armed; the phase boundary itself
         // is advanced by the next FBD scan, so keep scheduling frames throughout.
         if (mode == BLINK) return state.armed;

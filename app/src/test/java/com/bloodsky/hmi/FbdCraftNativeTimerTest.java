@@ -111,16 +111,44 @@ public class FbdCraftNativeTimerTest {
             } catch (IllegalArgumentException expected) {}
         }
         try {
-            FbdCraftNativeTimer.durationMillis(-1, 1, 0);
-            fail("Negative PT accepted");
-        } catch (IllegalArgumentException expected) {}
-        try {
             FbdCraftNativeTimer.durationMillis(Integer.MAX_VALUE, 3, Long.MAX_VALUE);
             fail("Unverified original minute multiplier was accepted");
         } catch (IllegalArgumentException expected) {}
-        // With the pinned unit factor 60000 and int MAX, a long cannot overflow.
-        assertEquals(128849018820000L,
+        // FB_TIMER stores value * factor in an int, preserving signed wraparound.
+        assertEquals((long) (int) ((long) Integer.MAX_VALUE * 60000L),
                 FbdCraftNativeTimer.durationMillis(Integer.MAX_VALUE, 3));
+        assertEquals(0L, FbdCraftNativeTimer.durationMillis(0, 1));
+        assertEquals(-1L, FbdCraftNativeTimer.durationMillis(-1, 1));
+    }
+
+    @Test public void nativeTimerUsesSourceIntSemanticsForZeroNegativeAndOverflowedPresets() {
+        FbdCraftNativeTimer.State initial = FbdCraftNativeTimer.State.initial();
+        FbdCraftNativeTimer.State zeroTon = step(FbdCraftNativeTimer.TON, initial,
+                true, 100, FbdCraftNativeTimer.durationMillis(0, 1));
+        assertTrue("source comparison expires a zero preset on its first high scan", zeroTon.output);
+        FbdCraftNativeTimer.State negativeTon = step(FbdCraftNativeTimer.TON, initial,
+                true, 100, FbdCraftNativeTimer.durationMillis(-2, 2));
+        assertTrue("negative source int duration expires immediately", negativeTon.output);
+
+        long wrappedMinutes = FbdCraftNativeTimer.durationMillis(Integer.MAX_VALUE, 3);
+        assertTrue("the original int multiplication can wrap into an immediate deadline",
+                wrappedMinutes < 0);
+        assertTrue(step(FbdCraftNativeTimer.TON, initial, true, 100, wrappedMinutes).output);
+
+        FbdCraftNativeTimer.State tof = new FbdCraftNativeTimer.State(true, false, false, 0);
+        tof = step(FbdCraftNativeTimer.TOF, tof, false, 100,
+                FbdCraftNativeTimer.durationMillis(0, 1));
+        assertFalse("zero TOF expires on its first low scan", tof.output);
+    }
+
+    @Test public void importedTimerPresetKeepsSourceIntegerValuesThroughUnitConversion() {
+        java.util.List<Double> values = java.util.Arrays.asList(1.0, 0.0);
+        java.util.List<String> pins = java.util.Arrays.asList("IN", "MS");
+        assertEquals(0L, MainActivity.fbdCraftTimerPresetMs(values, pins, 500, "MS"));
+        values.set(1, -2.0);
+        assertEquals(-2L, MainActivity.fbdCraftTimerPresetMs(values, pins, 500, "MS"));
+        values.set(1, (double) Integer.MAX_VALUE);
+        assertEquals(-60000L, MainActivity.fbdCraftTimerPresetMs(values, pins, 500, "MIN"));
     }
 
     @Test public void invertedOutputAndClockRollbackAreDeterministic() {
@@ -144,10 +172,6 @@ public class FbdCraftNativeTimerTest {
         try {
             step(1, null, true, 100, 10);
             fail("Null state accepted");
-        } catch (IllegalArgumentException expected) {}
-        try {
-            step(1, FbdCraftNativeTimer.State.initial(), true, 100, 0);
-            fail("Zero duration accepted");
         } catch (IllegalArgumentException expected) {}
     }
 
