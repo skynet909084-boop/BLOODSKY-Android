@@ -45,6 +45,36 @@ public final class ProjectCatalog {
         return catalog.toString();
     }
 
+    /** Move one saved project to a recoverable catalog without touching its private media. */
+    public static JSONObject moveToTrash(String catalogJson, String trashJson, String key)
+            throws Exception {
+        JSONObject catalog = new JSONObject(catalogJson == null ? "{}" : catalogJson);
+        JSONObject trash = new JSONObject(trashJson == null ? "{}" : trashJson);
+        if (key == null || !catalog.has(key)) throw new IllegalArgumentException("Saved project not found");
+        if (trash.has(key)) throw new IllegalArgumentException("Project is already in the trash");
+        JSONObject project = catalog.getJSONObject(key);
+        if (!key.equals(ProjectMediaService.getOrGenerateProjectId(project.toString())))
+            throw new IllegalArgumentException("Project catalog identity mismatch");
+        catalog.remove(key);
+        trash.put(key, project);
+        return new JSONObject().put("catalog", catalog).put("trash", trash);
+    }
+
+    /** Restore one trashed project without overwriting a newer saved project with the same ID. */
+    public static JSONObject restoreFromTrash(String catalogJson, String trashJson, String key)
+            throws Exception {
+        JSONObject catalog = new JSONObject(catalogJson == null ? "{}" : catalogJson);
+        JSONObject trash = new JSONObject(trashJson == null ? "{}" : trashJson);
+        if (key == null || !trash.has(key)) throw new IllegalArgumentException("Trashed project not found");
+        if (catalog.has(key)) throw new IllegalArgumentException("A saved project already has this identity");
+        JSONObject project = trash.getJSONObject(key);
+        if (!key.equals(ProjectMediaService.getOrGenerateProjectId(project.toString())))
+            throw new IllegalArgumentException("Trashed project identity mismatch");
+        trash.remove(key);
+        catalog.put(key, project);
+        return new JSONObject().put("catalog", catalog).put("trash", trash);
+    }
+
     public static List<JSONObject> list(String catalogJson) throws Exception {
         JSONObject catalog = new JSONObject(catalogJson == null ? "{}" : catalogJson);
         List<JSONObject> projects = new ArrayList<>();

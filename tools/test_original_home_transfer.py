@@ -20,7 +20,8 @@ class OriginalHomeTransferTests(unittest.TestCase):
         labels = ['Создать новый проект', 'Загрузить проект', 'Удалить проект', 'Экспорт проекта', 'Импорт проекта', 'Выход']
         positions = [home.index('addLegacyMenuItem("'+label+'"') for label in labels]
         self.assertEqual(sorted(positions), positions)
-        self.assertEqual(7, home.count('addLegacyMenuItem('))
+        self.assertEqual(8, home.count('addLegacyMenuItem('))
+        self.assertIn('addLegacyMenuItem("Восстановить проект", this::chooseTrashedProject', home)
         self.assertIn('addLegacyMenuItem("USB Serial • Modbus RTU", this::showUsbSerialScreen', home)
         usb = source.split('private void showUsbSerialScreen()', 1)[1].split('private ArrayAdapter<String> simpleSpinnerAdapter', 1)[0]
         self.assertIn('manualUsbConnector.listDevices()', usb)
