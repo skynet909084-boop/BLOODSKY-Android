@@ -18,6 +18,6 @@ public class CraftProgressBarTest {
     }
 
     @Test public void sourceShadeKeepsAlphaAndDimsEachRgbChannel() {
-        assertEquals(0x8065698c, CraftProgressBar.shade(0x806496c8, 0.7f));
+        assertEquals(0x8046698c, CraftProgressBar.shade(0x806496c8, 0.7f));
     }
 }
