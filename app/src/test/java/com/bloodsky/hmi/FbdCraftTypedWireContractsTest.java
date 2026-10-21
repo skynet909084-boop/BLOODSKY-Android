@@ -39,6 +39,12 @@ public class FbdCraftTypedWireContractsTest {
         assertFalse(wire("FBD CRAFT VAR FLOAT", "Q", "FBD CRAFT TIMER", "PT"));
     }
 
+    @Test public void craftCounterOutputUsesOriginalIntegerType() throws Exception {
+        assertEquals("INT", FbdCraftPinTypes.typeForBlock("FBD CRAFT CTU", "Q", true));
+        assertTrue(wire("FBD CRAFT CTU", "Q", "FBD CRAFT VAR OUT INT", "IN"));
+        assertFalse(wire("FBD CRAFT CTU", "Q", "FBD CRAFT VAR OUT FLOAT", "IN"));
+    }
+
     private static boolean wire(String sourceType, String sourcePin, String targetType,
                                 String targetPin) throws Exception {
         JSONObject edge = new JSONObject().put("source", 0).put("target", 1)

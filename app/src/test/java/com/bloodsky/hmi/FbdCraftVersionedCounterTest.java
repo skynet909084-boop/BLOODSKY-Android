@@ -36,7 +36,7 @@ public class FbdCraftVersionedCounterTest {
         for (String pin : new String[]{"+", "-", "R"})
             assertEquals("BOOL",
                     MainActivity.knownFbdPinType("FBD CRAFT CTU", pin, false));
-        assertEquals("NUMBER", MainActivity.knownFbdPinType("FBD CRAFT CTU", "Q", true));
+        assertEquals("INT", MainActivity.knownFbdPinType("FBD CRAFT CTU", "Q", true));
         assertArrayEquals(new String[]{"IN"},
                 MainActivity.compatibleFbdTargetPins("FBD CRAFT CTU", "Q", "FBD MOVE"));
         assertEquals(0, MainActivity.compatibleFbdTargetPins(

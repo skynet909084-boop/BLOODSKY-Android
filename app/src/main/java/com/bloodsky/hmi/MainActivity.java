@@ -8644,7 +8644,7 @@ public class MainActivity extends Activity {
             if (!output && "IN".equals(name)) return "BOOL";
         }
         if (kind.equals("FBD CRAFT CTU")) {
-            if (output && "Q".equals(name)) return "NUMBER";
+            if (output && "Q".equals(name)) return "INT";
             if (!output && ("+".equals(name) || "-".equals(name) || "R".equals(name)))
                 return "BOOL";
         }
