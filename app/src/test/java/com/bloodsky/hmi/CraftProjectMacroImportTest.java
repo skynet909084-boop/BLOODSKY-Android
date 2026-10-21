@@ -72,6 +72,43 @@ public class CraftProjectMacroImportTest {
                 converted.toString(), exported).get("Scale.mcr"));
     }
 
+    @Test public void importsNestedMacroSidecarsAndRunsTheirResolvedGraph() throws Exception {
+        JSONObject project = sourceProject();
+        project.getJSONArray("TableComponent").getJSONObject(0).getJSONObject("jsTableComponent_other")
+                .put("name", "Outer").put("uniqueId", "9");
+        JSONObject innerChild = new JSONObject().put("componentId", 105).put("x", 0).put("y", 0)
+                .put("saveKey", 10).put("keyOut", 900).put("numOnIn", 1)
+                .put("isConstant", true).put("constant", 31).put("nMcr", "Inner").put("unIdMcr", 8);
+        JSONObject inner = new JSONObject().put("name", "Inner").put("uniqueId", 8)
+                .put("countIn", 0).put("typeOut", 2).put("nameOut", "Q").put("saveKeyOut", 900)
+                .put("fbInMacros", new JSONArray().put(innerChild));
+        JSONObject outerChild = new JSONObject().put("componentId", 135).put("x", 0).put("y", 0)
+                .put("saveKey", 20).put("keyOut", 900).put("numOnIn", 1)
+                .put("name", "Inner").put("nMcr", "Outer").put("unIdMcr", 9);
+        JSONObject outer = new JSONObject().put("name", "Outer").put("uniqueId", 9)
+                .put("countIn", 0).put("typeOut", 2).put("nameOut", "Q").put("saveKeyOut", 900)
+                .put("fbInMacros", new JSONArray().put(outerChild));
+        Map<String, byte[]> macros = new java.util.HashMap<>();
+        macros.put("project/Outer.mcr", outer.toString().getBytes(StandardCharsets.UTF_8));
+        macros.put("project/Inner.mcr", inner.toString().getBytes(StandardCharsets.UTF_8));
+
+        JSONObject converted = new JSONObject(CraftProjectImporter.convert(project.toString(),
+                "project/Main.pro", macros));
+        JSONObject imported = converted.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0);
+        JSONObject nested = imported.getJSONObject("craftMacroDefinition").getJSONObject("bloodskyGraph")
+                .getJSONArray("widgets").getJSONObject(0);
+        assertEquals("FBD CRAFT MACRO", nested.getString("type"));
+        assertEquals("Inner", nested.getJSONObject("craftMacroDefinition").getString("name"));
+
+        MainActivity.Widget runtime = MainActivity.widgetFromJson(imported);
+        double[] numeric = new double[1];
+        MainActivity.evaluateFbdBlock(Collections.singletonList(runtime), Collections.emptyList(), 0,
+                new boolean[1], new boolean[1], new boolean[1], numeric,
+                new CraftSystemRegisterBank(), false);
+        assertEquals(31.0, numeric[0], 0.0);
+    }
+
     @Test public void unsupportedMacroGraphIsVisibleButExplicitlyNonExecutable() throws Exception {
         JSONObject unsupported = new JSONObject(new String(supportedMacro(), StandardCharsets.UTF_8));
         unsupported.getJSONArray("fbInMacros").getJSONObject(0).put("componentId", 999);
