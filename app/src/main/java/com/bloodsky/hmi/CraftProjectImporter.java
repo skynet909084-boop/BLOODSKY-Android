@@ -288,7 +288,7 @@ public final class CraftProjectImporter {
             widget.put("craftGaugeSecondColorPoint", boundedInt(other.opt("secondColorPoint"), 0, 0, gaugeMax));
             widget.put("craftGaugeKind", "threshold");
         } else if (componentId == 24) {
-            widget.put("minValue", boundedInt(other.opt("minGauge"), 0, -1_000_000, 1_000_000));
+            widget.put("minValue", boundedSignedInt(other.opt("minGauge"), 0, -1_000_000, 1_000_000));
             widget.put("maxValue", boundedInt(other.opt("maxGauge"), 100, -1_000_000, 1_000_000));
             widget.put("textSizeSp", boundedInt(other.opt("sizeText"), 20, 1, 256));
             widget.put("craftGaugeTextSize", boundedInt(other.opt("sizeText"), 20, 1, 256));
@@ -525,6 +525,12 @@ public final class CraftProjectImporter {
     private static int boundedInt(Object value, int fallback, int min, int max) {
         int parsed = positiveInt(value, fallback);
         return Math.max(min, Math.min(max, parsed));
+    }
+
+    private static int boundedSignedInt(Object value, int fallback, int min, int max) {
+        double parsed = decimal(value, fallback);
+        int rounded = (int) Math.round(parsed);
+        return Math.max(min, Math.min(max, rounded));
     }
 
     private static double decimal(Object value, double fallback) {
