@@ -67,3 +67,5 @@ Craft ID 23 (`CustomComponents.f`) is now mapped to a visible disabled placehold
 
 
 Craft ID 27 is `CustomComponents.a0`, titled with the original `custom_voice_recognition` resource and carrying sixteen `textVoice0`–`textVoice15` phrase fields. It is a voice-recognition control, not the TTS announcement widget. Import preserves its fields and shows a disabled placeholder. The property editor exposes all sixteen source phrases and saves them back under their original `textVoice0`–`textVoice15` keys; original recognition execution remains unported.
+
+Craft ID 25 (`CustomComponents.t`) now imports its title, body and topic, and can emit a local notification after an explicit opt-in on a 0→1 transition. The original embedded FCM server key is not reused; no remote FCM send is provided. Craft ID 26 (`CustomComponents.b0`) imports and edits its sixteen `link0`–`link15` values with per-link length limits, preserves unknown metadata, and remains a disabled WebView placeholder. The source's bitmask-driven URL loading is not run for imported projects.
