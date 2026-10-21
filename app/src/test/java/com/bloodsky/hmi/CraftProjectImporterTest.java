@@ -40,6 +40,31 @@ public class CraftProjectImporterTest {
                 + "\"TableConnections\":[{\"privateSetting\":\"preserved\"}]}";
     }
 
+    @Test public void importsGifComponentMediaAndKeepsOpaqueCraftFields() throws Exception {
+        JSONObject other = new JSONObject().put("numScreen", 1).put("pathGif", "anim.gif")
+                .put("vendorAnimationMode", 7);
+        JSONObject component = new JSONObject().put("componentId", 16).put("text", "Animation")
+                .put("width", 100).put("height", 60).put("jsTableComponent_other", other);
+        JSONObject source = new JSONObject()
+                .put("TableNameProject", new JSONObject().put("name", "GIF").put("countScreen", 1))
+                .put("TableComponent", new JSONArray().put(component))
+                .put("TableConnections", new JSONArray());
+        Map<String, byte[]> media = new HashMap<>();
+        media.put("projects/anim.gif", new byte[]{'G', 'I', 'F', '8', '9', 'a'});
+
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(
+                source.toString(), "projects/project.json", media));
+        JSONObject widget = project.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0);
+
+        assertEquals("GIF Craft", widget.getString("type"));
+        assertEquals(16, widget.getInt("craftComponentId"));
+        assertEquals("media/projects/anim.gif", widget.getString("craftGifPath"));
+        assertEquals(7, widget.getJSONObject("craftOther").getInt("vendorAnimationMode"));
+        MainActivity.Widget restored = MainActivity.widgetFromJson(widget);
+        assertEquals("media/projects/anim.gif", restored.extraFields.getString("craftGifPath"));
+    }
+
     @Test public void archiveIdKeepsArchiveIdentityAndDisablesLegacyBinding() throws Exception {
         JSONObject other = new JSONObject().put("numScreen", 1).put("registerArchive", 40001)
                 .put("countChannel", 3).put("typeRecord", "FLOAT")

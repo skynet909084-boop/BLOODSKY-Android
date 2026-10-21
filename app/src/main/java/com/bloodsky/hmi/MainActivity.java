@@ -187,6 +187,20 @@ public class MainActivity extends Activity {
     private final java.util.Map<String, ToneGenerator> craftAlarmTones = new java.util.HashMap<>();
     private TextToSpeech textToSpeech;
     private final java.util.Map<String, Bitmap> imageCache = new java.util.HashMap<>();
+    private final java.util.Map<String, android.graphics.Movie> gifCache = new java.util.HashMap<>();
+
+    private android.graphics.Movie loadCachedMovie(String path) {
+        if (path == null || path.trim().isEmpty()) return null;
+        if (gifCache.containsKey(path)) return gifCache.get(path);
+        android.graphics.Movie movie = null;
+        try {
+            String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
+            movie = CraftGifAsset.decode(readProjectMediaData(path, json));
+        } catch (Exception ignored) { }
+        if (gifCache.size() >= 4) gifCache.clear();
+        gifCache.put(path, movie);
+        return movie;
+    }
 
     private Bitmap loadCachedBitmap(String pathOrUri) {
         if (pathOrUri == null || pathOrUri.trim().isEmpty()) return null;
@@ -816,8 +830,8 @@ public class MainActivity extends Activity {
                 android.util.Log.e("BLOODSKY", "Deleted project media could not be cleaned", cleanupFailure);
                 Toast.makeText(this, "Проект удалён, но его медиа не удалось очистить", Toast.LENGTH_LONG).show();
             }
-            if (deletingActive) { widgets.clear(); screens.clear(); projectExtraFields = new JSONObject(); clipboardWidget = null; imageCache.clear(); }
             showHome();
+            if (deletingActive) { widgets.clear(); screens.clear(); projectExtraFields = new JSONObject(); clipboardWidget = null; imageCache.clear(); gifCache.clear(); }
         } catch (Exception error) { Toast.makeText(this, error.getMessage(), Toast.LENGTH_LONG).show(); }
     }
 
@@ -2392,6 +2406,7 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> {
                     if (isFinishing() || isDestroyed()) return;
                     imageCache.clear();
+                    gifCache.clear();
                     if (loadProject()) {
                         showEditor();
                         Toast.makeText(this, "Проект импортирован", Toast.LENGTH_LONG).show();
@@ -2480,6 +2495,7 @@ public class MainActivity extends Activity {
                         target.setText(copy.projectPath);
                         imageCache.remove(selected.toString());
                         imageCache.remove(copy.projectPath);
+                        gifCache.remove(copy.projectPath);
                         trackPendingMediaCopy(waitingDialog, projectJson, copy);
                         finishPendingMediaCopy(waitingDialog);
                         Toast.makeText(this, "Файл сохранён в проект", Toast.LENGTH_SHORT).show();
@@ -4338,6 +4354,10 @@ public class MainActivity extends Activity {
                 w.extraFields.put("craftListCheckNoChange", true);
             } catch (Exception ignored) { }
         }
+        if ("GIF Craft".equals(type)) {
+            w.w = dp(160); w.h = dp(100);
+            try { w.extraFields.put("craftGifPath", ""); } catch (Exception ignored) { }
+        }
         if ("Архив Craft".equals(type)) {
             w.w = dp(200); w.h = dp(72);
             try {
@@ -4578,6 +4598,17 @@ public class MainActivity extends Activity {
             TextView remapHelp = new TextView(this);
             remapHelp.setText("Связь из Craft отключена. Укажи TCP holding-регистр для чтения и записи."); form.addView(remapHelp);
         } else { craftLinearMaxField = null; craftLinearVerticalField = null; }
+        final boolean craftGif = "GIF Craft".equals(w.type);
+        final EditText craftGifPathField;
+        if (craftGif) {
+            TextView gifHelp = new TextView(this);
+            gifHelp.setText("Анимированное изображение Craft (GIF)");
+            form.addView(gifHelp);
+            craftGifPathField = propertyField(w.extraFields.optString("craftGifPath", ""), InputType.TYPE_CLASS_TEXT);
+            craftGifPathField.setHint("Файл GIF в проекте");
+            form.addView(craftGifPathField);
+            addMediaPicker(form, craftGifPathField, "image/gif");
+        } else { craftGifPathField = null; }
         final boolean craftNumericInput = "Числовой ввод Craft".equals(w.type);
         final EditText craftNumericMinField, craftNumericMaxField, craftNumericDecimalsField, craftNumericPasswordField;
         final Spinner craftNumericModeField, craftNumericTypeIntField;
@@ -5414,6 +5445,17 @@ public class MainActivity extends Activity {
                             w.extraFields.put("craftLinearValue", CraftLinearSetter.value(w.extraFields, null));
                             w.extraFields.put("craftLinearVertical", craftLinearVerticalField.isChecked());
                             w.extraFields.put("craftLinearEnabled", linearBinding != null);
+                        } catch (Exception ignored) { }
+                    }
+                    if (craftGif) {
+                        String gifPath = craftGifPathField.getText().toString().trim();
+                        if (!gifPath.isEmpty() && !gifPath.startsWith("media/")) {
+                            Toast.makeText(this, "Выбери GIF, чтобы сохранить его в проект", Toast.LENGTH_LONG).show(); return;
+                        }
+                        try {
+                            w.extraFields.put("craftGifPath", gifPath);
+                            JSONObject craftOther = w.extraFields.optJSONObject("craftOther");
+                            if (craftOther != null) craftOther.put("pathGif", gifPath);
                         } catch (Exception ignored) { }
                     }
                     if (craftNumericInput) {
@@ -6572,6 +6614,7 @@ public class MainActivity extends Activity {
         FbdCraftRegisterStore.clear();
         FbdCraftNamedVariableStore.clear();
         imageCache.clear();
+        gifCache.clear();
         widgets.clear(); screens.clear(); currentScreenIndex = 0;
         projectExtraFields = new JSONObject();
         systemRegisterBank.clear();
@@ -9508,6 +9551,27 @@ public class MainActivity extends Activity {
                     String navLabel = "🔗 " + w.text + " (Экран " + (w.targetScreenIndex + 1) + ")";
                     if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(16)) / Math.max(4f, navLabel.length() * 0.58f))));
                     canvas.drawText(navLabel, w.x + dp(8), w.y + w.h / 2 + dp(5), paint);
+                } else if ("GIF Craft".equals(w.type)) {
+                    android.graphics.Movie movie = loadCachedMovie(w.extraFields.optString("craftGifPath", ""));
+                    if (movie != null) {
+                        int duration = Math.max(1, movie.duration());
+                        movie.setTime((int) (SystemClock.uptimeMillis() % duration));
+                        int save = canvas.save();
+                        canvas.clipRect(rect);
+                        canvas.translate(rect.left, rect.top);
+                        canvas.scale(rect.width() / movie.width(), rect.height() / movie.height());
+                        movie.draw(canvas, 0, 0);
+                        canvas.restoreToCount(save);
+                        postInvalidateDelayed(33L);
+                    } else {
+                        paint.setColor(Color.rgb(241, 245, 249));
+                        canvas.drawRect(rect, paint);
+                        paint.setColor(Color.rgb(71, 85, 105));
+                        paint.setTextSize(dp(12));
+                        String label = w.extraFields.optString("craftGifPath", "").isEmpty()
+                                ? "Выбери GIF" : "GIF недоступен";
+                        canvas.drawText(label, w.x + dp(8), w.y + w.h / 2 + dp(4), paint);
+                    }
                 } else if ("Многопозиционное фото".equals(w.type)) {
                     int imgIdx = 0;
                     if (liveValues.containsKey(i)) {

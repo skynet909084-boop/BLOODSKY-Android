@@ -206,6 +206,7 @@ public final class CraftProjectImporter {
         else if (componentId == 23) type = "Видео RTSP Craft"; // CustomComponents.f; preserve as disabled until source-backed player mapping
         else if (componentId == 13) type = "Линейный задатчик Craft"; // CustomSeekBar
         else if (componentId == 15) type = "Архив Craft"; // local-only history; Craft device links stay disabled until remapped
+        else if (componentId == 16) type = "GIF Craft"; // CustomComponents.n, animated image
         else if (componentId == 17) type = "Многопозиционное фото"; // Craft 16-state image; keep legacy register inactive
         else if (componentId == 20) type = "Список Craft"; // CustomList, 16 selectable bit labels
         else if (componentId == 6 && integer(other.opt("mode"), 0) == 1)
@@ -243,6 +244,15 @@ public final class CraftProjectImporter {
         widget.put("backgroundColor", color(source.opt("colorBackground"), Color.TRANSPARENT));
         widget.put("craftComponentId", componentId);
         widget.put("craftOther", other);
+        if (componentId == 16) {
+            String sourcePath = other.optString("pathGif", "").trim();
+            String resolvedPath = "";
+            if (!sourcePath.isEmpty() && !"0".equals(sourcePath) && availableMedia != null) {
+                String candidate = archiveRelativeImage(archiveParent, sourcePath, availableMedia);
+                if (candidate != null && availableMedia.containsKey(candidate)) resolvedPath = "media/" + candidate;
+            }
+            widget.put("craftGifPath", resolvedPath);
+        }
         if (componentId == 17) {
             JSONArray imagePaths = new JSONArray();
             for (int state = 0; state < 16; state++) {
@@ -451,8 +461,8 @@ public final class CraftProjectImporter {
     }
 
     private static boolean isSupportedComponent(int id) {
-        return id == 1 || id == 2 || id == 4 || id == 5 || id == 6 || id == 7 || id == 9 || id == 11 || id == 12 || id == 13 || id == 17 || id == 18 || id == 20 || id == 22 || id == 23 || id == 24;
     }
+        return id == 1 || id == 2 || id == 4 || id == 5 || id == 6 || id == 7 || id == 9 || id == 11 || id == 12 || id == 13 || id == 16 || id == 17 || id == 18 || id == 20 || id == 22 || id == 23 || id == 24;
 
     private static String timerMode(int mode) {
         switch (mode) { case 2: return "TOF"; case 3: return "TP"; case 4: return "BLINK"; default: return "TON"; }

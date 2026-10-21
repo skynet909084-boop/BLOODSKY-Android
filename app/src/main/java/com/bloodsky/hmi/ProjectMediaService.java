@@ -187,6 +187,13 @@ public class ProjectMediaService {
                             if (rewrittenSound != null) widgetObj.put("soundFilePath", rewrittenSound);
                         }
 
+                        if ("GIF Craft".equals(widgetObj.optString("type", ""))
+                                && widgetObj.has("craftGifPath")) {
+                            String gifPath = widgetObj.optString("craftGifPath", "");
+                            String rewrittenGif = processMediaReference(gifPath, resolver, archiveMedia, mediaPathMap);
+                            if (rewrittenGif != null) widgetObj.put("craftGifPath", rewrittenGif);
+                        }
+
                         if (OriginalIndicator.supports(widgetObj.optString("type", ""))) {
                             JSONObject settings = OriginalIndicator.settings(widgetObj);
                             for (boolean active : new boolean[]{false, true}) {
