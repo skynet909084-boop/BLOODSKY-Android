@@ -210,12 +210,8 @@ public class FbdCraftMacroGraphAdapterTest {
 
         int[] unsupportedIds = {139, 140};
         for (int id : unsupportedIds) {
-            JSONObject child = new JSONObject().put("componentId", id).put("saveKey", 1)
-                    .put("keyOut", 900).put("nMcr", "NetworkBlock").put("unIdMcr", id);
-            JSONObject networkMacro = new JSONObject().put("name", "NetworkBlock")
-                    .put("uniqueId", id).put("countIn", 0).put("typeOut", 1)
-                    .put("nameOut", "Q").put("saveKeyOut", 900)
-                    .put("fbInMacros", new JSONArray().put(child));
+            JSONObject networkMacro = validMacro();
+            networkMacro.getJSONArray("fbInMacros").getJSONObject(0).put("componentId", id);
             FbdCraftMacroDefinition unsupported = FbdCraftMacroGraphAdapter.expandIfSupported(
                     FbdCraftMacroDefinition.fromJson(networkMacro.toString()));
             assertNull("MQTT block " + id + " still requires its own runtime lifecycle",
