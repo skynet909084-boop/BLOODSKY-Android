@@ -5,8 +5,8 @@
   "total_original_image_assets": 152,
   "image_aliases_status": {
     "total_packaged_in_apk": 152,
-    "directly_referenced_in_bloodsky_app": 58,
-    "packaged_but_unused_in_bloodsky": 94,
+    "directly_referenced_in_bloodsky_app": 59,
+    "packaged_but_unused_in_bloodsky": 93,
     "verification_note": "Strictly verified against production Java and resource XML by tools/verify_original_source_contracts.py"
   },
   "system_registers": {
@@ -356,7 +356,7 @@
       ],
       "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.loadCachedBitmap",
       "status": "partial",
-      "evidence": "Decodes image URI; missing state index fallback image frame."
+      "evidence": "Resolves the selected state to a project image and renders original kc_no_picture when that state's path is empty or cannot be decoded; uses the source 10-pixel image inset. Source register/device mapping and visual/device acceptance remain open."
     },
     {
       "id": "CustomVoice",

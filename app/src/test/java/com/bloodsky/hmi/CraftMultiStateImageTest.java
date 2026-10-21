@@ -24,4 +24,12 @@ public class CraftMultiStateImageTest {
         assertEquals(15, CraftMultiStateImage.selectIndex(1, 0x8000));
         assertEquals(-1, CraftMultiStateImage.selectIndex(1, 0));
     }
+
+    @Test public void missingSelectedPictureUsesCraftPlaceholderButHiddenStateStaysHidden() {
+        assertEquals(true, CraftMultiStateImage.shouldShowNoPicture(0, false));
+        assertEquals(true, CraftMultiStateImage.shouldShowNoPicture(15, false));
+        assertEquals(false, CraftMultiStateImage.shouldShowNoPicture(3, true));
+        assertEquals(false, CraftMultiStateImage.shouldShowNoPicture(-1, false));
+        assertEquals(false, CraftMultiStateImage.shouldShowNoPicture(16, false));
+    }
 }

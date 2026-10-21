@@ -10036,13 +10036,14 @@ public class MainActivity extends Activity {
                     if (imgIdx >= 0) {
                         String imgPath = w.imagePathStates[imgIdx];
                         Bitmap bitmap = loadCachedBitmap(imgPath);
+                        RectF imageBounds = new RectF(rect.left + 10, rect.top + 10,
+                                rect.right - 10, rect.bottom - 10);
                         if (bitmap != null) {
-                            canvas.drawBitmap(bitmap, null, rect, paint);
-                        } else {
-                            String imgLabel = "🖼 " + w.text + " [" + imgIdx + "]: " + (imgPath == null ? "" : imgPath);
-                            paint.setColor(w.textColor);
-                            if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(16)) / Math.max(4f, imgLabel.length() * 0.58f))));
-                            canvas.drawText(imgLabel, w.x + dp(8), w.y + w.h / 2 + dp(5), paint);
+                            canvas.drawBitmap(bitmap, null, imageBounds, paint);
+                        } else if (CraftMultiStateImage.shouldShowNoPicture(imgIdx, false)
+                                && imageBounds.width() > 0 && imageBounds.height() > 0) {
+                            Bitmap noPicture = originalBitmap(R.drawable.kc_no_picture);
+                            if (noPicture != null) canvas.drawBitmap(noPicture, null, imageBounds, paint);
                         }
                     }
                 } else if ("Распознавание речи Craft".equals(w.type)) {
