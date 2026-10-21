@@ -207,6 +207,7 @@ public final class CraftProjectImporter {
         else if (componentId == 23) type = "Видео RTSP Craft"; // CustomComponents.f; preserve as disabled until source-backed player mapping
         else if (componentId == 13) type = "Линейный задатчик Craft"; // CustomSeekBar
         else if (componentId == 15) type = "Архив Craft"; // local-only history; Craft device links stay disabled until remapped
+        else if (componentId == 14) type = "График / Тренд"; // CustomComponents.o, legacy device link remains inactive
         else if (componentId == 16) type = "GIF Craft"; // CustomComponents.n, animated image
         else if (componentId == 17) type = "Многопозиционное фото"; // Craft 16-state image; keep legacy register inactive
         else if (componentId == 20) type = "Список Craft"; // CustomList, 16 selectable bit labels
@@ -266,6 +267,22 @@ public final class CraftProjectImporter {
                 imagePaths.put(resolvedPath);
             }
             widget.put("imagePathStates", imagePaths);
+        }
+        if (componentId == 14) {
+            widget.put("craftTrendChannelCount", boundedInt(other.opt("countGraphChannel"), 1, 1, 4));
+            widget.put("craftTrendMaxPoints", boundedInt(other.opt("countPoint"), 300, 1, CraftTrendHistory.MAX_POINTS));
+            widget.put("craftTrendIntervalMs", boundedInt(other.opt("secondPeriod"), 500,
+                    (int) CraftTrendHistory.MIN_INTERVAL_MS, (int) CraftTrendHistory.MAX_INTERVAL_MS));
+            widget.put("craftTrendType", boundedSignedInt(other.opt("typeGraph"), 1, 0, 2));
+            widget.put("craftTrendLabelsColor", color(other.opt("colorLabelsXY"), Color.WHITE));
+            widget.put("craftTrendBackgroundColor", color(other.opt("colorBackground"), Color.BLACK));
+            widget.put("craftTrendSeriesNames", new JSONArray()
+                    .put(boundedString(other.optString("nameSeries1", "1"), 128))
+                    .put(boundedString(other.optString("nameSeries2", "2"), 128))
+                    .put(boundedString(other.optString("nameSeries3", "3"), 128))
+                    .put(boundedString(other.optString("nameSeries4", "4"), 128)));
+            widget.put("craftTrendSeriesColors", new JSONArray()
+                    .put(Color.RED).put(Color.GREEN).put(Color.YELLOW).put(Color.BLUE));
         }
         if (componentId == 1) {
             widget.put("craftSwitchSkin", Math.max(1, Math.min(8, other.optInt("imagePosition", 1))));

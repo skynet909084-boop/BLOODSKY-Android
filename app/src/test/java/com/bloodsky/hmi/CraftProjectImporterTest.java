@@ -211,6 +211,34 @@ public class CraftProjectImporterTest {
         assertFalse(graduatedGauge.optBoolean("craftUnsupportedComponent", false));
     }
 
+    @Test public void importsCraftId14TrendSettingsAndKeepsDeviceBindingInactive() throws Exception {
+        JSONObject other = new JSONObject().put("numScreen", 1).put("colorLabelsXY", -1)
+                .put("secondPeriod", 250).put("countPoint", 800).put("colorBackground", -16777216)
+                .put("nameSeries1", "Температура").put("nameSeries2", "Влажность")
+                .put("nameSeries3", "3").put("nameSeries4", "4")
+                .put("countGraphChannel", 2).put("typeGraph", 2).put("futureGraphFlag", "retained");
+        JSONObject component = new JSONObject().put("componentId", 14).put("text", "Climate")
+                .put("jsTableComponent_connectionInfo", new JSONObject()
+                        .put("posDeviceNetworkInList", 5).put("addressRegister", 123).put("typeRequest", 3))
+                .put("jsTableComponent_other", other);
+        JSONObject source = new JSONObject()
+                .put("TableNameProject", new JSONObject().put("name", "Trend").put("countScreen", 1))
+                .put("TableComponent", new JSONArray().put(component))
+                .put("TableConnections", new JSONArray());
+        JSONObject widget = new JSONObject(CraftProjectImporter.convert(source.toString()))
+                .getJSONArray("screens").getJSONObject(0).getJSONArray("widgets").getJSONObject(0);
+        assertEquals("График / Тренд", widget.getString("type"));
+        assertEquals(14, widget.getInt("craftComponentId"));
+        assertEquals("", widget.getString("connectionInfo"));
+        assertEquals(250, widget.getInt("craftTrendIntervalMs"));
+        assertEquals(800, widget.getInt("craftTrendMaxPoints"));
+        assertEquals(2, widget.getInt("craftTrendChannelCount"));
+        assertEquals(2, widget.getInt("craftTrendType"));
+        assertEquals("Температура", widget.getJSONArray("craftTrendSeriesNames").getString(0));
+        assertEquals(-16777216, widget.getInt("craftTrendBackgroundColor"));
+        assertEquals("retained", widget.getJSONObject("craftOther").getString("futureGraphFlag"));
+    }
+
     private static String multiStateImageProject(String firstPath) throws Exception {
         JSONObject other = new JSONObject().put("numScreen", 1).put("typeCommand", 1);
         for (int state = 0; state < 16; state++)
