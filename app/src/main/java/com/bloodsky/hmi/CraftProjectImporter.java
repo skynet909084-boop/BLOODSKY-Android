@@ -288,11 +288,20 @@ public final class CraftProjectImporter {
             widget.put("craftGaugeSecondColorPoint", boundedInt(other.opt("secondColorPoint"), 0, 0, gaugeMax));
             widget.put("craftGaugeKind", "threshold");
         } else if (componentId == 24) {
-            widget.put("minValue", decimal(other.opt("minGauge"), 0));
-            widget.put("maxValue", decimal(other.opt("maxGauge"), 100));
-            widget.put("textSizeSp", boundedInt(other.opt("sizeText"), widget.optInt("textSizeSp", 14), 8, 48));
-            widget.put("craftGaugeScaleCount", boundedInt(other.opt("countTextScale"), 0, 0, 64));
+            widget.put("minValue", boundedInt(other.opt("minGauge"), 0, -1_000_000, 1_000_000));
+            widget.put("maxValue", boundedInt(other.opt("maxGauge"), 100, -1_000_000, 1_000_000));
+            widget.put("textSizeSp", boundedInt(other.opt("sizeText"), 20, 1, 256));
+            widget.put("craftGaugeTextSize", boundedInt(other.opt("sizeText"), 20, 1, 256));
+            widget.put("craftGaugeScaleCount", boundedInt(other.opt("countTextScale"), 6, 0, 64));
+            widget.put("craftGaugeTextValueColor", color(other.opt("colorTextValue"), Color.BLACK));
+            widget.put("craftGaugeTextScaleColor", color(other.opt("colorTextScale"), Color.BLACK));
+            widget.put("craftGaugeCenterColor", color(other.opt("colorCenterCircle"), Color.parseColor("#BFBFBF")));
+            widget.put("craftGaugeIndicatorColor", color(other.opt("colorIndicator"), Color.BLUE));
+            widget.put("craftGaugeMarkColor", color(other.opt("colorMark"), Color.BLACK));
+            widget.put("craftGaugeLowPercent", boundedInt(other.opt("percentLowScale"), 75, 0, 100));
+            widget.put("craftGaugeMediumPercent", boundedInt(other.opt("percentMediumScale"), 90, 0, 100));
             widget.put("craftGaugeHideBackground", other.optBoolean("hideBackground", false));
+            widget.put("craftGaugeIndicatorName", boundedString(other.optString("indicatorName", "NormalIndicator"), 64));
             widget.put("craftGaugeKind", "graduated");
         }
         if (componentId == 4) {
