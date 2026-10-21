@@ -59,4 +59,17 @@ public final class CraftTrendGraphProperties {
         other.put("typeGraph", graphType);
         fields.put("craftOther", other);
     }
+
+    public static void apply(JSONObject fields, int intervalMs, int maxPoints, int channelCount,
+                              int graphType, String[] seriesNames, int labelsColor,
+                              int backgroundColor) throws JSONException {
+        apply(fields, intervalMs, maxPoints, channelCount, graphType, seriesNames);
+        fields.put("craftTrendLabelsColor", labelsColor);
+        fields.put("craftTrendBackgroundColor", backgroundColor);
+        JSONObject other = fields.optJSONObject("craftOther");
+        if (other == null) other = new JSONObject();
+        other.put("colorLabelsXY", labelsColor);
+        other.put("colorBackground", backgroundColor);
+        fields.put("craftOther", other);
+    }
 }

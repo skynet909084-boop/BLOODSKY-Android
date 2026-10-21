@@ -5896,6 +5896,8 @@ public class MainActivity extends Activity {
         final EditText trendPointCountField;
         final EditText trendChannelCountField;
         final EditText trendTypeField;
+        final EditText trendLabelsColorField;
+        final EditText trendBackgroundColorField;
         final EditText[] trendSeriesNameFields;
         if ("График / Тренд".equals(w.type)
                 && w.extraFields.optInt("craftComponentId", -1) == 14) {
@@ -5923,6 +5925,16 @@ public class MainActivity extends Activity {
             trendTypeField.setHint("Тип: 0 UINT16, 1 INT16, 2 FLOAT32");
             trendTypeField.setContentDescription("Тип данных графика");
             form.addView(trendTypeField);
+            trendLabelsColorField = propertyField(String.format(java.util.Locale.ROOT, "#%08X",
+                    w.extraFields.optInt("craftTrendLabelsColor", Color.WHITE)), InputType.TYPE_CLASS_TEXT);
+            trendLabelsColorField.setHint("Цвет подписей (ARGB)");
+            trendLabelsColorField.setContentDescription("Цвет подписей графика");
+            form.addView(trendLabelsColorField);
+            trendBackgroundColorField = propertyField(String.format(java.util.Locale.ROOT, "#%08X",
+                    w.extraFields.optInt("craftTrendBackgroundColor", Color.BLACK)), InputType.TYPE_CLASS_TEXT);
+            trendBackgroundColorField.setHint("Цвет фона (ARGB)");
+            trendBackgroundColorField.setContentDescription("Цвет фона графика");
+            form.addView(trendBackgroundColorField);
             trendSeriesNameFields = new EditText[4];
             JSONArray existingNames = w.extraFields.optJSONArray("craftTrendSeriesNames");
             for (int channel = 0; channel < trendSeriesNameFields.length; channel++) {
@@ -5939,6 +5951,8 @@ public class MainActivity extends Activity {
             trendPointCountField = null;
             trendChannelCountField = null;
             trendTypeField = null;
+            trendLabelsColorField = null;
+            trendBackgroundColorField = null;
             trendSeriesNameFields = null;
         }
 
@@ -6769,7 +6783,9 @@ public class MainActivity extends Activity {
                                             w.extraFields.optInt("craftTrendChannelCount", 1), false),
                                     readPositiveInt(trendTypeField,
                                             w.extraFields.optInt("craftTrendType", 1), true),
-                                    seriesNames);
+                                    seriesNames,
+                                    Color.parseColor(trendLabelsColorField.getText().toString().trim()),
+                                    Color.parseColor(trendBackgroundColorField.getText().toString().trim()));
                         } catch (IllegalArgumentException | org.json.JSONException invalid) {
                             Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show();
                             return;
@@ -11407,33 +11423,4 @@ public class MainActivity extends Activity {
                 } else if (selected >= 0 && fbdWireMode) {
                     Widget picked = widgets.get(selected);
                     if (!isFbd(picked)) {
-                        Toast.makeText(MainActivity.this, "В режиме связи выбери FBD-блок", Toast.LENGTH_SHORT).show();
-                    } else if (wireSource < 0) {
-                        wireSource = selected;
-                        Toast.makeText(MainActivity.this, "Источник выбран: " + picked.text + ". Теперь выбери целевой блок", Toast.LENGTH_LONG).show();
-                    } else {
-                        int source = wireSource;
-                        wireSource = -1;
-                        connectFbdWidgets(source, selected);
-                        fbdWireMode = false;
-                    }
-                } else if (selected >= 0) {
-                    editSelectedWidget();
-                }
-                dragOrigins.clear();
-                invalidate();
-                return true;
-            }
-            if (action == MotionEvent.ACTION_CANCEL) {
-                android.view.ViewParent parent = getParent();
-                if (parent != null) parent.requestDisallowInterceptTouchEvent(false);
-                selected = -1; dragging = false; resizing = false; marqueeActive = false;
-                dragOrigins.clear();
-                invalidate();
-                return true;
-            }
-            return true;
-        }
-    }
-}
-
+                        Toast.makeText(MainActivity.this, "В режиме связ

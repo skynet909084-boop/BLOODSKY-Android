@@ -30,7 +30,8 @@ public class CraftTrendGraphPropertiesTest {
         JSONObject fields = new JSONObject().put("craftOther",
                 new JSONObject().put("futureKey", "keep").put("vendorSeriesColor", 0xff123456));
         String[] names = {"Температура", "Влажность", "Давление", "Резерв"};
-        CraftTrendGraphProperties.apply(fields, 1000, 600, 3, 2, names);
+        CraftTrendGraphProperties.apply(fields, 1000, 600, 3, 2, names,
+                0xffeeeeee, 0xff101010);
         JSONObject other = fields.getJSONObject("craftOther");
         assertEquals(3, fields.getInt("craftTrendChannelCount"));
         assertEquals(2, fields.getInt("craftTrendType"));
@@ -38,6 +39,10 @@ public class CraftTrendGraphPropertiesTest {
         assertEquals(3, other.getInt("countGraphChannel"));
         assertEquals(2, other.getInt("typeGraph"));
         assertEquals("Давление", other.getString("nameSeries3"));
+        assertEquals(0xffeeeeee, fields.getInt("craftTrendLabelsColor"));
+        assertEquals(0xff101010, fields.getInt("craftTrendBackgroundColor"));
+        assertEquals(0xffeeeeee, other.getInt("colorLabelsXY"));
+        assertEquals(0xff101010, other.getInt("colorBackground"));
         assertEquals("keep", other.getString("futureKey"));
         assertEquals(0xff123456, other.getInt("vendorSeriesColor"));
     }
