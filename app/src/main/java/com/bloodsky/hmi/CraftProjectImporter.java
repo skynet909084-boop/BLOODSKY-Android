@@ -7,6 +7,8 @@ import org.json.JSONObject;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.HashSet;
+import java.util.Set;
 
 /** Converts the stable Craft project tables into BLOODSKY's editable screen model. */
 public final class CraftProjectImporter {
@@ -646,6 +648,11 @@ public final class CraftProjectImporter {
 
     private static FbdCraftMacroDefinition loadCraftMacroSidecar(JSONObject source, JSONObject other,
             String archiveParent, Map<String, byte[]> availableMedia) {
+        return loadCraftMacroSidecar(source, other, archiveParent, availableMedia, new HashSet<String>());
+    }
+
+    private static FbdCraftMacroDefinition loadCraftMacroSidecar(JSONObject source, JSONObject other,
+            String archiveParent, Map<String, byte[]> availableMedia, Set<String> resolving) {
         JSONObject inlineDefinition = other.optJSONObject("craftMacroDefinition");
         if (inlineDefinition != null) try {
             FbdCraftMacroDefinition definition = FbdCraftMacroDefinition.fromJson(inlineDefinition.toString());
@@ -654,7 +661,7 @@ public final class CraftProjectImporter {
             String instanceId = other.optString("uniqueId", "").trim();
             String definitionId = definition.toJson().optString("uniqueId", "").trim();
             if (!instanceId.isEmpty() && !definitionId.isEmpty() && !instanceId.equals(definitionId)) return null;
-            return FbdCraftMacroGraphAdapter.expandIfSupported(definition);
+            return expandCraftMacro(definition, archiveParent, availableMedia, resolving);
         } catch (Exception invalidInlineDefinition) { return null; }
         String name = other.optString("name", source.optString("text", "")).trim();
         String entry = findCraftMacroEntry(archiveParent, name, availableMedia);
@@ -668,10 +675,39 @@ public final class CraftProjectImporter {
             String instanceId = other.optString("uniqueId", "").trim();
             String definitionId = json.optString("uniqueId", "").trim();
             if (!instanceId.isEmpty() && !definitionId.isEmpty() && !instanceId.equals(definitionId)) return null;
-            return FbdCraftMacroGraphAdapter.expandIfSupported(definition);
+            return expandCraftMacro(definition, archiveParent, availableMedia, resolving);
         } catch (Exception invalidOrUnsupported) {
             return null;
         }
+    }
+
+    private static FbdCraftMacroDefinition expandCraftMacro(FbdCraftMacroDefinition definition,
+            String archiveParent, Map<String, byte[]> availableMedia, Set<String> resolving)
+            throws Exception {
+        String key = definition.getName().toLowerCase(java.util.Locale.ROOT);
+        if (!resolving.add(key)) return definition;
+        try {
+            return FbdCraftMacroGraphAdapter.expandIfSupported(definition, child -> {
+                String nestedName = child.optString("name", "").trim();
+                return loadCraftMacroByName(nestedName, archiveParent, availableMedia, resolving);
+            });
+        } finally { resolving.remove(key); }
+    }
+
+    private static FbdCraftMacroDefinition loadCraftMacroByName(String name, String archiveParent,
+            Map<String, byte[]> availableMedia, Set<String> resolving) {
+        if (name == null || name.trim().isEmpty() || resolving.size() >= 8) return null;
+        String key = name.trim().toLowerCase(java.util.Locale.ROOT);
+        if (resolving.contains(key)) return null;
+        String entry = findCraftMacroEntry(archiveParent, name.trim(), availableMedia);
+        if (entry == null) return null;
+        byte[] bytes = availableMedia.get(entry);
+        if (bytes == null) return null;
+        try {
+            FbdCraftMacroDefinition definition = FbdCraftMacroDefinition.fromMcrBytes(bytes);
+            if (!name.trim().equalsIgnoreCase(definition.getName())) return null;
+            return expandCraftMacro(definition, archiveParent, availableMedia, resolving);
+        } catch (Exception invalidOrUnsupported) { return null; }
     }
 
     private static String findCraftMacroEntry(String parent, String name,

@@ -11,24 +11,42 @@ import java.util.Map;
 final class FbdCraftMacroGraphAdapter {
     private FbdCraftMacroGraphAdapter() {}
 
+    interface NestedMacroResolver {
+        FbdCraftMacroDefinition resolve(JSONObject child) throws Exception;
+    }
+
     static FbdCraftMacroDefinition expandIfSupported(FbdCraftMacroDefinition definition) throws Exception {
+        return expandIfSupported(definition, null);
+    }
+
+    static FbdCraftMacroDefinition expandIfSupported(FbdCraftMacroDefinition definition,
+            NestedMacroResolver nestedMacros) throws Exception {
         if (definition == null) return null;
         JSONObject root = definition.toJson();
         if (root.optJSONObject("bloodskyGraph") != null) return definition;
         JSONArray children = root.optJSONArray("fbInMacros");
         if (children == null || children.length() == 0) return definition;
-        if (!supportsNestedExecution(children)) return definition;
-        JSONObject graph = translate(root, children);
+        if (!supportsNestedExecution(children, nestedMacros)) return definition;
+        JSONObject graph = translate(root, children, nestedMacros);
         if (graph == null) return definition;
         root.put("bloodskyGraph", graph);
         return FbdCraftMacroDefinition.fromJson(root.toString());
     }
 
-    private static boolean supportsNestedExecution(JSONArray children) {
+    private static boolean supportsNestedExecution(JSONArray children,
+            NestedMacroResolver nestedMacros) {
         for (int i = 0; i < children.length(); i++) {
             JSONObject child = children.optJSONObject(i);
             if (child == null) return false;
             int id = child.optInt("componentId", -1);
+            if (id == 135) {
+                if (nestedMacros == null) return false;
+                try {
+                    FbdCraftMacroDefinition nested = nestedMacros.resolve(child);
+                    if (nested == null || nested.toJson().optJSONObject("bloodskyGraph") == null)
+                        return false;
+                } catch (Exception unresolved) { return false; }
+            }
             // These blocks need screen-level polling, subscription, or output scheduling.
             if (id == 120 || id == 130 || id == 131 || id == 132 || id == 139 || id == 140) return false;
             // Craft register sources are executable in a nested graph only as literals.
@@ -39,6 +57,11 @@ final class FbdCraftMacroGraphAdapter {
     }
 
     static JSONObject translate(JSONObject root, JSONArray children) throws Exception {
+        return translate(root, children, null);
+    }
+
+    static JSONObject translate(JSONObject root, JSONArray children,
+            NestedMacroResolver nestedMacros) throws Exception {
         if (root == null || children == null || children.length() == 0
                 || children.length() > FbdCraftMacroDefinition.MAX_CHILD_COMPONENTS) return null;
         JSONArray widgets = new JSONArray();
@@ -60,7 +83,12 @@ final class FbdCraftMacroGraphAdapter {
         for (int i = 0; i < children.length(); i++) {
             JSONObject child = children.optJSONObject(i);
             if (child == null) return null;
-            String type = typeForComponentId(child.optInt("componentId", -1), child);
+            int componentId = child.optInt("componentId", -1);
+            FbdCraftMacroDefinition nestedDefinition = componentId == 135 && nestedMacros != null
+                    ? nestedMacros.resolve(child) : null;
+            String type = componentId == 135
+                    ? (nestedDefinition == null ? null : "FBD CRAFT MACRO")
+                    : typeForComponentId(componentId, child);
             int saveKey = child.optInt("saveKey", Integer.MIN_VALUE);
             if (type == null || saveKey == Integer.MIN_VALUE || bySaveKey.containsKey(saveKey)) return null;
             JSONObject widget = new JSONObject().put("type", type)
@@ -73,6 +101,8 @@ final class FbdCraftMacroGraphAdapter {
                         || "nMcr".equals(key) || "unIdMcr".equals(key) || "type".equals(key)) continue;
                 widget.put(key, child.get(key));
             }
+            if (nestedDefinition != null)
+                widget.put("craftMacroDefinition", nestedDefinition.toJson());
             int action = child.optInt("compareAction", 0);
             if (type.contains("ARITHMETIC")) widget.put("compareOperator", arithmeticOperator(action));
             else if (type.contains("COMPARE")) widget.put("compareOperator", comparisonOperator(action));
@@ -197,6 +227,8 @@ final class FbdCraftMacroGraphAdapter {
             case 132: return "FBD CRAFT SENSOR SPEED";
             case 133: return namedVariableType(false, child == null ? 2 : child.optInt("typeVar", 2));
             case 134: return namedVariableType(true, child == null ? 2 : child.optInt("typeVar", 2));
+            case 135: return child != null && child.optJSONObject("craftMacroDefinition") != null
+                    ? "FBD CRAFT MACRO" : null;
             case 136: return "FBD CRAFT ARRAY";
             case 137: return "FBD CRAFT CHANGE I";
             case 138: return "FBD CRAFT CHANGE F";

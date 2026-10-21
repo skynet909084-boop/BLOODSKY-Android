@@ -62,6 +62,41 @@ public class FbdCraftMacroGraphAdapterTest {
         assertEquals(103, expanded.toJson().getJSONArray("fbInMacros").getJSONObject(0).getInt("componentId"));
     }
 
+    @Test public void expandsAndExecutesNestedMacroWhenItsDefinitionIsResolved() throws Exception {
+        JSONObject nestedChild = new JSONObject().put("componentId", 105).put("x", 0).put("y", 0)
+                .put("saveKey", 10).put("keyOut", 900).put("numOnIn", 1)
+                .put("reg", 10).put("isConstant", true).put("constant", 31)
+                .put("nMcr", "Inner").put("unIdMcr", 8);
+        JSONObject nestedRoot = new JSONObject().put("name", "Inner").put("uniqueId", 8)
+                .put("countIn", 0).put("typeOut", 2).put("nameOut", "Q").put("saveKeyOut", 900)
+                .put("fbInMacros", new JSONArray().put(nestedChild));
+        final FbdCraftMacroDefinition nestedDefinition = FbdCraftMacroGraphAdapter.expandIfSupported(
+                FbdCraftMacroDefinition.fromJson(nestedRoot.toString()));
+        assertNotNull(nestedDefinition.toJson().optJSONObject("bloodskyGraph"));
+
+        JSONObject nestedInstance = new JSONObject().put("componentId", 135).put("x", 0).put("y", 0)
+                .put("saveKey", 20).put("keyOut", 900).put("numOnIn", 1)
+                .put("name", "Inner").put("nMcr", "Outer").put("unIdMcr", 9);
+        JSONObject outerRoot = new JSONObject().put("name", "Outer").put("uniqueId", 9)
+                .put("countIn", 0).put("typeOut", 2).put("nameOut", "Q").put("saveKeyOut", 900)
+                .put("fbInMacros", new JSONArray().put(nestedInstance));
+        FbdCraftMacroDefinition outerDefinition = FbdCraftMacroGraphAdapter.expandIfSupported(
+                FbdCraftMacroDefinition.fromJson(outerRoot.toString()),
+                child -> "Inner".equals(child.optString("name")) ? nestedDefinition : null);
+        JSONObject graph = outerDefinition.toJson().getJSONObject("bloodskyGraph");
+        assertEquals("FBD CRAFT MACRO", graph.getJSONArray("widgets").getJSONObject(0).getString("type"));
+        assertEquals("Inner", graph.getJSONArray("widgets").getJSONObject(0)
+                .getJSONObject("craftMacroDefinition").getString("name"));
+
+        MainActivity.Widget instance = MainActivity.widgetFromJson(new JSONObject()
+                .put("type", "FBD CRAFT MACRO").put("craftMacroDefinition", outerDefinition.toJson()));
+        double[] numeric = new double[1];
+        MainActivity.evaluateFbdBlock(Collections.singletonList(instance), Collections.emptyList(), 0,
+                new boolean[1], new boolean[1], new boolean[1], numeric,
+                new CraftSystemRegisterBank(), false);
+        assertEquals(31.0, numeric[0], 0.0);
+    }
+
     @Test public void executesImportedRegisterWritesOnlyDuringOperatorScan() throws Exception {
         JSONObject literal = new JSONObject().put("componentId", 105).put("x", 0).put("y", 0)
                 .put("saveKey", 10).put("keyOut", 20).put("numOnIn", 1)
