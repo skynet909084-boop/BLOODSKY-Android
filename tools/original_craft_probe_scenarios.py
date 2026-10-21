@@ -22,10 +22,11 @@ QUICK_SCENARIOS = {
 }
 
 
-def parse_probe_options(arguments: list[str]) -> tuple[str, str]:
+def parse_probe_options(arguments: list[str]) -> tuple[str, str, bool]:
     """Parse the bounded scenario selector and the manual-only full flag."""
     profile = "quick"
     scenario = "hmi-id17-properties"
+    resume = False
     index = 0
     while index < len(arguments):
         option = arguments[index]
@@ -36,9 +37,13 @@ def parse_probe_options(arguments: list[str]) -> tuple[str, str]:
             if index >= len(arguments):
                 raise ValueError("--scenario requires a scenario name")
             scenario = arguments[index]
+        elif option == "--resume":
+            resume = True
         else:
             raise ValueError(f"unknown probe option: {option}")
         index += 1
     if scenario not in QUICK_SCENARIOS:
         raise ValueError(f"unknown quick scenario: {scenario}")
-    return profile, scenario
+    if resume and profile != "full":
+        raise ValueError("--resume is supported only with --full")
+    return profile, scenario, resume
