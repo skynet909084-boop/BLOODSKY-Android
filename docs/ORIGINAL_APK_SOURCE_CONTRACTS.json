@@ -151,6 +151,33 @@
       "evidence": "Procedural canvas drawing; missing 3 original button PNG skins and original popup dialog."
     },
     {
+      "id": "CustomSwitch",
+      "source_class": "ru.himik.nightscream.kascada.CustomComponents.y",
+      "craft_component_id": 1,
+      "layout_xml": "res/layout/select_image_switch.xml",
+      "properties": [
+        "imagePosition",
+        "visibleInWork",
+        "posDeviceNetworkInList",
+        "addressRegister",
+        "addressBit",
+        "typeRequest"
+      ],
+      "resources": [
+        "kc_switch1_off.png", "kc_switch1_on.png",
+        "kc_switch2_off.png", "kc_switch2_on.png",
+        "kc_switch3_off.png", "kc_switch3_on.png",
+        "kc_switch4_off.png", "kc_switch4_on.png",
+        "kc_switch5_off.png", "kc_switch5_on.png",
+        "kc_switch6_off.png", "kc_switch6_on.png",
+        "kc_switch7_off.png", "kc_switch7_on.png",
+        "kc_switch8_off.png", "kc_switch8_on.png"
+      ],
+      "bloodsky_call_site": "com.bloodsky.hmi.OriginalCraftSwitchRenderer",
+      "status": "partial",
+      "evidence": "Verified against decompilation ZIP SHA-256 92d12206bde746f5a76c89e0c3311119287b14bb26cdc8ca36d515e2fca01f7a. Source image states and properties are ported. Runtime comparison remains pending; imported device links remain inactive until explicit TCP remap."
+    },
+    {
       "id": "CustomIndicator",
       "source_class": "ru.himik.nightscream.kascada.CustomComponents.q",
       "layout_xml": "res/layout/popup_lamp.xml",

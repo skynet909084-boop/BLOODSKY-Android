@@ -19,8 +19,8 @@ public final class OriginalComponentPalette {
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         dialog.setContentView(R.layout.kc_fragment_component_bar);
         // Bind source entries to the closest implemented BLOODSKY operator component.
-        action(dialog, R.id.kc_picker_tab_switch, "Добавить: Переключатель (как кнопка)",
-                () -> add.add("Кнопка", "Кнопка"));
+        action(dialog, R.id.kc_picker_tab_switch, "Добавить: Переключатель Craft",
+                () -> add.add(OriginalCraftSwitch.TYPE, "Переключатель"));
         bind(dialog, R.id.kc_picker_tab_list, "Список Craft", "Список", add);
         bind(dialog, R.id.kc_picker_tab_line_setter, "Линейный задатчик Craft", "Линейный задатчик", add);
         unavailable(dialog, R.id.kc_picker_tab_voice_recognition, "Распознавание речи");

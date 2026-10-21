@@ -4289,6 +4289,16 @@ public class MainActivity extends Activity {
         w.y = dp(50) + (widgets.size() % 6) * dp(22);
         w.w = OriginalIndicator.supports(type) ? dp(40) : dp(160);
         w.h = OriginalIndicator.supports(type) ? dp(40) : dp(58);
+        if (OriginalCraftSwitch.supports(type)) {
+            w.w = dp(80); w.h = dp(80);
+            try {
+                w.extraFields.put("craftSwitchSkin", 1);
+                w.extraFields.put("craftSwitchBit", 0);
+                w.extraFields.put("craftSwitchBitEnabled", false);
+                w.extraFields.put("craftSwitchVisibleInWork", true);
+                w.extraFields.put("craftOther", new JSONObject().put("imagePosition", 1).put("visibleInWork", true));
+            } catch (Exception ignored) { }
+        }
         if ("Список Craft".equals(type)) {
             w.w = dp(190); w.h = dp(58);
             String[] labels = new String[16]; java.util.Arrays.fill(labels, "");
@@ -4550,6 +4560,31 @@ public class MainActivity extends Activity {
         }
         final boolean craftConstantButton = "Константная кнопка Craft".equals(w.type);
         final boolean craftButtonConfig = "Кнопка".equals(w.type) || craftConstantButton;
+        final boolean craftSwitchConfig = OriginalCraftSwitch.supports(w.type);
+        final android.widget.Spinner craftSwitchSkinField;
+        final EditText craftSwitchBitField;
+        final android.widget.CheckBox craftSwitchBitEnabledField, craftSwitchVisibleField;
+        if (craftSwitchConfig) {
+            craftSwitchSkinField = new android.widget.Spinner(this);
+            String[] switchSkins = new String[8];
+            for (int i = 0; i < switchSkins.length; i++) switchSkins[i] = "Оригинальный переключатель " + (i + 1);
+            craftSwitchSkinField.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_spinner_dropdown_item, switchSkins));
+            craftSwitchSkinField.setSelection(OriginalCraftSwitch.imagePosition(w.extraFields) - 1);
+            form.addView(craftSwitchSkinField);
+            craftSwitchBitField = propertyField(Integer.toString(w.extraFields.optInt("craftSwitchBit", 0)), InputType.TYPE_CLASS_NUMBER);
+            craftSwitchBitField.setHint("Бит holding-регистра (0–15)"); form.addView(craftSwitchBitField);
+            craftSwitchBitEnabledField = new android.widget.CheckBox(this);
+            craftSwitchBitEnabledField.setText("Разрешить запись бита FC22 после ручной TCP-привязки");
+            craftSwitchBitEnabledField.setChecked(w.extraFields.optBoolean("craftSwitchBitEnabled", false)); form.addView(craftSwitchBitEnabledField);
+            TextView switchHelp = new TextView(this);
+            switchHelp.setText("Импортированная привязка Craft не активируется. Для записи укажи TCP holding-регистр FC03/FC22 и включи флажок.");
+            form.addView(switchHelp);
+            craftSwitchVisibleField = new android.widget.CheckBox(this);
+            craftSwitchVisibleField.setText("Показывать в рабочем режиме");
+            craftSwitchVisibleField.setChecked(w.extraFields.optBoolean("craftSwitchVisibleInWork", OriginalCraftSwitch.visibleInWork(w.extraFields)));
+            form.addView(craftSwitchVisibleField);
+        } else { craftSwitchSkinField = null; craftSwitchBitField = null; craftSwitchBitEnabledField = null; craftSwitchVisibleField = null; }
         final android.widget.Spinner craftButtonModeField, craftButtonConstantTypeField;
         final EditText craftButtonConstantField, craftButtonBitField;
         final android.widget.CheckBox craftButtonVisibleField, craftButtonBitEnabledField;
@@ -5401,6 +5436,30 @@ public class MainActivity extends Activity {
                             w.extraFields.put("craftButtonConstantEnabled", mode == 2 && buttonBinding != null);
                             w.extraFields.put("craftButtonVisibleInWork", craftButtonVisibleField.isChecked());
                             w.type = mode == 2 ? "Константная кнопка Craft" : "Кнопка";
+                        } catch (Exception ignored) { }
+                    }
+                    if (craftSwitchConfig) {
+                        int bit;
+                        try {
+                            bit = Integer.parseInt(craftSwitchBitField.getText().toString().trim());
+                            CraftMomentaryButton.masks(bit, true);
+                        } catch (Exception invalid) {
+                            Toast.makeText(this, "Бит переключателя должен быть целым числом от 0 до 15", Toast.LENGTH_LONG).show(); return;
+                        }
+                        BindingRequest switchBinding = parseBinding(-1, connectionField.getText().toString().trim());
+                        if (craftSwitchBitEnabledField.isChecked()
+                                && (connectionField.getText().toString().trim().isEmpty()
+                                || switchBinding == null || switchBinding.functionCode != 3)) {
+                            Toast.makeText(this, "Для записи бита нужен TCP holding-регистр FC03/FC22", Toast.LENGTH_LONG).show(); return;
+                        }
+                        try {
+                            int skin = craftSwitchSkinField.getSelectedItemPosition() + 1;
+                            w.extraFields.put("craftSwitchSkin", skin);
+                            w.extraFields.put("craftSwitchBit", bit);
+                            w.extraFields.put("craftSwitchBitEnabled", craftSwitchBitEnabledField.isChecked());
+                            w.extraFields.put("craftSwitchVisibleInWork", craftSwitchVisibleField.isChecked());
+                            w.extraFields = OriginalCraftSwitch.withImagePosition(w.extraFields, skin);
+                            w.extraFields = OriginalCraftSwitch.withVisibility(w.extraFields, craftSwitchVisibleField.isChecked());
                         } catch (Exception ignored) { }
                     }
                     if (craftConstantModeField != null) {
@@ -9042,6 +9101,8 @@ public class MainActivity extends Activity {
                 if (!w.visible || (operatorMode && ("Кнопка".equals(w.type) || "Константная кнопка Craft".equals(w.type)
                         || "Переход на экран".equals(w.type))
                         && !w.extraFields.optBoolean("craftButtonVisibleInWork", true))
+                        || (operatorMode && OriginalCraftSwitch.supports(w.type)
+                        && !w.extraFields.optBoolean("craftSwitchVisibleInWork", OriginalCraftSwitch.visibleInWork(w.extraFields)))
                         || (operatorMode && isFbd(w))
                         || (operatorMode && "Список Craft".equals(w.type)
                         && !w.extraFields.optBoolean("craftListVisibleInWork", true))) continue;
@@ -9053,6 +9114,8 @@ public class MainActivity extends Activity {
                     paint.setColor(Color.rgb(237, 233, 254));
                 } else if ("Индикатор".equals(w.type) || "Двухпозиционный индикатор".equals(w.type)) {
                     paint.setColor(Color.rgb(220, 252, 231));
+                } else if (OriginalCraftSwitch.supports(w.type)) {
+                    paint.setColor(Color.TRANSPARENT);
                 } else if ("Кнопка".equals(w.type) || "Константная кнопка Craft".equals(w.type)) {
                     paint.setColor(w.buttonState ? Color.rgb(187, 247, 208) : Color.rgb(219, 234, 254));
                 } else if ("Задатчик".equals(w.type)) {
@@ -9067,10 +9130,14 @@ public class MainActivity extends Activity {
                 // A source-backed FBD body already paints its own square
                 // outline; never leave the former purple rounded rectangle halo.
                 boolean sourceFbdSkin = FbdSourceCanvasSkin.shouldUse(w);
-                if (!OriginalIndicator.supports(w.type) && !sourceFbdSkin)
+                boolean sourceCraftSwitch = OriginalCraftSwitch.supports(w.type);
+                if (sourceCraftSwitch) {
+                    OriginalCraftSwitchRenderer.draw(canvas, getResources(), rect, w.extraFields, w.buttonState, paint);
+                }
+                if (!OriginalIndicator.supports(w.type) && !sourceFbdSkin && !sourceCraftSwitch)
                     canvas.drawRoundRect(rect, dp(6), dp(6), paint);
                 if ((!OriginalIndicator.supports(w.type) && w.showFrame
-                        && !sourceFbdSkin) || i == selected || selectedWidgets.contains(i)) {
+                        && !sourceFbdSkin && !sourceCraftSwitch) || i == selected || selectedWidgets.contains(i)) {
                     paint.setStyle(Paint.Style.STROKE);
                     paint.setStrokeWidth(dp(i == selected ? 2.5f : 1));
                     paint.setColor(i == selected || selectedWidgets.contains(i) ? Color.rgb(21, 101, 192) : Color.rgb(148, 163, 184));
@@ -9085,7 +9152,9 @@ public class MainActivity extends Activity {
                 paint.setStyle(Paint.Style.FILL);
                 paint.setColor(w.textColor);
                 paint.setTextSize(dp(w.textSizeSp));
-                if (w.type != null && w.type.startsWith("FBD ")) {
+                if (sourceCraftSwitch) {
+                    // The source switch is a pair of full-size original bitmaps; it has no text overlay.
+                } else if (w.type != null && w.type.startsWith("FBD ")) {
                     if (FbdSourceCanvasSkin.shouldUse(w)) {
                         FbdSourceCanvasSkin.draw(canvas, paint, w, getResources().getDisplayMetrics().density);
                         if (i == selected || selectedWidgets.contains(i)) {
@@ -9484,6 +9553,59 @@ public class MainActivity extends Activity {
             queueCraftBitButtonWrite(widget, binding, index, bit, false);
         }
 
+        private void activateCraftSwitch(Widget widget, int index) {
+            boolean previous = widget.buttonState;
+            boolean next = !previous;
+            widget.buttonState = next;
+            persistProject();
+            invalidate();
+            if (!widget.extraFields.optBoolean("craftSwitchBitEnabled", false)) {
+                Toast.makeText(MainActivity.this, "Переключатель: " + (next ? "ВКЛ" : "ВЫКЛ"), Toast.LENGTH_SHORT).show();
+                return;
+            }
+            BindingRequest binding = parseBinding(-1, widget.connectionInfo);
+            if (binding == null || binding.functionCode != 3) {
+                widget.buttonState = previous;
+                persistProject();
+                invalidate();
+                Toast.makeText(MainActivity.this, "Для записи бита нужен TCP holding-регистр FC03/FC22", Toast.LENGTH_LONG).show();
+                return;
+            }
+            final int bit = widget.extraFields.optInt("craftSwitchBit", -1);
+            final int[] masks;
+            try { masks = OriginalCraftSwitch.writeMasks(bit, next); }
+            catch (IllegalArgumentException invalid) {
+                widget.buttonState = previous;
+                persistProject();
+                invalidate();
+                Toast.makeText(MainActivity.this, invalid.getMessage(), Toast.LENGTH_LONG).show();
+                return;
+            }
+            final String requestedState = next ? "ВКЛ" : "ВЫКЛ";
+            final int requestSequence = widget.extraFields.optInt("craftSwitchWriteSequence", 0) + 1;
+            try { widget.extraFields.put("craftSwitchWriteSequence", requestSequence); } catch (Exception ignored) { }
+            persistProject();
+            modbusExecutor.execute(() -> {
+                Exception failure = null;
+                try {
+                    if (!activityResumed || !operatorMode || !widgets.contains(widget))
+                        throw new IOException("Рабочий режим остановлен");
+                    new ModbusTcpClient(binding.host, binding.port).writeMask(binding.unit, binding.address, masks[0], masks[1]);
+                } catch (Exception error) { failure = error; }
+                final Exception result = failure;
+                if (result != null) runOnUiThread(() -> {
+                    if (!widgets.contains(widget) || widgets.indexOf(widget) != index
+                            || widget.extraFields.optInt("craftSwitchWriteSequence", 0) != requestSequence
+                            || widget.buttonState != next) return;
+                    widget.buttonState = previous;
+                    persistProject();
+                    if (editor != null) editor.invalidate();
+                    Toast.makeText(MainActivity.this, "Ошибка записи бита переключателя: " + describeModbusError(result), Toast.LENGTH_LONG).show();
+                });
+            });
+            Toast.makeText(MainActivity.this, "Переключатель: " + requestedState, Toast.LENGTH_SHORT).show();
+        }
+
         private void queueCraftBitButtonWrite(Widget widget, BindingRequest binding, int index, int bit, boolean pressed) {
             final int[] masks = CraftMomentaryButton.masks(bit, pressed);
             modbusExecutor.execute(() -> {
@@ -9511,6 +9633,8 @@ public class MainActivity extends Activity {
                         && !(("Кнопка".equals(w.type) || "Константная кнопка Craft".equals(w.type)
                         || "Переход на экран".equals(w.type))
                         && !w.extraFields.optBoolean("craftButtonVisibleInWork", true))
+                        && !(OriginalCraftSwitch.supports(w.type)
+                        && !w.extraFields.optBoolean("craftSwitchVisibleInWork", OriginalCraftSwitch.visibleInWork(w.extraFields)))
                         && x >= w.x && x <= w.x + w.w && y >= w.y && y <= w.y + w.h) return i;
             }
             return -1;
@@ -9793,6 +9917,8 @@ public class MainActivity extends Activity {
                 openCraftLinearSetter(picked, index);
             } else if ("Список Craft".equals(picked.type)) {
                 openCraftBitList(picked, index);
+            } else if (OriginalCraftSwitch.supports(picked.type)) {
+                activateCraftSwitch(picked, index);
             } else if ("Константная кнопка Craft".equals(picked.type)) {
                 activateCraftConstantButton(picked, index);
             } else if ("Кнопка".equals(picked.type)) {
