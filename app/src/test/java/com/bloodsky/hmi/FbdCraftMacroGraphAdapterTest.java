@@ -220,17 +220,21 @@ public class FbdCraftMacroGraphAdapterTest {
     }
 
     @Test public void importedMacroMqttSubscriberReceivesTypedRuntimeValues() throws Exception {
-        JSONObject root = validMacro();
-        JSONObject originalChild = root.getJSONArray("fbInMacros").getJSONObject(0);
-        originalChild.put("componentId", 139).put("craftMqttTopic", "plant/temperature")
-                .put("craftMqttType", 3).put("craftMqttServer", 2);
+        JSONObject originalChild = new JSONObject().put("componentId", 139)
+                .put("x", 0).put("y", 0).put("saveKey", 50).put("keyOut", 900)
+                .put("craftMqttTopic", "plant/temperature").put("craftMqttType", 3)
+                .put("craftMqttServer", 2).put("nMcr", "TemperatureIn")
+                .put("unIdMcr", 52);
+        JSONObject root = new JSONObject().put("name", "TemperatureIn").put("uniqueId", 52)
+                .put("countIn", 0).put("typeOut", 3).put("nameOut", "Q")
+                .put("saveKeyOut", 900).put("fbInMacros", new JSONArray().put(originalChild));
         FbdCraftMacroDefinition expanded = FbdCraftMacroGraphAdapter.expandIfSupported(
                 FbdCraftMacroDefinition.fromJson(root.toString()));
         assertNotNull("MQTT subscriber can join the operator subscription lifecycle",
                 expanded.toJson().optJSONObject("bloodskyGraph"));
 
         JSONObject graphWidget = expanded.toJson().getJSONObject("bloodskyGraph")
-                .getJSONArray("widgets").getJSONObject(2);
+                .getJSONArray("widgets").getJSONObject(0);
         assertEquals("FBD CRAFT MQTT SUB BOOL", graphWidget.getString("type"));
         assertEquals("plant/temperature", graphWidget.optString("craftMqttTopic"));
         assertEquals(3, graphWidget.optInt("craftMqttType"));
@@ -240,7 +244,7 @@ public class FbdCraftMacroGraphAdapterTest {
                 .put("type", "FBD CRAFT MACRO").put("craftMacroDefinition", expanded.toJson()));
         java.util.List<MainActivity.Widget> runtimeWidgets =
                 MainActivity.fbdRuntimeWidgetsIncludingMacros(Collections.singletonList(macro));
-        MainActivity.Widget subscriber = runtimeWidgets.get(2);
+        MainActivity.Widget subscriber = runtimeWidgets.get(1);
         assertTrue(MainActivity.isCraftMqttSubscriber(subscriber.type));
         subscriber.craftMqttValue = 31.25;
         double[] numeric = new double[1];
