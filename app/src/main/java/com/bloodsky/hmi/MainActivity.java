@@ -5731,6 +5731,55 @@ public class MainActivity extends Activity {
             maxValField = null;
         }
 
+        final android.widget.CheckBox progressShowTextField;
+        final EditText progressTextSizeField;
+        final EditText progressTextColorField;
+        final android.widget.CheckBox progressShowScaleField;
+        final EditText progressColorField;
+        final EditText progressBackgroundColorField;
+        if ("Прогресс-бар".equals(w.type)
+                && w.extraFields.optInt("craftComponentId", -1) == 11) {
+            TextView progressPropertiesLabel = new TextView(this);
+            progressPropertiesLabel.setText("Оформление шкалы Craft");
+            progressPropertiesLabel.setPadding(0, dp(10), 0, 0);
+            form.addView(progressPropertiesLabel);
+            progressShowTextField = new android.widget.CheckBox(this);
+            progressShowTextField.setText("Показывать значение");
+            progressShowTextField.setChecked(w.extraFields.optBoolean("craftProgressShowText", false));
+            form.addView(progressShowTextField);
+            progressTextSizeField = propertyField(Integer.toString(
+                    w.extraFields.optInt("craftProgressTextSize", 50)), InputType.TYPE_CLASS_NUMBER);
+            progressTextSizeField.setHint("Размер значения, 1–256 px");
+            progressTextSizeField.setContentDescription("Размер текста индикатора прогресса");
+            form.addView(progressTextSizeField);
+            progressTextColorField = propertyField(String.format(java.util.Locale.ROOT, "#%06X",
+                    0xFFFFFF & w.extraFields.optInt("craftProgressTextColor", Color.BLUE)), InputType.TYPE_CLASS_TEXT);
+            progressTextColorField.setHint("Цвет значения: #RRGGBB");
+            progressTextColorField.setContentDescription("Цвет текста индикатора прогресса");
+            form.addView(progressTextColorField);
+            progressShowScaleField = new android.widget.CheckBox(this);
+            progressShowScaleField.setText("Показывать деления шкалы");
+            progressShowScaleField.setChecked(w.extraFields.optBoolean("craftProgressShowScale", true));
+            form.addView(progressShowScaleField);
+            progressColorField = propertyField(String.format(java.util.Locale.ROOT, "#%06X",
+                    0xFFFFFF & w.extraFields.optInt("craftProgressColor", Color.rgb(46, 236, 0))), InputType.TYPE_CLASS_TEXT);
+            progressColorField.setHint("Цвет заполнения: #RRGGBB");
+            progressColorField.setContentDescription("Цвет заполнения индикатора прогресса");
+            form.addView(progressColorField);
+            progressBackgroundColorField = propertyField(String.format(java.util.Locale.ROOT, "#%06X",
+                    0xFFFFFF & w.extraFields.optInt("craftProgressBackgroundColor", Color.rgb(156, 156, 155))), InputType.TYPE_CLASS_TEXT);
+            progressBackgroundColorField.setHint("Цвет дорожки: #RRGGBB");
+            progressBackgroundColorField.setContentDescription("Цвет фона индикатора прогресса");
+            form.addView(progressBackgroundColorField);
+        } else {
+            progressShowTextField = null;
+            progressTextSizeField = null;
+            progressTextColorField = null;
+            progressShowScaleField = null;
+            progressColorField = null;
+            progressBackgroundColorField = null;
+        }
+
         TextView geometryLabel = new TextView(this);
         geometryLabel.setText("Положение и размер (пиксели)");
         geometryLabel.setPadding(0, dp(10), 0, 0);
@@ -6356,6 +6405,24 @@ public class MainActivity extends Activity {
                     if (minValField != null) {
                         w.minValue = readDouble(minValField, w.minValue);
                         w.maxValue = readDouble(maxValField, w.maxValue);
+                    }
+                    if (progressShowTextField != null) {
+                        try {
+                            CraftProgressBarProperties.apply(w.extraFields, w.minValue, w.maxValue,
+                                    progressShowTextField.isChecked(),
+                                    readPositiveInt(progressTextSizeField,
+                                            w.extraFields.optInt("craftProgressTextSize", 50), false),
+                                    parseOptionalColor(progressTextColorField.getText().toString(),
+                                            w.extraFields.optInt("craftProgressTextColor", Color.BLUE)),
+                                    progressShowScaleField.isChecked(),
+                                    parseOptionalColor(progressColorField.getText().toString(),
+                                            w.extraFields.optInt("craftProgressColor", Color.rgb(46, 236, 0))),
+                                    parseOptionalColor(progressBackgroundColorField.getText().toString(),
+                                            w.extraFields.optInt("craftProgressBackgroundColor", Color.rgb(156, 156, 155))));
+                        } catch (IllegalArgumentException | org.json.JSONException invalid) {
+                            Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show();
+                            return;
+                        }
                     }
                     w.x = geometry.x; w.y = geometry.y;
                     w.w = geometry.width; w.h = geometry.height;
