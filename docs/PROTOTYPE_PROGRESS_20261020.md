@@ -576,3 +576,11 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 - Exact PR head `b4ffda4c25f7de665f194e7bf4e8d6c3fce19738` passed APK/JUnit [#1315](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39556414211): archive tests, Android unit tests, debug APK build and upload. APK artifact `12325956806`, SHA-256 `120c58b725fc79e9dc6ce61eb8340d20eceeadb0fd2967becfc261714139d958`.
 - No Android UI smoke, physical device test or original-vs-BLOODSKY visual comparison was run. The unified acceptance matrix remains **5/139 = 3.6%**; no new criterion is claimed fully accepted. Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
 - Next task: implement the separate source-confirmed Craft ID24 graduated-gauge properties and rendering, then add focused importer/property tests.
+
+
+## Craft ID24 graduated gauge: source-property slice — 21 Oct 2026
+
+- PR [#223](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/223) adds native import/edit/round-trip for Craft ID24 signed min/max, scale count, source text size and colors, percentage thresholds, background flag and nine indicator names confirmed by the original picker; unknown `craftOther` fields remain preserved. The tick helper mirrors the source's endpoint-only behavior for count values 0–2 and integer interval calculation otherwise.
+- Exact final head `ee0c65023611b2a7a2d0eb108b079ce9ae363e54` passed APK/JUnit [#1319](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39557388926): Python/archive checks, Android unit tests, debug APK build and upload. Artifact `12325494263`, SHA-256 `bdba640b1ac799565f4301f02ffdad25326498e5b0d37192557c9241ece58779`. The test caught and fixed negative minGauge parsing.
+- Not run: Android UI smoke, device test, and original-vs-BLOODSKY visual comparison. ID24 indicator-specific canvas rendering remains partial; weighted matrix stays **5/139 = 3.6%**. Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+- Next task: make ID24 properties drive its canvas gauge and named indicator styles; add drawing geometry tests before visual acceptance.
