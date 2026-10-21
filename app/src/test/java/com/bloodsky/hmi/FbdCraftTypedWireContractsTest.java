@@ -67,6 +67,23 @@ public class FbdCraftTypedWireContractsTest {
         }
     }
 
+    @Test public void craftMqttPinsUseTheirConfiguredBooleanIntegerOrFloatType() throws Exception {
+        for (String type : new String[]{"BOOL", "INT", "FLOAT"}) {
+            String subscriber = "FBD CRAFT MQTT SUB " + type;
+            String publisher = "FBD CRAFT MQTT PUB " + type;
+            String expected = "BOOL".equals(type) ? "BOOL" : type;
+            assertEquals(expected, FbdCraftPinTypes.typeForBlock(subscriber, "Q", true));
+            assertEquals(expected, FbdCraftPinTypes.typeForBlock(publisher, "IN", false));
+            assertTrue(wire(subscriber, "Q", publisher, "IN"));
+        }
+        assertEquals("BOOL", FbdCraftPinTypes.typeForBlock("FBD CRAFT MQTT PUB INT", "EN", false));
+        assertFalse(wire("FBD CRAFT MQTT SUB INT", "Q", "FBD CRAFT MQTT PUB FLOAT", "IN"));
+        assertFalse(wire("FBD CRAFT MQTT SUB FLOAT", "Q", "FBD CRAFT MQTT PUB INT", "IN"));
+        assertArrayEquals(new String[0], MainActivity.compatibleFbdTargetPins(
+                "FBD CRAFT MQTT SUB FLOAT", "Q", "FBD CRAFT MQTT PUB INT"));
+        assertTrue(wire("FBD Вход", "Q", "FBD CRAFT MQTT PUB INT", "EN"));
+    }
+
     private static boolean wire(String sourceType, String sourcePin, String targetType,
                                 String targetPin) throws Exception {
         return wire(sourceType, sourcePin, targetType, targetPin, null, null);
