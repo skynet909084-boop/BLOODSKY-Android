@@ -197,7 +197,7 @@ public class CraftProjectImporterTest {
         JSONObject graduatedGauge = widgets.getJSONObject(1);
         assertEquals("Шкала / Стрелка", graduatedGauge.getString("type"));
         assertEquals("graduated", graduatedGauge.getString("craftGaugeKind"));
-        assertEquals("Pressure", graduatedGauge.getString("text"));
+        assertEquals("TriangleIndicator", graduatedGauge.getString("text"));
         assertEquals(-20.0, graduatedGauge.getDouble("minValue"), 0.001);
         assertEquals(300.0, graduatedGauge.getDouble("maxValue"), 0.001);
         assertEquals(5, graduatedGauge.getJSONObject("craftOther").getInt("countTextScale"));
