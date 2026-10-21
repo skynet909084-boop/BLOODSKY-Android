@@ -216,9 +216,10 @@ public class FbdCraftMacroGraphAdapterTest {
                     .put("uniqueId", id).put("countIn", 0).put("typeOut", 1)
                     .put("nameOut", "Q").put("saveKeyOut", 900)
                     .put("fbInMacros", new JSONArray().put(child));
+            FbdCraftMacroDefinition unsupported = FbdCraftMacroGraphAdapter.expandIfSupported(
+                    FbdCraftMacroDefinition.fromJson(networkMacro.toString()));
             assertNull("MQTT block " + id + " still requires its own runtime lifecycle",
-                    FbdCraftMacroGraphAdapter.translate(networkMacro,
-                            networkMacro.getJSONArray("fbInMacros")));
+                    unsupported.toJson().optJSONObject("bloodskyGraph"));
         }
     }
 
