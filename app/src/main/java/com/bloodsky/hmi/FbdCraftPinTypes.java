@@ -21,6 +21,15 @@ final class FbdCraftPinTypes {
             if (!output && "PT".equals(name)) return "INT";
         }
         if ("FBD CRAFT CTU".equals(kind) && output && "Q".equals(name)) return "INT";
+        if ("FBD CRAFT POW".equals(kind)) {
+            if (output && "Q".equals(name)) return "FLOAT";
+            if (!output && ("X".equals(name) || "Y".equals(name))) return "FLOAT";
+        }
+        if ("FBD CRAFT SIN".equals(kind) || "FBD CRAFT LOG".equals(kind)
+                || "FBD CRAFT ABS".equals(kind)) {
+            if (output && "OUT".equals(name)) return "FLOAT";
+            if (!output && "IN".equals(name)) return "FLOAT";
+        }
         if ("FBD CRAFT VAR INT".equals(kind) || "FBD CRAFT VAR OUT INT".equals(kind)
                 || "FBD CRAFT MOVE".equals(kind) || "FBD CRAFT MX".equals(kind)
                 || "FBD CRAFT ARRAY".equals(kind) || "FBD CRAFT SEL".equals(kind)
