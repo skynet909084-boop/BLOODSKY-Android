@@ -306,8 +306,9 @@ public class FbdDisconnectTest {
                 MainActivity.pinnedFbdConnection(0, "Q", 1, "S"),
                 MainActivity.pinnedFbdConnection(1, "Q", 3, "S"),
                 MainActivity.pinnedFbdConnection(2, "Q", 3, "R"));
-        assertTrue("An unavailable S output must not reset or otherwise scan downstream RS",
-                runFbd(rsNodes, rsEdges, 3));
+        double rsOutput = MainActivity.evaluateFbdBlockNumeric(rsNodes, rsEdges, 3,
+                new boolean[4], new boolean[4], new boolean[4], new double[4]);
+        assertTrue("An unavailable S output must remain null", Double.isNaN(rsOutput));
         assertTrue(downstreamRs.rsState);
 
         MainActivity.Widget countSet = new MainActivity.Widget();
