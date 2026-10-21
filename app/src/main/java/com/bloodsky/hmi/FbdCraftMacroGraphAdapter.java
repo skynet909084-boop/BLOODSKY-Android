@@ -93,7 +93,8 @@ final class FbdCraftMacroGraphAdapter {
             if (type == null || saveKey == Integer.MIN_VALUE || bySaveKey.containsKey(saveKey)) return null;
             JSONObject widget = new JSONObject().put("type", type)
                     .put("text", child.optString("name", type.replace("FBD CRAFT ", "")))
-                    .put("x", child.optDouble("x", 0)).put("y", child.optDouble("y", 0));
+                    .put("x", child.optDouble("x", 0)).put("y", child.optDouble("y", 0))
+                    .put("craftComponentId", componentId);
             java.util.Iterator<String> keys = child.keys();
             while (keys.hasNext()) {
                 String key = keys.next();
@@ -272,5 +273,70 @@ final class FbdCraftMacroGraphAdapter {
 
     private static String triggerMode(int mode) {
         switch (mode) { case 2: return "R"; case 3: return "F"; default: return "T"; }
+    }
+
+    /**
+     * Apply edited native Craft modes from the validated BLOODSKY graph back to
+     * their original .mcr child records. Unknown Craft fields remain untouched.
+     */
+    static JSONObject applyEditedModesToCraftRecords(JSONObject definition) throws JSONException {
+        JSONObject result = new JSONObject(definition.toString());
+        JSONObject graph = result.optJSONObject("bloodskyGraph");
+        JSONArray widgets = graph == null ? null : graph.optJSONArray("widgets");
+        JSONArray children = result.optJSONArray("fbInMacros");
+        if (widgets == null || children == null) return result;
+
+        Map<Integer, JSONObject> childBySaveKey = new HashMap<>();
+        java.util.HashSet<Integer> duplicateKeys = new java.util.HashSet<>();
+        for (int i = 0; i < children.length(); i++) {
+            JSONObject child = children.optJSONObject(i);
+            if (child == null || !child.has("saveKey")) continue;
+            int saveKey = child.optInt("saveKey", Integer.MIN_VALUE);
+            if (childBySaveKey.put(saveKey, child) != null) duplicateKeys.add(saveKey);
+        }
+        for (int i = 0; i < widgets.length(); i++) {
+            JSONObject widget = widgets.optJSONObject(i);
+            if (widget == null) continue;
+            int saveKey = widget.optInt("saveKey", Integer.MIN_VALUE);
+            JSONObject child = duplicateKeys.contains(saveKey) ? null : childBySaveKey.get(saveKey);
+            if (child == null) continue;
+            int componentId = widget.optInt("craftComponentId", -1);
+            if (componentId == 114 && widget.has("craftTriggerMode")) {
+                int mode = triggerType(widget.optString("craftTriggerMode", ""));
+                if (mode > 0) child.put("type", mode);
+            } else if (componentId == 115) {
+                if (widget.has("craftTimerMode")) {
+                    int mode = timerType(widget.optString("craftTimerMode", ""));
+                    if (mode > 0) child.put("type", mode);
+                }
+                if (widget.has("craftTimerUnit")) {
+                    int unit = timerUnitCode(widget.optString("craftTimerUnit", ""));
+                    if (unit > 0) child.put("typeTime", unit);
+                }
+            }
+        }
+        return result;
+    }
+
+    private static int triggerType(String mode) {
+        if ("T".equals(mode)) return 1;
+        if ("R".equals(mode)) return 2;
+        if ("F".equals(mode)) return 3;
+        return 0;
+    }
+
+    private static int timerType(String mode) {
+        if ("TON".equals(mode)) return 1;
+        if ("TOF".equals(mode)) return 2;
+        if ("TP".equals(mode)) return 3;
+        if ("BLINK".equals(mode)) return 4;
+        return 0;
+    }
+
+    private static int timerUnitCode(String unit) {
+        if ("MS".equals(unit)) return 1;
+        if ("SEK".equals(unit)) return 2;
+        if ("MIN".equals(unit)) return 3;
+        return 0;
     }
 }
