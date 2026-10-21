@@ -14,7 +14,7 @@ from collections import Counter, deque
 from pathlib import Path
 import os
 from PIL import Image
-from original_craft_probe_state import load_checkpoint, remember_state_signature, write_checkpoint
+from original_craft_probe_state import load_checkpoint, remember_state_signature, write_checkpoint, configured_state_limit
 from original_craft_probe_scenarios import QUICK_SCENARIOS, parse_probe_options
 
 OUT = Path(sys.argv[1])
@@ -27,7 +27,10 @@ try:
     PROFILE, QUICK_SCENARIO, RESUME = parse_probe_options(sys.argv[2:])
 except ValueError as exc:
     raise SystemExit(str(exc)) from exc
-MAX_STATES = 12 if PROFILE == "quick" else 300
+try:
+    MAX_STATES = configured_state_limit(PROFILE, os.environ.get("KASCADA_PROBE_MAX_STATES"))
+except ValueError as exc:
+    raise SystemExit(str(exc)) from exc
 MAX_DEPTH = 8 if PROFILE == "quick" else 12
 MAX_QUEUED = 240
 MAX_ACTIONS_PER_STATE = 10 if PROFILE == "quick" else 240

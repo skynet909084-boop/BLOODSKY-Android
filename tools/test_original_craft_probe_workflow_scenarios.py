@@ -17,6 +17,9 @@ class ProbeWorkflowScenarioTests(unittest.TestCase):
         self.assertIn("--scenario", workflow)
         self.assertIn("resume_run_id:", workflow)
         self.assertIn("actions/download-artifact@v4", workflow)
+        self.assertIn("max_states:", workflow)
+        self.assertIn("options: ['3', '10', '25', '300']", workflow)
+        self.assertIn("KASCADA_PROBE_MAX_STATES", workflow)
         self.assertIn("--resume", workflow)
         self.assertIn("tools/test_original_craft_probe_workflow_scenarios.py", workflow)
 

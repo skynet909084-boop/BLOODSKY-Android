@@ -32,6 +32,12 @@ on:
         type: choice
         options: [quick, full]
         default: quick
+      max_states:
+        description: 'State cap for manual full runs; use 3 or 10 for a short checkpoint/resume test'
+        required: true
+        type: choice
+        options: ['3', '10', '25', '300']
+        default: '300'
 
 permissions:
   contents: read
@@ -97,6 +103,7 @@ jobs:
           script: |
             # Every PR push gets a bounded quick scenario, regardless of branch name.
             # Run a full audit explicitly from Actions > Run workflow > profile: full.
+            export KASCADA_PROBE_MAX_STATES='${{ github.event_name == 'workflow_dispatch' && inputs.max_states || '300' }}'
             bash tools/run_original_craft_emulator_probe.sh build-reports/original-craft-1.0.7 --scenario '${{ github.event_name == 'workflow_dispatch' && inputs.quick_scenario || 'hmi-id17-properties' }}' ${{ (github.event_name == 'workflow_dispatch' && inputs.profile == 'full') && '--full' || '' }} ${{ (github.event_name == 'workflow_dispatch' && inputs.resume_run_id != '') && '--resume' || '' }}
       - name: Upload original APK provenance and UI evidence
         if: always()
