@@ -39,7 +39,7 @@ public class FbdCraftMacroGraphAdapterTest {
         assertEquals("FBD CRAFT VAR NAME IN FLOAT", FbdCraftMacroGraphAdapter.typeForComponentId(133,
                 new JSONObject().put("typeVar", 3)));
         assertEquals("FBD CRAFT MX", FbdCraftMacroGraphAdapter.typeForComponentId(128, null));
-        assertNull(FbdCraftMacroGraphAdapter.typeForComponentId(135, null));
+        assertEquals("FBD CRAFT MACRO", FbdCraftMacroGraphAdapter.typeForComponentId(135, null));
         assertNull(FbdCraftMacroGraphAdapter.typeForComponentId(999, null));
     }
 
