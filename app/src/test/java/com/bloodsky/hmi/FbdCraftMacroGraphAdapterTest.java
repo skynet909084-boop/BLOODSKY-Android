@@ -174,6 +174,51 @@ public class FbdCraftMacroGraphAdapterTest {
         }
     }
 
+    @Test public void importedMacroOdtempUsesRuntimePollTargetAndKeepsMqttFailClosed() throws Exception {
+        JSONObject odtemp = new JSONObject().put("componentId", 130).put("x", 0).put("y", 0)
+                .put("saveKey", 50).put("keyOut", 900).put("ip", "192.168.1.20")
+                .put("typeSensor", 2).put("typeResponse", 1)
+                .put("nMcr", "RoomTemperature").put("unIdMcr", 51);
+        JSONObject source = new JSONObject().put("name", "RoomTemperature").put("uniqueId", 51)
+                .put("countIn", 0).put("typeOut", 3).put("nameOut", "Q")
+                .put("saveKeyOut", 900).put("fbInMacros", new JSONArray().put(odtemp));
+        FbdCraftMacroDefinition expanded = FbdCraftMacroGraphAdapter.expandIfSupported(
+                FbdCraftMacroDefinition.fromJson(source.toString()));
+        assertNotNull("ODTEMP macro should expand when serviced by the operator poller",
+                expanded.toJson().optJSONObject("bloodskyGraph"));
+        JSONObject nestedJson = expanded.toJson().getJSONObject("bloodskyGraph")
+                .getJSONArray("widgets").getJSONObject(0);
+        assertEquals("FBD CRAFT ODTEMP", nestedJson.getString("type"));
+        assertEquals("192.168.1.20", nestedJson.optString("ip"));
+
+        MainActivity.Widget macro = MainActivity.widgetFromJson(new JSONObject()
+                .put("type", "FBD CRAFT MACRO").put("craftMacroDefinition", expanded.toJson()));
+        java.util.List<MainActivity.Widget> runtimeWidgets =
+                MainActivity.fbdRuntimeWidgetsIncludingMacros(Collections.singletonList(macro));
+        MainActivity.Widget sensor = null;
+        for (MainActivity.Widget candidate : runtimeWidgets)
+            if ("FBD CRAFT ODTEMP".equals(candidate.type)) sensor = candidate;
+        assertNotNull("nested ODTEMP should be reachable by operator polling", sensor);
+        assertEquals(-1, Collections.singletonList(macro).indexOf(sensor));
+        sensor.craftSensorValue = 23.75;
+        sensor.craftSensorValid = true;
+        double[] numeric = new double[1];
+        MainActivity.evaluateFbdBlock(Collections.singletonList(macro), Collections.emptyList(), 0,
+                new boolean[1], new boolean[1], new boolean[1], numeric,
+                new CraftSystemRegisterBank());
+        assertEquals(23.75, numeric[0], 0.0);
+
+        int[] unsupportedIds = {139, 140};
+        for (int id : unsupportedIds) {
+            JSONObject networkMacro = validMacro();
+            networkMacro.getJSONArray("fbInMacros").getJSONObject(0).put("componentId", id);
+            FbdCraftMacroDefinition unsupported = FbdCraftMacroGraphAdapter.expandIfSupported(
+                    FbdCraftMacroDefinition.fromJson(networkMacro.toString()));
+            assertNull("MQTT block " + id + " still requires its own runtime lifecycle",
+                    unsupported.toJson().optJSONObject("bloodskyGraph"));
+        }
+    }
+
     @Test public void executesImportedRegisterWritesOnlyDuringOperatorScan() throws Exception {
         JSONObject literal = new JSONObject().put("componentId", 105).put("x", 0).put("y", 0)
                 .put("saveKey", 10).put("keyOut", 20).put("numOnIn", 1)
