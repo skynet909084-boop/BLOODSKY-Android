@@ -43,14 +43,14 @@ class OriginalComponentPaletteTests(unittest.TestCase):
     def test_supported_original_controls_are_not_dimmed(self):
         code = (ROOT / 'app/src/main/java/com/bloodsky/hmi/OriginalComponentPalette.java').read_text()
         for item, widget_type in [
-            ('switch', 'Кнопка'),
+            ('switch', 'Переключатель Craft'),
             ('digital_indicator', 'Текст'),
             ('alarm', 'Звуковой сигнал'),
             ('gateway', 'Шлюз Craft'),
             ('gateway_bit', 'Шлюз битовый'),
         ]:
             unique_actions = {
-                'switch': ('Добавить: Переключатель (как кнопка)', '() -> add.add("Кнопка", "Кнопка")'),
+                'switch': ('Добавить: Переключатель Craft', '() -> add.add(OriginalCraftSwitch.TYPE, "Переключатель")'),
                 'digital_indicator': ('Добавить: Цифровой индикатор', '() -> add.add("Текст", "Цифровой индикатор")'),
                 'alarm': ('Добавить: Сигнализатор Craft', '() -> add.add("Звуковой сигнал", "Аларм")'),
             }

@@ -72,6 +72,29 @@ public class CraftProjectImporterTest {
         assertEquals("", archive.optString("craftArchiveTriggerBinding", ""));
     }
 
+    @Test public void importsCraftSwitchAsDistinctWidgetAndKeepsUnknownFieldsAndInactiveLink() throws Exception {
+        JSONObject other = new JSONObject().put("numScreen", 1).put("imagePosition", 4)
+                .put("visibleInWork", false).put("vendorSwitchFlag", "keep-me");
+        JSONObject component = new JSONObject().put("componentId", 1).put("text", "Valve")
+                .put("jsTableComponent_connectionInfo", new JSONObject().put("posDeviceNetworkInList", 3)
+                        .put("addressRegister", 40012).put("addressBit", 9).put("typeRequest", 5))
+                .put("jsTableComponent_other", other);
+        JSONObject source = new JSONObject().put("TableNameProject", new JSONObject().put("name", "Switch").put("countScreen", 1))
+                .put("TableComponent", new JSONArray().put(component)).put("TableConnections", new JSONArray());
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(source.toString()));
+        JSONObject widget = project.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0);
+        assertEquals(OriginalCraftSwitch.TYPE, widget.getString("type"));
+        assertEquals(1, widget.getInt("craftComponentId"));
+        assertEquals("", widget.getString("connectionInfo"));
+        assertEquals(9, widget.getInt("craftSwitchBit"));
+        assertFalse(widget.getBoolean("craftSwitchBitEnabled"));
+        assertFalse(widget.getBoolean("craftSwitchVisibleInWork"));
+        assertEquals(4, widget.getJSONObject("craftOther").getInt("imagePosition"));
+        assertEquals("keep-me", widget.getJSONObject("craftOther").getString("vendorSwitchFlag"));
+        assertEquals(40012, widget.getJSONObject("craftConnectionInfo").getInt("addressRegister"));
+    }
+
     @Test public void convertsSupportedCraftRowsAndRetainsSourceMetadata() throws Exception {
         JSONObject result = new JSONObject(CraftProjectImporter.convert(sample()));
         assertEquals("Sample", result.getString("projectName"));

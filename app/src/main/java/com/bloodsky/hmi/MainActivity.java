@@ -1,7658 +1,2667 @@
-package com.bloodsky.hmi;
-
-import android.app.Activity;
-import android.app.AlertDialog;
-import android.content.Intent;
-import android.net.Uri;
-import android.os.Bundle;
-import android.os.SystemClock;
-import android.os.Handler;
-import android.os.Looper;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.Paint;
-import android.graphics.Rect;
-import android.graphics.RectF;
-import android.graphics.drawable.GradientDrawable;
-import android.media.AudioManager;
-import android.media.MediaPlayer;
-import android.media.ToneGenerator;
-import android.speech.tts.TextToSpeech;
-import android.text.InputType;
-import android.view.Gravity;
-import android.view.MotionEvent;
-import android.view.View;
-import android.view.ViewGroup;
-import android.widget.Button;
-import android.widget.EditText;
-import android.widget.FrameLayout;
-import android.widget.ImageView;
-import android.widget.LinearLayout;
-import android.widget.TextView;
-import android.widget.ScrollView;
-import android.widget.Spinner;
-import android.widget.ArrayAdapter;
-import android.widget.Toast;
-import org.json.JSONArray;
-import org.json.JSONObject;
-import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.net.InetSocketAddress;
-import java.net.Socket;
-import java.net.URI;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.io.DataInputStream;
-import java.io.IOException;
-import java.io.DataOutputStream;
-
-public class MainActivity extends Activity {
-    private static final int MAX_PROJECT_ARCHIVE_ENTRIES = 20_000;
-    private static final String PREFS = "bloodsky_projects";
-    private static final ThreadLocal<CraftSystemRegisterBank> ACTIVE_FBD_SYSTEM_REGISTER_BANK = new ThreadLocal<>();
-    private static final ThreadLocal<Boolean> ACTIVE_FBD_SYSTEM_REGISTER_WRITES = new ThreadLocal<>();
-    private static final String ACTIVE_PROJECT = "active_project";
-    private static final String PROJECT_CATALOG = "project_catalog_v1";
-    private static final String TELEGRAM_PREFS = "bloodsky_telegram";
-    private static final int REQUEST_EXPORT_PROJECT = 7101;
-    private static final int REQUEST_IMPORT_PROJECT = 7102;
-    private static final int REQUEST_PICK_MEDIA = 7103;
-    private static final int REQUEST_EXPORT_PROJECT_ZIP = 7104;
-    private static final int REQUEST_IMPORT_CRAFT_MACRO = 7105;
-    private static final int REQUEST_EXPORT_CRAFT_MACRO = 7106;
-    private static final int REQUEST_EXPORT_LOCAL_ARCHIVE = 7107;
-    private byte[] pendingCraftMacroExport;
-    private String pendingArchiveProjectId, pendingArchiveWidgetKey, pendingArchiveTitle;
-    private EditText pendingMediaField;
-    private AlertDialog activePropertiesDialog;
-    private LinearLayout activePropertiesForm;
-    private int pendingMediaWidgetIndex = -1;
-    private String pendingMediaFieldPath;
-    private int pendingMediaCopyCount;
-    private final Map<AlertDialog, List<PendingMediaCopy>> pendingMediaCopies = new java.util.IdentityHashMap<>();
-    private String projectName = "ÐœÐ¾Ð¹ Ð¿Ñ€Ð¾ÐµÐºÑ‚";
-    private JSONObject projectExtraFields = new JSONObject();
-    private final CraftSystemRegisterBank systemRegisterBank = new CraftSystemRegisterBank();
-    private boolean systemRegisterBankPersistable = true;
-    private LinearLayout root;
-    private android.widget.PopupWindow sourceOverflowPopup;
-    private EditorCanvas editor;
-    private final List<Widget> widgets = new ArrayList<>();
-    private final List<Screen> screens = new ArrayList<>();
-    private int currentScreenIndex = 0;
-    private NestedMacroEditSession nestedMacroEdit;
-    private Widget clipboardWidget;
-    private boolean operatorMode = false;
-    private boolean fbdWireMode = false;
-    private final FbdWireHistory fbdWireHistory = new FbdWireHistory();
-    private int wireSource = -1;
-    private boolean[] fbdCacheValid = new boolean[0];
-    private boolean[] fbdCacheValues = new boolean[0];
-    private double[] fbdCacheNumeric = new double[0];
-    private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private final Runnable craftServiceRegisterTicker = new Runnable() {
-        @Override public void run() {
-            if (!activityResumed || editor == null) return;
-            updateCraftDeviceRegisters();
-            mainHandler.postDelayed(this, 1000L);
-        }
-    };
-    private final ExecutorService modbusExecutor = Executors.newSingleThreadExecutor();
-    private volatile UsbSerialModbusConnection manualUsbConnection;
-    private UsbSerialConnector manualUsbConnector;
-    private int manualUsbScreenGeneration;
-    private boolean manualUsbScreenVisible;
-    private final ExecutorService craftSensorExecutor = Executors.newSingleThreadExecutor();
-    private final ExecutorService telegramExecutor = Executors.newSingleThreadExecutor();
-    private final ExecutorService homeAssistantExecutor = Executors.newSingleThreadExecutor();
-    private final ExecutorService yandexExecutor = Executors.newSingleThreadExecutor();
-    private final ExecutorService smsExecutor = Executors.newSingleThreadExecutor();
-    private final java.util.concurrent.ConcurrentHashMap<Widget, CraftRegisterGateway.State> craftGatewayStates = new java.util.concurrent.ConcurrentHashMap<>();
-    private final java.util.concurrent.ConcurrentHashMap<Widget, CraftBitGateway.State> craftBitGatewayStates = new java.util.concurrent.ConcurrentHashMap<>();
-    private final java.util.concurrent.ConcurrentHashMap<Widget, Boolean> craftArchiveTriggerHigh = new java.util.concurrent.ConcurrentHashMap<>();
-    private final java.util.Set<Widget> craftArchiveTriggerEdges = java.util.Collections.newSetFromMap(
-            new java.util.concurrent.ConcurrentHashMap<Widget, Boolean>());
-    private FbdCraftMqttRuntime craftMqttRuntime;
-    private final Map<Integer, String> liveValues = new HashMap<>();
-    private boolean modbusPollingActive = false;
-    private boolean activityResumed = false;
-    private android.hardware.SensorManager fbdSensorManager;
-    private boolean fbdSensorsRegistered;
-    private android.location.LocationManager fbdLocationManager;
-    private boolean fbdLocationRegistered, fbdLocationPermissionRequested;
-    private static final int REQUEST_FBD_SPEED_LOCATION = 6107;
-    private static final int REQUEST_VOICE_PERMISSION = 6201;
-    private static final int REQUEST_SMS_SEND_PERMISSION = 6202;
-    private static final int REQUEST_SMS_RECEIVE_PERMISSION = 6203;
-    private android.content.BroadcastReceiver incomingSmsReceiver;
-    private boolean smsReceivePermissionRequested;
-    private static final int VOICE_LOCAL = 1;
-    private static final int VOICE_ONLINE = 2;
-    private int pendingVoiceMode;
-    private android.speech.SpeechRecognizer speechRecognizer;
-    private final android.location.LocationListener fbdLocationListener = new android.location.LocationListener() {
-        @Override public void onLocationChanged(android.location.Location location) {
-            if (location == null || !operatorMode || editor == null) return;
-            double kmh = Double.isNaN(location.getSpeed()) ? 0.0 : location.getSpeed() * 3.6;
-            for (Widget widget : widgets) if ("FBD CRAFT SENSOR SPEED".equals(widget.type)) {
-                widget.craftSensorValue = kmh; widget.craftSensorValid = true;
-            }
-            editor.invalidate();
-        }
-        @Override public void onStatusChanged(String provider, int status, android.os.Bundle extras) {}
-        @Override public void onProviderEnabled(String provider) {}
-        @Override public void onProviderDisabled(String provider) {}
-    };
-    private final android.hardware.SensorEventListener fbdSensorListener = new android.hardware.SensorEventListener() {
-        @Override public void onAccuracyChanged(android.hardware.Sensor sensor, int accuracy) {}
-        @Override public void onSensorChanged(android.hardware.SensorEvent event) {
-            if (!operatorMode || editor == null || event.values == null) return;
-            boolean changed = false;
-            if (event.sensor.getType() == android.hardware.Sensor.TYPE_LIGHT && event.values.length > 0) {
-                for (Widget widget : widgets) if ("FBD CRAFT SENSOR LIGHT".equals(widget.type)) {
-                    widget.craftSensorValue = Math.max(0, (int)event.values[0]); widget.craftSensorValid = true; changed = true;
-                }
-            } else if (event.sensor.getType() == android.hardware.Sensor.TYPE_ORIENTATION && event.values.length >= 3) {
-                for (Widget widget : widgets) if ("FBD CRAFT SENSOR ORIENTATION".equals(widget.type)) {
-                    widget.craftOrientationValues[0] = event.values[0];
-                    widget.craftOrientationValues[1] = event.values[1];
-                    widget.craftOrientationValues[2] = event.values[2];
-                    widget.craftSensorValid = true; changed = true;
-                }
-            }
-            if (changed) editor.invalidate();
-        }
-    };
-    private final PollSessionGuard pollSession = new PollSessionGuard();
-    private volatile boolean modbusPollInFlight = false;
-    private final Runnable modbusPollRunnable = new Runnable() {
-        @Override public void run() {
-            if (!modbusPollingActive || editor == null) return;
-            pollBoundWidgets();
-            pollCraftOdTempSources();
-            mainHandler.postDelayed(this, 1000L);
-        }
-    };
-
-    private final java.util.Map<String, MediaPlayer> craftAlarmPlayers = new java.util.HashMap<>();
-    private final java.util.Map<String, ToneGenerator> craftAlarmTones = new java.util.HashMap<>();
-    private TextToSpeech textToSpeech;
-    private final java.util.Map<String, Bitmap> imageCache = new java.util.HashMap<>();
-
-    private Bitmap loadCachedBitmap(String pathOrUri) {
-        if (pathOrUri == null || pathOrUri.trim().isEmpty()) return null;
-        if (imageCache.containsKey(pathOrUri)) return imageCache.get(pathOrUri);
-        Bitmap bitmap = null;
-        try {
-            String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
-            byte[] bytes = readProjectMediaData(pathOrUri, json);
-            BitmapFactory.Options bounds = new BitmapFactory.Options(); bounds.inJustDecodeBounds = true;
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.length, bounds);
-            BitmapFactory.Options options = new BitmapFactory.Options();
-            options.inSampleSize = ProjectImageSizing.sampleSize(bounds.outWidth, bounds.outHeight);
-            bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length, options);
-        } catch (Exception ignored) {}
-        long bytesCached = 0;
-        for (Bitmap cached : imageCache.values()) if (cached != null) bytesCached += cached.getByteCount();
-        if (imageCache.size() >= 128 || (bitmap != null && bytesCached + bitmap.getByteCount() > 32L * 1024 * 1024))
-            imageCache.clear();
-        imageCache.put(pathOrUri, bitmap);
-        return bitmap;
-    }
-
-    private Bitmap originalIndicatorBitmap(Widget widget, boolean active) {
-        try {
-            JSONObject settings = OriginalIndicator.settings(widget.extraFields);
-            String value = OriginalIndicator.imageValue(settings, active);
-            if (OriginalIndicator.isUserImage(settings, active)) return loadCachedBitmap(value);
-            int resource;
-            switch (OriginalIndicator.builtinName(value)) {
-                case "lamp_green": resource = R.drawable.kc_lamp_green; break;
-                case "lamp_red": resource = R.drawable.kc_lamp_red; break;
-                case "lamp_yellow": resource = R.drawable.kc_lamp_yellow; break;
-                case "lamp_blue": resource = R.drawable.kc_lamp_blue; break;
-                case "lamp_off": resource = R.drawable.kc_lamp_off; break;
-                default: resource = R.drawable.kc_warning_32;
-            }
-            return originalBitmap(resource);
-        } catch (Exception invalid) { return null; }
-    }
-
-    private Bitmap originalBitmap(int resource) {
-        String key = "original-resource:" + resource;
-        Bitmap cached = imageCache.get(key);
-        if (cached == null) {
-            cached = BitmapFactory.decodeResource(getResources(), resource);
-            imageCache.put(key, cached);
-        }
-        return cached;
-    }
-
-    @Override public void onCreate(Bundle state) {
-        super.onCreate(state);
-        getWindow().setFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN,
-                android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        try {
-            textToSpeech = new TextToSpeech(this, status -> {
-                if (status == TextToSpeech.SUCCESS && textToSpeech != null) {
-                    try { textToSpeech.setLanguage(new java.util.Locale("ru", "RU")); } catch (Exception ignored) {}
-                }
-            });
-        } catch (Exception ex) {
-            android.util.Log.e("BLOODSKY", "TTS init error", ex);
-        }
-        if (!restoreMediaPickerState(state)) showHome();
-    }
-
-    private static final String STATE_RESTORE_MEDIA_PICKER = "restore_media_picker";
-    private static final String STATE_MEDIA_WIDGET_INDEX = "media_widget_index";
-    private static final String STATE_MEDIA_FIELD_PATH = "media_field_path";
-    private static final String STATE_MEDIA_FORM_PATHS = "media_form_paths";
-    private static final String STATE_MEDIA_FORM_TYPES = "media_form_types";
-    private static final String STATE_MEDIA_FORM_VALUES = "media_form_values";
-
-    @Override protected void onSaveInstanceState(Bundle outState) {
-        super.onSaveInstanceState(outState);
-        if (pendingMediaField == null || activePropertiesDialog == null
-                || activePropertiesForm == null || editor == null) return;
-        String fieldPath = viewPath(activePropertiesForm, pendingMediaField, "");
-        if (fieldPath == null) return;
-        ArrayList<String> paths = new ArrayList<>();
-        ArrayList<String> types = new ArrayList<>();
-        ArrayList<String> values = new ArrayList<>();
-        collectPropertyFormState(activePropertiesForm, "", paths, types, values);
-        outState.putBoolean(STATE_RESTORE_MEDIA_PICKER, true);
-        outState.putInt(STATE_MEDIA_WIDGET_INDEX, editor.selected);
-        outState.putString(STATE_MEDIA_FIELD_PATH, fieldPath);
-        outState.putStringArrayList(STATE_MEDIA_FORM_PATHS, paths);
-        outState.putStringArrayList(STATE_MEDIA_FORM_TYPES, types);
-        outState.putStringArrayList(STATE_MEDIA_FORM_VALUES, values);
-    }
-
-    private boolean restoreMediaPickerState(Bundle state) {
-        if (state == null || !state.getBoolean(STATE_RESTORE_MEDIA_PICKER, false) || !loadProject()) return false;
-        showEditor();
-        int widgetIndex = state.getInt(STATE_MEDIA_WIDGET_INDEX, -1);
-        if (editor == null || widgetIndex < 0 || widgetIndex >= widgets.size()) return false;
-        editor.selected = widgetIndex;
-        editor.selectedWidgets.clear();
-        editor.selectedWidgets.add(widgetIndex);
-        editSelectedWidget();
-        if (activePropertiesDialog == null || activePropertiesForm == null) return false;
-        restorePropertyFormState(activePropertiesForm,
-                state.getStringArrayList(STATE_MEDIA_FORM_PATHS),
-                state.getStringArrayList(STATE_MEDIA_FORM_TYPES),
-                state.getStringArrayList(STATE_MEDIA_FORM_VALUES));
-        View target = findViewByPath(activePropertiesForm, state.getString(STATE_MEDIA_FIELD_PATH, ""));
-        if (!(target instanceof EditText)) return false;
-        pendingMediaField = (EditText) target;
-        pendingMediaWidgetIndex = widgetIndex;
-        pendingMediaFieldPath = state.getString(STATE_MEDIA_FIELD_PATH);
-        return true;
-    }
-
-    private static void collectPropertyFormState(View view, String path, ArrayList<String> paths,
-            ArrayList<String> types, ArrayList<String> values) {
-        String type = null, value = null;
-        if (view instanceof EditText) {
-            type = "text";
-            value = ((EditText) view).getText().toString();
-        } else if (view instanceof android.widget.CheckBox) {
-            type = "check";
-            value = Boolean.toString(((android.widget.CheckBox) view).isChecked());
-        } else if (view instanceof Spinner) {
-            type = "spinner";
-            value = Integer.toString(((Spinner) view).getSelectedItemPosition());
-        }
-        if (type != null) {
-            paths.add(path);
-            types.add(type);
-            values.add(value);
-        }
-        if (view instanceof ViewGroup) {
-            ViewGroup group = (ViewGroup) view;
-            for (int i = 0; i < group.getChildCount(); i++) {
-                String childPath = path.isEmpty() ? Integer.toString(i) : path + "." + i;
-                collectPropertyFormState(group.getChildAt(i), childPath, paths, types, values);
-            }
-        }
-    }
-
-    private static void restorePropertyFormState(View root, ArrayList<String> paths,
-            ArrayList<String> types, ArrayList<String> values) {
-        if (paths == null || types == null || values == null
-                || paths.size() != types.size() || paths.size() != values.size()) return;
-        for (int i = 0; i < paths.size(); i++) {
-            View view = findViewByPath(root, paths.get(i));
-            String type = types.get(i), value = values.get(i);
-            if ("text".equals(type) && view instanceof EditText) ((EditText) view).setText(value);
-            else if ("check".equals(type) && view instanceof android.widget.CheckBox)
-                ((android.widget.CheckBox) view).setChecked(Boolean.parseBoolean(value));
-            else if ("spinner".equals(type) && view instanceof Spinner) {
-                Spinner spinner = (Spinner) view;
-                try {
-                    int position = Integer.parseInt(value);
-                    if (position >= 0 && position < spinner.getCount()) spinner.setSelection(position);
-                } catch (NumberFormatException ignored) {}
-            }
-        }
-    }
-
-    private static View findViewByPath(View root, String path) {
-        if (root == null) return null;
-        if (path == null || path.isEmpty()) return root;
-        View current = root;
-        for (String part : path.split("\\.")) {
-            if (!(current instanceof ViewGroup)) return null;
-            int index;
-            try { index = Integer.parseInt(part); }
-            catch (NumberFormatException invalid) { return null; }
-            ViewGroup group = (ViewGroup) current;
-            if (index < 0 || index >= group.getChildCount()) return null;
-            current = group.getChildAt(index);
-        }
-        return current;
-    }
-
-    private static String viewPath(View root, View target, String path) {
-        if (root == target) return path;
-        if (!(root instanceof ViewGroup)) return null;
-        ViewGroup group = (ViewGroup) root;
-        for (int i = 0; i < group.getChildCount(); i++) {
-            String childPath = path.isEmpty() ? Integer.toString(i) : path + "." + i;
-            String found = viewPath(group.getChildAt(i), target, childPath);
-            if (found != null) return found;
-        }
-        return null;
-    }
-
-    @Override protected void onResume() {
-        super.onResume();
-        activityResumed = true;
-        updateCraftDeviceRegisters();
-        if (editor != null) {
-            mainHandler.removeCallbacks(craftServiceRegisterTicker);
-            mainHandler.postDelayed(craftServiceRegisterTicker, 1000L);
-        }
-        if (editor != null) { startModbusPolling(); startFbdSensors(); startCraftMqtt(); }
-        refreshIncomingSmsReceiver();
-    }
-
-    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQUEST_VOICE_PERMISSION) {
-            if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED)
-                startVoiceRecognition(pendingVoiceMode);
-            else Toast.makeText(this, "Ð”Ð»Ñ Ð³Ð¾Ð»Ð¾ÑÐ¾Ð²Ð¾Ð³Ð¾ ÑƒÐ¿Ñ€Ð°Ð²Ð»ÐµÐ½Ð¸Ñ Ð½ÑƒÐ¶ÐµÐ½ Ð´Ð¾ÑÑ‚ÑƒÐ¿ Ðº Ð¼Ð¸ÐºÑ€Ð¾Ñ„Ð¾Ð½Ñƒ", Toast.LENGTH_LONG).show();
-            return;
-        }
-        if (requestCode == REQUEST_SMS_SEND_PERMISSION) {
-            if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED)
-                Toast.makeText(this, "Ð Ð°Ð·Ñ€ÐµÑˆÐµÐ½Ð¸Ðµ SMS Ð²ÐºÐ»ÑŽÑ‡ÐµÐ½Ð¾; ÑƒÐ²ÐµÐ´Ð¾Ð¼Ð»ÐµÐ½Ð¸Ðµ Ð¿Ñ€Ð¸Ð´Ñ‘Ñ‚ Ð¿Ñ€Ð¸ ÑÐ»ÐµÐ´ÑƒÑŽÑ‰ÐµÐ¼ Ð½Ð¾Ð²Ð¾Ð¼ ÑÐ¾Ð±Ñ‹Ñ‚Ð¸Ð¸", Toast.LENGTH_LONG).show();
-            else Toast.makeText(this, "ÐžÑ‚Ð¿Ñ€Ð°Ð²ÐºÐ° SMS Ð¾Ñ‚ÐºÐ»ÑŽÑ‡ÐµÐ½Ð° Ð±ÐµÐ· Ñ€Ð°Ð·Ñ€ÐµÑˆÐµÐ½Ð¸Ñ SEND_SMS", Toast.LENGTH_LONG).show();
-            return;
-        }
-        if (requestCode == REQUEST_SMS_RECEIVE_PERMISSION) {
-            smsReceivePermissionRequested = false;
-            if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                refreshIncomingSmsReceiver();
-            } else {
-                Toast.makeText(this, "Ð’Ñ…Ð¾Ð´ÑÑ‰ÐµÐµ SMS Ð¾Ñ‚ÐºÐ»ÑŽÑ‡ÐµÐ½Ð¾ Ð±ÐµÐ· Ñ€Ð°Ð·Ñ€ÐµÑˆÐµÐ½Ð¸Ñ RECEIVE_SMS", Toast.LENGTH_LONG).show();
-            }
-            return;
-        }
-        if (requestCode != REQUEST_FBD_SPEED_LOCATION) return;
-        fbdLocationPermissionRequested = false;
-        if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED)
-            startFbdSensors();
-    }
-
-    @Override protected void onPause() {
-        if (editor != null) {
-            editor.endCraftBitButton();
-            editor.operatorMomentaryCandidate = -1;
-        }
-        activityResumed = false;
-        mainHandler.removeCallbacks(craftServiceRegisterTicker);
-        unregisterIncomingSmsReceiver();
-        stopModbusPolling();
-        stopFbdSensors();
-        stopCraftMqtt();
-        releaseVoiceRecognizer();
-        resetCraftAlarmEdges();
-        stopAllCraftAlarmPlayback();
-        if (textToSpeech != null) try { textToSpeech.stop(); } catch (Exception ignored) {}
-        super.onPause();
-    }
-
-    @Override protected void onDestroy() {
-        manualUsbScreenGeneration++;
-        closeManualUsbConnection();
-        unregisterIncomingSmsReceiver();
-        stopModbusPolling();
-        stopFbdSensors();
-        stopCraftMqtt();
-        releaseVoiceRecognizer();
-        editor = null;
-        modbusExecutor.shutdownNow();
-        craftSensorExecutor.shutdownNow();
-        telegramExecutor.shutdownNow();
-        homeAssistantExecutor.shutdownNow();
-        yandexExecutor.shutdownNow();
-        smsExecutor.shutdownNow();
-        resetCraftAlarmEdges();
-        stopAllCraftAlarmPlayback();
-        mainHandler.removeCallbacks(craftServiceRegisterTicker);
-        CraftServiceRegisters.global().setActions(null);
-        if (textToSpeech != null) {
-            try { textToSpeech.stop(); textToSpeech.shutdown(); } catch (Exception ignored) {}
-            textToSpeech = null;
-        }
-        super.onDestroy();
-    }
-
-    private void playCraftAlarmAlert(String alarmKey, String pathOrUri, int craftAlarmSoundIndex, boolean loop) {
-        stopCraftAlarmAlert(alarmKey);
-        MediaPlayer player = null;
-        try {
-            player = new MediaPlayer();
-            int alarmResource = craftAlarmResource(craftAlarmSoundIndex);
-            if (alarmResource != 0) {
-                player.setDataSource(this, Uri.parse("android.resource://" + getPackageName() + "/" + alarmResource));
-            } else if (pathOrUri != null && pathOrUri.startsWith("content://")) {
-                player.setDataSource(this, Uri.parse(pathOrUri));
-            } else if (pathOrUri != null && !pathOrUri.trim().isEmpty() && !"ÐÐ»Ð°Ñ€Ð¼".equals(pathOrUri)) {
-                String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
-                java.io.File file = ProjectMediaService.resolveMediaFile(getFilesDir(), json, pathOrUri);
-                player.setDataSource(file.getAbsolutePath());
-            } else {
-                player.release();
-                ToneGenerator tone = new ToneGenerator(AudioManager.STREAM_ALARM, 80);
-                tone.startTone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD, 350);
-                craftAlarmTones.put(alarmKey, tone);
-                return;
-            }
-            player.setLooping(loop);
-            MediaPlayer activePlayer = player;
-            player.setOnPreparedListener(prepared -> {
-                if (craftAlarmPlayers.get(alarmKey) != prepared) return;
-                if (!activityResumed || isFinishing() || isDestroyed()) {
-                    stopCraftAlarmAlert(alarmKey);
-                    return;
-                }
-                try {
-                    prepared.start();
-                } catch (Exception ex) {
-                    if (craftAlarmPlayers.get(alarmKey) == prepared) {
-                        craftAlarmPlayers.remove(alarmKey);
-                        releaseCraftAlarmPlayer(prepared);
-                        android.util.Log.e("BLOODSKY", "Craft alarm start error", ex);
-                        playCraftAlarmFallbackTone(alarmKey, ToneGenerator.TONE_PROP_BEEP, 250);
-                    }
-                }
-            });
-            player.setOnCompletionListener(completed -> {
-                if (craftAlarmPlayers.get(alarmKey) == completed) {
-                    craftAlarmPlayers.remove(alarmKey);
-                    releaseCraftAlarmPlayer(completed);
-                }
-            });
-            player.setOnErrorListener((failed, what, extra) -> {
-                if (craftAlarmPlayers.get(alarmKey) == failed) {
-                    craftAlarmPlayers.remove(alarmKey);
-                    releaseCraftAlarmPlayer(failed);
-                    android.util.Log.e("BLOODSKY", "Craft alarm error: " + what + "/" + extra);
-                    playCraftAlarmFallbackTone(alarmKey, ToneGenerator.TONE_PROP_BEEP, 250);
-                }
-                return true;
-            });
-            craftAlarmPlayers.put(alarmKey, activePlayer);
-            player.prepareAsync();
-        } catch (Exception ex) {
-            if (craftAlarmPlayers.get(alarmKey) == player) craftAlarmPlayers.remove(alarmKey);
-            if (player != null) releaseCraftAlarmPlayer(player);
-            android.util.Log.e("BLOODSKY", "Craft alarm error", ex);
-            playCraftAlarmFallbackTone(alarmKey, ToneGenerator.TONE_PROP_BEEP, 250);
-        }
-    }
-
-    private void playCraftAlarmFallbackTone(String alarmKey, int toneType, int durationMs) {
-        if (!activityResumed || isFinishing() || isDestroyed()) return;
-        try {
-            ToneGenerator tone = new ToneGenerator(AudioManager.STREAM_ALARM, 80);
-            if (!tone.startTone(toneType, durationMs)) {
-                tone.release();
-                return;
-            }
-            craftAlarmTones.put(alarmKey, tone);
-        } catch (Exception ignored) { }
-    }
-
-    private static void releaseCraftAlarmPlayer(MediaPlayer player) {
-        try { player.stop(); } catch (Exception ignored) { }
-        try { player.release(); } catch (Exception ignored) { }
-    }
-
-    private void stopCraftAlarmAlert(String alarmKey) {
-        MediaPlayer player = craftAlarmPlayers.remove(alarmKey);
-        if (player != null) {
-            releaseCraftAlarmPlayer(player);
-        }
-        ToneGenerator tone = craftAlarmTones.remove(alarmKey);
-        if (tone != null) {
-            try { tone.stopTone(); } catch (Exception ignored) { }
-            try { tone.release(); } catch (Exception ignored) { }
-        }
-    }
-
-    private void stopAllCraftAlarmPlayback() {
-        for (MediaPlayer player : new java.util.ArrayList<>(craftAlarmPlayers.values())) {
-            releaseCraftAlarmPlayer(player);
-        }
-        craftAlarmPlayers.clear();
-        for (ToneGenerator tone : new java.util.ArrayList<>(craftAlarmTones.values())) {
-            try { tone.stopTone(); } catch (Exception ignored) { }
-            try { tone.release(); } catch (Exception ignored) { }
-        }
-        craftAlarmTones.clear();
-    }
-
-    private void stopCurrentScreenAlarms() {
-        for (int index = 0; index < widgets.size(); index++) {
-            Widget widget = widgets.get(index);
-            if ("Ð—Ð²ÑƒÐºÐ¾Ð²Ð¾Ð¹ ÑÐ¸Ð³Ð½Ð°Ð»".equals(widget.type)) {
-                widget.lastSoundState = false;
-                stopCraftAlarmAlert(currentScreenIndex + ":" + index);
-            }
-        }
-    }
-
-    private void resetCraftAlarmEdges() {
-        for (Screen screen : screens) {
-            for (Widget widget : screen.widgets) {
-                if ("Ð—Ð²ÑƒÐºÐ¾Ð²Ð¾Ð¹ ÑÐ¸Ð³Ð½Ð°Ð»".equals(widget.type)) widget.lastSoundState = false;
-            }
-        }
-        for (Widget widget : widgets) {
-            if ("Ð—Ð²ÑƒÐºÐ¾Ð²Ð¾Ð¹ ÑÐ¸Ð³Ð½Ð°Ð»".equals(widget.type)) widget.lastSoundState = false;
-        }
-    }
-
-    private static int craftAlarmResource(int index) {
-        switch (index) {
-            case 1: return R.raw.kc_alarm1;
-            case 2: return R.raw.kc_alarm2;
-            case 3: return R.raw.kc_alarm3;
-            case 4: return R.raw.kc_alarm4;
-            case 5: return R.raw.kc_alarm5;
-            default: return 0;
-        }
-    }
-
-    private void speakVoiceAnnouncement(String text) {
-        if (textToSpeech != null && text != null && !text.trim().isEmpty()) {
-            try {
-                textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, "bloodsky_tts_" + SystemClock.elapsedRealtime());
-            } catch (Exception ex) {
-                android.util.Log.e("BLOODSKY", "TTS speak error", ex);
-            }
-        }
-    }
-
-    private int dp(float value) {
-        return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
-    }
-
-    private int snapToGrid(float value) {
-        int step = Math.max(1, dp(20));
-        return Math.round(value / step) * step;
-    }
-
-    private TextView heading(String text) {
-        TextView view = new TextView(this);
-        view.setText(text);
-        view.setTextColor(Color.WHITE);
-        view.setTextSize(22);
-        view.setGravity(Gravity.CENTER_VERTICAL);
-        view.setPadding(dp(18), dp(12), dp(12), dp(12));
-        view.setBackgroundColor(Color.rgb(16, 36, 58));
-        return view;
-    }
-
-    private Button action(String text, Runnable task) {
-        Button button = new Button(this);
-        button.setText(text);
-        button.setAllCaps(false);
-        button.setOnClickListener(v -> task.run());
-        return button;
-    }
-
-    private Button legacyMenuButton(String text, Runnable task) {
-        Button button = new Button(this);
-        button.setText(text);
-        button.setTextSize(20);
-        button.setTextColor(Color.BLACK);
-        button.setAllCaps(true);
-        button.setGravity(Gravity.CENTER);
-        button.setBackgroundResource(R.drawable.kc_background_button);
-        button.setOnClickListener(v -> task.run());
-        return button;
-    }
-
-    private void showHome() {
-        manualUsbScreenGeneration++;
-        manualUsbScreenVisible = false;
-        operatorMode = false;
-        setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
-        stopModbusPolling();
-        editor = null;
-        try { readProjectCatalog(); }
-        catch (Exception error) { Toast.makeText(this, "Ð¡Ð¾Ñ…Ñ€Ð°Ð½ÐµÐ½Ð¸Ðµ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°: " + error.getMessage(), Toast.LENGTH_LONG).show(); }
-        CraftServiceRegisters.global().setActions(null);
-        root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setBackgroundResource(R.drawable.kc_main_background_small);
-        root.setWeightSum(1.0f);
-        TextView title = new TextView(this);
-        title.setText("BLOODSKY");
-        title.setTextColor(Color.rgb(237, 176, 59));
-        title.setTextSize(22);
-        title.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(-2, -2);
-        titleParams.topMargin = dp(8);
-        root.addView(title, titleParams);
-        // Original main_menu.xml order, 300dp width and 0.14 weights.
-        int menuWidth = Math.min(dp(300), getResources().getDisplayMetrics().widthPixels);
-        addLegacyMenuItem("Ð¡Ð¾Ð·Ð´Ð°Ñ‚ÑŒ Ð½Ð¾Ð²Ñ‹Ð¹ Ð¿Ñ€Ð¾ÐµÐºÑ‚", this::createNamedProject, menuWidth);
-        addLegacyMenuItem("Ð—Ð°Ð³Ñ€ÑƒÐ·Ð¸Ñ‚ÑŒ Ð¿Ñ€Ð¾ÐµÐºÑ‚", () -> chooseSavedProject(false), menuWidth);
-        addLegacyMenuItem("Ð£Ð´Ð°Ð»Ð¸Ñ‚ÑŒ Ð¿Ñ€Ð¾ÐµÐºÑ‚", () -> chooseSavedProject(true), menuWidth);
-        addLegacyMenuItem("Ð­ÐºÑÐ¿Ð¾Ñ€Ñ‚ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°", () -> {
-            if (getSharedPreferences(PREFS, MODE_PRIVATE).contains(ACTIVE_PROJECT)) {
-                if (loadProject()) exportProject();
-            } else Toast.makeText(this, "Ð¡Ð½Ð°Ñ‡Ð°Ð»Ð° ÑÐ¾Ð·Ð´Ð°Ð¹ Ð¸Ð»Ð¸ Ð·Ð°Ð³Ñ€ÑƒÐ·Ð¸ Ð¿Ñ€Ð¾ÐµÐºÑ‚", Toast.LENGTH_SHORT).show();
-        }, menuWidth);
-        addLegacyMenuItem("Ð˜Ð¼Ð¿Ð¾Ñ€Ñ‚ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°", this::importProject, menuWidth);
-        addLegacyMenuItem("USB Serial â€¢ Modbus RTU", this::showUsbSerialScreen, menuWidth);
-        addLegacyMenuItem("Ð’Ñ‹Ñ…Ð¾Ð´", this::finish, menuWidth);
-        root.addView(new View(this), new LinearLayout.LayoutParams(1, 0, 0.1f));
-        TextView footer = new TextView(this);
-        footer.setText("BLOODSKY 0.1.0");
-        footer.setTextColor(Color.rgb(255, 248, 243));
-        footer.setTextSize(18);
-        footer.setGravity(Gravity.CENTER);
-        root.addView(footer, new LinearLayout.LayoutParams(-2, -2));
-        setContentView(root);
-    }
-
-    private void addLegacyMenuItem(String label, Runnable task, int width) {
-        Button button = legacyMenuButton(label, task);
-        // The source specifies dp for text rather than sp.
-        button.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 20);
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(width, 0, 0.11f);
-        params.gravity = Gravity.CENTER_HORIZONTAL;
-        params.topMargin = dp(10);
-        root.addView(button, params);
-    }
-
-    private boolean storeActiveProject(String json, boolean synchronous) throws Exception {
-        String normalized = ProjectCatalog.normalize(json);
-        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-        String oldActive = prefs.getString(ACTIVE_PROJECT, null);
-        String oldCatalog = prefs.getString(PROJECT_CATALOG, null);
-        String oldName = prefs.getString("project_name", null);
-        String catalog = ProjectCatalog.upsert(oldCatalog, normalized);
-        android.content.SharedPreferences.Editor edit = prefs.edit()
-                .putString(ACTIVE_PROJECT, normalized).putString(PROJECT_CATALOG, catalog)
-                .putString("project_name", new JSONObject(normalized).optString("projectName", "ÐœÐ¾Ð¹ Ð¿Ñ€Ð¾ÐµÐºÑ‚"));
-        if (!synchronous) { edit.apply(); return true; }
-        if (edit.commit()) return true;
-        android.content.SharedPreferences.Editor restore = prefs.edit();
-        if (oldActive == null) restore.remove(ACTIVE_PROJECT); else restore.putString(ACTIVE_PROJECT, oldActive);
-        if (oldCatalog == null) restore.remove(PROJECT_CATALOG); else restore.putString(PROJECT_CATALOG, oldCatalog);
-        if (oldName == null) restore.remove("project_name"); else restore.putString("project_name", oldName);
-        if (!restore.commit()) android.util.Log.e("BLOODSKY", "Could not persist restored project preferences");
-        return false;
-    }
-
-    /**
-     * Upgrade old project media before changing its saved identity. The save callback
-     * commits ACTIVE_PROJECT and PROJECT_CATALOG together; failed copies leave both
-     * the original saved JSON and the old files untouched.
-     */
-    private String migrateLegacyActiveProject(String stored) throws Exception {
-        return LegacyProjectMediaMigrator.migrate(getFilesDir(), stored, newJson -> {
-            try { return storeActiveProject(newJson, true); }
-            catch (Exception failure) {
-                android.util.Log.e("BLOODSKY", "Legacy project ID commit failed", failure);
-                return false;
-            }
-        });
-    }
-
-    private String readProjectCatalog() throws Exception {
-        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-        String active = prefs.getString(ACTIVE_PROJECT, null);
-        if (active != null) {
-            if (LegacyProjectMediaMigrator.needsMigration(active)) {
-                migrateLegacyActiveProject(active);
-            } else if (!storeActiveProject(active, true)) {
-                throw new IOException("ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ ÑÐ¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ñ‚ÐµÐºÑƒÑ‰Ð¸Ð¹ Ð¿Ñ€Ð¾ÐµÐºÑ‚");
-            }
-        }
-        return prefs.getString(PROJECT_CATALOG, "{}");
-    }
-
-    private void createNamedProject() {
-        EditText name = propertyField("", InputType.TYPE_CLASS_TEXT);
-        name.setHint("Ð˜Ð¼Ñ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°");
-        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Ð¡Ð¾Ð·Ð´Ð°Ñ‚ÑŒ Ð½Ð¾Ð²Ñ‹Ð¹ Ð¿Ñ€Ð¾ÐµÐºÑ‚")
-                .setView(name).setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null).setPositiveButton("Ð¡Ð¾Ð·Ð´Ð°Ñ‚ÑŒ", null).create();
-        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            try {
-                readProjectCatalog(); // Migrate/preserve the previous active project first.
-                String json = ProjectCatalog.create(name.getText().toString());
-                if (!storeActiveProject(json, true)) throw new IOException("ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ ÑÐ¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ð¿Ñ€Ð¾ÐµÐºÑ‚");
-                if (!loadProject()) throw new IOException("ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚ÑŒ Ð½Ð¾Ð²Ñ‹Ð¹ Ð¿Ñ€Ð¾ÐµÐºÑ‚");
-                dialog.dismiss(); showEditor();
-            } catch (Exception error) { name.setError(error.getMessage()); }
-        }));
-        dialog.show();
-    }
-
-    private void chooseSavedProject(boolean deleting) {
-        try {
-            List<JSONObject> projects = ProjectCatalog.list(readProjectCatalog());
-            if (projects.isEmpty()) {
-                Toast.makeText(this, "ÐÐµÑ‚ ÑÐ¾Ñ…Ñ€Ð°Ð½Ñ‘Ð½Ð½Ñ‹Ñ… Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð¾Ð²", Toast.LENGTH_SHORT).show(); return;
-            }
-            String[] labels = new String[projects.size()];
-            for (int i = 0; i < labels.length; i++) labels[i] = projects.get(i).optString("projectName", "ÐœÐ¾Ð¹ Ð¿Ñ€Ð¾ÐµÐºÑ‚");
-            new AlertDialog.Builder(this).setTitle(deleting ? "Ð£Ð´Ð°Ð»Ð¸Ñ‚ÑŒ Ð¿Ñ€Ð¾ÐµÐºÑ‚" : "Ð—Ð°Ð³Ñ€ÑƒÐ·Ð¸Ñ‚ÑŒ Ð¿Ñ€Ð¾ÐµÐºÑ‚")
-                    .setItems(labels, (dialog, which) -> {
-                        JSONObject selected = projects.get(which);
-                        if (deleting) {
-                            new AlertDialog.Builder(this).setTitle("Ð£Ð´Ð°Ð»Ð¸Ñ‚ÑŒ Ð¿Ñ€Ð¾ÐµÐºÑ‚?")
-                                    .setMessage(selected.optString("projectName", "ÐœÐ¾Ð¹ Ð¿Ñ€Ð¾ÐµÐºÑ‚"))
-                                    .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null).setPositiveButton("Ð£Ð´Ð°Ð»Ð¸Ñ‚ÑŒ", (confirm, choice) -> deleteSavedProject(selected)).show();
-                        } else try {
-                            if (!storeActiveProject(selected.toString(), true)) throw new IOException("ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚ÑŒ Ð¿Ñ€Ð¾ÐµÐºÑ‚");
-                            if (!loadProject()) throw new IOException("ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚ÑŒ Ð¿Ñ€Ð¾ÐµÐºÑ‚");
-                            showEditor();
-                        } catch (Exception error) { Toast.makeText(this, error.getMessage(), Toast.LENGTH_LONG).show(); }
-                    }).setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null).show();
-        } catch (Exception error) { Toast.makeText(this, "Ð¡Ð¿Ð¸ÑÐ¾Ðº Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð¾Ð²: " + error.getMessage(), Toast.LENGTH_LONG).show(); }
-    }
-
-    private void deleteSavedProject(JSONObject selected) {
-        try {
-            android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-            String key = ProjectMediaService.getOrGenerateProjectId(selected.toString());
-            String oldCatalog = prefs.getString(PROJECT_CATALOG, "{}");
-            String active = prefs.getString(ACTIVE_PROJECT, null);
-            String oldName = prefs.getString("project_name", null);
-            boolean deletingActive = active != null && key.equals(ProjectMediaService.getOrGenerateProjectId(active));
-            android.content.SharedPreferences.Editor edit = prefs.edit()
-                    .putString(PROJECT_CATALOG, ProjectCatalog.remove(oldCatalog, key));
-            if (deletingActive) edit.remove(ACTIVE_PROJECT).remove("project_name");
-            if (!edit.commit()) {
-                android.content.SharedPreferences.Editor restore = prefs.edit().putString(PROJECT_CATALOG, oldCatalog);
-                if (active != null) restore.putString(ACTIVE_PROJECT, active);
-                if (oldName != null) restore.putString("project_name", oldName);
-                if (!restore.commit()) android.util.Log.e("BLOODSKY", "Could not persist restored catalog");
-                throw new IOException("ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ ÑƒÐ´Ð°Ð»Ð¸Ñ‚ÑŒ Ð¿Ñ€Ð¾ÐµÐºÑ‚");
-            }
-            if (deletingActive) { widgets.clear(); screens.clear(); projectExtraFields = new JSONObject(); clipboardWidget = null; imageCache.clear(); }
-            showHome();
-        } catch (Exception error) { Toast.makeText(this, error.getMessage(), Toast.LENGTH_LONG).show(); }
-    }
-
-    private void showModbusScanner() {
-        stopModbusPolling();
-        editor = null;
-        root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.rgb(241, 245, 249));
-        root.addView(heading("BLOODSKY â€¢ Modbus TCP Scanner"), new LinearLayout.LayoutParams(-1, dp(60)));
-        root.addView(action("â€¹ ÐÐ°Ð·Ð°Ð´", this::showHome), new LinearLayout.LayoutParams(-1, dp(48)));
-
-        LinearLayout form = new LinearLayout(this);
-        form.setOrientation(LinearLayout.VERTICAL);
-        form.setPadding(dp(16), dp(8), dp(16), dp(8));
-        EditText hostField = propertyField("192.168.1.10", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        hostField.setHint("IP-Ð°Ð´Ñ€ÐµÑ ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð°");
-        form.addView(hostField);
-        EditText portField = propertyField("502", InputType.TYPE_CLASS_NUMBER);
-        portField.setHint("TCP-Ð¿Ð¾Ñ€Ñ‚ (Ð¾Ð±Ñ‹Ñ‡Ð½Ð¾ 502)");
-        form.addView(portField);
-        EditText unitField = propertyField("1", InputType.TYPE_CLASS_NUMBER);
-        unitField.setHint("Unit ID (0â€“255)");
-        form.addView(unitField);
-        Spinner functionSpinner = new Spinner(this);
-        ArrayAdapter<String> functionAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item,
-                new String[]{"Holding registers (FC03)", "Input registers (FC04)"});
-        functionAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        functionSpinner.setAdapter(functionAdapter);
-        form.addView(functionSpinner);
-        EditText addressField = propertyField("40001", InputType.TYPE_CLASS_NUMBER);
-        addressField.setHint("ÐÐ´Ñ€ÐµÑ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð°: FC03 Ð¾Ð±Ñ‹Ñ‡Ð½Ð¾ 40001, FC04 Ð¾Ð±Ñ‹Ñ‡Ð½Ð¾ 30001");
-        form.addView(addressField);
-        EditText countField = propertyField("10", InputType.TYPE_CLASS_NUMBER);
-        countField.setHint("ÐšÐ¾Ð»Ð¸Ñ‡ÐµÑÑ‚Ð²Ð¾ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð¾Ð² (1â€“125)");
-        form.addView(countField);
-
-        TextView result = new TextView(this);
-        result.setTextColor(Color.rgb(31, 41, 55));
-        result.setTextSize(14);
-        result.setPadding(dp(16), dp(10), dp(16), dp(10));
-        result.setText("Ð“Ð¾Ñ‚Ð¾Ð² Ðº Ñ‡Ñ‚ÐµÐ½Ð¸ÑŽ holding registers (FC03). Ð¡ÐºÐ°Ð½Ð¸Ñ€Ð¾Ð²Ð°Ð½Ð¸Ðµ Ð²Ñ‹Ð¿Ð¾Ð»Ð½ÑÐµÑ‚ÑÑ Ð¿Ð¾ ÑÐµÑ‚Ð¸; ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð¾ Ð´Ð¾Ð»Ð¶Ð½Ð¾ Ð±Ñ‹Ñ‚ÑŒ Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð½Ð¾.");
-        root.addView(form, new LinearLayout.LayoutParams(-1, -2));
-        root.addView(action("Ð¡Ñ‡Ð¸Ñ‚Ð°Ñ‚ÑŒ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ñ‹", () -> {
-            final String host = hostField.getText().toString().trim();
-            final int functionCode = functionSpinner.getSelectedItemPosition() == 0 ? 3 : 4;
-            final int port, unit, startAddress, count;
-            try {
-                port = Integer.parseInt(portField.getText().toString().trim());
-                unit = Integer.parseInt(unitField.getText().toString().trim());
-                int enteredAddress = Integer.parseInt(addressField.getText().toString().trim());
-                count = Integer.parseInt(countField.getText().toString().trim());
-                if (port < 1 || port > 65535 || unit < 0 || unit > 255 || count < 1 || count > 125
-                        || enteredAddress < 0 || enteredAddress > 65535) throw new IllegalArgumentException();
-                if (functionCode == 4 && enteredAddress >= 30001 && enteredAddress <= 39999) {
-                    startAddress = enteredAddress - 30001;
-                } else if (functionCode == 3 && enteredAddress >= 40001 && enteredAddress <= 49999) {
-                    startAddress = enteredAddress - 40001;
-                } else if ((functionCode == 4 && enteredAddress >= 40001 && enteredAddress <= 49999)
-                        || (functionCode == 3 && enteredAddress >= 30001 && enteredAddress <= 39999)) {
-                    throw new IllegalArgumentException("ÐÐ´Ñ€ÐµÑ Ð½Ðµ ÑÐ¾Ð¾Ñ‚Ð²ÐµÑ‚ÑÑ‚Ð²ÑƒÐµÑ‚ Ð²Ñ‹Ð±Ñ€Ð°Ð½Ð½Ð¾Ð¼Ñƒ Ñ‚Ð¸Ð¿Ñƒ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð°");
-                } else {
-                    startAddress = enteredAddress;
-                }
-                if (startAddress < 0 || startAddress > 65535 || startAddress + count > 65536) throw new IllegalArgumentException();
-                if (host.isEmpty()) throw new IllegalArgumentException();
-            } catch (Exception ex) {
-                String message = ex.getMessage();
-                result.setText(message == null || message.trim().isEmpty()
-                        ? "ÐŸÑ€Ð¾Ð²ÐµÑ€ÑŒ IP, Ð¿Ð¾Ñ€Ñ‚, Unit ID, Ð°Ð´Ñ€ÐµÑ Ð¸ ÐºÐ¾Ð»Ð¸Ñ‡ÐµÑÑ‚Ð²Ð¾ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð¾Ð²."
-                        : "ÐŸÐ°Ñ€Ð°Ð¼ÐµÑ‚Ñ€Ñ‹ Ð·Ð°Ð¿Ñ€Ð¾ÑÐ°: " + message);
-                return;
-            }
-            result.setText("ÐŸÐ¾Ð´ÐºÐ»ÑŽÑ‡Ð°ÑŽÑÑŒ Ðº " + host + ":" + port + "â€¦");
-            new Thread(() -> {
-                String report;
-                try {
-                    report = readModbusRegisters(host, port, unit, startAddress, count, functionCode);
-                } catch (Exception ex) {
-                    report = "ÐžÑˆÐ¸Ð±ÐºÐ° Modbus TCP: " + (ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage());
-                }
-                final String finalReport = report;
-                runOnUiThread(() -> result.setText(finalReport));
-            }, "bloodsky-modbus-scan").start();
-        }), new LinearLayout.LayoutParams(-1, dp(52)));
-        root.addView(result, new LinearLayout.LayoutParams(-1, 0, 1));
-        setContentView(root);
-    }
-
-    private void showUsbSerialScreen() {
-        final int screenGeneration = ++manualUsbScreenGeneration;
-        manualUsbScreenVisible = true;
-        stopModbusPolling();
-        editor = null;
-        closeManualUsbConnection();
-        root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.rgb(241, 245, 249));
-        root.addView(heading("BLOODSKY â€¢ USB Serial RTU"), new LinearLayout.LayoutParams(-1, dp(60)));
-        root.addView(action("â€¹ ÐÐ°Ð·Ð°Ð´", this::showHome), new LinearLayout.LayoutParams(-1, dp(48)));
-        ScrollView scroll = new ScrollView(this);
-        LinearLayout form = new LinearLayout(this);
-        form.setOrientation(LinearLayout.VERTICAL);
-        form.setPadding(dp(16), dp(8), dp(16), dp(12));
-        scroll.addView(form);
-        TextView intro = new TextView(this);
-        intro.setText("Ð’Ñ‹Ð±ÐµÑ€Ð¸ USB-Ð°Ð´Ð°Ð¿Ñ‚ÐµÑ€ Ð¸ Ð½Ð°Ð¶Ð¼Ð¸ Â«ÐŸÐ¾Ð´ÐºÐ»ÑŽÑ‡Ð¸Ñ‚ÑŒÂ». Ð Ð°Ð·Ñ€ÐµÑˆÐµÐ½Ð¸Ðµ Android Ð·Ð°Ð¿Ñ€Ð°ÑˆÐ¸Ð²Ð°ÐµÑ‚ÑÑ Ð´Ð»Ñ Ð²Ñ‹Ð±Ñ€Ð°Ð½Ð½Ð¾Ð³Ð¾ ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð°.");
-        intro.setTextColor(Color.rgb(55, 65, 81)); intro.setTextSize(14); form.addView(intro);
-        Spinner deviceSpinner = new Spinner(this);
-        List<UsbSerialConnector.DeviceOption> devices = new ArrayList<>();
-        ArrayAdapter<String> deviceAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, new ArrayList<>());
-        deviceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        deviceSpinner.setAdapter(deviceAdapter); form.addView(deviceSpinner);
-        TextView deviceInfo = new TextView(this); deviceInfo.setTextColor(Color.rgb(75, 85, 99)); deviceInfo.setTextSize(12); form.addView(deviceInfo);
-        Spinner baudSpinner = new Spinner(this);
-        String[] baudChoices = {"9600", "19200", "38400", "57600", "115200"};
-        baudSpinner.setAdapter(simpleSpinnerAdapter(baudChoices)); form.addView(baudSpinner);
-        Spinner paritySpinner = new Spinner(this);
-        String[] parityChoices = {"8N1", "8E1", "8O1", "8N2"};
-        paritySpinner.setAdapter(simpleSpinnerAdapter(parityChoices)); form.addView(paritySpinner);
-        EditText unitField = propertyField("1", InputType.TYPE_CLASS_NUMBER); unitField.setHint("Unit ID (0â€“247)"); form.addView(unitField);
-        EditText addressField = propertyField("0", InputType.TYPE_CLASS_NUMBER); addressField.setHint("ÐÐ°Ñ‡Ð°Ð»ÑŒÐ½Ñ‹Ð¹ Ð°Ð´Ñ€ÐµÑ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð° (0â€“65535)"); form.addView(addressField);
-        EditText countField = propertyField("10", InputType.TYPE_CLASS_NUMBER); countField.setHint("ÐšÐ¾Ð»Ð¸Ñ‡ÐµÑÑ‚Ð²Ð¾ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð¾Ð² (1â€“125)"); form.addView(countField);
-        Spinner functionSpinner = new Spinner(this);
-        functionSpinner.setAdapter(simpleSpinnerAdapter(new String[]{"Holding registers (FC03)", "Input registers (FC04)"})); form.addView(functionSpinner);
-        TextView result = new TextView(this); result.setTextColor(Color.rgb(31, 41, 55)); result.setTextSize(14);
-        result.setPadding(0, dp(10), 0, dp(10)); result.setText("USB-Ð°Ð´Ð°Ð¿Ñ‚ÐµÑ€Ñ‹ Ð½Ðµ Ð²Ñ‹Ð±Ñ€Ð°Ð½Ñ‹.");
-        Runnable refreshDevices = () -> {
-            try {
-                if (manualUsbConnector == null) manualUsbConnector = new UsbSerialConnector(this);
-                devices.clear(); devices.addAll(manualUsbConnector.listDevices()); deviceAdapter.clear();
-                for (UsbSerialConnector.DeviceOption option : devices)
-                    deviceAdapter.add(option.id + " â€¢ " + String.format(java.util.Locale.US, "%04X:%04X", option.vendorId, option.productId));
-                deviceAdapter.notifyDataSetChanged();
-                deviceInfo.setText(devices.isEmpty() ? "ÐŸÐ¾Ð´Ð´ÐµÑ€Ð¶Ð¸Ð²Ð°ÐµÐ¼Ñ‹Ðµ USB serial-Ð°Ð´Ð°Ð¿Ñ‚ÐµÑ€Ñ‹ Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½Ñ‹." : "ÐÐ°Ð¹Ð´ÐµÐ½Ð¾ Ð°Ð´Ð°Ð¿Ñ‚ÐµÑ€Ð¾Ð²: " + devices.size());
-                result.setText(devices.isEmpty() ? "ÐŸÐ¾Ð´ÐºÐ»ÑŽÑ‡Ð¸ USB serial-Ð°Ð´Ð°Ð¿Ñ‚ÐµÑ€ Ð¸ Ð¾Ð±Ð½Ð¾Ð²Ð¸ ÑÐ¿Ð¸ÑÐ¾Ðº." : "Ð’Ñ‹Ð±ÐµÑ€Ð¸ ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð¾, Ð¿Ð°Ñ€Ð°Ð¼ÐµÑ‚Ñ€Ñ‹ Ð»Ð¸Ð½Ð¸Ð¸ Ð¸ Ð½Ð°Ð¶Ð¼Ð¸ Â«ÐŸÐ¾Ð´ÐºÐ»ÑŽÑ‡Ð¸Ñ‚ÑŒÂ».");
-            } catch (Exception error) { result.setText("ÐžÑˆÐ¸Ð±ÐºÐ° Ð¿Ð¾Ð¸ÑÐºÐ° USB-Ð°Ð´Ð°Ð¿Ñ‚ÐµÑ€Ð¾Ð²: " + errorMessage(error)); }
-        };
-        form.addView(action("ÐžÐ±Ð½Ð¾Ð²Ð¸Ñ‚ÑŒ ÑÐ¿Ð¸ÑÐ¾Ðº USB", refreshDevices), new LinearLayout.LayoutParams(-1, dp(48)));
-        form.addView(action("ÐŸÐ¾Ð´ÐºÐ»ÑŽÑ‡Ð¸Ñ‚ÑŒ Ð²Ñ‹Ð±Ñ€Ð°Ð½Ð½Ñ‹Ð¹ Ð°Ð´Ð°Ð¿Ñ‚ÐµÑ€", () -> {
-            if (devices.isEmpty() || deviceSpinner.getSelectedItemPosition() < 0) { result.setText("Ð¡Ð½Ð°Ñ‡Ð°Ð»Ð° Ð¾Ð±Ð½Ð¾Ð²Ð¸ ÑÐ¿Ð¸ÑÐ¾Ðº Ð¸ Ð²Ñ‹Ð±ÐµÑ€Ð¸ Ð°Ð´Ð°Ð¿Ñ‚ÐµÑ€."); return; }
-            final UsbSerialConnector.DeviceOption selected = devices.get(deviceSpinner.getSelectedItemPosition());
-            final int baud = Integer.parseInt(baudChoices[baudSpinner.getSelectedItemPosition()]);
-            final String framing = parityChoices[paritySpinner.getSelectedItemPosition()];
-            UsbSerialSettings.Parity parity = framing.charAt(1) == 'E' ? UsbSerialSettings.Parity.EVEN : framing.charAt(1) == 'O' ? UsbSerialSettings.Parity.ODD : UsbSerialSettings.Parity.NONE;
-            final int stopBits = framing.endsWith("2") ? 2 : 1;
-            result.setText("ÐžÑ‚ÐºÑ€Ñ‹Ð²Ð°ÑŽ " + selected.id + ". ÐŸÐ¾Ð´Ñ‚Ð²ÐµÑ€Ð´Ð¸ Ð´Ð¾ÑÑ‚ÑƒÐ¿ Ð² Ð´Ð¸Ð°Ð»Ð¾Ð³Ðµ Android, ÐµÑÐ»Ð¸ Ð¾Ð½ Ð¿Ð¾ÑÐ²Ð¸Ñ‚ÑÑâ€¦");
-            modbusExecutor.execute(() -> {
-                try {
-                    UsbSerialModbusConnection opened = manualUsbConnector.connect(selected.id, new UsbSerialSettings(baud, 8, stopBits, parity), 1500).get();
-                    runOnUiThread(() -> {
-                        if (screenGeneration != manualUsbScreenGeneration) { try { opened.close(); } catch (IOException ignored) { } return; }
-                        closeManualUsbConnection(); manualUsbConnection = opened;
-                        result.setText("ÐŸÐ¾Ð´ÐºÐ»ÑŽÑ‡ÐµÐ½Ð¾: " + selected.id + " â€¢ " + baud + " " + framing + ". Ð—Ð°Ð¿Ñ€Ð¾ÑÑ‹ Ð²Ñ‹Ð¿Ð¾Ð»Ð½ÑÑŽÑ‚ÑÑ Ñ‚Ð¾Ð»ÑŒÐºÐ¾ Ð¿Ð¾ ÐºÐ½Ð¾Ð¿ÐºÐµ.");
-                    });
-                } catch (Exception error) {
-                    runOnUiThread(() -> { if (screenGeneration == manualUsbScreenGeneration) result.setText("ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¿Ð¾Ð´ÐºÐ»ÑŽÑ‡Ð¸Ñ‚ÑŒ USB-Ð°Ð´Ð°Ð¿Ñ‚ÐµÑ€: " + errorMessage(error)); });
-                }
-            });
-        }), new LinearLayout.LayoutParams(-1, dp(48)));
-        form.addView(action("ÐžÑ‚ÐºÐ»ÑŽÑ‡Ð¸Ñ‚ÑŒ", () -> { closeManualUsbConnection(); result.setText("USB-Ð°Ð´Ð°Ð¿Ñ‚ÐµÑ€ Ð¾Ñ‚ÐºÐ»ÑŽÑ‡Ñ‘Ð½."); }), new LinearLayout.LayoutParams(-1, dp(48)));
-        form.addView(action("Ð¡Ñ‡Ð¸Ñ‚Ð°Ñ‚ÑŒ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ñ‹", () -> {
-            final UsbSerialModbusConnection connection = manualUsbConnection;
-            if (connection == null) { result.setText("Ð¡Ð½Ð°Ñ‡Ð°Ð»Ð° Ð¿Ð¾Ð´ÐºÐ»ÑŽÑ‡Ð¸ USB-Ð°Ð´Ð°Ð¿Ñ‚ÐµÑ€."); return; }
-            final int unit, address, count;
-            try {
-                unit = Integer.parseInt(unitField.getText().toString().trim()); address = Integer.parseInt(addressField.getText().toString().trim());
-                count = Integer.parseInt(countField.getText().toString().trim());
-                if (unit < 0 || unit > 247 || address < 0 || address > 65535 || count < 1 || count > 125 || address + count > 65536) throw new IllegalArgumentException();
-            } catch (Exception invalid) { result.setText("ÐŸÑ€Ð¾Ð²ÐµÑ€ÑŒ Unit ID, Ð°Ð´Ñ€ÐµÑ Ð¸ ÐºÐ¾Ð»Ð¸Ñ‡ÐµÑÑ‚Ð²Ð¾ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð¾Ð²."); return; }
-            final int function = functionSpinner.getSelectedItemPosition() == 0 ? 3 : 4;
-            result.setText("Ð§Ð¸Ñ‚Ð°ÑŽ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ñ‹ Ð¿Ð¾ Modbus RTUâ€¦");
-            modbusExecutor.execute(() -> {
-                try {
-                    int[] values = connection.read(unit, function, address, count);
-                    StringBuilder report = new StringBuilder("FC").append(function).append(" â€¢ Ð°Ð´Ñ€ÐµÑ ").append(address).append("\n");
-                    for (int i = 0; i < values.length; i++) report.append(address + i).append(": ").append(values[i]).append(i + 1 == values.length ? "" : "\n");
-                    runOnUiThread(() -> result.setText(report.toString()));
-                } catch (Exception error) {
-                    runOnUiThread(() -> { if (manualUsbConnection == connection && !connection.isOpen()) manualUsbConnection = null; result.setText("ÐžÑˆÐ¸Ð±ÐºÐ° Modbus RTU: " + errorMessage(error)); });
-                }
-            });
-        }), new LinearLayout.LayoutParams(-1, dp(48)));
-        form.addView(result, new LinearLayout.LayoutParams(-1, -2));
-        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1)); setContentView(root); refreshDevices.run();
-    }
-
-    private ArrayAdapter<String> simpleSpinnerAdapter(String[] values) {
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, values);
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item); return adapter;
-    }
-
-    private String errorMessage(Throwable error) {
-        Throwable cause = error; while (cause.getCause() != null) cause = cause.getCause();
-        return cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
-    }
-
-    private void closeManualUsbConnection() {
-        UsbSerialModbusConnection connection = manualUsbConnection; manualUsbConnection = null;
-        if (connection != null) try { connection.close(); } catch (IOException error) { android.util.Log.w("BLOODSKY", "USB serial close failed", error); }
-    }
-
-    public static int calculateModbusRtuCrc(byte[] data, int length) {
-        int crc = 0xFFFF;
-        for (int pos = 0; pos < length; pos++) {
-            crc ^= (data[pos] & 0xFF);
-            for (int i = 8; i != 0; i--) {
-                if ((crc & 0x0001) != 0) {
-                    crc >>= 1;
-                    crc ^= 0xA001;
-                } else {
-                    crc >>= 1;
-                }
-            }
-        }
-        return crc & 0xFFFF;
-    }
-
-    public static byte[] buildModbusRtuFrame(int unit, int functionCode, int startAddress, int count) {
-        byte[] frame = new byte[8];
-        frame[0] = (byte) (unit & 0xFF);
-        frame[1] = (byte) (functionCode & 0xFF);
-        frame[2] = (byte) ((startAddress >> 8) & 0xFF);
-        frame[3] = (byte) (startAddress & 0xFF);
-        frame[4] = (byte) ((count >> 8) & 0xFF);
-        frame[5] = (byte) (count & 0xFF);
-        int crc = calculateModbusRtuCrc(frame, 6);
-        frame[6] = (byte) (crc & 0xFF);
-        frame[7] = (byte) ((crc >> 8) & 0xFF);
-        return frame;
-    }
-
-    public static class ModbusRtuTransport {
-        private final InputStream in;
-        private final OutputStream out;
-
-        public ModbusRtuTransport(InputStream in, OutputStream out) {
-            this.in = in;
-            this.out = out;
-        }
-
-        private void readFully(byte[] buffer, int offset, int length) throws IOException {
-            int totalRead = 0;
-            while (totalRead < length) {
-                int count = in.read(buffer, offset + totalRead, length - totalRead);
-                if (count < 0) {
-                    throw new IOException("Stream closed before reading expected " + length + " bytes (read " + totalRead + ")");
-                }
-                totalRead += count;
-            }
-        }
-
-        public byte[] sendAndReceive(int unit, int functionCode, int startAddress, int count) throws IOException {
-            if (unit < 1 || unit > 247) throw new IllegalArgumentException("Unit ID must be 1..247 for a request/response RTU exchange");
-            if (functionCode < 1 || functionCode > 4) throw new IllegalArgumentException("RTU stream helper currently supports read functions FC01..FC04 only");
-            int maxCount = functionCode <= 2 ? 2000 : 125;
-            if (count < 1 || count > maxCount) throw new IllegalArgumentException("Invalid Modbus RTU read quantity");
-            if (startAddress < 0 || startAddress > 65535 || startAddress + count > 65536) {
-                throw new IllegalArgumentException("Modbus RTU address range must fit 0..65535");
-            }
-            byte[] frame = buildModbusRtuFrame(unit, functionCode, startAddress, count);
-            out.write(frame);
-            out.flush();
-
-            byte[] header = new byte[3];
-            readFully(header, 0, 3);
-
-            int respUnit = header[0] & 0xFF;
-            int respFunc = header[1] & 0xFF;
-            if (respUnit != unit) {
-                throw new IOException("Unexpected unit ID in Modbus RTU response: " + respUnit);
-            }
-
-            if (respFunc == (functionCode | 0x80)) {
-                int exceptionCode = header[2] & 0xFF;
-                byte[] crcBuf = new byte[2];
-                readFully(crcBuf, 0, 2);
-                int expectedCrc = ((crcBuf[1] & 0xFF) << 8) | (crcBuf[0] & 0xFF);
-                int calcCrc = calculateModbusRtuCrc(header, 3);
-                if (calcCrc != expectedCrc) {
-                    throw new IOException("CRC mismatch in Modbus RTU exception response (expected 0x"
-                            + String.format(java.util.Locale.ROOT, "%04X", calcCrc) + ", got 0x"
-                            + String.format(java.util.Locale.ROOT, "%04X", expectedCrc) + ")");
-                }
-                throw new IOException("Modbus RTU: " + describeModbusExceptionCodeStatic(exceptionCode) + " (ÐºÐ¾Ð´ " + exceptionCode + ")");
-            }
-
-            if (respFunc != functionCode) {
-                throw new IOException("Unexpected function code in Modbus RTU response: " + respFunc);
-            }
-
-            int byteCount = header[2] & 0xFF;
-            int expectedByteCount = functionCode <= 2 ? (count + 7) / 8 : count * 2;
-            if (byteCount != expectedByteCount) {
-                throw new IOException("Invalid byte count in Modbus RTU response: expected "
-                        + expectedByteCount + ", got " + byteCount);
-            }
-
-            byte[] payload = new byte[byteCount];
-            readFully(payload, 0, byteCount);
-
-            byte[] crcBuf = new byte[2];
-            readFully(crcBuf, 0, 2);
-            int expectedCrc = ((crcBuf[1] & 0xFF) << 8) | (crcBuf[0] & 0xFF);
-
-            byte[] fullPdu = new byte[3 + byteCount];
-            System.arraycopy(header, 0, fullPdu, 0, 3);
-            System.arraycopy(payload, 0, fullPdu, 3, byteCount);
-
-            int calcCrc = calculateModbusRtuCrc(fullPdu, fullPdu.length);
-            if (calcCrc != expectedCrc) {
-                throw new IOException("CRC mismatch in Modbus RTU response (expected 0x"
-                        + String.format(java.util.Locale.ROOT, "%04X", calcCrc) + ", got 0x"
-                        + String.format(java.util.Locale.ROOT, "%04X", expectedCrc) + ")");
-            }
-            return payload;
-        }
-    }
-
-    private String readModbusHoldingRegisters(String host, int port, int unit, int startAddress, int count) throws Exception {
-        return readModbusRegisters(host, port, unit, startAddress, count, 3);
-    }
-
-    public static String readModbusRegistersStatic(String host, int port, int unit, int startAddress, int count, int functionCode) throws Exception {
-        final int[] values;
-        try {
-            values = new ModbusTcpClient(host, port).read(unit, startAddress, count, functionCode);
-        } catch (ModbusTcpClient.ModbusException ex) {
-            throw describeTcpException(ex);
-        }
-        StringBuilder report = new StringBuilder();
-        String funcName = functionCode == 1 ? "coils (FC01)\n" : (functionCode == 2 ? "discrete inputs (FC02)\n" : (functionCode == 3 ? "holding registers (FC03)\n" : "input registers (FC04)\n"));
-        report.append("Ð£ÑÐ¿ÐµÑˆÐ½Ð¾: ").append(count).append(" ").append(funcName);
-        int baseAddr = functionCode == 1 ? 1 : (functionCode == 2 ? 10001 : (functionCode == 3 ? 40001 : 30001));
-        for (int i = 0; i < count; i++) {
-            report.append(baseAddr + startAddress + i).append("  |  ")
-                    .append(values[i]).append("  |  0x")
-                    .append(String.format(java.util.Locale.ROOT, "%04X", values[i])).append('\n');
-        }
-        return report.toString();
-    }
-
-    public static boolean writeModbusRegisterStatic(String host, int port, int unit, int address, int value) throws Exception {
-        try {
-            new ModbusTcpClient(host, port).writeSingle(unit, address, value);
-            return true;
-        } catch (ModbusTcpClient.ModbusException ex) {
-            throw describeTcpException(ex);
-        }
-    }
-
-    public static boolean writeModbusMultipleRegistersStatic(String host, int port, int unit, int startAddress, int[] values) throws Exception {
-        try {
-            new ModbusTcpClient(host, port).writeMultiple(unit, startAddress, values);
-            return true;
-        } catch (ModbusTcpClient.ModbusException ex) {
-            throw describeTcpException(ex);
-        }
-    }
-
-    private static IOException describeTcpException(ModbusTcpClient.ModbusException ex) {
-        return new IOException("Modbus: " + describeModbusExceptionCodeStatic(ex.exceptionCode)
-                + " (ÐºÐ¾Ð´ " + ex.exceptionCode + ")", ex);
-    }
-
-    private String readModbusRegisters(String host, int port, int unit, int startAddress, int count, int functionCode) throws Exception {
-        return readModbusRegistersStatic(host, port, unit, startAddress, count, functionCode);
-    }
-
-    public static String describeModbusExceptionCodeStatic(int code) {
-        switch (code) {
-            case 1: return "ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð¾ Ð½Ðµ Ð¿Ð¾Ð´Ð´ÐµÑ€Ð¶Ð¸Ð²Ð°ÐµÑ‚ ÑÑ‚Ñƒ Ñ„ÑƒÐ½ÐºÑ†Ð¸ÑŽ";
-            case 2: return "Ð½ÐµÐ´Ð¾Ð¿ÑƒÑÑ‚Ð¸Ð¼Ñ‹Ð¹ Ð°Ð´Ñ€ÐµÑ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð°";
-            case 3: return "Ð½ÐµÐ´Ð¾Ð¿ÑƒÑÑ‚Ð¸Ð¼Ð¾Ðµ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ Ð² Ð·Ð°Ð¿Ñ€Ð¾ÑÐµ";
-            case 4: return "Ð²Ð½ÑƒÑ‚Ñ€ÐµÐ½Ð½ÑÑ Ð¾ÑˆÐ¸Ð±ÐºÐ° ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð°";
-            case 5: return "Ð·Ð°Ð¿Ñ€Ð¾Ñ Ð¿Ñ€Ð¸Ð½ÑÑ‚, Ð¾Ð±Ñ€Ð°Ð±Ð¾Ñ‚ÐºÐ° Ð²Ñ‹Ð¿Ð¾Ð»Ð½ÑÐµÑ‚ÑÑ";
-            case 6: return "ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð¾ Ð·Ð°Ð½ÑÑ‚Ð¾, Ð¿Ð¾Ð²Ñ‚Ð¾Ñ€Ð¸Ñ‚Ðµ Ð¿Ð¾Ð·Ð¶Ðµ";
-            case 8: return "Ð¾ÑˆÐ¸Ð±ÐºÐ° Ñ‡Ñ‘Ñ‚Ð½Ð¾ÑÑ‚Ð¸ Ð¿Ð°Ð¼ÑÑ‚Ð¸";
-            case 10: return "ÑˆÐ»ÑŽÐ· Ð½Ðµ ÑÐ¼Ð¾Ð³ ÑƒÑÑ‚Ð°Ð½Ð¾Ð²Ð¸Ñ‚ÑŒ ÑÐ¾ÐµÐ´Ð¸Ð½ÐµÐ½Ð¸Ðµ";
-            case 11: return "ÑˆÐ»ÑŽÐ· Ð½Ðµ Ð¿Ð¾Ð»ÑƒÑ‡Ð¸Ð» Ð¾Ñ‚Ð²ÐµÑ‚ Ð¾Ñ‚ ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð°";
-            default: return "Ð½ÐµÐ¸Ð·Ð²ÐµÑÑ‚Ð½Ð¾Ðµ Ð¸ÑÐºÐ»ÑŽÑ‡ÐµÐ½Ð¸Ðµ Ð¿Ñ€Ð¾Ñ‚Ð¾ÐºÐ¾Ð»Ð°";
-        }
-    }
-
-    private String describeModbusExceptionCode(int code) {
-        return describeModbusExceptionCodeStatic(code);
-    }
-
-    private String describeModbusError(Exception error) {
-        if (error instanceof java.net.SocketTimeoutException) return "Ñ‚Ð°Ð¹Ð¼-Ð°ÑƒÑ‚ Ð¾Ñ‚Ð²ÐµÑ‚Ð° (3 Ñ)";
-        if (error instanceof java.net.ConnectException) return "Ð½Ðµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¿Ð¾Ð´ÐºÐ»ÑŽÑ‡Ð¸Ñ‚ÑŒÑÑ Ðº ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ñƒ";
-        if (error instanceof java.net.UnknownHostException) return "Ð½Ðµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¾Ð¿Ñ€ÐµÐ´ÐµÐ»Ð¸Ñ‚ÑŒ Ð°Ð´Ñ€ÐµÑ Ñ…Ð¾ÑÑ‚Ð°";
-        if (error instanceof java.net.NoRouteToHostException) return "Ð½ÐµÑ‚ Ð¼Ð°Ñ€ÑˆÑ€ÑƒÑ‚Ð° Ð´Ð¾ ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð°";
-        if (error instanceof java.net.SocketException) return "Ð¾ÑˆÐ¸Ð±ÐºÐ° ÑÐ¾ÐºÐµÑ‚Ð°/ÑÐ¾ÐµÐ´Ð¸Ð½ÐµÐ½Ð¸Ðµ Ð·Ð°ÐºÑ€Ñ‹Ñ‚Ð¾";
-        String message = error.getMessage();
-        if (message == null || message.trim().isEmpty()) return error.getClass().getSimpleName();
-        return message.length() > 90 ? message.substring(0, 90) : message;
-    }
-
-    private boolean isActiveModbusValue(String value) {
-        if (value == null) return false;
-        String normalized = value.trim().toLowerCase(java.util.Locale.ROOT);
-        if (normalized.isEmpty() || normalized.startsWith("err") || normalized.startsWith("cfg")
-                || "false".equals(normalized) || "off".equals(normalized)
-                || "no".equals(normalized)) return false;
-        if ("true".equals(normalized) || "on".equals(normalized) || "yes".equals(normalized)) return true;
-        try {
-            return Double.parseDouble(normalized) != 0.0d;
-        } catch (NumberFormatException ignored) {
-            return false;
-        }
-    }
-
-    private BindingRequest parseBinding(int widgetIndex, String binding) {
-        return parseBinding(widgetIndex, binding, 1);
-    }
-
-    private void startFbdSensors() {
-        if (!activityResumed || !operatorMode || editor == null) return;
-        boolean neededLight = false, neededOrientation = false, neededSpeed = false;
-        for (Widget widget : widgets) {
-            neededLight |= "FBD CRAFT SENSOR LIGHT".equals(widget.type);
-            neededOrientation |= "FBD CRAFT SENSOR ORIENTATION".equals(widget.type);
-            neededSpeed |= "FBD CRAFT SENSOR SPEED".equals(widget.type);
-        }
-        if (!fbdSensorsRegistered && (neededLight || neededOrientation)) {
-            if (fbdSensorManager == null)
-                fbdSensorManager = (android.hardware.SensorManager)getSystemService(SENSOR_SERVICE);
-            boolean registered = false;
-            if (fbdSensorManager != null && neededLight) {
-                android.hardware.Sensor sensor = fbdSensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_LIGHT);
-                if (sensor != null) registered |= fbdSensorManager.registerListener(fbdSensorListener, sensor,
-                        android.hardware.SensorManager.SENSOR_DELAY_NORMAL);
-            }
-            if (fbdSensorManager != null && neededOrientation) {
-                android.hardware.Sensor sensor = fbdSensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_ORIENTATION);
-                if (sensor != null) registered |= fbdSensorManager.registerListener(fbdSensorListener, sensor,
-                        android.hardware.SensorManager.SENSOR_DELAY_NORMAL);
-            }
-            fbdSensorsRegistered = registered;
-        }
-        if (neededSpeed && !fbdLocationRegistered) {
-            if (android.os.Build.VERSION.SDK_INT >= 23
-                    && checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
-                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                if (!fbdLocationPermissionRequested) {
-                    fbdLocationPermissionRequested = true;
-                    requestPermissions(new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION}, REQUEST_FBD_SPEED_LOCATION);
-                }
-                return;
-            }
-            if (fbdLocationManager == null)
-                fbdLocationManager = (android.location.LocationManager)getSystemService(LOCATION_SERVICE);
-            try {
-                if (fbdLocationManager != null && fbdLocationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) {
-                    fbdLocationManager.requestLocationUpdates(android.location.LocationManager.GPS_PROVIDER,
-                            1000L, 0f, fbdLocationListener, Looper.getMainLooper());
-                    fbdLocationRegistered = true;
-                }
-            } catch (SecurityException | IllegalArgumentException ignored) {}
-        }
-    }
-
-    private void stopFbdSensors() {
-        if (fbdSensorManager != null && fbdSensorsRegistered) fbdSensorManager.unregisterListener(fbdSensorListener);
-        fbdSensorsRegistered = false;
-        if (fbdLocationManager != null && fbdLocationRegistered) {
-            try { fbdLocationManager.removeUpdates(fbdLocationListener); } catch (SecurityException ignored) {}
-        }
-        fbdLocationRegistered = false;
-        for (Widget widget : widgets) if (isCraftFbdSensorSource(widget.type)) widget.craftSensorValid = false;
-    }
-
-    private void stopCraftMqtt() {
-        FbdCraftMqttRuntime active = craftMqttRuntime;
-        craftMqttRuntime = null;
-        if (active != null) active.close();
-        for (Widget widget : widgets) if (isCraftMqttSubscriber(widget.type)) widget.craftMqttValue = null;
-    }
-
-    private void startCraftMqtt() {
-        stopCraftMqtt();
-        if (!activityResumed || !operatorMode || editor == null) return;
-        FbdCraftMqttRuntime runtime = new FbdCraftMqttRuntime();
-        craftMqttRuntime = runtime;
-        final EditorCanvas sessionEditor = editor;
-        for (int server = 1; server <= 2; server++) {
-            JSONObject saved;
-            try { saved = new JSONObject(getSharedPreferences("bloodsky_mqtt", MODE_PRIVATE)
-                    .getString("server" + server, "{}")); }
-            catch (Exception invalid) { saved = new JSONObject(); }
-            FbdCraftMqttRuntime.Broker broker = new FbdCraftMqttRuntime.Broker(
-                    saved.optString("uri", ""), saved.optString("username", ""), saved.optString("password", ""));
-            Map<String, FbdCraftMqttRuntime.MessageListener> subscriptions = new LinkedHashMap<>();
-            boolean used = false;
-            for (int i = 0; i < widgets.size(); i++) {
-                Widget target = widgets.get(i);
-                if (isCraftMqttSubscriber(target.type) && mqttServer(target) == server) {
-                    used = true;
-                    String topic = target.extraFields.optString("craftMqttTopic", "").trim();
-                    int type = mqttType(target);
-                    final int targetIndex = i;
-                    if (FbdCraftMqttRuntime.validTopicFilter(topic)) {
-                        FbdCraftMqttRuntime.MessageListener nextListener = (receivedTopic, payload) -> {
-                        Double value = FbdCraftMqttRuntime.parsePayload(payload, type);
-                        runOnUiThread(() -> {
-                            if (craftMqttRuntime != runtime || !activityResumed || !operatorMode
-                                    || editor != sessionEditor || targetIndex >= widgets.size()
-                                    || widgets.get(targetIndex) != target) return;
-                            target.craftMqttValue = value;
-                            liveValues.put(targetIndex, value == null ? "ERR: MQTT payload" : Double.toString(value));
-                            if (editor != null) editor.invalidate();
-                        });
-                        };
-                        FbdCraftMqttRuntime.MessageListener previous = subscriptions.get(topic);
-                        if (previous == null) subscriptions.put(topic, nextListener);
-                        else subscriptions.put(topic, (receivedTopic, payload) -> {
-                            previous.onMessage(receivedTopic, payload);
-                            nextListener.onMessage(receivedTopic, payload);
-                        });
-                    }
-                } else if (isCraftMqttPublisher(target.type) && mqttServer(target) == server) used = true;
-            }
-            if (used && broker.isConfigured()) runtime.connect(server, broker, subscriptions);
-        }
-    }
-
-    private BindingRequest parseBinding(int widgetIndex, String binding, int quantity) {
-        if (binding == null || !binding.startsWith("tcp://")) return null;
-        try {
-            URI uri = URI.create(binding);
-            String[] path = uri.getPath().split("/", -1);
-            if (uri.getHost() == null || uri.getPort() < 1 || uri.getPort() > 65535
-                    || path.length != 3 || !path[0].isEmpty()
-                    || uri.getRawQuery() != null || uri.getRawFragment() != null) return null;
-            int unit = Integer.parseInt(path[1]);
-            int enteredAddress = Integer.parseInt(path[2]);
-            if (unit < 0 || unit > 255 || enteredAddress < 0 || enteredAddress > 65535) return null;
-            int functionCode = 3;
-            int address = enteredAddress;
-            if (enteredAddress >= 30001 && enteredAddress <= 39999) {
-                functionCode = 4;
-                address = enteredAddress - 30001;
-            } else if (enteredAddress >= 40001 && enteredAddress <= 49999) {
-                functionCode = 3;
-                address = enteredAddress - 40001;
-            }
-            if (quantity < 1 || quantity > 8 || address + quantity > 65536) return null;
-            return new BindingRequest(widgetIndex, uri.getHost(), uri.getPort(), unit, address, functionCode, quantity);
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
-    private BindingRequest parseProjectBinding(int widgetIndex, String binding, int quantity) {
-        UsbSerialBinding usb = UsbSerialBinding.parse(binding, quantity);
-        if (usb != null)
-            return new BindingRequest(widgetIndex, "", 0, usb.unit, usb.address,
-                    usb.functionCode, usb.quantity, true);
-        return parseBinding(widgetIndex, binding, quantity);
-    }
-
-    private int[] readBoundRegisters(BindingRequest request) throws IOException {
-        if (!request.usb)
-            return new ModbusTcpClient(request.host, request.port).read(
-                    request.unit, request.address, request.quantity, request.functionCode);
-        UsbSerialModbusConnection connection = manualUsbConnection;
-        if (connection == null || !connection.isOpen()) throw new IOException("USB RTU Ð½Ðµ Ð¿Ð¾Ð´ÐºÐ»ÑŽÑ‡Ñ‘Ð½");
-        return connection.read(request.unit, request.functionCode, request.address, request.quantity);
-    }
-
-    private void startModbusPolling() {
-        stopModbusPolling();
-        if (!activityResumed || editor == null) return;
-        pollSession.start();
-        modbusPollingActive = true;
-        mainHandler.postDelayed(modbusPollRunnable, 1000L);
-    }
-
-    private void stopModbusPolling() {
-        pollSession.stop();
-        modbusPollingActive = false;
-        craftGatewayStates.clear();
-        craftBitGatewayStates.clear();
-        craftArchiveTriggerHigh.clear();
-        craftArchiveTriggerEdges.clear();
-        mainHandler.removeCallbacks(modbusPollRunnable);
-    }
-
-    private int archiveReadQuantity(Widget widget) {
-        return CraftArchiveChannels.readQuantity(widget.extraFields.optInt("craftArchiveChannelCount", 1),
-                widget.extraFields.optString("craftArchiveRecordType", "INT"));
-    }
-
-    private String formatPolledValue(Widget widget, int[] words) {
-        if ("ÐÑ€Ñ…Ð¸Ð² Craft".equals(widget.type)) return CraftArchiveChannels.decode(words,
-                widget.extraFields.optInt("craftArchiveChannelCount", 1),
-                widget.extraFields.optString("craftArchiveRecordType", "INT"));
-        return words.length > 1 ? words[0] + "," + words[1] : Integer.toString(words[0]);
-    }
-
-    private void pollCraftOdTempSources() {
-        if (!activityResumed || !operatorMode || editor == null) return;
-        long now = android.os.SystemClock.elapsedRealtime();
-        final EditorCanvas sessionEditor = editor;
-        for (int i = 0; i < widgets.size(); i++) {
-            Widget widget = widgets.get(i);
-            if (!isCraftOdTempSource(widget.type) || widget.craftOdTempPending
-                    || now < widget.craftOdTempNextPollAt) continue;
-            String host = widget.extraFields.optString("ip", "10.10.0.1").trim();
-            int sensorType = widget.extraFields.optInt("craftOdTempType", widget.extraFields.optInt("typeSensor", 1));
-            int responseType = widget.extraFields.optInt("craftOdTempResponse", widget.extraFields.optInt("typeResponse", 1));
-            if (!isAllowedOdTempHost(host) || (sensorType != 1 && sensorType != 2)
-                    || responseType < 1 || responseType > 2) {
-                widget.craftSensorValid = false; widget.craftOdTempNextPollAt = now + 5000L;
-                liveValues.put(i, "CFG"); continue;
-            }
-            widget.craftOdTempPending = true; widget.craftOdTempNextPollAt = now + 5000L;
-            final Widget target = widget; final int index = i;
-            final int requestedType = sensorType, requestedResponse = responseType;
-            try {
-                craftSensorExecutor.execute(() -> {
-                    Double reading = null; String error = null;
-                    try { reading = readCraftOdTemp(host, requestedType, requestedResponse); }
-                    catch (Exception failure) { error = "ERR: " + describeModbusError(failure); }
-                    final Double result = reading; final String failureText = error;
-                    runOnUiThread(() -> {
-                        target.craftOdTempPending = false;
-                        if (index >= widgets.size() || widgets.get(index) != target || !operatorMode
-                                || !activityResumed || editor != sessionEditor) return;
-                        target.craftOdTempNextPollAt = android.os.SystemClock.elapsedRealtime() + 5000L;
-                        target.craftSensorValid = result != null && Double.isFinite(result);
-                        if (target.craftSensorValid) {
-                            target.craftSensorValue = result;
-                            liveValues.put(index, Double.toString(result));
-                        } else liveValues.put(index, failureText == null ? "ERR: Ð¾Ñ‚Ð²ÐµÑ‚ Ð´Ð°Ñ‚Ñ‡Ð¸ÐºÐ°" : failureText);
-                        if (editor != null) editor.invalidate();
-                    });
-                });
-            } catch (java.util.concurrent.RejectedExecutionException ignored) { widget.craftOdTempPending = false; }
-        }
-    }
-
-    private static double readCraftOdTemp(String host, int sensorType, int responseType) throws Exception {
-        if (!isAllowedOdTempHost(host)) throw new IOException("ÐÐµÐ´Ð¾Ð¿ÑƒÑÑ‚Ð¸Ð¼Ñ‹Ð¹ Ð°Ð´Ñ€ÐµÑ ODTEMP");
-        java.net.HttpURLConnection connection = null;
-        try {
-            connection = (java.net.HttpURLConnection)new java.net.URL("http://" + host + "/state.json").openConnection();
-            connection.setRequestMethod("GET"); connection.setConnectTimeout(3000); connection.setReadTimeout(3000);
-            connection.setInstanceFollowRedirects(false); connection.setUseCaches(false);
-            if (connection.getResponseCode() != 200) throw new IOException("ODTEMP HTTP " + connection.getResponseCode());
-            java.io.ByteArrayOutputStream body = new java.io.ByteArrayOutputStream();
-            try (InputStream input = connection.getInputStream()) {
-                byte[] buffer = new byte[2048]; int count;
-                while ((count = input.read(buffer)) != -1) {
-                    if (body.size() + count > 65536) throw new IOException("ÐžÑ‚Ð²ÐµÑ‚ ODTEMP ÑÐ»Ð¸ÑˆÐºÐ¾Ð¼ Ð±Ð¾Ð»ÑŒÑˆÐ¾Ð¹");
-                    body.write(buffer, 0, count);
-                }
-            }
-            JSONObject json = new JSONObject(new String(body.toByteArray(), StandardCharsets.UTF_8));
-            Object raw;
-            if (sensorType == 1) raw = json.opt("value");
-            else {
-                JSONObject values = json.optJSONObject("value");
-                raw = values == null ? null : values.opt(responseType == 1 ? "t" : "h");
-            }
-            if (raw == null) throw new IOException("Ð’ Ð¾Ñ‚Ð²ÐµÑ‚Ðµ ODTEMP Ð½ÐµÑ‚ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ñ");
-            double value = raw instanceof Number ? ((Number)raw).doubleValue() : Double.parseDouble(String.valueOf(raw));
-            if (!Double.isFinite(value)) throw new IOException("ODTEMP Ð²ÐµÑ€Ð½ÑƒÐ»Ð¾ Ð½ÐµÐºÐ¾Ð½ÐµÑ‡Ð½Ð¾Ðµ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ");
-            return value;
-        } finally { if (connection != null) connection.disconnect(); }
-    }
-
-    private void pollBoundWidgets() {
-        final long sessionToken = pollSession.token();
-        final EditorCanvas sessionEditor = editor;
-        if (!pollSession.accepts(sessionToken) || sessionEditor == null) return;
-        final List<Widget> snapshotWidgets = new ArrayList<>(widgets);
-        final List<String> snapshotBindings = new ArrayList<>();
-        final List<JSONObject> snapshotExtras = new ArrayList<>();
-        for (Widget widget : snapshotWidgets) {
-            snapshotBindings.add(widget.connectionInfo);
-            try { snapshotExtras.add(new JSONObject(widget.extraFields.toString())); }
-            catch (Exception ignored) { snapshotExtras.add(new JSONObject()); }
-        }
-        final Map<String, BindingRequest> groupedRequests = new LinkedHashMap<>();
-        final List<Integer> gatewayIndices = new ArrayList<>();
-        final List<Integer> bitGatewayIndices = new ArrayList<>();
-        final List<Integer> archiveTriggerIndices = new ArrayList<>();
-        final Map<Integer, String> craftSystemTextUpdates = new HashMap<>();
-        final Map<Integer, String> craftSystemNumericUpdates = new HashMap<>();
-        for (int i = 0; i < snapshotWidgets.size(); i++) {
-            Widget widget = snapshotWidgets.get(i);
-            if ("Ð¨Ð»ÑŽÐ· Ð±Ð¸Ñ‚Ð¾Ð²Ñ‹Ð¹".equals(widget.type)) {
-                if (snapshotExtras.get(i).optBoolean("craftBitGatewayEnabled", false)) bitGatewayIndices.add(i);
-                continue;
-            }
-            if ("Ð¨Ð»ÑŽÐ· Craft".equals(widget.type)) {
-                if (snapshotExtras.get(i).optBoolean("craftGatewayEnabled", false)) gatewayIndices.add(i);
-                continue;
-            }
-            if ("ÐÑ€Ñ…Ð¸Ð² Craft".equals(widget.type)
-                    && !snapshotExtras.get(i).optString("craftArchiveTriggerBinding", "").trim().isEmpty())
-                archiveTriggerIndices.add(i);
-            if (isCraftRegisterSink(widget.type)) continue;
-            String systemTextState = CraftSystemWidgetBinding.readDynamicTextState(
-                    snapshotExtras.get(i), systemRegisterBank);
-            if (systemTextState != null) {
-                craftSystemTextUpdates.put(i, systemTextState);
-                continue;
-            }
-            String systemNumericState = CraftSystemNumericWidgetBinding.readState(
-                    snapshotExtras.get(i), systemRegisterBank);
-            if (systemNumericState != null) {
-                craftSystemNumericUpdates.put(i, systemNumericState);
-                continue;
-            }
-            boolean craftSource = isCraftRegisterSource(widget.type);
-            if (craftSource && widget.extraFields.optBoolean("craftVarConstantMode", false)) continue;
-            int quantity = craftSource && isCraftRegisterFloat(widget.type) ? 2 : 1;
-            if ("ÐÑ€Ñ…Ð¸Ð² Craft".equals(widget.type)) quantity = archiveReadQuantity(widget);
-            boolean usbProjectBindingAllowed = craftSource || "FBD Ð’Ñ…Ð¾Ð´".equals(widget.type);
-            BindingRequest request = usbProjectBindingAllowed
-                    ? parseProjectBinding(i, widget.connectionInfo, quantity)
-                    : parseBinding(i, widget.connectionInfo, quantity);
-            if (request == null) continue;
-            String key = request.registerKey();
-            BindingRequest existing = groupedRequests.get(key);
-            if (existing == null) groupedRequests.put(key, request);
-            else existing.widgetIndices.add(i);
-        }
-        final List<BindingRequest> requests = new ArrayList<>(groupedRequests.values());
-        if (modbusPollInFlight) return;
-        final Map<Integer, String> invalidBindings = new HashMap<>();
-        for (int i = 0; i < snapshotWidgets.size(); i++) {
-            String binding = snapshotWidgets.get(i).connectionInfo;
-            boolean usbProjectBindingAllowed = isCraftRegisterSource(snapshotWidgets.get(i).type)
-                    || "FBD Ð’Ñ…Ð¾Ð´".equals(snapshotWidgets.get(i).type);
-            if (binding != null && binding.startsWith("tcp://") && parseBinding(i, binding) == null)
-                invalidBindings.put(i, "CFG");
-            else if (usbProjectBindingAllowed && binding != null && binding.startsWith("usb://")
-                    && parseProjectBinding(i, binding,
-                    isCraftRegisterFloat(snapshotWidgets.get(i).type) ? 2 : 1) == null) invalidBindings.put(i, "CFG");
-        }
-        if (requests.isEmpty() && invalidBindings.isEmpty() && craftSystemTextUpdates.isEmpty()
-                && craftSystemNumericUpdates.isEmpty()
-                && gatewayIndices.isEmpty() && bitGatewayIndices.isEmpty()) return;
-        modbusPollInFlight = true;
-        try {
-            modbusExecutor.execute(() -> {
-            try {
-                final Map<Integer, String> updates = new HashMap<>(invalidBindings);
-                updates.putAll(craftSystemTextUpdates);
-                updates.putAll(craftSystemNumericUpdates);
-                for (BindingRequest request : requests) {
-                    if (!pollSession.accepts(sessionToken)) return;
-                    String value;
-                    try {
-                        int[] words = readBoundRegisters(request);
-                        StringBuilder rawWords = new StringBuilder();
-                        for (int i = 0; i < words.length; i++) {
-                            if (i > 0) rawWords.append(',');
-                            rawWords.append(words[i]);
-                        }
-                        value = rawWords.toString();
-                    } catch (Exception e) {
-                        value = "ERR: " + describeModbusError(e);
-                    }
-                    for (int widgetIndex : request.widgetIndices) {
-                        if (value.startsWith("ERR:")) updates.put(widgetIndex, value);
-                        else {
-                            String[] fields = value.split(",");
-                            int[] words = new int[fields.length];
-                            for (int i = 0; i < fields.length; i++) words[i] = Integer.parseInt(fields[i]);
-                            updates.put(widgetIndex, formatPolledValue(snapshotWidgets.get(widgetIndex), words));
-                        }
-                    }
-                }
-                for (int widgetIndex : gatewayIndices) {
-                    if (!pollSession.accepts(sessionToken)) return;
-                    Widget gatewayWidget = snapshotWidgets.get(widgetIndex);
-                    try {
-                        CraftRegisterGateway.Config config = CraftRegisterGateway.from(snapshotExtras.get(widgetIndex));
-                        if (config == null) {
-                            craftGatewayStates.remove(gatewayWidget);
-                            continue;
-                        }
-                        CraftRegisterGateway.State state = craftGatewayStates.get(gatewayWidget);
-                        if (state == null) {
-                            CraftRegisterGateway.State created = new CraftRegisterGateway.State();
-                            CraftRegisterGateway.State existing = craftGatewayStates.putIfAbsent(gatewayWidget, created);
-                            state = existing == null ? created : existing;
-                        }
-                        CraftRegisterGateway.Outcome outcome = CraftRegisterGateway.transfer(config, state,
-                                new CraftRegisterGateway.Transport() {
-                                    @Override public int[] read(CraftRegisterGateway.Binding binding, int quantity) throws IOException {
-                                        if (!pollSession.accepts(sessionToken)) throw new IOException("Ð¡ÐµÐ°Ð½Ñ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð° Ð·Ð°Ð²ÐµÑ€ÑˆÑ‘Ð½");
-                                        if (binding.systemRegister)
-                                            return CraftRegisterGateway.readSystemSource(binding, quantity, systemRegisterBank);
-                                        return new ModbusTcpClient(binding.host, binding.port).read(
-                                                binding.unit, binding.address, quantity, binding.readFunction);
-                                    }
-                                    @Override public void write(CraftRegisterGateway.Binding binding, int[] values) throws IOException {
-                                        if (!pollSession.accepts(sessionToken) || !operatorMode || !activityResumed)
-                                            throw new IOException("Ð¨Ð»ÑŽÐ· Ð¾ÑÑ‚Ð°Ð½Ð¾Ð²Ð»ÐµÐ½");
-                                        new ModbusTcpClient(binding.host, binding.port).writeMultiple(
-                                                binding.unit, binding.address, values);
-                                    }
-                                });
-                        updates.put(widgetIndex, outcome.transferred
-                                ? "OK: Ð¿ÐµÑ€ÐµÐ´Ð°Ð½Ð¾ " + outcome.count : "ÐžÐ¶Ð¸Ð´Ð°Ð½Ð¸Ðµ ÑÐ¾Ð±Ñ‹Ñ‚Ð¸Ñ");
-                    } catch (Exception failure) {
-                        updates.put(widgetIndex, "ERR: " + describeModbusError(failure));
-                    }
-                }
-                for (int widgetIndex : bitGatewayIndices) {
-                    if (!pollSession.accepts(sessionToken)) return;
-                    Widget gatewayWidget = snapshotWidgets.get(widgetIndex);
-                    try {
-                        CraftBitGateway.Config config = CraftBitGateway.from(snapshotExtras.get(widgetIndex));
-                        if (config == null) { craftBitGatewayStates.remove(gatewayWidget); continue; }
-                        CraftBitGateway.State state = craftBitGatewayStates.get(gatewayWidget);
-                        if (state == null) {
-                            CraftBitGateway.State created = new CraftBitGateway.State();
-                            CraftBitGateway.State existing = craftBitGatewayStates.putIfAbsent(gatewayWidget, created);
-                            state = existing == null ? created : existing;
-                        }
-                        CraftBitGateway.Outcome outcome = CraftBitGateway.transfer(config, state,
-                                new CraftBitGateway.Transport() {
-                                    @Override public int[] read(CraftBitGateway.Binding binding, int quantity) throws IOException {
-                                        if (!pollSession.accepts(sessionToken)) throw new IOException("Ð¡ÐµÐ°Ð½Ñ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð° Ð·Ð°Ð²ÐµÑ€ÑˆÑ‘Ð½");
-                                        return new ModbusTcpClient(binding.host, binding.port).read(
-                                                binding.unit, binding.address, quantity, binding.function);
-                                    }
-                                    @Override public void write(CraftBitGateway.Binding binding, int[] values) throws IOException {
-                                        if (!pollSession.accepts(sessionToken) || !operatorMode || !activityResumed)
-                                            throw new IOException("Ð¨Ð»ÑŽÐ· Ð¾ÑÑ‚Ð°Ð½Ð¾Ð²Ð»ÐµÐ½");
-                                        ModbusTcpClient client = new ModbusTcpClient(binding.host, binding.port);
-                                        if (values.length == 1) client.writeSingleCoil(binding.unit, binding.address, values[0] == 1);
-                                        else client.writeMultipleCoils(binding.unit, binding.address, values);
-                                    }
-                                });
-                        updates.put(widgetIndex, outcome.transferred
-                                ? "OK: Ð¿ÐµÑ€ÐµÐ´Ð°Ð½Ð¾ Ð±Ð¸Ñ‚ " + outcome.count : "ÐžÐ¶Ð¸Ð´Ð°Ð½Ð¸Ðµ ÑÐ¾Ð±Ñ‹Ñ‚Ð¸Ñ");
-                    } catch (Exception failure) {
-                        updates.put(widgetIndex, "ERR: " + describeModbusError(failure));
-                    }
-                }
-                final Map<Integer, Boolean> archiveTriggerUpdates = new HashMap<>();
-                for (int widgetIndex : archiveTriggerIndices) {
-                    if (!pollSession.accepts(sessionToken)) return;
-                    try {
-                        String binding = snapshotExtras.get(widgetIndex).optString("craftArchiveTriggerBinding", "").trim();
-                        BindingRequest trigger = parseBinding(widgetIndex, binding);
-                        if (trigger == null) throw new IOException("ÐÐµÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ð°Ñ Ð¿Ñ€Ð¸Ð²ÑÐ·ÐºÐ° Ñ‚Ñ€Ð¸Ð³Ð³ÐµÑ€Ð° Ð°Ñ€Ñ…Ð¸Ð²Ð°");
-                        int[] words = new ModbusTcpClient(trigger.host, trigger.port).read(
-                                trigger.unit, trigger.address, 1, trigger.functionCode);
-                        archiveTriggerUpdates.put(widgetIndex, words.length > 0 && words[0] != 0);
-                    } catch (Exception failure) {
-                        archiveTriggerUpdates.put(widgetIndex, null);
-                    }
-                }
-                runOnUiThread(() -> {
-                    if (!pollSession.accepts(sessionToken) || !activityResumed
-                            || editor != sessionEditor || isFinishing() || isDestroyed()) return;
-                    for (Map.Entry<Integer, Boolean> trigger : archiveTriggerUpdates.entrySet()) {
-                        int index = trigger.getKey();
-                        if (index < 0 || index >= widgets.size() || widgets.get(index) != snapshotWidgets.get(index)) continue;
-                        Widget archive = widgets.get(index);
-                        Boolean current = trigger.getValue();
-                        if (current == null) {
-                            craftArchiveTriggerEdges.remove(archive);
-                        } else {
-                            boolean previous = Boolean.TRUE.equals(craftArchiveTriggerHigh.put(archive, current));
-                            if (current && !previous) craftArchiveTriggerEdges.add(archive);
-                        }
-                    }
-                    for (Map.Entry<Integer, String> entry : updates.entrySet()) {
-                        int index = entry.getKey();
-                        if (index < 0 || index >= widgets.size() || index >= snapshotWidgets.size()
-                                || widgets.get(index) != snapshotWidgets.get(index)
-                                || !java.util.Objects.equals(widgets.get(index).connectionInfo, snapshotBindings.get(index))) continue;
-                        Widget w = widgets.get(index);
-                        liveValues.put(index, entry.getValue());
-                        if ("ÐÑ€Ñ…Ð¸Ð² Craft".equals(w.type) && operatorMode && entry.getValue() != null
-                                && !entry.getValue().startsWith("ERR") && !entry.getValue().startsWith("CFG")) {
-                            try {
-                                boolean hasTrigger = !w.extraFields.optString("craftArchiveTriggerBinding", "").trim().isEmpty();
-                                if (hasTrigger && !craftArchiveTriggerEdges.remove(w)) continue;
-                                String projectJson = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
-                                String archiveProject = ProjectMediaService.getOrGenerateProjectId(projectJson);
-                                String archiveKey = w.extraFields.optString("craftArchiveKey", "").trim();
-                                if (archiveKey.isEmpty()) {
-                                    archiveKey = java.util.UUID.randomUUID().toString();
-                                    w.extraFields.put("craftArchiveKey", archiveKey);
-                                    persistProject();
-                                }
-                                final String targetProject = archiveProject, targetWidget = archiveKey;
-                                final String sample = entry.getValue();
-                                final int interval = w.extraFields.optInt("craftArchiveIntervalSeconds", 1);
-                                final int maxRows = w.extraFields.optInt("craftArchiveMaxRows", 10000);
-                                modbusExecutor.execute(() -> {
-                                    LocalArchiveStore store = new LocalArchiveStore(MainActivity.this);
-                                    try { store.record(targetProject, targetWidget, System.currentTimeMillis(), sample, interval, maxRows); }
-                                    catch (Exception failure) { android.util.Log.e("BLOODSKY", "Archive sample failed", failure); }
-                                    finally { store.close(); }
-                                });
-                            } catch (Exception failure) {
-                                android.util.Log.e("BLOODSKY", "Archive setup failed", failure);
-                            }
-                        }
-                        if (isCraftRegisterSource(w.type)) {
-                            try {
-                                String[] words = entry.getValue().split(",");
-                                w.craftRegisterWord0 = Integer.parseInt(words[0]);
-                                w.craftRegisterWord1 = words.length > 1 ? Integer.parseInt(words[1]) : 0;
-                                w.craftRegisterValid = true;
-                            } catch (Exception invalid) { w.craftRegisterValid = false; }
-                        }
-                        if (isCraftRegisterSource(w.type) && entry.getValue() != null
-                                && entry.getValue().startsWith("ERR:")) w.craftRegisterValid = false;
-                        if ("FBD Ð’Ñ…Ð¾Ð´".equals(w.type)) {
-                            w.inputValue = isActiveModbusValue(entry.getValue());
-                        } else if ("Ð—Ð²ÑƒÐºÐ¾Ð²Ð¾Ð¹ ÑÐ¸Ð³Ð½Ð°Ð»".equals(w.type)) {
-                            boolean active = w.soundActive;
-                            if (entry.getValue() != null) {
-                                try { active = Double.parseDouble(entry.getValue()) >= w.soundThreshold; } catch (Exception ignored) {}
-                            }
-                            String alarmKey = currentScreenIndex + ":" + index;
-                            if (active && !w.lastSoundState) {
-                                w.lastSoundState = true;
-                                playCraftAlarmAlert(alarmKey, w.soundFilePath, w.craftAlarmSoundIndex, w.craftAlarmLoop);
-                            } else if (!active) {
-                                w.lastSoundState = false;
-                                stopCraftAlarmAlert(alarmKey);
-                            }
-                        } else if ("Ð“Ð¾Ð»Ð¾ÑÐ¾Ð²Ð¾Ðµ ÑÐ¾Ð¾Ð±Ñ‰ÐµÐ½Ð¸Ðµ".equals(w.type)) {
-                            int voiceIdx = 0;
-                            if (entry.getValue() != null) {
-                                try { voiceIdx = (int) Math.round(Double.parseDouble(entry.getValue())); } catch (Exception ignored) {}
-                            }
-                            if (voiceIdx < 0 || voiceIdx >= 16) voiceIdx = 0;
-                            if (voiceIdx != w.lastVoiceState) {
-                                w.lastVoiceState = voiceIdx;
-                                speakVoiceAnnouncement(w.voiceMessages[voiceIdx]);
-                            }
-                        } else if ("Telegram-ÑƒÐ²ÐµÐ´Ð¾Ð¼Ð»ÐµÐ½Ð¸Ðµ".equals(w.type)) {
-                            String state = entry.getValue();
-                            if (state != null && !state.startsWith("ERR:") && !state.startsWith("CFG")) {
-                                boolean active = isActiveModbusValue(state);
-                                if (active && !w.lastTelegramState) sendTelegramNotification(index, w, state);
-                                w.lastTelegramState = active;
-                            }
-                        } else if ("SMS-ÑƒÐ²ÐµÐ´Ð¾Ð¼Ð»ÐµÐ½Ð¸Ðµ".equals(w.type)) {
-                            String state = entry.getValue();
-                            if (state != null && !state.startsWith("ERR:") && !state.startsWith("CFG")) {
-                                boolean active = isActiveModbusValue(state);
-                                if (active && !w.lastSmsState) sendSmsNotification(w, state);
-                                w.lastSmsState = active;
-                            }
-                        }
-                    }
-                    editor.invalidate();
-                });
-            } finally {
-                modbusPollInFlight = false;
-            }
-            });
-        } catch (java.util.concurrent.RejectedExecutionException ignored) {
-            modbusPollInFlight = false;
-        }
-    }
-
-    private static class BindingRequest {
-        final List<Integer> widgetIndices = new ArrayList<>();
-        final int port, unit, address, functionCode, quantity;
-        final String host;
-        final boolean usb;
-        BindingRequest(int widgetIndex, String host, int port, int unit, int address, int functionCode, int quantity) {
-            this(widgetIndex, host, port, unit, address, functionCode, quantity, false);
-        }
-        BindingRequest(int widgetIndex, String host, int port, int unit, int address, int functionCode,
-                       int quantity, boolean usb) {
-            this.widgetIndices.add(widgetIndex);
-            this.host = host; this.port = port; this.unit = unit;
-            this.address = address; this.functionCode = functionCode; this.quantity = quantity; this.usb = usb;
-        }
-        String registerKey() {
-            if (usb) return "usb/" + unit + "/" + address + "/FC" + functionCode + "/" + quantity;
-            return host.toLowerCase(java.util.Locale.ROOT) + ":" + port + "/" + unit + "/" + address + "/FC" + functionCode + "/" + quantity;
-        }
-    }
-
-    private void exportProject() {
-        persistProject();
-        new AlertDialog.Builder(this).setTitle("Ð­ÐºÑÐ¿Ð¾Ñ€Ñ‚ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°")
-                .setItems(new String[]{"ZIP â€” Ð¿Ñ€Ð¾ÐµÐºÑ‚ Ð¸ Ð¼ÐµÐ´Ð¸Ð°", "JSON â€” Ñ‚Ð¾Ð»ÑŒÐºÐ¾ Ð½Ð°ÑÑ‚Ñ€Ð¾Ð¹ÐºÐ¸"}, (dialog, which) -> {
-                    Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
-                    intent.addCategory(Intent.CATEGORY_OPENABLE);
-                    intent.setType(which == 0 ? "application/zip" : "application/json");
-                    intent.putExtra(Intent.EXTRA_TITLE, projectName.replaceAll("[^A-Za-zÐ-Ð¯Ð°-Ñ0-9._-]", "_")
-                            + (which == 0 ? ".bloodsky.zip" : ".bloodsky.json"));
-                    try { startActivityForResult(intent, which == 0 ? REQUEST_EXPORT_PROJECT_ZIP : REQUEST_EXPORT_PROJECT); }
-                    catch (Exception e) { Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚ÑŒ Ð²Ñ‹Ð±Ð¾Ñ€ Ñ„Ð°Ð¹Ð»Ð°", Toast.LENGTH_LONG).show(); }
-                }).show();
-    }
-
-    private void showCraftMacroTools() {
-        final android.app.Dialog dialog = new android.app.Dialog(this,
-                android.R.style.Theme_Material_NoActionBar_Fullscreen);
-        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
-
-        LinearLayout page = new LinearLayout(this);
-        page.setOrientation(LinearLayout.VERTICAL);
-        page.setBackgroundColor(Color.rgb(35, 35, 35));
-
-        LinearLayout header = new LinearLayout(this);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(8), dp(4), dp(8), dp(4));
-        Button back = new Button(this);
-        back.setText("â€¹");
-        back.setTextSize(24);
-        back.setContentDescription("Ð’ÐµÑ€Ð½ÑƒÑ‚ÑŒÑÑ Ðº FBD");
-        back.setAllCaps(false);
-        back.setOnClickListener(v -> {
-            dialog.dismiss();
-            showFbdPalette();
-        });
-        header.addView(back, new LinearLayout.LayoutParams(dp(56), dp(48)));
-
-        TextView title = new TextView(this);
-        title.setText("ÐœÐ°ÐºÑ€Ð¾ÑÑ‹");
-        title.setTextColor(Color.rgb(237, 176, 59));
-        title.setTextSize(18);
-        title.setGravity(Gravity.CENTER_VERTICAL);
-        title.setPadding(dp(8), 0, 0, 0);
-        header.addView(title, new LinearLayout.LayoutParams(0, dp(48), 1f));
-
-        Button more = new Button(this);
-        more.setText("â‹®");
-        more.setTextSize(22);
-        more.setContentDescription("Ð”ÐµÐ¹ÑÑ‚Ð²Ð¸Ñ Ñ Ð¼Ð°ÐºÑ€Ð¾ÑÐ°Ð¼Ð¸");
-        more.setAllCaps(false);
-        more.setOnClickListener(anchor -> {
-            android.widget.PopupMenu menu = new android.widget.PopupMenu(this, anchor);
-            menu.getMenu().add("Ð¡Ð¾Ð·Ð´Ð°Ñ‚ÑŒ Ð¸Ð· Ð²Ñ‹Ð±Ñ€Ð°Ð½Ð½Ð¾Ð³Ð¾ FBD-Ð±Ð»Ð¾ÐºÐ°")
-                    .setOnMenuItemClickListener(item -> {
-                        dialog.dismiss();
-                        createCraftMacroFromSelection();
-                        return true;
-                    });
-            menu.getMenu().add("Ð˜Ð¼Ð¿Ð¾Ñ€Ñ‚ .mcr").setOnMenuItemClickListener(item -> {
-                dialog.dismiss();
-                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-                intent.addCategory(Intent.CATEGORY_OPENABLE);
-                intent.setType("*/*");
-                try { startActivityForResult(intent, REQUEST_IMPORT_CRAFT_MACRO); }
-                catch (Exception failure) {
-                    Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚ÑŒ Ð²Ñ‹Ð±Ð¾Ñ€ Ñ„Ð°Ð¹Ð»Ð°", Toast.LENGTH_LONG).show();
-                }
-                return true;
-            });
-            android.view.MenuItem export = menu.getMenu().add("Ð­ÐºÑÐ¿Ð¾Ñ€Ñ‚ .mcr");
-            try { export.setEnabled(FbdCraftMacroCatalog.names(projectExtraFields).length > 0); }
-            catch (Exception invalidCatalog) { export.setEnabled(false); }
-            export.setOnMenuItemClickListener(item -> {
-                dialog.dismiss();
-                exportCraftMacroFromCatalog();
-                return true;
-            });
-            menu.getMenu().add("Ð”Ñ€ÑƒÐ³Ð¸Ðµ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚Ñ‹ BLOODSKY").setOnMenuItemClickListener(item -> {
-                dialog.dismiss();
-                showExtendedWidgetMenu();
-                return true;
-            });
-            menu.show();
-        });
-        header.addView(more, new LinearLayout.LayoutParams(dp(48), dp(48)));
-        page.addView(header, new LinearLayout.LayoutParams(-1, dp(56)));
-
-        String[] names;
-        try { names = FbdCraftMacroCatalog.names(projectExtraFields); }
-        catch (Exception invalidCatalog) {
-            names = new String[0];
-            Toast.makeText(this, "ÐšÐ°Ñ‚Ð°Ð»Ð¾Ð³ Ð¼Ð°ÐºÑ€Ð¾ÑÐ¾Ð² Ð¿Ð¾Ð²Ñ€ÐµÐ¶Ð´Ñ‘Ð½", Toast.LENGTH_LONG).show();
-        }
-
-        FrameLayout library = new FrameLayout(this);
-        page.addView(library, new LinearLayout.LayoutParams(-1, 0, 1f));
-
-        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
-        scroll.setFillViewport(true);
-        android.widget.GridLayout grid = new android.widget.GridLayout(this);
-        int columns = Math.max(1, (int) ((getResources().getDisplayMetrics().widthPixels
-                / getResources().getDisplayMetrics().density) / 180f));
-        grid.setColumnCount(columns);
-        grid.setPadding(dp(16), dp(16), dp(16), dp(16));
-
-        for (String macroName : names) {
-            FbdCraftMacroDefinition definition;
-            try { definition = FbdCraftMacroCatalog.find(projectExtraFields, macroName); }
-            catch (Exception invalid) { definition = null; }
-            if (definition == null) continue;
-
-            View card = getLayoutInflater().inflate(R.layout.kc_macro_library_card, grid, false);
-            android.graphics.drawable.GradientDrawable cardBackground =
-                    new android.graphics.drawable.GradientDrawable();
-            cardBackground.setColor(Color.WHITE);
-            cardBackground.setCornerRadius(dp(8));
-            card.setBackground(cardBackground);
-            card.setElevation(0f);
-
-            TextView cardTitle = card.findViewById(R.id.kc_macro_library_title);
-            cardTitle.setText(definition.getName());
-            card.setContentDescription("Ð”Ð¾Ð±Ð°Ð²Ð¸Ñ‚ÑŒ Ð¼Ð°ÐºÑ€Ð¾Ñ: " + definition.getName());
-            final FbdCraftMacroDefinition selectedDefinition = definition;
-            card.setOnClickListener(v -> {
-                try {
-                    addCraftMacroWidget(selectedDefinition);
-                    dialog.dismiss();
-                } catch (Exception failure) {
-                    Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð´Ð¾Ð±Ð°Ð²Ð¸Ñ‚ÑŒ Ð¼Ð°ÐºÑ€Ð¾Ñ", Toast.LENGTH_LONG).show();
-                }
-            });
-
-            android.widget.GridLayout.LayoutParams cardParams =
-                    new android.widget.GridLayout.LayoutParams(
-                            android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED),
-                            android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED));
-            cardParams.width = dp(100);
-            cardParams.height = dp(100);
-            cardParams.setMargins(dp(16), dp(16), dp(16), dp(16));
-            grid.addView(card, cardParams);
-        }
-        scroll.addView(grid, new android.widget.ScrollView.LayoutParams(-1, -2));
-        library.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
-
-        if (names.length == 0) {
-            TextView empty = new TextView(this);
-            empty.setText("Ð‘Ð¸Ð±Ð»Ð¸Ð¾Ñ‚ÐµÐºÐ° Ð¼Ð°ÐºÑ€Ð¾ÑÐ¾Ð² Ð¿ÑƒÑÑ‚Ð°");
-            empty.setTextColor(Color.WHITE);
-            empty.setTextSize(20);
-            empty.setGravity(Gravity.CENTER);
-            empty.setContentDescription("Ð‘Ð¸Ð±Ð»Ð¸Ð¾Ñ‚ÐµÐºÐ° Ð¼Ð°ÐºÑ€Ð¾ÑÐ¾Ð² Ð¿ÑƒÑÑ‚Ð°");
-            library.addView(empty, new FrameLayout.LayoutParams(-1, -1));
-        }
-
-        ImageView switchPage = new ImageView(this);
-        switchPage.setBackgroundResource(R.drawable.kc_tab_page1);
-        switchPage.setContentDescription("ÐŸÐ°Ð»Ð¸Ñ‚Ñ€Ð° ÐºÐ¾Ð¼Ð¿Ð¾Ð½ÐµÐ½Ñ‚Ð¾Ð²");
-        switchPage.setOnClickListener(v -> {
-            dialog.dismiss();
-            showAddWidgetMenu();
-        });
-        switchPage.setOnLongClickListener(v -> {
-            dialog.dismiss();
-            showFbdPalette();
-            return true;
-        });
-        FrameLayout.LayoutParams switchParams =
-                new FrameLayout.LayoutParams(dp(60), dp(60), Gravity.BOTTOM | Gravity.END);
-        library.addView(switchPage, switchParams);
-
-        dialog.setContentView(page);
-        dialog.show();
-        android.view.Window window = dialog.getWindow();
-        if (window != null) {
-            window.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(
-                    Color.rgb(35, 35, 35)));
-            window.setLayout(android.view.WindowManager.LayoutParams.MATCH_PARENT,
-                    android.view.WindowManager.LayoutParams.MATCH_PARENT);
-        }
-    }
-
-    private void addCraftMacroFromCatalog() {
-        try {
-            String[] names = FbdCraftMacroCatalog.names(projectExtraFields);
-            if (names.length == 0) {
-                Toast.makeText(this, "Ð¡Ð½Ð°Ñ‡Ð°Ð»Ð° Ð¸Ð¼Ð¿Ð¾Ñ€Ñ‚Ð¸Ñ€ÑƒÐ¹ .mcr Ð² Ð¿Ñ€Ð¾ÐµÐºÑ‚", Toast.LENGTH_SHORT).show();
-                return;
-            }
-            new AlertDialog.Builder(this).setTitle("Ð”Ð¾Ð±Ð°Ð²Ð¸Ñ‚ÑŒ Ð¼Ð°ÐºÑ€Ð¾Ñ")
-                    .setItems(names, (dialog, which) -> {
-                        try {
-                            FbdCraftMacroDefinition definition = FbdCraftMacroCatalog.find(
-                                    projectExtraFields, names[which]);
-                            if (definition != null) addCraftMacroWidget(definition);
-                        } catch (Exception invalid) {
-                            Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð´Ð¾Ð±Ð°Ð²Ð¸Ñ‚ÑŒ Ð¼Ð°ÐºÑ€Ð¾Ñ", Toast.LENGTH_LONG).show();
-                        }
-                    }).setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null).show();
-        } catch (Exception invalidCatalog) {
-            Toast.makeText(this, "ÐšÐ°Ñ‚Ð°Ð»Ð¾Ð³ Ð¼Ð°ÐºÑ€Ð¾ÑÐ¾Ð² Ð¿Ð¾Ð²Ñ€ÐµÐ¶Ð´Ñ‘Ð½", Toast.LENGTH_LONG).show();
-        }
-    }
-
-    private void addCraftMacroWidget(FbdCraftMacroDefinition definition) throws Exception {
-        Widget widget = new Widget();
-        widget.type = "FBD CRAFT MACRO";
-        widget.text = definition.getName();
-        widget.extraFields.put("craftMacroDefinition", definition.toJson());
-        widget.w = dp(170);
-        widget.h = Math.max(dp(76), dp(22) * Math.max(2, definition.getInputs().size()));
-        if (editor != null && editor.getWidth() > 0 && editor.getHeight() > 0) {
-            float[] empty = freeFbdPlacement(widgets, editor.getWidth(), editor.getHeight(),
-                    widget.w, widget.h, dp(40), dp(50), dp(18));
-            if (empty == null) {
-                Toast.makeText(this, "ÐÐµÑ‚ ÑÐ²Ð¾Ð±Ð¾Ð´Ð½Ð¾Ð³Ð¾ Ð¼ÐµÑÑ‚Ð° Ð´Ð»Ñ FBD-Ð¼Ð°ÐºÑ€Ð¾ÑÐ°", Toast.LENGTH_LONG).show();
-                return;
-            }
-            widget.x = empty[0];
-            widget.y = empty[1];
-        } else {
-            widget.x = dp(40) + (widgets.size() % 4) * dp(24);
-            widget.y = dp(50) + (widgets.size() % 6) * dp(22);
-        }
-        fbdWireHistory.clear();
-        liveValues.clear();
-        widgets.add(widget);
-        persistProject();
-        if (editor != null) editor.invalidate();
-    }
-
-    private void createCraftMacroFromSelection() {
-        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()
-                || !isFbd(widgets.get(editor.selected))) {
-            Toast.makeText(this, "Ð¡Ð½Ð°Ñ‡Ð°Ð»Ð° Ð²Ñ‹Ð±ÐµÑ€Ð¸ Ð²Ñ‹Ñ…Ð¾Ð´Ð½Ð¾Ð¹ FBD-Ð±Ð»Ð¾Ðº Ð½Ð° ÑÑ…ÐµÐ¼Ðµ", Toast.LENGTH_LONG).show();
-            return;
-        }
-        Widget output = widgets.get(editor.selected);
-        String[] outputPins = knownFbdPins(output, true);
-        if (outputPins.length == 0) {
-            Toast.makeText(this, "Ð£ Ð²Ñ‹Ð±Ñ€Ð°Ð½Ð½Ð¾Ð³Ð¾ Ð±Ð»Ð¾ÐºÐ° Ð½ÐµÑ‚ Ð¿Ñ€Ð¾Ð²ÐµÑ€ÐµÐ½Ð½Ð¾Ð³Ð¾ Ð²Ñ‹Ñ…Ð¾Ð´Ð°", Toast.LENGTH_LONG).show();
-            return;
-        }
-        String suggestedName = output.text == null || output.text.trim().isEmpty()
-                ? "Macro" : output.text.trim();
-        if (suggestedName.length() > 10) suggestedName = suggestedName.substring(0, 10);
-        EditText name = propertyField(suggestedName, InputType.TYPE_CLASS_TEXT);
-        name.setFilters(new android.text.InputFilter[]{
-                new android.text.InputFilter.LengthFilter(10)});
-        new AlertDialog.Builder(this).setTitle("Ð¡Ð¾Ð·Ð´Ð°Ñ‚ÑŒ Ð¼Ð°ÐºÑ€Ð¾Ñ Ð¸Ð· ÑÑ…ÐµÐ¼Ñ‹")
-                .setMessage("Ð’Ð»Ð¾Ð¶ÐµÐ½Ð½Ð°Ñ ÑÑ…ÐµÐ¼Ð° Ð±ÑƒÐ´ÐµÑ‚ Ð²Ð·ÑÑ‚Ð° Ð¾Ñ‚ Ð²Ñ‹Ð±Ñ€Ð°Ð½Ð½Ð¾Ð³Ð¾ Ð±Ð»Ð¾ÐºÐ° Ð´Ð¾ ÐµÐ³Ð¾ Ð²Ñ…Ð¾Ð´Ð½Ñ‹Ñ… Ð¸ÑÑ‚Ð¾Ñ‡Ð½Ð¸ÐºÐ¾Ð².")
-                .setView(name).setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null)
-                .setPositiveButton("Ð”Ð°Ð»ÐµÐµ", (dialog, which) -> {
-                    String macroName = name.getText().toString().trim();
-                    if (outputPins.length == 1) saveCraftMacroFromSelection(macroName,
-                            editor.selected, outputPins[0]);
-                    else new AlertDialog.Builder(this).setTitle("Ð’Ñ‹Ð±ÐµÑ€Ð¸ Ð²Ñ‹Ñ…Ð¾Ð´ Ð¼Ð°ÐºÑ€Ð¾ÑÐ°")
-                            .setItems(outputPins, (pinDialog, pinIndex) ->
-                                    saveCraftMacroFromSelection(macroName, editor.selected,
-                                            outputPins[pinIndex]))
-                            .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null).show();
-                }).show();
-    }
-
-    private void saveCraftMacroFromSelection(String name, int outputNode, String outputPin) {
-        try {
-            if (outputNode < 0 || outputNode >= widgets.size()) throw new IllegalArgumentException(
-                    "Ð’Ñ‹Ð±Ñ€Ð°Ð½Ð½Ñ‹Ð¹ Ð±Ð»Ð¾Ðº Ð±Ð¾Ð»ÑŒÑˆÐµ Ð½Ðµ ÑÑƒÑ‰ÐµÑÑ‚Ð²ÑƒÐµÑ‚");
-            List<FbdConnection> edges = screens.get(currentScreenIndex).connections;
-            FbdCraftMacroDefinition definition = createCraftMacroDefinitionFromGraph(
-                    name, widgets, edges, outputNode, outputPin);
-            FbdCraftMacroCatalog.upsert(projectExtraFields, definition);
-            if (!persistProjectNow(true)) throw new IOException("ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ ÑÐ¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ð¿Ñ€Ð¾ÐµÐºÑ‚");
-            int refreshed = replaceCraftMacroInstances(widgets, definition);
-            persistProject();
-            if (editor != null) editor.invalidate();
-            addCraftMacroWidget(definition);
-            Toast.makeText(this, "ÐœÐ°ÐºÑ€Ð¾Ñ Â«" + definition.getName() + "Â» ÑÐ¾Ð·Ð´Ð°Ð½; Ð¾Ð±Ð½Ð¾Ð²Ð»ÐµÐ½Ð¾ Ð±Ð»Ð¾ÐºÐ¾Ð²: "
-                    + refreshed + ", Ð´Ð¾Ð±Ð°Ð²Ð»ÐµÐ½ Ð½Ð¾Ð²Ñ‹Ð¹ ÑÐºÐ·ÐµÐ¼Ð¿Ð»ÑÑ€",
-                    Toast.LENGTH_LONG).show();
-        } catch (Exception failure) {
-            Toast.makeText(this, "ÐœÐ°ÐºÑ€Ð¾Ñ Ð½Ðµ ÑÐ¾Ð·Ð´Ð°Ð½: " + failure.getMessage(), Toast.LENGTH_LONG).show();
-        }
-    }
-
-    /** Capture one selected output and its upstream closure as a typed macro definition. */
-    public static FbdCraftMacroDefinition createCraftMacroDefinitionFromGraph(String name,
-            List<Widget> sourceWidgets, List<FbdConnection> sourceConnections,
-            int outputNode, String outputPin) throws Exception {
-        if (sourceWidgets == null || sourceConnections == null || outputNode < 0
-                || outputNode >= sourceWidgets.size()) throw new IllegalArgumentException("Invalid macro source graph");
-        Widget outputWidget = sourceWidgets.get(outputNode);
-        int typeOut = craftMacroGraphPortType(sourceWidgets, sourceConnections, outputNode, outputPin, true, new boolean[sourceWidgets.size()]);
-        if (typeOut < 0) throw new IllegalArgumentException("Unsupported macro output type");
-
-        boolean[] included = new boolean[sourceWidgets.size()];
-        List<Integer> pending = new ArrayList<>();
-        pending.add(outputNode);
-        while (!pending.isEmpty()) {
-            int target = pending.remove(pending.size() - 1);
-            if (target < 0 || target >= sourceWidgets.size() || included[target]) continue;
-            Widget widget = sourceWidgets.get(target);
-            if (!isFbdWidget(widget))
-                throw new IllegalArgumentException("ÐÐµÐ»ÑŒÐ·Ñ Ð²ÐºÐ»ÑŽÑ‡Ð¸Ñ‚ÑŒ Ð² Ð¼Ð°ÐºÑ€Ð¾Ñ Ð½ÐµÐ¿Ð¾Ð´Ð´ÐµÑ€Ð¶Ð¸Ð²Ð°ÐµÐ¼Ñ‹Ð¹ Ð±Ð»Ð¾Ðº");
-            if ("FBD CRAFT MACRO".equals(canonicalFbdBlockType(widget.type))) {
-                FbdCraftMacroDefinition nested = macroDefinition(widget);
-                JSONObject nestedGraph = nested == null ? null
-                        : nested.toJson().optJSONObject("bloodskyGraph");
-                if (nestedGraph == null)
-                    throw new IllegalArgumentException(
-                            "Ð’Ð»Ð¾Ð¶ÐµÐ½Ð½Ñ‹Ð¹ Ð¼Ð°ÐºÑ€Ð¾Ñ Ð´Ð¾Ð»Ð¶ÐµÐ½ Ð¸Ð¼ÐµÑ‚ÑŒ Ð¿Ñ€Ð¾Ð²ÐµÑ€ÐµÐ½Ð½Ñ‹Ð¹ Ð³Ñ€Ð°Ñ„ BLOODSKY");
-            }
-            included[target] = true;
-            for (FbdConnection edge : sourceConnections)
-                if (edge != null && edge.target == target) pending.add(edge.source);
-        }
-
-        List<Integer> nodeIds = new ArrayList<>();
-        for (int i = 0; i < included.length; i++) if (included[i]) nodeIds.add(i);
-        boolean[] isInput = new boolean[sourceWidgets.size()];
-        int[] firstOutputType = new int[sourceWidgets.size()];
-        int inputCount = 0;
-        for (int node : nodeIds) {
-            boolean hasIncoming = false;
-            for (FbdConnection edge : sourceConnections)
-                if (edge != null && edge.target == node && edge.source >= 0
-                        && edge.source < included.length && included[edge.source]) { hasIncoming = true; break; }
-            if (hasIncoming) continue;
-            Widget leaf = sourceWidgets.get(node);
-            String[] pins = knownFbdPins(leaf, true);
-            int code = pins.length == 0 ? -1 : craftMacroGraphPortType(sourceWidgets, sourceConnections, node, pins[0], true, new boolean[sourceWidgets.size()]);
-            if (code < 0) throw new IllegalArgumentException("Ð’Ñ…Ð¾Ð´Ð½Ð¾Ð¹ Ð¸ÑÑ‚Ð¾Ñ‡Ð½Ð¸Ðº Ð±ÐµÐ· Ð¿Ð¾Ð´Ð´ÐµÑ€Ð¶Ð¸Ð²Ð°ÐµÐ¼Ð¾Ð³Ð¾ Ñ‚Ð¸Ð¿Ð°");
-            if (++inputCount > 4) throw new IllegalArgumentException("Ð’ Ð¼Ð°ÐºÑ€Ð¾ÑÐµ Ð´Ð¾Ð¿ÑƒÑÐºÐ°ÐµÑ‚ÑÑ Ð½Ðµ Ð±Ð¾Ð»ÑŒÑˆÐµ Ñ‡ÐµÑ‚Ñ‹Ñ€Ñ‘Ñ… Ð²Ñ…Ð¾Ð´Ð¾Ð²");
-            isInput[node] = true;
-            firstOutputType[node] = code;
-        }
-
-        JSONArray nestedWidgets = new JSONArray();
-        JSONArray nestedConnections = new JSONArray();
-        int[] remap = new int[sourceWidgets.size()];
-        StringBuilder root = new StringBuilder("{\"name\":").append(JSONObject.quote(name))
-                .append(",\"uniqueId\":").append(System.currentTimeMillis())
-                .append(",\"countIn\":").append(inputCount);
-        int inputIndex = 0;
-        for (int node : nodeIds) {
-            remap[node] = nestedWidgets.length();
-            if (isInput[node]) {
-                String portName = "I" + (++inputIndex);
-                int code = firstOutputType[node];
-                JSONObject inputWidget = new JSONObject().put("type", "FBD CRAFT MACRO IN")
-                        .put("craftMacroPortName", portName).put("craftMacroPortType", code);
-                nestedWidgets.put(inputWidget);
-                root.append(",\"nameIn").append(inputIndex).append("\":").append(JSONObject.quote(portName))
-                        .append(",\"typeIn").append(inputIndex).append("\":").append(code);
-            } else nestedWidgets.put(widgetToJson(sourceWidgets.get(node)));
-        }
-        for (FbdConnection edge : sourceConnections) {
-            if (edge == null || edge.source < 0 || edge.target < 0
-                    || edge.source >= included.length || edge.target >= included.length
-                    || !included[edge.source] || !included[edge.target]) continue;
-            JSONObject nestedEdge = connectionToJson(edge);
-            nestedEdge.put("source", remap[edge.source]).put("target", remap[edge.target]);
-            if (isInput[edge.source]) nestedEdge.put("sourcePin", "Q");
-            nestedConnections.put(nestedEdge);
-        }
-        root.append(",\"nameOut\":").append(JSONObject.quote(outputPin))
-                .append(",\"typeOut\":").append(typeOut)
-                .append(",\"fbInMacros\":[],\"bloodskyGraph\":{")
-                .append("\"widgets\":").append(nestedWidgets)
-                .append(",\"connections\":").append(nestedConnections)
-                .append(",\"outputNode\":").append(remap[outputNode])
-                .append(",\"outputPin\":").append(JSONObject.quote(isInput[outputNode] ? "Q" : outputPin))
-                .append(",\"outputPort\":").append(JSONObject.quote(outputPin)).append("}}");
-        return FbdCraftMacroDefinition.fromJson(root.toString());
-    }
-
-    /** Refresh every placed instance when the project definition is rebuilt under the same name. */
-    public static int replaceCraftMacroInstances(List<Widget> widgets,
-                                                 FbdCraftMacroDefinition definition) throws Exception {
-        if (widgets == null || definition == null) return 0;
-        int updated = 0;
-        for (Widget widget : widgets) {
-            if (widget == null || !"FBD CRAFT MACRO".equals(canonicalFbdBlockType(widget.type))) continue;
-            FbdCraftMacroDefinition existing = macroDefinition(widget);
-            if (existing == null || !existing.getName().equalsIgnoreCase(definition.getName())) continue;
-            widget.extraFields.put("craftMacroDefinition", definition.toJson());
-            widget.craftMacroDefinitionSourceCache = null;
-            widget.craftMacroDefinitionCache = null;
-            widget.craftMacroRuntimeGraphSource = null;
-            widget.craftMacroRuntimeWidgets = null;
-            widget.craftMacroRuntimeConnections = null;
-            widget.craftMacroRuntimeOutputNode = -1;
-            updated++;
-        }
-        return updated;
-    }
-
-    private static int craftMacroPortType(Widget widget, String pin, boolean output) {
-        String signal = knownFbdPinType(widget, pin, output);
-        if ("BOOL".equals(signal)) return 1;
-        if (!"NUMBER".equals(signal)) return -1;
-        String kind = canonicalFbdBlockType(widget == null ? null : widget.type);
-        if ((kind.contains("FLOAT") && !kind.endsWith("FLOAT TO INT"))
-                || kind.equals("FBD CRAFT LOG") || kind.equals("FBD CRAFT POW")) return 3;
-        return 2;
-    }
-
-    /** Infer polymorphic numeric outputs from their connected upstream signal types. */
-    private static int craftMacroGraphPortType(List<Widget> graphWidgets,
-            List<FbdConnection> graphConnections, int node, String pin, boolean output,
-            boolean[] visiting) {
-        if (graphWidgets == null || graphConnections == null || node < 0
-                || node >= graphWidgets.size()) return -1;
-        Widget widget = graphWidgets.get(node);
-        int declared = craftMacroPortType(widget, pin, output);
-        if (declared != 2 || !output
-                || !"NUMBER".equals(knownFbdPinType(widget, pin, true))) return declared;
-        String kind = canonicalFbdBlockType(widget == null ? null : widget.type);
-        // Explicit integer/floating blocks keep their declared conversion direction.
-        if (kind.contains("INT") || kind.contains("FLOAT")
-                || "FBD CRAFT LOG".equals(kind) || "FBD CRAFT POW".equals(kind))
-            return declared;
-        if (visiting == null || visiting.length != graphWidgets.size() || visiting[node])
-            return declared;
-        visiting[node] = true;
-        boolean hasNumericInput = false;
-        boolean hasFloatInput = false;
-        for (FbdConnection edge : graphConnections) {
-            if (edge == null || edge.target != node || edge.source < 0
-                    || edge.source >= graphWidgets.size()) continue;
-            int inputType = craftMacroGraphPortType(graphWidgets, graphConnections,
-                    edge.source, edge.extraFields == null ? "" : edge.extraFields.optString("sourcePin", ""), true, visiting);
-            if (inputType == 2 || inputType == 3) {
-                hasNumericInput = true;
-                if (inputType == 3) hasFloatInput = true;
-            }
-        }
-        visiting[node] = false;
-        return hasNumericInput && hasFloatInput ? 3 : declared;
-    }
-
-    /** Resolve a nested macro output by widget identity after graph edits reindex the canvas. */
-    static int findCraftMacroOutputNode(List<Widget> graphWidgets, Widget outputWidget) {
-        if (graphWidgets == null || outputWidget == null) return -1;
-        for (int i = 0; i < graphWidgets.size(); i++)
-            if (graphWidgets.get(i) == outputWidget) return i;
-        return -1;
-    }
-
-    /** Replace an editable nested graph, re-infer its output type, and validate the full definition. */
-    public static FbdCraftMacroDefinition updateCraftMacroDefinitionGraph(
-            FbdCraftMacroDefinition definition, List<Widget> graphWidgets,
-            List<FbdConnection> graphConnections, int outputNode, String outputPin) throws Exception {
-        if (definition == null || graphWidgets == null || graphConnections == null)
-            throw new IllegalArgumentException("Missing macro graph");
-        int outputType = craftMacroGraphPortType(graphWidgets, graphConnections, outputNode,
-                outputPin, true, new boolean[graphWidgets.size()]);
-        if (outputType < 1) throw new IllegalArgumentException("Unsupported macro output type");
-        JSONObject root = definition.toJson();
-        String outputPort = root.optString("nameOut", "Q");
-        JSONArray nestedWidgets = new JSONArray();
-        for (Widget widget : graphWidgets) nestedWidgets.put(widgetToJson(widget));
-        JSONArray nestedConnections = new JSONArray();
-        for (FbdConnection edge : graphConnections) nestedConnections.put(connectionToJson(edge));
-        JSONObject graph = new JSONObject().put("widgets", nestedWidgets)
-                .put("connections", nestedConnections).put("outputNode", outputNode)
-                .put("outputPin", outputPin).put("outputPort", outputPort);
-        root.put("typeOut", outputType).put("bloodskyGraph", graph);
-        return FbdCraftMacroDefinition.fromJson(root.toString());
-    }
-
-    private void exportCraftMacroFromCatalog() {
-        try {
-            String[] names = FbdCraftMacroCatalog.names(projectExtraFields);
-            if (names.length == 0) {
-                Toast.makeText(this, "Ð’ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ðµ Ð½ÐµÑ‚ Ð¸Ð¼Ð¿Ð¾Ñ€Ñ‚Ð¸Ñ€Ð¾Ð²Ð°Ð½Ð½Ñ‹Ñ… Ð¼Ð°ÐºÑ€Ð¾ÑÐ¾Ð²", Toast.LENGTH_SHORT).show();
-                return;
-            }
-            new AlertDialog.Builder(this).setTitle("Ð’Ñ‹Ð±ÐµÑ€Ð¸ Ð¼Ð°ÐºÑ€Ð¾Ñ")
-                    .setItems(names, (dialog, which) -> {
-                        try {
-                            FbdCraftMacroDefinition definition = FbdCraftMacroCatalog.find(
-                                    projectExtraFields, names[which]);
-                            if (definition == null) return;
-                            pendingCraftMacroExport = definition.toMcrBytes();
-                            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
-                            intent.addCategory(Intent.CATEGORY_OPENABLE);
-                            intent.setType("application/json");
-                            intent.putExtra(Intent.EXTRA_TITLE,
-                                    definition.getName().replaceAll("[^A-Za-zÐ-Ð¯Ð°-Ñ0-9._-]", "_") + ".mcr");
-                            startActivityForResult(intent, REQUEST_EXPORT_CRAFT_MACRO);
-                        } catch (Exception failure) {
-                            pendingCraftMacroExport = null;
-                            Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¿Ð¾Ð´Ð³Ð¾Ñ‚Ð¾Ð²Ð¸Ñ‚ÑŒ Ð¼Ð°ÐºÑ€Ð¾Ñ", Toast.LENGTH_LONG).show();
-                        }
-                    }).setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null).show();
-        } catch (Exception invalidCatalog) {
-            Toast.makeText(this, "ÐšÐ°Ñ‚Ð°Ð»Ð¾Ð³ Ð¼Ð°ÐºÑ€Ð¾ÑÐ¾Ð² Ð¿Ð¾Ð²Ñ€ÐµÐ¶Ð´Ñ‘Ð½", Toast.LENGTH_LONG).show();
-        }
-    }
-
-    private void importCraftMacro(Uri uri) {
-        modbusExecutor.execute(() -> {
-            try {
-                byte[] bytes;
-                try (InputStream input = getContentResolver().openInputStream(uri)) {
-                    if (input == null) throw new IOException("File unavailable");
-                    ByteArrayOutputStream output = new ByteArrayOutputStream();
-                    byte[] buffer = new byte[8192];
-                    int total = 0, read;
-                    while ((read = input.read(buffer)) != -1) {
-                        total += read;
-                        if (total > FbdCraftMacroDefinition.MAX_FILE_BYTES)
-                            throw new IOException("Macro file too large");
-                        output.write(buffer, 0, read);
-                    }
-                    bytes = output.toByteArray();
-                }
-                FbdCraftMacroDefinition definition = FbdCraftMacroDefinition.fromMcrBytes(bytes);
-                runOnUiThread(() -> {
-                    if (isFinishing() || isDestroyed()) return;
-                    try {
-                        FbdCraftMacroCatalog.upsert(projectExtraFields, definition);
-                        if (!persistProjectNow(true)) throw new IOException("Project save failed");
-                        Toast.makeText(this, "ÐœÐ°ÐºÑ€Ð¾Ñ Â«" + definition.getName() + "Â» Ð´Ð¾Ð±Ð°Ð²Ð»ÐµÐ½ Ð² Ð¿Ñ€Ð¾ÐµÐºÑ‚",
-                                Toast.LENGTH_LONG).show();
-                    } catch (Exception failure) {
-                        Toast.makeText(this, "ÐœÐ°ÐºÑ€Ð¾Ñ Ð½Ðµ ÑÐ¾Ñ…Ñ€Ð°Ð½Ñ‘Ð½: " + failure.getMessage(),
-                                Toast.LENGTH_LONG).show();
-                    }
-                });
-            } catch (Exception failure) {
-                runOnUiThread(() -> {
-                    if (!isFinishing() && !isDestroyed())
-                        Toast.makeText(this, "Ð˜Ð¼Ð¿Ð¾Ñ€Ñ‚ Ð¼Ð°ÐºÑ€Ð¾ÑÐ° Ð½Ðµ Ð²Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½: " + failure.getMessage(),
-                                Toast.LENGTH_LONG).show();
-                });
-            }
-        });
-    }
-
-    public byte[] readProjectMediaData(String pathOrUri) throws IOException {
-        return readProjectMediaData(pathOrUri, getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}"));
-    }
-
-    private byte[] readProjectMediaData(String pathOrUri, String json) throws IOException {
-        if (pathOrUri != null && pathOrUri.trim().startsWith("content://")) {
-            try (InputStream in = getContentResolver().openInputStream(Uri.parse(pathOrUri.trim()))) {
-                return ProjectMediaService.readBoundedMedia(in);
-            }
-        }
-        try (InputStream in = new java.io.FileInputStream(ProjectMediaService.resolveMediaFile(getFilesDir(), json, pathOrUri))) {
-            return ProjectMediaService.readBoundedMedia(in);
-        }
-    }
-
-    private void importProjectBundle(Uri uri) {
-        modbusExecutor.execute(() -> {
-            try (InputStream in = getContentResolver().openInputStream(uri)) {
-                if (in == null) throw new IOException("Input stream unavailable");
-                ProjectMediaService.importProjectBundle(getFilesDir(), in, json -> {
-                    try { validateImportedProject(json); }
-                    catch (Exception invalid) { throw new IllegalArgumentException("Invalid imported project", invalid); }
-                    try { return storeActiveProject(json, true); }
-                    catch (Exception error) { throw new IllegalArgumentException("Could not save project catalog", error); }
-                });
-                runOnUiThread(() -> {
-                    if (isFinishing() || isDestroyed()) return;
-                    imageCache.clear();
-                    if (loadProject()) {
-                        showEditor();
-                        Toast.makeText(this, "ÐŸÑ€Ð¾ÐµÐºÑ‚ Ð¸Ð¼Ð¿Ð¾Ñ€Ñ‚Ð¸Ñ€Ð¾Ð²Ð°Ð½", Toast.LENGTH_LONG).show();
-                    } else {
-                        Toast.makeText(this, "Ð˜Ð¼Ð¿Ð¾Ñ€Ñ‚ Ð²Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½, Ð½Ð¾ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚Ð¸Ðµ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð° Ð½Ðµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ", Toast.LENGTH_LONG).show();
-                    }
-                });
-            } catch (Exception error) {
-                android.util.Log.e("BLOODSKY", "Project import failed", error);
-                runOnUiThread(() -> { if (!isFinishing() && !isDestroyed())
-                    Toast.makeText(this, "Ð˜Ð¼Ð¿Ð¾Ñ€Ñ‚ Ð½Ðµ Ð²Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½: " + error.getMessage(), Toast.LENGTH_LONG).show(); });
-            }
-        });
-    }
-
-    private void importProject() {
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("*/*");
-        try {
-            startActivityForResult(intent, REQUEST_IMPORT_PROJECT);
-        } catch (Exception e) {
-            Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚ÑŒ Ð²Ñ‹Ð±Ð¾Ñ€ Ñ„Ð°Ð¹Ð»Ð°", Toast.LENGTH_LONG).show();
-        }
-    }
-
-    private void chooseMediaFile(EditText field, String mimeType) {
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType(mimeType);
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-        pendingMediaField = field;
-        pendingMediaWidgetIndex = editor == null ? -1 : editor.selected;
-        pendingMediaFieldPath = activePropertiesForm == null ? null : viewPath(activePropertiesForm, field, "");
-        try {
-            startActivityForResult(intent, REQUEST_PICK_MEDIA);
-        } catch (Exception ex) {
-            pendingMediaField = null;
-            Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚ÑŒ Ð²Ñ‹Ð±Ð¾Ñ€ Ñ„Ð°Ð¹Ð»Ð°", Toast.LENGTH_LONG).show();
-        }
-    }
-
-    private void addMediaPicker(LinearLayout form, EditText field, String mimeType) {
-        Button choose = new Button(this);
-        choose.setText("Ð’Ñ‹Ð±Ñ€Ð°Ñ‚ÑŒ Ñ„Ð°Ð¹Ð»â€¦");
-        choose.setAllCaps(false);
-        choose.setOnClickListener(v -> chooseMediaFile(field, mimeType));
-        form.addView(choose);
-    }
-
-    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQUEST_PICK_MEDIA) {
-            EditText target = pendingMediaField;
-            pendingMediaField = null;
-            if (resultCode != RESULT_OK || data == null || data.getData() == null || target == null) return;
-            Uri selected = data.getData();
-            int readGrant = data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION;
-            if (readGrant == 0) {
-                Toast.makeText(this, "ÐÐµÑ‚ Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð° Ðº Ð²Ñ‹Ð±Ñ€Ð°Ð½Ð½Ð¾Ð¼Ñƒ Ñ„Ð°Ð¹Ð»Ñƒ. Ð’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð´Ñ€ÑƒÐ³Ð¾Ð¹ Ñ„Ð°Ð¹Ð».", Toast.LENGTH_LONG).show();
-                return;
-            }
-            try { getContentResolver().takePersistableUriPermission(selected, readGrant); }
-            catch (SecurityException | IllegalArgumentException ignored) {
-                /* The selected bytes are copied into private project storage below. */
-            }
-            String projectJson = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
-            AlertDialog waitingDialog = activePropertiesDialog;
-            if (waitingDialog != null && waitingDialog.isShowing()) {
-                pendingMediaCopyCount++;
-                Button apply = waitingDialog.getButton(AlertDialog.BUTTON_POSITIVE);
-                if (apply != null) apply.setEnabled(false);
-            }
-            modbusExecutor.execute(() -> {
-                try (InputStream in = getContentResolver().openInputStream(selected)) {
-                    String displayName = selectedMediaDisplayName(selected);
-                    ProjectMediaService.SelectedMediaCopy copy = ProjectMediaService.storeSelectedMediaCopy(
-                            getFilesDir(), projectJson, displayName, in);
-                    runOnUiThread(() -> {
-                        if (isFinishing() || isDestroyed() || waitingDialog == null
-                                || waitingDialog != activePropertiesDialog || !waitingDialog.isShowing()) {
-                            cleanupUnreferencedMediaCopy(projectJson, copy);
-                            finishPendingMediaCopy(waitingDialog);
-                            return;
-                        }
-                        target.setText(copy.projectPath);
-                        imageCache.remove(selected.toString());
-                        imageCache.remove(copy.projectPath);
-                        trackPendingMediaCopy(waitingDialog, projectJson, copy);
-                        finishPendingMediaCopy(waitingDialog);
-                        Toast.makeText(this, "Ð¤Ð°Ð¹Ð» ÑÐ¾Ñ…Ñ€Ð°Ð½Ñ‘Ð½ Ð² Ð¿Ñ€Ð¾ÐµÐºÑ‚", Toast.LENGTH_SHORT).show();
-                    });
-                } catch (Exception ex) {
-                    android.util.Log.e("BLOODSKY", "Selected project media could not be stored", ex);
-                    runOnUiThread(() -> {
-                        if (isFinishing() || isDestroyed()) return;
-                        finishPendingMediaCopy(waitingDialog);
-                        Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ ÑÐ¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ñ„Ð°Ð¹Ð» Ð² Ð¿Ñ€Ð¾ÐµÐºÑ‚: "
-                                + ex.getMessage(), Toast.LENGTH_LONG).show();
-                    });
-                }
-            });
-            return;
-        }
-        if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
-        Uri uri = data.getData();
-        if (requestCode == REQUEST_EXPORT_LOCAL_ARCHIVE) {
-            final String archiveProject = pendingArchiveProjectId;
-            final String archiveWidget = pendingArchiveWidgetKey;
-            pendingArchiveProjectId = pendingArchiveWidgetKey = pendingArchiveTitle = null;
-            if (archiveProject == null || archiveWidget == null) return;
-            modbusExecutor.execute(() -> {
-                try (OutputStream out = getContentResolver().openOutputStream(uri)) {
-                    if (out == null) throw new IOException("CSV output unavailable");
-                    LocalArchiveStore store = new LocalArchiveStore(this);
-                    try { store.writeCsv(archiveProject, archiveWidget, out); }
-                    finally { store.close(); }
-                    runOnUiThread(() -> { if (!isFinishing() && !isDestroyed())
-                        Toast.makeText(this, "CSV Ð°Ñ€Ñ…Ð¸Ð²Ð° ÑÐ¾Ñ…Ñ€Ð°Ð½Ñ‘Ð½", Toast.LENGTH_LONG).show(); });
-                } catch (Exception failure) {
-                    runOnUiThread(() -> { if (!isFinishing() && !isDestroyed())
-                        Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ ÑÐ¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ CSV Ð°Ñ€Ñ…Ð¸Ð²Ð°", Toast.LENGTH_LONG).show(); });
-                }
-            });
-            return;
-        }
-        if (requestCode == REQUEST_IMPORT_CRAFT_MACRO) {
-            importCraftMacro(uri);
-        } else if (requestCode == REQUEST_EXPORT_CRAFT_MACRO) {
-            byte[] bytes = pendingCraftMacroExport;
-            pendingCraftMacroExport = null;
-            if (bytes == null) return;
-            modbusExecutor.execute(() -> {
-                try (OutputStream out = getContentResolver().openOutputStream(uri)) {
-                    if (out == null) throw new IOException("Output stream unavailable");
-                    out.write(bytes);
-                    runOnUiThread(() -> { if (!isFinishing() && !isDestroyed())
-                        Toast.makeText(this, "ÐœÐ°ÐºÑ€Ð¾Ñ ÑÐºÑÐ¿Ð¾Ñ€Ñ‚Ð¸Ñ€Ð¾Ð²Ð°Ð½", Toast.LENGTH_SHORT).show(); });
-                } catch (Exception failure) {
-                    runOnUiThread(() -> { if (!isFinishing() && !isDestroyed())
-                        Toast.makeText(this, "Ð­ÐºÑÐ¿Ð¾Ñ€Ñ‚ Ð¼Ð°ÐºÑ€Ð¾ÑÐ° Ð½Ðµ Ð²Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½", Toast.LENGTH_LONG).show(); });
-                }
-            });
-        } else if (requestCode == REQUEST_EXPORT_PROJECT || requestCode == REQUEST_EXPORT_PROJECT_ZIP) {
-            final String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
-            modbusExecutor.execute(() -> {
-                try (OutputStream out = getContentResolver().openOutputStream(uri)) {
-                    if (out == null) throw new IOException("Output stream unavailable");
-                    if (requestCode == REQUEST_EXPORT_PROJECT_ZIP) {
-                        ProjectMediaService.exportProjectZipBundle(out, json, source -> readProjectMediaData(source, json));
-                    } else out.write(json.getBytes(StandardCharsets.UTF_8));
-                    runOnUiThread(() -> { if (!isFinishing() && !isDestroyed())
-                        Toast.makeText(this, "ÐŸÑ€Ð¾ÐµÐºÑ‚ ÑÐºÑÐ¿Ð¾Ñ€Ñ‚Ð¸Ñ€Ð¾Ð²Ð°Ð½", Toast.LENGTH_LONG).show(); });
-                } catch (Exception error) {
-                    android.util.Log.e("BLOODSKY", "Project export failed", error);
-                    runOnUiThread(() -> { if (!isFinishing() && !isDestroyed())
-                        Toast.makeText(this, "ÐžÑˆÐ¸Ð±ÐºÐ° ÑÐºÑÐ¿Ð¾Ñ€Ñ‚Ð°: " + error.getMessage(), Toast.LENGTH_LONG).show(); });
-                }
-            });
-        } else if (requestCode == REQUEST_IMPORT_PROJECT) {
-            importProjectBundle(uri);
-        }
-    }
-
-    private void finishPendingMediaCopy(AlertDialog dialog) {
-        if (dialog == null || dialog != activePropertiesDialog) return;
-        pendingMediaCopyCount = Math.max(0, pendingMediaCopyCount - 1);
-        Button apply = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
-        if (apply != null) apply.setEnabled(pendingMediaCopyCount == 0);
-    }
-
-    private static final class PendingMediaCopy {
-        final String projectJson;
-        final String projectPath;
-        PendingMediaCopy(String projectJson, String projectPath) {
-            this.projectJson = projectJson;
-            this.projectPath = projectPath;
-        }
-    }
-
-    private void trackPendingMediaCopy(AlertDialog dialog, String projectJson,
-                                       ProjectMediaService.SelectedMediaCopy copy) {
-        if (copy == null || !copy.created) return;
-        List<PendingMediaCopy> copies = pendingMediaCopies.get(dialog);
-        if (copies == null) {
-            copies = new ArrayList<>();
-            pendingMediaCopies.put(dialog, copies);
-        }
-        copies.add(new PendingMediaCopy(projectJson, copy.projectPath));
-    }
-
-    private void cleanupUnreferencedMediaCopy(String projectJson,
-                                              ProjectMediaService.SelectedMediaCopy copy) {
-        if (copy == null || !copy.created) return;
-        String savedProjectJson = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
-        try {
-            ProjectMediaService.deleteUnreferencedSelectedMedia(
-                    getFilesDir(), projectJson, copy.projectPath, savedProjectJson);
-        } catch (IOException cleanupFailure) {
-            android.util.Log.w("BLOODSKY", "Could not remove canceled project media", cleanupFailure);
-        }
-    }
-
-    private void cleanupPendingMediaCopies(AlertDialog dialog) {
-        List<PendingMediaCopy> copies = pendingMediaCopies.remove(dialog);
-        if (copies == null || copies.isEmpty()) return;
-        String savedProjectJson = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
-        for (PendingMediaCopy copy : copies) {
-            try {
-                ProjectMediaService.deleteUnreferencedSelectedMedia(
-                        getFilesDir(), copy.projectJson, copy.projectPath, savedProjectJson);
-            } catch (IOException cleanupFailure) {
-                android.util.Log.w("BLOODSKY", "Could not remove canceled project media", cleanupFailure);
-            }
-        }
-    }
-
-    private String selectedMediaDisplayName(Uri uri) {
-        try (android.database.Cursor cursor = getContentResolver().query(uri,
-                new String[]{android.provider.OpenableColumns.DISPLAY_NAME}, null, null, null)) {
-            if (cursor != null && cursor.moveToFirst()) {
-                int column = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
-                if (column >= 0) {
-                    String name = cursor.getString(column);
-                    if (name != null && !name.trim().isEmpty()) return name;
-                }
-            }
-        } catch (Exception ignored) { }
-        return uri == null ? "media.bin" : uri.getLastPathSegment();
-    }
-
-
-    private void editProjectName() {
-        EditText input = new EditText(this);
-        input.setSingleLine(true);
-        input.setText(projectName);
-        new AlertDialog.Builder(this)
-                .setTitle("Ð˜Ð¼Ñ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°")
-                .setView(input)
-                .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null)
-                .setPositiveButton("Ð¡Ð¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ", (dialog, which) -> {
-                    String value = input.getText().toString().trim();
-                    if (!value.isEmpty()) projectName = value;
-                    persistProject();
-                }).show();
-    }
-
-    private void alignSelectedWidget(String alignMode) {
-        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
-            Toast.makeText(this, "Ð’Ñ‹Ð±ÐµÑ€Ð¸ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚ Ð´Ð»Ñ Ð²Ñ‹Ñ€Ð°Ð²Ð½Ð¸Ð²Ð°Ð½Ð¸Ñ", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        Widget w = widgets.get(editor.selected);
-        float canvasWidth = editor.getWidth() > 0 ? editor.getWidth() : dp(360);
-        float canvasHeight = editor.getHeight() > 0 ? editor.getHeight() : dp(640);
-        switch (alignMode) {
-            case "left": w.x = 0; break;
-            case "right": w.x = Math.max(0, canvasWidth - w.w); break;
-            case "top": w.y = 0; break;
-            case "bottom": w.y = Math.max(0, canvasHeight - w.h); break;
-            case "center_h": w.x = Math.max(0, snapToGrid((canvasWidth - w.w) / 2f)); break;
-            case "center_v": w.y = Math.max(0, snapToGrid((canvasHeight - w.h) / 2f)); break;
-        }
-        persistProject();
-        if (editor != null) editor.invalidate();
-        Toast.makeText(this, "Ð­Ð»ÐµÐ¼ÐµÐ½Ñ‚ Ð²Ñ‹Ñ€Ð¾Ð²Ð½ÐµÐ½", Toast.LENGTH_SHORT).show();
-    }
-
-    private void showAlignDialog() {
-        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
-            Toast.makeText(this, "Ð’Ñ‹Ð±ÐµÑ€Ð¸ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚ Ð½Ð° ÑÐºÑ€Ð°Ð½Ðµ", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        String[] options = {"ÐŸÐ¾ Ð»ÐµÐ²Ð¾Ð¼Ñƒ ÐºÑ€Ð°ÑŽ", "ÐŸÐ¾ Ð¿Ñ€Ð°Ð²Ð¾Ð¼Ñƒ ÐºÑ€Ð°ÑŽ", "ÐŸÐ¾ Ð²ÐµÑ€Ñ…Ð½ÐµÐ¼Ñƒ ÐºÑ€Ð°ÑŽ", "ÐŸÐ¾ Ð½Ð¸Ð¶Ð½ÐµÐ¼Ñƒ ÐºÑ€Ð°ÑŽ", "ÐŸÐ¾ Ñ†ÐµÐ½Ñ‚Ñ€Ñƒ (Ð³Ð¾Ñ€Ð¸Ð·Ð¾Ð½Ñ‚.)", "ÐŸÐ¾ Ñ†ÐµÐ½Ñ‚Ñ€Ñƒ (Ð²ÐµÑ€Ñ‚Ð¸Ðº.)"};
-        String[] modes = {"left", "right", "top", "bottom", "center_h", "center_v"};
-        new AlertDialog.Builder(this)
-                .setTitle("Ð’Ñ‹Ñ€Ð°Ð²Ð½Ð¸Ð²Ð°Ð½Ð¸Ðµ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚Ð°")
-                .setItems(options, (dialog, which) -> alignSelectedWidget(modes[which]))
-                .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null)
-                .show();
-    }
-
-    private Button legacyToolbarButton(String text, Runnable task) {
-        Button button = new Button(this);
-        button.setText(text);
-        button.setTextSize(12);
-        button.setTextColor(Color.rgb(20, 20, 20));
-        button.setAllCaps(false);
-        button.setMinHeight(0);
-        button.setMinimumHeight(0);
-        button.setPadding(dp(5), 0, dp(5), 0);
-        button.setGravity(Gravity.CENTER);
-        GradientDrawable face = new GradientDrawable(
-                GradientDrawable.Orientation.LEFT_RIGHT,
-                new int[] { Color.rgb(190, 190, 190), Color.rgb(145, 145, 145), Color.rgb(190, 190, 190) });
-        face.setCornerRadius(dp(2));
-        face.setStroke(dp(1), Color.rgb(70, 70, 70));
-        button.setBackground(face);
-        button.setOnClickListener(v -> task.run());
-        return button;
-    }
-
-    public static int requireSettingInt(String text, int min, int max, String label) {
-        try {
-            if (text == null || !text.trim().matches("[0-9]+")) throw new NumberFormatException();
-            int value = Integer.parseInt(text.trim());
-            if (value < min || value > max) throw new NumberFormatException();
-            return value;
-        } catch (NumberFormatException ex) {
-            throw new IllegalArgumentException(label + ": Ð´Ð¾Ð¿ÑƒÑÑ‚Ð¸Ð¼Ð¾ " + min + "â€“" + max);
-        }
-    }
-
-    private static String legacySlaveValue(String legacy, String label, String fallback) {
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
-                "(?i)" + label + "\\s*:\\s*([0-9]+)").matcher(legacy);
-        return m.find() ? m.group(1) : fallback;
-    }
-
-    public static JSONObject validatedProjectSettings(JSONObject current, String modeText,
-            String idText, String portText, String registers) throws Exception {
-        int mode = requireSettingInt(modeText, 0, 1, "Ð ÐµÐ¶Ð¸Ð¼");
-        int id = requireSettingInt(idText, 1, 247, "Slave ID");
-        int port = requireSettingInt(portText, 1, 65535, "ÐŸÐ¾Ñ€Ñ‚");
-        JSONObject result = new JSONObject(current.toString());
-        String legacy = result.optString("modbusSlave", "");
-        if (legacy.matches("(?is).*slave id\\s*:\\s*[0-9]+.*")
-                && legacy.matches("(?is).*port\\s*:\\s*[0-9]+.*")) {
-            legacy = legacy.replaceFirst("(?i)(slave id\\s*:\\s*)[0-9]+", "Slave ID: " + id)
-                    .replaceFirst("(?i)(port\\s*:\\s*)[0-9]+", "Port: " + port);
-        } else {
-            legacy = "Slave ID: " + id + ", Port: " + port;
-        }
-        result.put("stationMode", mode);
-        result.put("modbusSlaveId", id);
-        result.put("modbusSlavePort", port);
-        result.put("modbusSlave", legacy);
-        result.put("systemRegisterSettings", registers);
-        if (result.opt("systemRegisters") instanceof String) result.remove("systemRegisters");
-        return result;
-    }
-
-    private void showProjectSettingsDialog() {
-        LinearLayout form = new LinearLayout(this);
-        form.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(16);
-        form.setPadding(pad, dp(4), pad, 0);
-
-        TextView note = new TextView(this);
-        note.setText("ÐŸÑ€Ð¸Ð¼ÐµÑ‡Ð°Ð½Ð¸Ðµ: ÐÐ°ÑÑ‚Ñ€Ð¾Ð¹ÐºÐ¸ ÑÑ‚Ð°Ð½Ñ†Ð¸Ð¸ Ð¸ Modbus Slave ÑÐ¾Ñ…Ñ€Ð°Ð½ÑÑŽÑ‚ÑÑ Ð² Ð¼ÐµÑ‚Ð°Ð´Ð°Ð½Ð½Ñ‹Ñ… Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°. ÐžÐ½Ð¸ Ð·Ð°Ð´Ð°ÑŽÑ‚ Ð¿Ð°Ñ€Ð°Ð¼ÐµÑ‚Ñ€Ñ‹ ÐºÐ¾Ð½Ñ„Ð¸Ð³ÑƒÑ€Ð°Ñ†Ð¸Ð¸, Ð½Ð¾ Ð½Ðµ Ð·Ð°Ð¿ÑƒÑÐºÐ°ÑŽÑ‚ Ñ„Ð¾Ð½Ð¾Ð²Ñ‹Ð¹ TCP-ÑÐµÑ€Ð²ÐµÑ€ Modbus Slave.");
-        note.setTextColor(Color.rgb(100, 116, 139));
-        note.setTextSize(12);
-        note.setPadding(0, 0, 0, dp(8));
-        form.addView(note);
-
-        TextView stationLabel = new TextView(this);
-        stationLabel.setText("Ð ÐµÐ¶Ð¸Ð¼ ÑÑ‚Ð°Ð½Ñ†Ð¸Ð¸ (0 = ÐœÐ°ÑÑ‚ÐµÑ€, 1 = Ð¡Ð»ÐµÐ¹Ð²)");
-        form.addView(stationLabel);
-        EditText stationField = propertyField(Integer.toString(projectExtraFields.optInt("stationMode", 0)), InputType.TYPE_CLASS_NUMBER);
-        form.addView(stationField);
-
-        TextView slaveLabel = new TextView(this);
-        slaveLabel.setText("ÐÐ°ÑÑ‚Ñ€Ð¾Ð¹ÐºÐ¸ Modbus Slave (ID / ÐŸÐ¾Ñ€Ñ‚)");
-        slaveLabel.setPadding(0, dp(10), 0, 0);
-        form.addView(slaveLabel);
-        String legacySlave = projectExtraFields.optString("modbusSlave", "");
-        EditText slaveIdField = propertyField(projectExtraFields.optString("modbusSlaveId",
-                legacySlaveValue(legacySlave, "Slave ID", "1")), InputType.TYPE_CLASS_NUMBER);
-        slaveIdField.setHint("Slave ID: 1â€“247");
-        form.addView(slaveIdField);
-        EditText slavePortField = propertyField(projectExtraFields.optString("modbusSlavePort",
-                legacySlaveValue(legacySlave, "Port", "502")), InputType.TYPE_CLASS_NUMBER);
-        slavePortField.setHint("ÐŸÐ¾Ñ€Ñ‚: 1â€“65535");
-        form.addView(slavePortField);
-
-        TextView sysRegLabel = new TextView(this);
-        sysRegLabel.setText("Ð¡Ð¸ÑÑ‚ÐµÐ¼Ð½Ñ‹Ðµ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ñ‹");
-        sysRegLabel.setPadding(0, dp(10), 0, 0);
-        form.addView(sysRegLabel);
-        Object savedSystemRegisters = projectExtraFields.opt("systemRegisters");
-        String legacySystemRegisterSettings = savedSystemRegisters instanceof String
-                ? (String) savedSystemRegisters : "SYS_STATUS=0, SYS_TIME=100";
-        EditText sysRegField = propertyField(projectExtraFields.optString("systemRegisterSettings",
-                legacySystemRegisterSettings), InputType.TYPE_CLASS_TEXT);
-        sysRegField.setHint("Ð¡Ð¸ÑÑ‚ÐµÐ¼Ð½Ñ‹Ðµ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ñ‹");
-        form.addView(sysRegField);
-
-        EditText[][] mqttFields = {addMqttBrokerFields(form, 1), addMqttBrokerFields(form, 2)};
-
-        ScrollView scroll = new ScrollView(this);
-        scroll.addView(form);
-
-        AlertDialog settings = new AlertDialog.Builder(this)
-                .setTitle("ÐÐ°ÑÑ‚Ñ€Ð¾Ð¹ÐºÐ¸ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°")
-                .setView(scroll)
-                .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null)
-                .setPositiveButton("Ð¡Ð¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ", null).create();
-        settings.setOnShowListener(ignored -> settings.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            try {
-                JSONObject updated = validatedProjectSettings(projectExtraFields,
-                        stationField.getText().toString(), slaveIdField.getText().toString(),
-                        slavePortField.getText().toString(), sysRegField.getText().toString().trim());
-                for (int i = 0; i < mqttFields.length; i++) {
-                    String endpoint = mqttFields[i][0].getText().toString().trim();
-                    if (!endpoint.isEmpty() && !FbdCraftMqttRuntime.validUri(endpoint))
-                        throw new IllegalArgumentException("MQTT ÑÐµÑ€Ð²ÐµÑ€ " + (i + 1) + ": tcp://Ð°Ð´Ñ€ÐµÑ:Ð¿Ð¾Ñ€Ñ‚ Ð¸Ð»Ð¸ ssl://Ð°Ð´Ñ€ÐµÑ:Ð¿Ð¾Ñ€Ñ‚");
-                    JSONObject broker = new JSONObject();
-                    broker.put("uri", endpoint);
-                    broker.put("username", mqttFields[i][1].getText().toString());
-                    broker.put("password", mqttFields[i][2].getText().toString());
-                    getSharedPreferences("bloodsky_mqtt", MODE_PRIVATE).edit()
-                            .putString("server" + (i + 1), broker.toString()).apply();
-                }
-                projectExtraFields = updated;
-                persistProject();
-                settings.dismiss();
-                Toast.makeText(this, "ÐÐ°ÑÑ‚Ñ€Ð¾Ð¹ÐºÐ¸ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð° ÑÐ¾Ñ…Ñ€Ð°Ð½ÐµÐ½Ñ‹", Toast.LENGTH_SHORT).show();
-            } catch (IllegalArgumentException ex) {
-                Toast.makeText(this, ex.getMessage(), Toast.LENGTH_LONG).show();
-            } catch (Exception ex) {
-                Toast.makeText(this, "ÐžÑˆÐ¸Ð±ÐºÐ° ÑÐ¾Ñ…Ñ€Ð°Ð½ÐµÐ½Ð¸Ñ Ð½Ð°ÑÑ‚Ñ€Ð¾ÐµÐº", Toast.LENGTH_LONG).show();
-            }
-        }));
-        settings.show();
-    }
-
-    private EditText[] addMqttBrokerFields(LinearLayout form, int number) {
-        JSONObject saved;
-        try { saved = new JSONObject(getSharedPreferences("bloodsky_mqtt", MODE_PRIVATE)
-                .getString("server" + number, "{}")); }
-        catch (Exception invalid) { saved = new JSONObject(); }
-        TextView title = new TextView(this);
-        title.setText("MQTT ÑÐµÑ€Ð²ÐµÑ€ " + number + " (Craft)");
-        title.setPadding(0, dp(12), 0, 0);
-        form.addView(title);
-        EditText uri = propertyField(saved.optString("uri", ""), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        uri.setHint("tcp://192.168.1.10:1883 Ð¸Ð»Ð¸ ssl://broker:8883"); form.addView(uri);
-        EditText username = propertyField(saved.optString("username", ""), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        username.setHint("Ð›Ð¾Ð³Ð¸Ð½ (Ð½ÐµÐ¾Ð±ÑÐ·Ð°Ñ‚ÐµÐ»ÑŒÐ½Ð¾)"); form.addView(username);
-        EditText password = propertyField(saved.optString("password", ""), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        password.setHint("ÐŸÐ°Ñ€Ð¾Ð»ÑŒ (Ð½ÐµÐ¾Ð±ÑÐ·Ð°Ñ‚ÐµÐ»ÑŒÐ½Ð¾)"); form.addView(password);
-        return new EditText[]{uri, username, password};
-    }
-
-    private void showEditor() {
-        setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-        root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.rgb(35, 35, 35));
-        android.widget.FrameLayout area = new android.widget.FrameLayout(this);
-        android.widget.ImageButton reveal = editorIcon(R.drawable.kc_menu_app_bar, "ÐŸÐ¾ÐºÐ°Ð·Ð°Ñ‚ÑŒ Ð¿Ð°Ð½ÐµÐ»ÑŒ");
-        final View[] toolbar = new View[1];
-        toolbar[0] = OriginalEditorToolbar.create(root, currentScreenName(), operatorMode, new OriginalEditorToolbar.Host() {
-            public void hide() { toolbar[0].setVisibility(View.GONE); reveal.setVisibility(View.VISIBLE); }
-            public void toggleMode() { toggleOperatorMode(); }
-            public void previous() { previousScreen(); }
-            public void next() { nextScreen(); }
-            public void renameScreen() { renameCurrentScreen(); }
-            public void calculator() { showOriginalCalculator(); }
-            public void menu(View anchor) { showEditorCommands(anchor); }
-        });
-        root.addView(toolbar[0], new LinearLayout.LayoutParams(-1, -2));
-        editor = new EditorCanvas();
-        editor.setContentDescription(operatorMode ? "Ð Ð°Ð±Ð¾Ñ‡Ð¸Ð¹ ÑÐºÑ€Ð°Ð½" : "Ð ÐµÐ´Ð°ÐºÑ‚Ð¾Ñ€ ÑÐºÑ€Ð°Ð½Ð°");
-        if (operatorMode) {
-            area.addView(editor, new android.widget.FrameLayout.LayoutParams(-1, -1));
-        } else {
-            // Keep the visible Craft-style screen viewport, but give the editor a
-            // larger scrollable design surface so dense FBD graphs are not capped
-            // by the current device dimensions.
-            android.widget.ScrollView verticalWorkspace = new android.widget.ScrollView(this);
-            verticalWorkspace.setFillViewport(true);
-            verticalWorkspace.setVerticalScrollBarEnabled(true);
-            verticalWorkspace.setSmoothScrollingEnabled(false);
-            int workspaceHeight = dp(2400);
-            // ScrollView measures a custom View's vertical axis as unspecified;
-            // keep the design surface taller than the viewport for real scroll range.
-            editor.setMinimumHeight(workspaceHeight);
-            verticalWorkspace.addView(editor,
-                    new android.widget.ScrollView.LayoutParams(-1, workspaceHeight));
-            area.addView(verticalWorkspace,
-                    new android.widget.FrameLayout.LayoutParams(-1, -1));
-        }
-        reveal.setVisibility(View.GONE);
-        reveal.setOnClickListener(v -> { reveal.setVisibility(View.GONE); toolbar[0].setVisibility(View.VISIBLE); });
-        android.widget.FrameLayout.LayoutParams revealParams = new android.widget.FrameLayout.LayoutParams(dp(40), dp(40), Gravity.TOP | Gravity.LEFT);
-        revealParams.leftMargin = dp(10); revealParams.topMargin = dp(5);
-        area.addView(reveal, revealParams);
-        if (!operatorMode) {
-            android.widget.ImageButton palette = editorIcon(R.drawable.kc_menu_bar_component, "Ð”Ð¾Ð±Ð°Ð²Ð¸Ñ‚ÑŒ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚");
-            palette.setOnClickListener(v -> showAddWidgetMenu());
-            android.widget.FrameLayout.LayoutParams paletteParams = new android.widget.FrameLayout.LayoutParams(dp(40), dp(40), Gravity.BOTTOM | Gravity.LEFT);
-            paletteParams.setMargins(dp(15), dp(15), dp(15), dp(15));
-            area.addView(palette, paletteParams);
-        }
-        root.addView(area, new LinearLayout.LayoutParams(-1, 0, 1));
-        if (!operatorMode) {
-            View actions = OriginalSelectionActions.create(root, this::cutSelectedWidget,
-                    this::copySelectedWidget, this::pasteWidget, this::showAlignDialog);
-            LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(-2, -2);
-            actionParams.gravity = Gravity.CENTER_HORIZONTAL;
-            root.addView(actions, actionParams);
-        }
-        configureCraftServiceRegisters();
-        if (activityResumed) {
-            mainHandler.removeCallbacks(craftServiceRegisterTicker);
-            mainHandler.postDelayed(craftServiceRegisterTicker, 1000L);
-        }
-        setContentView(root);
-        EditorCanvas attachedEditor = editor;
-        // A landscape orientation change can attach the new editor tree before its first
-        // measure/draw pass. Invalidate after attachment so the canvas is not left as the
-        // transparent root background in emulator captures and on slower devices.
-        attachedEditor.post(() -> {
-            if (editor == attachedEditor) {
-                attachedEditor.requestLayout();
-                attachedEditor.invalidate();
-            }
-        });
-        startModbusPolling(); startFbdSensors(); startCraftMqtt();
-        refreshIncomingSmsReceiver();
-    }
-
-    private android.widget.ImageButton editorIcon(int drawable, String description) {
-        android.widget.ImageButton button = new android.widget.ImageButton(this);
-        button.setBackgroundColor(Color.TRANSPARENT); button.setImageResource(drawable);
-        button.setScaleType(android.widget.ImageView.ScaleType.FIT_XY); button.setPadding(0, 0, 0, 0);
-        button.setContentDescription(description); return button;
-    }
-
-    private void showOriginalCalculator() {
-        if (getFragmentManager().findFragmentByTag("original-calculator") == null)
-            new OriginalCalculatorDialog().show(getFragmentManager(), "original-calculator");
-    }
-
-    private void toggleOperatorMode() {
-        if (nestedMacroEdit != null) return;
-        if (!persistProjectNow(true)) return;
-        // Editing must not advance timers. Re-entering runtime starts a fresh
-        // clock epoch rather than resuming an old saved elapsedRealtime value.
-        if (!operatorMode) {
-            FbdCraftRegisterStore.clear();
-            FbdCraftNamedVariableStore.clear();
-            for (Widget value : widgets) {
-                resetFbdTimerRuntime(value);
-                value.craftMqttLastEnable = false;
-                value.craftMqttValue = null;
-            }
-        }
-        operatorMode = !operatorMode; fbdWireMode = false; wireSource = -1;
-        if (!operatorMode) for (Widget value : widgets) if (isCraftOdTempSource(value.type)) {
-            value.craftSensorValid = false; value.craftOdTempNextPollAt = 0L;
-        }
-        showEditor();
-    }
-
-    private void showEditorCommands(View anchor) {
-        if (nestedMacroEdit != null) {
-            showEditorAdvancedCommands(anchor);
-            return;
-        }
-        LinearLayout rows = new LinearLayout(this);
-        rows.setOrientation(LinearLayout.VERTICAL);
-        rows.setPadding(0, dp(4), 0, dp(4));
-        rows.setBackgroundColor(Color.rgb(35, 35, 35));
-        addSourceMenuRow(rows, "Ð£ÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð° / ÑÐµÑ€Ð²ÐµÑ€Ñ‹", "Ð›Ð¾ÐºÐ°Ð»ÑŒÐ½Ñ‹Ðµ TCP-Ð¿Ñ€Ð¸Ð²ÑÐ·ÐºÐ¸ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°", true,
-                this::showBoundProjectDevices);
-        addSourceMenuRow(rows, "ÐŸÐ°Ñ€Ð¾Ð»ÑŒ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°", "Ð—Ð°Ñ‰Ð¸Ñ‰Ñ‘Ð½Ð½Ð°Ñ Ð±Ð»Ð¾ÐºÐ¸Ñ€Ð¾Ð²ÐºÐ° Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð° Ð¿Ð¾ÐºÐ° Ð½Ðµ Ð¿Ð¾Ð´ÐºÐ»ÑŽÑ‡ÐµÐ½Ð°", false, null);
-        boolean station = projectExtraFields.optInt("stationMode", 0) == 1;
-        addSourceMenuRow(rows, station ? "Ð ÐµÐ¶Ð¸Ð¼ ÑÑ‚Ð°Ð½Ñ†Ð¸Ð¸: Ð¡Ð»ÐµÐ¹Ð²" : "Ð ÐµÐ¶Ð¸Ð¼ ÑÑ‚Ð°Ð½Ñ†Ð¸Ð¸: ÐœÐ°ÑÑ‚ÐµÑ€",
-                "Ð˜Ð·Ð¼ÐµÐ½Ð¸Ñ‚ÑŒ ÑÐ¾Ñ…Ñ€Ð°Ð½Ñ‘Ð½Ð½Ñ‹Ð¹ Ñ€ÐµÐ¶Ð¸Ð¼; ÑÐµÑ€Ð²ÐµÑ€ Ð½Ðµ Ð·Ð°Ð¿ÑƒÑÐºÐ°ÐµÑ‚ÑÑ", true, () -> {
-                    try {
-                        projectExtraFields.put("stationMode", station ? 0 : 1);
-                        persistProject();
-                        showEditor();
-                    } catch (Exception failure) {
-                        Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ ÑÐ¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ñ€ÐµÐ¶Ð¸Ð¼ ÑÑ‚Ð°Ð½Ñ†Ð¸Ð¸", Toast.LENGTH_LONG).show();
-                    }
-                });
-        addSourceMenuRow(rows, "ÐŸÐ¾ÐºÐ°Ð·Ñ‹Ð²Ð°Ñ‚ÑŒ Ñ‚Ð°Ð¹Ð¼-Ð°ÑƒÑ‚Ñ‹", "ÐžÑ‚Ð´ÐµÐ»ÑŒÐ½Ð¾Ðµ Ð¾Ñ‚Ð¾Ð±Ñ€Ð°Ð¶ÐµÐ½Ð¸Ðµ Ñ‚Ð°Ð¹Ð¼-Ð°ÑƒÑ‚Ð¾Ð² Ð¿Ð¾ÐºÐ° Ð½Ðµ Ð¿Ð¾Ð´ÐºÐ»ÑŽÑ‡ÐµÐ½Ð¾", false, null);
-        // Craft includes the Wi-Fi-to-USB row only when its hidden feature flag is enabled.
-        addSourceMenuRow(rows, "Ð¡ÐµÑ‚ÐµÐ²Ð¾Ðµ ÑƒÐ¿Ñ€Ð°Ð²Ð»ÐµÐ½Ð¸Ðµ", "Modbus TCP Slave-ÑÐµÑ€Ð²ÐµÑ€ Ð¿Ð¾ÐºÐ° Ð½Ðµ Ñ€ÐµÐ°Ð»Ð¸Ð·Ð¾Ð²Ð°Ð½", false, null);
-        addSourceMenuRow(rows, "Ð Ð°Ð±Ð¾Ñ‚Ð° Ð² Ñ„Ð¾Ð½Ðµ", "Ð¤Ð¾Ð½Ð¾Ð²Ñ‹Ð¹ ÑÐµÑ€Ð²Ð¸Ñ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð° Ð¿Ð¾ÐºÐ° Ð½Ðµ Ñ€ÐµÐ°Ð»Ð¸Ð·Ð¾Ð²Ð°Ð½", false, null);
-        View divider = new View(this);
-        divider.setBackgroundColor(Color.rgb(75, 75, 75));
-        rows.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
-        addSourceMenuRow(rows, "Ð”Ð¾Ð¿Ð¾Ð»Ð½Ð¸Ñ‚ÐµÐ»ÑŒÐ½Ñ‹Ðµ Ð´ÐµÐ¹ÑÑ‚Ð²Ð¸Ñ BLOODSKYâ€¦", "ÐŸÑ€Ð¾ÐµÐºÑ‚, ÑÐºÑ€Ð°Ð½Ñ‹, FBD, Ð¸Ð½Ñ‚ÐµÐ³Ñ€Ð°Ñ†Ð¸Ð¸ Ð¸ Ð´Ð¸Ð°Ð³Ð½Ð¾ÑÑ‚Ð¸ÐºÐ°", true,
-                () -> showEditorAdvancedCommands(anchor));
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-        scroll.addView(rows);
-        android.widget.PopupWindow popup = new android.widget.PopupWindow(scroll, dp(292),
-                Math.min(dp(560), getResources().getDisplayMetrics().heightPixels - dp(48)), true);
-        sourceOverflowPopup = popup;
-        popup.setOnDismissListener(() -> { if (sourceOverflowPopup == popup) sourceOverflowPopup = null; });
-        popup.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.rgb(35, 35, 35)));
-        popup.setOutsideTouchable(true);
-        popup.setElevation(dp(8));
-        popup.setTouchable(true);
-        popup.showAsDropDown(anchor, -dp(292) + anchor.getWidth(), 0, Gravity.END);
-    }
-
-    private void addSourceMenuRow(LinearLayout parent, String title, String detail, boolean enabled, Runnable action) {
-        LinearLayout row = new LinearLayout(this);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setOrientation(LinearLayout.VERTICAL);
-        row.setPadding(dp(16), dp(8), dp(12), dp(8));
-        TextView heading = new TextView(this);
-        heading.setText(title); heading.setTextSize(15); heading.setMaxLines(2);
-        heading.setTextColor(enabled ? Color.rgb(238, 238, 238) : Color.rgb(142, 142, 142));
-        row.addView(heading, new LinearLayout.LayoutParams(-1, -2));
-        if (detail != null && !detail.isEmpty()) {
-            TextView caption = new TextView(this);
-            caption.setText(detail); caption.setTextSize(11); caption.setMaxLines(2);
-            caption.setTextColor(enabled ? Color.rgb(174, 174, 174) : Color.rgb(112, 112, 112));
-            row.addView(caption, new LinearLayout.LayoutParams(-1, -2));
-        }
-        row.setMinimumHeight(dp(52));
-        row.setEnabled(enabled);
-        if (enabled && action != null) {
-            row.setBackgroundResource(android.R.drawable.list_selector_background);
-            row.setOnClickListener(v -> {
-                if (sourceOverflowPopup != null) sourceOverflowPopup.dismiss();
-                action.run();
-            });
-        }
-        parent.addView(row, new LinearLayout.LayoutParams(-1, -2));
-    }
-
-    private void showBoundProjectDevices() {
-        java.util.Map<String, Integer> endpoints = new java.util.TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        for (Widget widget : widgets) {
-            String binding = widget.connectionInfo == null ? "" : widget.connectionInfo.trim();
-            if (binding.startsWith("tcp://")) {
-                Integer count = endpoints.get(binding);
-                endpoints.put(binding, count == null ? 1 : count + 1);
-            }
-        }
-        StringBuilder text = new StringBuilder();
-        if (endpoints.isEmpty()) text.append("Ð’ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ðµ Ð¿Ð¾ÐºÐ° Ð½ÐµÑ‚ Ð»Ð¾ÐºÐ°Ð»ÑŒÐ½Ñ‹Ñ… TCP-Ð¿Ñ€Ð¸Ð²ÑÐ·Ð¾Ðº.");
-        else for (Map.Entry<String, Integer> endpoint : endpoints.entrySet())
-            text.append(endpoint.getKey()).append("  Â·  ÐºÐ¾Ð¼Ð¿Ð¾Ð½ÐµÐ½Ñ‚Ð¾Ð²: ").append(endpoint.getValue()).append('\n');
-        new AlertDialog.Builder(this).setTitle("Ð£ÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð° / ÑÐµÑ€Ð²ÐµÑ€Ñ‹ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°")
-                .setMessage(text.toString()).setPositiveButton("Ð—Ð°ÐºÑ€Ñ‹Ñ‚ÑŒ", null).show();
-    }
-
-    private void showEditorAdvancedCommands(View anchor) {
-        android.widget.PopupMenu menu = new android.widget.PopupMenu(this, anchor);
-        if (nestedMacroEdit != null) {
-            menu.getMenu().add("Ð¡Ð¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ð²Ð»Ð¾Ð¶ÐµÐ½Ð½Ñ‹Ð¹ Ð³Ñ€Ð°Ñ„").setOnMenuItemClickListener(item -> {
-                if (persistProjectNow(true))
-                    Toast.makeText(this, "Ð’Ð»Ð¾Ð¶ÐµÐ½Ð½Ñ‹Ð¹ Ð³Ñ€Ð°Ñ„ ÑÐ¾Ñ…Ñ€Ð°Ð½Ñ‘Ð½", Toast.LENGTH_SHORT).show();
-                return true;
-            });
-            menu.getMenu().add("Ð’ÐµÑ€Ð½ÑƒÑ‚ÑŒÑÑ Ð½Ð° ÑÐºÑ€Ð°Ð½").setOnMenuItemClickListener(item -> {
-                closeNestedMacroGraphEditor(); return true;
-            });
-            menu.show();
-            return;
-        }
-        if (!operatorMode) {
-            menu.getMenu().add("Ð˜Ð¼Ñ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°").setOnMenuItemClickListener(item -> { editProjectName(); return true; });
-            menu.getMenu().add("ÐÐ°ÑÑ‚Ñ€Ð¾Ð¹ÐºÐ¸ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°").setOnMenuItemClickListener(item -> { showProjectSettingsDialog(); return true; });
-            menu.getMenu().add("Ð¡Ð¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ð¿Ñ€Ð¾ÐµÐºÑ‚").setOnMenuItemClickListener(item -> { persistProject(); return true; });
-            menu.getMenu().add("Ð”Ð¾Ð±Ð°Ð²Ð¸Ñ‚ÑŒ ÑÐºÑ€Ð°Ð½").setOnMenuItemClickListener(item -> { addScreen(); return true; });
-            menu.getMenu().add("Ð£Ð´Ð°Ð»Ð¸Ñ‚ÑŒ ÑÐºÑ€Ð°Ð½").setOnMenuItemClickListener(item -> { removeCurrentScreen(); return true; });
-            menu.getMenu().add("Ð¤Ð¾Ð½ ÑÐºÑ€Ð°Ð½Ð°").setOnMenuItemClickListener(item -> { editScreenBackground(); return true; });
-            menu.getMenu().add(fbdWireMode ? "Ð’Ñ‹ÐºÐ»ÑŽÑ‡Ð¸Ñ‚ÑŒ ÑÐ²ÑÐ·ÑŒ FBD" : "Ð¡Ð²ÑÐ·Ð°Ñ‚ÑŒ FBD").setOnMenuItemClickListener(item -> {
-                fbdWireMode = !fbdWireMode; wireSource = -1; showEditor(); return true;
-            });
-            menu.getMenu().add("Ð£Ð´Ð°Ð»Ð¸Ñ‚ÑŒ ÑÐ²ÑÐ·ÑŒ FBDâ€¦").setOnMenuItemClickListener(item -> {
-                showFbdDisconnectDialog(); return true;
-            });
-            menu.getMenu().add("Ð˜Ð½Ð²ÐµÑ€Ñ‚Ð¸Ñ€Ð¾Ð²Ð°Ñ‚ÑŒ BOOL-ÑÐ²ÑÐ·ÑŒ FBDâ€¦").setOnMenuItemClickListener(item -> {
-                showFbdInversionDialog(); return true;
-            });
-            if (currentScreenIndex >= 0 && currentScreenIndex < screens.size()) {
-                Screen current = screens.get(currentScreenIndex);
-                if (fbdWireHistory.canUndo(current))
-                    menu.getMenu().add("ÐžÑ‚Ð¼ÐµÐ½Ð¸Ñ‚ÑŒ ÑÐ²ÑÐ·ÑŒ FBD").setOnMenuItemClickListener(item -> {
-                        replayFbdWireEdit(false); return true;
-                    });
-                if (fbdWireHistory.canRedo(current))
-                    menu.getMenu().add("ÐŸÐ¾Ð²Ñ‚Ð¾Ñ€Ð¸Ñ‚ÑŒ ÑÐ²ÑÐ·ÑŒ FBD").setOnMenuItemClickListener(item -> {
-                        replayFbdWireEdit(true); return true;
-                    });
-            }
-        }
-        menu.getMenu().add("Telegram â€” Ð½Ð°ÑÑ‚Ñ€Ð¾Ð¹ÐºÐ¸ Ð¸ Ñ‚ÐµÑÑ‚").setOnMenuItemClickListener(item -> {
-            showTelegramSettingsDialog(); return true;
-        });
-        menu.getMenu().add("Ð£Ð¼Ð½Ñ‹Ð¹ Ð´Ð¾Ð¼ â€” Home Assistant / Xiaomi").setOnMenuItemClickListener(item -> {
-            showHomeAssistantDialog(); return true;
-        });
-        menu.getMenu().add("Ð£Ð¼Ð½Ñ‹Ð¹ Ð´Ð¾Ð¼ â€” Ð¯Ð½Ð´ÐµÐºÑ").setOnMenuItemClickListener(item -> { showYandexSmartHomeDialog(); return true; });
-        menu.getMenu().add("Ð“Ð¾Ð»Ð¾ÑÐ¾Ð²Ð¾Ð¹ Ð¿Ð¾Ð¼Ð¾Ñ‰Ð½Ð¸Ðº").setOnMenuItemClickListener(item -> { showVoiceModeDialog(); return true; });
-        menu.getMenu().add("Modbus").setOnMenuItemClickListener(item -> { showModbusDiagnostics(); return true; });
-        menu.getMenu().add("Ð“Ð»Ð°Ð²Ð½Ð¾Ðµ Ð¼ÐµÐ½ÑŽ").setOnMenuItemClickListener(item -> {
-            if (persistProjectNow(true)) showHome(); return true;
-        });
-        menu.show();
-    }
-
-    private void showYandexSmartHomeDialog() {
-        LinearLayout form=new LinearLayout(this);form.setOrientation(LinearLayout.VERTICAL);form.setPadding(dp(20),dp(8),dp(20),dp(4));
-        TextView note=new TextView(this);
-        note.setText("Ð¡Ð¾Ð·Ð´Ð°Ð¹ Ð¿Ñ€Ð¸Ð»Ð¾Ð¶ÐµÐ½Ð¸Ðµ Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð° Ðº API Ð² Ð¯Ð½Ð´ÐµÐºÑ OAuth (https://oauth.yandex.ru/client/new/) Ñ Ð¿Ñ€Ð°Ð²Ð°Ð¼Ð¸ iot:view Ð¸ iot:control, Ð·Ð°Ñ‚ÐµÐ¼ Ð²ÑÑ‚Ð°Ð²ÑŒ OAuth-Ñ‚Ð¾ÐºÐµÐ½. Ð¡Ð¿Ð¸ÑÐ¾Ðº ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð² Ð´Ð¾ÑÑ‚ÑƒÐ¿ÐµÐ½ Ð´Ð»Ñ Ð¿Ñ€Ð¾ÑÐ¼Ð¾Ñ‚Ñ€Ð°; Ð·Ð°Ð¿ÑƒÑÐº ÑÑ†ÐµÐ½Ð°Ñ€Ð¸Ñ Ð²ÑÐµÐ³Ð´Ð° Ð¾Ñ‚Ð´ÐµÐ»ÑŒÐ½Ð¾ Ð¿Ð¾Ð´Ñ‚Ð²ÐµÑ€Ð¶Ð´Ð°ÐµÑ‚ÑÑ. Ð¢Ð¾ÐºÐµÐ½ ÑˆÐ¸Ñ„Ñ€ÑƒÐµÑ‚ÑÑ Android Keystore Ð¸ Ð½Ðµ Ð¿Ð¾Ð¿Ð°Ð´Ð°ÐµÑ‚ Ð² Ð¿Ñ€Ð¾ÐµÐºÑ‚.");
-        note.setAutoLinkMask(android.text.util.Linkify.WEB_URLS);form.addView(note);
-        EditText token=propertyField("",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD|InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        token.setSingleLine(true);token.setHint("OAuth-Ñ‚Ð¾ÐºÐµÐ½ (Ð¿ÑƒÑÑ‚Ð¾, ÐµÑÐ»Ð¸ ÑƒÐ¶Ðµ ÑÐ¾Ñ…Ñ€Ð°Ð½Ñ‘Ð½)");form.addView(token);
-        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Ð¯Ð½Ð´ÐµÐºÑ Ð£Ð¼Ð½Ñ‹Ð¹ Ð´Ð¾Ð¼")
-                .setView(form).setPositiveButton("ÐŸÐ¾Ð´ÐºÐ»ÑŽÑ‡Ð¸Ñ‚ÑŒ",null).setNegativeButton("ÐžÑ‚ÐºÐ»ÑŽÑ‡Ð¸Ñ‚ÑŒ",null).setNeutralButton("Ð—Ð°ÐºÑ€Ñ‹Ñ‚ÑŒ",null).create();
-        dialog.setOnShowListener(ignored->{
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
-                final String entered=token.getText().toString().trim();String access=entered;
-                if(access.isEmpty())try{access=YandexTokenStore.read(this);}catch(Exception failure){Toast.makeText(this,"ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¿Ñ€Ð¾Ñ‡Ð¸Ñ‚Ð°Ñ‚ÑŒ Ñ‚Ð¾ÐºÐµÐ½; Ð²Ð²ÐµÐ´Ð¸ ÐµÐ³Ð¾ ÑÐ½Ð¾Ð²Ð°",Toast.LENGTH_LONG).show();return;}
-                if(access.isEmpty()){Toast.makeText(this,"ÐÑƒÐ¶ÐµÐ½ OAuth-Ñ‚Ð¾ÐºÐµÐ½ Ð¯Ð½Ð´ÐµÐºÑ Ð£Ð¼Ð½Ð¾Ð³Ð¾ Ð´Ð¾Ð¼Ð°",Toast.LENGTH_LONG).show();return;}
-                final String finalToken=access;dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
-                yandexExecutor.execute(()->{
-                    List<YandexSmartHomeClient.Item> items=null;String error=null;
-                    try{items=YandexSmartHomeClient.getHome(finalToken);}catch(Exception failure){error=failure.getMessage();}
-                    final List<YandexSmartHomeClient.Item> result=items;final String problem=error;
-                    runOnUiThread(()->{
-                        if(isFinishing()||isDestroyed())return;
-                        if(dialog.isShowing())dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
-                        if(problem!=null){Toast.makeText(this,"Ð¯Ð½Ð´ÐµÐºÑ: "+(problem.contains("HTTP 401")?"Ñ‚Ð¾ÐºÐµÐ½ Ð¾Ñ‚ÐºÐ»Ð¾Ð½Ñ‘Ð½ (401)":"Ð½Ðµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð·Ð°Ð³Ñ€ÑƒÐ·Ð¸Ñ‚ÑŒ ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð°; Ð¿Ñ€Ð¾Ð²ÐµÑ€ÑŒ Ñ‚Ð¾ÐºÐµÐ½ Ð¸ Ð¸Ð½Ñ‚ÐµÑ€Ð½ÐµÑ‚"),Toast.LENGTH_LONG).show();return;}
-                        try{if(!entered.isEmpty())YandexTokenStore.save(this,entered);}catch(Exception failure){Toast.makeText(this,"Ð¢Ð¾ÐºÐµÐ½ Ð½Ðµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ ÑÐ¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ð±ÐµÐ·Ð¾Ð¿Ð°ÑÐ½Ð¾",Toast.LENGTH_LONG).show();}
-                        dialog.dismiss();showYandexSmartHomeItems(result,finalToken);
-                    });
-                });
-            });
-            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(v->new AlertDialog.Builder(this)
-                    .setTitle("ÐžÑ‚ÐºÐ»ÑŽÑ‡Ð¸Ñ‚ÑŒ Ð¯Ð½Ð´ÐµÐºÑ?").setMessage("Ð£Ð´Ð°Ð»Ð¸Ñ‚ÑŒ ÑÐ¾Ñ…Ñ€Ð°Ð½Ñ‘Ð½Ð½Ñ‹Ð¹ Ñ‚Ð¾ÐºÐµÐ½?")
-                    .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°",null).setPositiveButton("Ð£Ð´Ð°Ð»Ð¸Ñ‚ÑŒ",(d,w)->{YandexTokenStore.clear(this);dialog.dismiss();Toast.makeText(this,"Ð¯Ð½Ð´ÐµÐºÑ Ð¾Ñ‚ÐºÐ»ÑŽÑ‡Ñ‘Ð½",Toast.LENGTH_SHORT).show();}).show());
-        });
-        dialog.show();
-    }
-
-    private void showYandexSmartHomeItems(List<YandexSmartHomeClient.Item> items,String token) {
-        if(items==null||items.isEmpty()){new AlertDialog.Builder(this).setTitle("Ð¯Ð½Ð´ÐµÐºÑ Ð£Ð¼Ð½Ñ‹Ð¹ Ð´Ð¾Ð¼").setMessage("Ð£ÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð° Ð¸ ÑÑ†ÐµÐ½Ð°Ñ€Ð¸Ð¸ Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½Ñ‹.").setPositiveButton("ÐžÐš",null).show();return;}
-        ArrayList<YandexSmartHomeClient.Item> shown=new ArrayList<>(items.subList(0,Math.min(300,items.size())));
-        android.widget.ListView list=new android.widget.ListView(this);list.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_list_item_1,shown));
-        AlertDialog homeDialog=new AlertDialog.Builder(this).setTitle("Ð¯Ð½Ð´ÐµÐºÑ: ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð° Ð¸ ÑÑ†ÐµÐ½Ð°Ñ€Ð¸Ð¸").setView(list).setPositiveButton("Ð“Ð¾Ñ‚Ð¾Ð²Ð¾",null).create();
-        list.setOnItemClickListener((parent,view,position,id)->{
-            YandexSmartHomeClient.Item selected=shown.get(position);
-            if(!selected.scenario){Toast.makeText(this,"Ð£ÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð¾ Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð½Ð¾ Ñ‡ÐµÑ€ÐµÐ· ÐµÐ³Ð¾ capabilities; Ð¿Ñ€ÑÐ¼Ð¾Ðµ ÑƒÐ¿Ñ€Ð°Ð²Ð»ÐµÐ½Ð¸Ðµ Ð¿Ð¾ÐºÐ° Ð½Ðµ Ð²ÐºÐ»ÑŽÑ‡ÐµÐ½Ð¾",Toast.LENGTH_SHORT).show();return;}
-            new AlertDialog.Builder(this).setTitle("Ð—Ð°Ð¿ÑƒÑÑ‚Ð¸Ñ‚ÑŒ ÑÑ†ÐµÐ½Ð°Ñ€Ð¸Ð¹?").setMessage("Ð—Ð°Ð¿ÑƒÑÑ‚Ð¸Ñ‚ÑŒ Â«"+selected.name+"Â»?")
-                    .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°",null).setPositiveButton("Ð—Ð°Ð¿ÑƒÑÑ‚Ð¸Ñ‚ÑŒ",(d,w)->{
-                        yandexExecutor.execute(()->{String error=null;try{YandexSmartHomeClient.launchScenario(token,selected.id);}catch(Exception failure){error=failure.getMessage();}
-                            final String problem=error;runOnUiThread(()->{if(isFinishing()||isDestroyed())return;if(problem!=null)Toast.makeText(this,"Ð¯Ð½Ð´ÐµÐºÑ: ÑÑ†ÐµÐ½Ð°Ñ€Ð¸Ð¹ Ð½Ðµ Ð·Ð°Ð¿ÑƒÑ‰ÐµÐ½",Toast.LENGTH_LONG).show();else{homeDialog.dismiss();Toast.makeText(this,"Ð¡Ñ†ÐµÐ½Ð°Ñ€Ð¸Ð¹ Ð·Ð°Ð¿ÑƒÑ‰ÐµÐ½",Toast.LENGTH_SHORT).show();}});});
-                    }).show();
-        });
-        homeDialog.show();
-    }
-
-    private void sendSmsNotification(Widget widget,String value) {
-        if (!operatorMode || !activityResumed) return;
-        String phone = "";
-        try { phone = SmsRecipientStore.read(this, widget.extraFields.optString("smsRecipientId", "")); }
-        catch (Exception ignored) {}
-        if (!SmsNotificationClient.isValidPhone(phone)) {
-            Toast.makeText(this, "Ð£ SMS-ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚Ð° Ð½Ðµ Ð½Ð°ÑÑ‚Ñ€Ð¾ÐµÐ½ Ð½Ð¾Ð¼ÐµÑ€ Ð¿Ð¾Ð»ÑƒÑ‡Ð°Ñ‚ÐµÐ»Ñ", Toast.LENGTH_LONG).show(); return;
-        }
-        if(!getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_TELEPHONY)) {
-            Toast.makeText(this,"Ð­Ñ‚Ð¾ ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð¾ Ð½Ðµ Ð¿Ð¾Ð´Ð´ÐµÑ€Ð¶Ð¸Ð²Ð°ÐµÑ‚ SMS Ñ‡ÐµÑ€ÐµÐ· SIM",Toast.LENGTH_LONG).show();return;
-        }
-        if(checkSelfPermission(android.Manifest.permission.SEND_SMS)!=android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{android.Manifest.permission.SEND_SMS},REQUEST_SMS_SEND_PERMISSION);return;
-        }
-        int count = widget.extraFields.optInt("smsRegisterCount", 1);
-        if (count < 1 || count > 8) { Toast.makeText(this, "ÐšÐ¾Ð»Ð¸Ñ‡ÐµÑÑ‚Ð²Ð¾ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð¾Ð² SMS Ð´Ð¾Ð»Ð¶Ð½Ð¾ Ð±Ñ‹Ñ‚ÑŒ 1â€“8", Toast.LENGTH_LONG).show(); return; }
-        BindingRequest source = parseBinding(-1, widget.connectionInfo, count);
-        if (source == null || (source.functionCode != 3 && source.functionCode != 4)) {
-            Toast.makeText(this, "Ð£ÐºÐ°Ð¶Ð¸ ÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ñ‹Ð¹ Ð°Ð´Ñ€ÐµÑ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð° Ð´Ð»Ñ SMS", Toast.LENGTH_LONG).show(); return;
-        }
-        final String destination = phone, template = widget.text, triggerValue = value;
-        final String host = source.host;
-        final int port = source.port, unit = source.unit, address = source.address;
-        final int functionCode = source.functionCode;
-        final long sessionToken = pollSession.token();
-        smsExecutor.execute(() -> {
-            String message;
-            boolean readFailed = false;
-            try {
-                int[] registers = new ModbusTcpClient(host, port).read(unit, address, count, functionCode);
-                String[] values = new String[registers.length];
-                for (int i = 0; i < registers.length; i++) values[i] = Integer.toString(registers[i]);
-                message = SmsOutgoingTemplate.render(template, values, triggerValue);
-            } catch (Exception failure) {
-                message = SmsNotificationClient.message(template, triggerValue) + " !NO RESPONSE!";
-                readFailed = true;
-            }
-            if (!pollSession.accepts(sessionToken) || !activityResumed || !operatorMode) return;
-            boolean sent = false;
-            try { SmsNotificationClient.send(this, destination, message); sent = true; }
-            catch (Exception ignored) {}
-            final boolean success = sent, noResponse = readFailed;
-            runOnUiThread(() -> {
-                if (!pollSession.accepts(sessionToken) || !activityResumed || !operatorMode) return;
-                Toast.makeText(this, success ? (noResponse ? "SMS Ð¾Ñ‚Ð¿Ñ€Ð°Ð²Ð»ÐµÐ½Ð¾: ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð¾ Ð½Ðµ Ð¾Ñ‚Ð²ÐµÑ‚Ð¸Ð»Ð¾"
-                        : "SMS Ð¾Ñ‚Ð¿Ñ€Ð°Ð²Ð»ÐµÐ½Ð¾ Ñ‡ÐµÑ€ÐµÐ· SIM") : "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¾Ñ‚Ð¿Ñ€Ð°Ð²Ð¸Ñ‚ÑŒ SMS Ñ‡ÐµÑ€ÐµÐ· SIM", Toast.LENGTH_LONG).show();
-            });
-        });
-    }
-
-    private boolean hasConfiguredIncomingSms() {
-        if (!operatorMode || editor == null) return false;
-        for (Widget widget : widgets) {
-            if ("Ð’Ñ…Ð¾Ð´ÑÑ‰ÐµÐµ SMS".equals(widget.type) && widget.extraFields.optBoolean("smsEnabled", false))
-                return true;
-        }
-        return false;
-    }
-
-    private void refreshIncomingSmsReceiver() {
-        if (!activityResumed || !hasConfiguredIncomingSms()
-                || !getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_TELEPHONY)) {
-            unregisterIncomingSmsReceiver();
-            return;
-        }
-        if (checkSelfPermission(android.Manifest.permission.RECEIVE_SMS)
-                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            unregisterIncomingSmsReceiver();
-            if (!smsReceivePermissionRequested) {
-                smsReceivePermissionRequested = true;
-                requestPermissions(new String[]{android.Manifest.permission.RECEIVE_SMS}, REQUEST_SMS_RECEIVE_PERMISSION);
-            }
-            return;
-        }
-        if (incomingSmsReceiver != null) return;
-        incomingSmsReceiver = new SmsIncomingBroadcastReceiver(this::handleIncomingSms);
-        android.content.IntentFilter filter = new android.content.IntentFilter("android.provider.Telephony.SMS_RECEIVED");
-        if (android.os.Build.VERSION.SDK_INT >= 33)
-            registerReceiver(incomingSmsReceiver, filter, android.content.Context.RECEIVER_EXPORTED);
-        else registerReceiver(incomingSmsReceiver, filter);
-    }
-
-    private void unregisterIncomingSmsReceiver() {
-        if (incomingSmsReceiver == null) return;
-        try { unregisterReceiver(incomingSmsReceiver); } catch (IllegalArgumentException ignored) {}
-        incomingSmsReceiver = null;
-    }
-
-    private void handleIncomingSms(String sender, String body) {
-        if (!activityResumed || !operatorMode || editor == null || !hasConfiguredIncomingSms()) return;
-        final long sessionToken = pollSession.token();
-        for (Widget widget : new ArrayList<>(widgets)) {
-            if (!"Ð’Ñ…Ð¾Ð´ÑÑ‰ÐµÐµ SMS".equals(widget.type) || !widget.extraFields.optBoolean("smsEnabled", false)) continue;
-            final String allowedSender;
-            try { allowedSender = SmsRecipientStore.read(this, widget.extraFields.optString("smsSenderId", "")); }
-            catch (Exception invalid) { continue; }
-            String modeValue = widget.extraFields.optString("smsMode", "number");
-            SmsIncomingCommand.Mode mode = "bit".equals(modeValue)
-                    ? SmsIncomingCommand.Mode.SET_BIT : SmsIncomingCommand.Mode.REGISTER_NUMBER;
-            int bit = widget.extraFields.optInt("smsBit", 0);
-            SmsIncomingCommand.Result parsed = SmsIncomingCommand.parse(allowedSender, sender,
-                    widget.extraFields.optString("smsCommand", ""), body, mode, bit);
-            if (parsed == null) continue;
-            BindingRequest binding = parseBinding(-1, widget.connectionInfo);
-            if (binding == null || binding.functionCode != 3) continue;
-            final String host = binding.host;
-            final int port = binding.port, unit = binding.unit, address = binding.address;
-            final int[] values = parsed.registerValues.clone();
-            final boolean setStrobe = mode == SmsIncomingCommand.Mode.REGISTER_NUMBER
-                    && widget.extraFields.optBoolean("smsStrobeEnabled", false);
-            final BindingRequest strobeBinding = setStrobe
-                    ? parseBinding(-1, "tcp://" + host + ":" + port + "/" + unit + "/"
-                            + widget.extraFields.optInt("smsStrobeRegister", -1)) : null;
-            final int strobeBit = widget.extraFields.optInt("smsStrobeBit", 0);
-            if (setStrobe && (strobeBinding == null || strobeBinding.functionCode != 3
-                    || strobeBinding.unit != unit || strobeBit < 0 || strobeBit > 15)) continue;
-            modbusExecutor.execute(() -> {
-                if (!pollSession.accepts(sessionToken) || !activityResumed || !operatorMode) return;
-                Exception failure = null;
-                try {
-                    ModbusTcpClient client = new ModbusTcpClient(host, port);
-                    if (parsed.mode == SmsIncomingCommand.Mode.SET_BIT) {
-                        client.writeMask(unit, address, parsed.writeAndMask, parsed.writeOrMask);
-                    } else {
-                        if (values.length == 1) client.writeSingle(unit, address, values[0]);
-                        else client.writeMultiple(unit, address, values);
-                        if (setStrobe) {
-                            int mask = 1 << strobeBit;
-                            client.writeMask(unit, strobeBinding.address, 0xffff ^ mask, mask);
-                        }
-                    }
-                } catch (Exception error) { failure = error; }
-                final Exception result = failure;
-                runOnUiThread(() -> {
-                    if (!pollSession.accepts(sessionToken) || !activityResumed || !operatorMode) return;
-                    Toast.makeText(this, result == null ? "SMS-ÐºÐ¾Ð¼Ð°Ð½Ð´Ð° Ð²Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð°: Modbus Ð¾Ð±Ð½Ð¾Ð²Ð»Ñ‘Ð½"
-                            : "SMS-ÐºÐ¾Ð¼Ð°Ð½Ð´Ð° Ð¿Ñ€Ð¾Ð²ÐµÑ€ÐµÐ½Ð°, Ð½Ð¾ Ð·Ð°Ð¿Ð¸ÑÑŒ Modbus Ð½Ðµ Ð²Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð°", Toast.LENGTH_LONG).show();
-                });
-            });
-        }
-    }
-
-    private void showHomeAssistantDialog() {
-        android.content.SharedPreferences prefs = getSharedPreferences("bloodsky_homeassistant", MODE_PRIVATE);
-        LinearLayout form = new LinearLayout(this); form.setOrientation(LinearLayout.VERTICAL);
-        form.setPadding(dp(20), dp(8), dp(20), dp(4));
-        TextView note = new TextView(this);
-        note.setText("Ð›Ð¾ÐºÐ°Ð»ÑŒÐ½Ñ‹Ð¹ Home Assistant Ð¼Ð¾Ð¶ÐµÑ‚ Ð´Ð°Ñ‚ÑŒ Ð´Ð¾ÑÑ‚ÑƒÐ¿ Ðº Xiaomi Home Ð¸ Ð´Ñ€ÑƒÐ³Ð¸Ð¼ ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð°Ð¼. Ð’ Home Assistant ÑÐ¾Ð·Ð´Ð°Ð¹ access token Ð² Ð¿Ñ€Ð¾Ñ„Ð¸Ð»Ðµ. Ð¢Ð¾ÐºÐµÐ½ Ð±ÑƒÐ´ÐµÑ‚ Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒÑÑ Ð·Ð°ÑˆÐ¸Ñ„Ñ€Ð¾Ð²Ð°Ð½Ð½Ð¾ Ð² Android Keystore Ð¸ Ð½Ðµ Ð¿Ð¾Ð¿Ð°Ð´Ñ‘Ñ‚ Ð² Ð¿Ñ€Ð¾ÐµÐºÑ‚. Ð¡ÐµÐ¹Ñ‡Ð°Ñ Ð¿Ð¾Ð´ÐºÐ»ÑŽÑ‡ÐµÐ½Ð¸Ðµ Ñ‚Ð¾Ð»ÑŒÐºÐ¾ Ñ‡Ð¸Ñ‚Ð°ÐµÑ‚ ÑÐ¿Ð¸ÑÐ¾Ðº ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð² Ð¸ Ð¸Ñ… ÑÐ¾ÑÑ‚Ð¾ÑÐ½Ð¸Ðµ. HTTP Ð¸ÑÐ¿Ð¾Ð»ÑŒÐ·ÑƒÐ¹ Ñ‚Ð¾Ð»ÑŒÐºÐ¾ Ð² Ð´Ð¾Ð²ÐµÑ€ÐµÐ½Ð½Ð¾Ð¹ Ð´Ð¾Ð¼Ð°ÑˆÐ½ÐµÐ¹ ÑÐµÑ‚Ð¸; Ð´Ð»Ñ Ð²Ð½ÐµÑˆÐ½Ð¸Ñ… Ð°Ð´Ñ€ÐµÑÐ¾Ð² Ð½ÑƒÐ¶ÐµÐ½ HTTPS.");
-        form.addView(note);
-        EditText address = propertyField(prefs.getString("base_url", ""), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        address.setSingleLine(true); address.setHint("http://homeassistant.local:8123"); form.addView(address);
-        EditText token = propertyField("", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        token.setSingleLine(true); token.setHint("Access token (Ð¾ÑÑ‚Ð°Ð²ÑŒ Ð¿ÑƒÑÑ‚Ñ‹Ð¼, ÐµÑÐ»Ð¸ ÑÐ¾Ñ…Ñ€Ð°Ð½Ñ‘Ð½)"); form.addView(token);
-        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Home Assistant / Xiaomi")
-                .setView(form).setPositiveButton("ÐÐ°Ð¹Ñ‚Ð¸ ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð°", null)
-                .setNegativeButton("ÐžÑ‚ÐºÐ»ÑŽÑ‡Ð¸Ñ‚ÑŒ", null).setNeutralButton("Ð—Ð°ÐºÑ€Ñ‹Ñ‚ÑŒ", null).create();
-        dialog.setOnShowListener(ignored -> {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-                final String baseUrl = address.getText().toString().trim();
-                final String enteredToken = token.getText().toString().trim();
-                String accessToken = enteredToken;
-                if (accessToken.isEmpty()) try { accessToken = HomeAssistantTokenStore.read(this); }
-                catch (Exception failure) { Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¿Ñ€Ð¾Ñ‡Ð¸Ñ‚Ð°Ñ‚ÑŒ ÑÐ¾Ñ…Ñ€Ð°Ð½Ñ‘Ð½Ð½Ñ‹Ð¹ Ñ‚Ð¾ÐºÐµÐ½; Ð²Ð²ÐµÐ´Ð¸ ÐµÐ³Ð¾ Ð·Ð°Ð½Ð¾Ð²Ð¾", Toast.LENGTH_LONG).show(); return; }
-                if (accessToken.isEmpty()) { Toast.makeText(this, "ÐÑƒÐ¶ÐµÐ½ access token Home Assistant", Toast.LENGTH_LONG).show(); return; }
-                final String finalToken = accessToken;
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
-                homeAssistantExecutor.execute(() -> {
-                    List<HomeAssistantClient.Entity> entities = null; String error = null;
-                    try { entities = HomeAssistantClient.getEntities(baseUrl, finalToken); }
-                    catch (Exception failure) { error = failure.getMessage(); }
-                    final List<HomeAssistantClient.Entity> found = entities; final String failureText = error;
-                    runOnUiThread(() -> {
-                        if (isFinishing() || isDestroyed()) return;
-                        if (dialog.isShowing()) dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
-                        if (failureText != null) {
-                            Toast.makeText(this, "Home Assistant: " + safeHomeAssistantError(failureText), Toast.LENGTH_LONG).show(); return;
-                        }
-                        try {
-                            prefs.edit().putString("base_url", HomeAssistantClient.normalizeBaseUrl(baseUrl)).apply();
-                            if (!enteredToken.isEmpty()) HomeAssistantTokenStore.save(this, enteredToken);
-                        } catch (Exception storageFailure) {
-                            Toast.makeText(this, "Ð£ÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð° Ð½Ð°Ð¹Ð´ÐµÐ½Ñ‹, Ð½Ð¾ Ñ‚Ð¾ÐºÐµÐ½ Ð½Ðµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ ÑÐ¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ð±ÐµÐ·Ð¾Ð¿Ð°ÑÐ½Ð¾", Toast.LENGTH_LONG).show();
-                        }
-                        dialog.dismiss(); showHomeAssistantEntities(found);
-                    });
-                });
-            });
-            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(v -> new AlertDialog.Builder(this)
-                    .setTitle("ÐžÑ‚ÐºÐ»ÑŽÑ‡Ð¸Ñ‚ÑŒ Home Assistant?")
-                    .setMessage("Ð£Ð´Ð°Ð»Ð¸Ñ‚ÑŒ ÑÐ¾Ñ…Ñ€Ð°Ð½Ñ‘Ð½Ð½Ñ‹Ð¹ Ð°Ð´Ñ€ÐµÑ Ð¸ Ñ‚Ð¾ÐºÐµÐ½?")
-                    .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null)
-                    .setPositiveButton("Ð£Ð´Ð°Ð»Ð¸Ñ‚ÑŒ", (d, w) -> {
-                        HomeAssistantTokenStore.clear(this); prefs.edit().clear().apply(); dialog.dismiss();
-                        Toast.makeText(this, "Home Assistant Ð¾Ñ‚ÐºÐ»ÑŽÑ‡Ñ‘Ð½", Toast.LENGTH_SHORT).show();
-                    }).show());
-        });
-        dialog.show();
-    }
-
-    private String safeHomeAssistantError(String error) {
-        if (error == null || error.trim().isEmpty()) return "Ð½Ðµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¿Ð¾Ð´ÐºÐ»ÑŽÑ‡Ð¸Ñ‚ÑŒÑÑ; Ð¿Ñ€Ð¾Ð²ÐµÑ€ÑŒ Ð°Ð´Ñ€ÐµÑ Ð¸ ÑÐµÑ‚ÑŒ";
-        if (error.contains("HTTP 401")) return "Ñ‚Ð¾ÐºÐµÐ½ Ð¾Ñ‚ÐºÐ»Ð¾Ð½Ñ‘Ð½ (HTTP 401)";
-        if (error.contains("HTTP 403")) return "Ð½ÐµÑ‚ Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð° (HTTP 403)";
-        if (error.contains("HTTP 404")) return "Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½ API Home Assistant (HTTP 404)";
-        if (error.contains("HTTPS")) return "Ð´Ð»Ñ Ð²Ð½ÐµÑˆÐ½ÐµÐ³Ð¾ Ð°Ð´Ñ€ÐµÑÐ° Ð¸ÑÐ¿Ð¾Ð»ÑŒÐ·ÑƒÐ¹ HTTPS";
-        return "Ð½Ðµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¿Ð¾Ð´ÐºÐ»ÑŽÑ‡Ð¸Ñ‚ÑŒÑÑ; Ð¿Ñ€Ð¾Ð²ÐµÑ€ÑŒ Ð°Ð´Ñ€ÐµÑ, ÑÐµÑ‚ÑŒ Ð¸ Ñ‚Ð¾ÐºÐµÐ½";
-    }
-
-    private void showHomeAssistantEntities(List<HomeAssistantClient.Entity> entities) {
-        if (entities == null || entities.isEmpty()) {
-            new AlertDialog.Builder(this).setTitle("Ð£ÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð° Home Assistant")
-                    .setMessage("Ð£ÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð° Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½Ñ‹ Ð¸Ð»Ð¸ Ñƒ Ñ‚Ð¾ÐºÐµÐ½Ð° Ð½ÐµÑ‚ Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð° Ðº ÑÐ¾ÑÑ‚Ð¾ÑÐ½Ð¸ÑÐ¼.")
-                    .setPositiveButton("ÐžÐš", null).show(); return;
-        }
-        ArrayList<HomeAssistantClient.Entity> shown = new ArrayList<>(entities.subList(0, Math.min(300, entities.size())));
-        android.widget.ListView list = new android.widget.ListView(this);
-        list.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, shown));
-        AlertDialog entityDialog = new AlertDialog.Builder(this).setTitle("Home Assistant: " + entities.size() + " ÑÑƒÑ‰Ð½Ð¾ÑÑ‚ÐµÐ¹")
-                .setView(list).setPositiveButton("Ð“Ð¾Ñ‚Ð¾Ð²Ð¾", null).create();
-        list.setOnItemClickListener((parent, view, position, id) -> {
-            HomeAssistantClient.Entity selected = shown.get(position);
-            if (!selected.canTogglePower()) {
-                Toast.makeText(this, "Ð”Ð»Ñ ÑÑ‚Ð¾Ð¹ ÑÑƒÑ‰Ð½Ð¾ÑÑ‚Ð¸ Ð´Ð¾ÑÑ‚ÑƒÐ¿ÐµÐ½ Ñ‚Ð¾Ð»ÑŒÐºÐ¾ Ð¿Ñ€Ð¾ÑÐ¼Ð¾Ñ‚Ñ€", Toast.LENGTH_SHORT).show(); return;
-            }
-            boolean turnOn = "off".equalsIgnoreCase(selected.state);
-            String action = turnOn ? "Ð²ÐºÐ»ÑŽÑ‡Ð¸Ñ‚ÑŒ" : "Ð²Ñ‹ÐºÐ»ÑŽÑ‡Ð¸Ñ‚ÑŒ";
-            new AlertDialog.Builder(this).setTitle("ÐŸÐ¾Ð´Ñ‚Ð²ÐµÑ€Ð´Ð¸Ñ‚ÑŒ Ð´ÐµÐ¹ÑÑ‚Ð²Ð¸Ðµ")
-                    .setMessage(action.substring(0, 1).toUpperCase(java.util.Locale.ROOT) + action.substring(1)
-                            + " Â«" + selected.name + "Â» (" + selected.entityId + ")?")
-                    .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null)
-                    .setPositiveButton("ÐŸÐ¾Ð´Ñ‚Ð²ÐµÑ€Ð´Ð¸Ñ‚ÑŒ", (d, w) -> setHomeAssistantPower(selected, turnOn, entityDialog)).show();
-        });
-        entityDialog.show();
-    }
-
-    private void setHomeAssistantPower(HomeAssistantClient.Entity entity, boolean turnOn, AlertDialog entityDialog) {
-        String baseUrl = getSharedPreferences("bloodsky_homeassistant", MODE_PRIVATE).getString("base_url", "");
-        homeAssistantExecutor.execute(() -> {
-            String error = null; List<HomeAssistantClient.Entity> updated = null;
-            try {
-                String token = HomeAssistantTokenStore.read(this);
-                HomeAssistantClient.setPower(baseUrl, token, entity, turnOn);
-                updated = HomeAssistantClient.getEntities(baseUrl, token);
-            } catch (Exception failure) { error = failure.getMessage(); }
-            final String failureText = error; final List<HomeAssistantClient.Entity> states = updated;
-            runOnUiThread(() -> {
-                if (isFinishing() || isDestroyed()) return;
-                if (failureText != null) {
-                    Toast.makeText(this, "Home Assistant: " + safeHomeAssistantError(failureText), Toast.LENGTH_LONG).show(); return;
-                }
-                entityDialog.dismiss();
-                Toast.makeText(this, "ÐšÐ¾Ð¼Ð°Ð½Ð´Ð° Ð¾Ñ‚Ð¿Ñ€Ð°Ð²Ð»ÐµÐ½Ð°", Toast.LENGTH_SHORT).show();
-                showHomeAssistantEntities(states);
-            });
-        });
-    }
-
-    private void showVoiceModeDialog() {
-        new AlertDialog.Builder(this).setTitle("Ð“Ð¾Ð»Ð¾ÑÐ¾Ð²Ð¾Ð¹ Ð¿Ð¾Ð¼Ð¾Ñ‰Ð½Ð¸Ðº")
-                .setMessage("Ð›Ð¾ÐºÐ°Ð»ÑŒÐ½Ð¾: Ñ‚Ð¾Ð»ÑŒÐºÐ¾ Ð²ÑÑ‚Ñ€Ð¾ÐµÐ½Ð½Ð¾Ðµ Ñ€Ð°ÑÐ¿Ð¾Ð·Ð½Ð°Ð²Ð°Ð½Ð¸Ðµ Ð½Ð° ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ðµ, Ð±ÐµÐ· Ð¾Ñ‚Ð¿Ñ€Ð°Ð²ÐºÐ¸ Ð°ÑƒÐ´Ð¸Ð¾.\\n\\nÐ§ÐµÑ€ÐµÐ· Ð¸Ð½Ñ‚ÐµÑ€Ð½ÐµÑ‚: Ð°ÑƒÐ´Ð¸Ð¾ Ð¼Ð¾Ð¶ÐµÑ‚ Ð¾Ð±Ñ€Ð°Ð±Ð°Ñ‚Ñ‹Ð²Ð°Ñ‚ÑŒÑÑ Ð²Ñ‹Ð±Ñ€Ð°Ð½Ð½Ð¾Ð¹ Ð² Android ÑÐ»ÑƒÐ¶Ð±Ð¾Ð¹ Ñ€Ð°ÑÐ¿Ð¾Ð·Ð½Ð°Ð²Ð°Ð½Ð¸Ñ Ñ€ÐµÑ‡Ð¸.")
-                .setPositiveButton("Ð›Ð¾ÐºÐ°Ð»ÑŒÐ½Ð¾", (dialog, which) -> requestVoicePermission(VOICE_LOCAL))
-                .setNegativeButton("Ð§ÐµÑ€ÐµÐ· Ð¸Ð½Ñ‚ÐµÑ€Ð½ÐµÑ‚", (dialog, which) -> requestVoicePermission(VOICE_ONLINE))
-                .setNeutralButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null).show();
-    }
-
-    private void requestVoicePermission(int mode) {
-        pendingVoiceMode = mode;
-        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
-                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQUEST_VOICE_PERMISSION);
-            return;
-        }
-        startVoiceRecognition(mode);
-    }
-
-    private void startVoiceRecognition(int mode) {
-        if (mode == VOICE_LOCAL && (android.os.Build.VERSION.SDK_INT < 31
-                || !android.speech.SpeechRecognizer.isOnDeviceRecognitionAvailable(this))) {
-            Toast.makeText(this, "ÐžÑ„Ð»Ð°Ð¹Ð½-Ñ€Ð°ÑÐ¿Ð¾Ð·Ð½Ð°Ð²Ð°Ð½Ð¸Ðµ Ñ€ÐµÑ‡Ð¸ Ð½Ð° ÑÑ‚Ð¾Ð¼ ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ðµ Ð½ÐµÐ´Ð¾ÑÑ‚ÑƒÐ¿Ð½Ð¾. Ð˜Ð½Ñ‚ÐµÑ€Ð½ÐµÑ‚-Ñ€ÐµÐ¶Ð¸Ð¼ Ð¾ÑÑ‚Ð°Ñ‘Ñ‚ÑÑ Ð¾Ñ‚Ð´ÐµÐ»ÑŒÐ½Ñ‹Ð¼ Ð²Ð°Ñ€Ð¸Ð°Ð½Ñ‚Ð¾Ð¼.", Toast.LENGTH_LONG).show();
-            return;
-        }
-        try {
-            releaseVoiceRecognizer();
-            speechRecognizer = mode == VOICE_LOCAL
-                    ? android.speech.SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
-                    : android.speech.SpeechRecognizer.createSpeechRecognizer(this);
-            speechRecognizer.setRecognitionListener(new android.speech.RecognitionListener() {
-                @Override public void onReadyForSpeech(Bundle params) { Toast.makeText(MainActivity.this, "Ð¡Ð»ÑƒÑˆÐ°ÑŽâ€¦", Toast.LENGTH_SHORT).show(); }
-                @Override public void onBeginningOfSpeech() {}
-                @Override public void onRmsChanged(float rmsdB) {}
-                @Override public void onBufferReceived(byte[] buffer) {}
-                @Override public void onEndOfSpeech() {}
-                @Override public void onError(int error) {
-                    Toast.makeText(MainActivity.this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ñ€Ð°ÑÐ¿Ð¾Ð·Ð½Ð°Ñ‚ÑŒ Ñ€ÐµÑ‡ÑŒ (ÐºÐ¾Ð´ " + error + ")", Toast.LENGTH_LONG).show();
-                    releaseVoiceRecognizer();
-                }
-                @Override public void onResults(Bundle results) {
-                    ArrayList<String> phrases = results == null ? null
-                            : results.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION);
-                    releaseVoiceRecognizer();
-                    if (phrases == null || phrases.isEmpty()) { speakVoiceReply("ÐšÐ¾Ð¼Ð°Ð½Ð´Ð° Ð½Ðµ Ñ€Ð°ÑÐ¿Ð¾Ð·Ð½Ð°Ð½Ð°"); return; }
-                    executeVoiceCommand(phrases.get(0));
-                }
-                @Override public void onPartialResults(Bundle partialResults) {}
-                @Override public void onEvent(int eventType, Bundle params) {}
-            });
-            android.content.Intent intent = new android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-            intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-            intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, "ru-RU");
-            intent.putExtra(android.speech.RecognizerIntent.EXTRA_MAX_RESULTS, 3);
-            if (mode == VOICE_LOCAL && android.os.Build.VERSION.SDK_INT < 33)
-                intent.putExtra(android.speech.RecognizerIntent.EXTRA_PREFER_OFFLINE, true);
-            speechRecognizer.startListening(intent);
-        } catch (Exception failure) {
-            releaseVoiceRecognizer();
-            Toast.makeText(this, "Ð¡Ð»ÑƒÐ¶Ð±Ð° Ñ€Ð°ÑÐ¿Ð¾Ð·Ð½Ð°Ð²Ð°Ð½Ð¸Ñ Ñ€ÐµÑ‡Ð¸ Ð½ÐµÐ´Ð¾ÑÑ‚ÑƒÐ¿Ð½Ð°", Toast.LENGTH_LONG).show();
-        }
-    }
-
-    private void executeVoiceCommand(String phrase) {
-        ArrayList<String> names = new ArrayList<>();
-        for (Screen screen : screens) names.add(screen.name);
-        VoiceCommandParser.Command command = VoiceCommandParser.parse(phrase, names);
-        switch (command.type) {
-            case NEXT_SCREEN:
-                nextScreen(); speakVoiceReply("ÐžÑ‚ÐºÑ€Ñ‹Ð²Ð°ÑŽ ÑÐ»ÐµÐ´ÑƒÑŽÑ‰Ð¸Ð¹ ÑÐºÑ€Ð°Ð½"); break;
-            case PREVIOUS_SCREEN:
-                previousScreen(); speakVoiceReply("ÐžÑ‚ÐºÑ€Ñ‹Ð²Ð°ÑŽ Ð¿Ñ€ÐµÐ´Ñ‹Ð´ÑƒÑ‰Ð¸Ð¹ ÑÐºÑ€Ð°Ð½"); break;
-            case OPEN_SCREEN:
-                activateScreen(command.screenIndex); speakVoiceReply("Ð­ÐºÑ€Ð°Ð½ " + (command.screenIndex + 1)); break;
-            case START_PROJECT:
-                if (operatorMode) { speakVoiceReply("ÐŸÑ€Ð¾ÐµÐºÑ‚ ÑƒÐ¶Ðµ Ð·Ð°Ð¿ÑƒÑ‰ÐµÐ½"); break; }
-                new AlertDialog.Builder(this).setTitle("Ð—Ð°Ð¿ÑƒÑÑ‚Ð¸Ñ‚ÑŒ Ð¿Ñ€Ð¾ÐµÐºÑ‚?")
-                        .setMessage("Ð“Ð¾Ð»Ð¾ÑÐ¾Ð²Ð°Ñ ÐºÐ¾Ð¼Ð°Ð½Ð´Ð°: Â«" + phrase + "Â». Ð—Ð°Ð¿ÑƒÑÐº Ð²ÐºÐ»ÑŽÑ‡Ð°ÐµÑ‚ Ð¸ÑÐ¿Ð¾Ð»Ð½ÐµÐ½Ð¸Ðµ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð° Ð¸ ÐµÐ³Ð¾ ÑÐ²ÑÐ·ÐµÐ¹.")
-                        .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", (d, w) -> speakVoiceReply("Ð—Ð°Ð¿ÑƒÑÐº Ð¾Ñ‚Ð¼ÐµÐ½Ñ‘Ð½"))
-                        .setPositiveButton("Ð—Ð°Ð¿ÑƒÑÑ‚Ð¸Ñ‚ÑŒ", (d, w) -> { toggleOperatorMode(); speakVoiceReply("ÐŸÑ€Ð¾ÐµÐºÑ‚ Ð·Ð°Ð¿ÑƒÑ‰ÐµÐ½"); }).show();
-                break;
-            case STOP_PROJECT:
-                if (operatorMode) { toggleOperatorMode(); speakVoiceReply("ÐŸÑ€Ð¾ÐµÐºÑ‚ Ð¾ÑÑ‚Ð°Ð½Ð¾Ð²Ð»ÐµÐ½"); }
-                else speakVoiceReply("ÐŸÑ€Ð¾ÐµÐºÑ‚ ÑƒÐ¶Ðµ Ð¾ÑÑ‚Ð°Ð½Ð¾Ð²Ð»ÐµÐ½");
-                break;
-            default:
-                speakVoiceReply("Ð­Ñ‚Ð° ÐºÐ¾Ð¼Ð°Ð½Ð´Ð° Ð¿Ð¾ÐºÐ° Ð½Ðµ Ð¿Ð¾Ð´Ð´ÐµÑ€Ð¶Ð¸Ð²Ð°ÐµÑ‚ÑÑ");
-                Toast.makeText(this, "Ð Ð°ÑÐ¿Ð¾Ð·Ð½Ð°Ð½Ð¾: Â«" + phrase + "Â». ÐŸÐ¾Ð´Ð´ÐµÑ€Ð¶Ð¸Ð²Ð°ÑŽÑ‚ÑÑ ÑÐºÑ€Ð°Ð½Ñ‹ Ð¸ Ð·Ð°Ð¿ÑƒÑÐº/Ð¾ÑÑ‚Ð°Ð½Ð¾Ð²ÐºÐ° Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°.", Toast.LENGTH_LONG).show();
-        }
-    }
-
-    private void speakVoiceReply(String text) {
-        if (textToSpeech != null) textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, "bloodsky-voice-reply");
-        Toast.makeText(this, text, Toast.LENGTH_SHORT).show();
-    }
-
-    private void releaseVoiceRecognizer() {
-        if (speechRecognizer != null) { try { speechRecognizer.cancel(); speechRecognizer.destroy(); } catch (Exception ignored) {} speechRecognizer = null; }
-    }
-
-    private void showTelegramSettingsDialog() {
-        android.content.SharedPreferences prefs = getSharedPreferences(TELEGRAM_PREFS, MODE_PRIVATE);
-        LinearLayout form = new LinearLayout(this);
-        form.setOrientation(LinearLayout.VERTICAL);
-        form.setPadding(dp(20), dp(8), dp(20), dp(4));
-        TextView note = new TextView(this);
-        note.setText("Ð£ÐºÐ°Ð¶Ð¸ Ñ‚Ð¾ÐºÐµÐ½ ÑÐ²Ð¾ÐµÐ³Ð¾ Telegram-Ð±Ð¾Ñ‚Ð° Ð¸ chat_id. Ð”Ð°Ð½Ð½Ñ‹Ðµ Ñ…Ñ€Ð°Ð½ÑÑ‚ÑÑ Ð¾Ñ‚Ð´ÐµÐ»ÑŒÐ½Ð¾ Ð¾Ñ‚ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð¾Ð² Ð¸ Ð½Ðµ Ð¿Ð¾Ð¿Ð°Ð´Ð°ÑŽÑ‚ Ð² ÑÐºÑÐ¿Ð¾Ñ€Ñ‚.");
-        form.addView(note);
-        EditText tokenField = propertyField(prefs.getString("bot_token", ""), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        tokenField.setSingleLine(true); tokenField.setHint("Ð¢Ð¾ÐºÐµÐ½ Ð±Ð¾Ñ‚Ð°"); form.addView(tokenField);
-        EditText chatField = propertyField(prefs.getString("chat_id", ""), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        chatField.setSingleLine(true); chatField.setHint("chat_id Ð¸Ð»Ð¸ @ÐºÐ°Ð½Ð°Ð»"); form.addView(chatField);
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("Telegram-ÑƒÐ²ÐµÐ´Ð¾Ð¼Ð»ÐµÐ½Ð¸Ñ")
-                .setView(form)
-                .setPositiveButton("Ð¡Ð¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ", null)
-                .setNeutralButton("ÐžÑ‚Ð¿Ñ€Ð°Ð²Ð¸Ñ‚ÑŒ Ñ‚ÐµÑÑ‚", null)
-                .setNegativeButton("Ð—Ð°ÐºÑ€Ñ‹Ñ‚ÑŒ", null)
-                .create();
-        dialog.setOnShowListener(ignored -> {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-                String token = tokenField.getText().toString().trim();
-                String chatId = chatField.getText().toString().trim();
-                if (token.isEmpty() && chatId.isEmpty()) {
-                    prefs.edit().remove("bot_token").remove("chat_id").apply();
-                    Toast.makeText(this, "ÐÐ°ÑÑ‚Ñ€Ð¾Ð¹ÐºÐ¸ Telegram ÑƒÐ´Ð°Ð»ÐµÐ½Ñ‹", Toast.LENGTH_SHORT).show();
-                    dialog.dismiss(); return;
-                }
-                if (!TelegramBotClient.isValidToken(token) || !TelegramBotClient.isValidChatId(chatId)) {
-                    Toast.makeText(this, "ÐŸÑ€Ð¾Ð²ÐµÑ€ÑŒ Ñ‚Ð¾ÐºÐµÐ½ Ð±Ð¾Ñ‚Ð° Ð¸ chat_id", Toast.LENGTH_LONG).show(); return;
-                }
-                prefs.edit().putString("bot_token", token).putString("chat_id", chatId).apply();
-                rearmTelegramWidgets();
-                Toast.makeText(this, "ÐÐ°ÑÑ‚Ñ€Ð¾Ð¹ÐºÐ¸ Telegram ÑÐ¾Ñ…Ñ€Ð°Ð½ÐµÐ½Ñ‹", Toast.LENGTH_SHORT).show();
-                dialog.dismiss();
-            });
-            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
-                String token = tokenField.getText().toString().trim();
-                String chatId = chatField.getText().toString().trim();
-                if (!TelegramBotClient.isValidToken(token) || !TelegramBotClient.isValidChatId(chatId)) {
-                    Toast.makeText(this, "Ð¡Ð½Ð°Ñ‡Ð°Ð»Ð° ÑƒÐºÐ°Ð¶Ð¸ ÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ñ‹Ðµ Ñ‚Ð¾ÐºÐµÐ½ Ð¸ chat_id", Toast.LENGTH_LONG).show(); return;
-                }
-                dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setEnabled(false);
-                telegramExecutor.execute(() -> {
-                    String error = null;
-                    try { TelegramBotClient.sendMessage(token, chatId, "BLOODSKY: Ñ‚ÐµÑÑ‚Ð¾Ð²Ð¾Ðµ Telegram-ÑƒÐ²ÐµÐ´Ð¾Ð¼Ð»ÐµÐ½Ð¸Ðµ."); }
-                    catch (Exception failure) { error = failure.getMessage(); }
-                    final String result = error;
-                    runOnUiThread(() -> {
-                        if (isFinishing() || isDestroyed()) return;
-                        if (dialog.isShowing()) dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setEnabled(true);
-                        Toast.makeText(this, result == null ? "Ð¢ÐµÑÑ‚Ð¾Ð²Ð¾Ðµ ÑƒÐ²ÐµÐ´Ð¾Ð¼Ð»ÐµÐ½Ð¸Ðµ Ð¾Ñ‚Ð¿Ñ€Ð°Ð²Ð»ÐµÐ½Ð¾" : "Telegram: " + result,
-                                Toast.LENGTH_LONG).show();
-                        if (result == null) {
-                            prefs.edit().putString("bot_token", token).putString("chat_id", chatId).apply();
-                            rearmTelegramWidgets();
-                            if (dialog.isShowing()) dialog.dismiss();
-                        }
-                    });
-                });
-            });
-        });
-        dialog.show();
-    }
-
-    private void rearmTelegramWidgets() {
-        for (Widget widget : widgets) {
-            if ("Telegram-ÑƒÐ²ÐµÐ´Ð¾Ð¼Ð»ÐµÐ½Ð¸Ðµ".equals(widget.type)) widget.lastTelegramState = false;
-        }
-    }
-
-    private void sendTelegramNotification(int widgetIndex, Widget widget, String value) {
-        android.content.SharedPreferences prefs = getSharedPreferences(TELEGRAM_PREFS, MODE_PRIVATE);
-        String token = prefs.getString("bot_token", "");
-        String chatId = prefs.getString("chat_id", "");
-        if (!TelegramBotClient.isValidToken(token) || !TelegramBotClient.isValidChatId(chatId)) {
-            liveValues.put(widgetIndex, "Telegram CFG");
-            if (editor != null) editor.invalidate();
-            return;
-        }
-        String message = (widget.text == null || widget.text.trim().isEmpty() ? "BLOODSKY: ÑÐ¾Ð±Ñ‹Ñ‚Ð¸Ðµ" : widget.text.trim())
-                + "\nÐ—Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ: " + value;
-        final EditorCanvas sessionEditor = editor;
-        telegramExecutor.execute(() -> {
-            String status = "Telegram Ð¾Ñ‚Ð¿Ñ€Ð°Ð²Ð»ÐµÐ½Ð¾";
-            try { TelegramBotClient.sendMessage(token, chatId, message); }
-            catch (Exception failure) { status = "Telegram ERR"; }
-            final String result = status;
-            runOnUiThread(() -> {
-                if (widgetIndex < 0 || widgetIndex >= widgets.size() || widgets.get(widgetIndex) != widget
-                        || editor != sessionEditor || !activityResumed) return;
-                liveValues.put(widgetIndex, result);
-                if (editor != null) editor.invalidate();
-            });
-        });
-    }
-
-    @Override public void onBackPressed() {
-        if (nestedMacroEdit != null) { closeNestedMacroGraphEditor(); return; }
-        if (manualUsbScreenVisible) { showHome(); return; }
-        if (editor != null) {
-            if (operatorMode) toggleOperatorMode();
-            else if (persistProjectNow(true)) showHome();
-        } else super.onBackPressed();
-    }
-
-    private String currentScreenName() {
-        if (screens.isEmpty()) return "Ð­ÐºÑ€Ð°Ð½ 1";
-        currentScreenIndex = Math.max(0, Math.min(currentScreenIndex, screens.size() - 1));
-        return screens.get(currentScreenIndex).name;
-    }
-
-    private void saveActiveScreen() {
-        if (screens.isEmpty()) screens.add(new Screen("Ð­ÐºÑ€Ð°Ð½ 1"));
-        Screen screen = screens.get(Math.max(0, Math.min(currentScreenIndex, screens.size() - 1)));
-        screen.widgets.clear();
-        for (Widget source : widgets) screen.widgets.add(copyWidget(source));
-    }
-
-    public static Widget copyWidget(Widget source) {
-        Widget copy = new Widget();
-        copy.type = source.type; copy.text = source.text; copy.connectionInfo = source.connectionInfo; copy.inputValue = source.inputValue; copy.buttonState = source.buttonState; copy.rsState = source.rsState; copy.counterPreset = source.counterPreset; copy.counterValue = source.counterValue; copy.counterLastInput = source.counterLastInput; copy.timerPresetMs = source.timerPresetMs; copy.timerStartedAt = source.timerStartedAt; copy.compareA = source.compareA; copy.compareB = source.compareB; copy.compareOperator = source.compareOperator;
-        copy.minValue = source.minValue; copy.maxValue = source.maxValue;
-        copy.backgroundColor = source.backgroundColor; copy.textColor = source.textColor; copy.textSizeSp = source.textSizeSp;
-        copy.visible = source.visible; copy.showFrame = source.showFrame; copy.autoResizeText = source.autoResizeText;
-        for (int i = 0; i < 16; i++) {
-            copy.dynTextStates[i] = source.dynTextStates[i];
-            copy.dynTextColors[i] = source.dynTextColors[i];
-            copy.bitListLabels[i] = source.bitListLabels[i];
-            copy.voiceMessages[i] = source.voiceMessages[i];
-            copy.imagePathStates[i] = source.imagePathStates[i];
-        }
-        copy.soundThreshold = source.soundThreshold;
-        copy.soundActive = source.soundActive;
-        copy.soundFilePath = source.soundFilePath;
-        copy.craftAlarmSoundIndex = source.craftAlarmSoundIndex;
-        copy.craftAlarmLoop = source.craftAlarmLoop;
-        copy.targetScreenIndex = source.targetScreenIndex;
-        copy.targetUrl = source.targetUrl;
-        copy.lastVoiceState = source.lastVoiceState;
-        copy.lastSoundState = source.lastSoundState;
-        copy.lastTelegramState = source.lastTelegramState;
-        copy.craftVariableNamespace = source.craftVariableNamespace;
-        try { copy.extraFields = new JSONObject(source.extraFields.toString()); } catch (Exception ignored) { copy.extraFields = new JSONObject(); }
-        copy.x = source.x; copy.y = source.y; copy.w = source.w; copy.h = source.h;
-        return copy;
-    }
-
-    private void activateScreen(int index) {
-        fbdWireHistory.clear();
-        stopCurrentScreenAlarms();
-        saveActiveScreen();
-        if (screens.isEmpty()) screens.add(new Screen("Ð­ÐºÑ€Ð°Ð½ 1"));
-        currentScreenIndex = Math.max(0, Math.min(index, screens.size() - 1));
-        liveValues.clear();
-        widgets.clear();
-        for (Widget source : screens.get(currentScreenIndex).widgets) widgets.add(copyWidget(source));
-        persistProject();
-        showEditor();
-    }
-
-    private void previousScreen() {
-        if (nestedMacroEdit != null) return;
-        if (screens.size() < 2) { Toast.makeText(this, "Ð”Ð¾Ð±Ð°Ð²ÑŒ ÐµÑ‰Ñ‘ Ð¾Ð´Ð¸Ð½ ÑÐºÑ€Ð°Ð½", Toast.LENGTH_SHORT).show(); return; }
-        activateScreen((currentScreenIndex - 1 + screens.size()) % screens.size());
-    }
-
-    private void nextScreen() {
-        if (nestedMacroEdit != null) return;
-        if (screens.size() < 2) { Toast.makeText(this, "Ð”Ð¾Ð±Ð°Ð²ÑŒ ÐµÑ‰Ñ‘ Ð¾Ð´Ð¸Ð½ ÑÐºÑ€Ð°Ð½", Toast.LENGTH_SHORT).show(); return; }
-        activateScreen((currentScreenIndex + 1) % screens.size());
-    }
-
-    private void addScreen() {
-        if (nestedMacroEdit != null) return;
-        fbdWireHistory.clear();
-        saveActiveScreen();
-        screens.add(new Screen("Ð­ÐºÑ€Ð°Ð½ " + (screens.size() + 1)));
-        currentScreenIndex = screens.size() - 1;
-        widgets.clear();
-        persistProject();
-        showEditor();
-    }
-
-    private void removeCurrentScreen() {
-        if (nestedMacroEdit != null) return;
-        if (screens.size() <= 1) {
-            Toast.makeText(this, "Ð’ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ðµ Ð´Ð¾Ð»Ð¶ÐµÐ½ Ð¾ÑÑ‚Ð°Ñ‚ÑŒÑÑ Ñ…Ð¾Ñ‚Ñ Ð±Ñ‹ Ð¾Ð´Ð¸Ð½ ÑÐºÑ€Ð°Ð½", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        new AlertDialog.Builder(this)
-                .setTitle("Ð£Ð´Ð°Ð»Ð¸Ñ‚ÑŒ ÑÐºÑ€Ð°Ð½?")
-                .setMessage("Ð­ÐºÑ€Ð°Ð½ Â«" + currentScreenName() + "Â» Ð¸ Ð²ÑÐµ ÐµÐ³Ð¾ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚Ñ‹ Ð±ÑƒÐ´ÑƒÑ‚ ÑƒÐ´Ð°Ð»ÐµÐ½Ñ‹.")
-                .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null)
-                .setPositiveButton("Ð£Ð´Ð°Ð»Ð¸Ñ‚ÑŒ", (dialog, which) -> {
-                    fbdWireHistory.clear();
-                    saveActiveScreen();
-                    screens.remove(currentScreenIndex);
-                    currentScreenIndex = Math.max(0, Math.min(currentScreenIndex, screens.size() - 1));
-                    widgets.clear();
-                    for (Widget widget : screens.get(currentScreenIndex).widgets) widgets.add(copyWidget(widget));
-                    editor = null;
-                    persistProject();
-                    showEditor();
-                }).show();
-    }
-
-    private void editScreenBackground() {
-        if (nestedMacroEdit != null) return;
-        if (screens.isEmpty()) return;
-        Screen screen = screens.get(currentScreenIndex);
-        EditText input = propertyField(String.format(java.util.Locale.ROOT, "#%06X", (0xFFFFFF & screen.backgroundColor)), InputType.TYPE_CLASS_TEXT);
-        input.setHint("#RRGGBB");
-        new AlertDialog.Builder(this).setTitle("Ð¦Ð²ÐµÑ‚ Ñ„Ð¾Ð½Ð° ÑÐºÑ€Ð°Ð½Ð°").setView(input)
-                .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null)
-                .setPositiveButton("ÐŸÑ€Ð¸Ð¼ÐµÐ½Ð¸Ñ‚ÑŒ", (dialog, which) -> {
-                    String value = input.getText().toString().trim();
-                    if (!value.startsWith("#")) value = "#" + value;
-                    if (!value.matches("#[0-9a-fA-F]{6}")) {
-                        Toast.makeText(this, "Ð£ÐºÐ°Ð¶Ð¸ Ñ†Ð²ÐµÑ‚ Ð² Ñ„Ð¾Ñ€Ð¼Ð°Ñ‚Ðµ #RRGGBB", Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-                    try { screen.backgroundColor = Color.parseColor(value); }
-                    catch (IllegalArgumentException ignored) { return; }
-                    persistProject(); if (editor != null) editor.invalidate();
-                }).show();
-    }
-
-    private void renameCurrentScreen() {
-        EditText input = propertyField(currentScreenName(), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
-        new AlertDialog.Builder(this).setTitle("Ð˜Ð¼Ñ ÑÐºÑ€Ð°Ð½Ð°").setView(input)
-                .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null)
-                .setPositiveButton("Ð¡Ð¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ", (dialog, which) -> {
-                    String name = input.getText().toString().trim();
-                    if (!name.isEmpty()) screens.get(currentScreenIndex).name = name;
-                    persistProject(); showEditor();
-                }).show();
-    }
-
-    private void showWidgetContextMenu() {
-        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) return;
-        if (isFbd(widgets.get(editor.selected))) {
-            showFbdBlockContextMenu(editor.selected);
-            return;
-        }
-        showStandardWidgetContextMenu();
-    }
-
-    /** Source-ordered FBD actions with existing typed graph guards. */
-    private void showFbdBlockContextMenu(final int blockIndex) {
-        if (operatorMode || blockIndex < 0 || blockIndex >= widgets.size()) return;
-        final Widget widget = widgets.get(blockIndex);
-        final boolean timer = "FBD Ð¢Ð°Ð¹Ð¼ÐµÑ€".equals(widget.type)
-                || "FBD TOF".equals(widget.type) || "FBD TP".equals(widget.type)
-                || "FBD CRAFT TIMER".equals(widget.type);
-        final boolean invertible = !isDynamicMacroWidget(widget)
-                && knownFbdPins(widget, true).length == 1
-                && "BOOL".equals(knownFbdPinType(widget,
-                        knownFbdPins(widget, true)[0], true));
-        final java.util.List<String> labels = new ArrayList<>();
-        labels.add("Ð¡Ð¾ÐµÐ´Ð¸Ð½Ð¸Ñ‚ÑŒ Ñâ€¦");
-        if (invertible) labels.add("Ð˜Ð½Ð²ÐµÑ€Ñ‚Ð¸Ñ€Ð¾Ð²Ð°Ñ‚ÑŒ ÑÐ²ÑÐ·ÑŒ BOOLâ€¦");
-        if (supportsFbdBlockOutputInversion(widget.type))
-            labels.add("Ð˜Ð½Ð²ÐµÑ€Ñ‚Ð¸Ñ€Ð¾Ð²Ð°Ñ‚ÑŒ Ð²Ñ‹Ñ…Ð¾Ð´ BOOL");
-        labels.add("ÐžÑ‚ÑÐ¾ÐµÐ´Ð¸Ð½Ð¸Ñ‚ÑŒ Ð²Ñ‹Ñ…Ð¾Ð´");
-        if (nestedMacroEdit != null && knownFbdPins(widget, true).length > 0)
-            labels.add("ÐÐ°Ð·Ð½Ð°Ñ‡Ð¸Ñ‚ÑŒ Ð²Ñ‹Ñ…Ð¾Ð´ Ð¼Ð°ÐºÑ€Ð¾ÑÐ°â€¦");
-        FbdCraftMacroDefinition nestedDefinition = macroDefinition(widget);
-        if (nestedMacroEdit == null && nestedDefinition != null
-                && hasCraftMacroGraph(nestedDefinition))
-            labels.add("Ð ÐµÐ´Ð°ÐºÑ‚Ð¸Ñ€Ð¾Ð²Ð°Ñ‚ÑŒ Ð²Ð»Ð¾Ð¶ÐµÐ½Ð½Ñ‹Ð¹ Ð³Ñ€Ð°Ñ„");
-        if (timer) labels.add("Ð ÐµÐ¶Ð¸Ð¼ / ÐµÐ´Ð¸Ð½Ð¸Ñ†Ñ‹ Ð²Ñ€ÐµÐ¼ÐµÐ½Ð¸");
-        labels.add("Ð¡Ð²Ð¾Ð¹ÑÑ‚Ð²Ð°");
-        labels.add("Ð”Ñ€ÑƒÐ³Ð¸Ðµ Ð´ÐµÐ¹ÑÑ‚Ð²Ð¸Ñ");
-        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                .setTitle(widget.text == null ? widget.type : widget.text)
-                .setItems(labels.toArray(new String[0]), (dialog, choice) -> {
-                    if (blockIndex >= widgets.size() || widgets.get(blockIndex) != widget) {
-                        Toast.makeText(this, "FBD Ð¸Ð·Ð¼ÐµÐ½Ñ‘Ð½: Ð²Ñ‹Ð±ÐµÑ€Ð¸ Ð±Ð»Ð¾Ðº Ð·Ð°Ð½Ð¾Ð²Ð¾", Toast.LENGTH_LONG).show();
-                        return;
-                    }
-                    String label = labels.get(choice);
-                    if ("ÐÐ°Ð·Ð½Ð°Ñ‡Ð¸Ñ‚ÑŒ Ð²Ñ‹Ñ…Ð¾Ð´ Ð¼Ð°ÐºÑ€Ð¾ÑÐ°â€¦".equals(label)) {
-                        chooseNestedMacroOutput(blockIndex, widget);
-                    } else if ("Ð ÐµÐ´Ð°ÐºÑ‚Ð¸Ñ€Ð¾Ð²Ð°Ñ‚ÑŒ Ð²Ð»Ð¾Ð¶ÐµÐ½Ð½Ñ‹Ð¹ Ð³Ñ€Ð°Ñ„".equals(label)) {
-                        openNestedMacroGraphEditor(blockIndex);
-                    } else if ("Ð¡Ð¾ÐµÐ´Ð¸Ð½Ð¸Ñ‚ÑŒ Ñâ€¦".equals(label)) {
-                        fbdWireMode = true;
-                        wireSource = blockIndex;
-                        Toast.makeText(this, "Ð’Ñ‹Ð±ÐµÑ€Ð¸ Ñ†ÐµÐ»ÐµÐ²Ð¾Ð¹ Ð±Ð»Ð¾Ðº FBD", Toast.LENGTH_LONG).show();
-                    } else if ("Ð˜Ð½Ð²ÐµÑ€Ñ‚Ð¸Ñ€Ð¾Ð²Ð°Ñ‚ÑŒ ÑÐ²ÑÐ·ÑŒ BOOLâ€¦".equals(label)) {
-                        showFbdInversionDialog(blockIndex);
-                    } else if ("Ð˜Ð½Ð²ÐµÑ€Ñ‚Ð¸Ñ€Ð¾Ð²Ð°Ñ‚ÑŒ Ð²Ñ‹Ñ…Ð¾Ð´ BOOL".equals(label)) {
-                        try {
-                            Object previous = widget.extraFields.opt("invertOut");
-                            boolean existed = widget.extraFields.has("invertOut");
-                            if (!toggleFbdBlockOutputInversion(widget)) return;
-                            if (!persistProjectNow(true)) {
-                                if (existed) widget.extraFields.put("invertOut", previous);
-                                else widget.extraFields.remove("invertOut");
-                                Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ ÑÐ¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ð¸Ð½Ð²ÐµÑ€ÑÐ¸ÑŽ Ð²Ñ‹Ñ…Ð¾Ð´Ð°", Toast.LENGTH_LONG).show();
-                            }
-                            if (editor != null) editor.invalidate();
-                        } catch (Exception error) {
-                            Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ ÑÐ¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ð¸Ð½Ð²ÐµÑ€ÑÐ¸ÑŽ Ð²Ñ‹Ñ…Ð¾Ð´Ð°", Toast.LENGTH_LONG).show();
-                        }
-                    } else if ("ÐžÑ‚ÑÐ¾ÐµÐ´Ð¸Ð½Ð¸Ñ‚ÑŒ Ð²Ñ‹Ñ…Ð¾Ð´".equals(label)) {
-                        showFbdDisconnectDialog(blockIndex);
-                    } else if ("Ð ÐµÐ¶Ð¸Ð¼ / ÐµÐ´Ð¸Ð½Ð¸Ñ†Ñ‹ Ð²Ñ€ÐµÐ¼ÐµÐ½Ð¸".equals(label)
-                            || "Ð¡Ð²Ð¾Ð¹ÑÑ‚Ð²Ð°".equals(label)) {
-                        editor.selected = blockIndex;
-                        editSelectedWidget();
-                    } else {
-                        editor.selected = blockIndex;
-                        showStandardWidgetContextMenu();
-                    }
-                    if (editor != null) editor.invalidate();
-                }).setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null).show();
-    }
-
-    private void showStandardWidgetContextMenu() {
-        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) return;
-
-        Widget selectedWidget = widgets.get(editor.selected);
-        String titleText = selectedWidget.text == null || selectedWidget.text.trim().isEmpty()
-                ? selectedWidget.type : selectedWidget.text;
-
-        LinearLayout list = new LinearLayout(this);
-        list.setOrientation(LinearLayout.VERTICAL);
-        list.setPadding(dp(4), dp(4), dp(4), dp(4));
-        list.setBackgroundColor(Color.rgb(35, 35, 35));
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-        scroll.addView(list);
-
-        final AlertDialog[] menu = new AlertDialog[1];
-        final String[] labels = {"Ð¡Ð²Ð¾Ð¹ÑÑ‚Ð²Ð°", "Ð’Ñ‹Ñ€Ð°Ð²Ð½Ð¸Ð²Ð°Ð½Ð¸Ðµ", "ÐšÐ¾Ð¿Ð¸Ñ€Ð¾Ð²Ð°Ñ‚ÑŒ", "Ð£Ð´Ð°Ð»Ð¸Ñ‚ÑŒ"};
-        final String[] details = {
-                "ÐÐ°ÑÑ‚Ñ€Ð¾Ð¸Ñ‚ÑŒ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚ Ð¸ Ð¿Ñ€Ð¸Ð²ÑÐ·ÐºÑƒ",
-                "Ð’Ñ‹Ñ€Ð¾Ð²Ð½ÑÑ‚ÑŒ Ð½Ð° Ñ…Ð¾Ð»ÑÑ‚Ðµ",
-                "Ð¡Ð¾Ð·Ð´Ð°Ñ‚ÑŒ ÐºÐ¾Ð¿Ð¸ÑŽ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚Ð°",
-                "Ð£Ð´Ð°Ð»Ð¸Ñ‚ÑŒ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚ Ñ ÑÐºÑ€Ð°Ð½Ð°"
-        };
-        final int[] symbols = {0x2699, 0x21D4, 0x29C9, 0x2715};
-
-        for (int i = 0; i < labels.length; i++) {
-            final int index = i;
-            LinearLayout row = new LinearLayout(this);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(dp(10), dp(8), dp(10), dp(8));
-            row.setMinimumHeight(dp(54));
-            row.setBackgroundColor(i % 2 == 0
-                    ? Color.rgb(48, 48, 48) : Color.rgb(40, 40, 40));
-
-            TextView symbol = new TextView(this);
-            symbol.setText(new String(Character.toChars(symbols[i])));
-            symbol.setTextSize(21);
-            symbol.setGravity(Gravity.CENTER);
-            symbol.setTextColor(i == 3 ? Color.rgb(235, 105, 90) : Color.rgb(237, 176, 59));
-            row.addView(symbol, new LinearLayout.LayoutParams(dp(38), -2));
-
-            LinearLayout textColumn = new LinearLayout(this);
-            textColumn.setOrientation(LinearLayout.VERTICAL);
-            textColumn.setPadding(dp(8), 0, 0, 0);
-            TextView label = new TextView(this);
-            label.setText(labels[i]);
-            label.setTextSize(16);
-            label.setTypeface(null, android.graphics.Typeface.BOLD);
-            label.setTextColor(i == 3 ? Color.rgb(235, 105, 90) : Color.rgb(237, 176, 59));
-            textColumn.addView(label, new LinearLayout.LayoutParams(-1, -2));
-
-            TextView detail = new TextView(this);
-            detail.setText(details[i]);
-            detail.setTextSize(12);
-            detail.setTextColor(Color.rgb(187, 187, 187));
-            textColumn.addView(detail, new LinearLayout.LayoutParams(-1, -2));
-            row.addView(textColumn, new LinearLayout.LayoutParams(0, -2, 1));
-
-            row.setOnClickListener(v -> {
-                if (menu[0] != null) menu[0].dismiss();
-                if (index == 0) editSelectedWidget();
-                else if (index == 1) showAlignDialog();
-                else if (index == 2) copySelectedWidget();
-                else deleteSelectedWidget();
-            });
-            list.addView(row, new LinearLayout.LayoutParams(-1, -2));
-
-            View separator = new View(this);
-            separator.setBackgroundColor(Color.rgb(75, 75, 75));
-            list.addView(separator, new LinearLayout.LayoutParams(-1, dp(1)));
-        }
-
-        menu[0] = new AlertDialog.Builder(this)
-                .setTitle(titleText)
-                .setView(scroll)
-                .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null)
-                .create();
-        menu[0].show();
-        int titleId = getResources().getIdentifier("alertTitle", "id", "android");
-        TextView dialogTitle = menu[0].findViewById(titleId);
-        if (dialogTitle != null) dialogTitle.setTextColor(Color.rgb(237, 176, 59));
-    }
-
-    private String archiveProjectKey() {
-        String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
-        return ProjectMediaService.getOrGenerateProjectId(json);
-    }
-
-    private String archiveWidgetKey(Widget widget) throws org.json.JSONException {
-        String key = widget.extraFields.optString("craftArchiveKey", "").trim();
-        if (key.isEmpty()) {
-            key = java.util.UUID.randomUUID().toString();
-            widget.extraFields.put("craftArchiveKey", key);
-            persistProject();
-        }
-        return key;
-    }
-
-    private void showLocalArchive(Widget widget) {
-        final String projectKey, widgetKey;
-        try { projectKey = archiveProjectKey(); widgetKey = archiveWidgetKey(widget); }
-        catch (Exception failure) {
-            Toast.makeText(this, "Ð¡Ð½Ð°Ñ‡Ð°Ð»Ð° ÑÐ¾Ñ…Ñ€Ð°Ð½Ð¸ Ð¿Ñ€Ð¾ÐµÐºÑ‚, Ð·Ð°Ñ‚ÐµÐ¼ Ð¾Ñ‚ÐºÑ€Ð¾Ð¹ Ð°Ñ€Ñ…Ð¸Ð²", Toast.LENGTH_LONG).show();
-            return;
-        }
-        StringBuilder report = new StringBuilder();
-        try {
-            LocalArchiveStore store = new LocalArchiveStore(this);
-            try {
-                List<LocalArchiveStore.Sample> rows = store.latest(projectKey, widgetKey, 40);
-                if (rows.isEmpty()) report.append("Ð—Ð°Ð¿Ð¸ÑÐµÐ¹ Ð¿Ð¾ÐºÐ° Ð½ÐµÑ‚. ÐÐ°ÑÑ‚Ñ€Ð¾Ð¹ Ð»Ð¾ÐºÐ°Ð»ÑŒÐ½Ñ‹Ð¹ TCP-ÐºÐ°Ð½Ð°Ð» Ð¸ Ð·Ð°Ð¿ÑƒÑÑ‚Ð¸ ÑÐºÑ€Ð°Ð½ Ð² Ñ€Ð°Ð±Ð¾Ñ‡ÐµÐ¼ Ñ€ÐµÐ¶Ð¸Ð¼Ðµ.");
-                else {
-                    java.text.SimpleDateFormat format = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.ROOT);
-                    for (LocalArchiveStore.Sample row : rows)
-                        report.append(format.format(new java.util.Date(row.timestamp))).append("  ").append(row.value).append("\n");
-                }
-            } finally { store.close(); }
-        } catch (Exception failure) {
-            report.append("ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¿Ñ€Ð¾Ñ‡Ð¸Ñ‚Ð°Ñ‚ÑŒ Ð»Ð¾ÐºÐ°Ð»ÑŒÐ½Ñ‹Ð¹ Ð°Ñ€Ñ…Ð¸Ð².");
-        }
-        ScrollView scroll = new ScrollView(this);
-        TextView content = new TextView(this);
-        content.setText(report.toString()); content.setTextSize(14);
-        content.setTextColor(Color.rgb(30, 41, 59)); content.setPadding(dp(16), dp(12), dp(16), dp(12));
-        scroll.addView(content);
-        String title = widget.text == null || widget.text.trim().isEmpty() ? "ÐÑ€Ñ…Ð¸Ð²" : widget.text;
-        new AlertDialog.Builder(this).setTitle(title)
-                .setView(scroll).setNeutralButton("Ð­ÐºÑÐ¿Ð¾Ñ€Ñ‚ CSV", (dialog, which) -> exportLocalArchive(projectKey, widgetKey, widget.text))
-                .setNegativeButton("Ð“Ñ€Ð°Ñ„Ð¸Ðº", (dialog, which) -> showArchiveGraph(projectKey, widgetKey, title))
-                .setPositiveButton("Ð—Ð°ÐºÑ€Ñ‹Ñ‚ÑŒ", null).show();
-    }
-
-    private void showArchiveGraph(String projectKey, String widgetKey, String title) {
-        final List<LocalArchiveStore.Sample> rows;
-        try {
-            LocalArchiveStore store = new LocalArchiveStore(this);
-            try { rows = store.latest(projectKey, widgetKey, 200); }
-            finally { store.close(); }
-        } catch (Exception failure) {
-            Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¿Ñ€Ð¾Ñ‡Ð¸Ñ‚Ð°Ñ‚ÑŒ Ð»Ð¾ÐºÐ°Ð»ÑŒÐ½Ñ‹Ð¹ Ð°Ñ€Ñ…Ð¸Ð²", Toast.LENGTH_LONG).show();
-            return;
-        }
-        if (rows.isEmpty()) {
-            Toast.makeText(this, "Ð”Ð»Ñ Ð³Ñ€Ð°Ñ„Ð¸ÐºÐ° Ð¿Ð¾ÐºÐ° Ð½ÐµÑ‚ Ð·Ð°Ð¿Ð¸ÑÐµÐ¹", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        View graph = new View(this) {
-            final int[] colors = {Color.rgb(30, 136, 229), Color.rgb(67, 160, 71),
-                    Color.rgb(251, 140, 0), Color.rgb(229, 57, 53)};
-            @Override protected void onDraw(Canvas canvas) {
-                super.onDraw(canvas);
-                float left = dp(48), right = getWidth() - dp(16), top = dp(24), bottom = getHeight() - dp(40);
-                Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-                paint.setColor(Color.rgb(210, 216, 224)); paint.setStrokeWidth(dp(1));
-                for (int grid = 0; grid <= 4; grid++) {
-                    float y = top + (bottom - top) * grid / 4f;
-                    canvas.drawLine(left, y, right, y, paint);
-                }
-                int maxChannels = 1;
-                for (LocalArchiveStore.Sample row : rows)
-                    maxChannels = Math.max(maxChannels, row.value.split(",", -1).length);
-                List<Float> mins = new ArrayList<>(), maxs = new ArrayList<>();
-                for (int channel = 0; channel < maxChannels; channel++) {
-                    List<Float> values = new ArrayList<>();
-                    float min = Float.POSITIVE_INFINITY, max = Float.NEGATIVE_INFINITY;
-                    for (int i = rows.size() - 1; i >= 0; i--) {
-                        String[] fields = rows.get(i).value.split(",", -1);
-                        if (channel >= fields.length) { values.add(Float.NaN); continue; }
-                        try {
-                            float value = Float.parseFloat(fields[channel]);
-                            if (!Float.isFinite(value)) value = Float.NaN;
-                            values.add(value);
-                            if (!Float.isNaN(value)) { min = Math.min(min, value); max = Math.max(max, value); }
-                        } catch (NumberFormatException invalid) { values.add(Float.NaN); }
-                    }
-                    if (Float.isFinite(min) && Float.isFinite(max)) {
-                        mins.add(min); maxs.add(max);
-                    } else { mins.add(0f); maxs.add(1f); }
-                }
-                for (int channel = 0; channel < maxChannels; channel++) {
-                    paint.setColor(colors[channel % colors.length]); paint.setStrokeWidth(dp(2));
-                    paint.setStyle(Paint.Style.STROKE); paint.setStrokeJoin(Paint.Join.ROUND);
-                    android.graphics.Path path = new android.graphics.Path(); boolean active = false;
-                    List<LocalArchiveStore.Sample> ascending = new ArrayList<>(rows);
-                    java.util.Collections.reverse(ascending);
-                    for (int i = 0; i < ascending.size(); i++) {
-                        String[] fields = ascending.get(i).value.split(",", -1);
-                        if (channel >= fields.length) { active = false; continue; }
-                        float value;
-                        try { value = Float.parseFloat(fields[channel]); }
-                        catch (NumberFormatException invalid) { active = false; continue; }
-                        if (!Float.isFinite(value)) { active = false; continue; }
-                        float min = mins.get(channel), max = maxs.get(channel);
-                        float range = Math.max(0.0001f, max - min);
-                        float x = left + (right - left) * (ascending.size() <= 1 ? 0.5f : i / (float)(ascending.size() - 1));
-                        float y = bottom - (bottom - top) * (value - min) / range;
-                        if (!active) { path.moveTo(x, y); active = true; } else path.lineTo(x, y);
-                    }
-                    canvas.drawPath(path, paint); paint.setStyle(Paint.Style.FILL);
-                    paint.setTextSize(dp(12)); canvas.drawText("Ðš" + (channel + 1), left + dp(6 + channel * 44), top - dp(7), paint);
-                }
-            }
-        };
-        graph.setLayoutParams(new ViewGroup.LayoutParams(-1, dp(280)));
-        new AlertDialog.Builder(this).setTitle("Ð“Ñ€Ð°Ñ„Ð¸Ðº â€” " + title).setView(graph)
-                .setPositiveButton("Ð—Ð°ÐºÑ€Ñ‹Ñ‚ÑŒ", null).show();
-    }
-
-    private void exportLocalArchive(String projectKey, String widgetKey, String label) {
-        pendingArchiveProjectId = projectKey;
-        pendingArchiveWidgetKey = widgetKey;
-        String safe = (label == null || label.trim().isEmpty() ? "archive" : label.trim())
-                .replaceAll("[^A-Za-zÐ-Ð¯Ð°-Ñ0-9._-]", "_");
-        pendingArchiveTitle = safe + ".csv";
-        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE); intent.setType("text/csv");
-        intent.putExtra(Intent.EXTRA_TITLE, pendingArchiveTitle);
-        try { startActivityForResult(intent, REQUEST_EXPORT_LOCAL_ARCHIVE); }
-        catch (Exception failure) {
-            pendingArchiveProjectId = pendingArchiveWidgetKey = pendingArchiveTitle = null;
-            Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚ÑŒ Ð²Ñ‹Ð±Ð¾Ñ€ Ñ„Ð°Ð¹Ð»Ð°", Toast.LENGTH_LONG).show();
-        }
-    }
-
-    private void showModbusDiagnostics() {
-        StringBuilder report = new StringBuilder();
-        int boundCount = 0;
-        int errorCount = 0;
-        int pendingCount = 0;
-        int activeCount = 0;
-        int inactiveCount = 0;
-        for (int i = 0; i < widgets.size(); i++) {
-            Widget widget = widgets.get(i);
-            String binding = widget.connectionInfo == null ? "" : widget.connectionInfo.trim();
-            if (binding.isEmpty()) continue;
-            boundCount++;
-            String state = liveValues.get(i);
-            if (binding.startsWith("tcp://") && parseBinding(i, binding) == null) state = "CFG â€” Ð½ÐµÐ²ÐµÑ€Ð½Ñ‹Ð¹ Ð°Ð´Ñ€ÐµÑ";
-            else if (binding.startsWith("usb://")
-                    && !(isCraftRegisterSource(widget.type) || isCraftRegisterSink(widget.type) || "FBD Ð’Ñ…Ð¾Ð´".equals(widget.type)))
-                state = "CFG â€” USB RTU Ð´Ð¾ÑÑ‚ÑƒÐ¿ÐµÐ½ Ð´Ð»Ñ FBD register variables Ð¸ FBD Ð’Ñ…Ð¾Ð´";
-            else if (binding.startsWith("usb://")
-                    && parseProjectBinding(i, binding, isCraftRegisterFloat(widget.type) ? 2 : 1) == null)
-                state = "CFG â€” Ð½ÐµÐ²ÐµÑ€Ð½Ñ‹Ð¹ USB RTU Ð°Ð´Ñ€ÐµÑ";
-            else if (binding.startsWith("usb://") && (manualUsbConnection == null || !manualUsbConnection.isOpen()))
-                state = "ERR: USB RTU Ð½Ðµ Ð¿Ð¾Ð´ÐºÐ»ÑŽÑ‡Ñ‘Ð½";
-            else if (state == null) state = "ÐžÐ¶Ð¸Ð´Ð°Ð½Ð¸Ðµ Ð¾Ñ‚Ð²ÐµÑ‚Ð°";
-            if ((state != null && state.startsWith("ERR")) || (state != null && state.startsWith("CFG"))) errorCount++;
-            else if ("ÐžÐ¶Ð¸Ð´Ð°Ð½Ð¸Ðµ Ð¾Ñ‚Ð²ÐµÑ‚Ð°".equals(state)) pendingCount++;
-            else if (isActiveModbusValue(state)) activeCount++;
-            else inactiveCount++;
-            report.append(i + 1).append(". ").append(widget.text == null || widget.text.trim().isEmpty() ? widget.type : widget.text)
-                    .append("\n  ÐŸÑ€Ð¸Ð²ÑÐ·ÐºÐ°: ").append(binding)
-                    .append("\n  Ð¢ÐµÐºÑƒÑ‰ÐµÐµ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ: ").append(state)
-                    .append("\n\n");
-        }
-        if (boundCount == 0) {
-            report.append("ÐÐ° Ñ‚ÐµÐºÑƒÑ‰ÐµÐ¼ ÑÐºÑ€Ð°Ð½Ðµ Ð½ÐµÑ‚ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚Ð¾Ð² Ñ ÑƒÐºÐ°Ð·Ð°Ð½Ð½Ð¾Ð¹ Ð¿Ñ€Ð¸Ð²ÑÐ·ÐºÐ¾Ð¹.\n")
-                    .append("ÐžÑ‚ÐºÑ€Ð¾Ð¹ Â«Ð¡Ð²Ð¾Ð¹ÑÑ‚Ð²Ð°Â» ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚Ð° Ð¸ ÑƒÐºÐ°Ð¶Ð¸ Ð°Ð´Ñ€ÐµÑ Modbus, Ð½Ð°Ð¿Ñ€Ð¸Ð¼ÐµÑ€:\n")
-                    .append("tcp://192.168.1.10:502/1/40001");
-        } else {
-            report.insert(0, "ÐŸÑ€Ð¸Ð²ÑÐ·Ð¾Ðº: " + boundCount + " Â· ÐžÑˆÐ¸Ð±Ð¾Ðº: " + errorCount + " Â· ÐžÐ¶Ð¸Ð´Ð°Ð½Ð¸Ðµ: " + pendingCount + " Â· ÐÐºÑ‚Ð¸Ð²Ð½Ñ‹Ñ…: " + activeCount + " Â· ÐÐµÐ°ÐºÑ‚Ð¸Ð²Ð½Ñ‹Ñ…: " + inactiveCount + "\n\n");
-        }
-        TextView content = new TextView(this);
-        content.setText(report.toString());
-        content.setTextSize(14);
-        content.setTextColor(Color.rgb(30, 41, 59));
-        content.setPadding(dp(16), dp(12), dp(16), dp(12));
-        ScrollView scroll = new ScrollView(this);
-        scroll.addView(content);
-        new AlertDialog.Builder(this)
-                .setTitle("Ð”Ð¸Ð°Ð³Ð½Ð¾ÑÑ‚Ð¸ÐºÐ° Modbus")
-                .setView(scroll)
-                .setPositiveButton("ÐžÐ±Ð½Ð¾Ð²Ð¸Ñ‚ÑŒ", (dialog, which) -> showModbusDiagnostics())
-                .setNegativeButton("Ð—Ð°ÐºÑ€Ñ‹Ñ‚ÑŒ", null)
-                .show();
-    }
-
-    private void showAddWidgetMenu() {
-        OriginalComponentPalette.show(this, this::addWidget,
-                this::showFbdPalette, this::editScreenBackground);
-    }
-
-    private void showFbdPalette() {
-        OriginalFbdPalette.show(this, this::addWidget, this::showAddWidgetMenu,
-                this::showCraftMacroTools, this::createCraftMacroFromSelection,
-                this::showExtendedWidgetMenu);
-    }
-
-    private void showExtendedWidgetMenu() {
-        final String[] labels = {
-                "Ð¢ÐµÐºÑÑ‚ / Ð½Ð°Ð´Ð¿Ð¸ÑÑŒ", "ÐšÐ½Ð¾Ð¿ÐºÐ°", "Ð˜Ð½Ð´Ð¸ÐºÐ°Ñ‚Ð¾Ñ€", "Ð—Ð°Ð´Ð°Ñ‚Ñ‡Ð¸Ðº",
-                "Ð”Ð¸Ð½Ð°Ð¼Ð¸Ñ‡ÐµÑÐºÐ¸Ð¹ Ñ‚ÐµÐºÑÑ‚", "Ð‘Ð¸Ñ‚Ð¾Ð²Ñ‹Ð¹ ÑÐ¿Ð¸ÑÐ¾Ðº", "Ð¨ÐºÐ°Ð»Ð° / Ð¡Ñ‚Ñ€ÐµÐ»ÐºÐ°", "ÐŸÑ€Ð¾Ð³Ñ€ÐµÑÑ-Ð±Ð°Ñ€", "Ð“Ñ€Ð°Ñ„Ð¸Ðº / Ð¢Ñ€ÐµÐ½Ð´", "Ð”Ð²ÑƒÑ…Ð¿Ð¾Ð·Ð¸Ñ†Ð¸Ð¾Ð½Ð½Ñ‹Ð¹ Ð¸Ð½Ð´Ð¸ÐºÐ°Ñ‚Ð¾Ñ€",
-                "Ð—Ð²ÑƒÐºÐ¾Ð²Ð¾Ð¹ ÑÐ¸Ð³Ð½Ð°Ð» / ÐÐ»Ð°Ñ€Ð¼", "ÐŸÐµÑ€ÐµÑ…Ð¾Ð´ Ð½Ð° ÑÐºÑ€Ð°Ð½ / Ð¡ÑÑ‹Ð»ÐºÐ°", "ÐœÐ½Ð¾Ð³Ð¾Ð¿Ð¾Ð·Ð¸Ñ†Ð¸Ð¾Ð½Ð½Ð¾Ðµ Ñ„Ð¾Ñ‚Ð¾", "Ð“Ð¾Ð»Ð¾ÑÐ¾Ð²Ð¾Ðµ ÑÐ¾Ð¾Ð±Ñ‰ÐµÐ½Ð¸Ðµ",
-                "FBD â€” Ð’Ñ…Ð¾Ð´", "FBD â€” Ð˜", "FBD â€” Ð˜Ð›Ð˜", "FBD â€” ÐÐ•",
-                "FBD â€” NAND", "FBD â€” NOR", "FBD â€” XOR",
-                "FBD â€” TON (Ð·Ð°Ð´ÐµÑ€Ð¶ÐºÐ° Ð²ÐºÐ»ÑŽÑ‡ÐµÐ½Ð¸Ñ)", "FBD â€” TP (Ð¸Ð¼Ð¿ÑƒÐ»ÑŒÑ)", "FBD â€” TOF (Ð·Ð°Ð´ÐµÑ€Ð¶ÐºÐ° Ð²Ñ‹ÐºÐ»ÑŽÑ‡ÐµÐ½Ð¸Ñ)",
-                "FBD â€” Ð¡Ñ€Ð°Ð²Ð½ÐµÐ½Ð¸Ðµ", "FBD â€” Ð¡Ð»Ð¾Ð¶ÐµÐ½Ð¸Ðµ (+)", "FBD â€” Ð’Ñ‹Ñ‡Ð¸Ñ‚Ð°Ð½Ð¸Ðµ (-)", "FBD â€” Ð£Ð¼Ð½Ð¾Ð¶ÐµÐ½Ð¸Ðµ (*)", "FBD â€” Ð”ÐµÐ»ÐµÐ½Ð¸Ðµ (/)",
-                "FBD â€” POW (ÑÑ‚ÐµÐ¿ÐµÐ½ÑŒ)", "FBD â€” SQRT (ÐºÐ¾Ñ€ÐµÐ½ÑŒ)", "FBD â€” SIN", "FBD â€” COS", "FBD â€” TAN",
-                "FBD â€” FloatToInt", "FBD â€” IntToFloat",
-                "FBD â€” MOVE", "FBD â€” SEL (ÑÐµÐ»ÐµÐºÑ‚Ð¾Ñ€)", "FBD â€” ABS", "FBD â€” MIN / MAX",
-                "FBD â€” RS", "FBD â€” SR", "FBD â€” CTU (ÑÑ‡Ñ‘Ñ‚ Ð²Ð²ÐµÑ€Ñ…)",
-                "FBD â€” CTD (ÑÑ‡Ñ‘Ñ‚ Ð²Ð½Ð¸Ð·)", "FBD â€” R_TRIG", "FBD â€” F_TRIG",
-                "FBD â€” Craft CTU 16 Ð±Ð¸Ñ‚ (+, âˆ’, R)",
-                "FBD â€” Craft T (Ð¿ÐµÑ€ÐµÐºÐ»ÑŽÑ‡Ð°Ñ‚ÐµÐ»ÑŒ Ð¿Ð¾ Ñ„Ñ€Ð¾Ð½Ñ‚Ñƒ)",
-                "FBD â€” Craft TIMER (TON / TOF / TP / BLINK)",
-                "FBD â€” Craft BLINK (Ð¼Ð¸Ð³Ð°Ð½Ð¸Ðµ)",
-                "FBD â€” Craft SEL (Ñ†ÐµÐ»Ð¾Ñ‡Ð¸ÑÐ»ÐµÐ½Ð½Ñ‹Ð¹)",
-                "FBD â€” Craft COMPARE (INT32)",
-                "FBD â€” Craft CH_I (Ð¸Ð·Ð¼ÐµÐ½ÐµÐ½Ð¸Ðµ Integer)",
-                "FBD â€” Craft CH_F (Ð¸Ð·Ð¼ÐµÐ½ÐµÐ½Ð¸Ðµ Float)",
-                "FBD â€” Craft Arithmetic INT (16 Ð±Ð¸Ñ‚)",
-                "FBD â€” Craft Arithmetic FLOAT32",
-                "FBD â€” Craft COMPARE FLOAT32",
-                "FBD â€” Craft MOVE (EN + Integer)",
-                "FBD â€” Craft MX (EN + Integer ID)",
-                "FBD â€” Craft ARRAY (EN + DT + ID)",
-                "FBD â€” Craft LOG (Float32)",
-                "FBD â€” Craft WordToFloat (Integer â†’ Float32)",
-                "FBD â€” Craft POW (Float32)", "FBD â€” Craft SIN (Float32)",
-                "FBD â€” Craft ABS (Float32)", "FBD â€” Craft IntToFloat (signed 16-bit)",
-                "FBD â€” Craft FloatToInt"
-        };
-        final String[] types = {
-                "Ð¢ÐµÐºÑÑ‚", "ÐšÐ½Ð¾Ð¿ÐºÐ°", "Ð˜Ð½Ð´Ð¸ÐºÐ°Ñ‚Ð¾Ñ€", "Ð—Ð°Ð´Ð°Ñ‚Ñ‡Ð¸Ðº",
-                "Ð”Ð¸Ð½Ð°Ð¼Ð¸Ñ‡ÐµÑÐºÐ¸Ð¹ Ñ‚ÐµÐºÑÑ‚", "Ð‘Ð¸Ñ‚Ð¾Ð²Ñ‹Ð¹ ÑÐ¿Ð¸ÑÐ¾Ðº", "Ð¨ÐºÐ°Ð»Ð° / Ð¡Ñ‚Ñ€ÐµÐ»ÐºÐ°", "ÐŸÑ€Ð¾Ð³Ñ€ÐµÑÑ-Ð±Ð°Ñ€", "Ð“Ñ€Ð°Ñ„Ð¸Ðº / Ð¢Ñ€ÐµÐ½Ð´", "Ð”Ð²ÑƒÑ…Ð¿Ð¾Ð·Ð¸Ñ†Ð¸Ð¾Ð½Ð½Ñ‹Ð¹ Ð¸Ð½Ð´Ð¸ÐºÐ°Ñ‚Ð¾Ñ€",
-                "Ð—Ð²ÑƒÐºÐ¾Ð²Ð¾Ð¹ ÑÐ¸Ð³Ð½Ð°Ð»", "ÐŸÐµÑ€ÐµÑ…Ð¾Ð´ Ð½Ð° ÑÐºÑ€Ð°Ð½", "ÐœÐ½Ð¾Ð³Ð¾Ð¿Ð¾Ð·Ð¸Ñ†Ð¸Ð¾Ð½Ð½Ð¾Ðµ Ñ„Ð¾Ñ‚Ð¾", "Ð“Ð¾Ð»Ð¾ÑÐ¾Ð²Ð¾Ðµ ÑÐ¾Ð¾Ð±Ñ‰ÐµÐ½Ð¸Ðµ",
-                "FBD Ð’Ñ…Ð¾Ð´", "FBD Ð˜", "FBD Ð˜Ð›Ð˜", "FBD ÐÐ•",
-                "FBD NAND", "FBD NOR", "FBD XOR",
-                "FBD Ð¢Ð°Ð¹Ð¼ÐµÑ€", "FBD TP", "FBD TOF",
-                "FBD Ð¡Ñ€Ð°Ð²Ð½ÐµÐ½Ð¸Ðµ", "FBD Ð¡Ð»Ð¾Ð¶ÐµÐ½Ð¸Ðµ", "FBD Ð’Ñ‹Ñ‡Ð¸Ñ‚Ð°Ð½Ð¸Ðµ", "FBD Ð£Ð¼Ð½Ð¾Ð¶ÐµÐ½Ð¸Ðµ", "FBD Ð”ÐµÐ»ÐµÐ½Ð¸Ðµ",
-                "FBD POW", "FBD SQRT", "FBD SIN", "FBD COS", "FBD TAN",
-                "FBD FloatToInt", "FBD IntToFloat",
-                "FBD MOVE", "FBD SEL", "FBD ABS", "FBD MIN_MAX",
-                "FBD RS", "FBD SR", "FBD CTU",
-                "FBD CTD", "FBD R_TRIG", "FBD F_TRIG",
-                "FBD CRAFT CTU", "FBD CRAFT T", "FBD CRAFT TIMER", "FBD CRAFT BLINK",
-                "FBD CRAFT SEL", "FBD CRAFT COMPARE",
-                "FBD CRAFT CHANGE I", "FBD CRAFT CHANGE F",
-                "FBD CRAFT ARITHMETIC INT", "FBD CRAFT ARITHMETIC FLOAT",
-                "FBD CRAFT COMPARE FLOAT", "FBD CRAFT MOVE",
-                "FBD CRAFT MX", "FBD CRAFT ARRAY",
-                "FBD CRAFT LOG", "FBD CRAFT WORD TO FLOAT",
-                "FBD CRAFT POW", "FBD CRAFT SIN", "FBD CRAFT ABS",
-                "FBD CRAFT INT TO FLOAT", "FBD CRAFT FLOAT TO INT"
-        };
-        final String[] defaults = {
-                "ÐÐ°Ð´Ð¿Ð¸ÑÑŒ", "ÐšÐ½Ð¾Ð¿ÐºÐ°", "Ð˜Ð½Ð´Ð¸ÐºÐ°Ñ‚Ð¾Ñ€", "Ð—Ð°Ð´Ð°Ñ‚Ñ‡Ð¸Ðº: 0",
-                "Ð”Ð¸Ð½Ð°Ð¼Ð¸Ñ‡ÐµÑÐºÐ¸Ð¹ Ñ‚ÐµÐºÑÑ‚", "Ð‘Ð¸Ñ‚Ð¾Ð²Ñ‹Ð¹ ÑÐ¿Ð¸ÑÐ¾Ðº", "Ð¨ÐºÐ°Ð»Ð°", "Ð£Ñ€Ð¾Ð²ÐµÐ½ÑŒ", "Ð¢Ñ€ÐµÐ½Ð´", "Ð¡Ð¾ÑÑ‚Ð¾ÑÐ½Ð¸Ðµ",
-                "ÐÐ»Ð°Ñ€Ð¼", "ÐŸÐµÑ€ÐµÑ…Ð¾Ð´ -> Ð­ÐºÑ€Ð°Ð½ 1", "Ð¤Ð¾Ñ‚Ð¾", "Ð“Ð¾Ð»Ð¾Ñ",
-                "Ð’Ñ…Ð¾Ð´", "Ð˜", "Ð˜Ð›Ð˜", "ÐÐ•", "NAND", "NOR", "XOR",
-                "TON", "TP", "TOF", "A > B", "A + B", "A - B", "A * B", "A / B",
-                "POW", "SQRT", "SIN", "COS", "TAN",
-                "Float->Int", "Int->Float",
-                "MOVE", "SEL", "ABS", "MIN/MAX",
-                "RS", "SR", "CTU", "CTD", "R_TRIG", "F_TRIG",
-                "CTU 16 bit", "T", "TON", "BLINK", "SEL", ">",
-                "CH_I", "CH_F", "+", "+", ">", "MOVE", "MX", "ARRAY", "LN", "WORD->FL",
-                "POW", "SIN", "ABS", "INT->FL", "FL->INT"
-        };
-        LinearLayout list = new LinearLayout(this);
-        list.setOrientation(LinearLayout.VERTICAL);
-        list.setPadding(dp(8), dp(4), dp(8), dp(4));
-        Button macroTools = new Button(this);
-        macroTools.setText("Ð ÐµÐ´Ð°ÐºÑ‚Ð¾Ñ€ Ð¼Ð°ÐºÑ€Ð¾ÑÐ¾Ð²  â€º");
-        macroTools.setAllCaps(false);
-        macroTools.setOnClickListener(v -> showCraftMacroTools());
-        list.addView(macroTools, new LinearLayout.LayoutParams(-1, -2));
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-        scroll.addView(list);
-        final AlertDialog[] picker = new AlertDialog[1];
-
-        for (int i = 0; i < labels.length; i++) {
-            if (i == 14) {
-                TextView section = new TextView(this);
-                section.setText("Ð¤Ð£ÐÐšÐ¦Ð˜ÐžÐÐÐ›Ð¬ÐÐ«Ð• Ð‘Ð›ÐžÐšÐ˜ (FBD)");
-                section.setTextColor(Color.rgb(37, 99, 235));
-                section.setTextSize(12);
-                section.setTypeface(null, android.graphics.Typeface.BOLD);
-                section.setPadding(dp(12), dp(14), dp(12), dp(8));
-                list.addView(section, new LinearLayout.LayoutParams(-1, -2));
-            }
-            final int index = i;
-            TextView item = new TextView(this);
-            item.setText(labels[i] + "    â€º");
-            item.setTextColor(Color.rgb(30, 41, 59));
-            item.setTextSize(16);
-            item.setGravity(Gravity.CENTER_VERTICAL);
-            item.setPadding(dp(14), dp(12), dp(12), dp(12));
-            item.setBackgroundColor(i % 2 == 0
-                    ? Color.rgb(248, 250, 252) : Color.WHITE);
-            item.setMinHeight(dp(48));
-            item.setOnClickListener(v -> {
-                if (picker[0] != null) picker[0].dismiss();
-                addWidget(types[index], defaults[index]);
-            });
-            if (OriginalIndicator.supports(types[i]) || "ÐšÐ½Ð¾Ð¿ÐºÐ°".equals(types[i])) {
-                // Preview with verified original APK drawable resources.
-                // Button artwork is the same original background used by legacyMenuButton.
-                LinearLayout previewRow = new LinearLayout(this);
-                previewRow.setOrientation(LinearLayout.HORIZONTAL);
-                previewRow.setGravity(Gravity.CENTER_VERTICAL);
-                android.widget.ImageView preview = new android.widget.ImageView(this);
-                boolean buttonPreview = "ÐšÐ½Ð¾Ð¿ÐºÐ°".equals(types[i]);
-                preview.setImageResource(buttonPreview
-                        ? R.drawable.kc_background_button : R.drawable.kc_lamp_off);
-                preview.setContentDescription(buttonPreview
-                        ? "ÐšÐ½Ð¾Ð¿ÐºÐ°: Ð¾Ñ€Ð¸Ð³Ð¸Ð½Ð°Ð»ÑŒÐ½Ñ‹Ð¹ Ñ„Ð¾Ð½" : "Ð˜Ð½Ð´Ð¸ÐºÐ°Ñ‚Ð¾Ñ€: Ð²Ñ‹ÐºÐ»ÑŽÑ‡ÐµÐ½");
-                preview.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
-                LinearLayout.LayoutParams previewSize = new LinearLayout.LayoutParams(dp(40), dp(40));
-                previewSize.setMargins(dp(12), dp(4), dp(8), dp(4));
-                previewRow.addView(preview, previewSize);
-                previewRow.addView(item, new LinearLayout.LayoutParams(0, -2, 1f));
-                previewRow.setOnClickListener(v -> item.performClick());
-                previewRow.setMinimumHeight(dp(48));
-                list.addView(previewRow, new LinearLayout.LayoutParams(-1, -2));
-            } else {
-                list.addView(item, new LinearLayout.LayoutParams(-1, -2));
-            }
-            View separator = new View(this);
-            separator.setBackgroundColor(Color.rgb(226, 232, 240));
-            list.addView(separator, new LinearLayout.LayoutParams(-1, dp(1)));
-        }
-        picker[0] = new AlertDialog.Builder(this)
-                .setTitle("Ð”Ð¾Ð±Ð°Ð²Ð¸Ñ‚ÑŒ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚")
-                .setView(scroll)
-                .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null)
-                .create();
-        picker[0].show();
-    }
-
-    /**
-     * Find space for a newly created FBD block without changing existing layout.
-     * Deterministic row-major search; work in Canvas pixels (same units as Widget geometry).
-     * This is a BLOODSKY editor usability adaptation, not a copied Craft placement rule.
-     */
-    public static float[] freeFbdPlacement(List<Widget> existing, float canvasWidth,
-                                           float canvasHeight, float width, float height,
-                                           float originX, float originY, float gap) {
-        if (existing == null || !Float.isFinite(canvasWidth) || !Float.isFinite(canvasHeight)
-                || !Float.isFinite(width) || !Float.isFinite(height)
-                || !Float.isFinite(originX) || !Float.isFinite(originY)
-                || !Float.isFinite(gap) || width <= 0 || height <= 0
-                || canvasWidth <= width || canvasHeight <= height) return null;
-        float separation = Math.max(1f, gap);
-        float step = Math.max(8f, separation);
-        float startX = Math.max(0f, originX), startY = Math.max(0f, originY);
-        for (int row = 0; row < 200; row++) {
-            float y = startY + row * step;
-            if (y + height + separation > canvasHeight) break;
-            for (int col = 0; col < 200; col++) {
-                float x = startX + col * step;
-                if (x + width + separation > canvasWidth) break;
-                boolean occupied = false;
-                for (Widget old : existing) {
-                    if (old == null || !old.visible) continue;
-                    if (x < old.x + old.w + separation && x + width + separation > old.x
-                            && y < old.y + old.h + separation && y + height + separation > old.y) {
-                        occupied = true;
-                        break;
-                    }
-                }
-                if (!occupied) return new float[]{x, y};
-            }
-        }
-        return null;
-    }
-
-    private void addWidget(String type, String text) {
-        if (nestedMacroEdit != null && (!type.startsWith("FBD ")
-                || "FBD CRAFT MACRO".equals(canonicalFbdBlockType(type)))) {
-            Toast.makeText(this, "Ð’Ð¾ Ð²Ð»Ð¾Ð¶ÐµÐ½Ð½Ñ‹Ð¹ Ð³Ñ€Ð°Ñ„ Ð¼Ð¾Ð¶Ð½Ð¾ Ð´Ð¾Ð±Ð°Ð²Ð»ÑÑ‚ÑŒ Ñ‚Ð¾Ð»ÑŒÐºÐ¾ Ð¾Ð±Ñ‹Ñ‡Ð½Ñ‹Ðµ FBD-Ð±Ð»Ð¾ÐºÐ¸", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        Widget w = new Widget();
-        w.type = type;
-        w.text = text;
-        if ("FBD CRAFT ARITHMETIC INT".equals(type)
-                || "FBD CRAFT ARITHMETIC FLOAT".equals(type)) w.compareOperator = "+";
-        w.x = dp(40) + (widgets.size() % 4) * dp(24);
-        w.y = dp(50) + (widgets.size() % 6) * dp(22);
-        w.w = OriginalIndicator.supports(type) ? dp(40) : dp(160);
-        w.h = OriginalIndicator.supports(type) ? dp(40) : dp(58);
-        if ("Ð¡Ð¿Ð¸ÑÐ¾Ðº Craft".equals(type)) {
-            w.w = dp(190); w.h = dp(58);
-            String[] labels = new String[16]; java.util.Arrays.fill(labels, "");
-            labels[0] = "Ð’Ð°Ñ€Ð¸Ð°Ð½Ñ‚ 1"; labels[1] = "Ð’Ð°Ñ€Ð¸Ð°Ð½Ñ‚ 2";
-            w.extraFields = new JSONObject();
-            try {
-                w.extraFields.put("craftListLabels", CraftBitList.toJson(labels));
-                w.extraFields.put("craftListVisibleInWork", true);
-                w.extraFields.put("craftListCheckNoChange", true);
-            } catch (Exception ignored) { }
-        }
-        if ("ÐÑ€Ñ…Ð¸Ð² Craft".equals(type)) {
-            w.w = dp(200); w.h = dp(72);
-            try {
-                w.extraFields.put("craftArchiveKey", java.util.UUID.randomUUID().toString());
-                w.extraFields.put("craftArchiveIntervalSeconds", 1);
-                w.extraFields.put("craftArchiveMaxRows", 10000);
-                w.extraFields.put("craftArchiveChannelCount", 1);
-                w.extraFields.put("craftArchiveRecordType", "INT");
-            } catch (org.json.JSONException ignored) { }
-        }
-        if ("Ð§Ð¸ÑÐ»Ð¾Ð²Ð¾Ð¹ Ð²Ð²Ð¾Ð´ Craft".equals(type)) { w.w = dp(120); w.h = dp(48); }
-        if ("Ð›Ð¸Ð½ÐµÐ¹Ð½Ñ‹Ð¹ Ð·Ð°Ð´Ð°Ñ‚Ñ‡Ð¸Ðº Craft".equals(type)) {
-            w.w = dp(190); w.h = dp(62);
-            try { w.extraFields.put("craftLinearMax", CraftLinearSetter.DEFAULT_MAX); w.extraFields.put("craftLinearValue", 0); } catch (Exception ignored) { }
-        }
-        if (type.equals("Ð—Ð°Ð´Ð°Ñ‚Ñ‡Ð¸Ðº")) { w.w = dp(190); w.h = dp(62); }
-        if (type.equals("Ð¨ÐºÐ°Ð»Ð° / Ð¡Ñ‚Ñ€ÐµÐ»ÐºÐ°") || type.equals("Ð“Ñ€Ð°Ñ„Ð¸Ðº / Ð¢Ñ€ÐµÐ½Ð´")) { w.w = dp(200); w.h = dp(110); }
-        if (type.equals("ÐŸÑ€Ð¾Ð³Ñ€ÐµÑÑ-Ð±Ð°Ñ€") || type.equals("Ð‘Ð¸Ñ‚Ð¾Ð²Ñ‹Ð¹ ÑÐ¿Ð¸ÑÐ¾Ðº")) { w.w = dp(180); w.h = dp(64); }
-        if (type.startsWith("FBD ")) {
-            w.w = dp(150); w.h = dp(76);
-            if (editor != null && editor.getWidth() > 0 && editor.getHeight() > 0) {
-                float[] empty = freeFbdPlacement(widgets, editor.getWidth(), editor.getHeight(),
-                        w.w, w.h, dp(40), dp(50), dp(18));
-                if (empty != null) { w.x = empty[0]; w.y = empty[1]; }
-                else {
-                    // The old fallback inserted the block at a hard-coded offset,
-                    // overlapping other blocks while claiming that no space was
-                    // available. Fail without changing project/history instead.
-                    Toast.makeText(this,
-                            "ÐÐµÑ‚ ÑÐ²Ð¾Ð±Ð¾Ð´Ð½Ð¾Ð³Ð¾ Ð¼ÐµÑÑ‚Ð° Ð´Ð»Ñ FBD-Ð±Ð»Ð¾ÐºÐ°: Ð¾ÑÐ²Ð¾Ð±Ð¾Ð´Ð¸ Ð¼ÐµÑÑ‚Ð¾ Ð½Ð° ÑÐºÑ€Ð°Ð½Ðµ",
-                            Toast.LENGTH_LONG).show();
-                    return;
-                }
-            }
-        }
-        if ("FBD CTD".equals(type)) w.counterValue = w.counterPreset;
-        // Only a successfully placed element may invalidate undo history and
-        // graph output caches. A rejected insert leaves the project unchanged.
-        fbdWireHistory.clear();
-        liveValues.clear();
-        widgets.add(w);
-        persistProject();
-        if (editor != null) editor.invalidate();
-    }
-
-    private EditText propertyField(String value, int inputType) {
-        EditText field = new EditText(this);
-        field.setSingleLine(true);
-        field.setInputType(inputType);
-        field.setText(value);
-        field.setSelectAllOnFocus(true);
-        field.setImeOptions(android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI);
-        return field;
-    }
-
-    private boolean selectIndicatorImage(Widget widget, boolean active, boolean user, String value) {
-        if (!widgets.contains(widget) || !OriginalIndicator.supports(widget.type)) return false;
-        JSONObject old = widget.extraFields;
-        JSONObject oldProject = projectExtraFields;
-        try {
-            widget.extraFields = OriginalIndicator.withImage(old, active, user, value);
-            if (!persistProjectNow(true)) {
-                widget.extraFields = old; projectExtraFields = oldProject; saveActiveScreen();
-                Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ ÑÐ¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ð¸Ð·Ð¾Ð±Ñ€Ð°Ð¶ÐµÐ½Ð¸Ðµ", Toast.LENGTH_LONG).show();
-                return false;
-            }
-            if (editor != null) editor.invalidate();
-            return true;
-        } catch (Exception invalid) {
-            widget.extraFields = old; projectExtraFields = oldProject;
-            Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show(); return false;
-        }
-    }
-
-    private void showIndicatorImages(Widget widget) {
-        OriginalIndicatorImages.show(this, new OriginalIndicatorImages.Host() {
-            public Bitmap preview(boolean active) { return originalIndicatorBitmap(widget, active); }
-            public boolean select(boolean active, boolean user, String value) {
-                return selectIndicatorImage(widget, active, user, value);
-            }
-            public void chooseCustom(boolean active, Runnable changed) {
-                LinearLayout form = new LinearLayout(MainActivity.this); form.setOrientation(LinearLayout.VERTICAL);
-                EditText path = propertyField("", InputType.TYPE_CLASS_TEXT);
-                path.setHint("Ð¤Ð°Ð¹Ð» / content URI"); path.setContentDescription("Ð¡Ð²Ð¾Ñ‘ Ð¸Ð·Ð¾Ð±Ñ€Ð°Ð¶ÐµÐ½Ð¸Ðµ Ð¸Ð½Ð´Ð¸ÐºÐ°Ñ‚Ð¾Ñ€Ð°");
-                form.addView(path); addMediaPicker(form, path, "image/*");
-                AlertDialog custom = new AlertDialog.Builder(MainActivity.this).setTitle("Ð¡Ð²Ð¾Ñ‘ Ð¸Ð·Ð¾Ð±Ñ€Ð°Ð¶ÐµÐ½Ð¸Ðµ")
-                        .setView(form).setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null).setPositiveButton("ÐŸÑ€Ð¸Ð¼ÐµÐ½Ð¸Ñ‚ÑŒ", null).create();
-                custom.setOnShowListener(shown -> custom.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-                    String selected = path.getText().toString().trim();
-                    imageCache.remove(selected);
-                    if (selected.isEmpty() || loadCachedBitmap(selected) == null) {
-                        Toast.makeText(MainActivity.this, "Ð’Ñ‹Ð±ÐµÑ€Ð¸Ñ‚Ðµ Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð½Ð¾Ðµ Ð¸Ð·Ð¾Ð±Ñ€Ð°Ð¶ÐµÐ½Ð¸Ðµ", Toast.LENGTH_LONG).show(); return;
-                    }
-                    if (selectIndicatorImage(widget, active, true, selected)) {custom.dismiss();changed.run();}
-                }));
-                custom.show();
-            }
-        });
-    }
-
-    private void editSelectedWidget() {
-        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
-            Toast.makeText(this, "Ð¡Ð½Ð°Ñ‡Ð°Ð»Ð° Ð²Ñ‹Ð±ÐµÑ€Ð¸ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚ Ð½Ð° ÑÐºÑ€Ð°Ð½Ðµ", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        Widget w = widgets.get(editor.selected);
-        LinearLayout form = new LinearLayout(this);
-        form.setOrientation(LinearLayout.VERTICAL);
-        int pad = dp(16);
-        form.setPadding(pad, dp(4), pad, 0);
-
-        if (OriginalIndicator.supports(w.type)) {
-            Button images = new Button(this); images.setText("Ð¡Ð¼ÐµÐ½Ð¸Ñ‚ÑŒ Ð¸Ð·Ð¾Ð±Ñ€Ð°Ð¶ÐµÐ½Ð¸Ðµ"); images.setAllCaps(false);
-            images.setOnClickListener(v -> showIndicatorImages(w)); form.addView(images);
-        }
-
-        TextView textLabel = new TextView(this);
-        textLabel.setText("ÐŸÐ¾Ð´Ð¿Ð¸ÑÑŒ");
-        form.addView(textLabel);
-        EditText textField = propertyField(w.text, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
-        form.addView(textField);
-
-        TextView connectionLabel = new TextView(this);
-        connectionLabel.setText("ÐŸÑ€Ð¸Ð²ÑÐ·ÐºÐ° Ðº Ð´Ð°Ð½Ð½Ñ‹Ð¼ (Ð°Ð´Ñ€ÐµÑ / Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€ / ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð¾)");
-        connectionLabel.setPadding(0, dp(10), 0, 0);
-        form.addView(connectionLabel);
-        EditText connectionField = propertyField(w.connectionInfo == null ? "" : w.connectionInfo, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        connectionField.setHint("tcp://192.168.1.10:502/1/40001 (FC03/FC04) Ð¸Ð»Ð¸ fbd://N (Ð½Ð¾Ð¼ÐµÑ€ Ð±Ð»Ð¾ÐºÐ° Ñ 1)");
-        if (isCraftRegisterSource(w.type) || isCraftRegisterSink(w.type))
-            connectionField.setHint("TCP: tcp://192.168.1.10:502/1/40001 Â· USB RTU: usb://1/40001 (ÑÐ²Ð½Ð¾ Ð¿Ð¾Ð´ÐºÐ»ÑŽÑ‡Ð¸ Ð°Ð´Ð°Ð¿Ñ‚ÐµÑ€)");
-        else if ("FBD Ð’Ñ…Ð¾Ð´".equals(w.type))
-            connectionField.setHint("TCP: tcp://192.168.1.10:502/1/40001 Â· USB RTU: usb://1/40001");
-        form.addView(connectionField);
-        String sourceBindingText = CraftNetworkBindingResolver.display(
-                w.extraFields.optJSONObject("craftBindingResolution"));
-        if (!sourceBindingText.isEmpty()) {
-            TextView sourceBindingLabel = new TextView(this);
-            sourceBindingLabel.setText(sourceBindingText);
-            sourceBindingLabel.setContentDescription("Ð˜ÑÑ…Ð¾Ð´Ð½Ð°Ñ Ð¿Ñ€Ð¸Ð²ÑÐ·ÐºÐ° Craft; Ð½ÐµÐ°ÐºÑ‚Ð¸Ð²Ð½Ð°");
-            sourceBindingLabel.setPadding(0, dp(6), 0, dp(2));
-            form.addView(sourceBindingLabel);
-        }
-        final EditText archiveIntervalField, archiveMaxRowsField, archiveChannelCountField, archiveTriggerField;
-        final Spinner archiveRecordTypeField;
-        if ("ÐÑ€Ñ…Ð¸Ð² Craft".equals(w.type)) {
-            connectionField.setHint("Ð›Ð¾ÐºÐ°Ð»ÑŒÐ½Ñ‹Ð¹ ÐºÐ°Ð½Ð°Ð»: tcp://192.168.1.10:502/1/40001 (holding-Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€ FC03)");
-            TextView archiveHelp = new TextView(this);
-        archiveHelp.setText("Ð˜Ð¼Ð¿Ð¾Ñ€Ñ‚Ð¸Ñ€Ð¾Ð²Ð°Ð½Ð½Ñ‹Ðµ ÑÐ²ÑÐ·Ð¸ Craft Ð¾Ñ‚ÐºÐ»ÑŽÑ‡ÐµÐ½Ñ‹. Ð£ÐºÐ°Ð¶Ð¸ Ð¿ÐµÑ€Ð²Ñ‹Ð¹ Ð»Ð¾ÐºÐ°Ð»ÑŒÐ½Ñ‹Ð¹ TCP holding-Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€; ÐºÐ°Ð½Ð°Ð»Ñ‹ Ñ‡Ð¸Ñ‚Ð°ÑŽÑ‚ÑÑ Ð¿Ð¾Ð´Ñ€ÑÐ´. INT Ð·Ð°Ð½Ð¸Ð¼Ð°ÐµÑ‚ Ð¾Ð´Ð¸Ð½ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€, FLOAT â€” Ð´Ð²Ð°. ÐÐµÐ¾Ð±ÑÐ·Ð°Ñ‚ÐµÐ»ÑŒÐ½Ñ‹Ð¹ Ñ‚Ñ€Ð¸Ð³Ð³ÐµÑ€ Ð·Ð°Ð¿Ð¸ÑÑ‹Ð²Ð°ÐµÑ‚ Ð½Ð° Ñ„Ñ€Ð¾Ð½Ñ‚Ðµ 0â†’1; Ð±ÐµÐ· Ð½ÐµÐ³Ð¾ Ð´ÐµÐ¹ÑÑ‚Ð²ÑƒÐµÑ‚ Ð¸Ð½Ñ‚ÐµÑ€Ð²Ð°Ð». Ð”Ð°Ð½Ð½Ñ‹Ðµ Ð¾ÑÑ‚Ð°ÑŽÑ‚ÑÑ Ð½Ð° ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ðµ; ÑƒÐ´Ð°Ð»Ñ‘Ð½Ð½Ð°Ñ Ð¾Ñ‚Ð¿Ñ€Ð°Ð²ÐºÐ° Ð°Ñ€Ñ…Ð¸Ð²Ð° Ð¾Ñ‚ÐºÐ»ÑŽÑ‡ÐµÐ½Ð°.");
-            archiveHelp.setPadding(0, dp(8), 0, dp(4)); form.addView(archiveHelp);
-            archiveTriggerField = propertyField(w.extraFields.optString("craftArchiveTriggerBinding", ""),
-                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-            archiveTriggerField.setHint("ÐÐµÐ¾Ð±ÑÐ·Ð°Ñ‚ÐµÐ»ÑŒÐ½Ñ‹Ð¹ Ñ‚Ñ€Ð¸Ð³Ð³ÐµÑ€: tcp://host:502/1/40002");
-            archiveTriggerField.setContentDescription("Ð¢Ñ€Ð¸Ð³Ð³ÐµÑ€ Ð°Ñ€Ñ…Ð¸Ð²Ð°"); form.addView(archiveTriggerField);
-            archiveChannelCountField = propertyField(Integer.toString(Math.max(1, Math.min(4,
-                    w.extraFields.optInt("craftArchiveChannelCount", 1)))), InputType.TYPE_CLASS_NUMBER);
-            archiveChannelCountField.setHint("ÐšÐ°Ð½Ð°Ð»Ñ‹ (1â€“4)");
-            archiveChannelCountField.setContentDescription("ÐšÐ°Ð½Ð°Ð»Ñ‹ Ð°Ñ€Ñ…Ð¸Ð²Ð°"); form.addView(archiveChannelCountField);
-            archiveRecordTypeField = new Spinner(this);
-            archiveRecordTypeField.setContentDescription("Ð¢Ð¸Ð¿ Ð·Ð°Ð¿Ð¸ÑÐ¸ Ð°Ñ€Ñ…Ð¸Ð²Ð°");
-            archiveRecordTypeField.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
-                    new String[]{"INT â€” 16 Ð±Ð¸Ñ‚", "FLOAT â€” 32 Ð±Ð¸Ñ‚"}));
-            archiveRecordTypeField.setSelection("FLOAT".equals(w.extraFields.optString("craftArchiveRecordType", "INT")) ? 1 : 0);
-            form.addView(archiveRecordTypeField);
-            archiveIntervalField = propertyField(Integer.toString(Math.max(1, w.extraFields.optInt("craftArchiveIntervalSeconds", 1))), InputType.TYPE_CLASS_NUMBER);
-            archiveIntervalField.setHint("Ð˜Ð½Ñ‚ÐµÑ€Ð²Ð°Ð» Ð·Ð°Ð¿Ð¸ÑÐ¸, ÑÐµÐºÑƒÐ½Ð´Ñ‹ (1â€“86400)");
-            archiveIntervalField.setContentDescription("Ð˜Ð½Ñ‚ÐµÑ€Ð²Ð°Ð» Ð°Ñ€Ñ…Ð¸Ð²Ð°"); form.addView(archiveIntervalField);
-            archiveMaxRowsField = propertyField(Integer.toString(Math.max(100, w.extraFields.optInt("craftArchiveMaxRows", 10000))), InputType.TYPE_CLASS_NUMBER);
-            archiveMaxRowsField.setHint("ÐœÐ°ÐºÑÐ¸Ð¼ÑƒÐ¼ Ð·Ð°Ð¿Ð¸ÑÐµÐ¹ (100â€“100000)");
-            archiveMaxRowsField.setContentDescription("ÐœÐ°ÐºÑÐ¸Ð¼ÑƒÐ¼ ÑÑ‚Ñ€Ð¾Ðº Ð°Ñ€Ñ…Ð¸Ð²Ð°"); form.addView(archiveMaxRowsField);
-        } else {
-            archiveIntervalField = null; archiveMaxRowsField = null;
-            archiveChannelCountField = null; archiveRecordTypeField = null; archiveTriggerField = null;
-        }
-        final boolean craftBitList = "Ð¡Ð¿Ð¸ÑÐ¾Ðº Craft".equals(w.type);
-        final EditText craftBitListLabelsField;
-        final android.widget.CheckBox craftBitListVisibleField, craftBitListNoChangeField;
-        if (craftBitList) {
-            connectionField.setHint("tcp://192.168.1.10:502/1/40001 (holding-Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€, FC03)");
-            TextView labelsHelp = new TextView(this);
-            labelsHelp.setText("ÐŸÐ¾Ð´Ð¿Ð¸ÑÐ¸ Ð±Ð¸Ñ‚Ð¾Ð² 0â€“15, Ð¿Ð¾ Ð¾Ð´Ð½Ð¾Ð¹ Ð½Ð° ÑÑ‚Ñ€Ð¾ÐºÑƒ. ÐŸÑƒÑÑ‚Ð°Ñ ÑÑ‚Ñ€Ð¾ÐºÐ° ÑÐºÑ€Ñ‹Ð²Ð°ÐµÑ‚ Ð¿ÑƒÐ½ÐºÑ‚.");
-            labelsHelp.setPadding(0, dp(10), 0, dp(4)); form.addView(labelsHelp);
-            craftBitListLabelsField = new EditText(this);
-            craftBitListLabelsField.setMinLines(5); craftBitListLabelsField.setMaxLines(10);
-            craftBitListLabelsField.setGravity(android.view.Gravity.TOP | android.view.Gravity.START);
-            craftBitListLabelsField.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
-            craftBitListLabelsField.setText(CraftBitList.toEditorLines(CraftBitList.fromJson(w.extraFields.optJSONArray("craftListLabels"))));
-            craftBitListLabelsField.setHint("0: Ð’ÐºÐ»ÑŽÑ‡Ð¸Ñ‚ÑŒ\n1: Ð’Ñ‹ÐºÐ»ÑŽÑ‡Ð¸Ñ‚ÑŒ\n2: ..."); form.addView(craftBitListLabelsField);
-            craftBitListVisibleField = new android.widget.CheckBox(this);
-            craftBitListVisibleField.setText("ÐŸÐ¾ÐºÐ°Ð·Ñ‹Ð²Ð°Ñ‚ÑŒ ÑÐ¿Ð¸ÑÐ¾Ðº Ð² Ñ€Ð°Ð±Ð¾Ñ‡ÐµÐ¼ Ñ€ÐµÐ¶Ð¸Ð¼Ðµ");
-            craftBitListVisibleField.setChecked(w.extraFields.optBoolean("craftListVisibleInWork", true)); form.addView(craftBitListVisibleField);
-            craftBitListNoChangeField = new android.widget.CheckBox(this);
-            craftBitListNoChangeField.setText("ÐÐµ Ð¸Ð·Ð¼ÐµÐ½ÑÑ‚ÑŒ Ð±Ð¸Ñ‚Ñ‹ Ð² Ñ€Ð°Ð±Ð¾Ñ‡ÐµÐ¼ Ñ€ÐµÐ¶Ð¸Ð¼Ðµ");
-            craftBitListNoChangeField.setChecked(w.extraFields.optBoolean("craftListCheckNoChange", false)); form.addView(craftBitListNoChangeField);
-            TextView remapHelp = new TextView(this);
-            remapHelp.setText("Ð˜Ð¼Ð¿Ð¾Ñ€Ñ‚Ð¸Ñ€Ð¾Ð²Ð°Ð½Ð½Ð°Ñ ÑÐ²ÑÐ·ÑŒ Craft Ð²Ñ‹ÐºÐ»ÑŽÑ‡ÐµÐ½Ð°. Ð”Ð»Ñ Ð¾Ð±Ð¼ÐµÐ½Ð° ÑƒÐºÐ°Ð¶Ð¸ ÑÐ²Ð¾Ð¹ TCP Ð°Ð´Ñ€ÐµÑ holding-Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð° Ð²Ñ‹ÑˆÐµ."); form.addView(remapHelp);
-        } else { craftBitListLabelsField = null; craftBitListVisibleField = null; craftBitListNoChangeField = null; }
-        final boolean craftLinearSetter = "Ð›Ð¸Ð½ÐµÐ¹Ð½Ñ‹Ð¹ Ð·Ð°Ð´Ð°Ñ‚Ñ‡Ð¸Ðº Craft".equals(w.type);
-        final EditText craftLinearMaxField;
-        final android.widget.CheckBox craftLinearVerticalField;
-        if (craftLinearSetter) {
-            connectionField.setHint("tcp://192.168.1.10:502/1/40001 (holding-Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€, FC03/FC06)");
-            craftLinearMaxField = propertyField(Integer.toString(CraftLinearSetter.maximum(w.extraFields)), InputType.TYPE_CLASS_NUMBER);
-            craftLinearMaxField.setHint("Ð’ÐµÑ€Ñ…Ð½Ð¸Ð¹ Ð¿Ñ€ÐµÐ´ÐµÐ», 1â€“65535"); form.addView(craftLinearMaxField);
-            craftLinearVerticalField = new android.widget.CheckBox(this);
-            craftLinearVerticalField.setText("Ð’ÐµÑ€Ñ‚Ð¸ÐºÐ°Ð»ÑŒÐ½Ð°Ñ Ð¾Ñ€Ð¸ÐµÐ½Ñ‚Ð°Ñ†Ð¸Ñ");
-            craftLinearVerticalField.setChecked(w.extraFields.optBoolean("craftLinearVertical", false));
-            form.addView(craftLinearVerticalField);
-            TextView remapHelp = new TextView(this);
-            remapHelp.setText("Ð¡Ð²ÑÐ·ÑŒ Ð¸Ð· Craft Ð¾Ñ‚ÐºÐ»ÑŽÑ‡ÐµÐ½Ð°. Ð£ÐºÐ°Ð¶Ð¸ TCP holding-Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€ Ð´Ð»Ñ Ñ‡Ñ‚ÐµÐ½Ð¸Ñ Ð¸ Ð·Ð°Ð¿Ð¸ÑÐ¸."); form.addView(remapHelp);
-        } else { craftLinearMaxField = null; craftLinearVerticalField = null; }
-        final boolean craftNumericInput = "Ð§Ð¸ÑÐ»Ð¾Ð²Ð¾Ð¹ Ð²Ð²Ð¾Ð´ Craft".equals(w.type);
-        final EditText craftNumericMinField, craftNumericMaxField, craftNumericDecimalsField, craftNumericPasswordField;
-        final Spinner craftNumericModeField, craftNumericTypeIntField;
-        final android.widget.CheckBox craftNumericFrameField, craftNumericSystemFontField, craftNumericPasswordRequiredField, craftNumericEnabledField;
-        if (craftNumericInput) {
-            connectionField.setHint("tcp://192.168.1.10:502/1/40001 (holding-Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€ FC03/FC06)");
-            craftNumericMinField = propertyField(Double.toString(w.extraFields.optDouble("craftNumericMin", 0)), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-            craftNumericMinField.setHint("ÐœÐ¸Ð½Ð¸Ð¼ÑƒÐ¼"); form.addView(craftNumericMinField);
-            craftNumericMaxField = propertyField(Double.toString(w.extraFields.optDouble("craftNumericMax", 1000)), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-            craftNumericMaxField.setHint("ÐœÐ°ÐºÑÐ¸Ð¼ÑƒÐ¼"); form.addView(craftNumericMaxField);
-            craftNumericModeField = new Spinner(this);
-            craftNumericModeField.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{"Ð¦ÐµÐ»Ð¾Ðµ Ñ‡Ð¸ÑÐ»Ð¾", "Float32"}));
-            craftNumericModeField.setSelection(w.extraFields.optInt("craftNumericMode", 0) == CraftNumericInput.FLOAT32 ? 1 : 0); form.addView(craftNumericModeField);
-            craftNumericTypeIntField = new Spinner(this);
-            craftNumericTypeIntField.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{"UINT16", "INT16"}));
-            craftNumericTypeIntField.setSelection(w.extraFields.optInt("craftNumericTypeInt", 0) == CraftNumericInput.SIGNED_16 ? 1 : 0); form.addView(craftNumericTypeIntField);
-            craftNumericDecimalsField = propertyField(Integer.toString(w.extraFields.optInt("craftNumericDecimals", 1)), InputType.TYPE_CLASS_NUMBER);
-            craftNumericDecimalsField.setHint("Ð¦Ð¸Ñ„Ñ€ Ð¿Ð¾ÑÐ»Ðµ Ñ‚Ð¾Ñ‡ÐºÐ¸ (0â€“8)"); form.addView(craftNumericDecimalsField);
-            craftNumericFrameField = new android.widget.CheckBox(this); craftNumericFrameField.setText("Ð Ð°Ð¼ÐºÐ°");
-            craftNumericFrameField.setChecked(w.extraFields.optBoolean("craftNumericFrame", false)); form.addView(craftNumericFrameField);
-            craftNumericSystemFontField = new android.widget.CheckBox(this); craftNumericSystemFontField.setText("Ð¡Ð¸ÑÑ‚ÐµÐ¼Ð½Ñ‹Ð¹ ÑˆÑ€Ð¸Ñ„Ñ‚");
-            craftNumericSystemFontField.setChecked(w.extraFields.optBoolean("craftNumericSystemFont", false)); form.addView(craftNumericSystemFontField);
-            craftNumericPasswordRequiredField = new android.widget.CheckBox(this); craftNumericPasswordRequiredField.setText("Ð—Ð°Ð¿Ñ€Ð°ÑˆÐ¸Ð²Ð°Ñ‚ÑŒ Ð¿Ð°Ñ€Ð¾Ð»ÑŒ Ð¾Ð¿ÐµÑ€Ð°Ñ‚Ð¾Ñ€Ð°");
-            craftNumericPasswordRequiredField.setChecked(w.extraFields.optBoolean("craftNumericPasswordRequired", false)); form.addView(craftNumericPasswordRequiredField);
-            craftNumericPasswordField = propertyField("", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-            craftNumericPasswordField.setHint(w.extraFields.optString("craftNumericPasswordKey", "").isEmpty()
-                    ? "ÐÐ¾Ð²Ñ‹Ð¹ Ð¿Ð°Ñ€Ð¾Ð»ÑŒ (1â€“10 ÑÐ¸Ð¼Ð²Ð¾Ð»Ð¾Ð²; ÑÑ‚Ð°Ñ€Ñ‹Ð¹ Craft Ð½Ð°Ð´Ð¾ Ð·Ð°Ð´Ð°Ñ‚ÑŒ Ð·Ð°Ð½Ð¾Ð²Ð¾)"
-                    : "ÐÐ¾Ð²Ñ‹Ð¹ Ð¿Ð°Ñ€Ð¾Ð»ÑŒ Ð¸Ð»Ð¸ Ð¿ÑƒÑÑ‚Ð¾, Ñ‡Ñ‚Ð¾Ð±Ñ‹ ÑÐ¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ñ‚ÐµÐºÑƒÑ‰Ð¸Ð¹"); form.addView(craftNumericPasswordField);
-            craftNumericEnabledField = new android.widget.CheckBox(this); craftNumericEnabledField.setText("Ð Ð°Ð·Ñ€ÐµÑˆÐ¸Ñ‚ÑŒ Ð²Ð²Ð¾Ð´ Ð¿Ð¾ÑÐ»Ðµ Ð½Ð°ÑÑ‚Ñ€Ð¾Ð¹ÐºÐ¸ Ð¿Ñ€Ð¸Ð²ÑÐ·ÐºÐ¸");
-            craftNumericEnabledField.setChecked(w.extraFields.optBoolean("craftNumericEnabled", false)); form.addView(craftNumericEnabledField);
-            TextView numericHelp = new TextView(this);
-            numericHelp.setText("Ð¡Ð²ÑÐ·ÑŒ Craft ÑÐ¾Ñ…Ñ€Ð°Ð½ÐµÐ½Ð° Ð²Ñ‹ÐºÐ»ÑŽÑ‡ÐµÐ½Ð½Ð¾Ð¹. Ð¡Ð¸ÑÑ‚ÐµÐ¼Ð½Ñ‹Ð¹ Ð¸ÑÑ‚Ð¾Ñ‡Ð½Ð¸Ðº ÑÐ»Ð¾Ñ‚Ð° 100 Ñ‡Ð¸Ñ‚Ð°ÐµÑ‚ Ð»Ð¾ÐºÐ°Ð»ÑŒÐ½Ñ‹Ðµ ÑÐ»Ð¾Ð²Ð°; Ð·Ð°Ð¿Ð¸ÑÑŒ Ñ†ÐµÐ»Ñ‹Ñ… Ð² Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ñ‹ 10â€“1999 Ð¸ Float32 Ð² Ð¿Ð°Ñ€Ñ‹ 10â€“1998 Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð½Ð° Ð¿Ð¾ÑÐ»Ðµ ÑÐ²Ð½Ð¾Ð³Ð¾ Ñ€Ð°Ð·Ñ€ÐµÑˆÐµÐ½Ð¸Ñ Ð²Ð²Ð¾Ð´Ð°. Ð”Ð»Ñ TCP ÑƒÐºÐ°Ð¶Ð¸ ÑÐ²Ð¾Ð¹ holding-Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€. ÐŸÐ°Ñ€Ð¾Ð»ÑŒ Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑÑ Ð² Android Keystore.");
-            form.addView(numericHelp);
-        } else {
-            craftNumericMinField = craftNumericMaxField = craftNumericDecimalsField = craftNumericPasswordField = null;
-            craftNumericModeField = craftNumericTypeIntField = null;
-            craftNumericFrameField = craftNumericSystemFontField = craftNumericPasswordRequiredField = craftNumericEnabledField = null;
-        }
-        final boolean craftConstantButton = "ÐšÐ¾Ð½ÑÑ‚Ð°Ð½Ñ‚Ð½Ð°Ñ ÐºÐ½Ð¾Ð¿ÐºÐ° Craft".equals(w.type);
-        final boolean craftButtonConfig = "ÐšÐ½Ð¾Ð¿ÐºÐ°".equals(w.type) || craftConstantButton;
-        final android.widget.Spinner craftButtonModeField, craftButtonConstantTypeField;
-        final EditText craftButtonConstantField, craftButtonBitField;
-        final android.widget.CheckBox craftButtonVisibleField, craftButtonBitEnabledField;
-        if (craftButtonConfig) {
-            craftButtonModeField = new android.widget.Spinner(this);
-            craftButtonModeField.setAdapter(new android.widget.ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item,
-                    new String[]{"ÐœÐ¾Ð¼ÐµÐ½Ñ‚Ð°Ð»ÑŒÐ½Ð°Ñ ÐºÐ¾Ð¼Ð°Ð½Ð´Ð° Ð¿Ð¾ Ð±Ð¸Ñ‚Ñƒ", "Ð—Ð°Ð¿Ð¸ÑÑŒ ÐºÐ¾Ð½ÑÑ‚Ð°Ð½Ñ‚Ñ‹"}));
-            craftButtonModeField.setSelection(craftConstantButton || w.extraFields.optInt("craftButtonMode", 0) == 2 ? 1 : 0);
-            form.addView(craftButtonModeField);
-            craftButtonBitField = propertyField(Integer.toString(CraftMomentaryButton.bit(w.extraFields)),
-                    InputType.TYPE_CLASS_NUMBER);
-            craftButtonBitField.setHint("Ð‘Ð¸Ñ‚ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð° (0â€“15)"); form.addView(craftButtonBitField);
-            craftButtonBitEnabledField = new android.widget.CheckBox(this);
-            craftButtonBitEnabledField.setText("Ð Ð°Ð·Ñ€ÐµÑˆÐ¸Ñ‚ÑŒ Ð·Ð°Ð¿Ð¸ÑÑŒ Ð±Ð¸Ñ‚Ð° FC22 Ð¿Ð¾ÑÐ»Ðµ ÑÐ²Ð½Ð¾Ð¹ TCP-Ð¿Ñ€Ð¸Ð²ÑÐ·ÐºÐ¸");
-            craftButtonBitEnabledField.setChecked(w.extraFields.optBoolean("craftButtonBitEnabled", false));
-            form.addView(craftButtonBitEnabledField);
-            TextView bitHelp = new TextView(this);
-            bitHelp.setText("Ð ÐµÐ¶Ð¸Ð¼ Craft 0: Ð¿Ñ€Ð¸ Ð½Ð°Ð¶Ð°Ñ‚Ð¸Ð¸ Ð±Ð¸Ñ‚ ÑƒÑÑ‚Ð°Ð½Ð°Ð²Ð»Ð¸Ð²Ð°ÐµÑ‚ÑÑ, Ð¿Ñ€Ð¸ Ð¾Ñ‚Ð¿ÑƒÑÐºÐ°Ð½Ð¸Ð¸ ÑÐ±Ñ€Ð°ÑÑ‹Ð²Ð°ÐµÑ‚ÑÑ. ÐÑƒÐ¶ÐµÐ½ TCP holding-Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€ FC03/FC22, Ð½Ð°Ð¿Ñ€Ð¸Ð¼ÐµÑ€ tcp://192.168.1.10:502/1/40001; Ð¸Ð¼Ð¿Ð¾Ñ€Ñ‚Ð¸Ñ€Ð¾Ð²Ð°Ð½Ð½Ð°Ñ Ð¿Ñ€Ð¸Ð²ÑÐ·ÐºÐ° Ð½Ðµ Ð¸ÑÐ¿Ð¾Ð»ÑŒÐ·ÑƒÐµÑ‚ÑÑ.");
-            form.addView(bitHelp);
-            craftButtonConstantTypeField = new android.widget.Spinner(this);
-            craftButtonConstantTypeField.setAdapter(new android.widget.ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item,
-                    new String[]{"UINT16", "Float32"}));
-            craftButtonConstantTypeField.setSelection(w.extraFields.optInt("craftButtonConstantType", 0)); form.addView(craftButtonConstantTypeField);
-            craftButtonConstantField = propertyField(w.extraFields.optString("craftButtonConstant", "0"),
-                    InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-            craftButtonConstantField.setHint("Ð—Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ ÐºÐ¾Ð½ÑÑ‚Ð°Ð½Ñ‚Ñ‹"); form.addView(craftButtonConstantField);
-            TextView constantHelp = new TextView(this);
-            constantHelp.setText("Craft-Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€ #" + w.extraFields.optInt("craftButtonConstantRegister", 0)
-                    + " ÑÐ¾Ñ…Ñ€Ð°Ð½Ñ‘Ð½ Ð¾Ñ‚Ð´ÐµÐ»ÑŒÐ½Ð¾. Ð”Ð»Ñ Ð·Ð°Ð¿Ð¸ÑÐ¸ ÐºÐ¾Ð½ÑÑ‚Ð°Ð½Ñ‚Ñ‹ Ð½Ð°ÑÑ‚Ñ€Ð¾Ð¹ TCP holding-Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€ FC03/FC06 Ð²Ñ‹ÑˆÐµ."); form.addView(constantHelp);
-            craftButtonVisibleField = new android.widget.CheckBox(this);
-            craftButtonVisibleField.setText("ÐŸÐ¾ÐºÐ°Ð·Ñ‹Ð²Ð°Ñ‚ÑŒ ÐºÐ½Ð¾Ð¿ÐºÑƒ Ð² Ñ€Ð°Ð±Ð¾Ñ‡ÐµÐ¼ Ñ€ÐµÐ¶Ð¸Ð¼Ðµ");
-            craftButtonVisibleField.setChecked(w.extraFields.optBoolean("craftButtonVisibleInWork", true)); form.addView(craftButtonVisibleField);
-        } else { craftButtonModeField = null; craftButtonConstantTypeField = null; craftButtonConstantField = null; craftButtonBitField = null; craftButtonBitEnabledField = null; craftButtonVisibleField = null; }
-        final boolean craftRegisterGateway = "Ð¨Ð»ÑŽÐ· Craft".equals(w.type);
-        final boolean craftBitGateway = "Ð¨Ð»ÑŽÐ· Ð±Ð¸Ñ‚Ð¾Ð²Ñ‹Ð¹".equals(w.type);
-        if (craftRegisterGateway || craftBitGateway) {
-            connectionLabel.setVisibility(View.GONE);
-            connectionField.setVisibility(View.GONE);
-        }
-
-        final EditText smsPhoneField;
-        final android.widget.Spinner smsRegisterCountField;
-        if ("SMS-ÑƒÐ²ÐµÐ´Ð¾Ð¼Ð»ÐµÐ½Ð¸Ðµ".equals(w.type)) {
-            String savedPhone="";
-            try{savedPhone=SmsRecipientStore.read(this,w.extraFields.optString("smsRecipientId",""));}catch(Exception ignored){}
-            smsPhoneField=propertyField(savedPhone,InputType.TYPE_CLASS_PHONE);
-            smsPhoneField.setHint("ÐÐ¾Ð¼ÐµÑ€ Ð¿Ð¾Ð»ÑƒÑ‡Ð°Ñ‚ÐµÐ»Ñ, Ð½Ð°Ð¿Ñ€Ð¸Ð¼ÐµÑ€ +79991234567");form.addView(smsPhoneField);
-            smsRegisterCountField = new android.widget.Spinner(this);
-            String[] smsRegisterOptions = new String[8];
-            for (int i = 0; i < smsRegisterOptions.length; i++) smsRegisterOptions[i] = (i + 1) + " Ñ€ÐµÐ³.";
-            smsRegisterCountField.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item, smsRegisterOptions));
-            int savedCount = Math.max(1, Math.min(8, w.extraFields.optInt("smsRegisterCount", 1)));
-            smsRegisterCountField.setSelection(savedCount - 1);
-            smsRegisterCountField.setContentDescription("ÐšÐ¾Ð»Ð¸Ñ‡ÐµÑÑ‚Ð²Ð¾ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð¾Ð² SMS Ð´Ð»Ñ Ñ‡Ñ‚ÐµÐ½Ð¸Ñ");
-            form.addView(smsRegisterCountField);
-            TextView smsHelp=new TextView(this);smsHelp.setText("Ð¡Ð¾Ð¾Ð±Ñ‰ÐµÐ½Ð¸Ðµ Ð¾Ñ‚Ð¿Ñ€Ð°Ð²Ð»ÑÐµÑ‚ÑÑ Ð¾Ð´Ð¸Ð½ Ñ€Ð°Ð· Ð¿Ñ€Ð¸ Ð¿ÐµÑ€ÐµÑ…Ð¾Ð´Ðµ ÑÐ¸Ð³Ð½Ð°Ð»Ð° 0â†’1. Ð’ Ñ‚ÐµÐºÑÑ‚Ðµ {value} Ð¿Ð¾Ð´ÑÑ‚Ð°Ð²Ð»ÑÐµÑ‚ÑÑ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ Modbus. ÐÐ¾Ð¼ÐµÑ€ Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑÑ Ð·Ð°ÑˆÐ¸Ñ„Ñ€Ð¾Ð²Ð°Ð½Ð½Ð¾ Ð½Ð° ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ðµ Ð¸ Ð½Ðµ Ð²Ñ…Ð¾Ð´Ð¸Ñ‚ Ð² ÑÐºÑÐ¿Ð¾Ñ€Ñ‚ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°.");form.addView(smsHelp);
-            TextView smsRegistersHelp = new TextView(this);
-            smsRegistersHelp.setText("Ð§Ð¸Ñ‚Ð°ÑŽÑ‚ÑÑ Ð¿Ð¾ÑÐ»ÐµÐ´Ð¾Ð²Ð°Ñ‚ÐµÐ»ÑŒÐ½Ñ‹Ðµ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ñ‹ Ð¾Ñ‚ Ð°Ð´Ñ€ÐµÑÐ° Ð¿Ñ€Ð¸Ð²ÑÐ·ÐºÐ¸. Ð—Ð½Ð°Ñ‡ÐµÐ½Ð¸Ñ Ð¿Ð¾Ð´ÑÑ‚Ð°Ð²Ð»ÑÑŽÑ‚ÑÑ Ð² %1â€¦%8; ÐµÑÐ»Ð¸ Ð½Ð¾Ð¼ÐµÑ€Ð° %n Ð½Ðµ ÑƒÐºÐ°Ð·Ð°Ð½Ñ‹ Ð¸ Ð½ÐµÑ‚ {value}, Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ñ Ð´Ð¾Ð±Ð°Ð²Ð»ÑÑŽÑ‚ÑÑ Ð² ÐºÐ¾Ð½ÐµÑ† Ñ‡ÐµÑ€ÐµÐ· Ð¿Ñ€Ð¾Ð±ÐµÐ».");
-            form.addView(smsRegistersHelp);
-        } else { smsPhoneField=null; smsRegisterCountField=null; }
-
-        final android.widget.CheckBox incomingSmsEnabledField;
-        final EditText incomingSmsSenderField, incomingSmsCommandField, incomingSmsBitField;
-        final android.widget.Spinner incomingSmsModeField;
-        final android.widget.CheckBox incomingSmsStrobeEnabledField;
-        final EditText incomingSmsStrobeRegisterField, incomingSmsStrobeBitField;
-        if ("Ð’Ñ…Ð¾Ð´ÑÑ‰ÐµÐµ SMS".equals(w.type)) {
-            incomingSmsEnabledField = new android.widget.CheckBox(this);
-            incomingSmsEnabledField.setText("Ð Ð°Ð·Ñ€ÐµÑˆÐ¸Ñ‚ÑŒ ÑƒÐ¿Ñ€Ð°Ð²Ð»ÐµÐ½Ð¸Ðµ ÑÑ‚Ð¸Ð¼ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð¾Ð¼ Ñ‡ÐµÑ€ÐµÐ· SMS");
-            incomingSmsEnabledField.setChecked(w.extraFields.optBoolean("smsEnabled", false));
-            form.addView(incomingSmsEnabledField);
-            String savedSender = "";
-            try { savedSender = SmsRecipientStore.read(this, w.extraFields.optString("smsSenderId", "")); }
-            catch (Exception ignored) {}
-            incomingSmsSenderField = propertyField(savedSender, InputType.TYPE_CLASS_PHONE);
-            incomingSmsSenderField.setHint("Ð Ð°Ð·Ñ€ÐµÑˆÑ‘Ð½Ð½Ñ‹Ð¹ Ð½Ð¾Ð¼ÐµÑ€, Ð½Ð°Ð¿Ñ€Ð¸Ð¼ÐµÑ€ +79991234567"); form.addView(incomingSmsSenderField);
-            incomingSmsCommandField = propertyField(w.extraFields.optString("smsCommand", ""),
-                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-            incomingSmsCommandField.setHint("Ð¢Ð¾Ñ‡Ð½Ð°Ñ ÐºÐ¾Ð¼Ð°Ð½Ð´Ð°: Ð’ÐšÐ› Ð¸Ð»Ð¸ Ð£ÑÑ‚Ð°Ð²ÐºÐ°"); form.addView(incomingSmsCommandField);
-            incomingSmsModeField = new android.widget.Spinner(this);
-            incomingSmsModeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item, new String[]{"Ð§Ð¸ÑÐ»Ð¾ Ð² holding-Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€", "Ð£ÑÑ‚Ð°Ð½Ð¾Ð²Ð¸Ñ‚ÑŒ Ð±Ð¸Ñ‚"}));
-            incomingSmsModeField.setSelection("bit".equals(w.extraFields.optString("smsMode", "number")) ? 1 : 0);
-            form.addView(incomingSmsModeField);
-            incomingSmsBitField = propertyField(Integer.toString(w.extraFields.optInt("smsBit", 0)), InputType.TYPE_CLASS_NUMBER);
-            incomingSmsBitField.setHint("ÐÐ¾Ð¼ÐµÑ€ Ð±Ð¸Ñ‚Ð° 0â€“15 (Ð´Ð»Ñ Ñ€ÐµÐ¶Ð¸Ð¼Ð° Ð±Ð¸Ñ‚)"); form.addView(incomingSmsBitField);
-            incomingSmsStrobeEnabledField = new android.widget.CheckBox(this);
-            incomingSmsStrobeEnabledField.setText("Ð£ÑÑ‚Ð°Ð½Ð¾Ð²Ð¸Ñ‚ÑŒ Ð±Ð¸Ñ‚ strobe Ð¿Ð¾ÑÐ»Ðµ Ñ‡Ð¸ÑÐ»Ð¾Ð²Ð¾Ð¹ ÐºÐ¾Ð¼Ð°Ð½Ð´Ñ‹");
-            incomingSmsStrobeEnabledField.setChecked(w.extraFields.optBoolean("smsStrobeEnabled", false));
-            form.addView(incomingSmsStrobeEnabledField);
-            incomingSmsStrobeRegisterField = propertyField(w.extraFields.has("smsStrobeRegister")
-                    ? Integer.toString(w.extraFields.optInt("smsStrobeRegister")) : "", InputType.TYPE_CLASS_NUMBER);
-            incomingSmsStrobeRegisterField.setHint("Holding-Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€ strobe (Ð½Ð°Ð¿Ñ€Ð¸Ð¼ÐµÑ€ 40002)"); form.addView(incomingSmsStrobeRegisterField);
-            incomingSmsStrobeBitField = propertyField(Integer.toString(w.extraFields.optInt("smsStrobeBit", 0)), InputType.TYPE_CLASS_NUMBER);
-            incomingSmsStrobeBitField.setHint("Strobe Ð±Ð¸Ñ‚ 0â€“15"); form.addView(incomingSmsStrobeBitField);
-            TextView smsIncomingHelp = new TextView(this);
-            smsIncomingHelp.setText("ÐÐ´Ñ€ÐµÑ Ð·Ð°Ð´Ð°Ñ‘Ñ‚ÑÑ Ð²Ñ‹ÑˆÐµ ÐºÐ°Ðº tcp://Ñ…Ð¾ÑÑ‚:Ð¿Ð¾Ñ€Ñ‚/unit/Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€; Ð´Ð¾Ð¿ÑƒÑÑ‚Ð¸Ð¼ Ñ‚Ð¾Ð»ÑŒÐºÐ¾ holding-Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€. Ð§Ð¸ÑÐ»Ð¾Ð²Ð°Ñ ÐºÐ¾Ð¼Ð°Ð½Ð´Ð°: Â«ÐºÐ¾Ð¼Ð°Ð½Ð´Ð° Ð¿Ñ€Ð¾Ð±ÐµÐ» Ñ‡Ð¸ÑÐ»Ð¾â€¦Â» (Ð´Ð¾ 16 signed 16-bit Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ð¹) Ð·Ð°Ð¿Ð¸ÑÑ‹Ð²Ð°ÐµÑ‚ Ð¿Ð¾ÑÐ»ÐµÐ´Ð¾Ð²Ð°Ñ‚ÐµÐ»ÑŒÐ½Ñ‹Ðµ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ñ‹. Ð‘Ð¸Ñ‚Ð¾Ð²Ð°Ñ ÐºÐ¾Ð¼Ð°Ð½Ð´Ð° Ð´Ð¾Ð»Ð¶Ð½Ð° Ð¿Ð¾Ð»Ð½Ð¾ÑÑ‚ÑŒÑŽ ÑÐ¾Ð²Ð¿Ð°ÑÑ‚ÑŒ. Strobe ÑƒÑÑ‚Ð°Ð½Ð°Ð²Ð»Ð¸Ð²Ð°ÐµÑ‚ÑÑ Ð¿Ð¾ÑÐ»Ðµ ÑƒÑÐ¿ÐµÑˆÐ½Ð¾Ð¹ Ñ‡Ð¸ÑÐ»Ð¾Ð²Ð¾Ð¹ Ð·Ð°Ð¿Ð¸ÑÐ¸ Ð¸ Ð¾ÑÑ‚Ð°Ñ‘Ñ‚ÑÑ Ð² 1 Ð´Ð¾ ÑÐ±Ñ€Ð¾ÑÐ° ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð¾Ð¼/ÑÑ†ÐµÐ½Ð°Ñ€Ð¸ÐµÐ¼. SMS Ð¿Ñ€Ð¸Ð½Ð¸Ð¼Ð°ÑŽÑ‚ÑÑ Ñ‚Ð¾Ð»ÑŒÐºÐ¾ Ð¿Ð¾ÐºÐ° Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚ Ð¿Ñ€Ð¾ÐµÐºÑ‚ Ð² Ð¾Ð¿ÐµÑ€Ð°Ñ‚Ð¾Ñ€ÑÐºÐ¾Ð¼ Ñ€ÐµÐ¶Ð¸Ð¼Ðµ.");
-            form.addView(smsIncomingHelp);
-        } else {
-            incomingSmsEnabledField = null; incomingSmsSenderField = null;
-            incomingSmsCommandField = null; incomingSmsBitField = null; incomingSmsModeField = null;
-            incomingSmsStrobeEnabledField = null; incomingSmsStrobeRegisterField = null; incomingSmsStrobeBitField = null;
-        }
-
-        final android.widget.CheckBox gatewayEnabledField;
-        final android.widget.Spinner gatewayModeField, gatewaySourceFunctionField;
-        final EditText gatewayCountField, gatewaySourceField, gatewayDestinationField,
-                gatewayTriggerField, gatewayTriggerBitField;
-        if (craftRegisterGateway || craftBitGateway) {
-            gatewayEnabledField = new android.widget.CheckBox(this);
-            gatewayEnabledField.setText("Ð Ð°Ð·Ñ€ÐµÑˆÐ¸Ñ‚ÑŒ Ð²Ñ‹Ð¿Ð¾Ð»Ð½ÐµÐ½Ð¸Ðµ ÑˆÐ»ÑŽÐ·Ð° Ð² Ð¾Ð¿ÐµÑ€Ð°Ñ‚Ð¾Ñ€ÑÐºÐ¾Ð¼ Ñ€ÐµÐ¶Ð¸Ð¼Ðµ");
-            gatewayEnabledField.setChecked(w.extraFields.optBoolean(craftBitGateway ? "craftBitGatewayEnabled" : "craftGatewayEnabled", false));
-            form.addView(gatewayEnabledField);
-            gatewayModeField = new android.widget.Spinner(this);
-            gatewayModeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item,
-                    new String[]{"ÐŸÐ¾ÑÑ‚Ð¾ÑÐ½Ð½Ð¾", "ÐŸÐ¾ Ñ„Ñ€Ð¾Ð½Ñ‚Ñƒ 0â†’1", "ÐŸÐ¾ Ð¸Ð·Ð¼ÐµÐ½ÐµÐ½Ð¸ÑŽ Ð¸ÑÑ‚Ð¾Ñ‡Ð½Ð¸ÐºÐ°"}));
-            int originalMode = craftBitGateway
-                    ? w.extraFields.optInt("craftBitGatewayTransferMode", w.extraFields.optInt("craftBitGatewayMode", 0))
-                    : w.extraFields.optInt("craftGatewayTransferMode", w.extraFields.optInt("craftGatewayMode", 0));
-            gatewayModeField.setSelection(Math.max(0, Math.min(2, originalMode)));
-            form.addView(gatewayModeField);
-            if (craftBitGateway) {
-                gatewaySourceFunctionField = new android.widget.Spinner(this);
-                gatewaySourceFunctionField.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                        android.R.layout.simple_spinner_dropdown_item, new String[]{"FC01 â€” Coils", "FC02 â€” Discrete Inputs"}));
-                gatewaySourceFunctionField.setSelection(w.extraFields.optInt("craftBitGatewaySourceFunction", 1) == 2 ? 1 : 0);
-                form.addView(gatewaySourceFunctionField);
-            } else gatewaySourceFunctionField = null;
-            int maxGatewayCount = craftBitGateway ? 16 : 99;
-            gatewayCountField = propertyField(Integer.toString(Math.max(1,
-                    Math.min(maxGatewayCount, w.extraFields.optInt(craftBitGateway ? "craftBitGatewayCount" : "craftGatewayCount", 1)))), InputType.TYPE_CLASS_NUMBER);
-            gatewayCountField.setHint(craftBitGateway ? "ÐšÐ¾Ð»Ð¸Ñ‡ÐµÑÑ‚Ð²Ð¾ Ð±Ð¸Ñ‚ (1â€“16; Ð¿Ð¾ Ð¸Ð·Ð¼ÐµÐ½ÐµÐ½Ð¸ÑŽ â€” 1)" : "ÐšÐ¾Ð»Ð¸Ñ‡ÐµÑÑ‚Ð²Ð¾ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð¾Ð² (1â€“99; Ð¿Ð¾ Ð¸Ð·Ð¼ÐµÐ½ÐµÐ½Ð¸ÑŽ â€” 1)"); form.addView(gatewayCountField);
-            gatewaySourceField = propertyField(w.extraFields.optString(craftBitGateway ? "craftBitGatewaySource" : "craftGatewaySource", ""),
-                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-            gatewaySourceField.setHint(craftBitGateway ? "Ð˜ÑÑ‚Ð¾Ñ‡Ð½Ð¸Ðº: tcp://192.168.1.10:502/1/0 (Ð°Ð´Ñ€ÐµÑ 0-based)" : "Ð˜ÑÑ‚Ð¾Ñ‡Ð½Ð¸Ðº: tcp://192.168.1.10:502/1/40001 (FC03/04) Ð¸Ð»Ð¸ system://register/10"); form.addView(gatewaySourceField);
-            gatewayDestinationField = propertyField(w.extraFields.optString(craftBitGateway ? "craftBitGatewayDestination" : "craftGatewayDestination", ""),
-                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-            gatewayDestinationField.setHint(craftBitGateway ? "Coil-Ð¿Ñ€Ð¸Ñ‘Ð¼Ð½Ð¸Ðº: tcp://192.168.1.11:502/1/0" : "ÐŸÑ€Ð¸Ñ‘Ð¼Ð½Ð¸Ðº: tcp://192.168.1.11:502/1/40001 (holding)"); form.addView(gatewayDestinationField);
-            gatewayTriggerField = propertyField(w.extraFields.optString(craftBitGateway ? "craftBitGatewayTrigger" : "craftGatewayTrigger", ""),
-                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-            gatewayTriggerField.setHint("Ð¢Ñ€Ð¸Ð³Ð³ÐµÑ€ Ð´Ð»Ñ Ñ„Ñ€Ð¾Ð½Ñ‚Ð°: tcp://192.168.1.10:502/1/40002"); form.addView(gatewayTriggerField);
-            gatewayTriggerBitField = propertyField(Integer.toString(Math.max(0,
-                    Math.min(15, w.extraFields.optInt(craftBitGateway ? "craftBitGatewayTriggerBit" : "craftGatewayTriggerBit",
-                            craftBitGateway ? 0 : w.extraFields.optInt("craftGatewayBitMode", 0))))),
-                    InputType.TYPE_CLASS_NUMBER);
-            gatewayTriggerBitField.setHint("Ð‘Ð¸Ñ‚ Ñ‚Ñ€Ð¸Ð³Ð³ÐµÑ€Ð° (0â€“15)"); form.addView(gatewayTriggerBitField);
-            TextView gatewayHelp = new TextView(this);
-            gatewayHelp.setText(craftBitGateway
-                    ? "Ð£ Ð¸ÑÑ…Ð¾Ð´Ð½Ð¾Ð³Ð¾ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð° Ð°Ð´Ñ€ÐµÑÐ° ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð² Ð·Ð°Ð´Ð°Ð½Ñ‹ Ð²Ð½ÑƒÑ‚Ñ€ÐµÐ½Ð½Ð¸Ð¼Ð¸ Ð¸Ð½Ð´ÐµÐºÑÐ°Ð¼Ð¸; ÑƒÐºÐ°Ð¶Ð¸ TCP-Ð°Ð´Ñ€ÐµÑÐ° Ð²Ñ€ÑƒÑ‡Ð½ÑƒÑŽ. Ð˜ÑÑ‚Ð¾Ñ‡Ð½Ð¸Ðº Ñ‡Ð¸Ñ‚Ð°ÐµÑ‚ FC01/FC02, Ð¿Ñ€Ð¸Ñ‘Ð¼Ð½Ð¸Ðº Ð¿Ð¸ÑˆÐµÑ‚ coils Ñ‡ÐµÑ€ÐµÐ· FC05/FC15. ÐŸÐ¾ÑÑ‚Ð¾ÑÐ½Ð½Ð¾ Ð¸ Ð¿Ð¾ Ñ„Ñ€Ð¾Ð½Ñ‚Ñƒ Ð¿ÐµÑ€ÐµÐ´Ð°Ñ‘Ñ‚ÑÑ 1â€“16 Ð±Ð¸Ñ‚, Ð¿Ð¾ Ð¸Ð·Ð¼ÐµÐ½ÐµÐ½Ð¸ÑŽ â€” Ð¾Ð´Ð¸Ð½. ÐÐ´Ñ€ÐµÑÐ° TCP Ð·Ð´ÐµÑÑŒ Ð½ÑƒÐ¼ÐµÑ€ÑƒÑŽÑ‚ÑÑ Ñ Ð½ÑƒÐ»Ñ. Ð¡Ð¸ÑÑ‚ÐµÐ¼Ð½Ñ‹Ðµ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ñ‹ Ð¸ RTU/Bluetooth Ð¿Ð¾ÐºÐ° Ð½Ðµ Ð¿Ð¾Ð´Ð´ÐµÑ€Ð¶Ð¸Ð²Ð°ÑŽÑ‚ÑÑ. Ð˜Ð¼Ð¿Ð¾Ñ€Ñ‚Ð¸Ñ€Ð¾Ð²Ð°Ð½Ð½Ñ‹Ð¹ ÑˆÐ»ÑŽÐ· Ð²Ñ‹ÐºÐ»ÑŽÑ‡ÐµÐ½."
-                    : "Ð£ Ð¸ÑÑ…Ð¾Ð´Ð½Ð¾Ð³Ð¾ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð° Ð°Ð´Ñ€ÐµÑÐ° ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð² Ð·Ð°Ð´Ð°Ð½Ñ‹ Ð²Ð½ÑƒÑ‚Ñ€ÐµÐ½Ð½Ð¸Ð¼Ð¸ Ð¸Ð½Ð´ÐµÐºÑÐ°Ð¼Ð¸; Ð¾Ð½Ð¸ Ð½Ðµ Ð¿ÐµÑ€ÐµÐ½Ð¾ÑÑÑ‚ÑÑ Ð°Ð²Ñ‚Ð¾Ð¼Ð°Ñ‚Ð¸Ñ‡ÐµÑÐºÐ¸. Ð£ÐºÐ°Ð¶Ð¸ TCP-Ð°Ð´Ñ€ÐµÑ Ð¿Ñ€Ð¸Ñ‘Ð¼Ð½Ð¸ÐºÐ° Ð²Ñ€ÑƒÑ‡Ð½ÑƒÑŽ. Ð˜ÑÑ‚Ð¾Ñ‡Ð½Ð¸Ðº Ð¼Ð¾Ð¶Ð½Ð¾ Ð·Ð°Ð´Ð°Ñ‚ÑŒ ÐºÐ°Ðº TCP/FC03/04 Ð¸Ð»Ð¸ ÐºÐ°Ðº system://register/10 (Ð»Ð¾ÐºÐ°Ð»ÑŒÐ½Ñ‹Ð¹ Ð±Ð°Ð½Ðº Ð¡Ð¸ÑÑ‚ÐµÐ¼Ð°, Ñ‚Ð¾Ð»ÑŒÐºÐ¾ Ñ‡Ñ‚ÐµÐ½Ð¸Ðµ); Ñ€ÐµÐ¶Ð¸Ð¼Ñ‹ 0/1 ÐºÐ¾Ð¿Ð¸Ñ€ÑƒÑŽÑ‚ 1â€“99 Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð¾Ð², Ð¿Ð¾ Ð¸Ð·Ð¼ÐµÐ½ÐµÐ½Ð¸ÑŽ â€” Ð¾Ð´Ð¸Ð½. Ð’Ð½ÑƒÑ‚Ñ€ÐµÐ½Ð½Ð¸Ðµ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ñ‹ 0â€“1999 Ð´Ð¾ÑÑ‚ÑƒÐ¿Ð½Ñ‹ ÐºÐ°Ðº Ð¸ÑÑ‚Ð¾Ñ‡Ð½Ð¸Ðº; Ð¿Ñ€Ð¸Ñ‘Ð¼Ð½Ð¸Ðº Ð¡Ð¸ÑÑ‚ÐµÐ¼Ð°, RTU Ð¸ Bluetooth Ð¿Ð¾ÐºÐ° Ð½Ðµ Ð¿Ð¾Ð´Ð´ÐµÑ€Ð¶Ð¸Ð²Ð°ÑŽÑ‚ÑÑ. Ð˜Ð¼Ð¿Ð¾Ñ€Ñ‚Ð¸Ñ€Ð¾Ð²Ð°Ð½Ð½Ñ‹Ð¹ ÑˆÐ»ÑŽÐ· Ð¸Ð·Ð½Ð°Ñ‡Ð°Ð»ÑŒÐ½Ð¾ Ð²Ñ‹ÐºÐ»ÑŽÑ‡ÐµÐ½.");
-            form.addView(gatewayHelp);
-        } else {
-            gatewayEnabledField = null; gatewayModeField = null; gatewaySourceFunctionField = null;
-            gatewayCountField = null; gatewaySourceField = null; gatewayDestinationField = null;
-            gatewayTriggerField = null; gatewayTriggerBitField = null;
-        }
-
-        final android.widget.CheckBox fbdInputField;
-        if ("FBD Ð’Ñ…Ð¾Ð´".equals(w.type)) {
-            fbdInputField = new android.widget.CheckBox(this);
-            fbdInputField.setText("ÐŸÐ¾ÑÑ‚Ð¾ÑÐ½Ð½Ð¾Ðµ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ FBD-Ð²Ñ…Ð¾Ð´Ð° (1 / 0)");
-            fbdInputField.setContentDescription("Ð—Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ Ð²Ñ…Ð¾Ð´Ð° FBD");
-            fbdInputField.setChecked(w.inputValue);
-            form.addView(fbdInputField);
-        } else fbdInputField = null;
-
-        final android.widget.CheckBox craftConstantModeField;
-        final EditText craftConstantValueField;
-        final EditText craftBitField;
-        final android.widget.CheckBox craftSwapWordField;
-        final android.widget.CheckBox craftSwapByteField;
-        final EditText craftVariableNameField;
-        final android.widget.Spinner craftVariableTypeField;
-        final android.widget.CheckBox craftNamedConstantModeField;
-        final EditText craftNamedConstantValueField;
-        final android.widget.Spinner craftOrientationAxisField;
-        if ("FBD CRAFT SENSOR ORIENTATION".equals(w.type)) {
-            craftOrientationAxisField = new android.widget.Spinner(this);
-            craftOrientationAxisField.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item, new String[]{"ORIENTATION_X", "ORIENTATION_Y", "ORIENTATION_Z"}));
-            craftOrientationAxisField.setSelection(craftOrientationAxis(w) - 1);
-            craftOrientationAxisField.setContentDescription("ÐžÑÑŒ Ð´Ð°Ñ‚Ñ‡Ð¸ÐºÐ° Ð¾Ñ€Ð¸ÐµÐ½Ñ‚Ð°Ñ†Ð¸Ð¸");
-            form.addView(craftOrientationAxisField);
-        } else craftOrientationAxisField = null;
-        final EditText craftSunriseLatitudeField, craftSunriseLongitudeField;
-        final android.widget.Spinner craftSunriseModeField;
-        if ("FBD CRAFT SUNRISE".equals(w.type)) {
-            TextView locationLabel = new TextView(this); locationLabel.setText("ÐšÐ¾Ð¾Ñ€Ð´Ð¸Ð½Ð°Ñ‚Ñ‹ Ñ‚Ð¾Ñ‡ÐºÐ¸ (ÑˆÐ¸Ñ€Ð¾Ñ‚Ð° / Ð´Ð¾Ð»Ð³Ð¾Ñ‚Ð°)");
-            form.addView(locationLabel);
-            craftSunriseLatitudeField = propertyField(w.extraFields.has("latitude")
-                    ? Double.toString(w.extraFields.optDouble("latitude")) : "", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-            craftSunriseLatitudeField.setHint("Ð¨Ð¸Ñ€Ð¾Ñ‚Ð°: âˆ’90â€¦90"); form.addView(craftSunriseLatitudeField);
-            craftSunriseLongitudeField = propertyField(w.extraFields.has("longitude")
-                    ? Double.toString(w.extraFields.optDouble("longitude")) : "", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-            craftSunriseLongitudeField.setHint("Ð”Ð¾Ð»Ð³Ð¾Ñ‚Ð°: âˆ’180â€¦180"); form.addView(craftSunriseLongitudeField);
-            craftSunriseModeField = new android.widget.Spinner(this);
-            craftSunriseModeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item, new String[]{"SR â€” Ð²Ð¾ÑÑ…Ð¾Ð´", "SS â€” Ð·Ð°ÐºÐ°Ñ‚"}));
-            craftSunriseModeField.setSelection("SS".equals(craftSunriseMode(w)) ? 1 : 0);
-            form.addView(craftSunriseModeField);
-        } else {
-            craftSunriseLatitudeField = null; craftSunriseLongitudeField = null; craftSunriseModeField = null;
-        }
-        final EditText craftOdTempHostField;
-        final android.widget.Spinner craftOdTempTypeField, craftOdTempResponseField;
-        if ("FBD CRAFT ODTEMP".equals(w.type)) {
-            craftOdTempHostField = propertyField(w.extraFields.optString("ip", "10.10.0.1"), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-            craftOdTempHostField.setHint("IP ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð° (Ñ‡Ð°ÑÑ‚Ð½Ð°Ñ ÑÐµÑ‚ÑŒ)"); form.addView(craftOdTempHostField);
-            craftOdTempTypeField = new android.widget.Spinner(this);
-            craftOdTempTypeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item, new String[]{"DT â€” Ð¾Ð´Ð¸Ð½Ð¾Ñ‡Ð½Ð¾Ðµ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ", "T / Ð²Ð»Ð°Ð¶Ð½Ð¾ÑÑ‚ÑŒ"}));
-            craftOdTempTypeField.setSelection(w.extraFields.optInt("craftOdTempType", w.extraFields.optInt("typeSensor", 1)) == 2 ? 1 : 0);
-            form.addView(craftOdTempTypeField);
-            craftOdTempResponseField = new android.widget.Spinner(this);
-            craftOdTempResponseField.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item, new String[]{"Ð¢ÐµÐ¼Ð¿ÐµÑ€Ð°Ñ‚ÑƒÑ€Ð° (t)", "Ð’Ð»Ð°Ð¶Ð½Ð¾ÑÑ‚ÑŒ (h)"}));
-            craftOdTempResponseField.setSelection(w.extraFields.optInt("craftOdTempResponse", w.extraFields.optInt("typeResponse", 1)) == 2 ? 1 : 0);
-            form.addView(craftOdTempResponseField);
-        } else {
-            craftOdTempHostField = null; craftOdTempTypeField = null; craftOdTempResponseField = null;
-        }
-        final EditText craftMqttTopicField;
-        final android.widget.Spinner craftMqttTypeField, craftMqttServerField;
-        final android.widget.CheckBox craftMqttRetainField;
-        if (isCraftMqttSubscriber(w.type) || isCraftMqttPublisher(w.type)) {
-            boolean subscriber = isCraftMqttSubscriber(w.type);
-            craftMqttTopicField = propertyField(w.extraFields.optString("craftMqttTopic", ""),
-                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-            craftMqttTopicField.setHint("MQTT topic"); form.addView(craftMqttTopicField);
-            craftMqttTypeField = new android.widget.Spinner(this);
-            craftMqttTypeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item, new String[]{"BOOL", "INT", "FLOAT"}));
-            craftMqttTypeField.setSelection(mqttType(w) - 1); form.addView(craftMqttTypeField);
-            craftMqttServerField = new android.widget.Spinner(this);
-            craftMqttServerField.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item, new String[]{"MQTT ÑÐµÑ€Ð²ÐµÑ€ 1", "MQTT ÑÐµÑ€Ð²ÐµÑ€ 2"}));
-            craftMqttServerField.setSelection(mqttServer(w) - 1); form.addView(craftMqttServerField);
-            craftMqttRetainField = subscriber ? null : new android.widget.CheckBox(this);
-            if (craftMqttRetainField != null) {
-                craftMqttRetainField.setText("Retain");
-                craftMqttRetainField.setChecked(w.extraFields.optBoolean("craftMqttRetain", false));
-                form.addView(craftMqttRetainField);
-            }
-        } else {
-            craftMqttTopicField = null; craftMqttTypeField = null;
-            craftMqttServerField = null; craftMqttRetainField = null;
-        }
-        if (isCraftNamedVariableSource(w.type) || isCraftNamedVariableSink(w.type)) {
-            boolean source = isCraftNamedVariableSource(w.type);
-            craftVariableNameField = propertyField(w.extraFields.optString("craftVariableName",
-                    w.extraFields.optString("name", "")), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-            craftVariableNameField.setHint("Ð˜Ð¼Ñ Ð¾Ð±Ñ‰ÐµÐ¹ Ð¿ÐµÑ€ÐµÐ¼ÐµÐ½Ð½Ð¾Ð¹");
-            form.addView(craftVariableNameField);
-            craftVariableTypeField = new android.widget.Spinner(this);
-            craftVariableTypeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item, new String[]{"BOOL", "INT32", "FLOAT32"}));
-            int oldKind = w.extraFields.optInt("typeVar", w.type.endsWith(" BOOL") ? 1 : w.type.endsWith(" FLOAT") ? 3 : 2);
-            craftVariableTypeField.setSelection(oldKind >= 1 && oldKind <= 3 ? oldKind - 1 : 1);
-            form.addView(craftVariableTypeField);
-            craftNamedConstantModeField = source ? new android.widget.CheckBox(this) : null;
-            craftNamedConstantValueField = source ? propertyField(w.extraFields.optString("craftNamedConstant", "0"),
-                    InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL) : null;
-            if (source) {
-                craftNamedConstantModeField.setText("Ð˜ÑÐ¿Ð¾Ð»ÑŒÐ·Ð¾Ð²Ð°Ñ‚ÑŒ ÐºÐ¾Ð½ÑÑ‚Ð°Ð½Ñ‚Ñƒ Ð²Ð¼ÐµÑÑ‚Ð¾ Ð¸Ð¼ÐµÐ½Ð¸");
-                craftNamedConstantModeField.setChecked(w.extraFields.optBoolean("craftNamedConstantMode",
-                        w.extraFields.optBoolean("isConstant", false)));
-                craftNamedConstantValueField.setHint("Ð—Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ ÐºÐ¾Ð½ÑÑ‚Ð°Ð½Ñ‚Ñ‹");
-                form.addView(craftNamedConstantModeField); form.addView(craftNamedConstantValueField);
-            }
-        } else {
-            craftVariableNameField = null; craftVariableTypeField = null;
-            craftNamedConstantModeField = null; craftNamedConstantValueField = null;
-        }
-        if (isCraftRegisterSource(w.type) || isCraftRegisterSink(w.type)) {
-            boolean source = isCraftRegisterSource(w.type);
-            craftConstantModeField = source ? new android.widget.CheckBox(this) : null;
-            craftConstantValueField = source ? propertyField(w.extraFields.optString("craftVarConstant", "0"),
-                    InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL) : null;
-            if (source) {
-                craftConstantModeField.setText("ÐŸÐ¾ÑÑ‚Ð¾ÑÐ½Ð½Ð¾Ðµ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ Ð²Ð¼ÐµÑÑ‚Ð¾ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð°");
-                craftConstantModeField.setChecked(w.extraFields.optBoolean("craftVarConstantMode", false));
-                form.addView(craftConstantModeField);
-                craftConstantValueField.setHint("Ð—Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ BOOL / INT / FLOAT");
-                form.addView(craftConstantValueField);
-            }
-            craftBitField = isCraftRegisterBoolean(w.type)
-                    ? propertyField(Integer.toString(w.extraFields.optInt("craftVarBit", 0)), InputType.TYPE_CLASS_NUMBER)
-                    : null;
-            if (craftBitField != null) {
-                craftBitField.setHint("Ð‘Ð¸Ñ‚ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð° (0â€“15)");
-                form.addView(craftBitField);
-            }
-            craftSwapWordField = isCraftRegisterFloat(w.type) && !source ? new android.widget.CheckBox(this) : null;
-            craftSwapByteField = isCraftRegisterFloat(w.type) && !source ? new android.widget.CheckBox(this) : null;
-            if (craftSwapWordField != null) {
-                craftSwapWordField.setText("ÐŸÐ¾Ð¼ÐµÐ½ÑÑ‚ÑŒ ÑÐ»Ð¾Ð²Ð° Float32");
-                craftSwapWordField.setChecked(w.extraFields.optBoolean("craftSwapWord", false));
-                craftSwapByteField.setText("ÐŸÐ¾Ð¼ÐµÐ½ÑÑ‚ÑŒ Ð±Ð°Ð¹Ñ‚Ñ‹ Ð²Ð½ÑƒÑ‚Ñ€Ð¸ ÑÐ»Ð¾Ð²");
-                craftSwapByteField.setChecked(w.extraFields.optBoolean("craftSwapByte", false));
-                form.addView(craftSwapWordField); form.addView(craftSwapByteField);
-            }
-        } else {
-            craftConstantModeField = null; craftConstantValueField = null; craftBitField = null;
-            craftSwapWordField = null; craftSwapByteField = null;
-        }
-
-        final EditText[] dynStateFields = new EditText[4];
-        if ("Ð”Ð¸Ð½Ð°Ð¼Ð¸Ñ‡ÐµÑÐºÐ¸Ð¹ Ñ‚ÐµÐºÑÑ‚".equals(w.type)) {
-            TextView dynLabel = new TextView(this);
-            dynLabel.setText("Ð¢ÐµÐºÑÑ‚Ñ‹ ÑÐ¾ÑÑ‚Ð¾ÑÐ½Ð¸Ð¹ (0â€“3)");
-            dynLabel.setPadding(0, dp(10), 0, 0);
-            form.addView(dynLabel);
-            for (int k = 0; k < 4; k++) {
-                dynStateFields[k] = propertyField(w.dynTextStates[k], InputType.TYPE_CLASS_TEXT);
-                dynStateFields[k].setHint("Ð¢ÐµÐºÑÑ‚ ÑÐ¾ÑÑ‚Ð¾ÑÐ½Ð¸Ñ " + k);
-                form.addView(dynStateFields[k]);
-            }
-        }
-
-        final EditText[] bitLabelFields = new EditText[4];
-        if ("Ð‘Ð¸Ñ‚Ð¾Ð²Ñ‹Ð¹ ÑÐ¿Ð¸ÑÐ¾Ðº".equals(w.type)) {
-            TextView bitLabelHeader = new TextView(this);
-            bitLabelHeader.setText("ÐÐ°Ð·Ð²Ð°Ð½Ð¸Ñ Ð±Ð¸Ñ‚Ð¾Ð² (0â€“3)");
-            bitLabelHeader.setPadding(0, dp(10), 0, 0);
-            form.addView(bitLabelHeader);
-            for (int k = 0; k < 4; k++) {
-                bitLabelFields[k] = propertyField(w.bitListLabels[k], InputType.TYPE_CLASS_TEXT);
-                bitLabelFields[k].setHint("ÐŸÐ¾Ð´Ð¿Ð¸ÑÑŒ Ð±Ð¸Ñ‚Ð° " + k);
-                form.addView(bitLabelFields[k]);
-            }
-        }
-
-        final EditText soundThresholdField;
-        final EditText soundFilePathField;
-        final android.widget.Spinner soundPresetField;
-        if ("Ð—Ð²ÑƒÐºÐ¾Ð²Ð¾Ð¹ ÑÐ¸Ð³Ð½Ð°Ð»".equals(w.type)) {
-            TextView soundHeader = new TextView(this);
-            soundHeader.setText("ÐŸÐ°Ñ€Ð°Ð¼ÐµÑ‚Ñ€Ñ‹ Ð·Ð²ÑƒÐºÐ¾Ð²Ð¾Ð³Ð¾ ÑÐ¸Ð³Ð½Ð°Ð»Ð°");
-
-            soundHeader.setPadding(0, dp(10), 0, 0);
-            form.addView(soundHeader);
-            soundThresholdField = propertyField(Double.toString(w.soundThreshold), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-            soundThresholdField.setHint("ÐŸÐ¾Ñ€Ð¾Ð³ Ð²ÐºÐ»ÑŽÑ‡ÐµÐ½Ð¸Ñ (Ð¾Ð±Ñ‹Ñ‡Ð½Ð¾ 1)");
-            form.addView(soundThresholdField);
-            soundPresetField = new android.widget.Spinner(this);
-            soundPresetField.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item,
-                    new String[]{"ÐŸÐ¾Ð»ÑŒÐ·Ð¾Ð²Ð°Ñ‚ÐµÐ»ÑŒÑÐºÐ¸Ð¹ Ñ„Ð°Ð¹Ð»", "Ð¡Ð¸Ð³Ð½Ð°Ð» Craft 1", "Ð¡Ð¸Ð³Ð½Ð°Ð» Craft 2",
-                            "Ð¡Ð¸Ð³Ð½Ð°Ð» Craft 3", "Ð¡Ð¸Ð³Ð½Ð°Ð» Craft 4", "Ð¡Ð¸Ð³Ð½Ð°Ð» Craft 5"}));
-            soundPresetField.setSelection(Math.max(0, Math.min(5, w.craftAlarmSoundIndex)));
-            form.addView(soundPresetField);
-            TextView soundPresetHelp = new TextView(this);
-            soundPresetHelp.setText("Ð’Ñ‹Ð±ÐµÑ€Ð¸ Ð¾Ð´Ð¸Ð½ Ð¸Ð· Ð¿ÑÑ‚Ð¸ ÑÐ¸Ð³Ð½Ð°Ð»Ð¾Ð² Craft Ð¸Ð»Ð¸ Ð¿Ð¾Ð»ÑŒÐ·Ð¾Ð²Ð°Ñ‚ÐµÐ»ÑŒÑÐºÐ¸Ð¹ Ð°ÑƒÐ´Ð¸Ð¾Ñ„Ð°Ð¹Ð».");
-            form.addView(soundPresetHelp);
-            soundFilePathField = propertyField(w.soundFilePath, InputType.TYPE_CLASS_TEXT);
-            soundFilePathField.setHint("Ð¤Ð°Ð¹Ð» / content URI Ð¸Ð»Ð¸ 'ÐÐ»Ð°Ñ€Ð¼'");
-            form.addView(soundFilePathField);
-            addMediaPicker(form, soundFilePathField, "audio/*");
-        } else { soundThresholdField = null; soundFilePathField = null; soundPresetField = null; }
-
-        final android.widget.Spinner targetScreenIndexField;
-        final EditText targetUrlField;
-        final android.widget.CheckBox targetVisibleInWorkField;
-        if ("ÐŸÐµÑ€ÐµÑ…Ð¾Ð´ Ð½Ð° ÑÐºÑ€Ð°Ð½".equals(w.type)) {
-            TextView screenNavHeader = new TextView(this);
-            screenNavHeader.setText("ÐšÑƒÐ´Ð° Ð¿ÐµÑ€ÐµÐ¹Ñ‚Ð¸");
-            screenNavHeader.setPadding(0, dp(10), 0, 0);
-            form.addView(screenNavHeader);
-            java.util.ArrayList<String> screenChoices = new java.util.ArrayList<>();
-            screenChoices.add("â€” Ð²Ñ‹Ð±ÐµÑ€Ð¸ ÑÐºÑ€Ð°Ð½ â€”");
-            for (int screen = 0; screen < screens.size(); screen++) {
-                String screenName = screens.get(screen).name == null || screens.get(screen).name.trim().isEmpty()
-                        ? "Ð­ÐºÑ€Ð°Ð½ " + (screen + 1) : screens.get(screen).name;
-                screenChoices.add((screen + 1) + " â€” " + screenName);
-            }
-            targetScreenIndexField = new android.widget.Spinner(this);
-            targetScreenIndexField.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item, screenChoices));
-            int selectedTarget = w.targetScreenIndex >= 0 && w.targetScreenIndex < screens.size()
-                    ? w.targetScreenIndex + 1 : 0;
-            targetScreenIndexField.setSelection(selectedTarget);
-            form.addView(targetScreenIndexField);
-            targetUrlField = propertyField(w.targetUrl, InputType.TYPE_CLASS_TEXT);
-            targetUrlField.setHint("Ð’Ð½ÐµÑˆÐ½Ð¸Ð¹ URL Ð²Ð¼ÐµÑÑ‚Ð¾ ÑÐºÑ€Ð°Ð½Ð° (Ð½ÐµÐ¾Ð±ÑÐ·Ð°Ñ‚ÐµÐ»ÑŒÐ½Ð¾)");
-            form.addView(targetUrlField);
-            targetVisibleInWorkField = new android.widget.CheckBox(this);
-            targetVisibleInWorkField.setText("ÐŸÐ¾ÐºÐ°Ð·Ñ‹Ð²Ð°Ñ‚ÑŒ Ð² Ñ€Ð°Ð±Ð¾Ñ‡ÐµÐ¼ Ñ€ÐµÐ¶Ð¸Ð¼Ðµ");
-            targetVisibleInWorkField.setChecked(w.extraFields.optBoolean("craftButtonVisibleInWork", true));
-            form.addView(targetVisibleInWorkField);
-        } else { targetScreenIndexField = null; targetUrlField = null; targetVisibleInWorkField = null; }
-
-        final EditText[] imagePathFields = new EditText[w.imagePathStates.length];
-        final Spinner imageSelectionModeField;
-        if ("ÐœÐ½Ð¾Ð³Ð¾Ð¿Ð¾Ð·Ð¸Ñ†Ð¸Ð¾Ð½Ð½Ð¾Ðµ Ñ„Ð¾Ñ‚Ð¾".equals(w.type)) {
-            TextView imgHeader = new TextView(this);
-            imgHeader.setText("ÐŸÑƒÑ‚Ð¸ Ðº Ð¸Ð·Ð¾Ð±Ñ€Ð°Ð¶ÐµÐ½Ð¸ÑÐ¼ ÑÐ¾ÑÑ‚Ð¾ÑÐ½Ð¸Ð¹ (0â€“15)");
-            imgHeader.setPadding(0, dp(10), 0, 0);
-            form.addView(imgHeader);
-            TextView imgModeHeader = new TextView(this);
-            imgModeHeader.setText("Ð’Ñ‹Ð±Ð¾Ñ€ ÑÐ¾ÑÑ‚Ð¾ÑÐ½Ð¸Ñ Ð¿Ð¾ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸ÑŽ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð°");
-            imgModeHeader.setPadding(0, dp(10), 0, 0);
-            form.addView(imgModeHeader);
-            imageSelectionModeField = new Spinner(this);
-            imageSelectionModeField.setContentDescription("Ð ÐµÐ¶Ð¸Ð¼ Ð²Ñ‹Ð±Ð¾Ñ€Ð° ÐºÐ°Ñ€Ñ‚Ð¸Ð½ÐºÐ¸ Craft");
-            imageSelectionModeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item,
-                    new String[]{"ÐÐ¾Ð¼ÐµÑ€ ÐºÐ°Ñ€Ñ‚Ð¸Ð½ÐºÐ¸: 0â€“15", "Ð‘Ð¸Ñ‚Ð¾Ð²Ð°Ñ Ð¼Ð°ÑÐºÐ°: Ð¿ÐµÑ€Ð²Ñ‹Ð¹ ÑƒÑÑ‚Ð°Ð½Ð¾Ð²Ð»ÐµÐ½Ð½Ñ‹Ð¹ Ð±Ð¸Ñ‚"}));
-            JSONObject imageCraftOther = w.extraFields.optJSONObject("craftOther");
-            imageSelectionModeField.setSelection(imageCraftOther == null
-                    || imageCraftOther.optInt("typeCommand", 0) == 0 ? 0 : 1);
-            form.addView(imageSelectionModeField);
-            TextView imgBindingHelp = new TextView(this);
-            imgBindingHelp.setText("Ð§Ñ‚Ð¾Ð±Ñ‹ Ð²ÐºÐ»ÑŽÑ‡Ð¸Ñ‚ÑŒ Ð²Ñ‹Ð±Ð¾Ñ€ Ð¿Ð¾ ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ñƒ, Ð·Ð°Ð´Ð°Ð¹ ÑÐ²Ð½ÑƒÑŽ TCP-Ð¿Ñ€Ð¸Ð²ÑÐ·ÐºÑƒ Ð²Ñ‹ÑˆÐµ: "
-                    + "tcp://192.168.1.10:502/1/40001. Ð‘ÐµÐ· Ð°ÐºÑ‚Ð¸Ð²Ð½Ð¾Ð³Ð¾ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ñ Ð¿Ð¾ÐºÐ°Ð·Ñ‹Ð²Ð°ÐµÑ‚ÑÑ ÐºÐ°Ñ€Ñ‚Ð¸Ð½ÐºÐ° 0. "
-                    + "Ð˜ÑÑ…Ð¾Ð´Ð½Ð°Ñ Ð¿Ñ€Ð¸Ð²ÑÐ·ÐºÐ° Craft Ð¿Ñ€Ð¸ Ð¸Ð¼Ð¿Ð¾Ñ€Ñ‚Ðµ Ð½Ðµ Ð²ÐºÐ»ÑŽÑ‡Ð°ÐµÑ‚ÑÑ Ð°Ð²Ñ‚Ð¾Ð¼Ð°Ñ‚Ð¸Ñ‡ÐµÑÐºÐ¸.");
-            imgBindingHelp.setPadding(0, dp(4), 0, dp(4));
-            form.addView(imgBindingHelp);
-            for (int k = 0; k < imagePathFields.length; k++) {
-                imagePathFields[k] = propertyField(w.imagePathStates[k], InputType.TYPE_CLASS_TEXT);
-                imagePathFields[k].setHint("Ð˜Ð·Ð¾Ð±Ñ€Ð°Ð¶ÐµÐ½Ð¸Ðµ " + k + " (Ñ„Ð°Ð¹Ð» / URI)");
-                form.addView(imagePathFields[k]);
-                addMediaPicker(form, imagePathFields[k], "image/*");
-            }
-        } else imageSelectionModeField = null;
-
-        final EditText[] voiceMsgFields = new EditText[w.voiceMessages.length];
-        if ("Ð“Ð¾Ð»Ð¾ÑÐ¾Ð²Ð¾Ðµ ÑÐ¾Ð¾Ð±Ñ‰ÐµÐ½Ð¸Ðµ".equals(w.type)) {
-            TextView voiceHeader = new TextView(this);
-            voiceHeader.setText("Ð¢ÐµÐºÑÑ‚Ñ‹ Ð³Ð¾Ð»Ð¾ÑÐ¾Ð²Ñ‹Ñ… Ð¾Ð¿Ð¾Ð²ÐµÑ‰ÐµÐ½Ð¸Ð¹ (0â€“15)");
-            voiceHeader.setPadding(0, dp(10), 0, 0);
-            form.addView(voiceHeader);
-            for (int k = 0; k < voiceMsgFields.length; k++) {
-                voiceMsgFields[k] = propertyField(w.voiceMessages[k], InputType.TYPE_CLASS_TEXT);
-                voiceMsgFields[k].setHint("Ð“Ð¾Ð»Ð¾Ñ " + k);
-                form.addView(voiceMsgFields[k]);
-            }
-        }
-
-        final EditText[] craftVoicePhraseFields = new EditText[CraftVoiceRecognitionFields.PHRASE_COUNT];
-        if ("Ð Ð°ÑÐ¿Ð¾Ð·Ð½Ð°Ð²Ð°Ð½Ð¸Ðµ Ñ€ÐµÑ‡Ð¸ Craft".equals(w.type)) {
-            JSONObject sourceOther = w.extraFields.optJSONObject("craftOther");
-            String[] phrases = CraftVoiceRecognitionFields.read(sourceOther);
-            TextView voiceHeader = new TextView(this);
-            voiceHeader.setText("Ð˜ÑÑ…Ð¾Ð´Ð½Ñ‹Ðµ Ñ„Ñ€Ð°Ð·Ñ‹ Craft (0â€“15); Ñ€Ð°ÑÐ¿Ð¾Ð·Ð½Ð°Ð²Ð°Ð½Ð¸Ðµ Ð¿Ð¾ÐºÐ° Ð²Ñ‹ÐºÐ»ÑŽÑ‡ÐµÐ½Ð¾");
-            voiceHeader.setPadding(0, dp(10), 0, 0);
-            form.addView(voiceHeader);
-            for (int k = 0; k < craftVoicePhraseFields.length; k++) {
-                craftVoicePhraseFields[k] = propertyField(phrases[k], InputType.TYPE_CLASS_TEXT);
-                craftVoicePhraseFields[k].setHint("Ð¤Ñ€Ð°Ð·Ð° Craft " + k);
-                form.addView(craftVoicePhraseFields[k]);
-            }
-        }
-
-        final EditText timerPresetField;
-        final android.widget.Spinner timerUnitSelector;
-        final android.widget.Spinner timerModeSelector;
-        final android.widget.Spinner triggerModeSelector;
-        if ("FBD CRAFT T".equals(w.type)) {
-            TextView triggerLabel = new TextView(this);
-            triggerLabel.setText("Ð ÐµÐ¶Ð¸Ð¼ Ð¸ÑÑ…Ð¾Ð´Ð½Ð¾Ð³Ð¾ Craft trigger");
-            form.addView(triggerLabel);
-            triggerModeSelector = new android.widget.Spinner(this);
-            triggerModeSelector.setContentDescription("Ð ÐµÐ¶Ð¸Ð¼ Ñ‚Ñ€Ð¸Ð³Ð³ÐµÑ€Ð° Craft");
-            triggerModeSelector.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item, new String[]{"T", "R", "F"}));
-            String mode = w.extraFields.optString("craftTriggerMode", "T");
-            triggerModeSelector.setSelection("R".equals(mode) ? 1 : "F".equals(mode) ? 2 : 0);
-            form.addView(triggerModeSelector);
-        } else triggerModeSelector = null;
-        if ("FBD Ð¢Ð°Ð¹Ð¼ÐµÑ€".equals(w.type) || "FBD TP".equals(w.type)
-                || "FBD TOF".equals(w.type) || "FBD CRAFT BLINK".equals(w.type)
-                || "FBD CRAFT TIMER".equals(w.type)) {
-            TextView timerModeLabel = new TextView(this);
-            boolean originalBlink = "FBD CRAFT BLINK".equals(w.type);
-            boolean originalCraftTimer = "FBD CRAFT TIMER".equals(w.type);
-            timerModeLabel.setText(originalBlink ? "Ð ÐµÐ¶Ð¸Ð¼ Craft: BLINK"
-                    : originalCraftTimer ? "Ð ÐµÐ¶Ð¸Ð¼ Ð¸ÑÑ…Ð¾Ð´Ð½Ð¾Ð³Ð¾ Craft FB_TIMER"
-                    : "Ð ÐµÐ¶Ð¸Ð¼ Ñ‚Ð°Ð¹Ð¼ÐµÑ€Ð° (TON / TOF / TP)");
-            form.addView(timerModeLabel);
-            timerModeSelector = new android.widget.Spinner(this);
-            timerModeSelector.setContentDescription("Ð ÐµÐ¶Ð¸Ð¼ Ñ‚Ð°Ð¹Ð¼ÐµÑ€Ð° FBD");
-            timerModeSelector.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item,
-                    originalBlink ? new String[]{"BLINK"} : originalCraftTimer
-                            ? new String[]{"TON", "TOF", "TP", "BLINK"} : FbdDurationUnits.modes()));
-            String initialMode = originalCraftTimer ? w.extraFields.optString("craftTimerMode", "TON")
-                    : FbdDurationUnits.modeForType(w.type);
-            timerModeSelector.setSelection("TOF".equals(initialMode) ? 1 : "TP".equals(initialMode) ? 2 : "BLINK".equals(initialMode) && originalCraftTimer ? 3 : 0);
-            form.addView(timerModeSelector);
-
-            TextView timerLabel = new TextView(this);
-            timerLabel.setText("Ð’Ñ€ÐµÐ¼Ñ Ñ‚Ð°Ð¹Ð¼ÐµÑ€Ð° (Ð¸ÑÑ…Ð¾Ð´Ð½Ð¾Ðµ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑÑ Ñ‚Ð¾Ñ‡Ð½Ð¾ Ð² Ð¼Ñ)");
-            timerLabel.setPadding(0, dp(10), 0, 0);
-            form.addView(timerLabel);
-            String[] unitValues = {"MS", "SEK", "MIN"};
-            String initialUnit = FbdDurationUnits.normalize(w.extraFields.optString("bloodskyFbdTimeUnit", "MS"));
-            int initialUnitIndex = "SEK".equals(initialUnit) ? 1 : "MIN".equals(initialUnit) ? 2 : 0;
-            timerPresetField = propertyField(FbdDurationUnits.display(w.timerPresetMs, initialUnit),
-                    InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL
-                            | InputType.TYPE_NUMBER_FLAG_SIGNED);
-            timerPresetField.setContentDescription(initialUnitIndex == 0 ? "Ð’Ñ€ÐµÐ¼Ñ Ñ‚Ð°Ð¹Ð¼ÐµÑ€Ð°, Ð¼Ñ"
-                    : "Ð’Ñ€ÐµÐ¼Ñ Ñ‚Ð°Ð¹Ð¼ÐµÑ€Ð°, " + (initialUnitIndex == 1 ? "ÑÐµÐº" : "Ð¼Ð¸Ð½"));
-            form.addView(timerPresetField);
-            timerUnitSelector = new android.widget.Spinner(this);
-            timerUnitSelector.setContentDescription("Ð•Ð´Ð¸Ð½Ð¸Ñ†Ð° Ð²Ñ€ÐµÐ¼ÐµÐ½Ð¸ FBD");
-            timerUnitSelector.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item,
-                    new String[]{"Ð¼Ñ", "ÑÐµÐº", "Ð¼Ð¸Ð½"}));
-            timerUnitSelector.setSelection(initialUnitIndex);
-            final int[] lastUnit = {initialUnitIndex};
-            timerUnitSelector.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
-                public void onNothingSelected(android.widget.AdapterView<?> parent) {}
-                public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) {
-                    if (position == lastUnit[0]) return;
-                    try {
-                        int oldMilliseconds = FbdDurationUnits.parse(
-                                timerPresetField.getText().toString(), unitValues[lastUnit[0]], w.timerPresetMs);
-                        timerPresetField.setText(FbdDurationUnits.display(oldMilliseconds, unitValues[position]));
-                        timerPresetField.setContentDescription(position == 0 ? "Ð’Ñ€ÐµÐ¼Ñ Ñ‚Ð°Ð¹Ð¼ÐµÑ€Ð°, Ð¼Ñ"
-                                : "Ð’Ñ€ÐµÐ¼Ñ Ñ‚Ð°Ð¹Ð¼ÐµÑ€Ð°, " + (position == 1 ? "ÑÐµÐº" : "Ð¼Ð¸Ð½"));
-                    } catch (IllegalArgumentException ignored) {
-                        // Keep invalid text visible so Apply reports an error.
-                    }
-                    lastUnit[0] = position;
-                }
-            });
-            form.addView(timerUnitSelector);
-        } else {
-            timerPresetField = null;
-            timerUnitSelector = null;
-            timerModeSelector = null;
-        }
-        final EditText counterPresetField;
-        if ("FBD CTU".equals(w.type) || "FBD CTD".equals(w.type)) {
-            TextView counterLabel = new TextView(this);
-            counterLabel.setText("Ð£ÑÑ‚Ð°Ð²ÐºÐ° ÑÑ‡Ñ‘Ñ‚Ñ‡Ð¸ÐºÐ° " + ("FBD CTD".equals(w.type) ? "CTD" : "CTU"));
-            counterLabel.setPadding(0, dp(10), 0, 0);
-            form.addView(counterLabel);
-            counterPresetField = propertyField(Integer.toString(w.counterPreset), InputType.TYPE_CLASS_NUMBER);
-            counterPresetField.setContentDescription("Ð£ÑÑ‚Ð°Ð²ÐºÐ° ÑÑ‡Ñ‘Ñ‚Ñ‡Ð¸ÐºÐ°");
-            form.addView(counterPresetField);
-        } else {
-            counterPresetField = null;
-        }
-
-        final EditText compareLeftField;
-        final EditText compareOperatorField;
-        final EditText compareRightField;
-        if ("FBD Ð¡Ñ€Ð°Ð²Ð½ÐµÐ½Ð¸Ðµ".equals(w.type)
-                || "FBD CRAFT COMPARE".equals(w.type)
-                || "FBD CRAFT COMPARE FLOAT".equals(w.type)
-                || "FBD CRAFT ARITHMETIC INT".equals(w.type)
-                || "FBD CRAFT ARITHMETIC FLOAT".equals(w.type)) {
-            TextView compareLabel = new TextView(this);
-            compareLabel.setText("FBD CRAFT COMPARE".equals(w.type)
-                    ? "Craft INT32: Ð¾Ð¿ÐµÑ€Ð°Ñ‚Ð¾Ñ€ >, <, <=, >=, ==, !=; Ð²Ñ…Ð¾Ð´Ñ‹ IN1/IN2"
-                    : "FBD CRAFT COMPARE FLOAT".equals(w.type)
-                    ? "Craft FLOAT32: Ð¾Ð¿ÐµÑ€Ð°Ñ‚Ð¾Ñ€ >, <, <=, >=, ==, !=; Ð²Ñ…Ð¾Ð´Ñ‹ IN1/IN2"
-                    : ("FBD CRAFT ARITHMETIC INT".equals(w.type)
-                            || "FBD CRAFT ARITHMETIC FLOAT".equals(w.type))
-                    ? "Craft: Ð¾Ð¿ÐµÑ€Ð°Ñ‚Ð¾Ñ€ +, âˆ’, Ã—, Ã·; Ð²Ñ…Ð¾Ð´Ñ‹ IN1/IN2"
-                    : "Ð§Ð¸ÑÐ»Ð¾Ð²Ð¾Ðµ ÑÑ€Ð°Ð²Ð½ÐµÐ½Ð¸Ðµ A / Ð¾Ð¿ÐµÑ€Ð°Ñ‚Ð¾Ñ€ / B");
-            compareLabel.setPadding(0, dp(10), 0, 0);
-            form.addView(compareLabel);
-            compareLeftField = propertyField(Double.toString(w.compareA), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-            compareOperatorField = propertyField(w.compareOperator, InputType.TYPE_CLASS_TEXT);
-            compareRightField = propertyField(Double.toString(w.compareB), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-            compareLeftField.setContentDescription("Ð¡Ñ€Ð°Ð²Ð½ÐµÐ½Ð¸Ðµ A");
-            compareOperatorField.setContentDescription("ÐžÐ¿ÐµÑ€Ð°Ñ‚Ð¾Ñ€ ÑÑ€Ð°Ð²Ð½ÐµÐ½Ð¸Ñ");
-            compareRightField.setContentDescription("Ð¡Ñ€Ð°Ð²Ð½ÐµÐ½Ð¸Ðµ B");
-            form.addView(compareLeftField);
-            form.addView(compareOperatorField);
-            form.addView(compareRightField);
-        } else {
-            compareLeftField = null;
-            compareOperatorField = null;
-            compareRightField = null;
-        }
-
-        final EditText minValField;
-        final EditText maxValField;
-        if ("Ð¨ÐºÐ°Ð»Ð° / Ð¡Ñ‚Ñ€ÐµÐ»ÐºÐ°".equals(w.type) || "ÐŸÑ€Ð¾Ð³Ñ€ÐµÑÑ-Ð±Ð°Ñ€".equals(w.type) || "Ð“Ñ€Ð°Ñ„Ð¸Ðº / Ð¢Ñ€ÐµÐ½Ð´".equals(w.type)) {
-            TextView rangeLabel = new TextView(this);
-            rangeLabel.setText("Ð”Ð¸Ð°Ð¿Ð°Ð·Ð¾Ð½ ÑˆÐºÐ°Ð»Ñ‹ (Ð¼Ð¸Ð½Ð¸Ð¼ÑƒÐ¼ / Ð¼Ð°ÐºÑÐ¸Ð¼ÑƒÐ¼)");
-            rangeLabel.setPadding(0, dp(10), 0, 0);
-            form.addView(rangeLabel);
-            minValField = propertyField(Double.toString(w.minValue), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-            minValField.setHint("ÐœÐ¸Ð½Ð¸Ð¼ÑƒÐ¼ (Ð½Ð°Ð¿Ñ€Ð¸Ð¼ÐµÑ€ 0)");
-            form.addView(minValField);
-            maxValField = propertyField(Double.toString(w.maxValue), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-            maxValField.setHint("ÐœÐ°ÐºÑÐ¸Ð¼ÑƒÐ¼ (Ð½Ð°Ð¿Ñ€Ð¸Ð¼ÐµÑ€ 100)");
-            form.addView(maxValField);
-        } else {
-            minValField = null;
-            maxValField = null;
-        }
-
-        TextView geometryLabel = new TextView(this);
-        geometryLabel.setText("ÐŸÐ¾Ð»Ð¾Ð¶ÐµÐ½Ð¸Ðµ Ð¸ Ñ€Ð°Ð·Ð¼ÐµÑ€ (Ð¿Ð¸ÐºÑÐµÐ»Ð¸)");
-        geometryLabel.setPadding(0, dp(10), 0, 0);
-        form.addView(geometryLabel);
-
-        EditText xField = propertyField(Float.toString(w.x), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
-        xField.setHint("X");
-        xField.setContentDescription("ÐŸÐ¾Ð»Ð¾Ð¶ÐµÐ½Ð¸Ðµ X");
-        form.addView(xField);
-        EditText yField = propertyField(Float.toString(w.y), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
-        yField.setHint("Y");
-        yField.setContentDescription("ÐŸÐ¾Ð»Ð¾Ð¶ÐµÐ½Ð¸Ðµ Y");
-        form.addView(yField);
-        EditText widthField = propertyField(Float.toString(w.w), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
-        widthField.setHint("Ð¨Ð¸Ñ€Ð¸Ð½Ð°");
-        widthField.setContentDescription("Ð¨Ð¸Ñ€Ð¸Ð½Ð° ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚Ð°");
-        form.addView(widthField);
-        EditText heightField = propertyField(Float.toString(w.h), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
-        heightField.setHint("Ð’Ñ‹ÑÐ¾Ñ‚Ð°");
-        heightField.setContentDescription("Ð’Ñ‹ÑÐ¾Ñ‚Ð° ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚Ð°");
-        form.addView(heightField);
-
-        TextView styleLabel = new TextView(this);
-        styleLabel.setText("ÐžÑ„Ð¾Ñ€Ð¼Ð»ÐµÐ½Ð¸Ðµ");
-        styleLabel.setPadding(0, dp(10), 0, 0);
-        form.addView(styleLabel);
-        EditText backgroundColorField = propertyField(w.backgroundColor == 0 ? "" : String.format(java.util.Locale.ROOT, "#%06X", (0xFFFFFF & w.backgroundColor)), InputType.TYPE_CLASS_TEXT);
-        backgroundColorField.setHint("Ð¤Ð¾Ð½: #RRGGBB; Ð¿ÑƒÑÑ‚Ð¾ â€” Ñ†Ð²ÐµÑ‚ Ð¿Ð¾ Ñ‚Ð¸Ð¿Ñƒ");
-        form.addView(backgroundColorField);
-        EditText textColorField = propertyField(String.format(java.util.Locale.ROOT, "#%06X", (0xFFFFFF & w.textColor)), InputType.TYPE_CLASS_TEXT);
-        textColorField.setHint("Ð¦Ð²ÐµÑ‚ Ñ‚ÐµÐºÑÑ‚Ð°: #RRGGBB");
-        form.addView(textColorField);
-        EditText textSizeField = propertyField(Integer.toString(w.textSizeSp), InputType.TYPE_CLASS_NUMBER);
-        textSizeField.setHint("Ð Ð°Ð·Ð¼ÐµÑ€ Ñ‚ÐµÐºÑÑ‚Ð°, 8â€“48 sp");
-        form.addView(textSizeField);
-        android.widget.CheckBox visibleField = new android.widget.CheckBox(this);
-        visibleField.setText("Ð­Ð»ÐµÐ¼ÐµÐ½Ñ‚ Ð²Ð¸Ð´Ð¸Ð¼ Ð½Ð° ÑÐºÑ€Ð°Ð½Ðµ"); visibleField.setChecked(w.visible); form.addView(visibleField);
-        android.widget.CheckBox frameField = new android.widget.CheckBox(this);
-        frameField.setText("ÐŸÐ¾ÐºÐ°Ð·Ñ‹Ð²Ð°Ñ‚ÑŒ Ñ€Ð°Ð¼ÐºÑƒ"); frameField.setChecked(w.showFrame); form.addView(frameField);
-        android.widget.CheckBox autoResizeField = new android.widget.CheckBox(this);
-        autoResizeField.setText("ÐÐ²Ñ‚Ð¾Ð¿Ð¾Ð´Ð±Ð¾Ñ€ Ñ€Ð°Ð·Ð¼ÐµÑ€Ð° Ñ‚ÐµÐºÑÑ‚Ð° Ð¿Ð¾ ÑˆÐ¸Ñ€Ð¸Ð½Ðµ"); autoResizeField.setChecked(w.autoResizeText); form.addView(autoResizeField);
-
-        android.widget.ScrollView propertyScroll = new android.widget.ScrollView(this);
-        propertyScroll.setFillViewport(true);
-        propertyScroll.setClipToPadding(false);
-        propertyScroll.addView(form);
-
-        AlertDialog properties = new AlertDialog.Builder(this)
-                .setTitle("Ð¡Ð²Ð¾Ð¹ÑÑ‚Ð²Ð°: " + ("FBD CRAFT TIMER".equals(w.type) ? "FBD Ð¢Ð°Ð¹Ð¼ÐµÑ€" : w.type))
-                .setView(propertyScroll)
-                .setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null)
-                .setPositiveButton("ÐŸÑ€Ð¸Ð¼ÐµÐ½Ð¸Ñ‚ÑŒ", null).create();
-        activePropertiesDialog = properties;
-        activePropertiesForm = form;
-        pendingMediaCopyCount = 0;
-        properties.setOnDismissListener(dismissed -> {
-            if (activePropertiesDialog == properties) {
-                activePropertiesDialog = null;
-                activePropertiesForm = null;
-            }
-            cleanupPendingMediaCopies(properties);
-        });
-        properties.setOnShowListener(shown -> properties.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(clicked -> {
-                    final WidgetGeometryEdits geometry;
-                    final FbdPropertyEdits fbd;
-                    try {
-                        geometry = WidgetGeometryEdits.parse(xField.getText().toString(), yField.getText().toString(),
-                                widthField.getText().toString(), heightField.getText().toString());
-                        String timerDurationMs = null;
-                        if (timerPresetField != null) {
-                            String unit = new String[]{"MS", "SEK", "MIN"}[timerUnitSelector.getSelectedItemPosition()];
-                            timerDurationMs = Integer.toString(FbdDurationUnits.parse(
-                                    timerPresetField.getText().toString(), unit, w.timerPresetMs));
-                        }
-                        fbd = FbdPropertyEdits.parse(timerDurationMs,
-                                counterPresetField == null ? null : counterPresetField.getText().toString(),
-                                compareLeftField == null ? null : compareLeftField.getText().toString(),
-                                compareOperatorField == null ? null : compareOperatorField.getText().toString(),
-                                compareRightField == null ? null : compareRightField.getText().toString());
-                    } catch (IllegalArgumentException invalid) {
-                        Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show();
-                        return;
-                    }
-                    if (gatewayEnabledField != null) {
-                        boolean enabled = gatewayEnabledField.isChecked();
-                        int mode = gatewayModeField.getSelectedItemPosition();
-                        int count, triggerBit, sourceFunction = gatewaySourceFunctionField == null ? 3
-                                : gatewaySourceFunctionField.getSelectedItemPosition() + 1;
-                        try {
-                            count = Integer.parseInt(gatewayCountField.getText().toString().trim());
-                            triggerBit = Integer.parseInt(gatewayTriggerBitField.getText().toString().trim());
-                        } catch (NumberFormatException invalid) {
-                            Toast.makeText(this, "Ð£ÐºÐ°Ð¶Ð¸ ÐºÐ¾Ð»Ð¸Ñ‡ÐµÑÑ‚Ð²Ð¾ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ð¹ Ð¸ Ð±Ð¸Ñ‚ Ñ‚Ñ€Ð¸Ð³Ð³ÐµÑ€Ð° Ñ‡Ð¸ÑÐ»Ð°Ð¼Ð¸", Toast.LENGTH_LONG).show(); return;
-                        }
-                        String source = gatewaySourceField.getText().toString().trim();
-                        String destination = gatewayDestinationField.getText().toString().trim();
-                        String trigger = gatewayTriggerField.getText().toString().trim();
-                        if (enabled) {
-                            try {
-                                if (craftBitGateway) CraftBitGateway.validate(true, mode, count, sourceFunction,
-                                        source, destination, trigger, triggerBit);
-                                else CraftRegisterGateway.validate(true, mode, count, source, destination, trigger, triggerBit);
-                            }
-                            catch (IllegalArgumentException invalid) {
-                                Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show(); return;
-                            }
-                        } else if (count < 1 || count > (craftBitGateway ? 16 : 99) || triggerBit < 0 || triggerBit > 15) {
-                            Toast.makeText(this, "ÐšÐ¾Ð»Ð¸Ñ‡ÐµÑÑ‚Ð²Ð¾: " + (craftBitGateway ? "1â€“16 Ð±Ð¸Ñ‚" : "1â€“99 Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð¾Ð²") + "; Ð±Ð¸Ñ‚ Ñ‚Ñ€Ð¸Ð³Ð³ÐµÑ€Ð°: 0â€“15", Toast.LENGTH_LONG).show(); return;
-                        }
-                        try {
-                            if (craftBitGateway) {
-                                w.extraFields.put("craftBitGatewayEnabled", enabled);
-                                w.extraFields.put("craftBitGatewayTransferMode", mode);
-                                w.extraFields.put("craftBitGatewayCount", count);
-                                w.extraFields.put("craftBitGatewaySourceFunction", sourceFunction);
-                                w.extraFields.put("craftBitGatewaySource", source);
-                                w.extraFields.put("craftBitGatewayDestination", destination);
-                                w.extraFields.put("craftBitGatewayTrigger", trigger);
-                                w.extraFields.put("craftBitGatewayTriggerBit", triggerBit);
-                            } else {
-                                w.extraFields.put("craftGatewayEnabled", enabled);
-                                w.extraFields.put("craftGatewayTransferMode", mode);
-                                w.extraFields.put("craftGatewayCount", count);
-                                w.extraFields.put("craftGatewaySource", source);
-                                w.extraFields.put("craftGatewayDestination", destination);
-                                w.extraFields.put("craftGatewayTrigger", trigger);
-                                w.extraFields.put("craftGatewayTriggerBit", triggerBit);
-                            }
-                            w.extraFields.put("craftUnsupportedComponent", !enabled);
-                        } catch (Exception ignored) {}
-                    }
-                    if (craftBitField != null) {
-                        try {
-                            int bit = Integer.parseInt(craftBitField.getText().toString().trim());
-                            if (bit < 0 || bit > 15) throw new NumberFormatException();
-                            w.extraFields.put("craftVarBit", bit);
-                        } catch (Exception invalid) {
-                            Toast.makeText(this, "Ð‘Ð¸Ñ‚ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð° Ð´Ð¾Ð»Ð¶ÐµÐ½ Ð±Ñ‹Ñ‚ÑŒ Ð¾Ñ‚ 0 Ð´Ð¾ 15", Toast.LENGTH_LONG).show(); return;
-                        }
-                    }
-                    if (craftBitList) {
-                        String[] labels;
-                        try { labels = CraftBitList.parseEditorLines(craftBitListLabelsField.getText().toString()); }
-                        catch (IllegalArgumentException invalid) { Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show(); return; }
-                        BindingRequest listBinding = parseBinding(-1, connectionField.getText().toString().trim());
-                        if (listBinding != null && listBinding.functionCode != 3) {
-                            Toast.makeText(this, "Ð¡Ð¿Ð¸ÑÐ¾Ðº Ð·Ð°Ð¿Ð¸ÑÑ‹Ð²Ð°ÐµÑ‚ Ð±Ð¸Ñ‚Ð¾Ð²ÑƒÑŽ Ð¼Ð°ÑÐºÑƒ Ð² holding-Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€ FC03/FC06", Toast.LENGTH_LONG).show(); return;
-                        }
-                        if (craftBitListVisibleField.isChecked() && CraftBitList.availableMask(labels) == 0) {
-                            Toast.makeText(this, "Ð”Ð¾Ð±Ð°Ð²ÑŒ Ð¿Ð¾Ð´Ð¿Ð¸ÑÑŒ Ñ…Ð¾Ñ‚Ñ Ð±Ñ‹ Ð¾Ð´Ð½Ð¾Ð¼Ñƒ Ð¿ÑƒÐ½ÐºÑ‚Ñƒ", Toast.LENGTH_LONG).show(); return;
-                        }
-                        try {
-                            w.extraFields.put("craftListLabels", CraftBitList.toJson(labels));
-                            w.extraFields.put("craftListVisibleInWork", craftBitListVisibleField.isChecked());
-                            w.extraFields.put("craftListCheckNoChange", craftBitListNoChangeField.isChecked());
-                            w.extraFields.put("craftListEnabled", listBinding != null);
-                        } catch (Exception ignored) { }
-                    }
-                    if (craftLinearSetter) {
-                        final int maximum;
-                        try { maximum = CraftLinearSetter.requireMaximum(craftLinearMaxField.getText().toString()); }
-                        catch (IllegalArgumentException invalid) { Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show(); return; }
-                        BindingRequest linearBinding = parseBinding(-1, connectionField.getText().toString().trim());
-                        if (!connectionField.getText().toString().trim().isEmpty()
-                                && (linearBinding == null || linearBinding.functionCode != 3)) {
-                            Toast.makeText(this, "Ð›Ð¸Ð½ÐµÐ¹Ð½Ñ‹Ð¹ Ð·Ð°Ð´Ð°Ñ‚Ñ‡Ð¸Ðº Ñ‚Ñ€ÐµÐ±ÑƒÐµÑ‚ ÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ñ‹Ð¹ holding-Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€ FC03/FC06", Toast.LENGTH_LONG).show(); return;
-                        }
-                        try {
-                            w.extraFields.put("craftLinearMax", maximum);
-                            w.extraFields.put("craftLinearValue", CraftLinearSetter.value(w.extraFields, null));
-                            w.extraFields.put("craftLinearVertical", craftLinearVerticalField.isChecked());
-                            w.extraFields.put("craftLinearEnabled", linearBinding != null);
-                        } catch (Exception ignored) { }
-                    }
-                    if (craftNumericInput) {
-                        final double min, max;
-                        final int decimals;
-                        try {
-                            min = Double.parseDouble(craftNumericMinField.getText().toString().trim().replace(',', '.'));
-                            max = Double.parseDouble(craftNumericMaxField.getText().toString().trim().replace(',', '.'));
-                            CraftNumericInput.validateRange(min, max);
-                            decimals = Integer.parseInt(craftNumericDecimalsField.getText().toString().trim());
-                            if (decimals < 0 || decimals > 8) throw new IllegalArgumentException("Ð¢Ð¾Ñ‡Ð½Ð¾ÑÑ‚ÑŒ Ð´Ð¾Ð»Ð¶Ð½Ð° Ð±Ñ‹Ñ‚ÑŒ 0â€“8");
-                        } catch (Exception invalid) {
-                            Toast.makeText(this, invalid instanceof IllegalArgumentException ? invalid.getMessage() : "ÐŸÑ€Ð¾Ð²ÐµÑ€ÑŒ Ð¼Ð¸Ð½Ð¸Ð¼ÑƒÐ¼, Ð¼Ð°ÐºÑÐ¸Ð¼ÑƒÐ¼ Ð¸ Ñ‚Ð¾Ñ‡Ð½Ð¾ÑÑ‚ÑŒ", Toast.LENGTH_LONG).show(); return;
-                        }
-                        String targetText = connectionField.getText().toString().trim();
-                        BindingRequest target = parseBinding(-1, targetText);
-                        if (!targetText.isEmpty() && (target == null || target.functionCode != 3
-                                || (craftNumericModeField.getSelectedItemPosition() == CraftNumericInput.FLOAT32 && target.address >= 65535))) {
-                            Toast.makeText(this, "ÐÑƒÐ¶ÐµÐ½ holding-Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€ FC03/FC06; Float32 Ð·Ð°Ð½Ð¸Ð¼Ð°ÐµÑ‚ Ð´Ð²Ð° Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð°", Toast.LENGTH_LONG).show(); return;
-                        }
-                        boolean passwordRequired = craftNumericPasswordRequiredField.isChecked();
-                        String passwordKey = w.extraFields.optString("craftNumericPasswordKey", "");
-                        String newPassword = craftNumericPasswordField.getText().toString();
-                        if (passwordRequired) {
-                            if (!newPassword.isEmpty()) {
-                                if (newPassword.length() > 10) { Toast.makeText(this, "ÐŸÐ°Ñ€Ð¾Ð»ÑŒ: Ð¼Ð°ÐºÑÐ¸Ð¼ÑƒÐ¼ 10 ÑÐ¸Ð¼Ð²Ð¾Ð»Ð¾Ð²", Toast.LENGTH_LONG).show(); return; }
-                                if (passwordKey.isEmpty()) passwordKey = java.util.UUID.randomUUID().toString();
-                                try { CraftNumericPasswordStore.save(this, passwordKey, newPassword); }
-                                catch (Exception failure) { Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð±ÐµÐ·Ð¾Ð¿Ð°ÑÐ½Ð¾ ÑÐ¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ð¿Ð°Ñ€Ð¾Ð»ÑŒ", Toast.LENGTH_LONG).show(); return; }
-                            } else if (passwordKey.isEmpty()) {
-                                Toast.makeText(this, "Ð—Ð°Ð´Ð°Ð¹ Ð½Ð¾Ð²Ñ‹Ð¹ Ð¿Ð°Ñ€Ð¾Ð»ÑŒ Ð¸Ð»Ð¸ Ð¾Ñ‚ÐºÐ»ÑŽÑ‡Ð¸ Ð¿Ñ€Ð¾Ð²ÐµÑ€ÐºÑƒ Ð´Ð»Ñ Ð¸Ð¼Ð¿Ð¾Ñ€Ñ‚Ð¸Ñ€Ð¾Ð²Ð°Ð½Ð½Ð¾Ð³Ð¾ ÐºÐ¾Ð¼Ð¿Ð¾Ð½ÐµÐ½Ñ‚Ð°", Toast.LENGTH_LONG).show(); return;
-                            }
-                        } else if (!passwordKey.isEmpty()) {
-                            CraftNumericPasswordStore.clear(this, passwordKey); passwordKey = "";
-                        }
-                        try {
-                            w.extraFields.put("craftNumericMin", min); w.extraFields.put("craftNumericMax", max);
-                            w.extraFields.put("craftNumericMode", craftNumericModeField.getSelectedItemPosition());
-                            w.extraFields.put("craftNumericTypeInt", craftNumericTypeIntField.getSelectedItemPosition());
-                            w.extraFields.put("craftNumericDecimals", decimals);
-                            w.extraFields.put("craftNumericFrame", craftNumericFrameField.isChecked());
-                            w.extraFields.put("craftNumericSystemFont", craftNumericSystemFontField.isChecked());
-                            w.extraFields.put("craftNumericPasswordRequired", passwordRequired);
-                            w.extraFields.put("craftNumericPasswordKey", passwordKey);
-                            w.extraFields.put("craftNumericEnabled", craftNumericEnabledField.isChecked());
-                            w.showFrame = craftNumericFrameField.isChecked();
-                        } catch (Exception ignored) { }
-                    }
-                    if (craftButtonConfig) {
-                        int mode = craftButtonModeField.getSelectedItemPosition() == 1 ? 2 : 0;
-                        int valueType = craftButtonConstantTypeField.getSelectedItemPosition();
-                        String constant = craftButtonConstantField.getText().toString().trim();
-                        int buttonBit;
-                        try {
-                            buttonBit = Integer.parseInt(craftButtonBitField.getText().toString().trim());
-                            CraftMomentaryButton.masks(buttonBit, true);
-                        } catch (Exception invalid) {
-                            Toast.makeText(this, "Ð‘Ð¸Ñ‚ ÐºÐ½Ð¾Ð¿ÐºÐ¸ Ð´Ð¾Ð»Ð¶ÐµÐ½ Ð±Ñ‹Ñ‚ÑŒ Ñ†ÐµÐ»Ñ‹Ð¼ Ñ‡Ð¸ÑÐ»Ð¾Ð¼ Ð¾Ñ‚ 0 Ð´Ð¾ 15", Toast.LENGTH_LONG).show(); return;
-                        }
-                        BindingRequest buttonBinding = parseBinding(-1, connectionField.getText().toString().trim());
-                        if (mode == 2) {
-                            try { if (valueType == 0) CraftConstantButton.integer(constant); else CraftConstantButton.floating(constant); }
-                            catch (IllegalArgumentException invalid) { Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show(); return; }
-                            if (connectionField.getText().toString().trim().isEmpty() || buttonBinding == null || buttonBinding.functionCode != 3) {
-                                Toast.makeText(this, "Ð”Ð»Ñ ÐºÐ¾Ð½ÑÑ‚Ð°Ð½Ñ‚Ñ‹ Ð½ÑƒÐ¶ÐµÐ½ ÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ñ‹Ð¹ TCP holding-Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€ FC03/FC06", Toast.LENGTH_LONG).show(); return;
-                            }
-                        } else if (craftButtonBitEnabledField.isChecked()
-                                && (connectionField.getText().toString().trim().isEmpty()
-                                || buttonBinding == null || buttonBinding.functionCode != 3)) {
-                            Toast.makeText(this, "Ð”Ð»Ñ Ð±Ð¸Ñ‚Ð¾Ð²Ð¾Ð¹ ÐºÐ¾Ð¼Ð°Ð½Ð´Ñ‹ Ð½ÑƒÐ¶ÐµÐ½ TCP holding-Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€ FC03/FC22", Toast.LENGTH_LONG).show(); return;
-                        }
-                        try {
-                            w.extraFields.put("craftButtonMode", mode);
-                            w.extraFields.put("craftButtonBit", buttonBit);
-                            w.extraFields.put("craftButtonBitEnabled", mode == 0 && craftButtonBitEnabledField.isChecked());
-                            w.extraFields.put("craftButtonConstantType", valueType);
-                            w.extraFields.put("craftButtonConstant", constant);
-                            w.extraFields.put("craftButtonConstantEnabled", mode == 2 && buttonBinding != null);
-                            w.extraFields.put("craftButtonVisibleInWork", craftButtonVisibleField.isChecked());
-                            w.type = mode == 2 ? "ÐšÐ¾Ð½ÑÑ‚Ð°Ð½Ñ‚Ð½Ð°Ñ ÐºÐ½Ð¾Ð¿ÐºÐ° Craft" : "ÐšÐ½Ð¾Ð¿ÐºÐ°";
-                        } catch (Exception ignored) { }
-                    }
-                    if (craftConstantModeField != null) {
-                        String constant = craftConstantValueField.getText().toString().trim();
-                        try {
-                            double numeric = Double.parseDouble(constant);
-                            if (!Double.isFinite(numeric)) throw new NumberFormatException();
-                            if (isCraftRegisterBoolean(w.type) && numeric != 0.0 && numeric != 1.0)
-                                throw new NumberFormatException();
-                            if ("FBD CRAFT VAR INT".equals(canonicalFbdBlockType(w.type))
-                                    && (numeric < 0 || numeric > 65535 || numeric != Math.rint(numeric)))
-                                throw new NumberFormatException();
-                            w.extraFields.put("craftVarConstant", constant);
-                            w.extraFields.put("craftVarConstantMode", craftConstantModeField.isChecked());
-                        } catch (Exception invalid) {
-                            Toast.makeText(this, "Ð£ÐºÐ°Ð¶Ð¸ ÐºÐ¾Ð½ÐµÑ‡Ð½Ð¾Ðµ Ð·Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ BOOL (0/1), UINT16 Ð¸Ð»Ð¸ FLOAT32", Toast.LENGTH_LONG).show(); return;
-                        }
-                    }
-                    if (craftSwapWordField != null) {
-                        try {
-                            w.extraFields.put("craftSwapWord", craftSwapWordField.isChecked());
-                            w.extraFields.put("craftSwapByte", craftSwapByteField.isChecked());
-                        } catch (Exception ignored) {}
-                    }
-                    if (craftVariableNameField != null) {
-                        String variableName = craftVariableNameField.getText().toString().trim();
-                        int variableKind = craftVariableTypeField.getSelectedItemPosition() + 1;
-                        boolean useConstant = craftNamedConstantModeField != null && craftNamedConstantModeField.isChecked();
-                        if (variableName.isEmpty() && !useConstant) {
-                            Toast.makeText(this, "Ð£ÐºÐ°Ð¶Ð¸ Ð¸Ð¼Ñ Ð¾Ð±Ñ‰ÐµÐ¹ Ð¿ÐµÑ€ÐµÐ¼ÐµÐ½Ð½Ð¾Ð¹", Toast.LENGTH_LONG).show(); return;
-                        }
-                        if (craftNamedConstantValueField != null) {
-                            try {
-                                double numeric = Double.parseDouble(craftNamedConstantValueField.getText().toString().trim());
-                                if (!Double.isFinite(numeric)
-                                        || (variableKind == 1 && numeric != 0.0 && numeric != 1.0)
-                                        || (variableKind == 2 && (numeric < Integer.MIN_VALUE || numeric > Integer.MAX_VALUE || numeric != Math.rint(numeric)))
-                                        || (variableKind == 3 && Math.abs(numeric) > Float.MAX_VALUE)) throw new NumberFormatException();
-                                w.extraFields.put("craftNamedConstant", Double.toString(numeric));
-                                w.extraFields.put("craftNamedConstantMode", useConstant);
-                            } catch (Exception invalid) {
-                                Toast.makeText(this, "ÐšÐ¾Ð½ÑÑ‚Ð°Ð½Ñ‚Ð° Ð´Ð¾Ð»Ð¶Ð½Ð° ÑÐ¾Ð¾Ñ‚Ð²ÐµÑ‚ÑÑ‚Ð²Ð¾Ð²Ð°Ñ‚ÑŒ BOOL, INT32 Ð¸Ð»Ð¸ FLOAT32", Toast.LENGTH_LONG).show(); return;
-                            }
-                        }
-                        try { w.extraFields.put("craftVariableName", variableName); }
-                        catch (Exception ignored) {}
-                        boolean source = isCraftNamedVariableSource(w.type);
-                        w.type = craftNamedVariableType(variableKind, !source);
-                    }
-                    if (craftOrientationAxisField != null) {
-                        int axis = craftOrientationAxisField.getSelectedItemPosition() + 1;
-                        int oldAxis = craftOrientationAxis(w);
-                        if (textField.getText().toString().trim().equals(craftOrientationLabel(oldAxis)))
-                            textField.setText(craftOrientationLabel(axis));
-                        try { w.extraFields.put("craftSensorAxis", axis); }
-                        catch (Exception ignored) {}
-                    }
-                    if (craftSunriseModeField != null) {
-                        try {
-                            double latitude = Double.parseDouble(craftSunriseLatitudeField.getText().toString().trim());
-                            double longitude = Double.parseDouble(craftSunriseLongitudeField.getText().toString().trim());
-                            if (!Double.isFinite(latitude) || latitude < -90 || latitude > 90
-                                    || !Double.isFinite(longitude) || longitude < -180 || longitude > 180
-                                    || (latitude == 0.0 && longitude == 0.0)) throw new NumberFormatException();
-                            String oldMode = craftSunriseMode(w);
-                            String newMode = craftSunriseModeField.getSelectedItemPosition() == 1 ? "SS" : "SR";
-                            if (textField.getText().toString().trim().equals(oldMode)) textField.setText(newMode);
-                            w.extraFields.put("latitude", latitude); w.extraFields.put("longitude", longitude);
-                            w.extraFields.put("craftSunriseMode", newMode);
-                        } catch (Exception invalid) {
-                            Toast.makeText(this, "Ð£ÐºÐ°Ð¶Ð¸ ÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ñ‹Ðµ ÐºÐ¾Ð¾Ñ€Ð´Ð¸Ð½Ð°Ñ‚Ñ‹ ÑˆÐ¸Ñ€Ð¾Ñ‚Ñ‹ Ð¸ Ð´Ð¾Ð»Ð³Ð¾Ñ‚Ñ‹", Toast.LENGTH_LONG).show(); return;
-                        }
-                    }
-                    if (craftOdTempHostField != null) {
-                        String host = craftOdTempHostField.getText().toString().trim();
-                        if (!isAllowedOdTempHost(host)) {
-                            Toast.makeText(this, "Ð£ÐºÐ°Ð¶Ð¸ Ñ‡Ð°ÑÑ‚Ð½Ñ‹Ð¹ IPv4-Ð°Ð´Ñ€ÐµÑ ÑƒÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð°", Toast.LENGTH_LONG).show(); return;
-                        }
-                        try {
-                            w.extraFields.put("ip", host);
-                            w.extraFields.put("craftOdTempType", craftOdTempTypeField.getSelectedItemPosition() + 1);
-                            w.extraFields.put("craftOdTempResponse", craftOdTempResponseField.getSelectedItemPosition() + 1);
-                        } catch (Exception ignored) {}
-                    }
-                    if (craftMqttTopicField != null) {
-                        String topic = craftMqttTopicField.getText().toString().trim();
-                        boolean topicValid = isCraftMqttSubscriber(w.type)
-                                ? FbdCraftMqttRuntime.validTopicFilter(topic)
-                                : FbdCraftMqttRuntime.validTopic(topic);
-                        if (!topicValid) {
-                            Toast.makeText(this, "Ð£ÐºÐ°Ð¶Ð¸ ÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚Ð½Ñ‹Ð¹ MQTT topic/filter", Toast.LENGTH_LONG).show(); return;
-                        }
-                        int type = craftMqttTypeField.getSelectedItemPosition() + 1;
-                        try {
-                            w.extraFields.put("craftMqttTopic", topic);
-                            w.extraFields.put("craftMqttType", type);
-                            w.extraFields.put("craftMqttServer", craftMqttServerField.getSelectedItemPosition() + 1);
-                            if (craftMqttRetainField != null) w.extraFields.put("craftMqttRetain", craftMqttRetainField.isChecked());
-                        } catch (Exception ignored) {}
-                        String suffix = type == 1 ? "BOOL" : type == 3 ? "FLOAT" : "INT";
-                        w.type = isCraftMqttSubscriber(w.type) ? "FBD CRAFT MQTT SUB " + suffix
-                                : "FBD CRAFT MQTT PUB " + suffix;
-                    }
-                    w.text = textField.getText().toString();
-                    w.connectionInfo = connectionField.getText().toString().trim();
-                    if (archiveIntervalField != null) {
-                        final int interval, maxRows, channelCount;
-                        String triggerBinding = archiveTriggerField.getText().toString().trim();
-                        try {
-                            interval = Integer.parseInt(archiveIntervalField.getText().toString().trim());
-                            maxRows = Integer.parseInt(archiveMaxRowsField.getText().toString().trim());
-                            channelCount = Integer.parseInt(archiveChannelCountField.getText().toString().trim());
-                        } catch (NumberFormatException invalid) {
-                            Toast.makeText(this, "Ð£ÐºÐ°Ð¶Ð¸ Ñ‡Ð¸ÑÐ»Ð¾ ÐºÐ°Ð½Ð°Ð»Ð¾Ð², Ð¸Ð½Ñ‚ÐµÑ€Ð²Ð°Ð» Ð¸ Ð»Ð¸Ð¼Ð¸Ñ‚ Ð°Ñ€Ñ…Ð¸Ð²Ð°", Toast.LENGTH_LONG).show(); return;
-                        }
-                        if (channelCount < 1 || channelCount > 4 || interval < 1 || interval > 86400
-                                || maxRows < 100 || maxRows > 100000) {
-                            Toast.makeText(this, "ÐšÐ°Ð½Ð°Ð»Ñ‹: 1â€“4; Ð¸Ð½Ñ‚ÐµÑ€Ð²Ð°Ð»: 1â€“86400 ÑÐµÐºÑƒÐ½Ð´; Ð»Ð¸Ð¼Ð¸Ñ‚: 100â€“100000 Ð·Ð°Ð¿Ð¸ÑÐµÐ¹", Toast.LENGTH_LONG).show(); return;
-                        }
-                        if (!triggerBinding.isEmpty() && parseBinding(-1, triggerBinding) == null) {
-                            Toast.makeText(this, "Ð¢Ñ€Ð¸Ð³Ð³ÐµÑ€: tcp://host:port/unit/address", Toast.LENGTH_LONG).show(); return;
-                        }
-                        craftArchiveTriggerHigh.remove(w);
-                        craftArchiveTriggerEdges.remove(w);
-                        try {
-                            w.extraFields.put("craftArchiveIntervalSeconds", interval);
-                            w.extraFields.put("craftArchiveMaxRows", maxRows);
-                            w.extraFields.put("craftArchiveChannelCount", channelCount);
-                            w.extraFields.put("craftArchiveRecordType", archiveRecordTypeField.getSelectedItemPosition() == 1 ? "FLOAT" : "INT");
-                            w.extraFields.put("craftArchiveTriggerBinding", triggerBinding);
-                            if (w.extraFields.optString("craftArchiveKey", "").trim().isEmpty())
-                                w.extraFields.put("craftArchiveKey", java.util.UUID.randomUUID().toString());
-                        } catch (org.json.JSONException ignored) { }
-                    }
-                    if(smsPhoneField!=null) {
-                        String phone=smsPhoneField.getText().toString().trim();
-                        if(!SmsNotificationClient.isValidPhone(phone)) {
-                            Toast.makeText(this,"Ð£ÐºÐ°Ð¶Ð¸ Ð½Ð¾Ð¼ÐµÑ€ Ð¿Ð¾Ð»ÑƒÑ‡Ð°Ñ‚ÐµÐ»Ñ Ð² Ð¼ÐµÐ¶Ð´ÑƒÐ½Ð°Ñ€Ð¾Ð´Ð½Ð¾Ð¼ Ñ„Ð¾Ñ€Ð¼Ð°Ñ‚Ðµ",Toast.LENGTH_LONG).show();return;
-                        }
-                        int registerCount = smsRegisterCountField.getSelectedItemPosition() + 1;
-                        String[] previewValues = new String[registerCount];
-                        java.util.Arrays.fill(previewValues, "0");
-                        try { SmsOutgoingTemplate.render(textField.getText().toString(), previewValues, "0"); }
-                        catch (IllegalArgumentException invalidTemplate) {
-                            Toast.makeText(this, "Ð¨Ð°Ð±Ð»Ð¾Ð½ SMS Ð¸ÑÐ¿Ð¾Ð»ÑŒÐ·ÑƒÐµÑ‚ Ð½Ð¾Ð¼ÐµÑ€ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð° Ð²Ñ‹ÑˆÐµ Ð²Ñ‹Ð±Ñ€Ð°Ð½Ð½Ð¾Ð³Ð¾ ÐºÐ¾Ð»Ð¸Ñ‡ÐµÑÑ‚Ð²Ð°", Toast.LENGTH_LONG).show(); return;
-                        }
-                        String recipientKey=java.util.UUID.randomUUID().toString();
-                        try{SmsRecipientStore.save(this,recipientKey,phone);w.extraFields.put("smsRecipientId",recipientKey);
-                            w.extraFields.put("smsRegisterCount",registerCount);}
-                        catch(Exception failure){Toast.makeText(this,"ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð±ÐµÐ·Ð¾Ð¿Ð°ÑÐ½Ð¾ ÑÐ¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ð½Ð¾Ð¼ÐµÑ€ SMS",Toast.LENGTH_LONG).show();return;}
-                    }
-                    if (incomingSmsEnabledField != null) {
-                        boolean enabled = incomingSmsEnabledField.isChecked();
-                        String sender = incomingSmsSenderField.getText().toString().trim();
-                        String command = incomingSmsCommandField.getText().toString().trim();
-                        int bit;
-                        try { bit = Integer.parseInt(incomingSmsBitField.getText().toString().trim()); }
-                        catch (NumberFormatException invalid) { bit = -1; }
-                        boolean strobeEnabled = incomingSmsStrobeEnabledField.isChecked();
-                        int strobeRegister;
-                        try { strobeRegister = Integer.parseInt(incomingSmsStrobeRegisterField.getText().toString().trim()); }
-                        catch (NumberFormatException invalid) { strobeRegister = -1; }
-                        int strobeBit;
-                        try { strobeBit = Integer.parseInt(incomingSmsStrobeBitField.getText().toString().trim()); }
-                        catch (NumberFormatException invalid) { strobeBit = -1; }
-                        BindingRequest smsBinding = parseBinding(-1, w.connectionInfo);
-                        BindingRequest smsStrobeBinding = smsBinding == null || strobeRegister < 0 ? null
-                                : parseBinding(-1, "tcp://" + smsBinding.host + ":" + smsBinding.port + "/"
-                                        + smsBinding.unit + "/" + strobeRegister);
-                        if (enabled && (!SmsIncomingCommand.isValidSender(sender)
-                                || command.isEmpty() || command.length() > 80 || command.indexOf('\n') >= 0
-                                || command.indexOf('\r') >= 0 || bit < 0 || bit > 15
-                                || smsBinding == null || smsBinding.functionCode != 3
-                                || (strobeEnabled && (incomingSmsModeField.getSelectedItemPosition() != 0
-                                    || smsStrobeBinding == null || smsStrobeBinding.functionCode != 3
-                                    || smsStrobeBinding.unit != smsBinding.unit || strobeBit < 0 || strobeBit > 15)))) {
-                            Toast.makeText(this, "ÐŸÑ€Ð¾Ð²ÐµÑ€ÑŒ Ð½Ð¾Ð¼ÐµÑ€, ÐºÐ¾Ð¼Ð°Ð½Ð´Ñƒ, Modbus holding-Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€ Ð¸ Ð¿Ð°Ñ€Ð°Ð¼ÐµÑ‚Ñ€Ñ‹ strobe", Toast.LENGTH_LONG).show();
-                            return;
-                        }
-                        if (bit < 0 || bit > 15) bit = 0;
-                        if (strobeBit < 0 || strobeBit > 15) strobeBit = 0;
-                        try {
-                            if (SmsIncomingCommand.isValidSender(sender)) {
-                                String senderKey = java.util.UUID.randomUUID().toString();
-                                SmsRecipientStore.save(this, senderKey, sender);
-                                w.extraFields.put("smsSenderId", senderKey);
-                            }
-                            w.extraFields.put("smsCommand", command);
-                            w.extraFields.put("smsMode", incomingSmsModeField.getSelectedItemPosition() == 1 ? "bit" : "number");
-                            w.extraFields.put("smsBit", bit);
-                            w.extraFields.put("smsEnabled", enabled);
-                            w.extraFields.put("smsStrobeEnabled", strobeEnabled);
-                            w.extraFields.put("smsStrobeRegister", strobeRegister);
-                            w.extraFields.put("smsStrobeBit", strobeBit);
-                        } catch (Exception failure) {
-                            Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð±ÐµÐ·Ð¾Ð¿Ð°ÑÐ½Ð¾ ÑÐ¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ð½Ð¾Ð¼ÐµÑ€ Ð¾Ñ‚Ð¿Ñ€Ð°Ð²Ð¸Ñ‚ÐµÐ»Ñ SMS", Toast.LENGTH_LONG).show();
-                            return;
-                        }
-                    }
-                    if (fbdInputField != null) w.inputValue = fbdInputField.isChecked();
-                    if ("Ð”Ð¸Ð½Ð°Ð¼Ð¸Ñ‡ÐµÑÐºÐ¸Ð¹ Ñ‚ÐµÐºÑÑ‚".equals(w.type)) {
-                        for (int k = 0; k < 4; k++) {
-                            if (dynStateFields[k] != null) {
-                                w.dynTextStates[k] = dynStateFields[k].getText().toString();
-                            }
-                        }
-                    }
-                    if ("Ð‘Ð¸Ñ‚Ð¾Ð²Ñ‹Ð¹ ÑÐ¿Ð¸ÑÐ¾Ðº".equals(w.type)) {
-                        for (int k = 0; k < 4; k++) {
-                            if (bitLabelFields[k] != null) {
-                                w.bitListLabels[k] = bitLabelFields[k].getText().toString();
-                            }
-                        }
-                    }
-                    if (soundThresholdField != null) {
-                        w.soundThreshold = readDouble(soundThresholdField, w.soundThreshold);
-                        w.soundFilePath = soundFilePathField.getText().toString();
-                        w.craftAlarmSoundIndex = soundPresetField.getSelectedItemPosition();
-                    }
-                    if (targetScreenIndexField != null) {
-                        int selectedTarget = targetScreenIndexField.getSelectedItemPosition();
-                        String targetUrl = targetUrlField.getText().toString().trim();
-                        if (selectedTarget <= 0 && targetUrl.isEmpty()) {
-                            Toast.makeText(this, "Ð’Ñ‹Ð±ÐµÑ€Ð¸ ÑÑƒÑ‰ÐµÑÑ‚Ð²ÑƒÑŽÑ‰Ð¸Ð¹ ÑÐºÑ€Ð°Ð½ Ð¸Ð»Ð¸ ÑƒÐºÐ°Ð¶Ð¸ URL", Toast.LENGTH_LONG).show();
-                            return;
-                        }
-                        w.targetScreenIndex = selectedTarget > 0 ? selectedTarget - 1 : -1;
-                        w.targetUrl = targetUrl;
-                        try { w.extraFields.put("craftButtonVisibleInWork", targetVisibleInWorkField.isChecked()); }
-                        catch (Exception ignored) { }
-                    }
-                    if ("ÐœÐ½Ð¾Ð³Ð¾Ð¿Ð¾Ð·Ð¸Ñ†Ð¸Ð¾Ð½Ð½Ð¾Ðµ Ñ„Ð¾Ñ‚Ð¾".equals(w.type)) {
-                        for (int k = 0; k < imagePathFields.length; k++) {
-                            if (imagePathFields[k] != null) {
-                                w.imagePathStates[k] = imagePathFields[k].getText().toString();
-                            }
-                        }
-                        if (imageSelectionModeField != null) {
-                            try {
-                                JSONObject sourceOther = w.extraFields.optJSONObject("craftOther");
-                                if (sourceOther == null) sourceOther = new JSONObject();
-                                sourceOther.put("typeCommand", imageSelectionModeField.getSelectedItemPosition() == 0 ? 0 : 1);
-                                w.extraFields.put("craftOther", sourceOther);
-                            } catch (Exception ignored) { }
-                        }
-                    }
-                    if ("Ð“Ð¾Ð»Ð¾ÑÐ¾Ð²Ð¾Ðµ ÑÐ¾Ð¾Ð±Ñ‰ÐµÐ½Ð¸Ðµ".equals(w.type)) {
-                        for (int k = 0; k < voiceMsgFields.length; k++) {
-                            if (voiceMsgFields[k] != null) {
-                                w.voiceMessages[k] = voiceMsgFields[k].getText().toString();
-                            }
-                        }
-                    }
-                    if ("Ð Ð°ÑÐ¿Ð¾Ð·Ð½Ð°Ð²Ð°Ð½Ð¸Ðµ Ñ€ÐµÑ‡Ð¸ Craft".equals(w.type)) {
-                        String[] phrases = new String[craftVoicePhraseFields.length];
-                        for (int k = 0; k < craftVoicePhraseFields.length; k++)
-                            phrases[k] = craftVoicePhraseFields[k].getText().toString();
-                        try {
-                            JSONObject sourceOther = CraftVoiceRecognitionFields.write(
-                                    w.extraFields.optJSONObject("craftOther"), phrases);
-                            w.extraFields.put("craftOther", sourceOther);
-                        } catch (Exception invalid) {
-                            Toast.makeText(MainActivity.this, invalid.getMessage(), Toast.LENGTH_LONG).show();
-                            return;
-                        }
-                    }
-                    if (timerPresetField != null) {
-                        String oldMode = FbdDurationUnits.modeForType(w.type);
-                        String newMode = String.valueOf(timerModeSelector.getSelectedItem());
-                        w.timerPresetMs = fbd.timer;
-                        boolean originalCraftTimer = "FBD CRAFT TIMER".equals(w.type);
-                        w.type = "FBD CRAFT BLINK".equals(w.type) || originalCraftTimer ? w.type
-                                : FbdDurationUnits.typeForMode(newMode);
-                        // Keep custom labels intact, refresh only an untouched mode label.
-                        if (w.text != null && w.text.equals(oldMode)) w.text = newMode;
-                        w.timerStartedAt = 0L;
-                        w.counterLastInput = false;
-                        if ("FBD CRAFT BLINK".equals(w.type))
-                            w.craftBlinkState = FbdCraftNativeTimer.State.initial();
-                        try {
-                            String unit = new String[]{"MS", "SEK", "MIN"}[timerUnitSelector.getSelectedItemPosition()];
-                            if (originalCraftTimer) {
-                                w.extraFields.put("craftTimerMode", newMode);
-                                w.extraFields.put("craftTimerUnit", unit);
-                                w.craftTimerState = FbdCraftNativeTimer.State.initial();
-                            }
-                            // An untouched old MS project must not acquire an extra field.
-                            if (!"MS".equals(unit) || w.extraFields.has("bloodskyFbdTimeUnit"))
-                                w.extraFields.put("bloodskyFbdTimeUnit", unit);
-                        } catch (org.json.JSONException ignored) {}
-                    }
-                    if (triggerModeSelector != null) {
-                        String mode = String.valueOf(triggerModeSelector.getSelectedItem());
-                        try { w.extraFields.put("craftTriggerMode", mode); }
-                        catch (org.json.JSONException ignored) {}
-                        w.text = mode;
-                    }
-                    if (counterPresetField != null) {
-                        w.counterPreset = fbd.counter;
-                        if ("FBD CTD".equals(w.type)) w.counterValue = w.counterPreset;
-                    }
-                    if (compareLeftField != null) {
-                        w.compareA = fbd.left;
-                        w.compareB = fbd.right;
-                        w.compareOperator = fbd.operator;
-                        w.text = ("FBD CRAFT COMPARE".equals(w.type)
-                                || "FBD CRAFT COMPARE FLOAT".equals(w.type)
-                                || "FBD CRAFT ARITHMETIC INT".equals(w.type)
-                                || "FBD CRAFT ARITHMETIC FLOAT".equals(w.type))
-                                ? w.compareOperator
-                                : Double.toString(w.compareA) + " " + w.compareOperator
-                                        + " " + Double.toString(w.compareB);
-                    }
-                    if (minValField != null) {
-                        w.minValue = readDouble(minValField, w.minValue);
-                        w.maxValue = readDouble(maxValField, w.maxValue);
-                    }
-                    w.x = geometry.x; w.y = geometry.y;
-                    w.w = geometry.width; w.h = geometry.height;
-                    w.backgroundColor = parseOptionalColor(backgroundColorField.getText().toString(), 0);
-                    w.textColor = parseOptionalColor(textColorField.getText().toString(), w.textColor);
-                    w.textSizeSp = Math.max(8, Math.min(48, readPositiveInt(textSizeField, w.textSizeSp, false)));
-                    w.visible = visibleField.isChecked(); w.showFrame = frameField.isChecked(); w.autoResizeText = autoResizeField.isChecked();
-                    persistProject();
-                    editor.invalidate();
-                    refreshIncomingSmsReceiver();
-                    properties.dismiss();
-                }));
-        properties.show();
-    }
-
-    private int parseOptionalColor(String text, int fallback) {
-        String value = text == null ? "" : text.trim();
-        if (value.isEmpty()) return fallback == 0 ? 0 : fallback;
-        if (!value.startsWith("#")) value = "#" + value;
-        if (value.matches("#[0-9a-fA-F]{6}")) {
-            try { return Color.parseColor(value); } catch (IllegalArgumentException ignored) { return fallback; }
-        }
-        Toast.makeText(this, "Ð¦Ð²ÐµÑ‚ Ð·Ð°Ð´Ð°Ñ‘Ñ‚ÑÑ Ð² Ñ„Ð¾Ñ€Ð¼Ð°Ñ‚Ðµ #RRGGBB", Toast.LENGTH_SHORT).show();
-        return fallback;
-    }
-
-    private double readDouble(EditText field, double fallback) {
-        try {
-            double value = Double.parseDouble(field.getText().toString().trim().replace(',', '.'));
-            return Double.isNaN(value) || Double.isInfinite(value) ? fallback : value;
-        } catch (NumberFormatException ignored) {
-            return fallback;
-        }
-    }
-
-    private String normalizeComparisonOperator(String value) {
-        String operator = value == null ? ">" : value.trim();
-        return operator.equals(">") || operator.equals("<") || operator.equals(">=")
-                || operator.equals("<=") || operator.equals("==") || operator.equals("!=") ? operator : ">";
-    }
-
-    private int readPositiveInt(EditText field, int fallback, boolean allowZero) {
-        try {
-            int value = Integer.parseInt(field.getText().toString().trim());
-            return allowZero ? Math.max(0, value) : Math.max(1, value);
-        } catch (NumberFormatException ignored) {
-            return fallback;
-        }
-    }
-
-    private void copySelectedWidget() {
-        if (copySelectedWidgetToClipboard())
-            Toast.makeText(this, "Ð­Ð»ÐµÐ¼ÐµÐ½Ñ‚ ÑÐºÐ¾Ð¿Ð¸Ñ€Ð¾Ð²Ð°Ð½ ÑÐ¾ Ð²ÑÐµÐ¼Ð¸ Ð½Ð°ÑÑ‚Ñ€Ð¾Ð¹ÐºÐ°Ð¼Ð¸", Toast.LENGTH_SHORT).show();
-    }
-
-    private boolean copySelectedWidgetToClipboard() {
-        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
-            Toast.makeText(this, "Ð¡Ð½Ð°Ñ‡Ð°Ð»Ð° Ð²Ñ‹Ð±ÐµÑ€Ð¸ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚ Ð½Ð° ÑÐºÑ€Ð°Ð½Ðµ", Toast.LENGTH_SHORT).show();
-            return false;
-        }
-        try {
-            clipboardWidget = widgetFromJson(widgetToJson(widgets.get(editor.selected)));
-            return true;
-        } catch (Exception error) {
-            Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ ÑÐºÐ¾Ð¿Ð¸Ñ€Ð¾Ð²Ð°Ñ‚ÑŒ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚", Toast.LENGTH_SHORT).show();
-            return false;
-        }
-    }
-
-    private void cutSelectedWidget() {
-        // Never remove the source if serializing its complete clipboard copy failed.
-        if (copySelectedWidgetToClipboard()) deleteSelectedWidget();
-    }
-
-    private void pasteWidget() {
-        if (clipboardWidget == null) {
-            Toast.makeText(this, "Ð¡Ð½Ð°Ñ‡Ð°Ð»Ð° ÑÐºÐ¾Ð¿Ð¸Ñ€ÑƒÐ¹ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        try {
-            Widget copy = widgetFromJson(widgetToJson(clipboardWidget));
-            if ("ÐÑ€Ñ…Ð¸Ð² Craft".equals(copy.type))
-                copy.extraFields.put("craftArchiveKey", java.util.UUID.randomUUID().toString());
-            int offset = dp(24);
-            float maxX = editor == null ? Math.max(0, copy.x + offset) : Math.max(0, editor.getWidth() - copy.w);
-            float maxY = editor == null ? Math.max(0, copy.y + offset) : Math.max(0, editor.getHeight() - copy.h);
-            copy.x = Math.max(0, Math.min(maxX, copy.x + offset));
-            copy.y = Math.max(0, Math.min(maxY, copy.y + offset));
-            fbdWireHistory.clear();
-            widgets.add(copy);
-            if (editor != null) {
-                editor.selected = widgets.size() - 1;
-                editor.invalidate();
-            }
-            persistProject();
-            Toast.makeText(this, "ÐšÐ¾Ð¿Ð¸Ñ Ð´Ð¾Ð±Ð°Ð²Ð»ÐµÐ½Ð° Ð½Ð° ÑÐºÑ€Ð°Ð½", Toast.LENGTH_SHORT).show();
-        } catch (Exception error) {
-            Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð²ÑÑ‚Ð°Ð²Ð¸Ñ‚ÑŒ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚", Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    private void adjustSetpoint(Widget widget, int delta) {
-        String current = widget.text == null ? "Ð—Ð°Ð´Ð°Ñ‚Ñ‡Ð¸Ðº: 0" : widget.text;
-        int split = current.lastIndexOf(':');
-        String prefix = split >= 0 ? current.substring(0, split + 1) + " " : "Ð—Ð°Ð´Ð°Ñ‚Ñ‡Ð¸Ðº: ";
-        String valueText = split >= 0 ? current.substring(split + 1).trim() : current.trim();
-        double newValue = delta;
-        try {
-            double value = Double.parseDouble(valueText.replace(',', '.'));
-            newValue = value + delta;
-            widget.text = prefix + newValue;
-        } catch (NumberFormatException ignored) {
-            widget.text = prefix + delta;
-        }
-        persistProject();
-        BindingRequest request = parseBinding(-1, widget.connectionInfo);
-        if (request != null && request.functionCode == 3) {
-            final double valToWrite = newValue;
-            final String oldText = current;
-            modbusExecutor.execute(() -> {
-                try {
-                    boolean ok = writeModbusRegisterStatic(request.host, request.port, request.unit, request.address, (int) valToWrite);
-                    if (!ok) throw new IOException("Ð£ÑÑ‚Ñ€Ð¾Ð¹ÑÑ‚Ð²Ð¾ Ð¾Ñ‚ÐºÐ»Ð¾Ð½Ð¸Ð»Ð¾ Ð·Ð°Ð¿Ð¸ÑÑŒ Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€Ð°");
-                } catch (Exception ex) {
-                    android.util.Log.e("BLOODSKY", "Modbus write failed", ex);
-                    runOnUiThread(() -> {
-                        widget.text = oldText;
-                        persistProject();
-                        if (editor != null) editor.invalidate();
-                        Toast.makeText(MainActivity.this, "ÐžÑˆÐ¸Ð±ÐºÐ° Ð·Ð°Ð¿Ð¸ÑÐ¸ Modbus: " + (ex.getMessage() != null ? ex.getMessage() : "Ð¾ÑˆÐ¸Ð±ÐºÐ° ÑÐ²ÑÐ·Ð¸"), Toast.LENGTH_LONG).show();
-                    });
-                }
-            });
-        }
-        Toast.makeText(MainActivity.this, "Ð—Ð½Ð°Ñ‡ÐµÐ½Ð¸Ðµ: " + widget.text, Toast.LENGTH_SHORT).show();
-    }
-
-    private void deleteSelectedWidget() {
-        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
-            Toast.makeText(this, "Ð¡Ð½Ð°Ñ‡Ð°Ð»Ð° Ð²Ñ‹Ð±ÐµÑ€Ð¸ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚ Ð½Ð° ÑÐºÑ€Ð°Ð½Ðµ", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        int removed = editor.selected;
-        fbdWireHistory.clear();
-        widgets.remove(removed);
-        // A positional fbd://N reference must never silently switch to a
-        // different source after deletion. Missing sources render CFG.
-        for (Widget survivor : widgets) {
-            survivor.connectionInfo = FbdResultBinding.afterWidgetRemoved(
-                    survivor.connectionInfo, removed);
-        }
-        if (!screens.isEmpty()) {
-            Screen screen = screens.get(currentScreenIndex);
-            List<FbdConnection> kept = new ArrayList<>();
-            for (FbdConnection connection : screen.connections) {
-                if (connection.source == removed || connection.target == removed) continue;
-                if (connection.source > removed) connection.source--;
-                if (connection.target > removed) connection.target--;
-                kept.add(connection);
-            }
-            screen.connections.clear();
-            screen.connections.addAll(kept);
-        }
-        editor.selected = -1;
-        editor.selectedWidgets.clear();
-        liveValues.clear();
-        persistProject();
-        editor.invalidate();
-    }
-
-    public static JSONObject widgetToJson(Widget w) throws Exception {
-        JSONObject obj = new JSONObject();
-        if (w.extraFields != null) {
-            java.util.Iterator<String> keys = w.extraFields.keys();
-            while (keys.hasNext()) {
-                String key = keys.next();
-                obj.put(key, w.extraFields.get(key));
-            }
-        }
-        obj.put("type", w.type); obj.put("text", w.text);
-        obj.put("connectionInfo", w.connectionInfo == null ? "" : w.connectionInfo);
-        obj.put("inputValue", w.inputValue); obj.put("buttonState", w.buttonState); obj.put("rsState", w.rsState); obj.put("counterPreset", w.counterPreset); obj.put("counterValue", w.counterValue); obj.put("counterLastInput", w.counterLastInput);
-        if ("FBD CRAFT CTU".equals(w.type)) {
-            obj.put("craftLastPlus", w.craftLastPlus);
-            obj.put("craftLastMinus", w.craftLastMinus);
-        }
-        obj.put("timerPresetMs", w.timerPresetMs); obj.put("timerStartedAt", w.timerStartedAt);
-        obj.put("compareA", w.compareA); obj.put("compareB", w.compareB); obj.put("compareOperator", w.compareOperator);
-        obj.put("minValue", w.minValue); obj.put("maxValue", w.maxValue);
-        obj.put("backgroundColor", w.backgroundColor); obj.put("textColor", w.textColor); obj.put("textSizeSp", w.textSizeSp);
-        obj.put("visible", w.visible); obj.put("showFrame", w.showFrame); obj.put("autoResizeText", w.autoResizeText);
-        obj.put("x", w.x); obj.put("y", w.y); obj.put("w", w.w); obj.put("h", w.h);
-
-        obj.put("soundThreshold", w.soundThreshold);
-        obj.put("soundActive", w.soundActive);
-        obj.put("soundFilePath", w.soundFilePath == null ? "ÐÐ»Ð°Ñ€Ð¼" : w.soundFilePath);
-        obj.put("craftAlarmSoundIndex", w.craftAlarmSoundIndex);
-        obj.put("craftAlarmLoop", w.craftAlarmLoop);
-        obj.put("targetScreenIndex", w.targetScreenIndex);
-        obj.put("targetUrl", w.targetUrl == null ? "" : w.targetUrl);
-
-        JSONArray dynStatesArr = new JSONArray();
-        JSONArray dynColorsArr = new JSONArray();
-        JSONArray bitLabelsArr = new JSONArray();
-        JSONArray voiceMessagesArr = new JSONArray();
-        JSONArray imagePathStatesArr = new JSONArray();
-        for (int i = 0; i < 16; i++) {
-            dynStatesArr.put(w.dynTextStates[i] == null ? "Ð¡Ð¾ÑÑ‚Ð¾ÑÐ½Ð¸Ðµ " + i : w.dynTextStates[i]);
-            dynColorsArr.put(w.dynTextColors[i]);
-            bitLabelsArr.put(w.bitListLabels[i] == null ? "Ð‘Ð¸Ñ‚ " + i : w.bitListLabels[i]);
-            voiceMessagesArr.put(w.voiceMessages[i] == null ? "Ð¡Ð¾Ð¾Ð±Ñ‰ÐµÐ½Ð¸Ðµ " + i : w.voiceMessages[i]);
-            imagePathStatesArr.put(w.imagePathStates[i] == null ? "ÐšÐ°Ñ€Ñ‚Ð¸Ð½ÐºÐ° " + i : w.imagePathStates[i]);
-        }
-        obj.put("dynTextStates", dynStatesArr);
-        obj.put("dynTextColors", dynColorsArr);
-        obj.put("bitListLabels", bitLabelsArr);
-        obj.put("voiceMessages", voiceMessagesArr);
-        obj.put("imagePathStates", imagePathStatesArr);
-        return obj;
-    }
-
-    private JSONArray widgetsToJson(List<Widget> list) throws Exception {
-        JSONArray array = new JSONArray();
-        for (Widget w : list) array.put(widgetToJson(w));
-        return array;
-    }
-
-    public static Widget widgetFromJson(JSONObject obj) {
-        Widget w = new Widget();
-        try { w.extraFields = new JSONObject(obj.toString()); } catch (Exception ignored) { w.extraFields = new JSONObject(); }
-        w.type = obj.optString("type", "Ð¢ÐµÐºÑÑ‚"); w.text = obj.optString("text", "ÐÐ°Ð´Ð¿Ð¸ÑÑŒ");
-        w.connectionInfo = obj.optString("connectionInfo", "");
-        w.inputValue = obj.optBoolean("inputValue", false); w.buttonState = obj.optBoolean("buttonState", false); w.rsState = obj.optBoolean("rsState", false); w.counterPreset = Math.max(1, Math.min(1000000, obj.optInt("counterPreset", 1))); w.counterValue = Math.max(0, Math.min(1000000, obj.optInt("counterValue", 0))); w.counterLastInput = obj.optBoolean("counterLastInput", false);
-        if ("FBD CRAFT CTU".equals(w.type)) {
-            w.craftLastPlus = obj.optBoolean("craftLastPlus", false);
-            w.craftLastMinus = obj.optBoolean("craftLastMinus", false);
-        }
-        w.timerPresetMs = Math.max(1, Math.min(3600000, obj.optInt("timerPresetMs", 1000)));
-        w.timerStartedAt = obj.optLong("timerStartedAt", 0L);
-        w.compareA = obj.optDouble("compareA", 0.0); w.compareB = obj.optDouble("compareB", 0.0);
-        boolean craftArithmetic = "FBD CRAFT ARITHMETIC INT".equals(w.type)
-                || "FBD CRAFT ARITHMETIC FLOAT".equals(w.type);
-        w.compareOperator = normalizeWidgetOperator(w.type,
-                obj.optString("compareOperator", craftArithmetic ? "+" : ">"));
-        w.minValue = obj.optDouble("minValue", 0.0); w.maxValue = obj.optDouble("maxValue", 100.0);
-        w.backgroundColor = obj.optInt("backgroundColor", 0); w.textColor = obj.optInt("textColor", Color.rgb(31, 41, 55));
-        w.textSizeSp = Math.max(8, Math.min(48, obj.optInt("textSizeSp", 14)));
-        w.visible = obj.optBoolean("visible", true); w.showFrame = obj.optBoolean("showFrame", true); w.autoResizeText = obj.optBoolean("autoResizeText", false);
-        w.soundThreshold = obj.optDouble("soundThreshold", 1.0); w.soundActive = obj.optBoolean("soundActive", false); w.soundFilePath = obj.optString("soundFilePath", "ÐÐ»Ð°Ñ€Ð¼");
-        w.craftAlarmSoundIndex = Math.max(0, Math.min(5, obj.optInt("craftAlarmSoundIndex", 0)));
-        w.craftAlarmLoop = obj.optBoolean("craftAlarmLoop", false);
-        w.targetScreenIndex = obj.optInt("targetScreenIndex", 0); w.targetUrl = obj.optString("targetUrl", "");
-        w.x = (float) obj.optDouble("x", 40); w.y = (float) obj.optDouble("y", 50);
-        w.w = (float) obj.optDouble("w", 160); w.h = (float) obj.optDouble("h", 58);
-
-        JSONArray dynStatesArr = obj.optJSONArray("dynTextStates");
-        JSONArray dynColorsArr = obj.optJSONArray("dynTextColors");
-        JSONArray bitLabelsArr = obj.optJSONArray("bitListLabels");
-        JSONArray voiceMessagesArr = obj.optJSONArray("voiceMessages");
-        JSONArray imagePathStatesArr = obj.optJSONArray("imagePathStates");
-        for (int i = 0; i < 16; i++) {
-            w.dynTextStates[i] = (dynStatesArr != null && i < dynStatesArr.length()) ? dynStatesArr.optString(i, "Ð¡Ð¾ÑÑ‚Ð¾ÑÐ½Ð¸Ðµ " + i) : "Ð¡Ð¾ÑÑ‚Ð¾ÑÐ½Ð¸Ðµ " + i;
-            w.dynTextColors[i] = (dynColorsArr != null && i < dynColorsArr.length()) ? dynColorsArr.optInt(i, 0) : 0;
-            w.bitListLabels[i] = (bitLabelsArr != null && i < bitLabelsArr.length()) ? bitLabelsArr.optString(i, "Ð‘Ð¸Ñ‚ " + i) : "Ð‘Ð¸Ñ‚ " + i;
-            w.voiceMessages[i] = (voiceMessagesArr != null && i < voiceMessagesArr.length()) ? voiceMessagesArr.optString(i, "Ð¡Ð¾Ð¾Ð±Ñ‰ÐµÐ½Ð¸Ðµ " + i) : "Ð¡Ð¾Ð¾Ð±Ñ‰ÐµÐ½Ð¸Ðµ " + i;
-            w.imagePathStates[i] = (imagePathStatesArr != null && i < imagePathStatesArr.length()) ? imagePathStatesArr.optString(i, "ÐšÐ°Ñ€Ñ‚Ð¸Ð½ÐºÐ° " + i) : "ÐšÐ°Ñ€Ñ‚Ð¸Ð½ÐºÐ° " + i;
-        }
-        return w;
-    }
-
-    private static String normalizeComparisonOperatorStatic(String value) {
-        String operator = value == null ? ">" : value.trim();
-        return operator.equals(">") || operator.equals("<") || operator.equals(">=")
-                || operator.equals("<=") || operator.equals("==") || operator.equals("!=") ? operator : ">";
-    }
-
-    private static String normalizeWidgetOperator(String type, String value) {
-        String operator = value == null ? "" : value.trim();
-        if (("FBD CRAFT ARITHMETIC INT".equals(type)
-                || "FBD CRAFT ARITHMETIC FLOAT".equals(type))
-                && ("+".equals(operator) || "-".equals(operator)
-                || "*".equals(operator) || "/".equals(operator))) return operator;
-        if ("FBD CRAFT ARITHMETIC INT".equals(type)
-                || "FBD CRAFT ARITHMETIC FLOAT".equals(type)) return "+";
-        return normalizeComparisonOperatorStatic(operator);
-    }
-
-    public static void saveProjectAtomic(java.io.File targetFile, String json) throws java.io.IOException {
-        java.io.File parent = targetFile.getParentFile();
-        if (parent != null && !parent.exists()) parent.mkdirs();
-        java.io.File tempFile = new java.io.File(targetFile.getAbsolutePath() + ".tmp");
-        try (java.io.FileOutputStream out = new java.io.FileOutputStream(tempFile)) {
-            out.write(json.getBytes(StandardCharsets.UTF_8));
-            out.flush();
-            out.getFD().sync();
-        }
-        if (!tempFile.renameTo(targetFile)) {
-            if (targetFile.exists() && !targetFile.delete()) {
-                throw new java.io.IOException("Could not delete target file for atomic overwrite");
-            }
-            if (!tempFile.renameTo(targetFile)) {
-                throw new java.io.IOException("Could not rename temp project file to target");
-            }
-        }
-    }
-
-    public static String loadProjectAtomic(java.io.File targetFile) throws java.io.IOException {
-        if (!targetFile.exists()) {
-            java.io.File tempFile = new java.io.File(targetFile.getAbsolutePath() + ".tmp");
-            if (tempFile.exists()) targetFile = tempFile;
-            else throw new java.io.FileNotFoundException("Project file missing: " + targetFile);
-        }
-        try (java.io.FileInputStream in = new java.io.FileInputStream(targetFile);
-             ByteArrayOutputStream buffer = new ByteArrayOutputStream()) {
-            byte[] chunk = new byte[8192];
-            int count;
-            while ((count = in.read(chunk)) != -1) {
-                if (buffer.size() + count > 8 * 1024 * 1024) throw new IllegalArgumentException("Project file too large");
-                buffer.write(chunk, 0, count);
-            }
-            return new String(buffer.toByteArray(), StandardCharsets.UTF_8);
-        }
-    }
-
-    public static void exportProjectToZip(OutputStream outputStream, String projectJson) throws java.io.IOException {
-        try (java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(outputStream)) {
-            java.util.zip.ZipEntry entry = new java.util.zip.ZipEntry("TableNameProject.json");
-            zos.putNextEntry(entry);
-            byte[] bytes = projectJson.getBytes(StandardCharsets.UTF_8);
-            zos.write(bytes, 0, bytes.length);
-            zos.closeEntry();
-            zos.finish();
-        }
-    }
-
-    public static String importProjectFromZip(InputStream inputStream) throws Exception {
-        return importProjectFromZip(inputStream, null);
-    }
-
-    public static String importProjectFromZip(InputStream inputStream, Map<String, byte[]> extractedMedia) throws Exception {
-        byte[] projectJsonBytes = null;
-        String projectEntryPath = "";
-        java.util.Set<String> entryNames = new java.util.HashSet<>();
-        Map<String, byte[]> pendingMedia = new java.util.LinkedHashMap<>();
-        long totalUncompressedBytes = 0;
-        int entryCount = 0;
-
-        try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(inputStream)) {
-            java.util.zip.ZipEntry entry;
-            while ((entry = zis.getNextEntry()) != null) {
-                if (++entryCount > MAX_PROJECT_ARCHIVE_ENTRIES) {
-                    throw new IllegalArgumentException("ZIP entry count exceeds limit");
-                }
-                String name = entry.getName();
-                if (!isSafeProjectArchiveEntryName(name)) {
-                    throw new IllegalArgumentException("Unsafe entry path in ZIP archive: " + name);
-                }
-                if (!entryNames.add(name.toLowerCase(java.util.Locale.ROOT))) {
-                    throw new IllegalArgumentException("Duplicate entry name in ZIP archive: " + name);
-                }
-                ByteArrayOutputStream entryBuffer = new ByteArrayOutputStream();
-                byte[] chunk = new byte[8192];
-                int count;
-                while ((count = zis.read(chunk)) != -1) {
-                    totalUncompressedBytes += count;
-                    if (totalUncompressedBytes > 10 * 1024 * 1024) {
-                        throw new IllegalArgumentException("ZIP uncompressed size exceeds limit");
-                    }
-                    entryBuffer.write(chunk, 0, count);
-                }
-                zis.closeEntry();
-                String lowerName = name.toLowerCase(java.util.Locale.ROOT);
-                boolean projectCandidate = "tablenameproject.json".equals(lowerName)
-                        || lowerName.endsWith(".json") || lowerName.endsWith(".pro");
-                if (!entry.isDirectory() && projectCandidate && !lowerName.startsWith("media/")) {
-                    if (projectJsonBytes != null) {
-                        throw new IllegalArgumentException("Multiple project files in archive");
-                    }
-                    projectJsonBytes = entryBuffer.toByteArray();
-                    projectEntryPath = name;
-                } else if (!entry.isDirectory()) {
-                    String mediaPath = lowerName.startsWith("media/")
-                            ? name.substring("media/".length()) : name;
-                    pendingMedia.put(mediaPath, entryBuffer.toByteArray());
-                }
-            }
-        }
-        if (projectJsonBytes == null) {
-            throw new IllegalArgumentException("No project JSON found in ZIP archive");
-        }
-        String json = new String(projectJsonBytes, StandardCharsets.UTF_8);
-        JSONObject parsed = new JSONObject(json);
-        if (CraftProjectImporter.isCraftProject(parsed)) {
-            json = CraftProjectImporter.convert(json, projectEntryPath, pendingMedia);
-        }
-        validateImportedProjectStatic(json);
-        if (extractedMedia != null) {
-            for (String path : pendingMedia.keySet()) {
-                for (String existing : extractedMedia.keySet()) {
-                    if (existing.equalsIgnoreCase(path)) {
-                        throw new IllegalArgumentException("Duplicate extracted media path: " + path);
-                    }
-                }
-            }
-            extractedMedia.putAll(pendingMedia);
-        }
-        return json;
-    }
-
-    /** Reject ambiguous and platform-specific paths before interpreting a ZIP member. */
-    static boolean isSafeProjectArchiveEntryName(String name) {
-        if (name == null || name.isEmpty() || name.indexOf('\\') >= 0
-                || name.indexOf('\0') >= 0 || name.startsWith("/")) return false;
-        boolean directory = name.endsWith("/");
-        String body = directory ? name.substring(0, name.length() - 1) : name;
-        if (body.isEmpty()) return false;
-        String[] parts = body.split("/", -1);
-        if (parts.length == 0 || parts[0].indexOf(':') >= 0) return false;
-        for (String part : parts) {
-            if (part.isEmpty() || ".".equals(part) || "..".equals(part)) return false;
-        }
-        return true;
-    }
-
-    private boolean persistNestedMacroEdit(boolean synchronous) {
-        NestedMacroEditSession session = nestedMacroEdit;
-        if (session == null || currentScreenIndex != session.screenIndex) return false;
-        try {
-            saveActiveScreen();
-            int outputNode = findCraftMacroOutputNode(widgets, session.outputWidget);
-            if (outputNode < 0)
-                throw new IllegalArgumentException("Ð’Ñ‹Ñ…Ð¾Ð´Ð½Ð¾Ð¹ Ð±Ð»Ð¾Ðº ÑƒÐ´Ð°Ð»Ñ‘Ð½. ÐÐ°Ð·Ð½Ð°Ñ‡ÑŒÑ‚Ðµ Ð½Ð¾Ð²Ñ‹Ð¹ Ð²Ñ‹Ñ…Ð¾Ð´ Ð¿ÐµÑ€ÐµÐ´ ÑÐ¾Ñ…Ñ€Ð°Ð½ÐµÐ½Ð¸ÐµÐ¼.");
-            session.outputNode = outputNode;
-            FbdCraftMacroDefinition updated = updateCraftMacroDefinitionGraph(
-                    session.definition, widgets, screens.get(currentScreenIndex).connections,
-                    outputNode, session.outputPin);
-            FbdCraftMacroCatalog.upsert(projectExtraFields, updated);
-            replaceCraftMacroInstances(session.hostScreen.widgets, updated);
-            for (int i = 0; i < screens.size(); i++) {
-                if (i != session.screenIndex) replaceCraftMacroInstances(screens.get(i).widgets, updated);
-            }
-            List<Widget> nestedWidgets = new ArrayList<>(widgets);
-            session.definition = updated;
-            screens.set(session.screenIndex, session.hostScreen);
-            widgets.clear();
-            for (Widget widget : session.hostScreen.widgets) widgets.add(copyWidget(widget));
-            nestedMacroEdit = null;
-            boolean saved;
-            try {
-                saved = persistProjectNow(synchronous);
-            } finally {
-                nestedMacroEdit = session;
-                screens.set(session.screenIndex, session.nestedScreen);
-                widgets.clear();
-                widgets.addAll(nestedWidgets);
-                if (editor != null) editor.invalidate();
-            }
-            return saved;
-        } catch (Exception failure) {
-            Toast.makeText(this, "Ð’Ð»Ð¾Ð¶ÐµÐ½Ð½Ñ‹Ð¹ Ð³Ñ€Ð°Ñ„ Ð½Ðµ ÑÐ¾Ñ…Ñ€Ð°Ð½Ñ‘Ð½: " + failure.getMessage(),
-                    Toast.LENGTH_LONG).show();
-            return false;
-        }
-    }
-
-    private void chooseNestedMacroOutput(int blockIndex, Widget block) {
-        if (nestedMacroEdit == null || blockIndex < 0 || blockIndex >= widgets.size()) return;
-        String[] pins = knownFbdPins(block, true);
-        if (pins.length == 0) {
-            Toast.makeText(this, "Ð£ Ð±Ð»Ð¾ÐºÐ° Ð½ÐµÑ‚ Ð¿Ñ€Ð¾Ð²ÐµÑ€ÐµÐ½Ð½Ð¾Ð³Ð¾ Ð²Ñ‹Ñ…Ð¾Ð´Ð°", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        new AlertDialog.Builder(this).setTitle("Ð’Ñ‹Ñ…Ð¾Ð´ Ð¼Ð°ÐºÑ€Ð¾ÑÐ°")
-                .setItems(pins, (dialog, which) -> {
-                    NestedMacroEditSession session = nestedMacroEdit;
-                    int previousNode = session.outputNode;
-                    Widget previousWidget = session.outputWidget;
-                    String previousPin = session.outputPin;
-                    session.outputNode = blockIndex;
-                    session.outputWidget = widgets.get(blockIndex);
-                    session.outputPin = pins[which];
-                    if (persistProjectNow(true)) {
-                        Toast.makeText(this, "Ð’Ñ‹Ñ…Ð¾Ð´ Ð¼Ð°ÐºÑ€Ð¾ÑÐ° Ð¾Ð±Ð½Ð¾Ð²Ð»Ñ‘Ð½", Toast.LENGTH_SHORT).show();
-                    } else {
-                        session.outputNode = previousNode;
-                        session.outputWidget = previousWidget;
-                        session.outputPin = previousPin;
-                    }
-                }).setNegativeButton("ÐžÑ‚Ð¼ÐµÐ½Ð°", null).show();
-    }
-
-    private void openNestedMacroGraphEditor(int blockIndex) {
-        if (operatorMode || nestedMacroEdit != null || blockIndex < 0 || blockIndex >= widgets.size()) return;
-        if (!persistProjectNow(true)) return;
-        try {
-            Screen host = screens.get(currentScreenIndex);
-            if (blockIndex >= host.widgets.size()) throw new IllegalArgumentException("ÐœÐ°ÐºÑ€Ð¾Ñ Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½");
-            Widget macro = host.widgets.get(blockIndex);
-            FbdCraftMacroDefinition definition = macroDefinition(macro);
-            if (definition == null) throw new IllegalArgumentException("ÐžÐ¿Ñ€ÐµÐ´ÐµÐ»ÐµÐ½Ð¸Ðµ Ð¼Ð°ÐºÑ€Ð¾ÑÐ° Ð½ÐµÐ´ÐµÐ¹ÑÑ‚Ð²Ð¸Ñ‚ÐµÐ»ÑŒÐ½Ð¾");
-            JSONObject graph = definition.toJson().optJSONObject("bloodskyGraph");
-            if (graph == null) throw new IllegalArgumentException("Ð’ ÑÑ‚Ð¾Ð¼ Ð¼Ð°ÐºÑ€Ð¾ÑÐµ Ð½ÐµÑ‚ Ñ€ÐµÐ´Ð°ÐºÑ‚Ð¸Ñ€ÑƒÐµÐ¼Ð¾Ð³Ð¾ BLOODSKY-Ð³Ñ€Ð°Ñ„Ð°");
-            JSONArray widgetArray = graph.optJSONArray("widgets");
-            JSONArray connectionArray = graph.optJSONArray("connections");
-            if (widgetArray == null || connectionArray == null || widgetArray.length() == 0)
-                throw new IllegalArgumentException("Ð’Ð»Ð¾Ð¶ÐµÐ½Ð½Ñ‹Ð¹ Ð³Ñ€Ð°Ñ„ Ð¿ÑƒÑÑ‚ Ð¸Ð»Ð¸ Ð¿Ð¾Ð²Ñ€ÐµÐ¶Ð´Ñ‘Ð½");
-            Screen nested = new Screen("ÐœÐ°ÐºÑ€Ð¾Ñ: " + definition.getName());
-            nested.backgroundColor = host.backgroundColor;
-            for (int i = 0; i < widgetArray.length(); i++)
-                nested.widgets.add(widgetFromJson(widgetArray.getJSONObject(i)));
-            for (int i = 0; i < connectionArray.length(); i++)
-                nested.connections.add(connectionFromJson(connectionArray.getJSONObject(i)));
-            int outputNode = graph.optInt("outputNode", -1);
-            String outputPin = graph.optString("outputPin", "");
-            if (outputNode < 0 || outputNode >= nested.widgets.size()
-                    || !contains(knownFbdPins(nested.widgets.get(outputNode), true), outputPin))
-                throw new IllegalArgumentException("Ð’Ð»Ð¾Ð¶ÐµÐ½Ð½Ñ‹Ð¹ Ð²Ñ‹Ñ…Ð¾Ð´ Ð½ÐµÐºÐ¾Ñ€Ñ€ÐµÐºÑ‚ÐµÐ½");
-            NestedMacroEditSession session = new NestedMacroEditSession(
-                    currentScreenIndex, host, nested, definition, outputNode, outputPin);
-            nestedMacroEdit = session;
-            screens.set(currentScreenIndex, nested);
-            widgets.clear();
-            for (Widget widget : nested.widgets) widgets.add(copyWidget(widget));
-            session.outputWidget = widgets.get(outputNode);
-            fbdWireHistory.clear();
-            fbdWireMode = false;
-            wireSource = -1;
-            editor = null;
-            showEditor();
-        } catch (Exception failure) {
-            Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚ÑŒ Ð²Ð»Ð¾Ð¶ÐµÐ½Ð½Ñ‹Ð¹ Ð³Ñ€Ð°Ñ„: " + failure.getMessage(),
-                    Toast.LENGTH_LONG).show();
-        }
-    }
-
-    private static boolean contains(String[] values, String target) {
-        if (values == null || target == null) return false;
-        for (String value : values) if (target.equals(value)) return true;
-        return false;
-    }
-
-    private void closeNestedMacroGraphEditor() {
-        NestedMacroEditSession session = nestedMacroEdit;
-        if (session == null) return;
-        if (persistProjectNow(true)) {
-            restoreNestedMacroHost(session);
-            persistProjectNow(true);
-            showEditor();
-            return;
-        }
-        new AlertDialog.Builder(this).setTitle("Ð—Ð°ÐºÑ€Ñ‹Ñ‚ÑŒ Ð±ÐµÐ· ÑÐ¾Ñ…Ñ€Ð°Ð½ÐµÐ½Ð¸Ñ?")
-                .setMessage("Ð¢ÐµÐºÑƒÑ‰Ð¸Ðµ Ð¸Ð·Ð¼ÐµÐ½ÐµÐ½Ð¸Ñ Ð²Ð»Ð¾Ð¶ÐµÐ½Ð½Ð¾Ð³Ð¾ Ð³Ñ€Ð°Ñ„Ð° Ð½Ðµ Ð¿Ñ€Ð¾ÑˆÐ»Ð¸ Ð¿Ñ€Ð¾Ð²ÐµÑ€ÐºÑƒ.")
-                .setNegativeButton("ÐžÑÑ‚Ð°Ñ‚ÑŒÑÑ", null)
-                .setPositiveButton("Ð—Ð°ÐºÑ€Ñ‹Ñ‚ÑŒ", (dialog, which) -> {
-                    restoreNestedMacroHost(session);
-                    persistProjectNow(true);
-                    showEditor();
-                }).show();
-    }
-
-    private void restoreNestedMacroHost(NestedMacroEditSession session) {
-        nestedMacroEdit = null;
-        currentScreenIndex = session.screenIndex;
-        screens.set(session.screenIndex, session.hostScreen);
-        widgets.clear();
-        for (Widget widget : session.hostScreen.widgets) widgets.add(copyWidget(widget));
-        fbdWireHistory.clear();
-        fbdWireMode = false;
-        wireSource = -1;
-        editor = null;
-    }
-
-    private void configureCraftServiceRegisters() {
-        CraftServiceRegisters service = CraftServiceRegisters.global();
-        service.setScreenCount(screens.size());
-        service.setCurrentScreen(currentScreenIndex + 1);
-        service.setActions(new CraftServiceRegisters.Actions() {
-            @Override public void selectScreen(int oneBasedScreen) {
-                mainHandler.post(() -> {
-                    if (oneBasedScreen >= 1 && oneBasedScreen <= screens.size()
-                            && currentScreenIndex != oneBasedScreen - 1)
-                        activateScreen(oneBasedScreen - 1);
-                });
-            }
-            @Override public void applyBackground(int paletteIndex, int color) {
-                mainHandler.post(() -> {
-                    if (screens.isEmpty()) return;
-                    Screen active = screens.get(Math.max(0, Math.min(currentScreenIndex, screens.size() - 1)));
-                    if (paletteIndex == 0) {
-                        if (active.extraFields.has("craftServicePaletteBaseColor"))
-                            active.backgroundColor = active.extraFields.optInt("craftServicePaletteBaseColor", active.backgroundColor);
-                        active.extraFields.remove("craftServicePaletteBaseColor");
-                    } else {
-                        if (!active.extraFields.has("craftServicePaletteBaseColor"))
-                            try { active.extraFields.put("craftServicePaletteBaseColor", active.backgroundColor); } catch (Exception ignored) {}
-                        active.backgroundColor = color;
-                    }
-                    if (editor != null) editor.invalidate();
-                    persistProject();
-                });
-            }
-            @Override public void enterPassword(int candidate) {
-                // Craft 1.0.7 submits this candidate to its project-password
-                // gate. BLOODSKY project locking is not implemented yet.
-                android.util.Log.d("BLOODSKY", "Craft service password candidate received");
-            }
-            @Override public void saveProject() {
-                mainHandler.post(() -> persistProjectNow(true));
-            }
-            @Override public void refreshComponents() {
-                mainHandler.post(() -> { if (editor != null) editor.invalidate(); });
-            }
-            @Override public void openProjectUrl() {
-                mainHandler.post(() -> {
-                    String url = projectExtraFields.optString("projectUrl",
-                            projectExtraFields.optString("url", ""));
-                    if (url.isEmpty()) {
-                        Toast.makeText(MainActivity.this, "URL Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð° Ð½Ðµ Ð·Ð°Ð´Ð°Ð½", Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-                    try {
-                        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
-                    } catch (Exception failure) {
-                        Toast.makeText(MainActivity.this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚ÑŒ URL Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°", Toast.LENGTH_SHORT).show();
-                    }
-                });
-            }
-            @Override public void exitApplication() {
-                mainHandler.post(() -> finishAffinity());
-            }
-            @Override public void logCascade() {
-                android.util.Log.d("BLOODSKY", "ÐºÐ°ÑÐºÐ°Ð´Ð°");
-            }
-        });
-        updateCraftDeviceRegisters();
-    }
-
-    private void updateCraftDeviceRegisters() {
-        CraftServiceRegisters service = CraftServiceRegisters.global();
-        if (editor != null && !screens.isEmpty()) {
-            service.setScreenCount(screens.size());
-            service.setCurrentScreen(currentScreenIndex + 1);
-        }
-        Intent battery = registerReceiver(null, new android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED));
-        if (battery != null) {
-            int level = battery.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1);
-            int status = battery.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1);
-            boolean charging = status == android.os.BatteryManager.BATTERY_STATUS_CHARGING
-                    || status == android.os.BatteryManager.BATTERY_STATUS_FULL;
-            service.setCharging(charging);
-            service.setBatteryLevel(level);
-        }
-        try {
-            service.setBrightness(android.provider.Settings.System.getInt(
-                    getContentResolver(), android.provider.Settings.System.SCREEN_BRIGHTNESS));
-        } catch (android.provider.Settings.SettingNotFoundException ignored) {}
-    }
-
-    private void persistProject() { persistProjectNow(false); }
-
-    private boolean persistProjectNow(boolean synchronous) {
-        try {
-            if (nestedMacroEdit != null) return persistNestedMacroEdit(synchronous);
-            saveActiveScreen();
-            JSONObject project = new JSONObject();
-            if (projectExtraFields != null) {
-                java.util.Iterator<String> projectKeys = projectExtraFields.keys();
-                while (projectKeys.hasNext()) { String key = projectKeys.next(); project.put(key, projectExtraFields.get(key)); }
-            }
-            if (systemRegisterBankPersistable) project.put("systemRegisters", systemRegisterBank.toProjectJson());
-            JSONArray screenArray = new JSONArray();
-            for (Screen screen : screens) {
-                JSONObject screenObj = new JSONObject();
-                if (screen.extraFields != null) {
-                    java.util.Iterator<String> keys = screen.extraFields.keys();
-                    while (keys.hasNext()) { String key = keys.next(); screenObj.put(key, screen.extraFields.get(key)); }
-                }
-                screenObj.put("name", screen.name);
-                screenObj.put("backgroundColor", screen.backgroundColor);
-                screenObj.put("widgets", widgetsToJson(screen.widgets));
-                JSONArray connectionArray = new JSONArray();
-                for (FbdConnection connection : screen.connections) {
-                    connectionArray.put(connectionToJson(connection));
-                }
-                screenObj.put("connections", connectionArray);
-                screenArray.put(screenObj);
-            }
-            project.put("screens", screenArray);
-            project.put("currentScreen", currentScreenIndex);
-            project.put("projectName", projectName);
-            project = new JSONObject(ProjectMediaService.ensureProjectHasId(project.toString()));
-            projectExtraFields = new JSONObject(project.toString());
-            return storeActiveProject(project.toString(), synchronous);
-        } catch (Exception ignored) {
-            Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ ÑÐ¾Ñ…Ñ€Ð°Ð½Ð¸Ñ‚ÑŒ Ð¿Ñ€Ð¾ÐµÐºÑ‚", Toast.LENGTH_SHORT).show();
-            return false;
-        }
-    }
-
-    private boolean loadProject() {
-        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-        String json = prefs.getString(ACTIVE_PROJECT, "[]");
-        try {
-            if (LegacyProjectMediaMigrator.needsMigration(json))
-                json = migrateLegacyActiveProject(json);
-        } catch (Exception failure) {
-            android.util.Log.e("BLOODSKY", "Legacy project migration failed", failure);
-            Toast.makeText(this, "ÐÐµ ÑƒÐ´Ð°Ð»Ð¾ÑÑŒ Ð¿ÐµÑ€ÐµÐ½ÐµÑÑ‚Ð¸ ÑÑ‚Ð°Ñ€Ñ‹Ðµ Ñ„Ð°Ð¹Ð»Ñ‹ Ð¿Ñ€Ð¾ÐµÐºÑ‚Ð°. ÐŸÑ€Ð¾ÐµÐºÑ‚ Ð½Ðµ Ð¸Ð·Ð¼ÐµÐ½Ñ‘Ð½.",
-                    Toast.LENGTH_LONG).show();
-            return false;
-        }
-        fbdWireHistory.clear();
-        FbdCraftRegisterStore.clear();
-        FbdCraftNamedVariableStore.clear();
-        imageCache.clear();
-        widgets.clear(); screens.clear(); currentScreenIndex = 0;
-        projectExtraFields = new JSONObject();
-        systemRegisterBank.clear();
-        systemRegisterBankPersistable = true;
-        projectName = prefs.getString("project_name", projectName);
-        try {
-            Object parsed = new org.json.JSONTokener(json).nextValue();
-            if (parsed instanceof JSONObject) {
-                JSONObject project = (JSONObject) parsed;
-                String importedProjectName = project.optString("projectName", projectName);
-                if (importedProjectName != null && !importedProjectName.trim().isEmpty()) projectName = importedProjectName.trim();
-                try { projectExtraFields = new JSONObject(project.toString()); } catch (Exception ignored) { projectExtraFields = new JSONObject(); }
-                Object savedSystemRegisterBank = project.opt("systemRegisters");
-                if (savedSystemRegisterBank instanceof JSONArray) {
-                    try { systemRegisterBank.restoreProjectJson((JSONArray) savedSystemRegisterBank); }
-                    catch (Exception invalidBank) {
-                        systemRegisterBankPersistable = false;
-                        android.util.Log.w("BLOODSKY", "Preserving invalid imported systemRegisters field", invalidBank);
-                    }
-                } else if (savedSystemRegisterBank instanceof String) {
-                    projectExtraFields.put("systemRegisterSettings", savedSystemRegisterBank);
-                    projectExtraFields.remove("systemRegisters");
-                } else if (savedSystemRegisterBank != null && savedSystemRegisterBank != JSONObject.NULL) {
-                    systemRegisterBankPersistable = false;
-                }
-                JSONArray screenArray = project.optJSONArray("screens");
-                if (screenArray != null) {
-                    for (int i = 0; i < screenArray.length(); i++) {
-                        JSONObject screenObj = screenArray.getJSONObject(i);
-                        Screen screen = new Screen(screenObj.optString("name", "Ð­ÐºÑ€Ð°Ð½ " + (i + 1)));
-                        screen.backgroundColor = screenObj.optInt("backgroundColor", Color.rgb(250, 252, 255));
-                        try { screen.extraFields = new JSONObject(screenObj.toString()); } catch (Exception ignored) { screen.extraFields = new JSONObject(); }
-                        JSONArray widgetArray = screenObj.optJSONArray("widgets");
-                        if (widgetArray != null) for (int j = 0; j < widgetArray.length(); j++) screen.widgets.add(widgetFromJson(widgetArray.getJSONObject(j)));
-                        JSONArray connectionArray = screenObj.optJSONArray("connections");
-                        if (connectionArray != null) for (int j = 0; j < connectionArray.length(); j++) {
-                            JSONObject connectionObj = connectionArray.optJSONObject(j);
-                            if (connectionObj == null) continue;
-                            int source = connectionObj.optInt("source", -1);
-                            int target = connectionObj.optInt("target", -1);
-                            if (canLoadFbdConnection(connectionObj)
-                                    && source < screen.widgets.size() && target < screen.widgets.size()
-                                    && isFbd(screen.widgets.get(source)) && isFbd(screen.widgets.get(target))) {
-                                screen.connections.add(connectionFromJson(connectionObj));
-                            }
-                        }
-                        screens.add(screen);
-                    }
-                    currentScreenIndex = Math.max(0, Math.min(project.optInt("currentScreen", 0), Math.max(0, screens.size() - 1)));
-                }
-            } else if (parsed instanceof JSONArray) {
-                projectExtraFields = new JSONObject();
-                Screen legacy = new Screen("Ð­ÐºÑ€Ð°Ð½ 1");
-                JSONArray legacyWidgets = (JSONArray) parsed;
-                for (int i = 0; i < legacyWidgets.length(); i++) legacy.widgets.add(widgetFromJson(legacyWidgets.getJSONObject(i)));
-                screens.add(legacy);
-            }
-        } catch (Exception ignored) {
-            screens.clear();
-        }
-        if (screens.isEmpty()) screens.add(new Screen("Ð­ÐºÑ€Ð°Ð½ 1"));
-        currentScreenIndex = Math.max(0, Math.min(currentScreenIndex, screens.size() - 1));
-        // elapsedRealtime belongs to the running device, not a saved project.
-        // Retain presets and unknown fields, discard only timer runtime epoch.
-        for (Screen loaded : screens) for (Widget saved : loaded.widgets)
-            resetFbdTimerRuntime(saved);
-        for (Widget w : screens.get(currentScreenIndex).widgets) widgets.add(copyWidget(w));
-        return true;
-    }
-
-    private void validateImportedProject(String json) throws Exception {
-        validateImportedProjectStatic(json);
-    }
-
-    private void validateWidgetArray(JSONArray array) {
-        validateWidgetArrayStatic(array);
-    }
-
-    public static void validateImportedProjectStatic(String json) throws Exception {
-        org.json.JSONTokener tokener = new org.json.JSONTokener(json);
-        Object parsed = tokener.nextValue();
-        if (tokener.nextClean() != 0) throw new IllegalArgumentException("Trailing content after JSON");
-        if (parsed instanceof JSONArray) {
-            validateWidgetArrayStatic((JSONArray) parsed);
-            return;
-        }
-        if (!(parsed instanceof JSONObject)) throw new IllegalArgumentException("Project must be a JSON object or array");
-        JSONObject project = (JSONObject) parsed;
-        try { FbdCraftMacroCatalog.read(project); }
-        catch (Exception invalidCatalog) { throw new IllegalArgumentException("Invalid Craft macro catalog"); }
-        JSONArray screenArray = project.optJSONArray("screens");
-        if (screenArray == null || screenArray.length() == 0 || screenArray.length() > 100) {
-            throw new IllegalArgumentException("Invalid screen list");
-        }
-        int currentScreen = project.optInt("currentScreen", 0);
-        if (currentScreen < 0 || currentScreen >= screenArray.length()) {
-            throw new IllegalArgumentException("Current screen index out of range");
-        }
-        int totalWidgets = 0;
-        for (int i = 0; i < screenArray.length(); i++) {
-            JSONObject screen = screenArray.optJSONObject(i);
-            if (screen == null) throw new IllegalArgumentException("Screen must be an object");
-            JSONArray screenWidgets = screen.optJSONArray("widgets");
-            if (screenWidgets == null) throw new IllegalArgumentException("Screen widgets must be an array");
-            validateWidgetArrayStatic(screenWidgets);
-            totalWidgets += screenWidgets.length();
-            if (totalWidgets > 2000) throw new IllegalArgumentException("Too many widgets");
-
-            JSONArray connections = screen.optJSONArray("connections");
-            if (connections == null) continue;
-            if (connections.length() > 4000) throw new IllegalArgumentException("Too many connections");
-            int nodeCount = screenWidgets.length();
-            List<List<Integer>> adjacency = new ArrayList<>();
-            int[] indegree = new int[nodeCount];
-            for (int node = 0; node < nodeCount; node++) adjacency.add(new ArrayList<>());
-            java.util.HashMap<Long, java.util.HashSet<String>> pinsByPair = new java.util.HashMap<>();
-            java.util.HashSet<String> occupiedTargetPins = new java.util.HashSet<>();
-            for (int j = 0; j < connections.length(); j++) {
-                JSONObject edge = connections.optJSONObject(j);
-                if (edge == null) throw new IllegalArgumentException("Connection must be an object");
-                if (!canLoadFbdConnection(edge)) throw new IllegalArgumentException("Invalid FBD pin metadata or endpoints");
-                int source = edge.optInt("source", -1);
-                int target = edge.optInt("target", -1);
-                if (source < 0 || target < 0 || source >= nodeCount || target >= nodeCount || source == target) {
-                    throw new IllegalArgumentException("Connection index out of range");
-                }
-                JSONObject sourceWidget = screenWidgets.optJSONObject(source);
-                JSONObject targetWidget = screenWidgets.optJSONObject(target);
-                if (sourceWidget == null || targetWidget == null
-                        || !sourceWidget.optString("type", "").startsWith("FBD ")
-                        || !targetWidget.optString("type", "").startsWith("FBD ")) {
-                    throw new IllegalArgumentException("Connections must link FBD blocks");
-                }
-                Widget sourceForPins = widgetFromJson(sourceWidget);
-                Widget targetForPins = widgetFromJson(targetWidget);
-                if (!hasCompatibleKnownFbdPins(edge, sourceForPins, targetForPins)) {
-                    throw new IllegalArgumentException("Invalid FBD pin direction or type");
-                }
-                String targetPin = canonicalFbdPinName(edge.optString("targetPin", ""));
-                if (!targetPin.isEmpty() && !occupiedTargetPins.add(target + ":"
-                        + targetPin)) {
-                    throw new IllegalArgumentException("Multiple FBD wires drive the same target pin");
-                }
-                long edgeKey = (((long) source) << 32) | (target & 0xffffffffL);
-                java.util.HashSet<String> pairPins = pinsByPair.get(edgeKey);
-                if (pairPins == null) {
-                    pairPins = new java.util.HashSet<>();
-                    pinsByPair.put(edgeKey, pairPins);
-                }
-                String normalizedPin = targetPin;
-                if (pairPins.contains("") || (normalizedPin.isEmpty() && !pairPins.isEmpty())
-                        || !pairPins.add(normalizedPin)) {
-                    throw new IllegalArgumentException("Duplicate FBD connection");
-                }
-                adjacency.get(source).add(target);
-                indegree[target]++;
-            }
-            java.util.ArrayDeque<Integer> ready = new java.util.ArrayDeque<>();
-            for (int node = 0; node < nodeCount; node++) if (indegree[node] == 0) ready.add(node);
-            int visitedCount = 0;
-            while (!ready.isEmpty()) {
-                int node = ready.removeFirst();
-                visitedCount++;
-                for (int next : adjacency.get(node)) {
-                    if (--indegree[next] == 0) ready.addLast(next);
-                }
-            }
-            if (visitedCount != nodeCount) throw new IllegalArgumentException("Cyclic FBD connections");
-        }
-    }
-
-    public static void validateWidgetArrayStatic(JSONArray array) {
-        if (array.length() > 2000) throw new IllegalArgumentException("Too many widgets");
-        for (int i = 0; i < array.length(); i++) {
-            JSONObject widget = array.optJSONObject(i);
-            if (widget == null) throw new IllegalArgumentException("Widget must be an object");
-            String type = widget.optString("type", "Ð¢ÐµÐºÑÑ‚"), label = widget.optString("text", "ÐÐ°Ð´Ð¿Ð¸ÑÑŒ");
-            if ("FBD CRAFT MACRO".equals(canonicalFbdBlockType(type))) {
-                Widget parsed = widgetFromJson(widget);
-                if (macroDefinition(parsed) == null)
-                    throw new IllegalArgumentException("FBD macro widget has no valid definition");
-            }
-            if (type.length() > 100 || label.length() > 2000 || widget.optString("connectionInfo", "").length() > 2000) throw new IllegalArgumentException("Widget field too long");
-            double x = widget.optDouble("x", widget.has("x") ? Double.NaN : 0), y = widget.optDouble("y", widget.has("y") ? Double.NaN : 0), w = widget.optDouble("w", widget.has("w") ? Double.NaN : 160), h = widget.optDouble("h", widget.has("h") ? Double.NaN : 58);
-            if (Double.isNaN(x) || Double.isNaN(y) || Double.isNaN(w) || Double.isNaN(h)
-                    || x < -100000 || x > 100000 || y < -100000 || y > 100000 || w < 1 || w > 100000 || h < 1 || h > 100000) throw new IllegalArgumentException("Widget geometry out of range");
-        }
-    }
-
-    private static class Screen {
-        String name;
-        int backgroundColor = Color.rgb(250, 252, 255);
-        JSONObject extraFields = new JSONObject();
-        final List<Widget> widgets = new ArrayList<>();
-        final List<FbdConnection> connections = new ArrayList<>();
-        Screen(String name) { this.name = name; }
-    }
-
-    private static final class NestedMacroEditSession {
-        final int screenIndex;
-        final Screen hostScreen;
-        final Screen nestedScreen;
-        FbdCraftMacroDefinition definition;
-        int outputNode;
-        Widget outputWidget;
-        String outputPin;
-        NestedMacroEditSession(int screenIndex, Screen hostScreen, Screen nestedScreen,
-                FbdCraftMacroDefinition definition, int outputNode, String outputPin) {
-            this.screenIndex = screenIndex;
-            this.hostScreen = hostScreen;
-            this.nestedScreen = nestedScreen;
-            this.definition = definition;
-            this.outputNode = outputNode;
-            this.outputPin = outputPin;
-        }
-    }
-
-    public static class FbdConnection {
-        public int source;
-        public int target;
-        private JSONObject extraFields = new JSONObject();
-        public FbdConnection(int source, int target) { this.source = source; this.target = target; }
-    }
-
-    /** Shared by the actual project loader and the round-trip regression tests. */
-    public static FbdConnection connectionFromJson(JSONObject json) throws Exception {
-        FbdConnection connection = new FbdConnection(json.optInt("source", -1), json.optInt("target", -1));
-        connection.extraFields = new JSONObject(json.toString());
-        return connection;
-    }
-
-    /** Keep unknown edge fields, but always serialize the current edited/reindexed endpoints. */
-    public static JSONObject connectionToJson(FbdConnection connection) throws Exception {
-        JSONObject json = connection.extraFields == null
-                ? new JSONObject() : new JSONObject(connection.extraFields.toString());
-        json.put("source", connection.source);
-        json.put("target", connection.target);
-        return json;
-    }
-
-    /** Optional signal types: explicit pins must agree unless either is ANY. */
-    public static boolean hasCompatibleFbdSignalTypes(FbdConnection edge) {
-        if (!hasValidFbdPinMetadata(edge)) return false;
-        JSONObject fields = edge.extraFields;
-        boolean sourcePresent = fields.has("sourceSignalType");
-        boolean targetPresent = fields.has("targetSignalType");
-        if (!sourcePresent && !targetPresent) return true;
-        if (!sourcePresent || !targetPresent) return false;
-        Object source = fields.opt("sourceSignalType");
-        Object target = fields.opt("targetSignalType");
-        if (!(source instanceof String) || !(target instanceof String)) return false;
-        String a = ((String) source).trim().toUpperCase(java.util.Locale.ROOT);
-        String b = ((String) target).trim().toUpperCase(java.util.Locale.ROOT);
-        if (!("BOOL".equals(a) || "NUMBER".equals(a) || "ANY".equals(a))) return false;
-        if (!("BOOL".equals(b) || "NUMBER".equals(b) || "ANY".equals(b))) return false;
-        return a.equals(b) || "ANY".equals(a) || "ANY".equals(b);
-    }
-
-    /** Minimal built-in FBD pin contract; unknown blocks stay untyped until sourced. */
-    /** Normalize internal Russian widget identifiers to their public FBD terminal contracts. */
-    public static String canonicalFbdBlockType(String blockType) {
-        if (blockType == null) return "";
-        String kind = blockType.trim().toUpperCase(java.util.Locale.ROOT);
-        if ("FBD Ð˜".equals(kind)) return "FBD AND";
-        if ("FBD Ð˜Ð›Ð˜".equals(kind)) return "FBD OR";
-        if ("FBD Ð¢ÐÐ™ÐœÐ•Ð ".equals(kind)) return "FBD TON";
-        return kind;
-    }
-
-    /** Compare pin identifiers consistently without rewriting imported project metadata. */
-    public static String canonicalFbdPinName(String pin) {
-        return pin == null ? "" : pin.trim().toUpperCase(java.util.Locale.ROOT);
-    }
-
-    public static boolean isCraftFbdSensorSource(String type) {
-        return "FBD CRAFT SENSOR LIGHT".equals(canonicalFbdBlockType(type))
-                || "FBD CRAFT SENSOR ORIENTATION".equals(canonicalFbdBlockType(type))
-                || "FBD CRAFT SENSOR SPEED".equals(canonicalFbdBlockType(type));
-    }
-
-    private static boolean isCraftSunriseSource(String type) {
-        return "FBD CRAFT SUNRISE".equals(canonicalFbdBlockType(type));
-    }
-
-    private static boolean isCraftOdTempSource(String type) {
-        return "FBD CRAFT ODTEMP".equals(canonicalFbdBlockType(type));
-    }
-
-    public static boolean isCraftMqttSubscriber(String type) {
-        return type != null && type.startsWith("FBD CRAFT MQTT SUB ");
-    }
-    public static boolean isCraftMqttPublisher(String type) {
-        return type != null && type.startsWith("FBD CRAFT MQTT PUB ");
-    }
-    private static int mqttType(Widget widget) {
-        int fallback = widget.type.endsWith("BOOL") ? 1 : widget.type.endsWith("FLOAT") ? 3 : 2;
-        return Math.max(1, Math.min(3, widget.extraFields.optInt("craftMqttType", fallback)));
-    }
-    private static int mqttServer(Widget widget) {
-        return Math.max(1, Math.min(2, widget.extraFields.optInt("craftMqttServer", 1)));
-    }
-
-    public static boolean isAllowedOdTempHost(String host) {
-        if (host == null) return false;
-        String[] parts = host.trim().split("\\.", -1);
-        if (parts.length != 4) return false;
-        int[] octets = new int[4];
-        try {
-            for (int i = 0; i < 4; i++) {
-                if (parts[i].isEmpty() || (parts[i].length() > 1 && parts[i].charAt(0) == '0')) return false;
-                octets[i] = Integer.parseInt(parts[i]);
-                if (octets[i] < 0 || octets[i] > 255) return false;
-            }
-        } catch (NumberFormatException invalid) { return false; }
-        return octets[0] == 10 || octets[0] == 192 && octets[1] == 168
-                || octets[0] == 172 && octets[1] >= 16 && octets[1] <= 31
-                || octets[0] == 169 && octets[1] == 254;
-    }
-
-    private static String craftOrientationLabel(int axis) {
-        return axis == 2 ? "ORIENTATION_Y" : axis == 3 ? "ORIENTATION_Z" : "ORIENTATION_X";
-    }
-
-    private static int craftOrientationAxis(Widget widget) {
-        return Math.max(1, Math.min(3, widget.extraFields.optInt("craftSensorAxis",
-                widget.extraFields.optInt("type", 1))));
-    }
-
-    private static String craftSunriseMode(Widget widget) {
-        return widget.extraFields.optString("craftSunriseMode",
-                widget.extraFields.optInt("type", 1) == 2 ? "SS" : "SR");
-    }
-
-    public static boolean isCraftRegisterSource(String type) {
-        String kind = canonicalFbdBlockType(type);
-        return "FBD CRAFT VAR BOOL".equals(kind) || "FBD CRAFT VAR INT".equals(kind)
-                || "FBD CRAFT VAR FLOAT".equals(kind);
-    }
-
-    public static boolean isCraftNamedVariableSource(String type) {
-        return type != null && type.startsWith("FBD CRAFT VAR NAME IN ");
-    }
-
-    public static boolean isCraftNamedVariableSink(String type) {
-        return type != null && type.startsWith("FBD CRAFT VAR NAME OUT ");
-    }
-
-    private static int craftNamedVariableKind(String type) {
-        if (type == null) return 0;
-        if (type.endsWith(" BOOL")) return 1;
-        if (type.endsWith(" INT")) return 2;
-        if (type.endsWith(" FLOAT")) return 3;
-        return 0;
-    }
-
-    private static String craftNamedVariableType(int kind, boolean output) {
-        String suffix = kind == 1 ? "BOOL" : kind == 3 ? "FLOAT" : "INT";
-        return "FBD CRAFT VAR NAME " + (output ? "OUT " : "IN ") + suffix;
-    }
-
-    private static String craftNamedVariableName(Widget widget) {
-        return widget.extraFields.optString("craftVariableName",
-                widget.extraFields.optString("name", ""));
-    }
-
-    public static boolean isCraftRegisterSink(String type) {
-        String kind = canonicalFbdBlockType(type);
-        return "FBD CRAFT VAR OUT BOOL".equals(kind) || "FBD CRAFT VAR OUT INT".equals(kind)
-                || "FBD CRAFT VAR OUT FLOAT".equals(kind);
-    }
-
-    private static boolean isCraftRegisterFloat(String type) {
-        String kind = canonicalFbdBlockType(type);
-        return "FBD CRAFT VAR FLOAT".equals(kind) || "FBD CRAFT VAR OUT FLOAT".equals(kind);
-    }
-
-    private static boolean isCraftRegisterBoolean(String type) {
-        String kind = canonicalFbdBlockType(type);
-        return "FBD CRAFT VAR BOOL".equals(kind) || "FBD CRAFT VAR OUT BOOL".equals(kind);
-    }
-
-    public static String knownFbdPinType(String blockType, String pin, boolean output) {
-        if (blockType == null || pin == null) return null;
-        String kind = canonicalFbdBlockType(blockType);
-        String name = canonicalFbdPinName(pin);
-        if (kind.equals("FBD Ð’Ð¥ÐžÐ”")) return output && "Q".equals(name) ? "BOOL" : null;
-        if (isCraftMqttSubscriber(kind) && output && "Q".equals(name))
-            return kind.endsWith("BOOL") ? "BOOL" : "NUMBER";
-        if (isCraftMqttPublisher(kind) && !output) {
-            if ("EN".equals(name)) return "BOOL";
-            if ("IN".equals(name)) return kind.endsWith("BOOL") ? "BOOL" : "NUMBER";
-        }
-        if (isCraftRegisterSource(kind) && output && "Q".equals(name))
-            return isCraftRegisterBoolean(kind) ? "BOOL" : "NUMBER";
-        if (isCraftRegisterSink(kind) && !output && "IN".equals(name))
-            return isCraftRegisterBoolean(kind) ? "BOOL" : "NUMBER";
-        if ((isCraftFbdSensorSource(kind) || isCraftSunriseSource(kind) || isCraftOdTempSource(kind))
-                && output && "Q".equals(name)) return "NUMBER";
-        if (isCraftNamedVariableSource(kind) && output && "Q".equals(name))
-            return craftNamedVariableKind(kind) == 1 ? "BOOL" : "NUMBER";
-        if (isCraftNamedVariableSink(kind) && !output && "IN".equals(name))
-            return craftNamedVariableKind(kind) == 1 ? "BOOL" : "NUMBER";
-        if (kind.equals("FBD AND") || kind.equals("FBD OR") || kind.equals("FBD XOR")
-                || kind.equals("FBD NAND") || kind.equals("FBD NOR")) {
-            if (output && "Q".equals(name)) return "BOOL";
-            if (!output && ("IN1".equals(name) || "IN2".equals(name))) return "BOOL";
-        }
-        if (kind.equals("FBD ÐÐ•")) {
-            if (output && "Q".equals(name)) return "BOOL";
-            if (!output && "IN".equals(name)) return "BOOL";
-        }
-        if (kind.equals("FBD RS") || kind.equals("FBD SR")) {
-            if (output && "Q".equals(name)) return "BOOL";
-            if (!output && ("S".equals(name) || "R".equals(name))) return "BOOL";
-        }
-        if (kind.equals("FBD CRAFT T")) {
-            if (output && "Q".equals(name)) return "BOOL";
-            if (!output && "IN".equals(name)) return "BOOL";
-        }
-        if (kind.equals("FBD CRAFT TIMER")) {
-            if (output && "Q".equals(name)) return "BOOL";
-            if (!output && "IN".equals(name)) return "BOOL";
-            if (!output && ("MS".equals(name) || "PT".equals(name))) return "NUMBER";
-        }
-        if (kind.equals("FBD CRAFT ARITHMETIC INT")
-                || kind.equals("FBD CRAFT ARITHMETIC FLOAT")) {
-            if (output && "Q".equals(name)) return "NUMBER";
-            if (!output && ("IN1".equals(name) || "IN2".equals(name))) return "NUMBER";
-        }
-        if (kind.equals("FBD CRAFT COMPARE FLOAT")) {
-            if (output && "Q".equals(name)) return "BOOL";
-            if (!output && ("IN1".equals(name) || "IN2".equals(name))) return "NUMBER";
-        }
-        if (kind.equals("FBD R_TRIG") || kind.equals("FBD F_TRIG")) {
-            if (output && "Q".equals(name)) return "BOOL";
-            if (!output && "IN".equals(name)) return "BOOL";
-        }
-        if (kind.equals("FBD CRAFT CTU")) {
-            if (output && "Q".equals(name)) return "NUMBER";
-            if (!output && ("+".equals(name) || "-".equals(name) || "R".equals(name)))
-                return "BOOL";
-        }
-        if (kind.equals("FBD CTU") || kind.equals("FBD CTD")) {
-            if (output && "Q".equals(name)) return "BOOL";
-            if (!output && ("CU".equals(name) || "CD".equals(name)
-                    || "R".equals(name) || "LD".equals(name))) {
-                if (kind.equals("FBD CTU")) return ("CU".equals(name) || "R".equals(name)) ? "BOOL" : null;
-                return ("CD".equals(name) || "LD".equals(name)) ? "BOOL" : null;
-            }
-            if (!output && "PV".equals(name)) return "NUMBER";
-        }
-        if (kind.equals("FBD Ð¡Ð›ÐžÐ–Ð•ÐÐ˜Ð•") || kind.equals("FBD Ð’Ð«Ð§Ð˜Ð¢ÐÐÐ˜Ð•")
-                || kind.equals("FBD Ð£ÐœÐÐžÐ–Ð•ÐÐ˜Ð•") || kind.equals("FBD Ð”Ð•Ð›Ð•ÐÐ˜Ð•")
-                || kind.equals("FBD MIN_MAX")) {
-            if (output && "OUT".equals(name)) return "NUMBER";
-            if (!output && ("IN1".equals(name) || "IN2".equals(name))) return "NUMBER";
-        }
-        if (kind.equals("FBD Ð¡Ð ÐÐ’ÐÐ•ÐÐ˜Ð•")) {
-            if (output && "Q".equals(name)) return "BOOL";
-            if (!output && ("A".equals(name) || "B".equals(name))) return "NUMBER";
-        }
-        if (kind.equals("FBD MOVE")) {
-            if (output && "OUT".equals(name)) return "NUMBER";
-            if (!output && "IN".equals(name)) return "NUMBER";
-        }
-        if (kind.equals("FBD CRAFT COMPARE")) {
-            if (output && "Q".equals(name)) return "BOOL";
-            if (!output && ("IN1".equals(name) || "IN2".equals(name))) return "NUMBER";
-        }
-        if (kind.equals("FBD CRAFT CHANGE I") || kind.equals("FBD CRAFT CHANGE F")) {
-            if (output && "Q".equals(name)) return "BOOL";
-            if (!output && ("FBD CRAFT CHANGE I".equals(kind) ? "I" : "F").equals(name))
-                return "NUMBER";
-        }
-        if (kind.equals("FBD CRAFT MOVE")) {
-            if (output && "Q".equals(name)) return "NUMBER";
-            if (!output && "EN".equals(name)) return "BOOL";
-            if (!output && "I".equals(name)) return "NUMBER";
-        }
-        if (kind.equals("FBD CRAFT MX")) {
-            if (output && "Q".equals(name)) return "NUMBER";
-            if (!output && "EN".equals(name)) return "BOOL";
-            if (!output && "I".equals(name)) return "NUMBER";
-        }
-        if (kind.equals("FBD CRAFT ARRAY")) {
-            if (output && "Q".equals(name)) return "NUMBER";
-            if (!output && "EN".equals(name)) return "BOOL";
-            if (!output && ("DT".equals(name) || "ID".equals(name))) return "NUMBER";
-        }
-        if (kind.equals("FBD CRAFT LOG") || kind.equals("FBD CRAFT WORD TO FLOAT")
-                || kind.equals("FBD CRAFT SIN") || kind.equals("FBD CRAFT ABS")
-                || kind.equals("FBD CRAFT INT TO FLOAT") || kind.equals("FBD CRAFT FLOAT TO INT")) {
-            if (output && "OUT".equals(name)) return "NUMBER";
-            if (!output && "IN".equals(name)) return "NUMBER";
-        }
-        if (kind.equals("FBD CRAFT POW")) {
-            if (output && "Q".equals(name)) return "NUMBER";
-            if (!output && ("X".equals(name) || "Y".equals(name))) return "NUMBER";
-        }
-        if (kind.equals("FBD CRAFT SEL")) {
-            if (output && "Q".equals(name)) return "NUMBER";
-            if (!output && "IN".equals(name)) return "BOOL";
-            if (!output && ("I1".equals(name) || "I2".equals(name))) return "NUMBER";
-        }
-        if (kind.equals("FBD SEL")) {
-            if (output && "OUT".equals(name)) return "NUMBER";
-            if (!output && "G".equals(name)) return "BOOL";
-            if (!output && ("IN0".equals(name) || "IN1".equals(name))) return "NUMBER";
-        }
-        if (kind.equals("FBD POW")) {
-            if (output && "OUT".equals(name)) return "NUMBER";
-            if (!output && ("BASE".equals(name) || "EXP".equals(name))) return "NUMBER";
-        }
-        if (kind.equals("FBD SIN") || kind.equals("FBD ABS")
-                || kind.equals("FBD COS") || kind.equals("FBD TAN") || kind.equals("FBD SQRT")
-                || kind.equals("FBD FLOATTOINT") || kind.equals("FBD INTTOFLOAT")) {
-            if (output && "OUT".equals(name)) return "NUMBER";
-            if (!output && "IN".equals(name)) return "NUMBER";
-        }
-        if (kind.equals("FBD TON") || kind.equals("FBD TOF")
-                || kind.equals("FBD TP") || kind.equals("FBD CRAFT BLINK")
-                || kind.equals("FBD CRAFT TIMER")) {
-            if (output && "Q".equals(name)) return "BOOL";
-            if (!output && "IN".equals(name)) return "BOOL";
-            if (!output && "PT".equals(name)) return "NUMBER";
-        }
-        return null;
-    }
-
-    public static String[] knownFbdPins(Widget widget, boolean output) {
-        if (widget == null) return new String[0];
-        if ("FBD CRAFT MACRO".equals(canonicalFbdBlockType(widget.type))) {
-            FbdCraftMacroDefinition definition = macroDefinition(widget);
-            if (definition == null) return new String[0];
-            if (output) return new String[]{definition.getOutput().name};
-            String[] pins = new String[definition.getInputs().size()];
-            for (int i = 0; i < pins.length; i++) pins[i] = definition.getInputs().get(i).name;
-            return pins;
-        }
-        if ("FBD CRAFT MACRO IN".equals(canonicalFbdBlockType(widget.type)))
-            return output ? new String[]{"Q"} : new String[0];
-        return knownFbdPins(widget.type, output);
-    }
-
-    public static String knownFbdPinType(Widget widget, String pin, boolean output) {
-        if (widget == null || pin == null) return null;
-        String kind = canonicalFbdBlockType(widget.type);
-        String canonicalPin = canonicalFbdPinName(pin);
-        if ("FBD CRAFT MACRO".equals(kind)) {
-            FbdCraftMacroDefinition definition = macroDefinition(widget);
-            if (definition == null) return null;
-            FbdCraftMacroDefinition.Port port = output ? definition.getOutput() : null;
-            if (output && canonicalFbdPinName(port.name).equals(canonicalPin))
-                return port.type == 1 ? "BOOL" : "NUMBER";
-            if (!output) for (FbdCraftMacroDefinition.Port input : definition.getInputs())
-                if (canonicalFbdPinName(input.name).equals(canonicalPin))
-                    return input.type == 1 ? "BOOL" : "NUMBER";
-            return null;
-        }
-        if ("FBD CRAFT MACRO IN".equals(kind) && output && "Q".equals(canonicalPin)) {
-            int type = widget.extraFields.optInt("craftMacroPortType", -1);
-            return type == 1 ? "BOOL" : (type == 2 || type == 3 ? "NUMBER" : null);
-        }
-        return knownFbdPinType(widget.type, pin, output);
-    }
-
-    private static FbdCraftMacroDefinition macroDefinition(Widget widget) {
-        if (widget == null || widget.extraFields == null) return null;
-        JSONObject json = widget.extraFields.optJSONObject("craftMacroDefinition");
-        if (json == null) return null;
-        if (json == widget.craftMacroDefinitionSourceCache)
-            return widget.craftMacroDefinitionCache;
-        try {
-            widget.craftMacroDefinitionCache = FbdCraftMacroDefinition.fromJson(json.toString());
-            try {
-                widget.craftMacroDefinitionCache = FbdCraftMacroGraphAdapter.expandIfSupported(
-                        widget.craftMacroDefinitionCache);
-            } catch (Exception unsupportedLegacyGraph) {
-                // Keep the original macro inspectable and lossless; execution stays fail-closed.
-            }
-            widget.craftMacroDefinitionSourceCache = json;
-            return widget.craftMacroDefinitionCache;
-        } catch (Exception invalid) {
-            widget.craftMacroDefinitionCache = null;
-            widget.craftMacroDefinitionSourceCache = json;
-            return null;
-        }
-    }
-
-    private static boolean hasCraftMacroGraph(FbdCraftMacroDefinition definition) {
-        if (definition == null) return false;
-        try { return definition.toJson().optJSONObject("bloodskyGraph") != null; }
-        catch (Exception invalid) { return false; }
-    }
-
-    private static boolean isDynamicMacroWidget(Widget widget) {
-        String kind = widget == null ? "" : canonicalFbdBlockType(widget.type);
-        return "FBD CRAFT MACRO".equals(kind) || "FBD CRAFT MACRO IN".equals(kind);
-    }
-
-    /** Enforce known pin directions and types; preserve legacy unpinned connections. */
-    public static boolean hasCompatibleKnownFbdPins(JSONObject edge, String sourceType, String targetType) throws Exception {
-        if (!canLoadFbdConnection(edge)) return false;
-        if (!edge.has("sourcePin") && !edge.has("targetPin")) return true;
-        String sourcePin = edge.optString("sourcePin", "");
-        String targetPin = edge.optString("targetPin", "");
-        String sourceKnown = knownFbdPinType(sourceType, sourcePin, true);
-        String targetKnown = knownFbdPinType(targetType, targetPin, false);
-        boolean sourceBlockKnown = knownFbdPins(sourceType, true).length > 0
-                || knownFbdPins(sourceType, false).length > 0;
-        boolean targetBlockKnown = knownFbdPins(targetType, true).length > 0
-                || knownFbdPins(targetType, false).length > 0;
-        if ((sourceBlockKnown && sourceKnown == null) || (targetBlockKnown && targetKnown == null)) return false;
-        if (sourceKnown != null && targetKnown != null && !sourceKnown.equals(targetKnown)) return false;
-        if (sourceKnown != null && edge.has("sourceSignalType")
-                && !("ANY".equalsIgnoreCase(edge.optString("sourceSignalType"))
-                || sourceKnown.equalsIgnoreCase(edge.optString("sourceSignalType")))) return false;
-        if (targetKnown != null && edge.has("targetSignalType")
-                && !("ANY".equalsIgnoreCase(edge.optString("targetSignalType"))
-                || targetKnown.equalsIgnoreCase(edge.optString("targetSignalType")))) return false;
-        return true;
-    }
-
-    public static boolean hasCompatibleKnownFbdPins(JSONObject edge, Widget sourceWidget,
-                                                     Widget targetWidget) throws Exception {
-        if (sourceWidget == null || targetWidget == null || !canLoadFbdConnection(edge)) return false;
-        if (!edge.has("sourcePin") && !edge.has("targetPin")) return true;
-        String sourcePin = edge.optString("sourcePin", "");
-        String targetPin = edge.optString("targetPin", "");
-        String sourceKnown = knownFbdPinType(sourceWidget, sourcePin, true);
-        String targetKnown = knownFbdPinType(targetWidget, targetPin, false);
-        boolean sourceBlockKnown = knownFbdPins(sourceWidget, true).length > 0
-                || knownFbdPins(sourceWidget, false).length > 0;
-        boolean targetBlockKnown = knownFbdPins(targetWidget, true).length > 0
-                || knownFbdPins(targetWidget, false).length > 0;
-        if ((sourceBlockKnown && sourceKnown == null) || (targetBlockKnown && targetKnown == null)) return false;
-        if (sourceKnown != null && targetKnown != null && !sourceKnown.equals(targetKnown)) return false;
-        if (sourceKnown != null && edge.has("sourceSignalType")
-                && !("ANY".equalsIgnoreCase(edge.optString("sourceSignalType"))
-                || sourceKnown.equalsIgnoreCase(edge.optString("sourceSignalType")))) return false;
-        if (targetKnown != null && edge.has("targetSignalType")
-                && !("ANY".equalsIgnoreCase(edge.optString("targetSignalType"))
-                || targetKnown.equalsIgnoreCase(edge.optString("targetSignalType")))) return false;
-        return true;
-    }
-
-    /** Validate pin metadata on import while leaving legacy unpinned connections intact. */
-    public static boolean canLoadFbdConnection(JSONObject json) throws Exception {
-        if (json == null) return false;
-        FbdConnection edge = connectionFromJson(json);
-        return edge.source >= 0 && edge.target >= 0 && edge.source != edge.target
-                && hasCompatibleFbdSignalTypes(edge);
-    }
-
-    /** Create an explicitly pinned connection; reject malformed metadata before graph mutation. */
-    public static FbdConnection pinnedFbdConnection(int source, String sourcePin,
-                                                     int target, String targetPin) throws Exception {
-        if (source < 0 || target < 0 || source == target) {
-            throw new IllegalArgumentException("Invalid FBD endpoints");
-        }
-        JSONObject metadata = new JSONObject();
-        metadata.put("source", source);
-        metadata.put("target", target);
-        metadata.put("sourcePin", sourcePin);
-        metadata.put("targetPin", targetPin);
-        FbdConnection edge = connectionFromJson(metadata);
-        if (!hasValidFbdPinMetadata(edge)) {
-            throw new IllegalArgumentException("Invalid FBD pin metadata");
-        }
-        return edge;
-    }
-
-    /** Check whether an edge's explicit pin metadata is well-formed; legacy edges have no pins. */
-    public static boolean hasValidFbdPinMetadata(FbdConnection edge) {
-        if (edge == null || edge.extraFields == null) return false;
-        JSONObject json = edge.extraFields;
-        if (!json.has("sourcePin") && !json.has("targetPin")) return true;
-        if (!json.has("sourcePin") || !json.has("targetPin")) return false;
-        Object sourcePin = json.opt("sourcePin");
-        Object targetPin = json.opt("targetPin");
-        return sourcePin instanceof String && targetPin instanceof String
-                && !((String) sourcePin).trim().isEmpty()
-                && !((String) targetPin).trim().isEmpty();
-    }
-
-    /** A single source may drive distinct named pins on one target, but never twice the same pin. */
-    public static boolean duplicateFbdEndpoint(FbdConnection oldEdge, FbdConnection newEdge) {
-        if (oldEdge == null || newEdge == null || oldEdge.source != newEdge.source
-                || oldEdge.target != newEdge.target) return false;
-        String oldPin = canonicalFbdPinName(oldEdge.extraFields.optString("targetPin", ""));
-        String newPin = canonicalFbdPinName(newEdge.extraFields.optString("targetPin", ""));
-        return oldPin.isEmpty() || newPin.isEmpty() || oldPin.equals(newPin);
-    }
-
-    /** Remove a selected edge by identity, even if a legacy project contains duplicates. */
-    public static boolean disconnectFbdEdge(List<FbdConnection> connections, FbdConnection selected) {
-        return connections != null && selected != null && connections.remove(selected);
-    }
-
-    /** Remove only the selected directed edge; keep other edges and their metadata intact. */
-    public static boolean disconnectFbdEdge(List<FbdConnection> connections, int source, int target) {
-        if (connections == null || source < 0 || target < 0) return false;
-        for (int i = 0; i < connections.size(); i++) {
-            FbdConnection edge = connections.get(i);
-            if (edge != null && edge.source == source && edge.target == target) {
-                connections.remove(i);
-                return true;
-            }
-        }
-        return false;
-    }
-
-    public static boolean isFbdWidget(Widget widget) {
-        return widget != null && widget.type != null && widget.type.startsWith("FBD ");
-    }
-
-    private boolean isFbd(Widget widget) {
-        return isFbdWidget(widget);
-    }
-
-    public static boolean evaluateFbdBlock(List<Widget> widgetsList, List<FbdConnection> connectionsList,
-            int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric,
-            CraftSystemRegisterBank userRegisters) {
-        return evaluateFbdBlock(widgetsList, connectionsList, index, visiting, cacheValid, cacheValues,
-                cacheNumeric, userRegisters, false);
-    }
-
-    private static boolean evaluateFbdBlock(List<Widget> widgetsList, List<FbdConnection> connectionsList,
-            int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric,
-            CraftSystemRegisterBank userRegisters, boolean allowSystemRegisterWrites) {
-        CraftSystemRegisterBank previous = setActiveFbdSystemRegisterBank(userRegisters);
-        Boolean previousWriteState = ACTIVE_FBD_SYSTEM_REGISTER_WRITES.get();
-        ACTIVE_FBD_SYSTEM_REGISTER_WRITES.set(allowSystemRegisterWrites);
-        try {
-            return evaluateFbdBlock(widgetsList, connectionsList, index, visiting,
-                    cacheValid, cacheValues, cacheNumeric);
-        } finally {
-            restoreActiveFbdSystemRegisterBank(previous);
-            if (previousWriteState == null) ACTIVE_FBD_SYSTEM_REGISTER_WRITES.remove();
-            else ACTIVE_FBD_SYSTEM_REGISTER_WRITES.set(previousWriteState);
-        }
-    }
-
-    private static CraftSystemRegisterBank setActiveFbdSystemRegisterBank(
-            CraftSystemRegisterBank userRegisters) {
-        CraftSystemRegisterBank previous = ACTIVE_FBD_SYSTEM_REGISTER_BANK.get();
-        if (userRegisters == null) ACTIVE_FBD_SYSTEM_REGISTER_BANK.remove();
-        else ACTIVE_FBD_SYSTEM_REGISTER_BANK.set(userRegisters);
-        return previous;
-    }
-
-    private static void restoreActiveFbdSystemRegisterBank(CraftSystemRegisterBank previous) {
-        if (previous == null) ACTIVE_FBD_SYSTEM_REGISTER_BANK.remove();
-        else ACTIVE_FBD_SYSTEM_REGISTER_BANK.set(previous);
-    }
-
-    public static boolean evaluateFbdBlock(List<Widget> widgetsList, List<FbdConnection> connectionsList, int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
-        if (index < 0 || index >= widgetsList.size()) return false;
-        if (cacheValid[index]) return cacheValues[index];
-        boolean result = evaluateFbdBlockUncached(widgetsList, connectionsList, index, visiting, cacheValid, cacheValues, cacheNumeric);
-        if (isFbdBlockOutputInverted(widgetsList.get(index))
-                && hasCompleteInvertibleBooleanInputs(widgetsList, connectionsList, index)) result = !result;
-        cacheValues[index] = result;
-        cacheValid[index] = true;
-        return result;
-    }
-
-    /** Craft's inherited `invertOut` is supported only for source-backed Boolean Q outputs. */
-    public static boolean supportsFbdBlockOutputInversion(String type) {
-        if (type == null) return false;
-        String canonical = canonicalFbdBlockType(type);
-        return "FBD AND".equals(canonical) || "FBD OR".equals(canonical)
-                || "FBD XOR".equals(canonical) || "FBD CRAFT VAR BOOL".equals(canonical)
-                || (isCraftNamedVariableSource(canonical) && craftNamedVariableKind(canonical) == 1)
-                || "FBD RS".equals(canonical)
-                || "FBD CRAFT T".equals(canonical)
-                || "FBD CRAFT TIMER".equals(canonical)
-                || "FBD CRAFT BLINK".equals(canonical)
-                || "FBD CRAFT COMPARE".equals(canonical)
-                || "FBD CRAFT COMPARE FLOAT".equals(canonical)
-                || "FBD CRAFT CHANGE I".equals(canonical)
-                || "FBD CRAFT CHANGE F".equals(canonical);
-    }
-
-    private static boolean hasCompleteInvertibleBooleanInputs(List<Widget> widgets,
-                                                               List<FbdConnection> connections,
-                                                               int targetIndex) {
-        if (widgets == null || targetIndex < 0 || targetIndex >= widgets.size()) return false;
-        Widget target = widgets.get(targetIndex);
-        if (isCraftRegisterBoolean(target.type)
-                || (isCraftNamedVariableSource(target.type) && craftNamedVariableKind(target.type) == 1))
-            return true;
-        if ("FBD AND".equals(canonicalFbdBlockType(target.type))
-                || "FBD OR".equals(canonicalFbdBlockType(target.type))
-                || "FBD XOR".equals(canonicalFbdBlockType(target.type)))
-            return hasCompleteCraftGateInputs(widgets, connections, targetIndex);
-        if (!supportsFbdBlockOutputInversion(target.type) || connections == null) return false;
-
-        String[] required = knownFbdPins(target.type, false);
-        if (required.length == 0) return false;
-        java.util.Set<String> requiredPins = new java.util.HashSet<>();
-        java.util.Set<String> connectedPins = new java.util.HashSet<>();
-        for (String pin : required) requiredPins.add(canonicalFbdPinName(pin));
-        int legacyInputs = 0;
-        boolean sawNamed = false, sawLegacy = false;
-        for (FbdConnection edge : connections) {
-            if (edge == null || edge.target != targetIndex) continue;
-            if (edge.source < 0 || edge.source >= widgets.size() || edge.extraFields == null) return false;
-            String targetPin = canonicalFbdPinName(edge.extraFields.optString("targetPin", ""));
-            if (targetPin.isEmpty()) { sawLegacy = true; legacyInputs++; }
-            else {
-                sawNamed = true;
-                if (!requiredPins.contains(targetPin) || !connectedPins.add(targetPin)) return false;
-            }
-        }
-        if (sawNamed && sawLegacy) return false;
-        if (sawNamed ? connectedPins.size() != requiredPins.size()
-                : legacyInputs != requiredPins.size()) return false;
-
-        int legacyIndex = 0;
-        for (FbdConnection edge : connections) {
-            if (edge == null || edge.target != targetIndex) continue;
-            Widget source = widgets.get(edge.source);
-            if (source == null) return false;
-            String sourcePin = canonicalFbdPinName(edge.extraFields.optString("sourcePin", ""));
-            String targetPin = canonicalFbdPinName(edge.extraFields.optString("targetPin", ""));
-            if (targetPin.isEmpty()) targetPin = canonicalFbdPinName(required[legacyIndex++]);
-            String[] sourcePins = knownFbdPins(source.type, true);
-            if (sourcePin.isEmpty()) {
-                if (sourcePins.length != 1) return false;
-                sourcePin = canonicalFbdPinName(sourcePins[0]);
-            }
-            String sourceSignal = knownFbdPinType(source.type, sourcePin, true);
-            String targetSignal = knownFbdPinType(target.type, targetPin, false);
-            if (sourceSignal == null || targetSignal == null || !sourceSignal.equals(targetSignal))
-                return false;
-        }
-        return true;
-    }
-
-    private static boolean hasCompleteCraftGateInputs(List<Widget> widgets,
-                                                       List<FbdConnection> connections,
-                                                       int targetIndex) {
-        if (connections == null) return false;
-        java.util.Set<String> named = new java.util.HashSet<>();
-        int legacyCount = 0;
-        boolean sawNamed = false, sawLegacy = false;
-        for (FbdConnection edge : connections) {
-            if (edge == null || edge.target != targetIndex) continue;
-            if (edge.source < 0 || edge.source >= widgets.size() || edge.extraFields == null)
-                return false;
-            String sourcePin = canonicalFbdPinName(edge.extraFields.optString("sourcePin", ""));
-            String[] sourcePins = knownFbdPins(widgets.get(edge.source).type, true);
-            if (sourcePin.isEmpty()) {
-                if (sourcePins.length != 1 || !"BOOL".equals(knownFbdPinType(
-                        widgets.get(edge.source).type, sourcePins[0], true))) return false;
-            } else if (!"BOOL".equals(knownFbdPinType(
-                    widgets.get(edge.source).type, sourcePin, true))) return false;
-            String targetPin = canonicalFbdPinName(edge.extraFields.optString("targetPin", ""));
-            if (targetPin.isEmpty()) { sawLegacy = true; legacyCount++; }
-            else { sawNamed = true; named.add(targetPin); }
-        }
-        if (sawNamed && sawLegacy) return false;
-        return sawNamed ? named.size() == 2 && named.contains("IN1") && named.contains("IN2")
-                : legacyCount == 2;
-    }
-
-    public static boolean isFbdBlockOutputInverted(Widget widget) {
-        return widget != null && widget.extraFields != null
-                && supportsFbdBlockOutputInversion(widget.type)
-                && widget.extraFields.optBoolean("invertOut", false);
-    }
-
-    /** Toggle only the known Craft-compatible field, retaining every other JSON field. */
-    public static boolean toggleFbdBlockOutputInversion(Widget widget) throws Exception {
-        if (widget == null || !supportsFbdBlockOutputInversion(widget.type)) return false;
-        if (widget.extraFields == null) widget.extraFields = new JSONObject();
-        widget.extraFields.put("invertOut", !isFbdBlockOutputInverted(widget));
-        return true;
-    }
-
-    public static double evaluateFbdBlockNumeric(List<Widget> widgetsList, List<FbdConnection> connectionsList,
-            int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric,
-            CraftSystemRegisterBank userRegisters) {
-        CraftSystemRegisterBank previous = setActiveFbdSystemRegisterBank(userRegisters);
-        try {
-            return evaluateFbdBlockNumeric(widgetsList, connectionsList, index, visiting,
-                    cacheValid, cacheValues, cacheNumeric);
-        } finally {
-            restoreActiveFbdSystemRegisterBank(previous);
-        }
-    }
-
-    public static double evaluateFbdBlockNumeric(List<Widget> widgetsList, List<FbdConnection> connectionsList, int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
-        if (index < 0 || index >= widgetsList.size()) return 0.0;
-        evaluateFbdBlock(widgetsList, connectionsList, index, visiting, cacheValid, cacheValues, cacheNumeric);
-        return cacheNumeric[index];
-    }
-
-    /** Pinned wires are addressed by their target terminal, never by insertion order. */
-    public static boolean fbdBooleanPinValue(List<Boolean> values, List<String> pins,
-                                             String targetPin, int legacyIndex) {
-        if (values == null || pins == null) return false;
-        String requested = canonicalFbdPinName(targetPin);
-        if (requested.isEmpty()) return false;
-        for (int i = 0; i < values.size() && i < pins.size(); i++) {
-            if (requested.equals(canonicalFbdPinName(pins.get(i)))) return Boolean.TRUE.equals(values.get(i));
-        }
-        // Old projects have no pin names; keep their original positional behavior.
-        boolean hasNamedPin = false;
-        for (String pin : pins) if (!canonicalFbdPinName(pin).isEmpty()) hasNamedPin = true;
-        return !hasNamedPin && legacyIndex >= 0 && legacyIndex < values.size()
-                && Boolean.TRUE.equals(values.get(legacyIndex));
-    }
-
-    /** Imported unnamed graphs retain positional math; new named ones use terminals. */
-    public static boolean hasNamedFbdInput(List<String> pins) {
-        if (pins == null) return false;
-        for (String pin : pins) if (!canonicalFbdPinName(pin).isEmpty()) return true;
-        return false;
-    }
-
-    /** Numeric terminal lookup; unnamed legacy connections retain their positional index. */
-    public static double fbdNumericPinValue(List<Double> values, List<String> pins,
-                                            String targetPin, int legacyIndex, double defaultValue) {
-        if (values == null || pins == null) return defaultValue;
-        String requested = canonicalFbdPinName(targetPin);
-        if (requested.isEmpty()) return defaultValue;
-        for (int i = 0; i < values.size() && i < pins.size(); i++) {
-            if (requested.equals(canonicalFbdPinName(pins.get(i)))) {
-                Double value = values.get(i);
-                return value != null && !Double.isNaN(value) && !Double.isInfinite(value)
-                        ? value : defaultValue;
-            }
-        }
-        for (String pin : pins) {
-            if (!canonicalFbdPinName(pin).isEmpty()) return defaultValue;
-        }
-        if (legacyIndex < 0 || legacyIndex >= values.size()) return defaultValue;
-        Double value = values.get(legacyIndex);
-        return value != null && !Double.isNaN(value) && !Double.isInfinite(value)
-                ? value : defaultValue;
-    }
-
-    /** Counter transition functions are deterministic and independent of the Android clock. */
-    public static int fbdCountUpStep(int current, boolean count, boolean previousCount,
-                                      boolean reset) {
-        if (reset) return 0;
-        int bounded = Math.max(0, Math.min(1000000, current));
-        return count && !previousCount && bounded < 1000000 ? bounded + 1 : bounded;
-    }
-
-    public static int fbdCountDownStep(int current, boolean count, boolean previousCount,
-                                        boolean load, int preset) {
-        if (load) return Math.max(0, Math.min(1000000, preset));
-        int bounded = Math.max(0, Math.min(1000000, current));
-        return count && !previousCount && bounded > 0 ? bounded - 1 : bounded;
-    }
-
-    /** Counter preset is a nonnegative integer; preserve saved preset for invalid PV. */
-    public static int fbdCounterPreset(List<Double> values, List<String> pins, int configured) {
-        int fallback = Math.max(0, Math.min(1000000, configured));
-        double value = fbdNumericPinValue(values, pins, "PV", -1, fallback);
-        if (value < 0 || value > 1000000 || Double.isNaN(value) || Double.isInfinite(value))
-            return fallback;
-        return (int) Math.round(value);
-    }
-
-    /** PT uses milliseconds in the current BLOODSKY runtime; original Craft parity remains under audit. */
-    public static long fbdTonPresetMs(List<Double> values, List<String> pins, int configuredMs) {
-        long fallback = Math.max(1L, Math.min(3600000L, (long) configuredMs));
-        double raw = fbdNumericPinValue(values, pins, "PT", -1, fallback);
-        if (raw < 1.0 || raw > 3600000.0 || Double.isNaN(raw) || Double.isInfinite(raw))
-            return fallback;
-        return Math.round(raw);
-    }
-
-    /** Original FB_TIMER.f() returns without changing state until IN and MS resolve. */
-    public static boolean fbdCraftTimerInputsReady(List<Double> values, List<String> pins) {
-        double input = fbdNumericPinValue(values, pins, "IN", 0, Double.NaN);
-        double millis = fbdNumericPinValue(values, pins, "MS", 1, Double.NaN);
-        if (Double.isNaN(millis)) millis = fbdNumericPinValue(values, pins, "PT", 1, Double.NaN);
-        return Double.isFinite(input) && FbdCraftIntegerSelector.exactInteger(millis) != null;
-    }
-
-    /** Original FB_TIMER takes an Integer MS input; PT remains a legacy BLOODSKY alias. */
-    public static long fbdCraftTimerPresetMs(List<Double> values, List<String> pins,
-                                             int configuredMs, String unit) {
-        double raw = fbdNumericPinValue(values, pins, "MS", -1, Double.NaN);
-        if (Double.isNaN(raw)) raw = fbdNumericPinValue(values, pins, "PT", -1, Double.NaN);
-        if (Double.isNaN(raw)) return Math.max(1, Math.min(3600000, configuredMs));
-        Integer exact = FbdCraftIntegerSelector.exactInteger(raw);
-        if (exact == null) return Math.max(1, Math.min(3600000, configuredMs));
-        String normalized = FbdDurationUnits.normalize(unit);
-        int code = "SEK".equals(normalized) ? 2 : "MIN".equals(normalized) ? 3 : 1;
-        try {
-            return FbdCraftNativeTimer.durationMillis(exact, code);
-        } catch (IllegalArgumentException invalid) {
-            return Math.max(1, Math.min(3600000, configuredMs));
-        }
-    }
-
-    /** Source LOG consumes and returns Float, so preserve its Float32 rounding. */
-    public static double fbdCraftLogFloat32(double value) {
-        if (Double.isNaN(value) || Double.isInfinite(value)) return Double.NaN;
-        return (float) Math.log((float) value);
-    }
-
-    /** Source WordToFloat accepts a Java Integer and returns its Float value. */
-    public static double fbdCraftWordToFloat(double value) {
-        Integer exact = FbdCraftIntegerSelector.exactInteger(value);
-        return exact == null ? Double.NaN : (float) exact.intValue();
-    }
-
-    /** Original IntToFloat narrows the signed Integer to Java short first. */
-    public static double fbdCraftIntToFloat(double value) {
-        Integer exact = FbdCraftIntegerSelector.exactInteger(value);
-        return exact == null ? Double.NaN : (float) (short) exact.intValue();
-    }
-
-    /** Original FloatToInt casts a Float to int, truncating toward zero. */
-    public static double fbdCraftFloatToInt(double value) {
-        if (!Double.isFinite(value)) return Double.NaN;
-        return (int) (float) value;
-    }
-
-    public static double fbdCraftUnaryFloat32(double value, String operation) {
-        if (!Double.isFinite(value)) return Double.NaN;
-        float input = (float) value;
-        float result;
-        if ("ABS".equals(operation)) result = Math.abs(input);
-        else if ("SIN".equals(operation)) result = (float) Math.sin(input);
-        else return Double.NaN;
-        return Float.isFinite(result) ? result : Double.NaN;
-    }
-
-    public static double fbdCraftPowFloat32(double x, double y) {
-        if (!Double.isFinite(x) || !Double.isFinite(y)) return Double.NaN;
-        float result = (float) Math.pow((float) x, (float) y);
-        return Float.isFinite(result) ? result : Double.NaN;
-    }
-
-    public static boolean evaluateFbdBlockUncached(List<Widget> widgetsList, List<FbdConnection> connectionsList,
-            int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric,
-            CraftSystemRegisterBank userRegisters) {
-        CraftSystemRegisterBank previous = setActiveFbdSystemRegisterBank(userRegisters);
-        try {
-            return evaluateFbdBlockUncached(widgetsList, connectionsList, index, visiting,
-                    cacheValid, cacheValues, cacheNumeric);
-        } finally {
-            restoreActiveFbdSystemRegisterBank(previous);
-        }
-    }
-
-    public static boolean evaluateFbdBlockUncached(List<Widget> widgetsList, List<FbdConnection> connectionsList, int index, boolean[] visiting, boolean[] cacheValid, boolean[] cacheValues, double[] cacheNumeric) {
-        if (index < 0 || index >= widgetsList.size() || visiting[index]) return false;
-        Widget widget = widgetsList.get(index);
-        if (!isFbdWidget(widget)) return false;
-        if ("FBD CRAFT MACRO".equals(canonicalFbdBlockType(widget.type)))
-            return evaluateCraftMacroBlock(widgetsList, connectionsList, index, visiting,
-                    cacheValid, cacheValues, cacheNumeric);
-        if ("FBD CRAFT MACRO IN".equals(canonicalFbdBlockType(widget.type))) {
-            double value = widget.craftMacroInputValid ? widget.craftMacroInputValue : Double.NaN;
-            cacheNumeric[index] = value;
-            return Double.isFinite(value) && value != 0.0;
-        }
-        if (isCraftMqttSubscriber(widget.type)) {
-            double value = widget.craftMqttValue == null ? Double.NaN : widget.craftMqttValue;
-            cacheNumeric[index] = value;
-            return Double.isFinite(value) && value != 0.0;
-        }
-        if (isCraftOdTempSource(widget.type)) {
-            double value = widget.craftSensorValid ? widget.craftSensorValue : Double.NaN;
-            cacheNumeric[index] = value;
-            return Double.isFinite(value) && value != 0.0;
-        }
-        if (isCraftSunriseSource(widget.type)) {
-            int value = FbdCraftSunrise.currentLocalHhmm(
-                    widget.extraFields.optDouble("latitude", Double.NaN),
-                    widget.extraFields.optDouble("longitude", Double.NaN),
-                    "SS".equals(craftSunriseMode(widget)),
-                    System.currentTimeMillis(), java.util.TimeZone.getDefault());
-            cacheNumeric[index] = value;
-            return value != 0;
-        }
-        if (isCraftFbdSensorSource(widget.type)) {
-            double value = Double.NaN;
-            if (widget.craftSensorValid) {
-                if ("FBD CRAFT SENSOR LIGHT".equals(widget.type)
-                        || "FBD CRAFT SENSOR SPEED".equals(widget.type)) value = widget.craftSensorValue;
-                else {
-                    int axis = craftOrientationAxis(widget);
-                    if (axis >= 1 && axis <= 3) value = widget.craftOrientationValues[axis - 1];
-                }
-            }
-            cacheNumeric[index] = value;
-            return Double.isFinite(value) && value != 0.0;
-        }
-        if (isCraftNamedVariableSource(widget.type)) {
-            int kind = craftNamedVariableKind(widget.type);
-            double value = FbdCraftNamedVariableStore.read(widget.craftVariableNamespace,
-                    craftNamedVariableName(widget), kind);
-            if (widget.extraFields.optBoolean("craftNamedConstantMode",
-                    widget.extraFields.optBoolean("isConstant", false))) {
-                try { value = Double.parseDouble(widget.extraFields.optString("craftNamedConstant",
-                        widget.extraFields.optString("constant", "0"))); }
-                catch (Exception ignored) { value = Double.NaN; }
-            }
-            cacheNumeric[index] = value;
-            return Double.isFinite(value) && value != 0.0;
-        }
-        if (isCraftRegisterSource(widget.type)) {
-            double value = Double.NaN;
-            if (widget.extraFields.optBoolean("craftVarConstantMode", false)) {
-                try { value = Double.parseDouble(widget.extraFields.optString("craftVarConstant", "0")); }
-                catch (Exception ignored) { value = Double.NaN; }
-            } else {
-                String connection = widget.connectionInfo == null ? "" : widget.connectionInfo.trim();
-                if (widget.craftRegisterValid) {
-                    try {
-                        if (isCraftRegisterBoolean(widget.type))
-                            value = FbdCraftRegisterCodec.booleanValue(widget.craftRegisterWord0,
-                                    widget.extraFields.optInt("craftVarBit", 0), false) ? 1.0 : 0.0;
-                        else if ("FBD CRAFT VAR INT".equals(canonicalFbdBlockType(widget.type)))
-                            value = widget.craftRegisterWord0;
-                        else value = FbdCraftRegisterCodec.floatValue(widget.craftRegisterWord0,
-                                    widget.craftRegisterWord1);
-                    } catch (Exception ignored) { value = Double.NaN; }
-                } else if (connection.isEmpty()) {
-                    try {
-                        CraftSystemRegisterBank bank = ACTIVE_FBD_SYSTEM_REGISTER_BANK.get();
-                        int address = widget.extraFields.optInt("reg", -1);
-                        if (isCraftRegisterBoolean(widget.type))
-                            value = CraftSystemRegisterAccess.readBool(address,
-                                    widget.extraFields.optInt("bit", widget.extraFields.optInt("craftVarBit", 0)),
-                                    false, bank) ? 1.0 : 0.0;
-                        else if ("FBD CRAFT VAR INT".equals(canonicalFbdBlockType(widget.type)))
-                            value = CraftSystemRegisterAccess.readInt(address, bank);
-                        else value = CraftSystemRegisterAccess.readFloat(address,
-                                    widget.extraFields.optBoolean("craftSwapWord", false),
-                                    widget.extraFields.optBoolean("craftSwapByte", false), bank);
-                    } catch (Exception ignored) { value = Double.NaN; }
-                }
-            }
-            cacheNumeric[index] = value;
-            return Double.isFinite(value) && value != 0.0;
-        }
-        if ("FBD Ð’Ñ…Ð¾Ð´".equals(widget.type)) {
-            cacheNumeric[index] = widget.inputValue ? 1.0 : 0.0;
-            return widget.inputValue;
-        }
-        visiting[index] = true;
-        List<Boolean> inputs = new ArrayList<>();
-        List<Double> numInputs = new ArrayList<>();
-        List<String> inputPins = new ArrayList<>();
-        if (connectionsList != null) {
-            for (FbdConnection connection : connectionsList) {
-                if (connection.target == index) {
-                    inputPins.add(connection.extraFields.optString("targetPin", ""));
-                    boolean sourceValue = evaluateFbdBlock(widgetsList, connectionsList, connection.source,
-                            visiting, cacheValid, cacheValues, cacheNumeric);
-                    String sourceType = connection.source >= 0 && connection.source < widgetsList.size()
-                            ? widgetsList.get(connection.source).type : "";
-                    inputs.add(effectiveFbdBooleanInput(connection, sourceType, widget.type, sourceValue));
-                    numInputs.add(evaluateFbdBlockNumeric(widgetsList, connectionsList, connection.source,
-                            visiting, cacheValid, cacheValues, cacheNumeric));
-                }
-            }
-        }
-        visiting[index] = false;
-        final String canonicalType = canonicalFbdBlockType(widget.type);
-
-        if (isCraftRegisterSink(widget.type)) {
-            if (inputPins.isEmpty()) cacheNumeric[index] = Double.NaN;
-            else if (isCraftRegisterBoolean(widget.type)) cacheNumeric[index] = inputs.get(0) ? 1.0 : 0.0;
-            else cacheNumeric[index] = numInputs.get(0);
-            String connection = widget.connectionInfo == null ? "" : widget.connectionInfo.trim();
-            if (Boolean.TRUE.equals(ACTIVE_FBD_SYSTEM_REGISTER_WRITES.get()) && connection.isEmpty()
-                    && Double.isFinite(cacheNumeric[index])) {
-                try {
-                    int address = widget.extraFields.optInt("reg", -1);
-                    CraftSystemRegisterBank bank = ACTIVE_FBD_SYSTEM_REGISTER_BANK.get();
-                    if (isCraftRegisterBoolean(widget.type)) {
-                        CraftSystemRegisterAccess.writeBool(address,
-                                widget.extraFields.optInt("bit", widget.extraFields.optInt("craftVarBit", 0)),
-                                cacheNumeric[index] != 0.0, android.os.SystemClock.elapsedRealtime(), bank);
-                    } else if ("FBD CRAFT VAR OUT INT".equals(canonicalFbdBlockType(widget.type))) {
-                        double numeric = cacheNumeric[index];
-                        if (numeric == Math.rint(numeric) && numeric >= Integer.MIN_VALUE && numeric <= Integer.MAX_VALUE)
-                            CraftSystemRegisterAccess.writeInt(address, (int) numeric, bank);
-                    } else if (Math.abs(cacheNumeric[index]) <= Float.MAX_VALUE) {
-                        CraftSystemRegisterAccess.writeFloat(address, (float) cacheNumeric[index],
-                                widget.extraFields.optBoolean("craftSwapWord", false),
-                                widget.extraFields.optBoolean("craftSwapByte", false), bank,
-                                android.os.SystemClock.elapsedRealtime());
-                    }
-                } catch (Exception ignored) { }
-            }
-            return !Double.isNaN(cacheNumeric[index]) && cacheNumeric[index] != 0.0;
-        }
-        if (isCraftNamedVariableSink(widget.type)) {
-            if (inputPins.isEmpty()) cacheNumeric[index] = Double.NaN;
-            else cacheNumeric[index] = isCraftNamedVariableSink(widget.type) && craftNamedVariableKind(widget.type) == 1
-                    ? (inputs.get(0) ? 1.0 : 0.0) : numInputs.get(0);
-            if (Double.isFinite(cacheNumeric[index])) FbdCraftNamedVariableStore.write(
-                    widget.craftVariableNamespace, craftNamedVariableName(widget),
-                    craftNamedVariableKind(widget.type), cacheNumeric[index]);
-            return Double.isFinite(cacheNumeric[index]) && cacheNumeric[index] != 0.0;
-        }
-
-        if ("FBD Ð¡Ð»Ð¾Ð¶ÐµÐ½Ð¸Ðµ".equals(widget.type)) {
-            double sum = 0.0;
-            if (hasNamedFbdInput(inputPins)) {
-                sum = fbdNumericPinValue(numInputs, inputPins, "IN1", 0, 0.0)
-                        + fbdNumericPinValue(numInputs, inputPins, "IN2", 1, 0.0);
-            } else for (Double v : numInputs) sum += v;
-            if (Double.isNaN(sum) || Double.isInfinite(sum)) sum = 0.0;
-            cacheNumeric[index] = sum;
-            return sum != 0.0;
-        }
-        if ("FBD Ð’Ñ‹Ñ‡Ð¸Ñ‚Ð°Ð½Ð¸Ðµ".equals(widget.type)) {
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíÛO}ßdèµ©hºÚn¶X§zÍ\XÚØYÙHÛÛK˜›ÛÙÚÞKšZNÂ‚š[\Ü[™›ÚY˜\XÝ]š]NÂš[\Ü[™›ÚY˜\[\X[ÙÎÂš[\Ü[™›ÚY˜ÛÛ[’[[Âš[\Ü[™›ÚY›™]•\šNÂš[\Ü[™›ÚY›ÜË[™NÂš[\Ü[™›ÚY›ÜË”Þ\Ý[PÛØÚÎÂš[\Ü[™›ÚY›ÜË’[™\ŽÂš[\Ü[™›ÚY›ÜË“ÛÜ\ŽÂš[\Ü[™›ÚY™Ü˜\XÜËš]X\Âš[\Ü[™›ÚY™Ü˜\XÜËš]X\˜XÝÜžNÂš[\Ü[™›ÚY™Ü˜\XÜËØ[˜\ÎÂš[\Ü[™›ÚY™Ü˜\XÜËÛÛÜŽÂš[\Ü[™›ÚY™Ü˜\XÜË”Z[Âš[\Ü[™›ÚY™Ü˜\XÜË”™XÝÂš[\Ü[™›ÚY™Ü˜\XÜË”™XÝŽÂš[\Ü[™›ÚY™Ü˜\XÜË™˜]ØX›K‘Ü˜YY[˜]ØX›NÂš[\Ü[™›ÚY›YYXK]Y[ÓX[˜YÙ\ŽÂš[\Ü[™›ÚY›YYXK“YYXT^Y\ŽÂš[\Ü[™›ÚY›YYXK•Û™QÙ[™\˜]ÜŽÂš[\Ü[™›ÚYœÜYXÚË•^ÔÜYXÚÂš[\Ü[™›ÚY^’[œ]\NÂš[\Ü[™›ÚYšY]Ë‘Ü˜]š]NÂš[\Ü[™›ÚYšY]Ë“[Ý[Û‘]™[Âš[\Ü[™›ÚYšY]Ë•šY]ÎÂš[\Ü[™›ÚYšY]Ë•šY]ÑÜ›Ý\Âš[\Ü[™›ÚYÚYÙ]]ÛŽÂš[\Ü[™›ÚYÚYÙ]‘Y]^Âš[\Ü[™›ÚYÚYÙ]‘œ˜[YS^[Ý]Âš[\Ü[™›ÚYÚYÙ]’[XYÙUšY]ÎÂš[\Ü[™›ÚYÚYÙ]“[™X\“^[Ý]Âš[\Ü[™›ÚYÚYÙ]•^šY]ÎÂš[\Ü[™›ÚYÚYÙ]”ØÜ›ÛšY]ÎÂš[\Ü[™›ÚYÚYÙ]”Ü[›™\ŽÂš[\Ü[™›ÚYÚYÙ]\œ˜^PY\\ŽÂš[\Ü[™›ÚYÚYÙ]•Ø\ÝÂš[\ÜÜ™ËšœÛÛ‹’”ÓÓ\œ˜^NÂš[\ÜÜ™ËšœÛÛ‹’”ÓÓ“Øš™XÝÂš[\Ü˜]˜Kš[Ëž]P\œ˜^SÝ]]Ý™X[NÂš[\Ü˜]˜Kš[Ë’[œ]Ý™X[NÂš[\Ü˜]˜Kš[Ë“Ý]]Ý™X[NÂš[\Ü˜]˜K›š[Ë˜Ú\œÙ]”Ý[™\™Ú\œÙ]ÎÂš[\Ü˜]˜K][\œ˜^S\ÝÂš[\Ü˜]˜K][“[šÙY\ÚX\Âš[\Ü˜]˜K][“\ÝÂš[\Ü˜]˜K›™]’[™]ÛØÚÙ]Y™\ÜÎÂš[\Ü˜]˜K›™]”ÛØÚÙ]Âš[\Ü˜]˜K›™]•T’NÂš[\Ü˜]˜K][’\ÚX\Âš[\Ü˜]˜K][“X\Âš[\Ü˜]˜K][˜ÛÛ˜Ý\œ™[‘^XÝ]Ü”Ù\šXÙNÂš[\Ü˜]˜K][˜ÛÛ˜Ý\œ™[‘^XÝ]ÜœÎÂš[\Ü˜]˜Kš[Ë‘]R[œ]Ý™X[NÂš[\Ü˜]˜Kš[Ë’SÑ^Ù\[ÛŽÂš[\Ü˜]˜Kš[Ë‘]SÝ]]Ý™X[NÂ‚œX›XÈÛ\ÜÈXZ[XÝ]š]H^[™ÈXÝ]š]HÂˆš]˜]HÝ]XÈš[˜[[PVÔ“Ò‘PÕÐTÒU‘WÑS•’QTÈHŒÌÂˆš]˜]HÝ]XÈš[˜[Ýš[™È‘Q”ÈH˜›ÛÙÚÞWÜ›Ú™XÝÈŽÂˆš]˜]HÝ]XÈš[˜[™XYØØ[Ü˜YÞ\Ý[T™YÚ\Ý\˜[šÏˆPÕU‘WÑ‘ÔÖTÕSWÔ‘QÒTÕT—ÐS’ÈH™]È™XYØØ[Š
+NÂˆš]˜]HÝ]XÈš[˜[™XYØØ[›ÛÛX[ˆPÕU‘WÑ‘ÔÖTÕSWÔ‘QÒTÕT—ÕÔ’UTÈH™]È™XYØØ[Š
+NÂˆš]˜]HÝ]XÈš[˜[Ýš[™ÈPÕU‘WÔ“Ò‘PÕH˜XÝ]™WÜ›Ú™XÝŽÂˆš]˜]HÝ]XÈš[˜[Ýš[™È“Ò‘PÕÐÐUSÑÈHœ›Ú™XÝØØ][Ù×ÝŒHŽÂˆš]˜]HÝ]XÈš[˜[Ýš[™ÈSQÔSWÔ‘Q”ÈH˜›ÛÙÚÞWÝ[YÜ˜[HŽÂˆš]˜]HÝ]XÈš[˜[[‘TUQTÕÑVÔ•Ô“Ò‘PÕHÌLNÂˆš]˜]HÝ]XÈš[˜[[‘TUQTÕÒSTÔ•Ô“Ò‘PÕHÌLŽÂˆš]˜]HÝ]XÈš[˜[[‘TUQTÕÔPÒ×ÓQQPHHÌLÎÂˆš]˜]HÝ]XÈš[˜[[‘TUQTÕÑVÔ•Ô“Ò‘PÕÖ’THÌLÂˆš]˜]HÝ]XÈš[˜[[‘TUQTÕÒSTÔ•ÐÔQ•ÓPPÔ“ÈHÌLNÂˆš]˜]HÝ]XÈš[˜[[‘TUQTÕÑVÔ•ÐÔQ•ÓPPÔ“ÈHÌLŽÂˆš]˜]HÝ]XÈš[˜[[‘TUQTÕÑVÔ•ÓÐÐSÐTÒU‘HHÌLÎÂˆš]˜]Hž]V×H[™[™ÐÜ˜YXXÜ›Ñ^ÜÂˆš]˜]HÝš[™È[™[™Ð\˜Ú]™T›Ú™XÝY[™[™Ð\˜Ú]™UÚYÙ]Ù^K[™[™Ð\˜Ú]™U]NÂˆš]˜]HY]^[™[™ÓYYXQšY[Âˆš]˜]H[\X[ÙÈXÝ]™T›Ü\Y\ÑX[ÙÎÂˆš]˜]H[™X\“^[Ý]XÝ]™T›Ü\Y\Ñ›Ü›NÂˆš]˜]H[[™[™ÓYYXUÚYÙ][™^HLNÂˆš]˜]HÝš[™È[™[™ÓYYXQšY[]Âˆš]˜]H[[™[™ÓYYXPÛÜPÛÝ[Âˆš]˜]Hš[˜[X\[\X[ÙË\Ý[™[™ÓYYXPÛÜOˆ[™[™ÓYYXPÛÜY\ÈH™]È˜]˜K][’Y[]R\ÚX\Š
+NÂˆš]˜]HÝš[™È›Ú™XÝ˜[YHH´'4/´.H4/ô`4/´-t.´`ˆŽÂˆš]˜]H”ÓÓ“Øš™XÝ›Ú™XÝ^˜QšY[ÈH™]È”ÓÓ“Øš™XÝ
+
+NÂˆš]˜]Hš[˜[Ü˜YÞ\Ý[T™YÚ\Ý\˜[šÈÞ\Ý[T™YÚ\Ý\˜[šÈH™]ÈÜ˜YÞ\Ý[T™YÚ\Ý\˜[šÊ
+NÂˆš]˜]H›ÛÛX[ˆÞ\Ý[T™YÚ\Ý\˜[šÔ\œÚ\ÝX›HHYNÂˆš]˜]H[™X\“^[Ý]›ÛÝÂˆš]˜]H[™›ÚYÚYÙ]”Ü\Ú[™ÝÈÛÝ\˜ÙSÝ™\™›ÝÔÜ\Âˆš]˜]HY]ÜØ[˜\ÈY]ÜŽÂˆš]˜]Hš[˜[\ÝÚYÙ]ˆÚYÙ]ÈH™]È\œ˜^S\ÝŠ
+NÂˆš]˜]Hš[˜[\ÝØÜ™Y[ˆØÜ™Y[œÈH™]È\œ˜^S\ÝŠ
+NÂˆš]˜]H[Ý\œ™[ØÜ™Y[’[™^HÂˆš]˜]H™\ÝYXXÜ›ÑY]Ù\ÜÚ[Ûˆ™\ÝYXXÜ›ÑY]Âˆš]˜]HÚYÙ]Û\›Ø\™ÚYÙ]Âˆš]˜]H›ÛÛX[ˆÜ\˜]Ü“[ÙHH˜[ÙNÂˆš]˜]H›ÛÛX[ˆ˜™Ú\™S[ÙHH˜[ÙNÂˆš]˜]Hš[˜[˜™Ú\™R\ÝÜžH˜™Ú\™R\ÝÜžHH™]È˜™Ú\™R\ÝÜžJ
+NÂˆš]˜]H[Ú\™TÛÝ\˜ÙHHLNÂˆš]˜]H›ÛÛX[–×H˜™ØXÚU˜[YH™]È›ÛÛX[–ÌNÂˆš]˜]H›ÛÛX[–×H˜™ØXÚU˜[Y\ÈH™]È›ÛÛX[–ÌNÂˆš]˜]HÝX›V×H˜™ØXÚS[Y\šXÈH™]ÈÝX›VÌNÂˆš]˜]Hš[˜[[™\ˆXZ[’[™\ˆH™]È[™\ŠÛÜ\‹™Ù]XZ[“ÛÜ\Š
+JNÂˆš]˜]Hš[˜[[›˜X›HÜ˜YÙ\šXÙT™YÚ\Ý\•XÚÙ\ˆH™]È[›˜X›J
+HÂˆÝ™\œšYHX›XÈ›ÚY[Š
+HÂˆYˆ
+XXÝ]š]T™\Ý[YYY]ÜˆOH[
+H™]\›ŽÂˆ\]PÜ˜Y]šXÙT™YÚ\Ý\œÊ
+NÂˆXZ[’[™\‹œÜÝ[^YY
+\ËL
+NÂˆBˆNÂˆš]˜]Hš[˜[^XÝ]Ü”Ù\šXÙH[Ù\Ñ^XÝ]ÜˆH^XÝ]ÜœË›™]ÔÚ[™ÛU™XY^XÝ]ÜŠ
+NÂˆš]˜]H›Û][H\Ø”Ù\šX[[Ù\ÐÛÛ›™XÝ[ÛˆX[X[\ØÛÛ›™XÝ[ÛŽÂˆš]˜]H\Ø”Ù\šX[ÛÛ›™XÝÜˆX[X[\ØÛÛ›™XÝÜŽÂˆš]˜]H[X[X[\Ø”ØÜ™Y[‘Ù[™\˜][ÛŽÂˆš]˜]H›ÛÛX[ˆX[X[\Ø”ØÜ™Y[•š\ÚX›NÂˆš]˜]Hš[˜[^XÝ]Ü”Ù\šXÙHÜ˜YÙ[œÛÜ‘^XÝ]ÜˆH^XÝ]ÜœË›™]ÔÚ[™ÛU™XY^XÝ]ÜŠ
+NÂˆš]˜]Hš[˜[^XÝ]Ü”Ù\šXÙH[YÜ˜[Q^XÝ]ÜˆH^XÝ]ÜœË›™]ÔÚ[™ÛU™XY^XÝ]ÜŠ
+NÂˆš]˜]Hš[˜[^XÝ]Ü”Ù\šXÙHÛYP\ÜÚ\Ý[^XÝ]ÜˆH^XÝ]ÜœË›™]ÔÚ[™ÛU™XY^XÝ]ÜŠ
+NÂˆš]˜]Hš[˜[^XÝ]Ü”Ù\šXÙHX[™^^XÝ]ÜˆH^XÝ]ÜœË›™]ÔÚ[™ÛU™XY^XÝ]ÜŠ
+NÂˆš]˜]Hš[˜[^XÝ]Ü”Ù\šXÙHÛ\Ñ^XÝ]ÜˆH^XÝ]ÜœË›™]ÔÚ[™ÛU™XY^XÝ]ÜŠ
+NÂˆš]˜]Hš[˜[˜]˜K][˜ÛÛ˜Ý\œ™[ÛÛ˜Ý\œ™[\ÚX\ÚYÙ]Ü˜Y™YÚ\Ý\‘Ø]]Ø^K”Ý]OˆÜ˜YØ]]Ø^TÝ]\ÈH™]È˜]˜K][˜ÛÛ˜Ý\œ™[ÛÛ˜Ý\œ™[\ÚX\Š
+NÂˆš]˜]Hš[˜[˜]˜K][˜ÛÛ˜Ý\œ™[ÛÛ˜Ý\œ™[\ÚX\ÚYÙ]Ü˜Yš]Ø]]Ø^K”Ý]OˆÜ˜Yš]Ø]]Ø^TÝ]\ÈH™]È˜]˜K][˜ÛÛ˜Ý\œ™[ÛÛ˜Ý\œ™[\ÚX\Š
+NÂˆš]˜]Hš[˜[˜]˜K][˜ÛÛ˜Ý\œ™[ÛÛ˜Ý\œ™[\ÚX\ÚYÙ]›ÛÛX[ˆÜ˜Y\˜Ú]™UšYÙÙ\’YÚH™]È˜]˜K][˜ÛÛ˜Ý\œ™[ÛÛ˜Ý\œ™[\ÚX\Š
+NÂˆš]˜]Hš[˜[˜]˜K][”Ù]ÚYÙ]ˆÜ˜Y\˜Ú]™UšYÙÙ\‘YÙ\ÈH˜]˜K][ÛÛXÝ[ÛœË›™]ÔÙ]œ›ÛSX\
+ˆ™]È˜]˜K][˜ÛÛ˜Ý\œ™[ÛÛ˜Ý\œ™[\ÚX\ÚYÙ]›ÛÛX[Š
+JNÂˆš]˜]H˜™Ü˜Y\][[YHÜ˜Y\][[YNÂˆš]˜]Hš[˜[X\[YÙ\‹Ýš[™Ïˆ]™U˜[Y\ÈH™]È\ÚX\Š
+NÂˆš]˜]H›ÛÛX[ˆ[Ù\ÔÛ[™ÐXÝ]™HH˜[ÙNÂˆš]˜]H›ÛÛX[ˆXÝ]š]T™\Ý[YYH˜[ÙNÂˆš]˜]H[™›ÚYš\™Ø\™K”Ù[œÛÜ“X[˜YÙ\ˆ˜™Ù[œÛÜ“X[˜YÙ\ŽÂˆš]˜]H›ÛÛX[ˆ˜™Ù[œÛÜœÔ™YÚ\Ý\™YÂˆš]˜]H[™›ÚY›ØØ][Û‹“ØØ][Û“X[˜YÙ\ˆ˜™ØØ][Û“X[˜YÙ\ŽÂˆš]˜]H›ÛÛX[ˆ˜™ØØ][Û”™YÚ\Ý\™Y˜™ØØ][Û”\›Z\ÜÚ[Û”™\]Y\ÝYÂˆš]˜]HÝ]XÈš[˜[[‘TUQTÕÑ‘ÔÔQQÓÐÐUSÓˆHŒLÎÂˆš]˜]HÝ]XÈš[˜[[‘TUQTÕÕ“ÒPÑWÔT“RTÔÒSÓˆHŒŒNÂˆš]˜]HÝ]XÈš[˜[[‘TUQTÕÔÓT×ÔÑS‘ÔT“RTÔÒSÓˆHŒŒŽÂˆš]˜]HÝ]XÈš[˜[[‘TUQTÕÔÓT×Ô‘PÑRU‘WÔT“RTÔÒSÓˆHŒŒÎÂˆš]˜]H[™›ÚY˜ÛÛ[œ›ØYØ\Ý™XÙZ]™\ˆ[˜ÛÛZ[™ÔÛ\Ô™XÙZ]™\ŽÂˆš]˜]H›ÛÛX[ˆÛ\Ô™XÙZ]™T\›Z\ÜÚ[Û”™\]Y\ÝYÂˆš]˜]HÝ]XÈš[˜[[“ÒPÑWÓÐÐSHNÂˆš]˜]HÝ]XÈš[˜[[“ÒPÑWÓÓ“S‘HHŽÂˆš]˜]H[[™[™Õ›ÚXÙS[ÙNÂˆš]˜]H[™›ÚYœÜYXÚ”ÜYXÚ™XÛÙÛš^™\ˆÜYXÚ™XÛÙÛš^™\ŽÂˆš]˜]Hš[˜[[™›ÚY›ØØ][Û‹“ØØ][Û“\Ý[™\ˆ˜™ØØ][Û“\Ý[™\ˆH™]È[™›ÚY›ØØ][Û‹“ØØ][Û“\Ý[™\Š
+HÂˆÝ™\œšYHX›XÈ›ÚYÛ“ØØ][ÛÚ[™ÙY
+[™›ÚY›ØØ][Û‹“ØØ][ÛˆØØ][ÛŠHÂˆYˆ
+ØØ][ÛˆOH[[Ü\˜]Ü“[ÙHY]ÜˆOH[
+H™]\›ŽÂˆÝX›HÛZHÝX›Kš\Ó˜SŠØØ][Û‹™Ù]ÜYY
+
+JHÈŒˆØØ][Û‹™Ù]ÜYY
+
+H
+ˆËŽÂˆ›Üˆ
+ÚYÙ]ÚYÙ]ˆÚYÙ]ÊHYˆ
+‘‘ÔQ•ÑS”ÓÔˆÔQQ‹™\]X[ÊÚYÙ]\JJHÂˆÚYÙ]˜Ü˜YÙ[œÛÜ•˜[YHHÛZÈÚYÙ]˜Ü˜YÙ[œÛÜ•˜[YHYNÂˆBˆY]Ü‹š[˜[Y]J
+NÂˆBˆÝ™\œšYHX›XÈ›ÚYÛ”Ý]\ÐÚ[™ÙY
+Ýš[™È›ÝšY\‹[Ý]\Ë[™›ÚY›ÜË[™H^˜\ÊHßBˆÝ™\œšYHX›XÈ›ÚYÛ”›ÝšY\‘[˜X›Y
+Ýš[™È›ÝšY\ŠHßBˆÝ™\œšYHX›XÈ›ÚYÛ”›ÝšY\‘\ØX›Y
+Ýš[™È›ÝšY\ŠHßBˆNÂˆš]˜]Hš[˜[[™›ÚYš\™Ø\™K”Ù[œÛÜ‘]™[\Ý[™\ˆ˜™Ù[œÛÜ“\Ý[™\ˆH™]È[™›ÚYš\™Ø\™K”Ù[œÛÜ‘]™[\Ý[™\Š
+HÂˆÝ™\œšYHX›XÈ›ÚYÛXØÝ\˜XÞPÚ[™ÙY
+[™›ÚYš\™Ø\™K”Ù[œÛÜˆÙ[œÛÜ‹[XØÝ\˜XÞJHßBˆÝ™\œšYHX›XÈ›ÚYÛ”Ù[œÛÜÚ[™ÙY
+[™›ÚYš\™Ø\™K”Ù[œÛÜ‘]™[]™[
+HÂˆYˆ
+[Ü\˜]Ü“[ÙHY]ÜˆOH[]™[˜[Y\ÈOH[
+H™]\›ŽÂˆ›ÛÛX[ˆÚ[™ÙYH˜[ÙNÂˆYˆ
+]™[œÙ[œÛÜ‹™Ù]\J
+HOH[™›ÚYš\™Ø\™K”Ù[œÛÜ‹•TWÓQÒ	‰ˆ]™[˜[Y\Ë›[™Ýˆ
+HÂˆ›Üˆ
+ÚYÙ]ÚYÙ]ˆÚYÙ]ÊHYˆ
+‘‘ÔQ•ÑS”ÓÔˆQÒ‹™\]X[ÊÚYÙ]\JJHÂˆÚYÙ]˜Ü˜YÙ[œÛÜ•˜[YHHX]›X^
+
+[
+Y]™[˜[Y\ÖÌJNÈÚYÙ]˜Ü˜YÙ[œÛÜ•˜[YHYNÈÚ[™ÙYHYNÂˆBˆH[ÙHYˆ
+]™[œÙ[œÛÜ‹™Ù]\J
+HOH[™›ÚYš\™Ø\™K”Ù[œÛÜ‹•TWÓÔ’QS•USÓˆ	‰ˆ]™[˜[Y\Ë›[™ÝHÊHÂˆ›Üˆ
+ÚYÙ]ÚYÙ]ˆÚYÙ]ÊHYˆ
+‘‘ÔQ•ÑS”ÓÔˆÔ’QS•USÓˆ‹™\]X[ÊÚYÙ]\JJHÂˆÚYÙ]˜Ü˜YÜšY[][Û•˜[Y\ÖÌHH]™[˜[Y\ÖÌNÂˆÚYÙ]˜Ü˜YÜšY[][Û•˜[Y\ÖÌWHH]™[˜[Y\ÖÌWNÂˆÚYÙ]˜Ü˜YÜšY[][Û•˜[Y\ÖÌ—HH]™[˜[Y\ÖÌ—NÂˆÚYÙ]˜Ü˜YÙ[œÛÜ•˜[YHYNÈÚ[™ÙYHYNÂˆBˆBˆYˆ
+Ú[™ÙY
+HY]Ü‹š[˜[Y]J
+NÂˆBˆNÂˆš]˜]Hš[˜[ÛÙ\ÜÚ[Û‘ÝX\™ÛÙ\ÜÚ[ÛˆH™]ÈÛÙ\ÜÚ[Û‘ÝX\™
+
+NÂˆš]˜]H›Û][H›ÛÛX[ˆ[Ù\ÔÛ[‘›YÚH˜[ÙNÂˆš]˜]Hš[˜[[›˜X›H[Ù\ÔÛ[›˜X›HH™]È[›˜X›J
+HÂˆÝ™\œšYHX›XÈ›ÚY[Š
+HÂˆYˆ
+[[Ù\ÔÛ[™ÐXÝ]™HY]ÜˆOH[
+H™]\›ŽÂˆÛ›Ý[™ÚYÙ]Ê
+NÂˆÛÜ˜YÙ[\ÛÝ\˜Ù\Ê
+NÂˆXZ[’[™\‹œÜÝ[^YY
+\ËL
+NÂˆBˆNÂ‚ˆš]˜]Hš[˜[˜]˜K][“X\Ýš[™ËYYXT^Y\ˆÜ˜Y[\›T^Y\œÈH™]È˜]˜K][’\ÚX\Š
+NÂˆš]˜]Hš[˜[˜]˜K][“X\Ýš[™ËÛ™QÙ[™\˜]ÜˆÜ˜Y[\›UÛ™\ÈH™]È˜]˜K][’\ÚX\Š
+NÂˆš]˜]H^ÔÜYXÚ^ÔÜYXÚÂˆš]˜]Hš[˜[˜]˜K][“X\Ýš[™Ëš]X\ˆ[XYÙPØXÚHH™]È˜]˜K][’\ÚX\Š
+NÂ‚ˆš]˜]Hš]X\ØYØXÚYš]X\
+Ýš[™È]Ü•\šJHÂˆYˆ
+]Ü•\šHOH[]Ü•\šKš[J
+Kš\Ñ[\J
+JH™]\›ˆ[ÂˆYˆ
+[XYÙPØXÚK˜ÛÛZ[œÒÙ^J]Ü•\šJJH™]\›ˆ[XYÙPØXÚK™Ù]
+]Ü•\šJNÂˆš]X\š]X\H[ÂˆžHÂˆÝš[™ÈœÛÛˆHÙ]Ú\™Y™Y™\™[˜Ù\Ê‘Q”ËSÑWÔ’UUJK™Ù]Ýš[™ÊPÕU‘WÔ“Ò‘PÕžßHŠNÂˆž]V×Hž]\ÈH™XY›Ú™XÝYYXQ]J]Ü•\šKœÛÛŠNÂˆš]X\˜XÝÜžK“Ü[ÛœÈ›Ý[™ÈH™]Èš]X\˜XÝÜžK“Ü[ÛœÊ
+NÈ›Ý[™Ëš[’\ÝXÛÙP›Ý[™ÈHYNÂˆš]X\˜XÝÜžK™XÛÙPž]P\œ˜^Jž]\Ëž]\Ë›[™Ý›Ý[™ÊNÂˆš]X\˜XÝÜžK“Ü[ÛœÈÜ[ÛœÈH™]Èš]X\˜XÝÜžK“Ü[ÛœÊ
+NÂˆÜ[ÛœËš[”Ø[\TÚ^™HH›Ú™XÝ[XYÙTÚ^š[™ËœØ[\TÚ^™J›Ý[™Ë›Ý]ÚY›Ý[™Ë›Ý]ZYÚ
+NÂˆš]X\Hš]X\˜XÝÜžK™XÛÙPž]P\œ˜^Jž]\Ëž]\Ë›[™ÝÜ[ÛœÊNÂˆHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HßBˆÛ™Èž]\ÐØXÚYHÂˆ›Üˆ
+š]X\ØXÚYˆ[XYÙPØXÚK˜[Y\Ê
+JHYˆ
+ØXÚYOH[
+Hž]\ÐØXÚY
+ÏHØXÚY™Ù]ž]PÛÝ[
+
+NÂˆYˆ
+[XYÙPØXÚKœÚ^™J
+HHLŽ
+š]X\OH[	‰ˆž]\ÐØXÚY
+Èš]X\™Ù]ž]PÛÝ[
+
+HˆÌ“
+ˆL
+ˆL
+JBˆ[XYÙPØXÚK˜ÛX\Š
+NÂˆ[XYÙPØXÚKœ]
+]Ü•\šKš]X\
+NÂˆ™]\›ˆš]X\ÂˆB‚ˆš]˜]Hš]X\ÜšYÚ[˜[[™XØ]Üš]X\
+ÚYÙ]ÚYÙ]›ÛÛX[ˆXÝ]™JHÂˆžHÂˆ”ÓÓ“Øš™XÝÙ][™ÜÈHÜšYÚ[˜[[™XØ]Ü‹œÙ][™ÜÊÚYÙ]™^˜QšY[ÊNÂˆÝš[™È˜[YHHÜšYÚ[˜[[™XØ]Ü‹š[XYÙU˜[YJÙ][™ÜËXÝ]™JNÂˆYˆ
+ÜšYÚ[˜[[™XØ]Ü‹š\Õ\Ù\’[XYÙJÙ][™ÜËXÝ]™JJH™]\›ˆØYØXÚYš]X\
+˜[YJNÂˆ[™\ÛÝ\˜ÙNÂˆÝÚ]Ú
+ÜšYÚ[˜[[™XØ]Ü‹˜Z[[“˜[YJ˜[YJJHÂˆØ\ÙH›[\ÙÜ™Y[ˆŽˆ™\ÛÝ\˜ÙHH‹™˜]ØX›KšØ×Û[\ÙÜ™Y[ŽÈœ™XZÎÂˆØ\ÙH›[\Ü™YŽˆ™\ÛÝ\˜ÙHH‹™˜]ØX›KšØ×Û[\Ü™YÈœ™XZÎÂˆØ\ÙH›[\ÞY[ÝÈŽˆ™\ÛÝ\˜ÙHH‹™˜]ØX›KšØ×Û[\ÞY[ÝÎÈœ™XZÎÂˆØ\ÙH›[\Ø›YHŽˆ™\ÛÝ\˜ÙHH‹™˜]ØX›KšØ×Û[\Ø›YNÈœ™XZÎÂˆØ\ÙH›[\ÛÙ™ˆŽˆ™\ÛÝ\˜ÙHH‹™˜]ØX›KšØ×Û[\ÛÙ™ŽÈœ™XZÎÂˆY˜][ˆ™\ÛÝ\˜ÙHH‹™˜]ØX›KšØ×ÝØ\›š[™×ÌÌŽÂˆBˆ™]\›ˆÜšYÚ[˜[š]X\
+™\ÛÝ\˜ÙJNÂˆHØ]Ú
+^Ù\[Ûˆ[˜[Y
+HÈ™]\›ˆ[ÈBˆB‚ˆš]˜]Hš]X\ÜšYÚ[˜[š]X\
+[™\ÛÝ\˜ÙJHÂˆÝš[™ÈÙ^HH›ÜšYÚ[˜[\™\ÛÝ\˜ÙNˆˆ
+È™\ÛÝ\˜ÙNÂˆš]X\ØXÚYH[XYÙPØXÚK™Ù]
+Ù^JNÂˆYˆ
+ØXÚYOH[
+HÂˆØXÚYHš]X\˜XÝÜžK™XÛÙT™\ÛÝ\˜ÙJÙ]™\ÛÝ\˜Ù\Ê
+K™\ÛÝ\˜ÙJNÂˆ[XYÙPØXÚKœ]
+Ù^KØXÚY
+NÂˆBˆ™]\›ˆØXÚYÂˆB‚ˆÝ™\œšYHX›XÈ›ÚYÛÜ™X]J[™HÝ]JHÂˆÝ\\‹›ÛÜ™X]JÝ]JNÂˆÙ]Ú[™ÝÊ
+KœÙ]›YÜÊ[™›ÚYšY]Ë•Ú[™ÝÓX[˜YÙ\‹“^[Ý]\˜[\Ë‘“Q×Ñ•SÐÔ‘QS‹ˆ[™›ÚYšY]Ë•Ú[™ÝÓX[˜YÙ\‹“^[Ý]\˜[\Ë‘“Q×Ñ•SÐÔ‘QSŠNÂˆžHÂˆ^ÔÜYXÚH™]È^ÔÜYXÚ
+\ËÝ]\ÈOˆÂˆYˆ
+Ý]\ÈOH^ÔÜYXÚ”ÕPÐÑTÔÈ	‰ˆ^ÔÜYXÚOH[
+HÂˆžHÈ^ÔÜYXÚœÙ][™ÝXYÙJ™]È˜]˜K][“ØØ[JœH‹”•HŠJNÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HßBˆBˆJNÂˆHØ]Ú
+^Ù\[Ûˆ^
+HÂˆ[™›ÚY][“ÙË™J“ÓÑÒÖH‹•È[š]\œ›Üˆ‹^
+NÂˆBˆYˆ
+\™\ÝÜ™SYYXTXÚÙ\”Ý]JÝ]JJHÚÝÒÛYJ
+NÂˆB‚ˆš]˜]HÝ]XÈš[˜[Ýš[™ÈÕUWÔ‘TÕÔ‘WÓQQPWÔPÒÑTˆHœ™\ÝÜ™WÛYYXWÜXÚÙ\ˆŽÂˆš]˜]HÝ]XÈš[˜[Ýš[™ÈÕUWÓQQPWÕÒQÑUÒS‘VH›YYXWÝÚYÙ]Ú[™^ŽÂˆš]˜]HÝ]XÈš[˜[Ýš[™ÈÕUWÓQQPWÑ’QSÔUH›YYXWÙšY[Ü]ŽÂˆš]˜]HÝ]XÈš[˜[Ýš[™ÈÕUWÓQQPWÑ“Ô“WÔUÈH›YYXWÙ›Ü›WÜ]ÈŽÂˆš]˜]HÝ]XÈš[˜[Ýš[™ÈÕUWÓQQPWÑ“Ô“WÕTTÈH›YYXWÙ›Ü›WÝ\\ÈŽÂˆš]˜]HÝ]XÈš[˜[Ýš[™ÈÕUWÓQQPWÑ“Ô“WÕSQTÈH›YYXWÙ›Ü›WÝ˜[Y\ÈŽÂ‚ˆÝ™\œšYH›ÝXÝY›ÚYÛ”Ø]™R[œÝ[˜ÙTÝ]J[™HÝ]Ý]JHÂˆÝ\\‹›Û”Ø]™R[œÝ[˜ÙTÝ]JÝ]Ý]JNÂˆYˆ
+[™[™ÓYYXQšY[OH[XÝ]™T›Ü\Y\ÑX[ÙÈOH[ˆXÝ]™T›Ü\Y\Ñ›Ü›HOH[Y]ÜˆOH[
+H™]\›ŽÂˆÝš[™ÈšY[]HšY]Ô]
+XÝ]™T›Ü\Y\Ñ›Ü›K[™[™ÓYYXQšY[ˆŠNÂˆYˆ
+šY[]OH[
+H™]\›ŽÂˆ\œ˜^S\ÝÝš[™Ïˆ]ÈH™]È\œ˜^S\ÝŠ
+NÂˆ\œ˜^S\ÝÝš[™Ïˆ\\ÈH™]È\œ˜^S\ÝŠ
+NÂˆ\œ˜^S\ÝÝš[™Ïˆ˜[Y\ÈH™]È\œ˜^S\ÝŠ
+NÂˆÛÛXÝ›Ü\Q›Ü›TÝ]JXÝ]™T›Ü\Y\Ñ›Ü›Kˆ‹]Ë\\Ë˜[Y\ÊNÂˆÝ]Ý]Kœ]›ÛÛX[ŠÕUWÔ‘TÕÔ‘WÓQQPWÔPÒÑT‹YJNÂˆÝ]Ý]Kœ][
+ÕUWÓQQPWÕÒQÑUÒS‘VY]Ü‹œÙ[XÝY
+NÂˆÝ]Ý]Kœ]Ýš[™ÊÕUWÓQQPWÑ’QSÔUšY[]
+NÂˆÝ]Ý]Kœ]Ýš[™Ð\œ˜^S\Ý
+ÕUWÓQQPWÑ“Ô“WÔUË]ÊNÂˆÝ]Ý]Kœ]Ýš[™Ð\œ˜^S\Ý
+ÕUWÓQQPWÑ“Ô“WÕTTË\\ÊNÂˆÝ]Ý]Kœ]Ýš[™Ð\œ˜^S\Ý
+ÕUWÓQQPWÑ“Ô“WÕSQTË˜[Y\ÊNÂˆB‚ˆš]˜]H›ÛÛX[ˆ™\ÝÜ™SYYXTXÚÙ\”Ý]J[™HÝ]JHÂˆYˆ
+Ý]HOH[\Ý]K™Ù]›ÛÛX[ŠÕUWÔ‘TÕÔ‘WÓQQPWÔPÒÑT‹˜[ÙJH[ØY›Ú™XÝ
+
+JH™]\›ˆ˜[ÙNÂˆÚÝÑY]ÜŠ
+NÂˆ[ÚYÙ][™^HÝ]K™Ù][
+ÕUWÓQQPWÕÒQÑUÒS‘VLJNÂˆYˆ
+Y]ÜˆOH[ÚYÙ][™^ÚYÙ][™^HÚYÙ]ËœÚ^™J
+JH™]\›ˆ˜[ÙNÂˆY]Ü‹œÙ[XÝYHÚYÙ][™^ÂˆY]Ü‹œÙ[XÝYÚYÙ]Ë˜ÛX\Š
+NÂˆY]Ü‹œÙ[XÝYÚYÙ]Ë˜Y
+ÚYÙ][™^
+NÂˆY]Ù[XÝYÚYÙ]
+
+NÂˆYˆ
+XÝ]™T›Ü\Y\ÑX[ÙÈOH[XÝ]™T›Ü\Y\Ñ›Ü›HOH[
+H™]\›ˆ˜[ÙNÂˆ™\ÝÜ™T›Ü\Q›Ü›TÝ]JXÝ]™T›Ü\Y\Ñ›Ü›KˆÝ]K™Ù]Ýš[™Ð\œ˜^S\Ý
+ÕUWÓQQPWÑ“Ô“WÔUÊKˆÝ]K™Ù]Ýš[™Ð\œ˜^S\Ý
+ÕUWÓQQPWÑ“Ô“WÕTTÊKˆÝ]K™Ù]Ýš[™Ð\œ˜^S\Ý
+ÕUWÓQQPWÑ“Ô“WÕSQTÊJNÂˆšY]È\™Ù]Hš[™šY]ÐžT]
+XÝ]™T›Ü\Y\Ñ›Ü›KÝ]K™Ù]Ýš[™ÊÕUWÓQQPWÑ’QSÔUˆŠJNÂˆYˆ
+J\™Ù][œÝ[˜Ù[ÙˆY]^
+JH™]\›ˆ˜[ÙNÂˆ[™[™ÓYYXQšY[H
+Y]^
+H\™Ù]Âˆ[™[™ÓYYXUÚYÙ][™^HÚYÙ][™^Âˆ[™[™ÓYYXQšY[]HÝ]K™Ù]Ýš[™ÊÕUWÓQQPWÑ’QSÔU
+NÂˆ™]\›ˆYNÂˆB‚ˆš]˜]HÝ]XÈ›ÚYÛÛXÝ›Ü\Q›Ü›TÝ]JšY]ÈšY]ËÝš[™È]\œ˜^S\ÝÝš[™Ïˆ]Ëˆ\œ˜^S\ÝÝš[™Ïˆ\\Ë\œ˜^S\ÝÝš[™Ïˆ˜[Y\ÊHÂˆÝš[™È\HH[˜[YHH[ÂˆYˆ
+šY]È[œÝ[˜Ù[ÙˆY]^
+HÂˆ\HH^ŽÂˆ˜[YHH
+
+Y]^
+HšY]ÊK™Ù]^
+
+KÔÝš[™Ê
+NÂˆH[ÙHYˆ
+šY]È[œÝ[˜Ù[Ùˆ[™›ÚYÚYÙ]ÚXÚÐ›Þ
+HÂˆ\HH˜ÚXÚÈŽÂˆ˜[YHH›ÛÛX[‹ÔÝš[™Ê
+
+[™›ÚYÚYÙ]ÚXÚÐ›Þ
+HšY]ÊKš\ÐÚXÚÙY
+
+JNÂˆH[ÙHYˆ
+šY]È[œÝ[˜Ù[ÙˆÜ[›™\ŠHÂˆ\HHœÜ[›™\ˆŽÂˆ˜[YHH[YÙ\‹ÔÝš[™Ê
+
+Ü[›™\ŠHšY]ÊK™Ù]Ù[XÝY][TÜÚ][ÛŠ
+JNÂˆBˆYˆ
+\HOH[
+HÂˆ]Ë˜Y
+]
+NÂˆ\\Ë˜Y
+\JNÂˆ˜[Y\Ë˜Y
+˜[YJNÂˆBˆYˆ
+šY]È[œÝ[˜Ù[ÙˆšY]ÑÜ›Ý\
+HÂˆšY]ÑÜ›Ý\Ü›Ý\H
+šY]ÑÜ›Ý\
+HšY]ÎÂˆ›Üˆ
+[HHÈHÜ›Ý\™Ù]Ú[ÛÝ[
+
+NÈJÊÊHÂˆÝš[™ÈÚ[]H]š\Ñ[\J
+HÈ[YÙ\‹ÔÝš[™ÊJHˆ]
+È‹ˆˆ
+ÈNÂˆÛÛXÝ›Ü\Q›Ü›TÝ]JÜ›Ý\™Ù]Ú[]
+JKÚ[]]Ë\\Ë˜[Y\ÊNÂˆBˆBˆB‚ˆš]˜]HÝ]XÈ›ÚY™\ÝÜ™T›Ü\Q›Ü›TÝ]JšY]È›ÛÝ\œ˜^S\ÝÝš[™Ïˆ]Ëˆ\œ˜^S\ÝÝš[™Ïˆ\\Ë\œ˜^S\ÝÝš[™Ïˆ˜[Y\ÊHÂˆYˆ
+]ÈOH[\\ÈOH[˜[Y\ÈOH[ˆ]ËœÚ^™J
+HOH\\ËœÚ^™J
+H]ËœÚ^™J
+HOH˜[Y\ËœÚ^™J
+JH™]\›ŽÂˆ›Üˆ
+[HHÈH]ËœÚ^™J
+NÈJÊÊHÂˆšY]ÈšY]ÈHš[™šY]ÐžT]
+›ÛÝ]Ë™Ù]
+JJNÂˆÝš[™È\HH\\Ë™Ù]
+JK˜[YHH˜[Y\Ë™Ù]
+JNÂˆYˆ
+^‹™\]X[Ê\JH	‰ˆšY]È[œÝ[˜Ù[ÙˆY]^
+H
+
+Y]^
+HšY]ÊKœÙ]^
+˜[YJNÂˆ[ÙHYˆ
+˜ÚXÚÈ‹™\]X[Ê\JH	‰ˆšY]È[œÝ[˜Ù[Ùˆ[™›ÚYÚYÙ]ÚXÚÐ›Þ
+Bˆ
+
+[™›ÚYÚYÙ]ÚXÚÐ›Þ
+HšY]ÊKœÙ]ÚXÚÙY
+›ÛÛX[‹œ\œÙP›ÛÛX[Š˜[YJJNÂˆ[ÙHYˆ
+œÜ[›™\ˆ‹™\]X[Ê\JH	‰ˆšY]È[œÝ[˜Ù[ÙˆÜ[›™\ŠHÂˆÜ[›™\ˆÜ[›™\ˆH
+Ü[›™\ŠHšY]ÎÂˆžHÂˆ[ÜÚ][ÛˆH[YÙ\‹œ\œÙR[
+˜[YJNÂˆYˆ
+ÜÚ][ÛˆH	‰ˆÜÚ][ÛˆÜ[›™\‹™Ù]ÛÝ[
+
+JHÜ[›™\‹œÙ]Ù[XÝ[ÛŠÜÚ][ÛŠNÂˆHØ]Ú
+[X™\‘›Ü›X]^Ù\[ÛˆYÛ›Ü™Y
+HßBˆBˆBˆB‚ˆš]˜]HÝ]XÈšY]Èš[™šY]ÐžT]
+šY]È›ÛÝÝš[™È]
+HÂˆYˆ
+›ÛÝOH[
+H™]\›ˆ[ÂˆYˆ
+]OH[]š\Ñ[\J
+JH™]\›ˆ›ÛÝÂˆšY]ÈÝ\œ™[H›ÛÝÂˆ›Üˆ
+Ýš[™È\ˆ]œÜ]
+—ˆŠJHÂˆYˆ
+JÝ\œ™[[œÝ[˜Ù[ÙˆšY]ÑÜ›Ý\
+JH™]\›ˆ[Âˆ[[™^ÂˆžHÈ[™^H[YÙ\‹œ\œÙR[
+\
+NÈBˆØ]Ú
+[X™\‘›Ü›X]^Ù\[Ûˆ[˜[Y
+HÈ™]\›ˆ[ÈBˆšY]ÑÜ›Ý\Ü›Ý\H
+šY]ÑÜ›Ý\
+HÝ\œ™[ÂˆYˆ
+[™^[™^HÜ›Ý\™Ù]Ú[ÛÝ[
+
+JH™]\›ˆ[ÂˆÝ\œ™[HÜ›Ý\™Ù]Ú[]
+[™^
+NÂˆBˆ™]\›ˆÝ\œ™[ÂˆB‚ˆš]˜]HÝ]XÈÝš[™ÈšY]Ô]
+šY]È›ÛÝšY]È\™Ù]Ýš[™È]
+HÂˆYˆ
+›ÛÝOH\™Ù]
+H™]\›ˆ]ÂˆYˆ
+J›ÛÝ[œÝ[˜Ù[ÙˆšY]ÑÜ›Ý\
+JH™]\›ˆ[ÂˆšY]ÑÜ›Ý\Ü›Ý\H
+šY]ÑÜ›Ý\
+H›ÛÝÂˆ›Üˆ
+[HHÈHÜ›Ý\™Ù]Ú[ÛÝ[
+
+NÈJÊÊHÂˆÝš[™ÈÚ[]H]š\Ñ[\J
+HÈ[YÙ\‹ÔÝš[™ÊJHˆ]
+È‹ˆˆ
+ÈNÂˆÝš[™È›Ý[™HšY]Ô]
+Ü›Ý\™Ù]Ú[]
+JK\™Ù]Ú[]
+NÂˆYˆ
+›Ý[™OH[
+H™]\›ˆ›Ý[™ÂˆBˆ™]\›ˆ[ÂˆB‚ˆÝ™\œšYH›ÝXÝY›ÚYÛ”™\Ý[YJ
+HÂˆÝ\\‹›Û”™\Ý[YJ
+NÂˆXÝ]š]T™\Ý[YYHYNÂˆ\]PÜ˜Y]šXÙT™YÚ\Ý\œÊ
+NÂˆYˆ
+Y]ÜˆOH[
+HÂˆXZ[’[™\‹œ™[[Ý™PØ[˜XÚÜÊÜ˜YÙ\šXÙT™YÚ\Ý\•XÚÙ\ŠNÂˆXZ[’[™\‹œÜÝ[^YY
+Ü˜YÙ\šXÙT™YÚ\Ý\•XÚÙ\‹L
+NÂˆBˆYˆ
+Y]ÜˆOH[
+HÈÝ\[Ù\ÔÛ[™Ê
+NÈÝ\˜™Ù[œÛÜœÊ
+NÈÝ\Ü˜Y\]
+
+NÈBˆ™Yœ™\Ú[˜ÛÛZ[™ÔÛ\Ô™XÙZ]™\Š
+NÂˆB‚ˆÝ™\œšYHX›XÈ›ÚYÛ”™\]Y\Ý\›Z\ÜÚ[ÛœÔ™\Ý[
+[™\]Y\ÝÛÙKÝš[™Ö×H\›Z\ÜÚ[ÛœË[×HÜ˜[™\Ý[ÊHÂˆÝ\\‹›Û”™\]Y\Ý\›Z\ÜÚ[ÛœÔ™\Ý[
+™\]Y\ÝÛÙK\›Z\ÜÚ[ÛœËÜ˜[™\Ý[ÊNÂˆYˆ
+™\]Y\ÝÛÙHOH‘TUQTÕÕ“ÒPÑWÔT“RTÔÒSÓŠHÂˆYˆ
+Ü˜[™\Ý[Ë›[™Ýˆ	‰ˆÜ˜[™\Ý[ÖÌHOH[™›ÚY˜ÛÛ[œK”XÚØYÙSX[˜YÙ\‹”T“RTÔÒSÓ—ÑÔS•Q
+BˆÝ\›ÚXÙT™XÛÙÛš][ÛŠ[™[™Õ›ÚXÙS[ÙJNÂˆ[ÙHØ\Ý›XZÙU^
+\Ë´%4.ôcÈ4,ô/´.ô/´`t/´,´/´,ô/ˆ4`ô/ô`4,4,´.ô-t/t.4cÈ4/t`ô-´-t/H4-4/´`t`´`ô/È4.ˆ4/4.4.´`4/´a4/´/t`È‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆYˆ
+™\]Y\ÝÛÙHOH‘TUQTÕÔÓT×ÔÑS‘ÔT“RTÔÒSÓŠHÂˆYˆ
+Ü˜[™\Ý[Ë›[™Ýˆ	‰ˆÜ˜[™\Ý[ÖÌHOH[™›ÚY˜ÛÛ[œK”XÚØYÙSX[˜YÙ\‹”T“RTÔÒSÓ—ÑÔS•Q
+BˆØ\Ý›XZÙU^
+\Ë´(4,4-ô`4-tb4-t/t.4-HÓTÈ4,´.´.ôc´aô-t/t/ŽÈ4`ô,´-t-4/´/4.ô-t/t.4-H4/ô`4.4-4dt`ˆ4/ô`4.4`t.ô-t-4`ôc´bt-t/4/t/´,´/´/4`t/´,tbô`´.4.‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆ[ÙHØ\Ý›XZÙU^
+\Ë´'´`´/ô`4,4,´.´,ÓTÈ4/´`´.´.ôc´aô-t/t,4,t-t-È4`4,4-ô`4-tb4-t/t.4cÈÑS‘ÔÓTÈ‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆYˆ
+™\]Y\ÝÛÙHOH‘TUQTÕÔÓT×Ô‘PÑRU‘WÔT“RTÔÒSÓŠHÂˆÛ\Ô™XÙZ]™T\›Z\ÜÚ[Û”™\]Y\ÝYH˜[ÙNÂˆYˆ
+Ü˜[™\Ý[Ë›[™Ýˆ	‰ˆÜ˜[™\Ý[ÖÌHOH[™›ÚY˜ÛÛ[œK”XÚØYÙSX[˜YÙ\‹”T“RTÔÒSÓ—ÑÔS•Q
+HÂˆ™Yœ™\Ú[˜ÛÛZ[™ÔÛ\Ô™XÙZ]™\Š
+NÂˆH[ÙHÂˆØ\Ý›XZÙU^
+\Ë´$´at/´-4côbt-t-HÓTÈ4/´`´.´.ôc´aô-t/t/ˆ4,t-t-È4`4,4-ô`4-tb4-t/t.4cÈ‘PÑRU‘WÔÓTÈ‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆBˆ™]\›ŽÂˆBˆYˆ
+™\]Y\ÝÛÙHOH‘TUQTÕÑ‘ÔÔQQÓÐÐUSÓŠH™]\›ŽÂˆ˜™ØØ][Û”\›Z\ÜÚ[Û”™\]Y\ÝYH˜[ÙNÂˆYˆ
+Ü˜[™\Ý[Ë›[™Ýˆ	‰ˆÜ˜[™\Ý[ÖÌHOH[™›ÚY˜ÛÛ[œK”XÚØYÙSX[˜YÙ\‹”T“RTÔÒSÓ—ÑÔS•Q
+BˆÝ\˜™Ù[œÛÜœÊ
+NÂˆB‚ˆÝ™\œšYH›ÝXÝY›ÚYÛ”]\ÙJ
+HÂˆYˆ
+Y]ÜˆOH[
+HÂˆY]Ü‹™[™Ü˜Yš]]ÛŠ
+NÂˆY]Ü‹›Ü\˜]Ü“[ÛY[\žPØ[™Y]HHLNÂˆBˆXÝ]š]T™\Ý[YYH˜[ÙNÂˆXZ[’[™\‹œ™[[Ý™PØ[˜XÚÜÊÜ˜YÙ\šXÙT™YÚ\Ý\•XÚÙ\ŠNÂˆ[œ™YÚ\Ý\’[˜ÛÛZ[™ÔÛ\Ô™XÙZ]™\Š
+NÂˆÝÜ[Ù\ÔÛ[™Ê
+NÂˆÝÜ˜™Ù[œÛÜœÊ
+NÂˆÝÜÜ˜Y\]
+
+NÂˆ™[X\ÙU›ÚXÙT™XÛÙÛš^™\Š
+NÂˆ™\Ù]Ü˜Y[\›QYÙ\Ê
+NÂˆÝÜ[Ü˜Y[\›T^X˜XÚÊ
+NÂˆYˆ
+^ÔÜYXÚOH[
+HžHÈ^ÔÜYXÚœÝÜ
+
+NÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HßBˆÝ\\‹›Û”]\ÙJ
+NÂˆB‚ˆÝ™\œšYH›ÝXÝY›ÚYÛ‘\Ý›ÞJ
+HÂˆX[X[\Ø”ØÜ™Y[‘Ù[™\˜][ÛŠÊÎÂˆÛÜÙSX[X[\ØÛÛ›™XÝ[ÛŠ
+NÂˆ[œ™YÚ\Ý\’[˜ÛÛZ[™ÔÛ\Ô™XÙZ]™\Š
+NÂˆÝÜ[Ù\ÔÛ[™Ê
+NÂˆÝÜ˜™Ù[œÛÜœÊ
+NÂˆÝÜÜ˜Y\]
+
+NÂˆ™[X\ÙU›ÚXÙT™XÛÙÛš^™\Š
+NÂˆY]ÜˆH[Âˆ[Ù\Ñ^XÝ]Ü‹œÚ]ÝÛ“›ÝÊ
+NÂˆÜ˜YÙ[œÛÜ‘^XÝ]Ü‹œÚ]ÝÛ“›ÝÊ
+NÂˆ[YÜ˜[Q^XÝ]Ü‹œÚ]ÝÛ“›ÝÊ
+NÂˆÛYP\ÜÚ\Ý[^XÝ]Ü‹œÚ]ÝÛ“›ÝÊ
+NÂˆX[™^^XÝ]Ü‹œÚ]ÝÛ“›ÝÊ
+NÂˆÛ\Ñ^XÝ]Ü‹œÚ]ÝÛ“›ÝÊ
+NÂˆ™\Ù]Ü˜Y[\›QYÙ\Ê
+NÂˆÝÜ[Ü˜Y[\›T^X˜XÚÊ
+NÂˆXZ[’[™\‹œ™[[Ý™PØ[˜XÚÜÊÜ˜YÙ\šXÙT™YÚ\Ý\•XÚÙ\ŠNÂˆÜ˜YÙ\šXÙT™YÚ\Ý\œË™ÛØ˜[
+
+KœÙ]XÝ[ÛœÊ[
+NÂˆYˆ
+^ÔÜYXÚOH[
+HÂˆžHÈ^ÔÜYXÚœÝÜ
+
+NÈ^ÔÜYXÚœÚ]ÝÛŠ
+NÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HßBˆ^ÔÜYXÚH[ÂˆBˆÝ\\‹›Û‘\Ý›ÞJ
+NÂˆB‚ˆš]˜]H›ÚY^PÜ˜Y[\›P[\
+Ýš[™È[\›RÙ^KÝš[™È]Ü•\šK[Ü˜Y[\›TÛÝ[™[™^›ÛÛX[ˆÛÜ
+HÂˆÝÜÜ˜Y[\›P[\
+[\›RÙ^JNÂˆYYXT^Y\ˆ^Y\ˆH[ÂˆžHÂˆ^Y\ˆH™]ÈYYXT^Y\Š
+NÂˆ[[\›T™\ÛÝ\˜ÙHHÜ˜Y[\›T™\ÛÝ\˜ÙJÜ˜Y[\›TÛÝ[™[™^
+NÂˆYˆ
+[\›T™\ÛÝ\˜ÙHOH
+HÂˆ^Y\‹œÙ]]TÛÝ\˜ÙJ\Ë\šKœ\œÙJ˜[™›ÚYœ™\ÛÝ\˜ÙN‹ËÈˆ
+ÈÙ]XÚØYÙS˜[YJ
+H
+È‹Èˆ
+È[\›T™\ÛÝ\˜ÙJJNÂˆH[ÙHYˆ
+]Ü•\šHOH[	‰ˆ]Ü•\šKœÝ\ÕÚ]
+˜ÛÛ[‹ËÈŠJHÂˆ^Y\‹œÙ]]TÛÝ\˜ÙJ\Ë\šKœ\œÙJ]Ü•\šJJNÂˆH[ÙHYˆ
+]Ü•\šHOH[	‰ˆ\]Ü•\šKš[J
+Kš\Ñ[\J
+H	‰ˆH´$4.ô,4`4/‹™\]X[Ê]Ü•\šJJHÂˆÝš[™ÈœÛÛˆHÙ]Ú\™Y™Y™\™[˜Ù\Ê‘Q”ËSÑWÔ’UUJK™Ù]Ýš[™ÊPÕU‘WÔ“Ò‘PÕžßHŠNÂˆ˜]˜Kš[Ë‘š[Hš[HH›Ú™XÝYYXTÙ\šXÙKœ™\ÛÛ™SYYXQš[JÙ]š[\Ñ\Š
+KœÛÛ‹]Ü•\šJNÂˆ^Y\‹œÙ]]TÛÝ\˜ÙJš[K™Ù]XœÛÛ]T]
+
+JNÂˆH[ÙHÂˆ^Y\‹œ™[X\ÙJ
+NÂˆÛ™QÙ[™\˜]ÜˆÛ™HH™]ÈÛ™QÙ[™\˜]ÜŠ]Y[ÓX[˜YÙ\‹”Õ‘PSWÐST“K
+NÂˆÛ™KœÝ\Û™JÛ™QÙ[™\˜]Ü‹•Ó‘WÐÑPWÐST•ÐÐSÑÕPT‘ÍL
+NÂˆÜ˜Y[\›UÛ™\Ëœ]
+[\›RÙ^KÛ™JNÂˆ™]\›ŽÂˆBˆ^Y\‹œÙ]ÛÜ[™ÊÛÜ
+NÂˆYYXT^Y\ˆXÝ]™T^Y\ˆH^Y\ŽÂˆ^Y\‹œÙ]Û”™\\™Y\Ý[™\Š™\\™YOˆÂˆYˆ
+Ü˜Y[\›T^Y\œË™Ù]
+[\›RÙ^JHOH™\\™Y
+H™]\›ŽÂˆYˆ
+XXÝ]š]T™\Ý[YY\Ñš[š\Ú[™Ê
+H\Ñ\Ý›ÞYY
+
+JHÂˆÝÜÜ˜Y[\›P[\
+[\›RÙ^JNÂˆ™]\›ŽÂˆBˆžHÂˆ™\\™YœÝ\
+
+NÂˆHØ]Ú
+^Ù\[Ûˆ^
+HÂˆYˆ
+Ü˜Y[\›T^Y\œË™Ù]
+[\›RÙ^JHOH™\\™Y
+HÂˆÜ˜Y[\›T^Y\œËœ™[[Ý™J[\›RÙ^JNÂˆ™[X\ÙPÜ˜Y[\›T^Y\Š™\\™Y
+NÂˆ[™›ÚY][“ÙË™J“ÓÑÒÖH‹Ü˜Y[\›HÝ\\œ›Üˆ‹^
+NÂˆ^PÜ˜Y[\›Q˜[˜XÚÕÛ™J[\›RÙ^KÛ™QÙ[™\˜]Ü‹•Ó‘WÔ“ÔÐ‘QTL
+NÂˆBˆBˆJNÂˆ^Y\‹œÙ]ÛÛÛ\][Û“\Ý[™\ŠÛÛ\]YOˆÂˆYˆ
+Ü˜Y[\›T^Y\œË™Ù]
+[\›RÙ^JHOHÛÛ\]Y
+HÂˆÜ˜Y[\›T^Y\œËœ™[[Ý™J[\›RÙ^JNÂˆ™[X\ÙPÜ˜Y[\›T^Y\ŠÛÛ\]Y
+NÂˆBˆJNÂˆ^Y\‹œÙ]Û‘\œ›Ü“\Ý[™\Š
+˜Z[YÚ]^˜JHOˆÂˆYˆ
+Ü˜Y[\›T^Y\œË™Ù]
+[\›RÙ^JHOH˜Z[Y
+HÂˆÜ˜Y[\›T^Y\œËœ™[[Ý™J[\›RÙ^JNÂˆ™[X\ÙPÜ˜Y[\›T^Y\Š˜Z[Y
+NÂˆ[™›ÚY][“ÙË™J“ÓÑÒÖH‹Ü˜Y[\›H\œ›ÜŽˆˆ
+ÈÚ]
+È‹Èˆ
+È^˜JNÂˆ^PÜ˜Y[\›Q˜[˜XÚÕÛ™J[\›RÙ^KÛ™QÙ[™\˜]Ü‹•Ó‘WÔ“ÔÐ‘QTL
+NÂˆBˆ™]\›ˆYNÂˆJNÂˆÜ˜Y[\›T^Y\œËœ]
+[\›RÙ^KXÝ]™T^Y\ŠNÂˆ^Y\‹œ™\\™P\Þ[˜Ê
+NÂˆHØ]Ú
+^Ù\[Ûˆ^
+HÂˆYˆ
+Ü˜Y[\›T^Y\œË™Ù]
+[\›RÙ^JHOH^Y\ŠHÜ˜Y[\›T^Y\œËœ™[[Ý™J[\›RÙ^JNÂˆYˆ
+^Y\ˆOH[
+H™[X\ÙPÜ˜Y[\›T^Y\Š^Y\ŠNÂˆ[™›ÚY][“ÙË™J“ÓÑÒÖH‹Ü˜Y[\›H\œ›Üˆ‹^
+NÂˆ^PÜ˜Y[\›Q˜[˜XÚÕÛ™J[\›RÙ^KÛ™QÙ[™\˜]Ü‹•Ó‘WÔ“ÔÐ‘QTL
+NÂˆBˆB‚ˆš]˜]H›ÚY^PÜ˜Y[\›Q˜[˜XÚÕÛ™JÝš[™È[\›RÙ^K[Û™U\K[\˜][Û“\ÊHÂˆYˆ
+XXÝ]š]T™\Ý[YY\Ñš[š\Ú[™Ê
+H\Ñ\Ý›ÞYY
+
+JH™]\›ŽÂˆžHÂˆÛ™QÙ[™\˜]ÜˆÛ™HH™]ÈÛ™QÙ[™\˜]ÜŠ]Y[ÓX[˜YÙ\‹”Õ‘PSWÐST“K
+NÂˆYˆ
+]Û™KœÝ\Û™JÛ™U\K\˜][Û“\ÊJHÂˆÛ™Kœ™[X\ÙJ
+NÂˆ™]\›ŽÂˆBˆÜ˜Y[\›UÛ™\Ëœ]
+[\›RÙ^KÛ™JNÂˆHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HÈBˆB‚ˆš]˜]HÝ]XÈ›ÚY™[X\ÙPÜ˜Y[\›T^Y\ŠYYXT^Y\ˆ^Y\ŠHÂˆžHÈ^Y\‹œÝÜ
+
+NÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HÈBˆžHÈ^Y\‹œ™[X\ÙJ
+NÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HÈBˆB‚ˆš]˜]H›ÚYÝÜÜ˜Y[\›P[\
+Ýš[™È[\›RÙ^JHÂˆYYXT^Y\ˆ^Y\ˆHÜ˜Y[\›T^Y\œËœ™[[Ý™J[\›RÙ^JNÂˆYˆ
+^Y\ˆOH[
+HÂˆ™[X\ÙPÜ˜Y[\›T^Y\Š^Y\ŠNÂˆBˆÛ™QÙ[™\˜]ÜˆÛ™HHÜ˜Y[\›UÛ™\Ëœ™[[Ý™J[\›RÙ^JNÂˆYˆ
+Û™HOH[
+HÂˆžHÈÛ™KœÝÜÛ™J
+NÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HÈBˆžHÈÛ™Kœ™[X\ÙJ
+NÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HÈBˆBˆB‚ˆš]˜]H›ÚYÝÜ[Ü˜Y[\›T^X˜XÚÊ
+HÂˆ›Üˆ
+YYXT^Y\ˆ^Y\ˆˆ™]È˜]˜K][\œ˜^S\ÝŠÜ˜Y[\›T^Y\œË˜[Y\Ê
+JJHÂˆ™[X\ÙPÜ˜Y[\›T^Y\Š^Y\ŠNÂˆBˆÜ˜Y[\›T^Y\œË˜ÛX\Š
+NÂˆ›Üˆ
+Û™QÙ[™\˜]ÜˆÛ™Hˆ™]È˜]˜K][\œ˜^S\ÝŠÜ˜Y[\›UÛ™\Ë˜[Y\Ê
+JJHÂˆžHÈÛ™KœÝÜÛ™J
+NÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HÈBˆžHÈÛ™Kœ™[X\ÙJ
+NÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HÈBˆBˆÜ˜Y[\›UÛ™\Ë˜ÛX\Š
+NÂˆB‚ˆš]˜]H›ÚYÝÜÝ\œ™[ØÜ™Y[[\›\Ê
+HÂˆ›Üˆ
+[[™^HÈ[™^ÚYÙ]ËœÚ^™J
+NÈ[™^
+ÊÊHÂˆÚYÙ]ÚYÙ]HÚYÙ]Ë™Ù]
+[™^
+NÂˆYˆ
+´%ô,´`ô.´/´,´/´.H4`t.4,ô/t,4.È‹™\]X[ÊÚYÙ]\JJHÂˆÚYÙ]›\ÝÛÝ[™Ý]HH˜[ÙNÂˆÝÜÜ˜Y[\›P[\
+Ý\œ™[ØÜ™Y[’[™^
+ÈŽˆˆ
+È[™^
+NÂˆBˆBˆB‚ˆš]˜]H›ÚY™\Ù]Ü˜Y[\›QYÙ\Ê
+HÂˆ›Üˆ
+ØÜ™Y[ˆØÜ™Y[ˆˆØÜ™Y[œÊHÂˆ›Üˆ
+ÚYÙ]ÚYÙ]ˆØÜ™Y[‹ÚYÙ]ÊHÂˆYˆ
+´%ô,´`ô.´/´,´/´.H4`t.4,ô/t,4.È‹™\]X[ÊÚYÙ]\JJHÚYÙ]›\ÝÛÝ[™Ý]HH˜[ÙNÂˆBˆBˆ›Üˆ
+ÚYÙ]ÚYÙ]ˆÚYÙ]ÊHÂˆYˆ
+´%ô,´`ô.´/´,´/´.H4`t.4,ô/t,4.È‹™\]X[ÊÚYÙ]\JJHÚYÙ]›\ÝÛÝ[™Ý]HH˜[ÙNÂˆBˆB‚ˆš]˜]HÝ]XÈ[Ü˜Y[\›T™\ÛÝ\˜ÙJ[[™^
+HÂˆÝÚ]Ú
+[™^
+HÂˆØ\ÙHNˆ™]\›ˆ‹œ˜]ËšØ×Ø[\›LNÂˆØ\ÙHŽˆ™]\›ˆ‹œ˜]ËšØ×Ø[\›LŽÂˆØ\ÙHÎˆ™]\›ˆ‹œ˜]ËšØ×Ø[\›LÎÂˆØ\ÙHˆ™]\›ˆ‹œ˜]ËšØ×Ø[\›MÂˆØ\ÙHNˆ™]\›ˆ‹œ˜]ËšØ×Ø[\›MNÂˆY˜][ˆ™]\›ˆÂˆBˆB‚ˆš]˜]H›ÚYÜXZÕ›ÚXÙP[››Ý[˜Ù[Y[
+Ýš[™È^
+HÂˆYˆ
+^ÔÜYXÚOH[	‰ˆ^OH[	‰ˆ]^š[J
+Kš\Ñ[\J
+JHÂˆžHÂˆ^ÔÜYXÚœÜXZÊ^^ÔÜYXÚ”UQUQWÑ“TÒ[˜›ÛÙÚÞWÝ×Èˆ
+ÈÞ\Ý[PÛØÚË™[\ÙY™X[[YJ
+JNÂˆHØ]Ú
+^Ù\[Ûˆ^
+HÂˆ[™›ÚY][“ÙË™J“ÓÑÒÖH‹•ÈÜXZÈ\œ›Üˆ‹^
+NÂˆBˆBˆB‚ˆš]˜]H[
+›Ø]˜[YJHÂˆ™]\›ˆ
+[
+H
+˜[YH
+ˆÙ]™\ÛÝ\˜Ù\Ê
+K™Ù]\Ü^SY]šXÜÊ
+K™[œÚ]H
+ÈYŠNÂˆB‚ˆš]˜]H[Û˜\ÑÜšY
+›Ø]˜[YJHÂˆ[Ý\HX]›X^
+K
+Œ
+JNÂˆ™]\›ˆX]œ›Ý[™
+˜[YHÈÝ\
+H
+ˆÝ\ÂˆB‚ˆš]˜]H^šY]ÈXY[™ÊÝš[™È^
+HÂˆ^šY]ÈšY]ÈH™]È^šY]Ê\ÊNÂˆšY]ËœÙ]^
+^
+NÂˆšY]ËœÙ]^ÛÛÜŠÛÛÜ‹•ÒUJNÂˆšY]ËœÙ]^Ú^™JŒŠNÂˆšY]ËœÙ]Ü˜]š]JÜ˜]š]KÑS•T—Õ‘T•PÐS
+NÂˆšY]ËœÙ]Y[™Ê
+N
+K
+LŠK
+LŠK
+LŠJNÂˆšY]ËœÙ]˜XÚÙÜ›Ý[™ÛÛÜŠÛÛÜ‹œ™ØŠM‹Í‹N
+JNÂˆ™]\›ˆšY]ÎÂˆB‚ˆš]˜]H]ÛˆXÝ[ÛŠÝš[™È^[›˜X›H\ÚÊHÂˆ]Ûˆ]ÛˆH™]È]ÛŠ\ÊNÂˆ]Û‹œÙ]^
+^
+NÂˆ]Û‹œÙ][Ø\Ê˜[ÙJNÂˆ]Û‹œÙ]ÛÛXÚÓ\Ý[™\ŠˆOˆ\ÚËœ[Š
+JNÂˆ™]\›ˆ]ÛŽÂˆB‚ˆš]˜]H]ÛˆYØXÞSY[P]ÛŠÝš[™È^[›˜X›H\ÚÊHÂˆ]Ûˆ]ÛˆH™]È]ÛŠ\ÊNÂˆ]Û‹œÙ]^
+^
+NÂˆ]Û‹œÙ]^Ú^™JŒ
+NÂˆ]Û‹œÙ]^ÛÛÜŠÛÛÜ‹“PÒÊNÂˆ]Û‹œÙ][Ø\ÊYJNÂˆ]Û‹œÙ]Ü˜]š]JÜ˜]š]KÑS•TŠNÂˆ]Û‹œÙ]˜XÚÙÜ›Ý[™™\ÛÝ\˜ÙJ‹™˜]ØX›KšØ×Ø˜XÚÙÜ›Ý[™Ø]ÛŠNÂˆ]Û‹œÙ]ÛÛXÚÓ\Ý[™\ŠˆOˆ\ÚËœ[Š
+JNÂˆ™]\›ˆ]ÛŽÂˆB‚ˆš]˜]H›ÚYÚÝÒÛYJ
+HÂˆX[X[\Ø”ØÜ™Y[‘Ù[™\˜][ÛŠÊÎÂˆX[X[\Ø”ØÜ™Y[•š\ÚX›HH˜[ÙNÂˆÜ\˜]Ü“[ÙHH˜[ÙNÂˆÙ]™\]Y\ÝYÜšY[][ÛŠ[™›ÚY˜ÛÛ[œKXÝ]š]R[™›Ë”ÐÔ‘QS—ÓÔ’QS•USÓ—ÕS”ÔPÒQ’QQ
+NÂˆÝÜ[Ù\ÔÛ[™Ê
+NÂˆY]ÜˆH[ÂˆžHÈ™XY›Ú™XÝØ][ÙÊ
+NÈBˆØ]Ú
+^Ù\[Ûˆ\œ›ÜŠHÈØ\Ý›XZÙU^
+\Ë´(t/´at`4,4/t-t/t.4-H4/ô`4/´-t.´`´,ˆˆ
+È\œ›Ü‹™Ù]Y\ÜØYÙJ
+KØ\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÈBˆÜ˜YÙ\šXÙT™YÚ\Ý\œË™ÛØ˜[
+
+KœÙ]XÝ[ÛœÊ[
+NÂˆ›ÛÝH™]È[™X\“^[Ý]
+\ÊNÂˆ›ÛÝœÙ]ÜšY[][ÛŠ[™X\“^[Ý]•‘T•PÐS
+NÂˆ›ÛÝœÙ]Ü˜]š]JÜ˜]š]KÑS•T—ÒÔ’V“Ó•S
+NÂˆ›ÛÝœÙ]˜XÚÙÜ›Ý[™™\ÛÝ\˜ÙJ‹™˜]ØX›KšØ×ÛXZ[—Ø˜XÚÙÜ›Ý[™ÜÛX[
+NÂˆ›ÛÝœÙ]ÙZYÚÝ[JKŒŠNÂˆ^šY]È]HH™]È^šY]Ê\ÊNÂˆ]KœÙ]^
+“ÓÑÒÖHŠNÂˆ]KœÙ]^ÛÛÜŠÛÛÜ‹œ™ØŠŒÍËMÍ‹NJJNÂˆ]KœÙ]^Ú^™JŒŠNÂˆ]KœÙ]Ü˜]š]JÜ˜]š]KÑS•TŠNÂˆ[™X\“^[Ý]“^[Ý]\˜[\È]T\˜[\ÈH™]È[™X\“^[Ý]“^[Ý]\˜[\ÊL‹LŠNÂˆ]T\˜[\ËÜX\™Ú[ˆH
+
+NÂˆ›ÛÝ˜YšY]Ê]K]T\˜[\ÊNÂˆËÈÜšYÚ[˜[XZ[—ÛY[Kž[Ü™\‹ÌÚY[™ŒMÙZYÚË‚ˆ[Y[UÚYHX]›Z[Š
+Ì
+KÙ]™\ÛÝ\˜Ù\Ê
+K™Ù]\Ü^SY]šXÜÊ
+KÚY^[ÊNÂˆYYØXÞSY[R][J´(t/´-ô-4,4`´c4/t/´,´bô.H4/ô`4/´-t.´`ˆ‹\ÎŽ˜Ü™X]S˜[YY›Ú™XÝY[UÚY
+NÂˆYYØXÞSY[R][J´%ô,4,ô`4`ô-ô.4`´c4/ô`4/´-t.´`ˆ‹
+
+HOˆÚÛÜÙTØ]™Y›Ú™XÝ
+˜[ÙJKY[UÚY
+NÂˆYYØXÞSY[R][J´(ô-4,4.ô.4`´c4/ô`4/´-t.´`ˆ‹
+
+HOˆÚÛÜÙTØ]™Y›Ú™XÝ
+YJKY[UÚY
+NÂˆYYØXÞSY[R][J´+t.´`t/ô/´`4`ˆ4/ô`4/´-t.´`´,‹
+
+HOˆÂˆYˆ
+Ù]Ú\™Y™Y™\™[˜Ù\Ê‘Q”ËSÑWÔ’UUJK˜ÛÛZ[œÊPÕU‘WÔ“Ò‘PÕ
+JHÂˆYˆ
+ØY›Ú™XÝ
+
+JH^Ü›Ú™XÝ
+
+NÂˆH[ÙHØ\Ý›XZÙU^
+\Ë´(t/t,4aô,4.ô,4`t/´-ô-4,4.H4.4.ô.4-ô,4,ô`4`ô-ô.4/ô`4/´-t.´`ˆ‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆKY[UÚY
+NÂˆYYØXÞSY[R][J´&4/4/ô/´`4`ˆ4/ô`4/´-t.´`´,‹\ÎŽš[\Ü›Ú™XÝY[UÚY
+NÂˆYYØXÞSY[R][J•TÐˆÙ\šX[8 (ˆ[Ù\È•H‹\ÎŽœÚÝÕ\Ø”Ù\šX[ØÜ™Y[‹Y[UÚY
+NÂˆYYØXÞSY[R][J´$´bôat/´-‹\ÎŽ™š[š\ÚY[UÚY
+NÂˆ›ÛÝ˜YšY]Ê™]ÈšY]Ê\ÊK™]È[™X\“^[Ý]“^[Ý]\˜[\ÊKŒYŠJNÂˆ^šY]È›ÛÝ\ˆH™]È^šY]Ê\ÊNÂˆ›ÛÝ\‹œÙ]^
+“ÓÑÒÖHŒKŒŠNÂˆ›ÛÝ\‹œÙ]^ÛÛÜŠÛÛÜ‹œ™ØŠMKÊJNÂˆ›ÛÝ\‹œÙ]^Ú^™JN
+NÂˆ›ÛÝ\‹œÙ]Ü˜]š]JÜ˜]š]KÑS•TŠNÂˆ›ÛÝ˜YšY]Ê›ÛÝ\‹™]È[™X\“^[Ý]“^[Ý]\˜[\ÊL‹LŠJNÂˆÙ]ÛÛ[šY]Ê›ÛÝ
+NÂˆB‚ˆš]˜]H›ÚYYYØXÞSY[R][JÝš[™ÈX™[[›˜X›H\ÚË[ÚY
+HÂˆ]Ûˆ]ÛˆHYØXÞSY[P]ÛŠX™[\ÚÊNÂˆËÈHÛÝ\˜ÙHÜXÚYšY\È›Üˆ^˜]\ˆ[ˆÜ‚ˆ]Û‹œÙ]^Ú^™J[™›ÚY][•\Y˜[YKÓÓTVÕS’UÑTŒ
+NÂˆ[™X\“^[Ý]“^[Ý]\˜[\È\˜[\ÈH™]È[™X\“^[Ý]“^[Ý]\˜[\ÊÚYŒLYŠNÂˆ\˜[\Ë™Ü˜]š]HHÜ˜]š]KÑS•T—ÒÔ’V“Ó•SÂˆ\˜[\ËÜX\™Ú[ˆH
+L
+NÂˆ›ÛÝ˜YšY]Ê]Û‹\˜[\ÊNÂˆB‚ˆš]˜]H›ÛÛX[ˆÝÜ™PXÝ]™T›Ú™XÝ
+Ýš[™ÈœÛÛ‹›ÛÛX[ˆÞ[˜Ú›Û›Ý\ÊH›ÝÜÈ^Ù\[ÛˆÂˆÝš[™È›Ü›X[^™YH›Ú™XÝØ][ÙË››Ü›X[^™JœÛÛŠNÂˆ[™›ÚY˜ÛÛ[”Ú\™Y™Y™\™[˜Ù\È™YœÈHÙ]Ú\™Y™Y™\™[˜Ù\Ê‘Q”ËSÑWÔ’UUJNÂˆÝš[™ÈÛXÝ]™HH™YœË™Ù]Ýš[™ÊPÕU‘WÔ“Ò‘PÕ[
+NÂˆÝš[™ÈÛØ][ÙÈH™YœË™Ù]Ýš[™Ê“Ò‘PÕÐÐUSÑË[
+NÂˆÝš[™ÈÛ˜[YHH™YœË™Ù]Ýš[™Êœ›Ú™XÝÛ˜[YH‹[
+NÂˆÝš[™ÈØ][ÙÈH›Ú™XÝØ][ÙË\Ù\
+ÛØ][ÙË›Ü›X[^™Y
+NÂˆ[™›ÚY˜ÛÛ[”Ú\™Y™Y™\™[˜Ù\Ë‘Y]ÜˆY]H™YœË™Y]
+
+Bˆœ]Ýš[™ÊPÕU‘WÔ“Ò‘PÕ›Ü›X[^™Y
+Kœ]Ýš[™Ê“Ò‘PÕÐÐUSÑËØ][ÙÊBˆœ]Ýš[™Êœ›Ú™XÝÛ˜[YH‹™]È”ÓÓ“Øš™XÝ
+›Ü›X[^™Y
+K›ÜÝš[™Êœ›Ú™XÝ˜[YH‹´'4/´.H4/ô`4/´-t.´`ˆŠJNÂˆYˆ
+\Þ[˜Ú›Û›Ý\ÊHÈY]˜\J
+NÈ™]\›ˆYNÈBˆYˆ
+Y]˜ÛÛ[Z]
+
+JH™]\›ˆYNÂˆ[™›ÚY˜ÛÛ[”Ú\™Y™Y™\™[˜Ù\Ë‘Y]Üˆ™\ÝÜ™HH™YœË™Y]
+
+NÂˆYˆ
+ÛXÝ]™HOH[
+H™\ÝÜ™Kœ™[[Ý™JPÕU‘WÔ“Ò‘PÕ
+NÈ[ÙH™\ÝÜ™Kœ]Ýš[™ÊPÕU‘WÔ“Ò‘PÕÛXÝ]™JNÂˆYˆ
+ÛØ][ÙÈOH[
+H™\ÝÜ™Kœ™[[Ý™J“Ò‘PÕÐÐUSÑÊNÈ[ÙH™\ÝÜ™Kœ]Ýš[™Ê“Ò‘PÕÐÐUSÑËÛØ][ÙÊNÂˆYˆ
+Û˜[YHOH[
+H™\ÝÜ™Kœ™[[Ý™Jœ›Ú™XÝÛ˜[YHŠNÈ[ÙH™\ÝÜ™Kœ]Ýš[™Êœ›Ú™XÝÛ˜[YH‹Û˜[YJNÂˆYˆ
+\™\ÝÜ™K˜ÛÛ[Z]
+
+JH[™›ÚY][“ÙË™J“ÓÑÒÖH‹ÛÝ[›Ý\œÚ\Ý™\ÝÜ™Y›Ú™XÝ™Y™\™[˜Ù\ÈŠNÂˆ™]\›ˆ˜[ÙNÂˆB‚ˆÊŠ‚ˆ
+ˆ\Ü˜YHÛ›Ú™XÝYYXH™Y›Ü™HÚ[™Ú[™È]ÈØ]™YY[]KˆHØ]™HØ[˜XÚÂˆ
+ˆÛÛ[Z]ÈPÕU‘WÔ“Ò‘PÕ[™“Ò‘PÕÐÐUSÑÈÙÙ]\ŽÈ˜Z[YÛÜY\ÈX]™H›Ýˆ
+ˆHÜšYÚ[˜[Ø]™Y”ÓÓˆ[™HÛš[\È[ÝXÚY‚ˆ
+‹Âˆš]˜]HÝš[™ÈZYÜ˜]SYØXÞPXÝ]™T›Ú™XÝ
+Ýš[™ÈÝÜ™Y
+H›ÝÜÈ^Ù\[ÛˆÂˆ™]\›ˆYØXÞT›Ú™XÝYYXSZYÜ˜]Ü‹›ZYÜ˜]JÙ]š[\Ñ\Š
+KÝÜ™Y™]ÒœÛÛˆOˆÂˆžHÈ™]\›ˆÝÜ™PXÝ]™T›Ú™XÝ
+™]ÒœÛÛ‹YJNÈBˆØ]Ú
+^Ù\[Ûˆ˜Z[\™JHÂˆ[™›ÚY][“ÙË™J“ÓÑÒÖH‹“YØXÞH›Ú™XÝQÛÛ[Z]˜Z[Y‹˜Z[\™JNÂˆ™]\›ˆ˜[ÙNÂˆBˆJNÂˆB‚ˆš]˜]HÝš[™È™XY›Ú™XÝØ][ÙÊ
+H›ÝÜÈ^Ù\[ÛˆÂˆ[™›ÚY˜ÛÛ[”Ú\™Y™Y™\™[˜Ù\È™YœÈHÙ]Ú\™Y™Y™\™[˜Ù\Ê‘Q”ËSÑWÔ’UUJNÂˆÝš[™ÈXÝ]™HH™YœË™Ù]Ýš[™ÊPÕU‘WÔ“Ò‘PÕ[
+NÂˆYˆ
+XÝ]™HOH[
+HÂˆYˆ
+YØXÞT›Ú™XÝYYXSZYÜ˜]Ü‹›™YYÓZYÜ˜][ÛŠXÝ]™JJHÂˆZYÜ˜]SYØXÞPXÝ]™T›Ú™XÝ
+XÝ]™JNÂˆH[ÙHYˆ
+\ÝÜ™PXÝ]™T›Ú™XÝ
+XÝ]™KYJJHÂˆ›ÝÈ™]ÈSÑ^Ù\[ÛŠ´'t-H4`ô-4,4.ô/´`tc4`t/´at`4,4/t.4`´c4`´-t.´`ôbt.4.H4/ô`4/´-t.´`ˆŠNÂˆBˆBˆ™]\›ˆ™YœË™Ù]Ýš[™Ê“Ò‘PÕÐÐUSÑËžßHŠNÂˆB‚ˆš]˜]H›ÚYÜ™X]S˜[YY›Ú™XÝ
+
+HÂˆY]^˜[YHH›Ü\QšY[
+ˆ‹[œ]\K•TWÐÓTÔ×ÕV
+NÂˆ˜[YKœÙ][
+´&4/4cÈ4/ô`4/´-t.´`´,ŠNÂˆ[\X[ÙÈX[ÙÈH™]È[\X[ÙËZ[\Š\ÊKœÙ]]J´(t/´-ô-4,4`´c4/t/´,´bô.H4/ô`4/´-t.´`ˆŠBˆœÙ]šY]Ê˜[YJKœÙ]™YØ]]™P]ÛŠ´'´`´/4-t/t,‹[
+KœÙ]ÜÚ]]™P]ÛŠ´(t/´-ô-4,4`´c‹[
+K˜Ü™X]J
+NÂˆX[ÙËœÙ]Û”ÚÝÓ\Ý[™\ŠYÛ›Ü™YOˆX[ÙË™Ù]]ÛŠ[\X[ÙË•UÓ—ÔÔÒUU‘JKœÙ]ÛÛXÚÓ\Ý[™\ŠˆOˆÂˆžHÂˆ™XY›Ú™XÝØ][ÙÊ
+NÈËÈZYÜ˜]KÜ™\Ù\™HH™]š[Ý\ÈXÝ]™H›Ú™XÝš\œÝ‚ˆÝš[™ÈœÛÛˆH›Ú™XÝØ][ÙË˜Ü™X]J˜[YK™Ù]^
+
+KÔÝš[™Ê
+JNÂˆYˆ
+\ÝÜ™PXÝ]™T›Ú™XÝ
+œÛÛ‹YJJH›ÝÈ™]ÈSÑ^Ù\[ÛŠ´'t-H4`ô-4,4.ô/´`tc4`t/´at`4,4/t.4`´c4/ô`4/´-t.´`ˆŠNÂˆYˆ
+[ØY›Ú™XÝ
+
+JH›ÝÈ™]ÈSÑ^Ù\[ÛŠ´'t-H4`ô-4,4.ô/´`tc4/´`´.´`4bô`´c4/t/´,´bô.H4/ô`4/´-t.´`ˆŠNÂˆX[ÙË™\ÛZ\ÜÊ
+NÈÚÝÑY]ÜŠ
+NÂˆHØ]Ú
+^Ù\[Ûˆ\œ›ÜŠHÈ˜[YKœÙ]\œ›ÜŠ\œ›Ü‹™Ù]Y\ÜØYÙJ
+JNÈBˆJJNÂˆX[ÙËœÚÝÊ
+NÂˆB‚ˆš]˜]H›ÚYÚÛÜÙTØ]™Y›Ú™XÝ
+›ÛÛX[ˆ[][™ÊHÂˆžHÂˆ\Ý”ÓÓ“Øš™XÝˆ›Ú™XÝÈH›Ú™XÝØ][ÙË›\Ý
+™XY›Ú™XÝØ][ÙÊ
+JNÂˆYˆ
+›Ú™XÝËš\Ñ[\J
+JHÂˆØ\Ý›XZÙU^
+\Ë´'t-t`ˆ4`t/´at`4,4/tdt/t/tbôaH4/ô`4/´-t.´`´/´,ˆ‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÈ™]\›ŽÂˆBˆÝš[™Ö×HX™[ÈH™]ÈÝš[™ÖÜ›Ú™XÝËœÚ^™J
+WNÂˆ›Üˆ
+[HHÈHX™[Ë›[™ÝÈJÊÊHX™[ÖÚWHH›Ú™XÝË™Ù]
+JK›ÜÝš[™Êœ›Ú™XÝ˜[YH‹´'4/´.H4/ô`4/´-t.´`ˆŠNÂˆ™]È[\X[ÙËZ[\Š\ÊKœÙ]]J[][™ÈÈ´(ô-4,4.ô.4`´c4/ô`4/´-t.´`ˆˆˆ´%ô,4,ô`4`ô-ô.4`´c4/ô`4/´-t.´`ˆŠBˆœÙ]][\ÊX™[Ë
+X[ÙËÚXÚ
+HOˆÂˆ”ÓÓ“Øš™XÝÙ[XÝYH›Ú™XÝË™Ù]
+ÚXÚ
+NÂˆYˆ
+[][™ÊHÂˆ™]È[\X[ÙËZ[\Š\ÊKœÙ]]J´(ô-4,4.ô.4`´c4/ô`4/´-t.´`ÈŠBˆœÙ]Y\ÜØYÙJÙ[XÝY›ÜÝš[™Êœ›Ú™XÝ˜[YH‹´'4/´.H4/ô`4/´-t.´`ˆŠJBˆœÙ]™YØ]]™P]ÛŠ´'´`´/4-t/t,‹[
+KœÙ]ÜÚ]]™P]ÛŠ´(ô-4,4.ô.4`´c‹
+ÛÛ™š\›KÚÚXÙJHOˆ[]TØ]™Y›Ú™XÝ
+Ù[XÝY
+JKœÚÝÊ
+NÂˆH[ÙHžHÂˆYˆ
+\ÝÜ™PXÝ]™T›Ú™XÝ
+Ù[XÝYÔÝš[™Ê
+KYJJH›ÝÈ™]ÈSÑ^Ù\[ÛŠ´'t-H4`ô-4,4.ô/´`tc4/´`´.´`4bô`´c4/ô`4/´-t.´`ˆŠNÂˆYˆ
+[ØY›Ú™XÝ
+
+JH›ÝÈ™]ÈSÑ^Ù\[ÛŠ´'t-H4`ô-4,4.ô/´`tc4/´`´.´`4bô`´c4/ô`4/´-t.´`ˆŠNÂˆÚÝÑY]ÜŠ
+NÂˆHØ]Ú
+^Ù\[Ûˆ\œ›ÜŠHÈØ\Ý›XZÙU^
+\Ë\œ›Ü‹™Ù]Y\ÜØYÙJ
+KØ\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÈBˆJKœÙ]™YØ]]™P]ÛŠ´'´`´/4-t/t,‹[
+KœÚÝÊ
+NÂˆHØ]Ú
+^Ù\[Ûˆ\œ›ÜŠHÈØ\Ý›XZÙU^
+\Ë´(t/ô.4`t/´.ˆ4/ô`4/´-t.´`´/´,Žˆˆ
+È\œ›Ü‹™Ù]Y\ÜØYÙJ
+KØ\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÈBˆB‚ˆš]˜]H›ÚY[]TØ]™Y›Ú™XÝ
+”ÓÓ“Øš™XÝÙ[XÝY
+HÂˆžHÂˆ[™›ÚY˜ÛÛ[”Ú\™Y™Y™\™[˜Ù\È™YœÈHÙ]Ú\™Y™Y™\™[˜Ù\Ê‘Q”ËSÑWÔ’UUJNÂˆÝš[™ÈÙ^HH›Ú™XÝYYXTÙ\šXÙK™Ù]Ü‘Ù[™\˜]T›Ú™XÝY
+Ù[XÝYÔÝš[™Ê
+JNÂˆÝš[™ÈÛØ][ÙÈH™YœË™Ù]Ýš[™Ê“Ò‘PÕÐÐUSÑËžßHŠNÂˆÝš[™ÈXÝ]™HH™YœË™Ù]Ýš[™ÊPÕU‘WÔ“Ò‘PÕ[
+NÂˆÝš[™ÈÛ˜[YHH™YœË™Ù]Ýš[™Êœ›Ú™XÝÛ˜[YH‹[
+NÂˆ›ÛÛX[ˆ[][™ÐXÝ]™HHXÝ]™HOH[	‰ˆÙ^K™\]X[Ê›Ú™XÝYYXTÙ\šXÙK™Ù]Ü‘Ù[™\˜]T›Ú™XÝY
+XÝ]™JJNÂˆ[™›ÚY˜ÛÛ[”Ú\™Y™Y™\™[˜Ù\Ë‘Y]ÜˆY]H™YœË™Y]
+
+Bˆœ]Ýš[™Ê“Ò‘PÕÐÐUSÑË›Ú™XÝØ][ÙËœ™[[Ý™JÛØ][ÙËÙ^JJNÂˆYˆ
+[][™ÐXÝ]™JHY]œ™[[Ý™JPÕU‘WÔ“Ò‘PÕ
+Kœ™[[Ý™Jœ›Ú™XÝÛ˜[YHŠNÂˆYˆ
+YY]˜ÛÛ[Z]
+
+JHÂˆ[™›ÚY˜ÛÛ[”Ú\™Y™Y™\™[˜Ù\Ë‘Y]Üˆ™\ÝÜ™HH™YœË™Y]
+
+Kœ]Ýš[™Ê“Ò‘PÕÐÐUSÑËÛØ][ÙÊNÂˆYˆ
+XÝ]™HOH[
+H™\ÝÜ™Kœ]Ýš[™ÊPÕU‘WÔ“Ò‘PÕXÝ]™JNÂˆYˆ
+Û˜[YHOH[
+H™\ÝÜ™Kœ]Ýš[™Êœ›Ú™XÝÛ˜[YH‹Û˜[YJNÂˆYˆ
+\™\ÝÜ™K˜ÛÛ[Z]
+
+JH[™›ÚY][“ÙË™J“ÓÑÒÖH‹ÛÝ[›Ý\œÚ\Ý™\ÝÜ™YØ][ÙÈŠNÂˆ›ÝÈ™]ÈSÑ^Ù\[ÛŠ´'t-H4`ô-4,4.ô/´`tc4`ô-4,4.ô.4`´c4/ô`4/´-t.´`ˆŠNÂˆBˆYˆ
+[][™ÐXÝ]™JHÈÚYÙ]Ë˜ÛX\Š
+NÈØÜ™Y[œË˜ÛX\Š
+NÈ›Ú™XÝ^˜QšY[ÈH™]È”ÓÓ“Øš™XÝ
+
+NÈÛ\›Ø\™ÚYÙ]H[È[XYÙPØXÚK˜ÛX\Š
+NÈBˆÚÝÒÛYJ
+NÂˆHØ]Ú
+^Ù\[Ûˆ\œ›ÜŠHÈØ\Ý›XZÙU^
+\Ë\œ›Ü‹™Ù]Y\ÜØYÙJ
+KØ\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÈBˆB‚ˆš]˜]H›ÚYÚÝÓ[Ù\ÔØØ[›™\Š
+HÂˆÝÜ[Ù\ÔÛ[™Ê
+NÂˆY]ÜˆH[Âˆ›ÛÝH™]È[™X\“^[Ý]
+\ÊNÂˆ›ÛÝœÙ]ÜšY[][ÛŠ[™X\“^[Ý]•‘T•PÐS
+NÂˆ›ÛÝœÙ]˜XÚÙÜ›Ý[™ÛÛÜŠÛÛÜ‹œ™ØŠKKJJNÂˆ›ÛÝ˜YšY]ÊXY[™Ê“ÓÑÒÖH8 (ˆ[Ù\ÈÔØØ[›™\ˆŠK™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLK
+Œ
+JJNÂˆ›ÛÝ˜YšY]ÊXÝ[ÛŠ¸ .H4't,4-ô,4-‹\ÎŽœÚÝÒÛYJK™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLK
+
+JJNÂ‚ˆ[™X\“^[Ý]›Ü›HH™]È[™X\“^[Ý]
+\ÊNÂˆ›Ü›KœÙ]ÜšY[][ÛŠ[™X\“^[Ý]•‘T•PÐS
+NÂˆ›Ü›KœÙ]Y[™Ê
+MŠK
+
+K
+MŠK
+
+JNÂˆY]^ÜÝšY[H›Ü\QšY[
+ŒNL‹ŒMŽŒKŒL‹[œ]\K•TWÐÓTÔ×ÕV[œ]\K•TWÕVÕT’PUSÓ—ÕT’JNÂˆÜÝšY[œÙ][
+’Tt,4-4`4-t`H4`ô`t`´`4/´.t`t`´,´,ŠNÂˆ›Ü›K˜YšY]ÊÜÝšY[
+NÂˆY]^ÜšY[H›Ü\QšY[
+Lˆ‹[œ]\K•TWÐÓTÔ×Ó•SP‘TŠNÂˆÜšY[œÙ][
+•Ôt/ô/´`4`ˆ
+4/´,tbôaô/t/ˆLŠHŠNÂˆ›Ü›K˜YšY]ÊÜšY[
+NÂˆY]^[š]šY[H›Ü\QšY[
+ŒH‹[œ]\K•TWÐÓTÔ×Ó•SP‘TŠNÂˆ[š]šY[œÙ][
+•[š]Q
+8 $ÌMJHŠNÂˆ›Ü›K˜YšY]Ê[š]šY[
+NÂˆÜ[›™\ˆ[˜Ý[Û”Ü[›™\ˆH™]ÈÜ[›™\Š\ÊNÂˆ\œ˜^PY\\Ýš[™Ïˆ[˜Ý[ÛY\\ˆH™]È\œ˜^PY\\Š\Ë[™›ÚY”‹›^[Ý]œÚ[\WÜÜ[›™\—Ú][Kˆ™]ÈÝš[™Ö×^È’Û[™È™YÚ\Ý\œÈ
+ÌÊH‹’[œ]™YÚ\Ý\œÈ
+Ì
+HŸJNÂˆ[˜Ý[ÛY\\‹œÙ]›ÜÝÛ•šY]Ô™\ÛÝ\˜ÙJ[™›ÚY”‹›^[Ý]œÚ[\WÜÜ[›™\—Ù›ÜÝÛ—Ú][JNÂˆ[˜Ý[Û”Ü[›™\‹œÙ]Y\\Š[˜Ý[ÛY\\ŠNÂˆ›Ü›K˜YšY]Ê[˜Ý[Û”Ü[›™\ŠNÂˆY]^Y™\ÜÑšY[H›Ü\QšY[
+H‹[œ]\K•TWÐÓTÔ×Ó•SP‘TŠNÂˆY™\ÜÑšY[œÙ][
+´$4-4`4-t`H4`4-t,ô.4`t`´`4,ˆÌÈ4/´,tbôaô/t/ˆKÌ4/´,tbôaô/t/ˆÌHŠNÂˆ›Ü›K˜YšY]ÊY™\ÜÑšY[
+NÂˆY]^ÛÝ[šY[H›Ü\QšY[
+ŒL‹[œ]\K•TWÐÓTÔ×Ó•SP‘TŠNÂˆÛÝ[šY[œÙ][
+´&´/´.ô.4aô-t`t`´,´/ˆ4`4-t,ô.4`t`´`4/´,ˆ
+x $ÌLJHŠNÂˆ›Ü›K˜YšY]ÊÛÝ[šY[
+NÂ‚ˆ^šY]È™\Ý[H™]È^šY]Ê\ÊNÂˆ™\Ý[œÙ]^ÛÛÜŠÛÛÜ‹œ™ØŠÌKKMJJNÂˆ™\Ý[œÙ]^Ú^™JM
+NÂˆ™\Ý[œÙ]Y[™Ê
+MŠK
+L
+K
+MŠK
+L
+JNÂˆ™\Ý[œÙ]^
+´$ô/´`´/´,ˆ4.ˆ4aô`´-t/t.4cˆÛ[™È™YÚ\Ý\œÈ
+ÌÊKˆ4(t.´,4/t.4`4/´,´,4/t.4-H4,´bô/ô/´.ô/tcô-t`´`tcÈ4/ô/ˆ4`t-t`´.È4`ô`t`´`4/´.t`t`´,´/ˆ4-4/´.ô-´/t/ˆ4,tbô`´c4-4/´`t`´`ô/ô/t/‹ˆŠNÂˆ›ÛÝ˜YšY]Ê›Ü›K™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLKLŠJNÂˆ›ÛÝ˜YšY]ÊXÝ[ÛŠ´(taô.4`´,4`´c4`4-t,ô.4`t`´`4bÈ‹
+
+HOˆÂˆš[˜[Ýš[™ÈÜÝHÜÝšY[™Ù]^
+
+KÔÝš[™Ê
+Kš[J
+NÂˆš[˜[[[˜Ý[ÛÛÙHH[˜Ý[Û”Ü[›™\‹™Ù]Ù[XÝY][TÜÚ][ÛŠ
+HOHÈÈˆÂˆš[˜[[Ü[š]Ý\Y™\ÜËÛÝ[ÂˆžHÂˆÜH[YÙ\‹œ\œÙR[
+ÜšY[™Ù]^
+
+KÔÝš[™Ê
+Kš[J
+JNÂˆ[š]H[YÙ\‹œ\œÙR[
+[š]šY[™Ù]^
+
+KÔÝš[™Ê
+Kš[J
+JNÂˆ[[\™YY™\ÜÈH[YÙ\‹œ\œÙR[
+Y™\ÜÑšY[™Ù]^
+
+KÔÝš[™Ê
+Kš[J
+JNÂˆÛÝ[H[YÙ\‹œ\œÙR[
+ÛÝ[šY[™Ù]^
+
+KÔÝš[™Ê
+Kš[J
+JNÂˆYˆ
+ÜHÜˆMLÍH[š][š]ˆMHÛÝ[HÛÝ[ˆLBˆ[\™YY™\ÜÈ[\™YY™\ÜÈˆMLÍJH›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ
+NÂˆYˆ
+[˜Ý[ÛÛÙHOH	‰ˆ[\™YY™\ÜÈHÌH	‰ˆ[\™YY™\ÜÈHÎNNNJHÂˆÝ\Y™\ÜÈH[\™YY™\ÜÈHÌNÂˆH[ÙHYˆ
+[˜Ý[ÛÛÙHOHÈ	‰ˆ[\™YY™\ÜÈHH	‰ˆ[\™YY™\ÜÈHNNNJHÂˆÝ\Y™\ÜÈH[\™YY™\ÜÈHNÂˆH[ÙHYˆ
+
+[˜Ý[ÛÛÙHOH	‰ˆ[\™YY™\ÜÈHH	‰ˆ[\™YY™\ÜÈHNNNJBˆ
+[˜Ý[ÛÛÙHOHÈ	‰ˆ[\™YY™\ÜÈHÌH	‰ˆ[\™YY™\ÜÈHÎNNNJJHÂˆ›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ´$4-4`4-t`H4/t-H4`t/´/´`´,´-t`´`t`´,´`ô-t`ˆ4,´bô,t`4,4/t/t/´/4`È4`´.4/ô`È4`4-t,ô.4`t`´`4,ŠNÂˆH[ÙHÂˆÝ\Y™\ÜÈH[\™YY™\ÜÎÂˆBˆYˆ
+Ý\Y™\ÜÈÝ\Y™\ÜÈˆMLÍHÝ\Y™\ÜÈ
+ÈÛÝ[ˆMLÍŠH›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ
+NÂˆYˆ
+ÜÝš\Ñ[\J
+JH›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ
+NÂˆHØ]Ú
+^Ù\[Ûˆ^
+HÂˆÝš[™ÈY\ÜØYÙHH^™Ù]Y\ÜØYÙJ
+NÂˆ™\Ý[œÙ]^
+Y\ÜØYÙHOH[Y\ÜØYÙKš[J
+Kš\Ñ[\J
+BˆÈ´'ô`4/´,´-t`4cT4/ô/´`4`‹[š]Q4,4-4`4-t`H4.4.´/´.ô.4aô-t`t`´,´/ˆ4`4-t,ô.4`t`´`4/´,‹ˆ‚ˆˆ´'ô,4`4,4/4-t`´`4bÈ4-ô,4/ô`4/´`t,ˆˆ
+ÈY\ÜØYÙJNÂˆ™]\›ŽÂˆBˆ™\Ý[œÙ]^
+´'ô/´-4.´.ôc´aô,4c´`tc4.ˆˆ
+ÈÜÝ
+ÈŽˆˆ
+ÈÜ
+È¸ )ˆŠNÂˆ™]È™XY
+
+
+HOˆÂˆÝš[™È™\ÜÂˆžHÂˆ™\ÜH™XY[Ù\Ô™YÚ\Ý\œÊÜÝÜ[š]Ý\Y™\ÜËÛÝ[[˜Ý[ÛÛÙJNÂˆHØ]Ú
+^Ù\[Ûˆ^
+HÂˆ™\ÜH´'´b4.4,t.´,[Ù\ÈÔˆˆ
+È
+^™Ù]Y\ÜØYÙJ
+HOH[È^™Ù]Û\ÜÊ
+K™Ù]Ú[\S˜[YJ
+Hˆ^™Ù]Y\ÜØYÙJ
+JNÂˆBˆš[˜[Ýš[™Èš[˜[™\ÜH™\ÜÂˆ[“Û•ZU™XY
+
+
+HOˆ™\Ý[œÙ]^
+š[˜[™\Ü
+JNÂˆK˜›ÛÙÚÞK[[Ù\Ë\ØØ[ˆŠKœÝ\
+
+NÂˆJK™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLK
+LŠJJNÂˆ›ÛÝ˜YšY]Ê™\Ý[™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLKJJNÂˆÙ]ÛÛ[šY]Ê›ÛÝ
+NÂˆB‚ˆš]˜]H›ÚYÚÝÕ\Ø”Ù\šX[ØÜ™Y[Š
+HÂˆš[˜[[ØÜ™Y[‘Ù[™\˜][ÛˆH
+ÊÛX[X[\Ø”ØÜ™Y[‘Ù[™\˜][ÛŽÂˆX[X[\Ø”ØÜ™Y[•š\ÚX›HHYNÂˆÝÜ[Ù\ÔÛ[™Ê
+NÂˆY]ÜˆH[ÂˆÛÜÙSX[X[\ØÛÛ›™XÝ[ÛŠ
+NÂˆ›ÛÝH™]È[™X\“^[Ý]
+\ÊNÂˆ›ÛÝœÙ]ÜšY[][ÛŠ[™X\“^[Ý]•‘T•PÐS
+NÂˆ›ÛÝœÙ]˜XÚÙÜ›Ý[™ÛÛÜŠÛÛÜ‹œ™ØŠKKJJNÂˆ›ÛÝ˜YšY]ÊXY[™Ê“ÓÑÒÖH8 (ˆTÐˆÙ\šX[•HŠK™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLK
+Œ
+JJNÂˆ›ÛÝ˜YšY]ÊXÝ[ÛŠ¸ .H4't,4-ô,4-‹\ÎŽœÚÝÒÛYJK™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLK
+
+JJNÂˆØÜ›ÛšY]ÈØÜ›ÛH™]ÈØÜ›ÛšY]Ê\ÊNÂˆ[™X\“^[Ý]›Ü›HH™]È[™X\“^[Ý]
+\ÊNÂˆ›Ü›KœÙ]ÜšY[][ÛŠ[™X\“^[Ý]•‘T•PÐS
+NÂˆ›Ü›KœÙ]Y[™Ê
+MŠK
+
+K
+MŠK
+LŠJNÂˆØÜ›Û˜YšY]Ê›Ü›JNÂˆ^šY]È[›ÈH™]È^šY]Ê\ÊNÂˆ[›ËœÙ]^
+´$´bô,t-t`4.TÐ‹t,4-4,4/ô`´-t`4.4/t,4-´/4.0ªô'ô/´-4.´.ôc´aô.4`´c0®Ëˆ4(4,4-ô`4-tb4-t/t.4-H[™›ÚY4-ô,4/ô`4,4b4.4,´,4-t`´`tcÈ4-4.ôcÈ4,´bô,t`4,4/t/t/´,ô/ˆ4`ô`t`´`4/´.t`t`´,´,ˆŠNÂˆ[›ËœÙ]^ÛÛÜŠÛÛÜ‹œ™ØŠMKKJJNÈ[›ËœÙ]^Ú^™JM
+NÈ›Ü›K˜YšY]Ê[›ÊNÂˆÜ[›™\ˆ]šXÙTÜ[›™\ˆH™]ÈÜ[›™\Š\ÊNÂˆ\Ý\Ø”Ù\šX[ÛÛ›™XÝÜ‹‘]šXÙSÜ[Ûˆ]šXÙ\ÈH™]È\œ˜^S\ÝŠ
+NÂˆ\œ˜^PY\\Ýš[™Ïˆ]šXÙPY\\ˆH™]È\œ˜^PY\\Š\Ë[™›ÚY”‹›^[Ý]œÚ[\WÜÜ[›™\—Ú][K™]È\œ˜^S\ÝŠ
+JNÂˆ]šXÙPY\\‹œÙ]›ÜÝÛ•šY]Ô™\ÛÝ\˜ÙJ[™›ÚY”‹›^[Ý]œÚ[\WÜÜ[›™\—Ù›ÜÝÛ—Ú][JNÂˆ]šXÙTÜ[›™\‹œÙ]Y\\Š]šXÙPY\\ŠNÈ›Ü›K˜YšY]Ê]šXÙTÜ[›™\ŠNÂˆ^šY]È]šXÙR[™›ÈH™]È^šY]Ê\ÊNÈ]šXÙR[™›ËœÙ]^ÛÛÜŠÛÛÜ‹œ™ØŠÍKKNJJNÈ]šXÙR[™›ËœÙ]^Ú^™JLŠNÈ›Ü›K˜YšY]Ê]šXÙR[™›ÊNÂˆÜ[›™\ˆ˜]YÜ[›™\ˆH™]ÈÜ[›™\Š\ÊNÂˆÝš[™Ö×H˜]YÚÚXÙ\ÈHÈŽMŒ‹ŒNLŒ‹ŒÎ‹MÍŒ‹ŒLMLŒŸNÂˆ˜]YÜ[›™\‹œÙ]Y\\ŠÚ[\TÜ[›™\Y\\Š˜]YÚÚXÙ\ÊJNÈ›Ü›K˜YšY]Ê˜]YÜ[›™\ŠNÂˆÜ[›™\ˆ\š]TÜ[›™\ˆH™]ÈÜ[›™\Š\ÊNÂˆÝš[™Ö×H\š]PÚÚXÙ\ÈHÈŽŒH‹ŽLH‹ŽÌH‹ŽŒˆŸNÂˆ\š]TÜ[›™\‹œÙ]Y\\ŠÚ[\TÜ[›™\Y\\Š\š]PÚÚXÙ\ÊJNÈ›Ü›K˜YšY]Ê\š]TÜ[›™\ŠNÂˆY]^[š]šY[H›Ü\QšY[
+ŒH‹[œ]\K•TWÐÓTÔ×Ó•SP‘TŠNÈ[š]šY[œÙ][
+•[š]Q
+8 $ÌÊHŠNÈ›Ü›K˜YšY]Ê[š]šY[
+NÂˆY]^Y™\ÜÑšY[H›Ü\QšY[
+Œ‹[œ]\K•TWÐÓTÔ×Ó•SP‘TŠNÈY™\ÜÑšY[œÙ][
+´'t,4aô,4.ôc4/tbô.H4,4-4`4-t`H4`4-t,ô.4`t`´`4,
+8 $ÍMLÍJHŠNÈ›Ü›K˜YšY]ÊY™\ÜÑšY[
+NÂˆY]^ÛÝ[šY[H›Ü\QšY[
+ŒL‹[œ]\K•TWÐÓTÔ×Ó•SP‘TŠNÈÛÝ[šY[œÙ][
+´&´/´.ô.4aô-t`t`´,´/ˆ4`4-t,ô.4`t`´`4/´,ˆ
+x $ÌLJHŠNÈ›Ü›K˜YšY]ÊÛÝ[šY[
+NÂˆÜ[›™\ˆ[˜Ý[Û”Ü[›™\ˆH™]ÈÜ[›™\Š\ÊNÂˆ[˜Ý[Û”Ü[›™\‹œÙ]Y\\ŠÚ[\TÜ[›™\Y\\Š™]ÈÝš[™Ö×^È’Û[™È™YÚ\Ý\œÈ
+ÌÊH‹’[œ]™YÚ\Ý\œÈ
+Ì
+HŸJJNÈ›Ü›K˜YšY]Ê[˜Ý[Û”Ü[›™\ŠNÂˆ^šY]È™\Ý[H™]È^šY]Ê\ÊNÈ™\Ý[œÙ]^ÛÛÜŠÛÛÜ‹œ™ØŠÌKKMJJNÈ™\Ý[œÙ]^Ú^™JM
+NÂˆ™\Ý[œÙ]Y[™Ê
+L
+K
+L
+JNÈ™\Ý[œÙ]^
+•TÐ‹t,4-4,4/ô`´-t`4bÈ4/t-H4,´bô,t`4,4/tbËˆŠNÂˆ[›˜X›H™Yœ™\Ú]šXÙ\ÈH
+
+HOˆÂˆžHÂˆYˆ
+X[X[\ØÛÛ›™XÝÜˆOH[
+HX[X[\ØÛÛ›™XÝÜˆH™]È\Ø”Ù\šX[ÛÛ›™XÝÜŠ\ÊNÂˆ]šXÙ\Ë˜ÛX\Š
+NÈ]šXÙ\Ë˜Y[
+X[X[\ØÛÛ›™XÝÜ‹›\Ý]šXÙ\Ê
+JNÈ]šXÙPY\\‹˜ÛX\Š
+NÂˆ›Üˆ
+\Ø”Ù\šX[ÛÛ›™XÝÜ‹‘]šXÙSÜ[ÛˆÜ[Ûˆˆ]šXÙ\ÊBˆ]šXÙPY\\‹˜Y
+Ü[Û‹šY
+Èˆ8 (ˆˆ
+ÈÝš[™Ë™›Ü›X]
+˜]˜K][“ØØ[K•TË‰L‰L‹Ü[Û‹™[™Ü’YÜ[Û‹œ›ÙXÝY
+JNÂˆ]šXÙPY\\‹››ÝYžQ]TÙ]Ú[™ÙY
+
+NÂˆ]šXÙR[™›ËœÙ]^
+]šXÙ\Ëš\Ñ[\J
+HÈ´'ô/´-4-4-t`4-´.4,´,4-t/4bô-HTÐˆÙ\šX[t,4-4,4/ô`´-t`4bÈ4/t-H4/t,4.t-4-t/tbËˆˆˆ´'t,4.t-4-t/t/ˆ4,4-4,4/ô`´-t`4/´,Žˆˆ
+È]šXÙ\ËœÚ^™J
+JNÂˆ™\Ý[œÙ]^
+]šXÙ\Ëš\Ñ[\J
+HÈ´'ô/´-4.´.ôc´aô.TÐˆÙ\šX[t,4-4,4/ô`´-t`4.4/´,t/t/´,´.4`t/ô.4`t/´.‹ˆˆˆ´$´bô,t-t`4.4`ô`t`´`4/´.t`t`´,´/‹4/ô,4`4,4/4-t`´`4bÈ4.ô.4/t.4.4.4/t,4-´/4.0ªô'ô/´-4.´.ôc´aô.4`´c0®ËˆŠNÂˆHØ]Ú
+^Ù\[Ûˆ\œ›ÜŠHÈ™\Ý[œÙ]^
+´'´b4.4,t.´,4/ô/´.4`t.´,TÐ‹t,4-4,4/ô`´-t`4/´,Žˆˆ
+È\œ›Ü“Y\ÜØYÙJ\œ›ÜŠJNÈBˆNÂˆ›Ü›K˜YšY]ÊXÝ[ÛŠ´'´,t/t/´,´.4`´c4`t/ô.4`t/´.ˆTÐˆ‹™Yœ™\Ú]šXÙ\ÊK™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLK
+
+JJNÂˆ›Ü›K˜YšY]ÊXÝ[ÛŠ´'ô/´-4.´.ôc´aô.4`´c4,´bô,t`4,4/t/tbô.H4,4-4,4/ô`´-t`‹
+
+HOˆÂˆYˆ
+]šXÙ\Ëš\Ñ[\J
+H]šXÙTÜ[›™\‹™Ù]Ù[XÝY][TÜÚ][ÛŠ
+H
+HÈ™\Ý[œÙ]^
+´(t/t,4aô,4.ô,4/´,t/t/´,´.4`t/ô.4`t/´.ˆ4.4,´bô,t-t`4.4,4-4,4/ô`´-t`ˆŠNÈ™]\›ŽÈBˆš[˜[\Ø”Ù\šX[ÛÛ›™XÝÜ‹‘]šXÙSÜ[ÛˆÙ[XÝYH]šXÙ\Ë™Ù]
+]šXÙTÜ[›™\‹™Ù]Ù[XÝY][TÜÚ][ÛŠ
+JNÂˆš[˜[[˜]YH[YÙ\‹œ\œÙR[
+˜]YÚÚXÙ\ÖØ˜]YÜ[›™\‹™Ù]Ù[XÝY][TÜÚ][ÛŠ
+WJNÂˆš[˜[Ýš[™Èœ˜[Z[™ÈH\š]PÚÚXÙ\ÖÜ\š]TÜ[›™\‹™Ù]Ù[XÝY][TÜÚ][ÛŠ
+WNÂˆ\Ø”Ù\šX[Ù][™ÜË”\š]H\š]HHœ˜[Z[™Ë˜Ú\]
+JHOH	ÑIÈÈ\Ø”Ù\šX[Ù][™ÜË”\š]K‘U‘Sˆˆœ˜[Z[™Ë˜Ú\]
+JHOH	ÓÉÈÈ\Ø”Ù\šX[Ù][™ÜË”\š]K“Ñˆ\Ø”Ù\šX[Ù][™ÜË”\š]K““Ó‘NÂˆš[˜[[ÝÜš]ÈHœ˜[Z[™Ë™[™ÕÚ]
+ŒˆŠHÈˆˆNÂˆ™\Ý[œÙ]^
+´'´`´.´`4bô,´,4cˆˆ
+ÈÙ[XÝYšY
+È‹ˆ4'ô/´-4`´,´-t`4-4.4-4/´`t`´`ô/È4,ˆ4-4.4,4.ô/´,ô-H[™›ÚY4-t`t.ô.4/´/H4/ô/´cô,´.4`´`tcø )ˆŠNÂˆ[Ù\Ñ^XÝ]Ü‹™^XÝ]J
+
+HOˆÂˆžHÂˆ\Ø”Ù\šX[[Ù\ÐÛÛ›™XÝ[ÛˆÜ[™YHX[X[\ØÛÛ›™XÝÜ‹˜ÛÛ›™XÝ
+Ù[XÝYšY™]È\Ø”Ù\šX[Ù][™ÜÊ˜]YÝÜš]Ë\š]JKML
+K™Ù]
+
+NÂˆ[“Û•ZU™XY
+
+
+HOˆÂˆYˆ
+ØÜ™Y[‘Ù[™\˜][ÛˆOHX[X[\Ø”ØÜ™Y[‘Ù[™\˜][ÛŠHÈžHÈÜ[™Y˜ÛÜÙJ
+NÈHØ]Ú
+SÑ^Ù\[ÛˆYÛ›Ü™Y
+HÈH™]\›ŽÈBˆÛÜÙSX[X[\ØÛÛ›™XÝ[ÛŠ
+NÈX[X[\ØÛÛ›™XÝ[ÛˆHÜ[™YÂˆ™\Ý[œÙ]^
+´'ô/´-4.´.ôc´aô-t/t/Žˆˆ
+ÈÙ[XÝYšY
+Èˆ8 (ˆˆ
+È˜]Y
+Èˆˆ
+Èœ˜[Z[™È
+È‹ˆ4%ô,4/ô`4/´`tbÈ4,´bô/ô/´.ô/tcôc´`´`tcÈ4`´/´.ôc4.´/ˆ4/ô/ˆ4.´/t/´/ô.´-KˆŠNÂˆJNÂˆHØ]Ú
+^Ù\[Ûˆ\œ›ÜŠHÂˆ[“Û•ZU™XY
+
+
+HOˆÈYˆ
+ØÜ™Y[‘Ù[™\˜][ÛˆOHX[X[\Ø”ØÜ™Y[‘Ù[™\˜][ÛŠH™\Ý[œÙ]^
+´'t-H4`ô-4,4.ô/´`tc4/ô/´-4.´.ôc´aô.4`´cTÐ‹t,4-4,4/ô`´-t`ˆˆ
+È\œ›Ü“Y\ÜØYÙJ\œ›ÜŠJNÈJNÂˆBˆJNÂˆJK™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLK
+
+JJNÂˆ›Ü›K˜YšY]ÊXÝ[ÛŠ´'´`´.´.ôc´aô.4`´c‹
+
+HOˆÈÛÜÙSX[X[\ØÛÛ›™XÝ[ÛŠ
+NÈ™\Ý[œÙ]^
+•TÐ‹t,4-4,4/ô`´-t`4/´`´.´.ôc´aôdt/KˆŠNÈJK™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLK
+
+JJNÂˆ›Ü›K˜YšY]ÊXÝ[ÛŠ´(taô.4`´,4`´c4`4-t,ô.4`t`´`4bÈ‹
+
+HOˆÂˆš[˜[\Ø”Ù\šX[[Ù\ÐÛÛ›™XÝ[ÛˆÛÛ›™XÝ[ÛˆHX[X[\ØÛÛ›™XÝ[ÛŽÂˆYˆ
+ÛÛ›™XÝ[ÛˆOH[
+HÈ™\Ý[œÙ]^
+´(t/t,4aô,4.ô,4/ô/´-4.´.ôc´aô.TÐ‹t,4-4,4/ô`´-t`ˆŠNÈ™]\›ŽÈBˆš[˜[[[š]Y™\ÜËÛÝ[ÂˆžHÂˆ[š]H[YÙ\‹œ\œÙR[
+[š]šY[™Ù]^
+
+KÔÝš[™Ê
+Kš[J
+JNÈY™\ÜÈH[YÙ\‹œ\œÙR[
+Y™\ÜÑšY[™Ù]^
+
+KÔÝš[™Ê
+Kš[J
+JNÂˆÛÝ[H[YÙ\‹œ\œÙR[
+ÛÝ[šY[™Ù]^
+
+KÔÝš[™Ê
+Kš[J
+JNÂˆYˆ
+[š][š]ˆÈY™\ÜÈY™\ÜÈˆMLÍHÛÝ[HÛÝ[ˆLHY™\ÜÈ
+ÈÛÝ[ˆMLÍŠH›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ
+NÂˆHØ]Ú
+^Ù\[Ûˆ[˜[Y
+HÈ™\Ý[œÙ]^
+´'ô`4/´,´-t`4c[š]Q4,4-4`4-t`H4.4.´/´.ô.4aô-t`t`´,´/ˆ4`4-t,ô.4`t`´`4/´,‹ˆŠNÈ™]\›ŽÈBˆš[˜[[[˜Ý[ÛˆH[˜Ý[Û”Ü[›™\‹™Ù]Ù[XÝY][TÜÚ][ÛŠ
+HOHÈÈˆÂˆ™\Ý[œÙ]^
+´)ô.4`´,4cˆ4`4-t,ô.4`t`´`4bÈ4/ô/ˆ[Ù\È•x )ˆŠNÂˆ[Ù\Ñ^XÝ]Ü‹™^XÝ]J
+
+HOˆÂˆžHÂˆ[×H˜[Y\ÈHÛÛ›™XÝ[Û‹œ™XY
+[š][˜Ý[Û‹Y™\ÜËÛÝ[
+NÂˆÝš[™ÐZ[\ˆ™\ÜH™]ÈÝš[™ÐZ[\Š‘ÈŠK˜\[™
+[˜Ý[ÛŠK˜\[™
+ˆ8 (ˆ4,4-4`4-t`HŠK˜\[™
+Y™\ÜÊK˜\[™
+—ˆŠNÂˆ›Üˆ
+[HHÈH˜[Y\Ë›[™ÝÈJÊÊH™\Ü˜\[™
+Y™\ÜÈ
+ÈJK˜\[™
+ŽˆŠK˜\[™
+˜[Y\ÖÚWJK˜\[™
+H
+ÈHOH˜[Y\Ë›[™ÝÈˆˆˆ—ˆŠNÂˆ[“Û•ZU™XY
+
+
+HOˆ™\Ý[œÙ]^
+™\ÜÔÝš[™Ê
+JJNÂˆHØ]Ú
+^Ù\[Ûˆ\œ›ÜŠHÂˆ[“Û•ZU™XY
+
+
+HOˆÈYˆ
+X[X[\ØÛÛ›™XÝ[ÛˆOHÛÛ›™XÝ[Ûˆ	‰ˆXÛÛ›™XÝ[Û‹š\ÓÜ[Š
+JHX[X[\ØÛÛ›™XÝ[ÛˆH[È™\Ý[œÙ]^
+´'´b4.4,t.´,[Ù\È•Nˆˆ
+È\œ›Ü“Y\ÜØYÙJ\œ›ÜŠJNÈJNÂˆBˆJNÂˆJK™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLK
+
+JJNÂˆ›Ü›K˜YšY]Ê™\Ý[™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLKLŠJNÂˆ›ÛÝ˜YšY]ÊØÜ›Û™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLKJJNÈÙ]ÛÛ[šY]Ê›ÛÝ
+NÈ™Yœ™\Ú]šXÙ\Ëœ[Š
+NÂˆB‚ˆš]˜]H\œ˜^PY\\Ýš[™ÏˆÚ[\TÜ[›™\Y\\ŠÝš[™Ö×H˜[Y\ÊHÂˆ\œ˜^PY\\Ýš[™ÏˆY\\ˆH™]È\œ˜^PY\\Š\Ë[™›ÚY”‹›^[Ý]œÚ[\WÜÜ[›™\—Ú][K˜[Y\ÊNÂˆY\\‹œÙ]›ÜÝÛ•šY]Ô™\ÛÝ\˜ÙJ[™›ÚY”‹›^[Ý]œÚ[\WÜÜ[›™\—Ù›ÜÝÛ—Ú][JNÈ™]\›ˆY\\ŽÂˆB‚ˆš]˜]HÝš[™È\œ›Ü“Y\ÜØYÙJ›ÝØX›H\œ›ÜŠHÂˆ›ÝØX›HØ]\ÙHH\œ›ÜŽÈÚ[H
+Ø]\ÙK™Ù]Ø]\ÙJ
+HOH[
+HØ]\ÙHHØ]\ÙK™Ù]Ø]\ÙJ
+NÂˆ™]\›ˆØ]\ÙK™Ù]Y\ÜØYÙJ
+HOH[ÈØ]\ÙK™Ù]Û\ÜÊ
+K™Ù]Ú[\S˜[YJ
+HˆØ]\ÙK™Ù]Y\ÜØYÙJ
+NÂˆB‚ˆš]˜]H›ÚYÛÜÙSX[X[\ØÛÛ›™XÝ[ÛŠ
+HÂˆ\Ø”Ù\šX[[Ù\ÐÛÛ›™XÝ[ÛˆÛÛ›™XÝ[ÛˆHX[X[\ØÛÛ›™XÝ[ÛŽÈX[X[\ØÛÛ›™XÝ[ÛˆH[ÂˆYˆ
+ÛÛ›™XÝ[ÛˆOH[
+HžHÈÛÛ›™XÝ[Û‹˜ÛÜÙJ
+NÈHØ]Ú
+SÑ^Ù\[Ûˆ\œ›ÜŠHÈ[™›ÚY][“ÙËÊ“ÓÑÒÖH‹•TÐˆÙ\šX[ÛÜÙH˜Z[Y‹\œ›ÜŠNÈBˆB‚ˆX›XÈÝ]XÈ[Ø[Ý[]S[Ù\ÔPÜ˜Êž]V×H]K[[™Ý
+HÂˆ[Ü˜ÈH‘‘‘ŽÂˆ›Üˆ
+[ÜÈHÈÜÈ[™ÝÈÜÊÊÊHÂˆÜ˜ÈH
+]VÜÜ×H	ˆ‘ŠNÂˆ›Üˆ
+[HHÈHOHÈKKJHÂˆYˆ
+
+Ü˜È	ˆJHOH
+HÂˆÜ˜ÈHNÂˆÜ˜ÈHLNÂˆH[ÙHÂˆÜ˜ÈHNÂˆBˆBˆBˆ™]\›ˆÜ˜È	ˆ‘‘‘ŽÂˆB‚ˆX›XÈÝ]XÈž]V×HZ[[Ù\ÔQœ˜[YJ[[š][[˜Ý[ÛÛÙK[Ý\Y™\ÜË[ÛÝ[
+HÂˆž]V×Hœ˜[YHH™]Èž]VÎNÂˆœ˜[YVÌHH
+ž]JH
+[š]	ˆ‘ŠNÂˆœ˜[YVÌWHH
+ž]JH
+[˜Ý[ÛÛÙH	ˆ‘ŠNÂˆœ˜[YVÌ—HH
+ž]JH
+
+Ý\Y™\ÜÈˆ
+H	ˆ‘ŠNÂˆœ˜[YVÌ×HH
+ž]JH
+Ý\Y™\ÜÈ	ˆ‘ŠNÂˆœ˜[YVÍHH
+ž]JH
+
+ÛÝ[ˆ
+H	ˆ‘ŠNÂˆœ˜[YVÍWHH
+ž]JH
+ÛÝ[	ˆ‘ŠNÂˆ[Ü˜ÈHØ[Ý[]S[Ù\ÔPÜ˜Êœ˜[YKŠNÂˆœ˜[YVÍ—HH
+ž]JH
+Ü˜È	ˆ‘ŠNÂˆœ˜[YVÍ×HH
+ž]JH
+
+Ü˜Èˆ
+H	ˆ‘ŠNÂˆ™]\›ˆœ˜[YNÂˆB‚ˆX›XÈÝ]XÈÛ\ÜÈ[Ù\ÔU˜[œÜÜÂˆš]˜]Hš[˜[[œ]Ý™X[H[ŽÂˆš]˜]Hš[˜[Ý]]Ý™X[HÝ]Â‚ˆX›XÈ[Ù\ÔU˜[œÜÜ
+[œ]Ý™X[H[‹Ý]]Ý™X[HÝ]
+HÂˆ\Ëš[ˆH[ŽÂˆ\Ë›Ý]HÝ]ÂˆB‚ˆš]˜]H›ÚY™XY[Jž]V×HY™™\‹[Ù™œÙ][[™Ý
+H›ÝÜÈSÑ^Ù\[ÛˆÂˆ[Ý[™XYHÂˆÚ[H
+Ý[™XY[™Ý
+HÂˆ[ÛÝ[H[‹œ™XY
+Y™™\‹Ù™œÙ]
+ÈÝ[™XY[™ÝHÝ[™XY
+NÂˆYˆ
+ÛÝ[
+HÂˆ›ÝÈ™]ÈSÑ^Ù\[ÛŠ”Ý™X[HÛÜÙY™Y›Ü™H™XY[™È^XÝYˆ
+È[™Ý
+Èˆž]\È
+™XYˆ
+ÈÝ[™XY
+ÈŠHŠNÂˆBˆÝ[™XY
+ÏHÛÝ[ÂˆBˆB‚ˆX›XÈž]V×HÙ[™[™™XÙZ]™J[[š][[˜Ý[ÛÛÙK[Ý\Y™\ÜË[ÛÝ[
+H›ÝÜÈSÑ^Ù\[ÛˆÂˆYˆ
+[š]H[š]ˆÊH›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ•[š]Q]\Ý™HK‹ŒÈ›ÜˆH™\]Y\ÝÜ™\ÜÛœÙH•H^Ú[™ÙHŠNÂˆYˆ
+[˜Ý[ÛÛÙHH[˜Ý[ÛÛÙHˆ
+H›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ”•HÝ™X[H[\ˆÝ\œ™[HÝ\ÜÈ™XY[˜Ý[ÛœÈÌK‹‘ÌÛ›HŠNÂˆ[X^ÛÝ[H[˜Ý[ÛÛÙHHˆÈŒˆLNÂˆYˆ
+ÛÝ[HÛÝ[ˆX^ÛÝ[
+H›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ’[˜[Y[Ù\È•H™XY]X[]HŠNÂˆYˆ
+Ý\Y™\ÜÈÝ\Y™\ÜÈˆMLÍHÝ\Y™\ÜÈ
+ÈÛÝ[ˆMLÍŠHÂˆ›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ“[Ù\È•HY™\ÜÈ˜[™ÙH]\Ýš]‹MLÍHŠNÂˆBˆž]V×Hœ˜[YHHZ[[Ù\ÔQœ˜[YJ[š][˜Ý[ÛÛÙKÝ\Y™\ÜËÛÝ[
+NÂˆÝ]Üš]Jœ˜[YJNÂˆÝ]™›\Ú
+
+NÂ‚ˆž]V×HXY\ˆH™]Èž]VÌ×NÂˆ™XY[JXY\‹ÊNÂ‚ˆ[™\Ü[š]HXY\–ÌH	ˆ‘ŽÂˆ[™\Ü[˜ÈHXY\–ÌWH	ˆ‘ŽÂˆYˆ
+™\Ü[š]OH[š]
+HÂˆ›ÝÈ™]ÈSÑ^Ù\[ÛŠ•[™^XÝY[š]Q[ˆ[Ù\È•H™\ÜÛœÙNˆˆ
+È™\Ü[š]
+NÂˆB‚ˆYˆ
+™\Ü[˜ÈOH
+[˜Ý[ÛÛÙH
+JHÂˆ[^Ù\[ÛÛÙHHXY\–Ì—H	ˆ‘ŽÂˆž]V×HÜ˜ÐYˆH™]Èž]VÌ—NÂˆ™XY[JÜ˜ÐY‹ŠNÂˆ[^XÝYÜ˜ÈH
+
+Ü˜ÐY–ÌWH	ˆ‘ŠH
+H
+Ü˜ÐY–ÌH	ˆ‘ŠNÂˆ[Ø[ÐÜ˜ÈHØ[Ý[]S[Ù\ÔPÜ˜ÊXY\‹ÊNÂˆYˆ
+Ø[ÐÜ˜ÈOH^XÝYÜ˜ÊHÂˆ›ÝÈ™]ÈSÑ^Ù\[ÛŠÔÈZ\ÛX]Ú[ˆ[Ù\È•H^Ù\[Ûˆ™\ÜÛœÙH
+^XÝY‚ˆ
+ÈÝš[™Ë™›Ü›X]
+˜]˜K][“ØØ[K”“ÓÕ‰L‹Ø[ÐÜ˜ÊH
+È‹ÛÝ‚ˆ
+ÈÝš[™Ë™›Ü›X]
+˜]˜K][“ØØ[K”“ÓÕ‰L‹^XÝYÜ˜ÊH
+ÈŠHŠNÂˆBˆ›ÝÈ™]ÈSÑ^Ù\[ÛŠ“[Ù\È•Nˆˆ
+È\ØÜšX™S[Ù\Ñ^Ù\[ÛÛÙTÝ]XÊ^Ù\[ÛÛÙJH
+Èˆ
+4.´/´-ˆ
+È^Ù\[ÛÛÙH
+ÈŠHŠNÂˆB‚ˆYˆ
+™\Ü[˜ÈOH[˜Ý[ÛÛÙJHÂˆ›ÝÈ™]ÈSÑ^Ù\[ÛŠ•[™^XÝY[˜Ý[ÛˆÛÙH[ˆ[Ù\È•H™\ÜÛœÙNˆˆ
+È™\Ü[˜ÊNÂˆB‚ˆ[ž]PÛÝ[HXY\–Ì—H	ˆ‘ŽÂˆ[^XÝYž]PÛÝ[H[˜Ý[ÛÛÙHHˆÈ
+ÛÝ[
+ÈÊHÈˆÛÝ[
+ˆŽÂˆYˆ
+ž]PÛÝ[OH^XÝYž]PÛÝ[
+HÂˆ›ÝÈ™]ÈSÑ^Ù\[ÛŠ’[˜[Yž]HÛÝ[[ˆ[Ù\È•H™\ÜÛœÙNˆ^XÝY‚ˆ
+È^XÝYž]PÛÝ[
+È‹ÛÝˆ
+Èž]PÛÝ[
+NÂˆB‚ˆž]V×H^[ØYH™]Èž]VØž]PÛÝ[NÂˆ™XY[J^[ØYž]PÛÝ[
+NÂ‚ˆž]V×HÜ˜ÐYˆH™]Èž]VÌ—NÂˆ™XY[JÜ˜ÐY‹ŠNÂˆ[^XÝYÜ˜ÈH
+
+Ü˜ÐY–ÌWH	ˆ‘ŠH
+H
+Ü˜ÐY–ÌH	ˆ‘ŠNÂ‚ˆž]V×H[HH™]Èž]VÌÈ
+Èž]PÛÝ[NÂˆÞ\Ý[K˜\œ˜^XÛÜJXY\‹[KÊNÂˆÞ\Ý[K˜\œ˜^XÛÜJ^[ØY[KËž]PÛÝ[
+NÂ‚ˆ[Ø[ÐÜ˜ÈHØ[Ý[]S[Ù\ÔPÜ˜Ê[K[K›[™Ý
+NÂˆYˆ
+Ø[ÐÜ˜ÈOH^XÝYÜ˜ÊHÂˆ›ÝÈ™]ÈSÑ^Ù\[ÛŠÔÈZ\ÛX]Ú[ˆ[Ù\È•H™\ÜÛœÙH
+^XÝY‚ˆ
+ÈÝš[™Ë™›Ü›X]
+˜]˜K][“ØØ[K”“ÓÕ‰L‹Ø[ÐÜ˜ÊH
+È‹ÛÝ‚ˆ
+ÈÝš[™Ë™›Ü›X]
+˜]˜K][“ØØ[K”“ÓÕ‰L‹^XÝYÜ˜ÊH
+ÈŠHŠNÂˆBˆ™]\›ˆ^[ØYÂˆBˆB‚ˆš]˜]HÝš[™È™XY[Ù\ÒÛ[™Ô™YÚ\Ý\œÊÝš[™ÈÜÝ[Ü[[š][Ý\Y™\ÜË[ÛÝ[
+H›ÝÜÈ^Ù\[ÛˆÂˆ™]\›ˆ™XY[Ù\Ô™YÚ\Ý\œÊÜÝÜ[š]Ý\Y™\ÜËÛÝ[ÊNÂˆB‚ˆX›XÈÝ]XÈÝš[™È™XY[Ù\Ô™YÚ\Ý\œÔÝ]XÊÝš[™ÈÜÝ[Ü[[š][Ý\Y™\ÜË[ÛÝ[[[˜Ý[ÛÛÙJH›ÝÜÈ^Ù\[ÛˆÂˆš[˜[[×H˜[Y\ÎÂˆžHÂˆ˜[Y\ÈH™]È[Ù\ÕÜÛY[
+ÜÝÜ
+Kœ™XY
+[š]Ý\Y™\ÜËÛÝ[[˜Ý[ÛÛÙJNÂˆHØ]Ú
+[Ù\ÕÜÛY[“[Ù\Ñ^Ù\[Ûˆ^
+HÂˆ›ÝÈ\ØÜšX™UÜ^Ù\[ÛŠ^
+NÂˆBˆÝš[™ÐZ[\ˆ™\ÜH™]ÈÝš[™ÐZ[\Š
+NÂˆÝš[™È[˜Ó˜[YHH[˜Ý[ÛÛÙHOHHÈ˜ÛÚ[È
+ÌJWˆˆˆ
+[˜Ý[ÛÛÙHOHˆÈ™\ØÜ™]H[œ]È
+ÌŠWˆˆˆ
+[˜Ý[ÛÛÙHOHÈÈšÛ[™È™YÚ\Ý\œÈ
+ÌÊWˆˆˆš[œ]™YÚ\Ý\œÈ
+Ì
+WˆŠJNÂˆ™\Ü˜\[™
+´(ô`t/ô-tb4/t/ŽˆŠK˜\[™
+ÛÝ[
+K˜\[™
+ˆŠK˜\[™
+[˜Ó˜[YJNÂˆ[˜\ÙPYˆH[˜Ý[ÛÛÙHOHHÈHˆ
+[˜Ý[ÛÛÙHOHˆÈLHˆ
+[˜Ý[ÛÛÙHOHÈÈHˆÌJJNÂˆ›Üˆ
+[HHÈHÛÝ[ÈJÊÊHÂˆ™\Ü˜\[™
+˜\ÙPYˆ
+ÈÝ\Y™\ÜÈ
+ÈJK˜\[™
+ˆŠBˆ˜\[™
+˜[Y\ÖÚWJK˜\[™
+ˆŠBˆ˜\[™
+Ýš[™Ë™›Ü›X]
+˜]˜K][“ØØ[K”“ÓÕ‰L‹˜[Y\ÖÚWJJK˜\[™
+	×‰ÊNÂˆBˆ™]\›ˆ™\ÜÔÝš[™Ê
+NÂˆB‚ˆX›XÈÝ]XÈ›ÛÛX[ˆÜš]S[Ù\Ô™YÚ\Ý\”Ý]XÊÝš[™ÈÜÝ[Ü[[š][Y™\ÜË[˜[YJH›ÝÜÈ^Ù\[ÛˆÂˆžHÂˆ™]È[Ù\ÕÜÛY[
+ÜÝÜ
+KÜš]TÚ[™ÛJ[š]Y™\ÜË˜[YJNÂˆ™]\›ˆYNÂˆHØ]Ú
+[Ù\ÕÜÛY[“[Ù\Ñ^Ù\[Ûˆ^
+HÂˆ›ÝÈ\ØÜšX™UÜ^Ù\[ÛŠ^
+NÂˆBˆB‚ˆX›XÈÝ]XÈ›ÛÛX[ˆÜš]S[Ù\Ó][\T™YÚ\Ý\œÔÝ]XÊÝš[™ÈÜÝ[Ü[[š][Ý\Y™\ÜË[×H˜[Y\ÊH›ÝÜÈ^Ù\[ÛˆÂˆžHÂˆ™]È[Ù\ÕÜÛY[
+ÜÝÜ
+KÜš]S][\J[š]Ý\Y™\ÜË˜[Y\ÊNÂˆ™]\›ˆYNÂˆHØ]Ú
+[Ù\ÕÜÛY[“[Ù\Ñ^Ù\[Ûˆ^
+HÂˆ›ÝÈ\ØÜšX™UÜ^Ù\[ÛŠ^
+NÂˆBˆB‚ˆš]˜]HÝ]XÈSÑ^Ù\[Ûˆ\ØÜšX™UÜ^Ù\[ÛŠ[Ù\ÕÜÛY[“[Ù\Ñ^Ù\[Ûˆ^
+HÂˆ™]\›ˆ™]ÈSÑ^Ù\[ÛŠ“[Ù\Îˆˆ
+È\ØÜšX™S[Ù\Ñ^Ù\[ÛÛÙTÝ]XÊ^™^Ù\[ÛÛÙJBˆ
+Èˆ
+4.´/´-ˆ
+È^™^Ù\[ÛÛÙH
+ÈŠH‹^
+NÂˆB‚ˆš]˜]HÝš[™È™XY[Ù\Ô™YÚ\Ý\œÊÝš[™ÈÜÝ[Ü[[š][Ý\Y™\ÜË[ÛÝ[[[˜Ý[ÛÛÙJH›ÝÜÈ^Ù\[ÛˆÂˆ™]\›ˆ™XY[Ù\Ô™YÚ\Ý\œÔÝ]XÊÜÝÜ[š]Ý\Y™\ÜËÛÝ[[˜Ý[ÛÛÙJNÂˆB‚ˆX›XÈÝ]XÈÝš[™È\ØÜšX™S[Ù\Ñ^Ù\[ÛÛÙTÝ]XÊ[ÛÙJHÂˆÝÚ]Ú
+ÛÙJHÂˆØ\ÙHNˆ™]\›ˆ´`ô`t`´`4/´.t`t`´,´/ˆ4/t-H4/ô/´-4-4-t`4-´.4,´,4-t`ˆ4ct`´`È4a4`ô/t.´a´.4cˆŽÂˆØ\ÙHŽˆ™]\›ˆ´/t-t-4/´/ô`ô`t`´.4/4bô.H4,4-4`4-t`H4`4-t,ô.4`t`´`4,ŽÂˆØ\ÙHÎˆ™]\›ˆ´/t-t-4/´/ô`ô`t`´.4/4/´-H4-ô/t,4aô-t/t.4-H4,ˆ4-ô,4/ô`4/´`t-HŽÂˆØ\ÙHˆ™]\›ˆ´,´/t`ô`´`4-t/t/tcôcÈ4/´b4.4,t.´,4`ô`t`´`4/´.t`t`´,´,ŽÂˆØ\ÙHNˆ™]\›ˆ´-ô,4/ô`4/´`H4/ô`4.4/tcô`‹4/´,t`4,4,t/´`´.´,4,´bô/ô/´.ô/tcô-t`´`tcÈŽÂˆØ\ÙHŽˆ™]\›ˆ´`ô`t`´`4/´.t`t`´,´/ˆ4-ô,4/tcô`´/‹4/ô/´,´`´/´`4.4`´-H4/ô/´-ô-´-HŽÂˆØ\ÙHˆ™]\›ˆ´/´b4.4,t.´,4aôdt`´/t/´`t`´.4/ô,4/4cô`´.ŽÂˆØ\ÙHLˆ™]\›ˆ´b4.ôc´-È4/t-H4`t/4/´,È4`ô`t`´,4/t/´,´.4`´c4`t/´-t-4.4/t-t/t.4-HŽÂˆØ\ÙHLNˆ™]\›ˆ´b4.ôc´-È4/t-H4/ô/´.ô`ôaô.4.È4/´`´,´-t`ˆ4/´`ˆ4`ô`t`´`4/´.t`t`´,´,ŽÂˆY˜][ˆ™]\›ˆ´/t-t.4-ô,´-t`t`´/t/´-H4.4`t.´.ôc´aô-t/t.4-H4/ô`4/´`´/´.´/´.ô,ŽÂˆBˆB‚ˆš]˜]HÝš[™È\ØÜšX™S[Ù\Ñ^Ù\[ÛÛÙJ[ÛÙJHÂˆ™]\›ˆ\ØÜšX™S[Ù\Ñ^Ù\[ÛÛÙTÝ]XÊÛÙJNÂˆB‚ˆš]˜]HÝš[™È\ØÜšX™S[Ù\Ñ\œ›ÜŠ^Ù\[Ûˆ\œ›ÜŠHÂˆYˆ
+\œ›Üˆ[œÝ[˜Ù[Ùˆ˜]˜K›™]”ÛØÚÙ][Y[Ý]^Ù\[ÛŠH™]\›ˆ´`´,4.t/t,4`ô`ˆ4/´`´,´-t`´,
+È4`JHŽÂˆYˆ
+\œ›Üˆ[œÝ[˜Ù[Ùˆ˜]˜K›™]ÛÛ›™XÝ^Ù\[ÛŠH™]\›ˆ´/t-H4`ô-4,4.ô/´`tc4/ô/´-4.´.ôc´aô.4`´c4`tcÈ4.ˆ4`ô`t`´`4/´.t`t`´,´`ÈŽÂˆYˆ
+\œ›Üˆ[œÝ[˜Ù[Ùˆ˜]˜K›™]•[šÛ›ÝÛ’ÜÝ^Ù\[ÛŠH™]\›ˆ´/t-H4`ô-4,4.ô/´`tc4/´/ô`4-t-4-t.ô.4`´c4,4-4`4-t`H4at/´`t`´,ŽÂˆYˆ
+\œ›Üˆ[œÝ[˜Ù[Ùˆ˜]˜K›™]“›Ô›Ý]UÒÜÝ^Ù\[ÛŠH™]\›ˆ´/t-t`ˆ4/4,4`4b4`4`ô`´,4-4/ˆ4`ô`t`´`4/´.t`t`´,´,ŽÂˆYˆ
+\œ›Üˆ[œÝ[˜Ù[Ùˆ˜]˜K›™]”ÛØÚÙ]^Ù\[ÛŠH™]\›ˆ´/´b4.4,t.´,4`t/´.´-t`´,ô`t/´-t-4.4/t-t/t.4-H4-ô,4.´`4bô`´/ˆŽÂˆÝš[™ÈY\ÜØYÙHH\œ›Ü‹™Ù]Y\ÜØYÙJ
+NÂˆYˆ
+Y\ÜØYÙHOH[Y\ÜØYÙKš[J
+Kš\Ñ[\J
+JH™]\›ˆ\œ›Ü‹™Ù]Û\ÜÊ
+K™Ù]Ú[\S˜[YJ
+NÂˆ™]\›ˆY\ÜØYÙK›[™Ý
+
+HˆLÈY\ÜØYÙKœÝXœÝš[™ÊL
+HˆY\ÜØYÙNÂˆB‚ˆš]˜]H›ÛÛX[ˆ\ÐXÝ]™S[Ù\Õ˜[YJÝš[™È˜[YJHÂˆYˆ
+˜[YHOH[
+H™]\›ˆ˜[ÙNÂˆÝš[™È›Ü›X[^™YH˜[YKš[J
+KÓÝÙ\Ø\ÙJ˜]˜K][“ØØ[K”“ÓÕ
+NÂˆYˆ
+›Ü›X[^™Yš\Ñ[\J
+H›Ü›X[^™YœÝ\ÕÚ]
+™\œˆŠH›Ü›X[^™YœÝ\ÕÚ]
+˜Ù™ÈŠBˆ™˜[ÙH‹™\]X[Ê›Ü›X[^™Y
+H›Ù™ˆ‹™\]X[Ê›Ü›X[^™Y
+Bˆ››È‹™\]X[Ê›Ü›X[^™Y
+JH™]\›ˆ˜[ÙNÂˆYˆ
+YH‹™\]X[Ê›Ü›X[^™Y
+H›Ûˆ‹™\]X[Ê›Ü›X[^™Y
+HžY\È‹™\]X[Ê›Ü›X[^™Y
+JH™]\›ˆYNÂˆžHÂˆ™]\›ˆÝX›Kœ\œÙQÝX›J›Ü›X[^™Y
+HOHŒÂˆHØ]Ú
+[X™\‘›Ü›X]^Ù\[ÛˆYÛ›Ü™Y
+HÂˆ™]\›ˆ˜[ÙNÂˆBˆB‚ˆš]˜]Hš[™[™Ô™\]Y\Ý\œÙPš[™[™Ê[ÚYÙ][™^Ýš[™Èš[™[™ÊHÂˆ™]\›ˆ\œÙPš[™[™ÊÚYÙ][™^š[™[™ËJNÂˆB‚ˆš]˜]H›ÚYÝ\˜™Ù[œÛÜœÊ
+HÂˆYˆ
+XXÝ]š]T™\Ý[YY[Ü\˜]Ü“[ÙHY]ÜˆOH[
+H™]\›ŽÂˆ›ÛÛX[ˆ™YYYYÚH˜[ÙK™YYYÜšY[][ÛˆH˜[ÙK™YYYÜYYH˜[ÙNÂˆ›Üˆ
+ÚYÙ]ÚYÙ]ˆÚYÙ]ÊHÂˆ™YYYYÚH‘‘ÔQ•ÑS”ÓÔˆQÒ‹™\]X[ÊÚYÙ]\JNÂˆ™YYYÜšY[][ÛˆH‘‘ÔQ•ÑS”ÓÔˆÔ’QS•USÓˆ‹™\]X[ÊÚYÙ]\JNÂˆ™YYYÜYYH‘‘ÔQ•ÑS”ÓÔˆÔQQ‹™\]X[ÊÚYÙ]\JNÂˆBˆYˆ
+Y˜™Ù[œÛÜœÔ™YÚ\Ý\™Y	‰ˆ
+™YYYYÚ™YYYÜšY[][ÛŠJHÂˆYˆ
+˜™Ù[œÛÜ“X[˜YÙ\ˆOH[
+Bˆ˜™Ù[œÛÜ“X[˜YÙ\ˆH
+[™›ÚYš\™Ø\™K”Ù[œÛÜ“X[˜YÙ\ŠYÙ]Þ\Ý[TÙ\šXÙJÑS”ÓÔ—ÔÑT•’PÑJNÂˆ›ÛÛX[ˆ™YÚ\Ý\™YH˜[ÙNÂˆYˆ
+˜™Ù[œÛÜ“X[˜YÙ\ˆOH[	‰ˆ™YYYYÚ
+HÂˆ[™›ÚYš\™Ø\™K”Ù[œÛÜˆÙ[œÛÜˆH˜™Ù[œÛÜ“X[˜YÙ\‹™Ù]Y˜][Ù[œÛÜŠ[™›ÚYš\™Ø\™K”Ù[œÛÜ‹•TWÓQÒ
+NÂˆYˆ
+Ù[œÛÜˆOH[
+H™YÚ\Ý\™YH˜™Ù[œÛÜ“X[˜YÙ\‹œ™YÚ\Ý\“\Ý[™\Š˜™Ù[œÛÜ“\Ý[™\‹Ù[œÛÜ‹ˆ[™›ÚYš\™Ø\™K”Ù[œÛÜ“X[˜YÙ\‹”ÑS”ÓÔ—ÑSVWÓ“Ô“PS
+NÂˆBˆYˆ
+˜™Ù[œÛÜ“X[˜YÙ\ˆOH[	‰ˆ™YYYÜšY[][ÛŠHÂˆ[™›ÚYš\™Ø\™K”Ù[œÛÜˆÙ[œÛÜˆH˜™Ù[œÛÜ“X[˜YÙ\‹™Ù]Y˜][Ù[œÛÜŠ[™›ÚYš\™Ø\™K”Ù[œÛÜ‹•TWÓÔ’QS•USÓŠNÂˆYˆ
+Ù[œÛÜˆOH[
+H™YÚ\Ý\™YH˜™Ù[œÛÜ“X[˜YÙ\‹œ™YÚ\Ý\“\Ý[™\Š˜™Ù[œÛÜ“\Ý[™\‹Ù[œÛÜ‹ˆ[™›ÚYš\™Ø\™K”Ù[œÛÜ“X[˜YÙ\‹”ÑS”ÓÔ—ÑSVWÓ“Ô“PS
+NÂˆBˆ˜™Ù[œÛÜœÔ™YÚ\Ý\™YH™YÚ\Ý\™YÂˆBˆYˆ
+™YYYÜYY	‰ˆY˜™ØØ][Û”™YÚ\Ý\™Y
+HÂˆYˆ
+[™›ÚY›ÜËZ[•‘T”ÒSÓ‹”Ñ×ÒS•HŒÂˆ	‰ˆÚXÚÔÙ[”\›Z\ÜÚ[ÛŠ[™›ÚY“X[šY™\Ýœ\›Z\ÜÚ[Û‹PÐÑTÔ×Ñ’S‘WÓÐÐUSÓŠBˆOH[™›ÚY˜ÛÛ[œK”XÚØYÙSX[˜YÙ\‹”T“RTÔÒSÓ—ÑÔS•Q
+HÂˆYˆ
+Y˜™ØØ][Û”\›Z\ÜÚ[Û”™\]Y\ÝY
+HÂˆ˜™ØØ][Û”\›Z\ÜÚ[Û”™\]Y\ÝYHYNÂˆ™\]Y\Ý\›Z\ÜÚ[ÛœÊ™]ÈÝš[™Ö×^Ø[™›ÚY“X[šY™\Ýœ\›Z\ÜÚ[Û‹PÐÑTÔ×Ñ’S‘WÓÐÐUSÓŸK‘TUQTÕÑ‘ÔÔQQÓÐÐUSÓŠNÂˆBˆ™]\›ŽÂˆBˆYˆ
+˜™ØØ][Û“X[˜YÙ\ˆOH[
+Bˆ˜™ØØ][Û“X[˜YÙ\ˆH
+[™›ÚY›ØØ][Û‹“ØØ][Û“X[˜YÙ\ŠYÙ]Þ\Ý[TÙ\šXÙJÐÐUSÓ—ÔÑT•’PÑJNÂˆžHÂˆYˆ
+˜™ØØ][Û“X[˜YÙ\ˆOH[	‰ˆ˜™ØØ][Û“X[˜YÙ\‹š\Ô›ÝšY\‘[˜X›Y
+[™›ÚY›ØØ][Û‹“ØØ][Û“X[˜YÙ\‹‘Ô×Ô“Õ’QTŠJHÂˆ˜™ØØ][Û“X[˜YÙ\‹œ™\]Y\ÝØØ][Û•\]\Ê[™›ÚY›ØØ][Û‹“ØØ][Û“X[˜YÙ\‹‘Ô×Ô“Õ’QT‹ˆL‹˜™ØØ][Û“\Ý[™\‹ÛÜ\‹™Ù]XZ[“ÛÜ\Š
+JNÂˆ˜™ØØ][Û”™YÚ\Ý\™YHYNÂˆBˆHØ]Ú
+ÙXÝ\š]Q^Ù\[Ûˆ[YØ[\™Ý[Y[^Ù\[ÛˆYÛ›Ü™Y
+HßBˆBˆB‚ˆš]˜]H›ÚYÝÜ˜™Ù[œÛÜœÊ
+HÂˆYˆ
+˜™Ù[œÛÜ“X[˜YÙ\ˆOH[	‰ˆ˜™Ù[œÛÜœÔ™YÚ\Ý\™Y
+H˜™Ù[œÛÜ“X[˜YÙ\‹[œ™YÚ\Ý\“\Ý[™\Š˜™Ù[œÛÜ“\Ý[™\ŠNÂˆ˜™Ù[œÛÜœÔ™YÚ\Ý\™YH˜[ÙNÂˆYˆ
+˜™ØØ][Û“X[˜YÙ\ˆOH[	‰ˆ˜™ØØ][Û”™YÚ\Ý\™Y
+HÂˆžHÈ˜™ØØ][Û“X[˜YÙ\‹œ™[[Ý™U\]\Ê˜™ØØ][Û“\Ý[™\ŠNÈHØ]Ú
+ÙXÝ\š]Q^Ù\[ÛˆYÛ›Ü™Y
+HßBˆBˆ˜™ØØ][Û”™YÚ\Ý\™YH˜[ÙNÂˆ›Üˆ
+ÚYÙ]ÚYÙ]ˆÚYÙ]ÊHYˆ
+\ÐÜ˜Y˜™Ù[œÛÜ”ÛÝ\˜ÙJÚYÙ]\JJHÚYÙ]˜Ü˜YÙ[œÛÜ•˜[YH˜[ÙNÂˆB‚ˆš]˜]H›ÚYÝÜÜ˜Y\]
+
+HÂˆ˜™Ü˜Y\][[YHXÝ]™HHÜ˜Y\][[YNÂˆÜ˜Y\][[YHH[ÂˆYˆ
+XÝ]™HOH[
+HXÝ]™K˜ÛÜÙJ
+NÂˆ›Üˆ
+ÚYÙ]ÚYÙ]ˆÚYÙ]ÊHYˆ
+\ÐÜ˜Y\]ÝXœØÜšX™\ŠÚYÙ]\JJHÚYÙ]˜Ü˜Y\]˜[YHH[ÂˆB‚ˆš]˜]H›ÚYÝ\Ü˜Y\]
+
+HÂˆÝÜÜ˜Y\]
+
+NÂˆYˆ
+XXÝ]š]T™\Ý[YY[Ü\˜]Ü“[ÙHY]ÜˆOH[
+H™]\›ŽÂˆ˜™Ü˜Y\][[YH[[YHH™]È˜™Ü˜Y\][[YJ
+NÂˆÜ˜Y\][[YHH[[YNÂˆš[˜[Y]ÜØ[˜\ÈÙ\ÜÚ[Û‘Y]ÜˆHY]ÜŽÂˆ›Üˆ
+[Ù\™\ˆHNÈÙ\™\ˆHŽÈÙ\™\ŠÊÊHÂˆ”ÓÓ“Øš™XÝØ]™YÂˆžHÈØ]™YH™]È”ÓÓ“Øš™XÝ
+Ù]Ú\™Y™Y™\™[˜Ù\Ê˜›ÛÙÚÞWÛ\]‹SÑWÔ’UUJBˆ™Ù]Ýš[™ÊœÙ\™\ˆˆ
+ÈÙ\™\‹žßHŠJNÈBˆØ]Ú
+^Ù\[Ûˆ[˜[Y
+HÈØ]™YH™]È”ÓÓ“Øš™XÝ
+
+NÈBˆ˜™Ü˜Y\][[YKœ›ÚÙ\ˆœ›ÚÙ\ˆH™]È˜™Ü˜Y\][[YKœ›ÚÙ\ŠˆØ]™Y›ÜÝš[™Ê\šH‹ˆŠKØ]™Y›ÜÝš[™Ê\Ù\›˜[YH‹ˆŠKØ]™Y›ÜÝš[™Êœ\ÜÝÛÜ™‹ˆŠJNÂˆX\Ýš[™Ë˜™Ü˜Y\][[YK“Y\ÜØYÙS\Ý[™\ˆÝXœØÜš\[ÛœÈH™]È[šÙY\ÚX\Š
+NÂˆ›ÛÛX[ˆ\ÙYH˜[ÙNÂˆ›Üˆ
+[HHÈHÚYÙ]ËœÚ^™J
+NÈJÊÊHÂˆÚYÙ]\™Ù]HÚYÙ]Ë™Ù]
+JNÂˆYˆ
+\ÐÜ˜Y\]ÝXœØÜšX™\Š\™Ù]\JH	‰ˆ\]Ù\™\Š\™Ù]
+HOHÙ\™\ŠHÂˆ\ÙYHYNÂˆÝš[™ÈÜXÈH\™Ù]™^˜QšY[Ë›ÜÝš[™Ê˜Ü˜Y\]ÜXÈ‹ˆŠKš[J
+NÂˆ[\HH\]\J\™Ù]
+NÂˆš[˜[[\™Ù][™^HNÂˆYˆ
+˜™Ü˜Y\][[YK˜[YÜXÑš[\ŠÜXÊJHÂˆ˜™Ü˜Y\][[YK“Y\ÜØYÙS\Ý[™\ˆ™^\Ý[™\ˆH
+™XÙZ]™YÜXË^[ØY
+HOˆÂˆÝX›H˜[YHH˜™Ü˜Y\][[YKœ\œÙT^[ØY
+^[ØY\JNÂˆ[“Û•ZU™XY
+
+
+HOˆÂˆYˆ
+Ü˜Y\][[YHOH[[YHXXÝ]š]T™\Ý[YY[Ü\˜]Ü“[ÙBˆY]ÜˆOHÙ\ÜÚ[Û‘Y]Üˆ\™Ù][™^HÚYÙ]ËœÚ^™J
+BˆÚYÙ]Ë™Ù]
+\™Ù][™^
+HOH\™Ù]
+H™]\›ŽÂˆ\™Ù]˜Ü˜Y\]˜[YHH˜[YNÂˆ]™U˜[Y\Ëœ]
+\™Ù][™^˜[YHOH[È‘T”ŽˆTU^[ØYˆˆÝX›KÔÝš[™Ê˜[YJJNÂˆYˆ
+Y]ÜˆOH[
+HY]Ü‹š[˜[Y]J
+NÂˆJNÂˆNÂˆ˜™Ü˜Y\][[YK“Y\ÜØYÙS\Ý[™\ˆ™]š[Ý\ÈHÝXœØÜš\[ÛœË™Ù]
+ÜXÊNÂˆYˆ
+™]š[Ý\ÈOH[
+HÝXœØÜš\[ÛœËœ]
+ÜXË™^\Ý[™\ŠNÂˆ[ÙHÝXœØÜš\[ÛœËœ]
+ÜXË
+™XÙZ]™YÜXË^[ØY
+HOˆÂˆ™]š[Ý\Ë›Û“Y\ÜØYÙJ™XÙZ]™YÜXË^[ØY
+NÂˆ™^\Ý[™\‹›Û“Y\ÜØYÙJ™XÙZ]™YÜXË^[ØY
+NÂˆJNÂˆBˆH[ÙHYˆ
+\ÐÜ˜Y\]X›\Ú\Š\™Ù]\JH	‰ˆ\]Ù\™\Š\™Ù]
+HOHÙ\™\ŠH\ÙYHYNÂˆBˆYˆ
+\ÙY	‰ˆœ›ÚÙ\‹š\ÐÛÛ™šYÝ\™Y
+
+JH[[YK˜ÛÛ›™XÝ
+Ù\™\‹œ›ÚÙ\‹ÝXœØÜš\[ÛœÊNÂˆBˆB‚ˆš]˜]Hš[™[™Ô™\]Y\Ý\œÙPš[™[™Ê[ÚYÙ][™^Ýš[™Èš[™[™Ë[]X[]JHÂˆYˆ
+š[™[™ÈOH[Xš[™[™ËœÝ\ÕÚ]
+Ü‹ËÈŠJH™]\›ˆ[ÂˆžHÂˆT’H\šHHT’K˜Ü™X]Jš[™[™ÊNÂˆÝš[™Ö×H]H\šK™Ù]]
+
+KœÜ]
+‹È‹LJNÂˆYˆ
+\šK™Ù]ÜÝ
+
+HOH[\šK™Ù]Ü
+
+HH\šK™Ù]Ü
+
+HˆMLÍBˆ]›[™ÝOHÈ\]ÌKš\Ñ[\J
+Bˆ\šK™Ù]˜]Ô]Y\žJ
+HOH[\šK™Ù]˜]Ñœ˜YÛY[
+
+HOH[
+H™]\›ˆ[Âˆ[[š]H[YÙ\‹œ\œÙR[
+]ÌWJNÂˆ[[\™YY™\ÜÈH[YÙ\‹œ\œÙR[
+]Ì—JNÂˆYˆ
+[š][š]ˆMH[\™YY™\ÜÈ[\™YY™\ÜÈˆMLÍJH™]\›ˆ[Âˆ[[˜Ý[ÛÛÙHHÎÂˆ[Y™\ÜÈH[\™YY™\ÜÎÂˆYˆ
+[\™YY™\ÜÈHÌH	‰ˆ[\™YY™\ÜÈHÎNNNJHÂˆ[˜Ý[ÛÛÙHHÂˆY™\ÜÈH[\™YY™\ÜÈHÌNÂˆH[ÙHYˆ
+[\™YY™\ÜÈHH	‰ˆ[\™YY™\ÜÈHNNNJHÂˆ[˜Ý[ÛÛÙHHÎÂˆY™\ÜÈH[\™YY™\ÜÈHNÂˆBˆYˆ
+]X[]HH]X[]HˆY™\ÜÈ
+È]X[]HˆMLÍŠH™]\›ˆ[Âˆ™]\›ˆ™]Èš[™[™Ô™\]Y\Ý
+ÚYÙ][™^\šK™Ù]ÜÝ
+
+K\šK™Ù]Ü
+
+K[š]Y™\ÜË[˜Ý[ÛÛÙK]X[]JNÂˆHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HÂˆ™]\›ˆ[ÂˆBˆB‚ˆš]˜]Hš[™[™Ô™\]Y\Ý\œÙT›Ú™XÝš[™[™Ê[ÚYÙ][™^Ýš[™Èš[™[™Ë[]X[]JHÂˆ\Ø”Ù\šX[š[™[™È\ØˆH\Ø”Ù\šX[š[™[™Ëœ\œÙJš[™[™Ë]X[]JNÂˆYˆ
+\ØˆOH[
+Bˆ™]\›ˆ™]Èš[™[™Ô™\]Y\Ý
+ÚYÙ][™^ˆ‹\Ø‹[š]\Ø‹˜Y™\ÜËˆ\Ø‹™[˜Ý[ÛÛÙK\Ø‹œ]X[]KYJNÂˆ™]\›ˆ\œÙPš[™[™ÊÚYÙ][™^š[™[™Ë]X[]JNÂˆB‚ˆš]˜]H[×H™XY›Ý[™™YÚ\Ý\œÊš[™[™Ô™\]Y\Ý™\]Y\Ý
+H›ÝÜÈSÑ^Ù\[ÛˆÂˆYˆ
+\™\]Y\Ý\ØŠBˆ™]\›ˆ™]È[Ù\ÕÜÛY[
+™\]Y\ÝšÜÝ™\]Y\ÝœÜ
+Kœ™XY
+ˆ™\]Y\Ý[š]™\]Y\Ý˜Y™\ÜË™\]Y\Ýœ]X[]K™\]Y\Ý™[˜Ý[ÛÛÙJNÂˆ\Ø”Ù\šX[[Ù\ÐÛÛ›™XÝ[ÛˆÛÛ›™XÝ[ÛˆHX[X[\ØÛÛ›™XÝ[ÛŽÂˆYˆ
+ÛÛ›™XÝ[ÛˆOH[XÛÛ›™XÝ[Û‹š\ÓÜ[Š
+JH›ÝÈ™]ÈSÑ^Ù\[ÛŠ•TÐˆ•H4/t-H4/ô/´-4.´.ôc´aôdt/HŠNÂˆ™]\›ˆÛÛ›™XÝ[Û‹œ™XY
+™\]Y\Ý[š]™\]Y\Ý™[˜Ý[ÛÛÙK™\]Y\Ý˜Y™\ÜË™\]Y\Ýœ]X[]JNÂˆB‚ˆš]˜]H›ÚYÝ\[Ù\ÔÛ[™Ê
+HÂˆÝÜ[Ù\ÔÛ[™Ê
+NÂˆYˆ
+XXÝ]š]T™\Ý[YYY]ÜˆOH[
+H™]\›ŽÂˆÛÙ\ÜÚ[Û‹œÝ\
+
+NÂˆ[Ù\ÔÛ[™ÐXÝ]™HHYNÂˆXZ[’[™\‹œÜÝ[^YY
+[Ù\ÔÛ[›˜X›KL
+NÂˆB‚ˆš]˜]H›ÚYÝÜ[Ù\ÔÛ[™Ê
+HÂˆÛÙ\ÜÚ[Û‹œÝÜ
+
+NÂˆ[Ù\ÔÛ[™ÐXÝ]™HH˜[ÙNÂˆÜ˜YØ]]Ø^TÝ]\Ë˜ÛX\Š
+NÂˆÜ˜Yš]Ø]]Ø^TÝ]\Ë˜ÛX\Š
+NÂˆÜ˜Y\˜Ú]™UšYÙÙ\’YÚ˜ÛX\Š
+NÂˆÜ˜Y\˜Ú]™UšYÙÙ\‘YÙ\Ë˜ÛX\Š
+NÂˆXZ[’[™\‹œ™[[Ý™PØ[˜XÚÜÊ[Ù\ÔÛ[›˜X›JNÂˆB‚ˆš]˜]H[\˜Ú]™T™XY]X[]JÚYÙ]ÚYÙ]
+HÂˆ™]\›ˆÜ˜Y\˜Ú]™PÚ[›™[Ëœ™XY]X[]JÚYÙ]™^˜QšY[Ë›Ü[
+˜Ü˜Y\˜Ú]™PÚ[›™[ÛÝ[‹JKˆÚYÙ]™^˜QšY[Ë›ÜÝš[™Ê˜Ü˜Y\˜Ú]™T™XÛÜ™\H‹’S•ŠJNÂˆB‚ˆš]˜]HÝš[™È›Ü›X]ÛY˜[YJÚYÙ]ÚYÙ][×HÛÜ™ÊHÂˆYˆ
+´$4`4at.4,ˆÜ˜Y‹™\]X[ÊÚYÙ]\JJH™]\›ˆÜ˜Y\˜Ú]™PÚ[›™[Ë™XÛÙJÛÜ™ËˆÚYÙ]™^˜QšY[Ë›Ü[
+˜Ü˜Y\˜Ú]™PÚ[›™[ÛÝ[‹JKˆÚYÙ]™^˜QšY[Ë›ÜÝš[™Ê˜Ü˜Y\˜Ú]™T™XÛÜ™\H‹’S•ŠJNÂˆ™]\›ˆÛÜ™Ë›[™ÝˆHÈÛÜ™ÖÌH
+È‹ˆ
+ÈÛÜ™ÖÌWHˆ[YÙ\‹ÔÝš[™ÊÛÜ™ÖÌJNÂˆB‚ˆš]˜]H›ÚYÛÜ˜YÙ[\ÛÝ\˜Ù\Ê
+HÂˆYˆ
+XXÝ]š]T™\Ý[YY[Ü\˜]Ü“[ÙHY]ÜˆOH[
+H™]\›ŽÂˆÛ™È›ÝÈH[™›ÚY›ÜË”Þ\Ý[PÛØÚË™[\ÙY™X[[YJ
+NÂˆš[˜[Y]ÜØ[˜\ÈÙ\ÜÚ[Û‘Y]ÜˆHY]ÜŽÂˆ›Üˆ
+[HHÈHÚYÙ]ËœÚ^™J
+NÈJÊÊHÂˆÚYÙ]ÚYÙ]HÚYÙ]Ë™Ù]
+JNÂˆYˆ
+Z\ÐÜ˜YÙ[\ÛÝ\˜ÙJÚYÙ]\JHÚYÙ]˜Ü˜YÙ[\[™[™Âˆ›ÝÈÚYÙ]˜Ü˜YÙ[\™^Û]
+HÛÛ[YNÂˆÝš[™ÈÜÝHÚYÙ]™^˜QšY[Ë›ÜÝš[™Êš\‹ŒLŒLŒŒHŠKš[J
+NÂˆ[Ù[œÛÜ•\HHÚYÙ]™^˜QšY[Ë›Ü[
+˜Ü˜YÙ[\\H‹ÚYÙ]™^˜QšY[Ë›Ü[
+\TÙ[œÛÜˆ‹JJNÂˆ[™\ÜÛœÙU\HHÚYÙ]™^˜QšY[Ë›Ü[
+˜Ü˜YÙ[\™\ÜÛœÙH‹ÚYÙ]™^˜QšY[Ë›Ü[
+\T™\ÜÛœÙH‹JJNÂˆYˆ
+Z\Ð[ÝÙYÙ[\ÜÝ
+ÜÝ
+H
+Ù[œÛÜ•\HOHH	‰ˆÙ[œÛÜ•\HOHŠBˆ™\ÜÛœÙU\HH™\ÜÛœÙU\HˆŠHÂˆÚYÙ]˜Ü˜YÙ[œÛÜ•˜[YH˜[ÙNÈÚYÙ]˜Ü˜YÙ[\™^Û]H›ÝÈ
+ÈLÂˆ]™U˜[Y\Ëœ]
+KÑ‘ÈŠNÈÛÛ[YNÂˆBˆÚYÙ]˜Ü˜YÙ[\[™[™ÈHYNÈÚYÙ]˜Ü˜YÙ[\™^Û]H›ÝÈ
+ÈLÂˆš[˜[ÚYÙ]\™Ù]HÚYÙ]Èš[˜[[[™^HNÂˆš[˜[[™\]Y\ÝY\HHÙ[œÛÜ•\K™\]Y\ÝY™\ÜÛœÙHH™\ÜÛœÙU\NÂˆžHÂˆÜ˜YÙ[œÛÜ‘^XÝ]Ü‹™^XÝ]J
+
+HOˆÂˆÝX›H™XY[™ÈH[ÈÝš[™È\œ›ÜˆH[ÂˆžHÈ™XY[™ÈH™XYÜ˜YÙ[\
+ÜÝ™\]Y\ÝY\K™\]Y\ÝY™\ÜÛœÙJNÈBˆØ]Ú
+^Ù\[Ûˆ˜Z[\™JHÈ\œ›ÜˆH‘T”Žˆˆ
+È\ØÜšX™S[Ù\Ñ\œ›ÜŠ˜Z[\™JNÈBˆš[˜[ÝX›H™\Ý[H™XY[™ÎÈš[˜[Ýš[™È˜Z[\™U^H\œ›ÜŽÂˆ[“Û•ZU™XY
+
+
+HOˆÂˆ\™Ù]˜Ü˜YÙ[\[™[™ÈH˜[ÙNÂˆYˆ
+[™^HÚYÙ]ËœÚ^™J
+HÚYÙ]Ë™Ù]
+[™^
+HOH\™Ù][Ü\˜]Ü“[ÙBˆXXÝ]š]T™\Ý[YYY]ÜˆOHÙ\ÜÚ[Û‘Y]ÜŠH™]\›ŽÂˆ\™Ù]˜Ü˜YÙ[\™^Û]H[™›ÚY›ÜË”Þ\Ý[PÛØÚË™[\ÙY™X[[YJ
+H
+ÈLÂˆ\™Ù]˜Ü˜YÙ[œÛÜ•˜[YH™\Ý[OH[	‰ˆÝX›Kš\Ñš[š]J™\Ý[
+NÂˆYˆ
+\™Ù]˜Ü˜YÙ[œÛÜ•˜[Y
+HÂˆ\™Ù]˜Ü˜YÙ[œÛÜ•˜[YHH™\Ý[Âˆ]™U˜[Y\Ëœ]
+[™^ÝX›KÔÝš[™Ê™\Ý[
+JNÂˆH[ÙH]™U˜[Y\Ëœ]
+[™^˜Z[\™U^OH[È‘T”Žˆ4/´`´,´-t`ˆ4-4,4`´aô.4.´,ˆˆ˜Z[\™U^
+NÂˆYˆ
+Y]ÜˆOH[
+HY]Ü‹š[˜[Y]J
+NÂˆJNÂˆJNÂˆHØ]Ú
+˜]˜K][˜ÛÛ˜Ý\œ™[”™Z™XÝY^XÝ][Û‘^Ù\[ÛˆYÛ›Ü™Y
+HÈÚYÙ]˜Ü˜YÙ[\[™[™ÈH˜[ÙNÈBˆBˆB‚ˆš]˜]HÝ]XÈÝX›H™XYÜ˜YÙ[\
+Ýš[™ÈÜÝ[Ù[œÛÜ•\K[™\ÜÛœÙU\JH›ÝÜÈ^Ù\[ÛˆÂˆYˆ
+Z\Ð[ÝÙYÙ[\ÜÝ
+ÜÝ
+JH›ÝÈ™]ÈSÑ^Ù\[ÛŠ´'t-t-4/´/ô`ô`t`´.4/4bô.H4,4-4`4-t`HÑSTŠNÂˆ˜]˜K›™]’T“ÛÛ›™XÝ[ÛˆÛÛ›™XÝ[ÛˆH[ÂˆžHÂˆÛÛ›™XÝ[ÛˆH
+˜]˜K›™]’T“ÛÛ›™XÝ[ÛŠ[™]È˜]˜K›™]•T“
+š‹ËÈˆ
+ÈÜÝ
+È‹ÜÝ]KšœÛÛˆŠK›Ü[ÛÛ›™XÝ[ÛŠ
+NÂˆÛÛ›™XÝ[Û‹œÙ]™\]Y\ÝY]Ù
+‘ÑUŠNÈÛÛ›™XÝ[Û‹œÙ]ÛÛ›™XÝ[Y[Ý]
+Ì
+NÈÛÛ›™XÝ[Û‹œÙ]™XY[Y[Ý]
+Ì
+NÂˆÛÛ›™XÝ[Û‹œÙ][œÝ[˜ÙQ›ÛÝÔ™Y\™XÝÊ˜[ÙJNÈÛÛ›™XÝ[Û‹œÙ]\ÙPØXÚ\Ê˜[ÙJNÂˆYˆ
+ÛÛ›™XÝ[Û‹™Ù]™\ÜÛœÙPÛÙJ
+HOHŒ
+H›ÝÈ™]ÈSÑ^Ù\[ÛŠ“ÑSTˆ
+ÈÛÛ›™XÝ[Û‹™Ù]™\ÜÛœÙPÛÙJ
+JNÂˆ˜]˜Kš[Ëž]P\œ˜^SÝ]]Ý™X[H›ÙHH™]È˜]˜Kš[Ëž]P\œ˜^SÝ]]Ý™X[J
+NÂˆžH
+[œ]Ý™X[H[œ]HÛÛ›™XÝ[Û‹™Ù][œ]Ý™X[J
+JHÂˆž]V×HY™™\ˆH™]Èž]VÌŒNÈ[ÛÝ[ÂˆÚ[H
+
+ÛÝ[H[œ]œ™XY
+Y™™\ŠJHOHLJHÂˆYˆ
+›ÙKœÚ^™J
+H
+ÈÛÝ[ˆMLÍŠH›ÝÈ™]ÈSÑ^Ù\[ÛŠ´'´`´,´-t`ˆÑST4`t.ô.4b4.´/´/4,t/´.ôc4b4/´.HŠNÂˆ›ÙKÜš]JY™™\‹ÛÝ[
+NÂˆBˆBˆ”ÓÓ“Øš™XÝœÛÛˆH™]È”ÓÓ“Øš™XÝ
+™]ÈÝš[™Ê›ÙKÐž]P\œ˜^J
+KÝ[™\™Ú\œÙ]Ë•U—Î
+JNÂˆØš™XÝ˜]ÎÂˆYˆ
+Ù[œÛÜ•\HOHJH˜]ÈHœÛÛ‹›Ü
+˜[YHŠNÂˆ[ÙHÂˆ”ÓÓ“Øš™XÝ˜[Y\ÈHœÛÛ‹›Ü”ÓÓ“Øš™XÝ
+˜[YHŠNÂˆ˜]ÈH˜[Y\ÈOH[È[ˆ˜[Y\Ë›Ü
+™\ÜÛœÙU\HOHHÈˆˆšŠNÂˆBˆYˆ
+˜]ÈOH[
+H›ÝÈ™]ÈSÑ^Ù\[ÛŠ´$ˆ4/´`´,´-t`´-HÑST4/t-t`ˆ4-ô/t,4aô-t/t.4cÈŠNÂˆÝX›H˜[YHH˜]È[œÝ[˜Ù[Ùˆ[X™\ˆÈ
+
+[X™\Š\˜]ÊK™ÝX›U˜[YJ
+HˆÝX›Kœ\œÙQÝX›JÝš[™Ë˜[YSÙŠ˜]ÊJNÂˆYˆ
+QÝX›Kš\Ñš[š]J˜[YJJH›ÝÈ™]ÈSÑ^Ù\[ÛŠ“ÑST4,´-t`4/t`ô.ô/ˆ4/t-t.´/´/t-taô/t/´-H4-ô/t,4aô-t/t.4-HŠNÂˆ™]\›ˆ˜[YNÂˆHš[˜[HÈYˆ
+ÛÛ›™XÝ[ÛˆOH[
+HÛÛ›™XÝ[Û‹™\ØÛÛ›™XÝ
+
+NÈBˆB‚ˆš]˜]H›ÚYÛ›Ý[™ÚYÙ]Ê
+HÂˆš[˜[Û™ÈÙ\ÜÚ[Û•ÚÙ[ˆHÛÙ\ÜÚ[Û‹ÚÙ[Š
+NÂˆš[˜[Y]ÜØ[˜\ÈÙ\ÜÚ[Û‘Y]ÜˆHY]ÜŽÂˆYˆ
+\ÛÙ\ÜÚ[Û‹˜XØÙ\ÊÙ\ÜÚ[Û•ÚÙ[ŠHÙ\ÜÚ[Û‘Y]ÜˆOH[
+H™]\›ŽÂˆš[˜[\ÝÚYÙ]ˆÛ˜\ÚÝÚYÙ]ÈH™]È\œ˜^S\ÝŠÚYÙ]ÊNÂˆš[˜[\ÝÝš[™ÏˆÛ˜\ÚÝš[™[™ÜÈH™]È\œ˜^S\ÝŠ
+NÂˆš[˜[\Ý”ÓÓ“Øš™XÝˆÛ˜\ÚÝ^˜\ÈH™]È\œ˜^S\ÝŠ
+NÂˆ›Üˆ
+ÚYÙ]ÚYÙ]ˆÛ˜\ÚÝÚYÙ]ÊHÂˆÛ˜\ÚÝš[™[™ÜË˜Y
+ÚYÙ]˜ÛÛ›™XÝ[Û’[™›ÊNÂˆžHÈÛ˜\ÚÝ^˜\Ë˜Y
+™]È”ÓÓ“Øš™XÝ
+ÚYÙ]™^˜QšY[ËÔÝš[™Ê
+JJNÈBˆØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HÈÛ˜\ÚÝ^˜\Ë˜Y
+™]È”ÓÓ“Øš™XÝ
+
+JNÈBˆBˆš[˜[X\Ýš[™Ëš[™[™Ô™\]Y\ÝˆÜ›Ý\Y™\]Y\ÝÈH™]È[šÙY\ÚX\Š
+NÂˆš[˜[\Ý[YÙ\ˆØ]]Ø^R[™XÙ\ÈH™]È\œ˜^S\ÝŠ
+NÂˆš[˜[\Ý[YÙ\ˆš]Ø]]Ø^R[™XÙ\ÈH™]È\œ˜^S\ÝŠ
+NÂˆš[˜[\Ý[YÙ\ˆ\˜Ú]™UšYÙÙ\’[™XÙ\ÈH™]È\œ˜^S\ÝŠ
+NÂˆš[˜[X\[YÙ\‹Ýš[™ÏˆÜ˜YÞ\Ý[U^\]\ÈH™]È\ÚX\Š
+NÂˆš[˜[X\[YÙ\‹Ýš[™ÏˆÜ˜YÞ\Ý[S[Y\šXÕ\]\ÈH™]È\ÚX\Š
+NÂˆ›Üˆ
+[HHÈHÛ˜\ÚÝÚYÙ]ËœÚ^™J
+NÈJÊÊHÂˆÚYÙ]ÚYÙ]HÛ˜\ÚÝÚYÙ]Ë™Ù]
+JNÂˆYˆ
+´*4.ôc´-È4,t.4`´/´,´bô.H‹™\]X[ÊÚYÙ]\JJHÂˆYˆ
+Û˜\ÚÝ^˜\Ë™Ù]
+JK›Ü›ÛÛX[Š˜Ü˜Yš]Ø]]Ø^Q[˜X›Y‹˜[ÙJJHš]Ø]]Ø^R[™XÙ\Ë˜Y
+JNÂˆÛÛ[YNÂˆBˆYˆ
+´*4.ôc´-ÈÜ˜Y‹™\]X[ÊÚYÙ]\JJHÂˆYˆ
+Û˜\ÚÝ^˜\Ë™Ù]
+JK›Ü›ÛÛX[Š˜Ü˜YØ]]Ø^Q[˜X›Y‹˜[ÙJJHØ]]Ø^R[™XÙ\Ë˜Y
+JNÂˆÛÛ[YNÂˆBˆYˆ
+´$4`4at.4,ˆÜ˜Y‹™\]X[ÊÚYÙ]\JBˆ	‰ˆ\Û˜\ÚÝ^˜\Ë™Ù]
+JK›ÜÝš[™Ê˜Ü˜Y\˜Ú]™UšYÙÙ\š[™[™È‹ˆŠKš[J
+Kš\Ñ[\J
+JBˆ\˜Ú]™UšYÙÙ\’[™XÙ\Ë˜Y
+JNÂˆYˆ
+\ÐÜ˜Y™YÚ\Ý\”Ú[šÊÚYÙ]\JJHÛÛ[YNÂˆÝš[™ÈÞ\Ý[U^Ý]HHÜ˜YÞ\Ý[UÚYÙ]š[™[™Ëœ™XY[˜[ZXÕ^Ý]JˆÛ˜\ÚÝ^˜\Ë™Ù]
+JKÞ\Ý[T™YÚ\Ý\˜[šÊNÂˆYˆ
+Þ\Ý[U^Ý]HOH[
+HÂˆÜ˜YÞ\Ý[U^\]\Ëœ]
+KÞ\Ý[U^Ý]JNÂˆÛÛ[YNÂˆBˆÝš[™ÈÞ\Ý[S[Y\šXÔÝ]HHÜ˜YÞ\Ý[S[Y\šXÕÚYÙ]š[™[™Ëœ™XYÝ]JˆÛ˜\ÚÝ^˜\Ë™Ù]
+JKÞ\Ý[T™YÚ\Ý\˜[šÊNÂˆYˆ
+Þ\Ý[S[Y\šXÔÝ]HOH[
+HÂˆÜ˜YÞ\Ý[S[Y\šXÕ\]\Ëœ]
+KÞ\Ý[S[Y\šXÔÝ]JNÂˆÛÛ[YNÂˆBˆ›ÛÛX[ˆÜ˜YÛÝ\˜ÙHH\ÐÜ˜Y™YÚ\Ý\”ÛÝ\˜ÙJÚYÙ]\JNÂˆYˆ
+Ü˜YÛÝ\˜ÙH	‰ˆÚYÙ]™^˜QšY[Ë›Ü›ÛÛX[Š˜Ü˜Y˜\ÛÛœÝ[[ÙH‹˜[ÙJJHÛÛ[YNÂˆ[]X[]HHÜ˜YÛÝ\˜ÙH	‰ˆ\ÐÜ˜Y™YÚ\Ý\‘›Ø]
+ÚYÙ]\JHÈˆˆNÂˆYˆ
+´$4`4at.4,ˆÜ˜Y‹™\]X[ÊÚYÙ]\JJH]X[]HH\˜Ú]™T™XY]X[]JÚYÙ]
+NÂˆ›ÛÛX[ˆ\Ø”›Ú™XÝš[™[™Ð[ÝÙYHÜ˜YÛÝ\˜ÙH‘‘4$´at/´-‹™\]X[ÊÚYÙ]\JNÂˆš[™[™Ô™\]Y\Ý™\]Y\ÝH\Ø”›Ú™XÝš[™[™Ð[ÝÙYˆÈ\œÙT›Ú™XÝš[™[™ÊKÚYÙ]˜ÛÛ›™XÝ[Û’[™›Ë]X[]JBˆˆ\œÙPš[™[™ÊKÚYÙ]˜ÛÛ›™XÝ[Û’[™›Ë]X[]JNÂˆYˆ
+™\]Y\ÝOH[
+HÛÛ[YNÂˆÝš[™ÈÙ^HH™\]Y\Ýœ™YÚ\Ý\’Ù^J
+NÂˆš[™[™Ô™\]Y\Ý^\Ý[™ÈHÜ›Ý\Y™\]Y\ÝË™Ù]
+Ù^JNÂˆYˆ
+^\Ý[™ÈOH[
+HÜ›Ý\Y™\]Y\ÝËœ]
+Ù^K™\]Y\Ý
+NÂˆ[ÙH^\Ý[™ËÚYÙ][™XÙ\Ë˜Y
+JNÂˆBˆš[˜[\Ýš[™[™Ô™\]Y\Ýˆ™\]Y\ÝÈH™]È\œ˜^S\ÝŠÜ›Ý\Y™\]Y\ÝË˜[Y\Ê
+JNÂˆYˆ
+[Ù\ÔÛ[‘›YÚ
+H™]\›ŽÂˆš[˜[X\[YÙ\‹Ýš[™Ïˆ[˜[Yš[™[™ÜÈH™]È\ÚX\Š
+NÂˆ›Üˆ
+[HHÈHÛ˜\ÚÝÚYÙ]ËœÚ^™J
+NÈJÊÊHÂˆÝš[™Èš[™[™ÈHÛ˜\ÚÝÚYÙ]Ë™Ù]
+JK˜ÛÛ›™XÝ[Û’[™›ÎÂˆ›ÛÛX[ˆ\Ø”›Ú™XÝš[™[™Ð[ÝÙYH\ÐÜ˜Y™YÚ\Ý\”ÛÝ\˜ÙJÛ˜\ÚÝÚYÙ]Ë™Ù]
+JK\JBˆ‘‘4$´at/´-‹™\]X[ÊÛ˜\ÚÝÚYÙ]Ë™Ù]
+JK\JNÂˆYˆ
+š[™[™ÈOH[	‰ˆš[™[™ËœÝ\ÕÚ]
+Ü‹ËÈŠH	‰ˆ\œÙPš[™[™ÊKš[™[™ÊHOH[
+Bˆ[˜[Yš[™[™ÜËœ]
+KÑ‘ÈŠNÂˆ[ÙHYˆ
+\Ø”›Ú™XÝš[™[™Ð[ÝÙY	‰ˆš[™[™ÈOH[	‰ˆš[™[™ËœÝ\ÕÚ]
+\ØŽ‹ËÈŠBˆ	‰ˆ\œÙT›Ú™XÝš[™[™ÊKš[™[™Ëˆ\ÐÜ˜Y™YÚ\Ý\‘›Ø]
+Û˜\ÚÝÚYÙ]Ë™Ù]
+JK\JHÈˆˆJHOH[
+H[˜[Yš[™[™ÜËœ]
+KÑ‘ÈŠNÂˆBˆYˆ
+™\]Y\ÝËš\Ñ[\J
+H	‰ˆ[˜[Yš[™[™ÜËš\Ñ[\J
+H	‰ˆÜ˜YÞ\Ý[U^\]\Ëš\Ñ[\J
+Bˆ	‰ˆÜ˜YÞ\Ý[S[Y\šXÕ\]\Ëš\Ñ[\J
+Bˆ	‰ˆØ]]Ø^R[™XÙ\Ëš\Ñ[\J
+H	‰ˆš]Ø]]Ø^R[™XÙ\Ëš\Ñ[\J
+JH™]\›ŽÂˆ[Ù\ÔÛ[‘›YÚHYNÂˆžHÂˆ[Ù\Ñ^XÝ]Ü‹™^XÝ]J
+
+HOˆÂˆžHÂˆš[˜[X\[YÙ\‹Ýš[™Ïˆ\]\ÈH™]È\ÚX\Š[˜[Yš[™[™ÜÊNÂˆ\]\Ëœ][
+Ü˜YÞ\Ý[U^\]\ÊNÂˆ\]\Ëœ][
+Ü˜YÞ\Ý[S[Y\šXÕ\]\ÊNÂˆ›Üˆ
+š[™[™Ô™\]Y\Ý™\]Y\Ýˆ™\]Y\ÝÊHÂˆYˆ
+\ÛÙ\ÜÚ[Û‹˜XØÙ\ÊÙ\ÜÚ[Û•ÚÙ[ŠJH™]\›ŽÂˆÝš[™È˜[YNÂˆžHÂˆ[×HÛÜ™ÈH™XY›Ý[™™YÚ\Ý\œÊ™\]Y\Ý
+NÂˆÝš[™ÐZ[\ˆ˜]ÕÛÜ™ÈH™]ÈÝš[™ÐZ[\Š
+NÂˆ›Üˆ
+[HHÈHÛÜ™Ë›[™ÝÈJÊÊHÂˆYˆ
+Hˆ
+H˜]ÕÛÜ™Ë˜\[™
+	Ë	ÊNÂˆ˜]ÕÛÜ™Ë˜\[™
+ÛÜ™ÖÚWJNÂˆBˆ˜[YHH˜]ÕÛÜ™ËÔÝš[™Ê
+NÂˆHØ]Ú
+^Ù\[ÛˆJHÂˆ˜[YHH‘T”Žˆˆ
+È\ØÜšX™S[Ù\Ñ\œ›ÜŠJNÂˆBˆ›Üˆ
+[ÚYÙ][™^ˆ™\]Y\ÝÚYÙ][™XÙ\ÊHÂˆYˆ
+˜[YKœÝ\ÕÚ]
+‘T”ŽˆŠJH\]\Ëœ]
+ÚYÙ][™^˜[YJNÂˆ[ÙHÂˆÝš[™Ö×HšY[ÈH˜[YKœÜ]
+‹ŠNÂˆ[×HÛÜ™ÈH™]È[ÙšY[Ë›[™ÝNÂˆ›Üˆ
+[HHÈHšY[Ë›[™ÝÈJÊÊHÛÜ™ÖÚWHH[YÙ\‹œ\œÙR[
+šY[ÖÚWJNÂˆ\]\Ëœ]
+ÚYÙ][™^›Ü›X]ÛY˜[YJÛ˜\ÚÝÚYÙ]Ë™Ù]
+ÚYÙ][™^
+KÛÜ™ÊJNÂˆBˆBˆBˆ›Üˆ
+[ÚYÙ][™^ˆØ]]Ø^R[™XÙ\ÊHÂˆYˆ
+\ÛÙ\ÜÚ[Û‹˜XØÙ\ÊÙ\ÜÚ[Û•ÚÙ[ŠJH™]\›ŽÂˆÚYÙ]Ø]]Ø^UÚYÙ]HÛ˜\ÚÝÚYÙ]Ë™Ù]
+ÚYÙ][™^
+NÂˆžHÂˆÜ˜Y™YÚ\Ý\‘Ø]]Ø^KÛÛ™šYÈÛÛ™šYÈHÜ˜Y™YÚ\Ý\‘Ø]]Ø^K™œ›ÛJÛ˜\ÚÝ^˜\Ë™Ù]
+ÚYÙ][™^
+JNÂˆYˆ
+ÛÛ™šYÈOH[
+HÂˆÜ˜YØ]]Ø^TÝ]\Ëœ™[[Ý™JØ]]Ø^UÚYÙ]
+NÂˆÛÛ[YNÂˆBˆÜ˜Y™YÚ\Ý\‘Ø]]Ø^K”Ý]HÝ]HHÜ˜YØ]]Ø^TÝ]\Ë™Ù]
+Ø]]Ø^UÚYÙ]
+NÂˆYˆ
+Ý]HOH[
+HÂˆÜ˜Y™YÚ\Ý\‘Ø]]Ø^K”Ý]HÜ™X]YH™]ÈÜ˜Y™YÚ\Ý\‘Ø]]Ø^K”Ý]J
+NÂˆÜ˜Y™YÚ\Ý\‘Ø]]Ø^K”Ý]H^\Ý[™ÈHÜ˜YØ]]Ø^TÝ]\Ëœ]YXœÙ[
+Ø]]Ø^UÚYÙ]Ü™X]Y
+NÂˆÝ]HH^\Ý[™ÈOH[ÈÜ™X]Yˆ^\Ý[™ÎÂˆBˆÜ˜Y™YÚ\Ý\‘Ø]]Ø^K“Ý]ÛÛYHÝ]ÛÛYHHÜ˜Y™YÚ\Ý\‘Ø]]Ø^K˜[œÙ™\ŠÛÛ™šYËÝ]Kˆ™]ÈÜ˜Y™YÚ\Ý\‘Ø]]Ø^K•˜[œÜÜ
+
+HÂˆÝ™\œšYHX›XÈ[×H™XY
+Ü˜Y™YÚ\Ý\‘Ø]]Ø^Kš[™[™Èš[™[™Ë[]X[]JH›ÝÜÈSÑ^Ù\[ÛˆÂˆYˆ
+\ÛÙ\ÜÚ[Û‹˜XØÙ\ÊÙ\ÜÚ[Û•ÚÙ[ŠJH›ÝÈ™]ÈSÑ^Ù\[ÛŠ´(t-t,4/t`H4/ô`4/´-t.´`´,4-ô,4,´-t`4b4dt/HŠNÂˆYˆ
+š[™[™ËœÞ\Ý[T™YÚ\Ý\ŠBˆ™]\›ˆÜ˜Y™YÚ\Ý\‘Ø]]Ø^Kœ™XYÞ\Ý[TÛÝ\˜ÙJš[™[™Ë]X[]KÞ\Ý[T™YÚ\Ý\˜[šÊNÂˆ™]\›ˆ™]È[Ù\ÕÜÛY[
+š[™[™ËšÜÝš[™[™ËœÜ
+Kœ™XY
+ˆš[™[™Ë[š]š[™[™Ë˜Y™\ÜË]X[]Kš[™[™Ëœ™XY[˜Ý[ÛŠNÂˆBˆÝ™\œšYHX›XÈ›ÚYÜš]JÜ˜Y™YÚ\Ý\‘Ø]]Ø^Kš[™[™Èš[™[™Ë[×H˜[Y\ÊH›ÝÜÈSÑ^Ù\[ÛˆÂˆYˆ
+\ÛÙ\ÜÚ[Û‹˜XØÙ\ÊÙ\ÜÚ[Û•ÚÙ[ŠH[Ü\˜]Ü“[ÙHXXÝ]š]T™\Ý[YY
+Bˆ›ÝÈ™]ÈSÑ^Ù\[ÛŠ´*4.ôc´-È4/´`t`´,4/t/´,´.ô-t/HŠNÂˆ™]È[Ù\ÕÜÛY[
+š[™[™ËšÜÝš[™[™ËœÜ
+KÜš]S][\Jˆš[™[™Ë[š]š[™[™Ë˜Y™\ÜË˜[Y\ÊNÂˆBˆJNÂˆ\]\Ëœ]
+ÚYÙ][™^Ý]ÛÛYK˜[œÙ™\œ™YˆÈ“ÒÎˆ4/ô-t`4-t-4,4/t/ˆˆ
+ÈÝ]ÛÛYK˜ÛÝ[ˆ´'´-´.4-4,4/t.4-H4`t/´,tbô`´.4cÈŠNÂˆHØ]Ú
+^Ù\[Ûˆ˜Z[\™JHÂˆ\]\Ëœ]
+ÚYÙ][™^‘T”Žˆˆ
+È\ØÜšX™S[Ù\Ñ\œ›ÜŠ˜Z[\™JJNÂˆBˆBˆ›Üˆ
+[ÚYÙ][™^ˆš]Ø]]Ø^R[™XÙ\ÊHÂˆYˆ
+\ÛÙ\ÜÚ[Û‹˜XØÙ\ÊÙ\ÜÚ[Û•ÚÙ[ŠJH™]\›ŽÂˆÚYÙ]Ø]]Ø^UÚYÙ]HÛ˜\ÚÝÚYÙ]Ë™Ù]
+ÚYÙ][™^
+NÂˆžHÂˆÜ˜Yš]Ø]]Ø^KÛÛ™šYÈÛÛ™šYÈHÜ˜Yš]Ø]]Ø^K™œ›ÛJÛ˜\ÚÝ^˜\Ë™Ù]
+ÚYÙ][™^
+JNÂˆYˆ
+ÛÛ™šYÈOH[
+HÈÜ˜Yš]Ø]]Ø^TÝ]\Ëœ™[[Ý™JØ]]Ø^UÚYÙ]
+NÈÛÛ[YNÈBˆÜ˜Yš]Ø]]Ø^K”Ý]HÝ]HHÜ˜Yš]Ø]]Ø^TÝ]\Ë™Ù]
+Ø]]Ø^UÚYÙ]
+NÂˆYˆ
+Ý]HOH[
+HÂˆÜ˜Yš]Ø]]Ø^K”Ý]HÜ™X]YH™]ÈÜ˜Yš]Ø]]Ø^K”Ý]J
+NÂˆÜ˜Yš]Ø]]Ø^K”Ý]H^\Ý[™ÈHÜ˜Yš]Ø]]Ø^TÝ]\Ëœ]YXœÙ[
+Ø]]Ø^UÚYÙ]Ü™X]Y
+NÂˆÝ]HH^\Ý[™ÈOH[ÈÜ™X]Yˆ^\Ý[™ÎÂˆBˆÜ˜Yš]Ø]]Ø^K“Ý]ÛÛYHÝ]ÛÛYHHÜ˜Yš]Ø]]Ø^K˜[œÙ™\ŠÛÛ™šYËÝ]Kˆ™]ÈÜ˜Yš]Ø]]Ø^K•˜[œÜÜ
+
+HÂˆÝ™\œšYHX›XÈ[×H™XY
+Ü˜Yš]Ø]]Ø^Kš[™[™Èš[™[™Ë[]X[]JH›ÝÜÈSÑ^Ù\[ÛˆÂˆYˆ
+\ÛÙ\ÜÚ[Û‹˜XØÙ\ÊÙ\ÜÚ[Û•ÚÙ[ŠJH›ÝÈ™]ÈSÑ^Ù\[ÛŠ´(t-t,4/t`H4/ô`4/´-t.´`´,4-ô,4,´-t`4b4dt/HŠNÂˆ™]\›ˆ™]È[Ù\ÕÜÛY[
+š[™[™ËšÜÝš[™[™ËœÜ
+Kœ™XY
+ˆš[™[™Ë[š]š[™[™Ë˜Y™\ÜË]X[]Kš[™[™Ë™[˜Ý[ÛŠNÂˆBˆÝ™\œšYHX›XÈ›ÚYÜš]JÜ˜Yš]Ø]]Ø^Kš[™[™Èš[™[™Ë[×H˜[Y\ÊH›ÝÜÈSÑ^Ù\[ÛˆÂˆYˆ
+\ÛÙ\ÜÚ[Û‹˜XØÙ\ÊÙ\ÜÚ[Û•ÚÙ[ŠH[Ü\˜]Ü“[ÙHXXÝ]š]T™\Ý[YY
+Bˆ›ÝÈ™]ÈSÑ^Ù\[ÛŠ´*4.ôc´-È4/´`t`´,4/t/´,´.ô-t/HŠNÂˆ[Ù\ÕÜÛY[ÛY[H™]È[Ù\ÕÜÛY[
+š[™[™ËšÜÝš[™[™ËœÜ
+NÂˆYˆ
+˜[Y\Ë›[™ÝOHJHÛY[Üš]TÚ[™ÛPÛÚ[
+š[™[™Ë[š]š[™[™Ë˜Y™\ÜË˜[Y\ÖÌHOHJNÂˆ[ÙHÛY[Üš]S][\PÛÚ[Êš[™[™Ë[š]š[™[™Ë˜Y™\ÜË˜[Y\ÊNÂˆBˆJNÂˆ\]\Ëœ]
+ÚYÙ][™^Ý]ÛÛYK˜[œÙ™\œ™YˆÈ“ÒÎˆ4/ô-t`4-t-4,4/t/ˆ4,t.4`ˆˆ
+ÈÝ]ÛÛYK˜ÛÝ[ˆ´'´-´.4-4,4/t.4-H4`t/´,tbô`´.4cÈŠNÂˆHØ]Ú
+^Ù\[Ûˆ˜Z[\™JHÂˆ\]\Ëœ]
+ÚYÙ][™^‘T”Žˆˆ
+È\ØÜšX™S[Ù\Ñ\œ›ÜŠ˜Z[\™JJNÂˆBˆBˆš[˜[X\[YÙ\‹›ÛÛX[ˆ\˜Ú]™UšYÙÙ\•\]\ÈH™]È\ÚX\Š
+NÂˆ›Üˆ
+[ÚYÙ][™^ˆ\˜Ú]™UšYÙÙ\’[™XÙ\ÊHÂˆYˆ
+\ÛÙ\ÜÚ[Û‹˜XØÙ\ÊÙ\ÜÚ[Û•ÚÙ[ŠJH™]\›ŽÂˆžHÂˆÝš[™Èš[™[™ÈHÛ˜\ÚÝ^˜\Ë™Ù]
+ÚYÙ][™^
+K›ÜÝš[™Ê˜Ü˜Y\˜Ú]™UšYÙÙ\š[™[™È‹ˆŠKš[J
+NÂˆš[™[™Ô™\]Y\ÝšYÙÙ\ˆH\œÙPš[™[™ÊÚYÙ][™^š[™[™ÊNÂˆYˆ
+šYÙÙ\ˆOH[
+H›ÝÈ™]ÈSÑ^Ù\[ÛŠ´'t-t.´/´`4`4-t.´`´/t,4cÈ4/ô`4.4,´cô-ô.´,4`´`4.4,ô,ô-t`4,4,4`4at.4,´,ŠNÂˆ[×HÛÜ™ÈH™]È[Ù\ÕÜÛY[
+šYÙÙ\‹šÜÝšYÙÙ\‹œÜ
+Kœ™XY
+ˆšYÙÙ\‹[š]šYÙÙ\‹˜Y™\ÜËKšYÙÙ\‹™[˜Ý[ÛÛÙJNÂˆ\˜Ú]™UšYÙÙ\•\]\Ëœ]
+ÚYÙ][™^ÛÜ™Ë›[™Ýˆ	‰ˆÛÜ™ÖÌHOH
+NÂˆHØ]Ú
+^Ù\[Ûˆ˜Z[\™JHÂˆ\˜Ú]™UšYÙÙ\•\]\Ëœ]
+ÚYÙ][™^[
+NÂˆBˆBˆ[“Û•ZU™XY
+
+
+HOˆÂˆYˆ
+\ÛÙ\ÜÚ[Û‹˜XØÙ\ÊÙ\ÜÚ[Û•ÚÙ[ŠHXXÝ]š]T™\Ý[YYˆY]ÜˆOHÙ\ÜÚ[Û‘Y]Üˆ\Ñš[š\Ú[™Ê
+H\Ñ\Ý›ÞYY
+
+JH™]\›ŽÂˆ›Üˆ
+X\‘[žO[YÙ\‹›ÛÛX[ˆšYÙÙ\ˆˆ\˜Ú]™UšYÙÙ\•\]\Ë™[žTÙ]
+
+JHÂˆ[[™^HšYÙÙ\‹™Ù]Ù^J
+NÂˆYˆ
+[™^[™^HÚYÙ]ËœÚ^™J
+HÚYÙ]Ë™Ù]
+[™^
+HOHÛ˜\ÚÝÚYÙ]Ë™Ù]
+[™^
+JHÛÛ[YNÂˆÚYÙ]\˜Ú]™HHÚYÙ]Ë™Ù]
+[™^
+NÂˆ›ÛÛX[ˆÝ\œ™[HšYÙÙ\‹™Ù]˜[YJ
+NÂˆYˆ
+Ý\œ™[OH[
+HÂˆÜ˜Y\˜Ú]™UšYÙÙ\‘YÙ\Ëœ™[[Ý™J\˜Ú]™JNÂˆH[ÙHÂˆ›ÛÛX[ˆ™]š[Ý\ÈH›ÛÛX[‹••QK™\]X[ÊÜ˜Y\˜Ú]™UšYÙÙ\’YÚœ]
+\˜Ú]™KÝ\œ™[
+JNÂˆYˆ
+Ý\œ™[	‰ˆ\™]š[Ý\ÊHÜ˜Y\˜Ú]™UšYÙÙ\‘YÙ\Ë˜Y
+\˜Ú]™JNÂˆBˆBˆ›Üˆ
+X\‘[žO[YÙ\‹Ýš[™Ïˆ[žHˆ\]\Ë™[žTÙ]
+
+JHÂˆ[[™^H[žK™Ù]Ù^J
+NÂˆYˆ
+[™^[™^HÚYÙ]ËœÚ^™J
+H[™^HÛ˜\ÚÝÚYÙ]ËœÚ^™J
+BˆÚYÙ]Ë™Ù]
+[™^
+HOHÛ˜\ÚÝÚYÙ]Ë™Ù]
+[™^
+BˆZ˜]˜K][“Øš™XÝË™\]X[ÊÚYÙ]Ë™Ù]
+[™^
+K˜ÛÛ›™XÝ[Û’[™›ËÛ˜\ÚÝš[™[™ÜË™Ù]
+[™^
+JJHÛÛ[YNÂˆÚYÙ]ÈHÚYÙ]Ë™Ù]
+[™^
+NÂˆ]™U˜[Y\Ëœ]
+[™^[žK™Ù]˜[YJ
+JNÂˆYˆ
+´$4`4at.4,ˆÜ˜Y‹™\]X[ÊË\JH	‰ˆÜ\˜]Ü“[ÙH	‰ˆ[žK™Ù]˜[YJ
+HOH[ˆ	‰ˆY[žK™Ù]˜[YJ
+KœÝ\ÕÚ]
+‘T”ˆŠH	‰ˆY[žK™Ù]˜[YJ
+KœÝ\ÕÚ]
+Ñ‘ÈŠJHÂˆžHÂˆ›ÛÛX[ˆ\ÕšYÙÙ\ˆH]Ë™^˜QšY[Ë›ÜÝš[™Ê˜Ü˜Y\˜Ú]™UšYÙÙ\š[™[™È‹ˆŠKš[J
+Kš\Ñ[\J
+NÂˆYˆ
+\ÕšYÙÙ\ˆ	‰ˆXÜ˜Y\˜Ú]™UšYÙÙ\‘YÙ\Ëœ™[[Ý™JÊJHÛÛ[YNÂˆÝš[™È›Ú™XÝœÛÛˆHÙ]Ú\™Y™Y™\™[˜Ù\Ê‘Q”ËSÑWÔ’UUJK™Ù]Ýš[™ÊPÕU‘WÔ“Ò‘PÕžßHŠNÂˆÝš[™È\˜Ú]™T›Ú™XÝH›Ú™XÝYYXTÙ\šXÙK™Ù]Ü‘Ù[™\˜]T›Ú™XÝY
+›Ú™XÝœÛÛŠNÂˆÝš[™È\˜Ú]™RÙ^HHË™^˜QšY[Ë›ÜÝš[™Ê˜Ü˜Y\˜Ú]™RÙ^H‹ˆŠKš[J
+NÂˆYˆ
+\˜Ú]™RÙ^Kš\Ñ[\J
+JHÂˆ\˜Ú]™RÙ^HH˜]˜K][•URQœ˜[™ÛUURQ
+
+KÔÝš[™Ê
+NÂˆË™^˜QšY[Ëœ]
+˜Ü˜Y\˜Ú]™RÙ^H‹\˜Ú]™RÙ^JNÂˆ\œÚ\Ý›Ú™XÝ
+
+NÂˆBˆš[˜[Ýš[™È\™Ù]›Ú™XÝH\˜Ú]™T›Ú™XÝ\™Ù]ÚYÙ]H\˜Ú]™RÙ^NÂˆš[˜[Ýš[™ÈØ[\HH[žK™Ù]˜[YJ
+NÂˆš[˜[[[\˜[HË™^˜QšY[Ë›Ü[
+˜Ü˜Y\˜Ú]™R[\˜[ÙXÛÛ™È‹JNÂˆš[˜[[X^›ÝÜÈHË™^˜QšY[Ë›Ü[
+˜Ü˜Y\˜Ú]™SX^›ÝÜÈ‹L
+NÂˆ[Ù\Ñ^XÝ]Ü‹™^XÝ]J
+
+HOˆÂˆØØ[\˜Ú]™TÝÜ™HÝÜ™HH™]ÈØØ[\˜Ú]™TÝÜ™JXZ[XÝ]š]K\ÊNÂˆžHÈÝÜ™Kœ™XÛÜ™
+\™Ù]›Ú™XÝ\™Ù]ÚYÙ]Þ\Ý[K˜Ý\œ™[[YSZ[\Ê
+KØ[\K[\˜[X^›ÝÜÊNÈBˆØ]Ú
+^Ù\[Ûˆ˜Z[\™JHÈ[™›ÚY][“ÙË™J“ÓÑÒÖH‹\˜Ú]™HØ[\H˜Z[Y‹˜Z[\™JNÈBˆš[˜[HÈÝÜ™K˜ÛÜÙJ
+NÈBˆJNÂˆHØ]Ú
+^Ù\[Ûˆ˜Z[\™JHÂˆ[™›ÚY][“ÙË™J“ÓÑÒÖH‹\˜Ú]™HÙ]\˜Z[Y‹˜Z[\™JNÂˆBˆBˆYˆ
+\ÐÜ˜Y™YÚ\Ý\”ÛÝ\˜ÙJË\JJHÂˆžHÂˆÝš[™Ö×HÛÜ™ÈH[žK™Ù]˜[YJ
+KœÜ]
+‹ŠNÂˆË˜Ü˜Y™YÚ\Ý\•ÛÜ™H[YÙ\‹œ\œÙR[
+ÛÜ™ÖÌJNÂˆË˜Ü˜Y™YÚ\Ý\•ÛÜ™HHÛÜ™Ë›[™ÝˆHÈ[YÙ\‹œ\œÙR[
+ÛÜ™ÖÌWJHˆÂˆË˜Ü˜Y™YÚ\Ý\•˜[YHYNÂˆHØ]Ú
+^Ù\[Ûˆ[˜[Y
+HÈË˜Ü˜Y™YÚ\Ý\•˜[YH˜[ÙNÈBˆBˆYˆ
+\ÐÜ˜Y™YÚ\Ý\”ÛÝ\˜ÙJË\JH	‰ˆ[žK™Ù]˜[YJ
+HOH[ˆ	‰ˆ[žK™Ù]˜[YJ
+KœÝ\ÕÚ]
+‘T”ŽˆŠJHË˜Ü˜Y™YÚ\Ý\•˜[YH˜[ÙNÂˆYˆ
+‘‘4$´at/´-‹™\]X[ÊË\JJHÂˆËš[œ]˜[YHH\ÐXÝ]™S[Ù\Õ˜[YJ[žK™Ù]˜[YJ
+JNÂˆH[ÙHYˆ
+´%ô,´`ô.´/´,´/´.H4`t.4,ô/t,4.È‹™\]X[ÊË\JJHÂˆ›ÛÛX[ˆXÝ]™HHËœÛÝ[™XÝ]™NÂˆYˆ
+[žK™Ù]˜[YJ
+HOH[
+HÂˆžHÈXÝ]™HHÝX›Kœ\œÙQÝX›J[žK™Ù]˜[YJ
+JHHËœÛÝ[™™\ÚÛÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HßBˆBˆÝš[™È[\›RÙ^HHÝ\œ™[ØÜ™Y[’[™^
+ÈŽˆˆ
+È[™^ÂˆYˆ
+XÝ]™H	‰ˆ]Ë›\ÝÛÝ[™Ý]JHÂˆË›\ÝÛÝ[™Ý]HHYNÂˆ^PÜ˜Y[\›P[\
+[\›RÙ^KËœÛÝ[™š[T]Ë˜Ü˜Y[\›TÛÝ[™[™^Ë˜Ü˜Y[\›SÛÜ
+NÂˆH[ÙHYˆ
+XXÝ]™JHÂˆË›\ÝÛÝ[™Ý]HH˜[ÙNÂˆÝÜÜ˜Y[\›P[\
+[\›RÙ^JNÂˆBˆH[ÙHYˆ
+´$ô/´.ô/´`t/´,´/´-H4`t/´/´,tbt-t/t.4-H‹™\]X[ÊË\JJHÂˆ[›ÚXÙRYHÂˆYˆ
+[žK™Ù]˜[YJ
+HOH[
+HÂˆžHÈ›ÚXÙRYH
+[
+HX]œ›Ý[™
+ÝX›Kœ\œÙQÝX›J[žK™Ù]˜[YJ
+JJNÈHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HßBˆBˆYˆ
+›ÚXÙRY›ÚXÙRYHMŠH›ÚXÙRYHÂˆYˆ
+›ÚXÙRYOHË›\Ý›ÚXÙTÝ]JHÂˆË›\Ý›ÚXÙTÝ]HH›ÚXÙRYÂˆÜXZÕ›ÚXÙP[››Ý[˜Ù[Y[
+Ë›ÚXÙSY\ÜØYÙ\ÖÝ›ÚXÙRYJNÂˆBˆH[ÙHYˆ
+•[YÜ˜[Kt`ô,´-t-4/´/4.ô-t/t.4-H‹™\]X[ÊË\JJHÂˆÝš[™ÈÝ]HH[žK™Ù]˜[YJ
+NÂˆYˆ
+Ý]HOH[	‰ˆ\Ý]KœÝ\ÕÚ]
+‘T”ŽˆŠH	‰ˆ\Ý]KœÝ\ÕÚ]
+Ñ‘ÈŠJHÂˆ›ÛÛX[ˆXÝ]™HH\ÐXÝ]™S[Ù\Õ˜[YJÝ]JNÂˆYˆ
+XÝ]™H	‰ˆ]Ë›\Ý[YÜ˜[TÝ]JHÙ[™[YÜ˜[S›ÝYšXØ][ÛŠ[™^ËÝ]JNÂˆË›\Ý[YÜ˜[TÝ]HHXÝ]™NÂˆBˆH[ÙHYˆ
+”ÓTËt`ô,´-t-4/´/4.ô-t/t.4-H‹™\]X[ÊË\JJHÂˆÝš[™ÈÝ]HH[žK™Ù]˜[YJ
+NÂˆYˆ
+Ý]HOH[	‰ˆ\Ý]KœÝ\ÕÚ]
+‘T”ŽˆŠH	‰ˆ\Ý]KœÝ\ÕÚ]
+Ñ‘ÈŠJHÂˆ›ÛÛX[ˆXÝ]™HH\ÐXÝ]™S[Ù\Õ˜[YJÝ]JNÂˆYˆ
+XÝ]™H	‰ˆ]Ë›\ÝÛ\ÔÝ]JHÙ[™Û\Ó›ÝYšXØ][ÛŠËÝ]JNÂˆË›\ÝÛ\ÔÝ]HHXÝ]™NÂˆBˆBˆBˆY]Ü‹š[˜[Y]J
+NÂˆJNÂˆHš[˜[HÂˆ[Ù\ÔÛ[‘›YÚH˜[ÙNÂˆBˆJNÂˆHØ]Ú
+˜]˜K][˜ÛÛ˜Ý\œ™[”™Z™XÝY^XÝ][Û‘^Ù\[ÛˆYÛ›Ü™Y
+HÂˆ[Ù\ÔÛ[‘›YÚH˜[ÙNÂˆBˆB‚ˆš]˜]HÝ]XÈÛ\ÜÈš[™[™Ô™\]Y\ÝÂˆš[˜[\Ý[YÙ\ˆÚYÙ][™XÙ\ÈH™]È\œ˜^S\ÝŠ
+NÂˆš[˜[[Ü[š]Y™\ÜË[˜Ý[ÛÛÙK]X[]NÂˆš[˜[Ýš[™ÈÜÝÂˆš[˜[›ÛÛX[ˆ\ØŽÂˆš[™[™Ô™\]Y\Ý
+[ÚYÙ][™^Ýš[™ÈÜÝ[Ü[[š][Y™\ÜË[[˜Ý[ÛÛÙK[]X[]JHÂˆ\ÊÚYÙ][™^ÜÝÜ[š]Y™\ÜË[˜Ý[ÛÛÙK]X[]K˜[ÙJNÂˆBˆš[™[™Ô™\]Y\Ý
+[ÚYÙ][™^Ýš[™ÈÜÝ[Ü[[š][Y™\ÜË[[˜Ý[ÛÛÙKˆ[]X[]K›ÛÛX[ˆ\ØŠHÂˆ\ËÚYÙ][™XÙ\Ë˜Y
+ÚYÙ][™^
+NÂˆ\ËšÜÝHÜÝÈ\ËœÜHÜÈ\Ë[š]H[š]Âˆ\Ë˜Y™\ÜÈHY™\ÜÎÈ\Ë™[˜Ý[ÛÛÙHH[˜Ý[ÛÛÙNÈ\Ëœ]X[]HH]X[]NÈ\Ë\ØˆH\ØŽÂˆBˆÝš[™È™YÚ\Ý\’Ù^J
+HÂˆYˆ
+\ØŠH™]\›ˆ\Ø‹Èˆ
+È[š]
+È‹Èˆ
+ÈY™\ÜÈ
+È‹ÑÈˆ
+È[˜Ý[ÛÛÙH
+È‹Èˆ
+È]X[]NÂˆ™]\›ˆÜÝÓÝÙ\Ø\ÙJ˜]˜K][“ØØ[K”“ÓÕ
+H
+ÈŽˆˆ
+ÈÜ
+È‹Èˆ
+È[š]
+È‹Èˆ
+ÈY™\ÜÈ
+È‹ÑÈˆ
+È[˜Ý[ÛÛÙH
+È‹Èˆ
+È]X[]NÂˆBˆB‚ˆš]˜]H›ÚY^Ü›Ú™XÝ
+
+HÂˆ\œÚ\Ý›Ú™XÝ
+
+NÂˆ™]È[\X[ÙËZ[\Š\ÊKœÙ]]J´+t.´`t/ô/´`4`ˆ4/ô`4/´-t.´`´,ŠBˆœÙ]][\Ê™]ÈÝš[™Ö×^È–’T8 %4/ô`4/´-t.´`ˆ4.4/4-t-4.4,‹’”ÓÓˆ8 %4`´/´.ôc4.´/ˆ4/t,4`t`´`4/´.t.´.ŸK
+X[ÙËÚXÚ
+HOˆÂˆ[[[[H™]È[[
+[[PÕSÓ—ÐÔ‘PUWÑÐÕSQS•
+NÂˆ[[˜YØ]YÛÜžJ[[ÐUQÓÔ–WÓÔSP“JNÂˆ[[œÙ]\JÚXÚOHÈ˜\XØ][Û‹Þš\ˆˆ˜\XØ][Û‹ÚœÛÛˆŠNÂˆ[[œ]^˜J[[‘VWÕUK›Ú™XÝ˜[YKœ™\XÙP[
+–×KV˜K^´$t+ô,tcÌNK—ËWH‹—ÈŠBˆ
+È
+ÚXÚOHÈ‹˜›ÛÙÚÞKžš\ˆˆ‹˜›ÛÙÚÞKšœÛÛˆŠJNÂˆžHÈÝ\XÝ]š]Q›Ü”™\Ý[
+[[ÚXÚOHÈ‘TUQTÕÑVÔ•Ô“Ò‘PÕÖ’Tˆ‘TUQTÕÑVÔ•Ô“Ò‘PÕ
+NÈBˆØ]Ú
+^Ù\[ÛˆJHÈØ\Ý›XZÙU^
+\Ë´'t-H4`ô-4,4.ô/´`tc4/´`´.´`4bô`´c4,´bô,t/´`4a4,4.t.ô,‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÈBˆJKœÚÝÊ
+NÂˆB‚ˆš]˜]H›ÚYÚÝÐÜ˜YXXÜ›ÕÛÛÊ
+HÂˆš[˜[[™›ÚY˜\‘X[ÙÈX[ÙÈH™]È[™›ÚY˜\‘X[ÙÊ\Ëˆ[™›ÚY”‹œÝ[K•[YWÓX]\šX[Ó›ÐXÝ[Û˜\—Ñ[ØÜ™Y[ŠNÂˆX[ÙËœ™\]Y\ÝÚ[™ÝÑ™X]\™J[™›ÚYšY]Ë•Ú[™ÝË‘‘PUT‘WÓ“×ÕUJNÂ‚ˆ[™X\“^[Ý]YÙHH™]È[™X\“^[Ý]
+\ÊNÂˆYÙKœÙ]ÜšY[][ÛŠ[™X\“^[Ý]•‘T•PÐS
+NÂˆYÙKœÙ]˜XÚÙÜ›Ý[™ÛÛÜŠÛÛÜ‹œ™ØŠÍKÍKÍJJNÂ‚ˆ[™X\“^[Ý]XY\ˆH™]È[™X\“^[Ý]
+\ÊNÂˆXY\‹œÙ]Ü˜]š]JÜ˜]š]KÑS•T—Õ‘T•PÐS
+NÂˆXY\‹œÙ]Y[™Ê
+
+K
+
+K
+
+K
+
+JNÂˆ]Ûˆ˜XÚÈH™]È]ÛŠ\ÊNÂˆ˜XÚËœÙ]^
+¸ .HŠNÂˆ˜XÚËœÙ]^Ú^™J
+NÂˆ˜XÚËœÙ]ÛÛ[\ØÜš\[ÛŠ´$´-t`4/t`ô`´c4`tcÈ4.ˆ‘ŠNÂˆ˜XÚËœÙ][Ø\Ê˜[ÙJNÂˆ˜XÚËœÙ]ÛÛXÚÓ\Ý[™\ŠˆOˆÂˆX[ÙË™\ÛZ\ÜÊ
+NÂˆÚÝÑ˜™[]J
+NÂˆJNÂˆXY\‹˜YšY]Ê˜XÚË™]È[™X\“^[Ý]“^[Ý]\˜[\Ê
+MŠK
+
+JJNÂ‚ˆ^šY]È]HH™]È^šY]Ê\ÊNÂˆ]KœÙ]^
+´'4,4.´`4/´`tbÈŠNÂˆ]KœÙ]^ÛÛÜŠÛÛÜ‹œ™ØŠŒÍËMÍ‹NJJNÂˆ]KœÙ]^Ú^™JN
+NÂˆ]KœÙ]Ü˜]š]JÜ˜]š]KÑS•T—Õ‘T•PÐS
+NÂˆ]KœÙ]Y[™Ê
+
+K
+NÂˆXY\‹˜YšY]Ê]K™]È[™X\“^[Ý]“^[Ý]\˜[\Ê
+
+KYŠJNÂ‚ˆ]Ûˆ[Ü™HH™]È]ÛŠ\ÊNÂˆ[Ü™KœÙ]^
+¸¢ëˆŠNÂˆ[Ü™KœÙ]^Ú^™JŒŠNÂˆ[Ü™KœÙ]ÛÛ[\ØÜš\[ÛŠ´%4-t.t`t`´,´.4cÈ4`H4/4,4.´`4/´`t,4/4.ŠNÂˆ[Ü™KœÙ][Ø\Ê˜[ÙJNÂˆ[Ü™KœÙ]ÛÛXÚÓ\Ý[™\Š[˜ÚÜˆOˆÂˆ[™›ÚYÚYÙ]”Ü\Y[HY[HH™]È[™›ÚYÚYÙ]”Ü\Y[J\Ë[˜ÚÜŠNÂˆY[K™Ù]Y[J
+K˜Y
+´(t/´-ô-4,4`´c4.4-È4,´bô,t`4,4/t/t/´,ô/ˆ‘t,t.ô/´.´,ŠBˆœÙ]Û“Y[R][PÛXÚÓ\Ý[™\Š][HOˆÂˆX[ÙË™\ÛZ\ÜÊ
+NÂˆÜ™X]PÜ˜YXXÜ›Ñœ›ÛTÙ[XÝ[ÛŠ
+NÂˆ™]\›ˆYNÂˆJNÂˆY[K™Ù]Y[J
+K˜Y
+´&4/4/ô/´`4`ˆ›XÜˆŠKœÙ]Û“Y[R][PÛXÚÓ\Ý[™\Š][HOˆÂˆX[ÙË™\ÛZ\ÜÊ
+NÂˆ[[[[H™]È[[
+[[PÕSÓ—ÓÔS—ÑÐÕSQS•
+NÂˆ[[˜YØ]YÛÜžJ[[ÐUQÓÔ–WÓÔSP“JNÂˆ[[œÙ]\JŠ‹ÊˆŠNÂˆžHÈÝ\XÝ]š]Q›Ü”™\Ý[
+[[‘TUQTÕÒSTÔ•ÐÔQ•ÓPPÔ“ÊNÈBˆØ]Ú
+^Ù\[Ûˆ˜Z[\™JHÂˆØ\Ý›XZÙU^
+\Ë´'t-H4`ô-4,4.ô/´`tc4/´`´.´`4bô`´c4,´bô,t/´`4a4,4.t.ô,‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆBˆ™]\›ˆYNÂˆJNÂˆ[™›ÚYšY]Ë“Y[R][H^ÜHY[K™Ù]Y[J
+K˜Y
+´+t.´`t/ô/´`4`ˆ›XÜˆŠNÂˆžHÈ^ÜœÙ][˜X›Y
+˜™Ü˜YXXÜ›ÐØ][ÙË›˜[Y\Ê›Ú™XÝ^˜QšY[ÊK›[™Ýˆ
+NÈBˆØ]Ú
+^Ù\[Ûˆ[˜[YØ][ÙÊHÈ^ÜœÙ][˜X›Y
+˜[ÙJNÈBˆ^ÜœÙ]Û“Y[R][PÛXÚÓ\Ý[™\Š][HOˆÂˆX[ÙË™\ÛZ\ÜÊ
+NÂˆ^ÜÜ˜YXXÜ›Ñœ›ÛPØ][ÙÊ
+NÂˆ™]\›ˆYNÂˆJNÂˆY[K™Ù]Y[J
+K˜Y
+´%4`4`ô,ô.4-H4ct.ô-t/4-t/t`´bÈ“ÓÑÒÖHŠKœÙ]Û“Y[R][PÛXÚÓ\Ý[™\Š][HOˆÂˆX[ÙË™\ÛZ\ÜÊ
+NÂˆÚÝÑ^[™YÚYÙ]Y[J
+NÂˆ™]\›ˆYNÂˆJNÂˆY[KœÚÝÊ
+NÂˆJNÂˆXY\‹˜YšY]Ê[Ü™K™]È[™X\“^[Ý]“^[Ý]\˜[\Ê
+
+K
+
+JJNÂˆYÙK˜YšY]ÊXY\‹™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLK
+MŠJJNÂ‚ˆÝš[™Ö×H˜[Y\ÎÂˆžHÈ˜[Y\ÈH˜™Ü˜YXXÜ›ÐØ][ÙË›˜[Y\Ê›Ú™XÝ^˜QšY[ÊNÈBˆØ]Ú
+^Ù\[Ûˆ[˜[YØ][ÙÊHÂˆ˜[Y\ÈH™]ÈÝš[™ÖÌNÂˆØ\Ý›XZÙU^
+\Ë´&´,4`´,4.ô/´,È4/4,4.´`4/´`t/´,ˆ4/ô/´,´`4-t-´-4dt/H‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆB‚ˆœ˜[YS^[Ý]Xœ˜\žHH™]Èœ˜[YS^[Ý]
+\ÊNÂˆYÙK˜YšY]ÊXœ˜\žK™]È[™X\“^[Ý]“^[Ý]\˜[\ÊLKYŠJNÂ‚ˆ[™›ÚYÚYÙ]”ØÜ›ÛšY]ÈØÜ›ÛH™]È[™›ÚYÚYÙ]”ØÜ›ÛšY]Ê\ÊNÂˆØÜ›ÛœÙ]š[šY]ÜÜ
+YJNÂˆ[™›ÚYÚYÙ]‘ÜšY^[Ý]ÜšYH™]È[™›ÚYÚYÙ]‘ÜšY^[Ý]
+\ÊNÂˆ[ÛÛ[[œÈHX]›X^
+K
+[
+H
+
+Ù]™\ÛÝ\˜Ù\Ê
+K™Ù]\Ü^SY]šXÜÊ
+KÚY^[ÂˆÈÙ]™\ÛÝ\˜Ù\Ê
+K™Ù]\Ü^SY]šXÜÊ
+K™[œÚ]JHÈNŠJNÂˆÜšYœÙ]ÛÛ[[ÛÝ[
+ÛÛ[[œÊNÂˆÜšYœÙ]Y[™Ê
+MŠK
+MŠK
+MŠK
+MŠJNÂ‚ˆ›Üˆ
+Ýš[™ÈXXÜ›Ó˜[YHˆ˜[Y\ÊHÂˆ˜™Ü˜YXXÜ›ÑYš[š][ÛˆYš[š][ÛŽÂˆžHÈYš[š][ÛˆH˜™Ü˜YXXÜ›ÐØ][ÙË™š[™
+›Ú™XÝ^˜QšY[ËXXÜ›Ó˜[YJNÈBˆØ]Ú
+^Ù\[Ûˆ[˜[Y
+HÈYš[š][ÛˆH[ÈBˆYˆ
+Yš[š][ÛˆOH[
+HÛÛ[YNÂ‚ˆšY]ÈØ\™HÙ]^[Ý][™›]\Š
+Kš[™›]J‹›^[Ý]šØ×ÛXXÜ›×ÛXœ˜\žWØØ\™ÜšY˜[ÙJNÂˆ[™›ÚY™Ü˜\XÜË™˜]ØX›K‘Ü˜YY[˜]ØX›HØ\™˜XÚÙÜ›Ý[™Bˆ™]È[™›ÚY™Ü˜\XÜË™˜]ØX›K‘Ü˜YY[˜]ØX›J
+NÂˆØ\™˜XÚÙÜ›Ý[™œÙ]ÛÛÜŠÛÛÜ‹•ÒUJNÂˆØ\™˜XÚÙÜ›Ý[™œÙ]ÛÜ›™\”˜Y]\Ê
+
+JNÂˆØ\™œÙ]˜XÚÙÜ›Ý[™
+Ø\™˜XÚÙÜ›Ý[™
+NÂˆØ\™œÙ][]˜][ÛŠŠNÂ‚ˆ^šY]ÈØ\™]HHØ\™™š[™šY]ÐžRY
+‹šYšØ×ÛXXÜ›×ÛXœ˜\žWÝ]JNÂˆØ\™]KœÙ]^
+Yš[š][Û‹™Ù]˜[YJ
+JNÂˆØ\™œÙ]ÛÛ[\ØÜš\[ÛŠ´%4/´,t,4,´.4`´c4/4,4.´`4/´`Nˆˆ
+ÈYš[š][Û‹™Ù]˜[YJ
+JNÂˆš[˜[˜™Ü˜YXXÜ›ÑYš[š][ÛˆÙ[XÝYYš[š][ÛˆHYš[š][ÛŽÂˆØ\™œÙ]ÛÛXÚÓ\Ý[™\ŠˆOˆÂˆžHÂˆYÜ˜YXXÜ›ÕÚYÙ]
+Ù[XÝYYš[š][ÛŠNÂˆX[ÙË™\ÛZ\ÜÊ
+NÂˆHØ]Ú
+^Ù\[Ûˆ˜Z[\™JHÂˆØ\Ý›XZÙU^
+\Ë´'t-H4`ô-4,4.ô/´`tc4-4/´,t,4,´.4`´c4/4,4.´`4/´`H‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆBˆJNÂ‚ˆ[™›ÚYÚYÙ]‘ÜšY^[Ý]“^[Ý]\˜[\ÈØ\™\˜[\ÈBˆ™]È[™›ÚYÚYÙ]‘ÜšY^[Ý]“^[Ý]\˜[\Êˆ[™›ÚYÚYÙ]‘ÜšY^[Ý]œÜXÊ[™›ÚYÚYÙ]‘ÜšY^[Ý]•S‘Q’S‘Q
+Kˆ[™›ÚYÚYÙ]‘ÜšY^[Ý]œÜXÊ[™›ÚYÚYÙ]‘ÜšY^[Ý]•S‘Q’S‘Q
+JNÂˆØ\™\˜[\ËÚYH
+L
+NÂˆØ\™\˜[\ËšZYÚH
+L
+NÂˆØ\™\˜[\ËœÙ]X\™Ú[œÊ
+MŠK
+MŠK
+MŠK
+MŠJNÂˆÜšY˜YšY]ÊØ\™Ø\™\˜[\ÊNÂˆBˆØÜ›Û˜YšY]ÊÜšY™]È[™›ÚYÚYÙ]”ØÜ›ÛšY]Ë“^[Ý]\˜[\ÊLKLŠJNÂˆXœ˜\žK˜YšY]ÊØÜ›Û™]Èœ˜[YS^[Ý]“^[Ý]\˜[\ÊLKLJJNÂ‚ˆYˆ
+˜[Y\Ë›[™ÝOH
+HÂˆ^šY]È[\HH™]È^šY]Ê\ÊNÂˆ[\KœÙ]^
+´$t.4,t.ô.4/´`´-t.´,4/4,4.´`4/´`t/´,ˆ4/ô`ô`t`´,ŠNÂˆ[\KœÙ]^ÛÛÜŠÛÛÜ‹•ÒUJNÂˆ[\KœÙ]^Ú^™JŒ
+NÂˆ[\KœÙ]Ü˜]š]JÜ˜]š]KÑS•TŠNÂˆ[\KœÙ]ÛÛ[\ØÜš\[ÛŠ´$t.4,t.ô.4/´`´-t.´,4/4,4.´`4/´`t/´,ˆ4/ô`ô`t`´,ŠNÂˆXœ˜\žK˜YšY]Ê[\K™]Èœ˜[YS^[Ý]“^[Ý]\˜[\ÊLKLJJNÂˆB‚ˆ[XYÙUšY]ÈÝÚ]ÚYÙHH™]È[XYÙUšY]Ê\ÊNÂˆÝÚ]ÚYÙKœÙ]˜XÚÙÜ›Ý[™™\ÛÝ\˜ÙJ‹™˜]ØX›KšØ×ÝX—ÜYÙLJNÂˆÝÚ]ÚYÙKœÙ]ÛÛ[\ØÜš\[ÛŠ´'ô,4.ô.4`´`4,4.´/´/4/ô/´/t-t/t`´/´,ˆŠNÂˆÝÚ]ÚYÙKœÙ]ÛÛXÚÓ\Ý[™\ŠˆOˆÂˆX[ÙË™\ÛZ\ÜÊ
+NÂˆÚÝÐYÚYÙ]Y[J
+NÂˆJNÂˆÝÚ]ÚYÙKœÙ]Û“Û™ÐÛXÚÓ\Ý[™\ŠˆOˆÂˆX[ÙË™\ÛZ\ÜÊ
+NÂˆÚÝÑ˜™[]J
+NÂˆ™]\›ˆYNÂˆJNÂˆœ˜[YS^[Ý]“^[Ý]\˜[\ÈÝÚ]Ú\˜[\ÈBˆ™]Èœ˜[YS^[Ý]“^[Ý]\˜[\Ê
+Œ
+K
+Œ
+KÜ˜]š]K“ÕÓHÜ˜]š]K‘S‘
+NÂˆXœ˜\žK˜YšY]ÊÝÚ]ÚYÙKÝÚ]Ú\˜[\ÊNÂ‚ˆX[ÙËœÙ]ÛÛ[šY]ÊYÙJNÂˆX[ÙËœÚÝÊ
+NÂˆ[™›ÚYšY]Ë•Ú[™ÝÈÚ[™ÝÈHX[ÙË™Ù]Ú[™ÝÊ
+NÂˆYˆ
+Ú[™ÝÈOH[
+HÂˆÚ[™ÝËœÙ]˜XÚÙÜ›Ý[™˜]ØX›J™]È[™›ÚY™Ü˜\XÜË™˜]ØX›KÛÛÜ‘˜]ØX›JˆÛÛÜ‹œ™ØŠÍKÍKÍJJJNÂˆÚ[™ÝËœÙ]^[Ý]
+[™›ÚYšY]Ë•Ú[™ÝÓX[˜YÙ\‹“^[Ý]\˜[\Ë“PUÒÔT‘S•ˆ[™›ÚYšY]Ë•Ú[™ÝÓX[˜YÙ\‹“^[Ý]\˜[\Ë“PUÒÔT‘S•
+NÂˆBˆB‚ˆš]˜]H›ÚYYÜ˜YXXÜ›Ñœ›ÛPØ][ÙÊ
+HÂˆžHÂˆÝš[™Ö×H˜[Y\ÈH˜™Ü˜YXXÜ›ÐØ][ÙË›˜[Y\Ê›Ú™XÝ^˜QšY[ÊNÂˆYˆ
+˜[Y\Ë›[™ÝOH
+HÂˆØ\Ý›XZÙU^
+\Ë´(t/t,4aô,4.ô,4.4/4/ô/´`4`´.4`4`ô.H›XÜˆ4,ˆ4/ô`4/´-t.´`ˆ‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆ™]È[\X[ÙËZ[\Š\ÊKœÙ]]J´%4/´,t,4,´.4`´c4/4,4.´`4/´`HŠBˆœÙ]][\Ê˜[Y\Ë
+X[ÙËÚXÚ
+HOˆÂˆžHÂˆ˜™Ü˜YXXÜ›ÑYš[š][ÛˆYš[š][ÛˆH˜™Ü˜YXXÜ›ÐØ][ÙË™š[™
+ˆ›Ú™XÝ^˜QšY[Ë˜[Y\ÖÝÚXÚJNÂˆYˆ
+Yš[š][ÛˆOH[
+HYÜ˜YXXÜ›ÕÚYÙ]
+Yš[š][ÛŠNÂˆHØ]Ú
+^Ù\[Ûˆ[˜[Y
+HÂˆØ\Ý›XZÙU^
+\Ë´'t-H4`ô-4,4.ô/´`tc4-4/´,t,4,´.4`´c4/4,4.´`4/´`H‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆBˆJKœÙ]™YØ]]™P]ÛŠ´'´`´/4-t/t,‹[
+KœÚÝÊ
+NÂˆHØ]Ú
+^Ù\[Ûˆ[˜[YØ][ÙÊHÂˆØ\Ý›XZÙU^
+\Ë´&´,4`´,4.ô/´,È4/4,4.´`4/´`t/´,ˆ4/ô/´,´`4-t-´-4dt/H‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆBˆB‚ˆš]˜]H›ÚYYÜ˜YXXÜ›ÕÚYÙ]
+˜™Ü˜YXXÜ›ÑYš[š][ÛˆYš[š][ÛŠH›ÝÜÈ^Ù\[ÛˆÂˆÚYÙ]ÚYÙ]H™]ÈÚYÙ]
+
+NÂˆÚYÙ]\HH‘‘ÔQ•PPÔ“ÈŽÂˆÚYÙ]^HYš[š][Û‹™Ù]˜[YJ
+NÂˆÚYÙ]™^˜QšY[Ëœ]
+˜Ü˜YXXÜ›ÑYš[š][Ûˆ‹Yš[š][Û‹ÒœÛÛŠ
+JNÂˆÚYÙ]ÈH
+MÌ
+NÂˆÚYÙ]šHX]›X^
+
+ÍŠK
+ŒŠH
+ˆX]›X^
+‹Yš[š][Û‹™Ù][œ]Ê
+KœÚ^™J
+JJNÂˆYˆ
+Y]ÜˆOH[	‰ˆY]Ü‹™Ù]ÚY
+
+Hˆ	‰ˆY]Ü‹™Ù]ZYÚ
+
+Hˆ
+HÂˆ›Ø]×H[\HHœ™YQ˜™XÙ[Y[
+ÚYÙ]ËY]Ü‹™Ù]ÚY
+
+KY]Ü‹™Ù]ZYÚ
+
+KˆÚYÙ]ËÚYÙ]š
+
+K
+L
+K
+N
+JNÂˆYˆ
+[\HOH[
+HÂˆØ\Ý›XZÙU^
+\Ë´'t-t`ˆ4`t,´/´,t/´-4/t/´,ô/ˆ4/4-t`t`´,4-4.ôcÈ‘t/4,4.´`4/´`t,‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆÚYÙ]žH[\VÌNÂˆÚYÙ]žHH[\VÌWNÂˆH[ÙHÂˆÚYÙ]žH
+
+H
+È
+ÚYÙ]ËœÚ^™J
+H	H
+H
+ˆ
+
+NÂˆÚYÙ]žHH
+L
+H
+È
+ÚYÙ]ËœÚ^™J
+H	HŠH
+ˆ
+ŒŠNÂˆBˆ˜™Ú\™R\ÝÜžK˜ÛX\Š
+NÂˆ]™U˜[Y\Ë˜ÛX\Š
+NÂˆÚYÙ]Ë˜Y
+ÚYÙ]
+NÂˆ\œÚ\Ý›Ú™XÝ
+
+NÂˆYˆ
+Y]ÜˆOH[
+HY]Ü‹š[˜[Y]J
+NÂˆB‚ˆš]˜]H›ÚYÜ™X]PÜ˜YXXÜ›Ñœ›ÛTÙ[XÝ[ÛŠ
+HÂˆYˆ
+Y]ÜˆOH[Y]Ü‹œÙ[XÝYY]Ü‹œÙ[XÝYHÚYÙ]ËœÚ^™J
+BˆZ\Ñ˜™
+ÚYÙ]Ë™Ù]
+Y]Ü‹œÙ[XÝY
+JJHÂˆØ\Ý›XZÙU^
+\Ë´(t/t,4aô,4.ô,4,´bô,t-t`4.4,´bôat/´-4/t/´.H‘t,t.ô/´.ˆ4/t,4`tat-t/4-H‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆÚYÙ]Ý]]HÚYÙ]Ë™Ù]
+Y]Ü‹œÙ[XÝY
+NÂˆÝš[™Ö×HÝ]][œÈHÛ›ÝÛ‘˜™[œÊÝ]]YJNÂˆYˆ
+Ý]][œË›[™ÝOH
+HÂˆØ\Ý›XZÙU^
+\Ë´(È4,´bô,t`4,4/t/t/´,ô/ˆ4,t.ô/´.´,4/t-t`ˆ4/ô`4/´,´-t`4-t/t/t/´,ô/ˆ4,´bôat/´-4,‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆÝš[™ÈÝYÙÙ\ÝY˜[YHHÝ]]^OH[Ý]]^š[J
+Kš\Ñ[\J
+BˆÈ“XXÜ›ÈˆˆÝ]]^š[J
+NÂˆYˆ
+ÝYÙÙ\ÝY˜[YK›[™Ý
+
+HˆL
+HÝYÙÙ\ÝY˜[YHHÝYÙÙ\ÝY˜[YKœÝXœÝš[™ÊL
+NÂˆY]^˜[YHH›Ü\QšY[
+ÝYÙÙ\ÝY˜[YK[œ]\K•TWÐÓTÔ×ÕV
+NÂˆ˜[YKœÙ]š[\œÊ™]È[™›ÚY^’[œ]š[\–×^Âˆ™]È[™›ÚY^’[œ]š[\‹“[™Ýš[\ŠL
+_JNÂˆ™]È[\X[ÙËZ[\Š\ÊKœÙ]]J´(t/´-ô-4,4`´c4/4,4.´`4/´`H4.4-È4`tat-t/4bÈŠBˆœÙ]Y\ÜØYÙJ´$´.ô/´-´-t/t/t,4cÈ4`tat-t/4,4,t`ô-4-t`ˆ4,´-ôcô`´,4/´`ˆ4,´bô,t`4,4/t/t/´,ô/ˆ4,t.ô/´.´,4-4/ˆ4-t,ô/ˆ4,´at/´-4/tbôaH4.4`t`´/´aô/t.4.´/´,‹ˆŠBˆœÙ]šY]Ê˜[YJKœÙ]™YØ]]™P]ÛŠ´'´`´/4-t/t,‹[
+BˆœÙ]ÜÚ]]™P]ÛŠ´%4,4.ô-t-H‹
+X[ÙËÚXÚ
+HOˆÂˆÝš[™ÈXXÜ›Ó˜[YHH˜[YK™Ù]^
+
+KÔÝš[™Ê
+Kš[J
+NÂˆYˆ
+Ý]][œË›[™ÝOHJHØ]™PÜ˜YXXÜ›Ñœ›ÛTÙ[XÝ[ÛŠXXÜ›Ó˜[YKˆY]Ü‹œÙ[XÝYÝ]][œÖÌJNÂˆ[ÙH™]È[\X[ÙËZ[\Š\ÊKœÙ]]J´$´bô,t-t`4.4,´bôat/´-4/4,4.´`4/´`t,ŠBˆœÙ]][\ÊÝ]][œË
+[‘X[ÙË[’[™^
+HO‚ˆØ]™PÜ˜YXXÜ›Ñœ›ÛTÙ[XÝ[ÛŠXXÜ›Ó˜[YKY]Ü‹œÙ[XÝYˆÝ]][œÖÜ[’[™^JJBˆœÙ]™YØ]]™P]ÛŠ´'´`´/4-t/t,‹[
+KœÚÝÊ
+NÂˆJKœÚÝÊ
+NÂˆB‚ˆš]˜]H›ÚYØ]™PÜ˜YXXÜ›Ñœ›ÛTÙ[XÝ[ÛŠÝš[™È˜[YK[Ý]]›ÙKÝš[™ÈÝ]][ŠHÂˆžHÂˆYˆ
+Ý]]›ÙHÝ]]›ÙHHÚYÙ]ËœÚ^™J
+JH›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠˆ´$´bô,t`4,4/t/tbô.H4,t.ô/´.ˆ4,t/´.ôc4b4-H4/t-H4`t`ôbt-t`t`´,´`ô-t`ˆŠNÂˆ\Ý˜™ÛÛ›™XÝ[ÛˆYÙ\ÈHØÜ™Y[œË™Ù]
+Ý\œ™[ØÜ™Y[’[™^
+K˜ÛÛ›™XÝ[ÛœÎÂˆ˜™Ü˜YXXÜ›ÑYš[š][ÛˆYš[š][ÛˆHÜ™X]PÜ˜YXXÜ›ÑYš[š][Û‘œ›ÛQÜ˜\
+ˆ˜[YKÚYÙ]ËYÙ\ËÝ]]›ÙKÝ]][ŠNÂˆ˜™Ü˜YXXÜ›ÐØ][ÙË\Ù\
+›Ú™XÝ^˜QšY[ËYš[š][ÛŠNÂˆYˆ
+\\œÚ\Ý›Ú™XÝ›ÝÊYJJH›ÝÈ™]ÈSÑ^Ù\[ÛŠ´'t-H4`ô-4,4.ô/´`tc4`t/´at`4,4/t.4`´c4/ô`4/´-t.´`ˆŠNÂˆ[™Yœ™\ÚYH™\XÙPÜ˜YXXÜ›Ò[œÝ[˜Ù\ÊÚYÙ]ËYš[š][ÛŠNÂˆ\œÚ\Ý›Ú™XÝ
+
+NÂˆYˆ
+Y]ÜˆOH[
+HY]Ü‹š[˜[Y]J
+NÂˆYÜ˜YXXÜ›ÕÚYÙ]
+Yš[š][ÛŠNÂˆØ\Ý›XZÙU^
+\Ë´'4,4.´`4/´`H0ªÈˆ
+ÈYš[š][Û‹™Ù]˜[YJ
+H
+È°®È4`t/´-ô-4,4/NÈ4/´,t/t/´,´.ô-t/t/ˆ4,t.ô/´.´/´,Žˆ‚ˆ
+È™Yœ™\ÚY
+È‹4-4/´,t,4,´.ô-t/H4/t/´,´bô.H4ct.´-ô-t/4/ô.ôcô`‹ˆØ\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆHØ]Ú
+^Ù\[Ûˆ˜Z[\™JHÂˆØ\Ý›XZÙU^
+\Ë´'4,4.´`4/´`H4/t-H4`t/´-ô-4,4/Nˆˆ
+È˜Z[\™K™Ù]Y\ÜØYÙJ
+KØ\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆBˆB‚ˆÊŠˆØ\\™HÛ™HÙ[XÝYÝ]][™]È\Ý™X[HÛÜÝ\™H\ÈH\YXXÜ›ÈYš[š][Û‹ˆ
+‹ÂˆX›XÈÝ]XÈ˜™Ü˜YXXÜ›ÑYš[š][ÛˆÜ™X]PÜ˜YXXÜ›ÑYš[š][Û‘œ›ÛQÜ˜\
+Ýš[™È˜[YKˆ\ÝÚYÙ]ˆÛÝ\˜ÙUÚYÙ]Ë\Ý˜™ÛÛ›™XÝ[ÛˆÛÝ\˜ÙPÛÛ›™XÝ[ÛœËˆ[Ý]]›ÙKÝš[™ÈÝ]][ŠH›ÝÜÈ^Ù\[ÛˆÂˆYˆ
+ÛÝ\˜ÙUÚYÙ]ÈOH[ÛÝ\˜ÙPÛÛ›™XÝ[ÛœÈOH[Ý]]›ÙHˆÝ]]›ÙHHÛÝ\˜ÙUÚYÙ]ËœÚ^™J
+JH›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ’[˜[YXXÜ›ÈÛÝ\˜ÙHÜ˜\ŠNÂˆÚYÙ]Ý]]ÚYÙ]HÛÝ\˜ÙUÚYÙ]Ë™Ù]
+Ý]]›ÙJNÂˆ[\SÝ]HÜ˜YXXÜ›ÑÜ˜\Ü\JÛÝ\˜ÙUÚYÙ]ËÛÝ\˜ÙPÛÛ›™XÝ[ÛœËÝ]]›ÙKÝ]][‹YK™]È›ÛÛX[–ÜÛÝ\˜ÙUÚYÙ]ËœÚ^™J
+WJNÂˆYˆ
+\SÝ]
+H›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ•[œÝ\ÜYXXÜ›ÈÝ]]\HŠNÂ‚ˆ›ÛÛX[–×H[˜ÛYYH™]È›ÛÛX[–ÜÛÝ\˜ÙUÚYÙ]ËœÚ^™J
+WNÂˆ\Ý[YÙ\ˆ[™[™ÈH™]È\œ˜^S\ÝŠ
+NÂˆ[™[™Ë˜Y
+Ý]]›ÙJNÂˆÚ[H
+\[™[™Ëš\Ñ[\J
+JHÂˆ[\™Ù]H[™[™Ëœ™[[Ý™J[™[™ËœÚ^™J
+HHJNÂˆYˆ
+\™Ù]\™Ù]HÛÝ\˜ÙUÚYÙ]ËœÚ^™J
+H[˜ÛYYÝ\™Ù]JHÛÛ[YNÂˆÚYÙ]ÚYÙ]HÛÝ\˜ÙUÚYÙ]Ë™Ù]
+\™Ù]
+NÂˆYˆ
+Z\Ñ˜™ÚYÙ]
+ÚYÙ]
+JBˆ›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ´'t-t.ôc4-ôcÈ4,´.´.ôc´aô.4`´c4,ˆ4/4,4.´`4/´`H4/t-t/ô/´-4-4-t`4-´.4,´,4-t/4bô.H4,t.ô/´.ˆŠNÂˆYˆ
+‘‘ÔQ•PPÔ“È‹™\]X[ÊØ[›ÛšXØ[˜™›ØÚÕ\JÚYÙ]\JJJHÂˆ˜™Ü˜YXXÜ›ÑYš[š][Ûˆ™\ÝYHXXÜ›ÑYš[š][ÛŠÚYÙ]
+NÂˆ”ÓÓ“Øš™XÝ™\ÝYÜ˜\H™\ÝYOH[È[ˆˆ™\ÝYÒœÛÛŠ
+K›Ü”ÓÓ“Øš™XÝ
+˜›ÛÙÚÞQÜ˜\ŠNÂˆYˆ
+™\ÝYÜ˜\OH[
+Bˆ›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠˆ´$´.ô/´-´-t/t/tbô.H4/4,4.´`4/´`H4-4/´.ô-´-t/H4.4/4-t`´c4/ô`4/´,´-t`4-t/t/tbô.H4,ô`4,4a“ÓÑÒÖHŠNÂˆBˆ[˜ÛYYÝ\™Ù]HHYNÂˆ›Üˆ
+˜™ÛÛ›™XÝ[ÛˆYÙHˆÛÝ\˜ÙPÛÛ›™XÝ[ÛœÊBˆYˆ
+YÙHOH[	‰ˆYÙK\™Ù]OH\™Ù]
+H[™[™Ë˜Y
+YÙKœÛÝ\˜ÙJNÂˆB‚ˆ\Ý[YÙ\ˆ›ÙRYÈH™]È\œ˜^S\ÝŠ
+NÂˆ›Üˆ
+[HHÈH[˜ÛYY›[™ÝÈJÊÊHYˆ
+[˜ÛYYÚWJH›ÙRYË˜Y
+JNÂˆ›ÛÛX[–×H\Ò[œ]H™]È›ÛÛX[–ÜÛÝ\˜ÙUÚYÙ]ËœÚ^™J
+WNÂˆ[×Hš\œÝÝ]]\HH™]È[ÜÛÝ\˜ÙUÚYÙ]ËœÚ^™J
+WNÂˆ[[œ]ÛÝ[HÂˆ›Üˆ
+[›ÙHˆ›ÙRYÊHÂˆ›ÛÛX[ˆ\Ò[˜ÛÛZ[™ÈH˜[ÙNÂˆ›Üˆ
+˜™ÛÛ›™XÝ[ÛˆYÙHˆÛÝ\˜ÙPÛÛ›™XÝ[ÛœÊBˆYˆ
+YÙHOH[	‰ˆYÙK\™Ù]OH›ÙH	‰ˆYÙKœÛÝ\˜ÙHHˆ	‰ˆYÙKœÛÝ\˜ÙH[˜ÛYY›[™Ý	‰ˆ[˜ÛYYÙYÙKœÛÝ\˜ÙWJHÈ\Ò[˜ÛÛZ[™ÈHYNÈœ™XZÎÈBˆYˆ
+\Ò[˜ÛÛZ[™ÊHÛÛ[YNÂˆÚYÙ]XYˆHÛÝ\˜ÙUÚYÙ]Ë™Ù]
+›ÙJNÂˆÝš[™Ö×H[œÈHÛ›ÝÛ‘˜™[œÊXY‹YJNÂˆ[ÛÙHH[œË›[™ÝOHÈLHˆÜ˜YXXÜ›ÑÜ˜\Ü\JÛÝ\˜ÙUÚYÙ]ËÛÝ\˜ÙPÛÛ›™XÝ[ÛœË›ÙK[œÖÌKYK™]È›ÛÛX[–ÜÛÝ\˜ÙUÚYÙ]ËœÚ^™J
+WJNÂˆYˆ
+ÛÙH
+H›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ´$´at/´-4/t/´.H4.4`t`´/´aô/t.4.ˆ4,t-t-È4/ô/´-4-4-t`4-´.4,´,4-t/4/´,ô/ˆ4`´.4/ô,ŠNÂˆYˆ
+
+ÊÚ[œ]ÛÝ[ˆ
+H›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ´$ˆ4/4,4.´`4/´`t-H4-4/´/ô`ô`t.´,4-t`´`tcÈ4/t-H4,t/´.ôc4b4-H4aô-t`´bô`4dtaH4,´at/´-4/´,ˆŠNÂˆ\Ò[œ]Û›ÙWHHYNÂˆš\œÝÝ]]\VÛ›ÙWHHÛÙNÂˆB‚ˆ”ÓÓ\œ˜^H™\ÝYÚYÙ]ÈH™]È”ÓÓ\œ˜^J
+NÂˆ”ÓÓ\œ˜^H™\ÝYÛÛ›™XÝ[ÛœÈH™]È”ÓÓ\œ˜^J
+NÂˆ[×H™[X\H™]È[ÜÛÝ\˜ÙUÚYÙ]ËœÚ^™J
+WNÂˆÝš[™ÐZ[\ˆ›ÛÝH™]ÈÝš[™ÐZ[\Šž×›˜[YWŽˆŠK˜\[™
+”ÓÓ“Øš™XÝœ][ÝJ˜[YJJBˆ˜\[™
+‹[š\]YRYŽˆŠK˜\[™
+Þ\Ý[K˜Ý\œ™[[YSZ[\Ê
+JBˆ˜\[™
+‹˜ÛÝ[[—ŽˆŠK˜\[™
+[œ]ÛÝ[
+NÂˆ[[œ][™^HÂˆ›Üˆ
+[›ÙHˆ›ÙRYÊHÂˆ™[X\Û›ÙWHH™\ÝYÚYÙ]Ë›[™Ý
+
+NÂˆYˆ
+\Ò[œ]Û›ÙWJHÂˆÝš[™ÈÜ˜[YHH’Hˆ
+È
+
+ÊÚ[œ][™^
+NÂˆ[ÛÙHHš\œÝÝ]]\VÛ›ÙWNÂˆ”ÓÓ“Øš™XÝ[œ]ÚYÙ]H™]È”ÓÓ“Øš™XÝ
+
+Kœ]
+\H‹‘‘ÔQ•PPÔ“ÈSˆŠBˆœ]
+˜Ü˜YXXÜ›ÔÜ˜[YH‹Ü˜[YJKœ]
+˜Ü˜YXXÜ›ÔÜ\H‹ÛÙJNÂˆ™\ÝYÚYÙ]Ëœ]
+[œ]ÚYÙ]
+NÂˆ›ÛÝ˜\[™
+‹›˜[YR[ˆŠK˜\[™
+[œ][™^
+K˜\[™
+—ŽˆŠK˜\[™
+”ÓÓ“Øš™XÝœ][ÝJÜ˜[YJJBˆ˜\[™
+‹\R[ˆŠK˜\[™
+[œ][™^
+K˜\[™
+—ŽˆŠK˜\[™
+ÛÙJNÂˆH[ÙH™\ÝYÚYÙ]Ëœ]
+ÚYÙ]ÒœÛÛŠÛÝ\˜ÙUÚYÙ]Ë™Ù]
+›ÙJJJNÂˆBˆ›Üˆ
+˜™ÛÛ›™XÝ[ÛˆYÙHˆÛÝ\˜ÙPÛÛ›™XÝ[ÛœÊHÂˆYˆ
+YÙHOH[YÙKœÛÝ\˜ÙHYÙK\™Ù]ˆYÙKœÛÝ\˜ÙHH[˜ÛYY›[™ÝYÙK\™Ù]H[˜ÛYY›[™ÝˆZ[˜ÛYYÙYÙKœÛÝ\˜ÙWHZ[˜ÛYYÙYÙK\™Ù]JHÛÛ[YNÂˆ”ÓÓ“Øš™XÝ™\ÝYYÙHHÛÛ›™XÝ[Û•ÒœÛÛŠYÙJNÂˆ™\ÝYYÙKœ]
+œÛÝ\˜ÙH‹™[X\ÙYÙKœÛÝ\˜ÙWJKœ]
+\™Ù]‹™[X\ÙYÙK\™Ù]JNÂˆYˆ
+\Ò[œ]ÙYÙKœÛÝ\˜ÙWJH™\ÝYYÙKœ]
+œÛÝ\˜ÙT[ˆ‹”HŠNÂˆ™\ÝYÛÛ›™XÝ[ÛœËœ]
+™\ÝYYÙJNÂˆBˆ›ÛÝ˜\[™
+‹›˜[YSÝ]ŽˆŠK˜\[™
+”ÓÓ“Øš™XÝœ][ÝJÝ]][ŠJBˆ˜\[™
+‹\SÝ]ŽˆŠK˜\[™
+\SÝ]
+Bˆ˜\[™
+‹™˜’[“XXÜ›Ü×Ž–×K˜›ÛÙÚÞQÜ˜\ŽžÈŠBˆ˜\[™
+—ÚYÙ]×ŽˆŠK˜\[™
+™\ÝYÚYÙ]ÊBˆ˜\[™
+‹˜ÛÛ›™XÝ[Ûœ×ŽˆŠK˜\[™
+™\ÝYÛÛ›™XÝ[ÛœÊBˆ˜\[™
+‹›Ý]]›ÙWŽˆŠK˜\[™
+™[X\ÛÝ]]›ÙWJBˆ˜\[™
+‹›Ý]][—ŽˆŠK˜\[™
+”ÓÓ“Øš™XÝœ][ÝJ\Ò[œ]ÛÝ]]›ÙWHÈ”HˆˆÝ]][ŠJBˆ˜\[™
+‹›Ý]]ÜŽˆŠK˜\[™
+”ÓÓ“Øš™XÝœ][ÝJÝ]][ŠJK˜\[™
+Ÿ_HŠNÂˆ™]\›ˆ˜™Ü˜YXXÜ›ÑYš[š][Û‹™œ›ÛRœÛÛŠ›ÛÝÔÝš[™Ê
+JNÂˆB‚ˆÊŠˆ™Yœ™\Ú]™\žHXÙY[œÝ[˜ÙHÚ[ˆH›Ú™XÝYš[š][Ûˆ\È™XZ[[™\ˆHØ[YH˜[YKˆ
+‹ÂˆX›XÈÝ]XÈ[™\XÙPÜ˜YXXÜ›Ò[œÝ[˜Ù\Ê\ÝÚYÙ]ˆÚYÙ]Ëˆ˜™Ü˜YXXÜ›ÑYš[š][ÛˆYš[š][ÛŠH›ÝÜÈ^Ù\[ÛˆÂˆYˆ
+ÚYÙ]ÈOH[Yš[š][ÛˆOH[
+H™]\›ˆÂˆ[\]YHÂˆ›Üˆ
+ÚYÙ]ÚYÙ]ˆÚYÙ]ÊHÂˆYˆ
+ÚYÙ]OH[H‘‘ÔQ•PPÔ“È‹™\]X[ÊØ[›ÛšXØ[˜™›ØÚÕ\JÚYÙ]\JJJHÛÛ[YNÂˆ˜™Ü˜YXXÜ›ÑYš[š][Ûˆ^\Ý[™ÈHXXÜ›ÑYš[š][ÛŠÚYÙ]
+NÂˆYˆ
+^\Ý[™ÈOH[Y^\Ý[™Ë™Ù]˜[YJ
+K™\]X[ÒYÛ›Ü™PØ\ÙJYš[š][Û‹™Ù]˜[YJ
+JJHÛÛ[YNÂˆÚYÙ]™^˜QšY[Ëœ]
+˜Ü˜YXXÜ›ÑYš[š][Ûˆ‹Yš[š][Û‹ÒœÛÛŠ
+JNÂˆÚYÙ]˜Ü˜YXXÜ›ÑYš[š][Û”ÛÝ\˜ÙPØXÚHH[ÂˆÚYÙ]˜Ü˜YXXÜ›ÑYš[š][ÛØXÚHH[ÂˆÚYÙ]˜Ü˜YXXÜ›Ô[[YQÜ˜\ÛÝ\˜ÙHH[ÂˆÚYÙ]˜Ü˜YXXÜ›Ô[[YUÚYÙ]ÈH[ÂˆÚYÙ]˜Ü˜YXXÜ›Ô[[YPÛÛ›™XÝ[ÛœÈH[ÂˆÚYÙ]˜Ü˜YXXÜ›Ô[[YSÝ]]›ÙHHLNÂˆ\]Y
+ÊÎÂˆBˆ™]\›ˆ\]YÂˆB‚ˆš]˜]HÝ]XÈ[Ü˜YXXÜ›ÔÜ\JÚYÙ]ÚYÙ]Ýš[™È[‹›ÛÛX[ˆÝ]]
+HÂˆÝš[™ÈÚYÛ˜[HÛ›ÝÛ‘˜™[•\JÚYÙ][‹Ý]]
+NÂˆYˆ
+“ÓÓ‹™\]X[ÊÚYÛ˜[
+JH™]\›ˆNÂˆYˆ
+H“•SP‘Tˆ‹™\]X[ÊÚYÛ˜[
+JH™]\›ˆLNÂˆÝš[™ÈÚ[™HØ[›ÛšXØ[˜™›ØÚÕ\JÚYÙ]OH[È[ˆÚYÙ]\JNÂˆYˆ
+
+Ú[™˜ÛÛZ[œÊ‘“ÐUŠH	‰ˆZÚ[™™[™ÕÚ]
+‘“ÐUÈS•ŠJBˆÚ[™™\]X[Ê‘‘ÔQ•ÑÈŠHÚ[™™\]X[Ê‘‘ÔQ•ÕÈŠJH™]\›ˆÎÂˆ™]\›ˆŽÂˆB‚ˆÊŠˆ[™™\ˆÛ[[ÜœXÈ[Y\šXÈÝ]]Èœ›ÛHZ\ˆÛÛ›™XÝY\Ý™X[HÚYÛ˜[\\Ëˆ
+‹Âˆš]˜]HÝ]XÈ[Ü˜YXXÜ›ÑÜ˜\Ü\J\ÝÚYÙ]ˆÜ˜\ÚYÙ]Ëˆ\Ý˜™ÛÛ›™XÝ[ÛˆÜ˜\ÛÛ›™XÝ[ÛœË[›ÙKÝš[™È[‹›ÛÛX[ˆÝ]]ˆ›ÛÛX[–×Hš\Ú][™ÊHÂˆYˆ
+Ü˜\ÚYÙ]ÈOH[Ü˜\ÛÛ›™XÝ[ÛœÈOH[›ÙHˆ›ÙHHÜ˜\ÚYÙ]ËœÚ^™J
+JH™]\›ˆLNÂˆÚYÙ]ÚYÙ]HÜ˜\ÚYÙ]Ë™Ù]
+›ÙJNÂˆ[XÛ\™YHÜ˜YXXÜ›ÔÜ\JÚYÙ][‹Ý]]
+NÂˆYˆ
+XÛ\™YOHˆ[Ý]]ˆH“•SP‘Tˆ‹™\]X[ÊÛ›ÝÛ‘˜™[•\JÚYÙ][‹YJJJH™]\›ˆXÛ\™YÂˆÝš[™ÈÚ[™HØ[›ÛšXØ[˜™›ØÚÕ\JÚYÙ]OH[È[ˆÚYÙ]\JNÂˆËÈ^XÚ][YÙ\‹Ù›Ø][™È›ØÚÜÈÙY\Z\ˆXÛ\™YÛÛ™\œÚ[Ûˆ\™XÝ[Û‹‚ˆYˆ
+Ú[™˜ÛÛZ[œÊ’S•ŠHÚ[™˜ÛÛZ[œÊ‘“ÐUŠBˆ‘‘ÔQ•ÑÈ‹™\]X[ÊÚ[™
+H‘‘ÔQ•ÕÈ‹™\]X[ÊÚ[™
+JBˆ™]\›ˆXÛ\™YÂˆYˆ
+š\Ú][™ÈOH[š\Ú][™Ë›[™ÝOHÜ˜\ÚYÙ]ËœÚ^™J
+Hš\Ú][™ÖÛ›ÙWJBˆ™]\›ˆXÛ\™YÂˆš\Ú][™ÖÛ›ÙWHHYNÂˆ›ÛÛX[ˆ\Ó[Y\šXÒ[œ]H˜[ÙNÂˆ›ÛÛX[ˆ\Ñ›Ø][œ]H˜[ÙNÂˆ›Üˆ
+˜™ÛÛ›™XÝ[ÛˆYÙHˆÜ˜\ÛÛ›™XÝ[ÛœÊHÂˆYˆ
+YÙHOH[YÙK\™Ù]OH›ÙHYÙKœÛÝ\˜ÙHˆYÙKœÛÝ\˜ÙHHÜ˜\ÚYÙ]ËœÚ^™J
+JHÛÛ[YNÂˆ[[œ]\HHÜ˜YXXÜ›ÑÜ˜\Ü\JÜ˜\ÚYÙ]ËÜ˜\ÛÛ›™XÝ[ÛœËˆYÙKœÛÝ\˜ÙKYÙK™^˜QšY[ÈOH[ÈˆˆˆYÙK™^˜QšY[Ë›ÜÝš[™ÊœÛÝ\˜ÙT[ˆ‹ˆŠKYKš\Ú][™ÊNÂˆYˆ
+[œ]\HOHˆ[œ]\HOHÊHÂˆ\Ó[Y\šXÒ[œ]HYNÂˆYˆ
+[œ]\HOHÊH\Ñ›Ø][œ]HYNÂˆBˆBˆš\Ú][™ÖÛ›ÙWHH˜[ÙNÂˆ™]\›ˆ\Ó[Y\šXÒ[œ]	‰ˆ\Ñ›Ø][œ]ÈÈˆXÛ\™YÂˆB‚ˆÊŠˆ™\ÛÛ™HH™\ÝYXXÜ›ÈÝ]]žHÚYÙ]Y[]HY\ˆÜ˜\Y]È™Z[™^HØ[˜\Ëˆ
+‹ÂˆÝ]XÈ[š[™Ü˜YXXÜ›ÓÝ]]›ÙJ\ÝÚYÙ]ˆÜ˜\ÚYÙ]ËÚYÙ]Ý]]ÚYÙ]
+HÂˆYˆ
+Ü˜\ÚYÙ]ÈOH[Ý]]ÚYÙ]OH[
+H™]\›ˆLNÂˆ›Üˆ
+[HHÈHÜ˜\ÚYÙ]ËœÚ^™J
+NÈJÊÊBˆYˆ
+Ü˜\ÚYÙ]Ë™Ù]
+JHOHÝ]]ÚYÙ]
+H™]\›ˆNÂˆ™]\›ˆLNÂˆB‚ˆÊŠˆ™\XÙH[ˆY]X›H™\ÝYÜ˜\™KZ[™™\ˆ]ÈÝ]]\K[™˜[Y]HH[Yš[š][Û‹ˆ
+‹ÂˆX›XÈÝ]XÈ˜™Ü˜YXXÜ›ÑYš[š][Ûˆ\]PÜ˜YXXÜ›ÑYš[š][Û‘Ü˜\
+ˆ˜™Ü˜YXXÜ›ÑYš[š][ÛˆYš[š][Û‹\ÝÚYÙ]ˆÜ˜\ÚYÙ]Ëˆ\Ý˜™ÛÛ›™XÝ[ÛˆÜ˜\ÛÛ›™XÝ[ÛœË[Ý]]›ÙKÝš[™ÈÝ]][ŠH›ÝÜÈ^Ù\[ÛˆÂˆYˆ
+Yš[š][ÛˆOH[Ü˜\ÚYÙ]ÈOH[Ü˜\ÛÛ›™XÝ[ÛœÈOH[
+Bˆ›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ“Z\ÜÚ[™ÈXXÜ›ÈÜ˜\ŠNÂˆ[Ý]]\HHÜ˜YXXÜ›ÑÜ˜\Ü\JÜ˜\ÚYÙ]ËÜ˜\ÛÛ›™XÝ[ÛœËÝ]]›ÙKˆÝ]][‹YK™]È›ÛÛX[–ÙÜ˜\ÚYÙ]ËœÚ^™J
+WJNÂˆYˆ
+Ý]]\HJH›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ•[œÝ\ÜYXXÜ›ÈÝ]]\HŠNÂˆ”ÓÓ“Øš™XÝ›ÛÝHYš[š][Û‹ÒœÛÛŠ
+NÂˆÝš[™ÈÝ]]ÜH›ÛÝ›ÜÝš[™Ê›˜[YSÝ]‹”HŠNÂˆ”ÓÓ\œ˜^H™\ÝYÚYÙ]ÈH™]È”ÓÓ\œ˜^J
+NÂˆ›Üˆ
+ÚYÙ]ÚYÙ]ˆÜ˜\ÚYÙ]ÊH™\ÝYÚYÙ]Ëœ]
+ÚYÙ]ÒœÛÛŠÚYÙ]
+JNÂˆ”ÓÓ\œ˜^H™\ÝYÛÛ›™XÝ[ÛœÈH™]È”ÓÓ\œ˜^J
+NÂˆ›Üˆ
+˜™ÛÛ›™XÝ[ÛˆYÙHˆÜ˜\ÛÛ›™XÝ[ÛœÊH™\ÝYÛÛ›™XÝ[ÛœËœ]
+ÛÛ›™XÝ[Û•ÒœÛÛŠYÙJJNÂˆ”ÓÓ“Øš™XÝÜ˜\H™]È”ÓÓ“Øš™XÝ
+
+Kœ]
+ÚYÙ]È‹™\ÝYÚYÙ]ÊBˆœ]
+˜ÛÛ›™XÝ[ÛœÈ‹™\ÝYÛÛ›™XÝ[ÛœÊKœ]
+›Ý]]›ÙH‹Ý]]›ÙJBˆœ]
+›Ý]][ˆ‹Ý]][ŠKœ]
+›Ý]]Ü‹Ý]]Ü
+NÂˆ›ÛÝœ]
+\SÝ]‹Ý]]\JKœ]
+˜›ÛÙÚÞQÜ˜\‹Ü˜\
+NÂˆ™]\›ˆ˜™Ü˜YXXÜ›ÑYš[š][Û‹™œ›ÛRœÛÛŠ›ÛÝÔÝš[™Ê
+JNÂˆB‚ˆš]˜]H›ÚY^ÜÜ˜YXXÜ›Ñœ›ÛPØ][ÙÊ
+HÂˆžHÂˆÝš[™Ö×H˜[Y\ÈH˜™Ü˜YXXÜ›ÐØ][ÙË›˜[Y\Ê›Ú™XÝ^˜QšY[ÊNÂˆYˆ
+˜[Y\Ë›[™ÝOH
+HÂˆØ\Ý›XZÙU^
+\Ë´$ˆ4/ô`4/´-t.´`´-H4/t-t`ˆ4.4/4/ô/´`4`´.4`4/´,´,4/t/tbôaH4/4,4.´`4/´`t/´,ˆ‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆ™]È[\X[ÙËZ[\Š\ÊKœÙ]]J´$´bô,t-t`4.4/4,4.´`4/´`HŠBˆœÙ]][\Ê˜[Y\Ë
+X[ÙËÚXÚ
+HOˆÂˆžHÂˆ˜™Ü˜YXXÜ›ÑYš[š][ÛˆYš[š][ÛˆH˜™Ü˜YXXÜ›ÐØ][ÙË™š[™
+ˆ›Ú™XÝ^˜QšY[Ë˜[Y\ÖÝÚXÚJNÂˆYˆ
+Yš[š][ÛˆOH[
+H™]\›ŽÂˆ[™[™ÐÜ˜YXXÜ›Ñ^ÜHYš[š][Û‹ÓXÜž]\Ê
+NÂˆ[[[[H™]È[[
+[[PÕSÓ—ÐÔ‘PUWÑÐÕSQS•
+NÂˆ[[˜YØ]YÛÜžJ[[ÐUQÓÔ–WÓÔSP“JNÂˆ[[œÙ]\J˜\XØ][Û‹ÚœÛÛˆŠNÂˆ[[œ]^˜J[[‘VWÕUKˆYš[š][Û‹™Ù]˜[YJ
+Kœ™\XÙP[
+–×KV˜K^´$t+ô,tcÌNK—ËWH‹—ÈŠH
+È‹›XÜˆŠNÂˆÝ\XÝ]š]Q›Ü”™\Ý[
+[[‘TUQTÕÑVÔ•ÐÔQ•ÓPPÔ“ÊNÂˆHØ]Ú
+^Ù\[Ûˆ˜Z[\™JHÂˆ[™[™ÐÜ˜YXXÜ›Ñ^ÜH[ÂˆØ\Ý›XZÙU^
+\Ë´'t-H4`ô-4,4.ô/´`tc4/ô/´-4,ô/´`´/´,´.4`´c4/4,4.´`4/´`H‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆBˆJKœÙ]™YØ]]™P]ÛŠ´'´`´/4-t/t,‹[
+KœÚÝÊ
+NÂˆHØ]Ú
+^Ù\[Ûˆ[˜[YØ][ÙÊHÂˆØ\Ý›XZÙU^
+\Ë´&´,4`´,4.ô/´,È4/4,4.´`4/´`t/´,ˆ4/ô/´,´`4-t-´-4dt/H‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆBˆB‚ˆš]˜]H›ÚY[\ÜÜ˜YXXÜ›Ê\šH\šJHÂˆ[Ù\Ñ^XÝ]Ü‹™^XÝ]J
+
+HOˆÂˆžHÂˆž]V×Hž]\ÎÂˆžH
+[œ]Ý™X[H[œ]HÙ]ÛÛ[™\ÛÛ™\Š
+K›Ü[’[œ]Ý™X[J\šJJHÂˆYˆ
+[œ]OH[
+H›ÝÈ™]ÈSÑ^Ù\[ÛŠ‘š[H[˜]˜Z[X›HŠNÂˆž]P\œ˜^SÝ]]Ý™X[HÝ]]H™]Èž]P\œ˜^SÝ]]Ý™X[J
+NÂˆž]V×HY™™\ˆH™]Èž]VÎNL—NÂˆ[Ý[H™XYÂˆÚ[H
+
+™XYH[œ]œ™XY
+Y™™\ŠJHOHLJHÂˆÝ[
+ÏH™XYÂˆYˆ
+Ý[ˆ˜™Ü˜YXXÜ›ÑYš[š][Û‹“PVÑ’SWÐ–UTÊBˆ›ÝÈ™]ÈSÑ^Ù\[ÛŠ“XXÜ›Èš[HÛÈ\™ÙHŠNÂˆÝ]]Üš]JY™™\‹™XY
+NÂˆBˆž]\ÈHÝ]]Ðž]P\œ˜^J
+NÂˆBˆ˜™Ü˜YXXÜ›ÑYš[š][ÛˆYš[š][ÛˆH˜™Ü˜YXXÜ›ÑYš[š][Û‹™œ›ÛSXÜž]\Êž]\ÊNÂˆ[“Û•ZU™XY
+
+
+HOˆÂˆYˆ
+\Ñš[š\Ú[™Ê
+H\Ñ\Ý›ÞYY
+
+JH™]\›ŽÂˆžHÂˆ˜™Ü˜YXXÜ›ÐØ][ÙË\Ù\
+›Ú™XÝ^˜QšY[ËYš[š][ÛŠNÂˆYˆ
+\\œÚ\Ý›Ú™XÝ›ÝÊYJJH›ÝÈ™]ÈSÑ^Ù\[ÛŠ”›Ú™XÝØ]™H˜Z[YŠNÂˆØ\Ý›XZÙU^
+\Ë´'4,4.´`4/´`H0ªÈˆ
+ÈYš[š][Û‹™Ù]˜[YJ
+H
+È°®È4-4/´,t,4,´.ô-t/H4,ˆ4/ô`4/´-t.´`ˆ‹ˆØ\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆHØ]Ú
+^Ù\[Ûˆ˜Z[\™JHÂˆØ\Ý›XZÙU^
+\Ë´'4,4.´`4/´`H4/t-H4`t/´at`4,4/tdt/Nˆˆ
+È˜Z[\™K™Ù]Y\ÜØYÙJ
+KˆØ\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆBˆJNÂˆHØ]Ú
+^Ù\[Ûˆ˜Z[\™JHÂˆ[“Û•ZU™XY
+
+
+HOˆÂˆYˆ
+Z\Ñš[š\Ú[™Ê
+H	‰ˆZ\Ñ\Ý›ÞYY
+
+JBˆØ\Ý›XZÙU^
+\Ë´&4/4/ô/´`4`ˆ4/4,4.´`4/´`t,4/t-H4,´bô/ô/´.ô/t-t/Nˆˆ
+È˜Z[\™K™Ù]Y\ÜØYÙJ
+KˆØ\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆJNÂˆBˆJNÂˆB‚ˆX›XÈž]V×H™XY›Ú™XÝYYXQ]JÝš[™È]Ü•\šJH›ÝÜÈSÑ^Ù\[ÛˆÂˆ™]\›ˆ™XY›Ú™XÝYYXQ]J]Ü•\šKÙ]Ú\™Y™Y™\™[˜Ù\Ê‘Q”ËSÑWÔ’UUJK™Ù]Ýš[™ÊPÕU‘WÔ“Ò‘PÕžßHŠJNÂˆB‚ˆš]˜]Hž]V×H™XY›Ú™XÝYYXQ]JÝš[™È]Ü•\šKÝš[™ÈœÛÛŠH›ÝÜÈSÑ^Ù\[ÛˆÂˆYˆ
+]Ü•\šHOH[	‰ˆ]Ü•\šKš[J
+KœÝ\ÕÚ]
+˜ÛÛ[‹ËÈŠJHÂˆžH
+[œ]Ý™X[H[ˆHÙ]ÛÛ[™\ÛÛ™\Š
+K›Ü[’[œ]Ý™X[J\šKœ\œÙJ]Ü•\šKš[J
+JJJHÂˆ™]\›ˆ›Ú™XÝYYXTÙ\šXÙKœ™XY›Ý[™YYYXJ[ŠNÂˆBˆBˆžH
+[œ]Ý™X[H[ˆH™]È˜]˜Kš[Ë‘š[R[œ]Ý™X[J›Ú™XÝYYXTÙ\šXÙKœ™\ÛÛ™SYYXQš[JÙ]š[\Ñ\Š
+KœÛÛ‹]Ü•\šJJJHÂˆ™]\›ˆ›Ú™XÝYYXTÙ\šXÙKœ™XY›Ý[™YYYXJ[ŠNÂˆBˆB‚ˆš]˜]H›ÚY[\Ü›Ú™XÝ[™J\šH\šJHÂˆ[Ù\Ñ^XÝ]Ü‹™^XÝ]J
+
+HOˆÂˆžH
+[œ]Ý™X[H[ˆHÙ]ÛÛ[™\ÛÛ™\Š
+K›Ü[’[œ]Ý™X[J\šJJHÂˆYˆ
+[ˆOH[
+H›ÝÈ™]ÈSÑ^Ù\[ÛŠ’[œ]Ý™X[H[˜]˜Z[X›HŠNÂˆ›Ú™XÝYYXTÙ\šXÙKš[\Ü›Ú™XÝ[™JÙ]š[\Ñ\Š
+K[‹œÛÛˆOˆÂˆžHÈ˜[Y]R[\ÜY›Ú™XÝ
+œÛÛŠNÈBˆØ]Ú
+^Ù\[Ûˆ[˜[Y
+HÈ›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠ’[˜[Y[\ÜY›Ú™XÝ‹[˜[Y
+NÈBˆžHÈ™]\›ˆÝÜ™PXÝ]™T›Ú™XÝ
+œÛÛ‹YJNÈBˆØ]Ú
+^Ù\[Ûˆ\œ›ÜŠHÈ›ÝÈ™]È[YØ[\™Ý[Y[^Ù\[ÛŠÛÝ[›ÝØ]™H›Ú™XÝØ][ÙÈ‹\œ›ÜŠNÈBˆJNÂˆ[“Û•ZU™XY
+
+
+HOˆÂˆYˆ
+\Ñš[š\Ú[™Ê
+H\Ñ\Ý›ÞYY
+
+JH™]\›ŽÂˆ[XYÙPØXÚK˜ÛX\Š
+NÂˆYˆ
+ØY›Ú™XÝ
+
+JHÂˆÚÝÑY]ÜŠ
+NÂˆØ\Ý›XZÙU^
+\Ë´'ô`4/´-t.´`ˆ4.4/4/ô/´`4`´.4`4/´,´,4/H‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆH[ÙHÂˆØ\Ý›XZÙU^
+\Ë´&4/4/ô/´`4`ˆ4,´bô/ô/´.ô/t-t/K4/t/ˆ4/´`´.´`4bô`´.4-H4/ô`4/´-t.´`´,4/t-H4`ô-4,4.ô/´`tc‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆBˆJNÂˆHØ]Ú
+^Ù\[Ûˆ\œ›ÜŠHÂˆ[™›ÚY][“ÙË™J“ÓÑÒÖH‹”›Ú™XÝ[\Ü˜Z[Y‹\œ›ÜŠNÂˆ[“Û•ZU™XY
+
+
+HOˆÈYˆ
+Z\Ñš[š\Ú[™Ê
+H	‰ˆZ\Ñ\Ý›ÞYY
+
+JBˆØ\Ý›XZÙU^
+\Ë´&4/4/ô/´`4`ˆ4/t-H4,´bô/ô/´.ô/t-t/Nˆˆ
+È\œ›Ü‹™Ù]Y\ÜØYÙJ
+KØ\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÈJNÂˆBˆJNÂˆB‚ˆš]˜]H›ÚY[\Ü›Ú™XÝ
+
+HÂˆ[[[[H™]È[[
+[[PÕSÓ—ÓÔS—ÑÐÕSQS•
+NÂˆ[[˜YØ]YÛÜžJ[[ÐUQÓÔ–WÓÔSP“JNÂˆ[[œÙ]\JŠ‹ÊˆŠNÂˆžHÂˆÝ\XÝ]š]Q›Ü”™\Ý[
+[[‘TUQTÕÒSTÔ•Ô“Ò‘PÕ
+NÂˆHØ]Ú
+^Ù\[ÛˆJHÂˆØ\Ý›XZÙU^
+\Ë´'t-H4`ô-4,4.ô/´`tc4/´`´.´`4bô`´c4,´bô,t/´`4a4,4.t.ô,‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆBˆB‚ˆš]˜]H›ÚYÚÛÜÙSYYXQš[JY]^šY[Ýš[™ÈZ[YU\JHÂˆ[[[[H™]È[[
+[[PÕSÓ—ÓÔS—ÑÐÕSQS•
+NÂˆ[[˜YØ]YÛÜžJ[[ÐUQÓÔ–WÓÔSP“JNÂˆ[[œÙ]\JZ[YU\JNÂˆ[[˜Y›YÜÊ[[‘“Q×ÑÔS•Ô‘PQÕT’WÔT“RTÔÒSÓˆ[[‘“Q×ÑÔS•ÔT”ÒTÕP“WÕT’WÔT“RTÔÒSÓŠNÂˆ[™[™ÓYYXQšY[HšY[Âˆ[™[™ÓYYXUÚYÙ][™^HY]ÜˆOH[ÈLHˆY]Ü‹œÙ[XÝYÂˆ[™[™ÓYYXQšY[]HXÝ]™T›Ü\Y\Ñ›Ü›HOH[È[ˆšY]Ô]
+XÝ]™T›Ü\Y\Ñ›Ü›KšY[ˆŠNÂˆžHÂˆÝ\XÝ]š]Q›Ü”™\Ý[
+[[‘TUQTÕÔPÒ×ÓQQPJNÂˆHØ]Ú
+^Ù\[Ûˆ^
+HÂˆ[™[™ÓYYXQšY[H[ÂˆØ\Ý›XZÙU^
+\Ë´'t-H4`ô-4,4.ô/´`tc4/´`´.´`4bô`´c4,´bô,t/´`4a4,4.t.ô,‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆBˆB‚ˆš]˜]H›ÚYYYYXTXÚÙ\Š[™X\“^[Ý]›Ü›KY]^šY[Ýš[™ÈZ[YU\JHÂˆ]ÛˆÚÛÜÙHH™]È]ÛŠ\ÊNÂˆÚÛÜÙKœÙ]^
+´$´bô,t`4,4`´c4a4,4.t.ø )ˆŠNÂˆÚÛÜÙKœÙ][Ø\Ê˜[ÙJNÂˆÚÛÜÙKœÙ]ÛÛXÚÓ\Ý[™\ŠˆOˆÚÛÜÙSYYXQš[JšY[Z[YU\JJNÂˆ›Ü›K˜YšY]ÊÚÛÜÙJNÂˆB‚ˆÝ™\œšYH›ÝXÝY›ÚYÛXÝ]š]T™\Ý[
+[™\]Y\ÝÛÙK[™\Ý[ÛÙK[[]JHÂˆÝ\\‹›ÛXÝ]š]T™\Ý[
+™\]Y\ÝÛÙK™\Ý[ÛÙK]JNÂˆYˆ
+™\]Y\ÝÛÙHOH‘TUQTÕÔPÒ×ÓQQPJHÂˆY]^\™Ù]H[™[™ÓYYXQšY[Âˆ[™[™ÓYYXQšY[H[ÂˆYˆ
+™\Ý[ÛÙHOH‘TÕSÓÒÈ]HOH[]K™Ù]]J
+HOH[\™Ù]OH[
+H™]\›ŽÂˆ\šHÙ[XÝYH]K™Ù]]J
+NÂˆ[™XYÜ˜[H]K™Ù]›YÜÊ
+H	ˆ[[‘“Q×ÑÔS•Ô‘PQÕT’WÔT“RTÔÒSÓŽÂˆYˆ
+™XYÜ˜[OH
+HÂˆØ\Ý›XZÙU^
+\Ë´'t-t`ˆ4-4/´`t`´`ô/ô,4.ˆ4,´bô,t`4,4/t/t/´/4`È4a4,4.t.ô`Ëˆ4$´bô,t-t`4.4`´-H4-4`4`ô,ô/´.H4a4,4.t.Ëˆ‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆ™]\›ŽÂˆBˆžHÈÙ]ÛÛ[™\ÛÛ™\Š
+KZÙT\œÚ\ÝX›U\šT\›Z\ÜÚ[ÛŠÙ[XÝY™XYÜ˜[
+NÈBˆØ]Ú
+ÙXÝ\š]Q^Ù\[Ûˆ[YØ[\™Ý[Y[^Ù\[ÛˆYÛ›Ü™Y
+HÂˆÊˆHÙ[XÝYž]\È\™HÛÜYY[Èš]˜]H›Ú™XÝÝÜ˜YÙH™[ÝËˆ
+‹ÂˆBˆÝš[™È›Ú™XÝœÛÛˆHÙ]Ú\™Y™Y™\™[˜Ù\Ê‘Q”ËSÑWÔ’UUJK™Ù]Ýš[™ÊPÕU‘WÔ“Ò‘PÕžßHŠNÂˆ[\X[ÙÈØZ][™ÑX[ÙÈHXÝ]™T›Ü\Y\ÑX[ÙÎÂˆYˆ
+ØZ][™ÑX[ÙÈOH[	‰ˆØZ][™ÑX[ÙËš\ÔÚÝÚ[™Ê
+JHÂˆ[™[™ÓYYXPÛÜPÛÝ[
+ÊÎÂˆ]Ûˆ\HHØZ][™ÑX[ÙË™Ù]]ÛŠ[\X[ÙË•UÓ—ÔÔÒUU‘JNÂˆYˆ
+\HOH[
+H\KœÙ][˜X›Y
+˜[ÙJNÂˆBˆ[Ù\Ñ^XÝ]Ü‹™^XÝ]J
+
+HOˆÂˆžH
+[œ]Ý™X[H[ˆHÙ]ÛÛ[™\ÛÛ™\Š
+K›Ü[’[œ]Ý™X[JÙ[XÝY
+JHÂˆÝš[™È\Ü^S˜[YHHÙ[XÝYYYXQ\Ü^S˜[YJÙ[XÝY
+NÂˆ›Ú™XÝYYXTÙ\šXÙK”Ù[XÝYYYXPÛÜHÛÜHH›Ú™XÝYYXTÙ\šXÙKœÝÜ™TÙ[XÝYYYXPÛÜJˆÙ]š[\Ñ\Š
+K›Ú™XÝœÛÛ‹\Ü^S˜[YK[ŠNÂˆ[“Û•ZU™XY
+
+
+HOˆÂˆYˆ
+\Ñš[š\Ú[™Ê
+H\Ñ\Ý›ÞYY
+
+HØZ][™ÑX[ÙÈOH[ˆØZ][™ÑX[ÙÈOHXÝ]™T›Ü\Y\ÑX[ÙÈ]ØZ][™ÑX[ÙËš\ÔÚÝÚ[™Ê
+JHÂˆÛX[\[œ™Y™\™[˜ÙYYYXPÛÜJ›Ú™XÝœÛÛ‹ÛÜJNÂˆš[š\Ú[™[™ÓYYXPÛÜJØZ][™ÑX[ÙÊNÂˆ™]\›ŽÂˆBˆ\™Ù]œÙ]^
+ÛÜKœ›Ú™XÝ]
+NÂˆ[XYÙPØXÚKœ™[[Ý™JÙ[XÝYÔÝš[™Ê
+JNÂˆ[XYÙPØXÚKœ™[[Ý™JÛÜKœ›Ú™XÝ]
+NÂˆ˜XÚÔ[™[™ÓYYXPÛÜJØZ][™ÑX[ÙË›Ú™XÝœÛÛ‹ÛÜJNÂˆš[š\Ú[™[™ÓYYXPÛÜJØZ][™ÑX[ÙÊNÂˆØ\Ý›XZÙU^
+\Ë´)4,4.t.È4`t/´at`4,4/tdt/H4,ˆ4/ô`4/´-t.´`ˆ‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÂˆJNÂˆHØ]Ú
+^Ù\[Ûˆ^
+HÂˆ[™›ÚY][“ÙË™J“ÓÑÒÖH‹”Ù[XÝY›Ú™XÝYYXHÛÝ[›Ý™HÝÜ™Y‹^
+NÂˆ[“Û•ZU™XY
+
+
+HOˆÂˆYˆ
+\Ñš[š\Ú[™Ê
+H\Ñ\Ý›ÞYY
+
+JH™]\›ŽÂˆš[š\Ú[™[™ÓYYXPÛÜJØZ][™ÑX[ÙÊNÂˆØ\Ý›XZÙU^
+\Ë´'t-H4`ô-4,4.ô/´`tc4`t/´at`4,4/t.4`´c4a4,4.t.È4,ˆ4/ô`4/´-t.´`Žˆ‚ˆ
+È^™Ù]Y\ÜØYÙJ
+KØ\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÂˆJNÂˆBˆJNÂˆ™]\›ŽÂˆBˆYˆ
+™\Ý[ÛÙHOH‘TÕSÓÒÈ]HOH[]K™Ù]]J
+HOH[
+H™]\›ŽÂˆ\šH\šHH]K™Ù]]J
+NÂˆYˆ
+™\]Y\ÝÛÙHOH‘TUQTÕÑVÔ•ÓÐÐSÐTÒU‘JHÂˆš[˜[Ýš[™È\˜Ú]™T›Ú™XÝH[™[™Ð\˜Ú]™T›Ú™XÝYÂˆš[˜[Ýš[™È\˜Ú]™UÚYÙ]H[™[™Ð\˜Ú]™UÚYÙ]Ù^NÂˆ[™[™Ð\˜Ú]™T›Ú™XÝYH[™[™Ð\˜Ú]™UÚYÙ]Ù^HH[™[™Ð\˜Ú]™U]HH[ÂˆYˆ
+\˜Ú]™T›Ú™XÝOH[\˜Ú]™UÚYÙ]OH[
+H™]\›ŽÂˆ[Ù\Ñ^XÝ]Ü‹™^XÝ]J
+
+HOˆÂˆžH
+Ý]]Ý™X[HÝ]HÙ]ÛÛ[™\ÛÛ™\Š
+K›Ü[“Ý]]Ý™X[J\šJJHÂˆYˆ
+Ý]OH[
+H›ÝÈ™]ÈSÑ^Ù\[ÛŠÔÕˆÝ]][˜]˜Z[X›HŠNÂˆØØ[\˜Ú]™TÝÜ™HÝÜ™HH™]ÈØØ[\˜Ú]™TÝÜ™J\ÊNÂˆžHÈÝÜ™KÜš]PÜÝŠ\˜Ú]™T›Ú™XÝ\˜Ú]™UÚYÙ]Ý]
+NÈBˆš[˜[HÈÝÜ™K˜ÛÜÙJ
+NÈBˆ[“Û•ZU™XY
+
+
+HOˆÈYˆ
+Z\Ñš[š\Ú[™Ê
+H	‰ˆZ\Ñ\Ý›ÞYY
+
+JBˆØ\Ý›XZÙU^
+\ËÔÕˆ4,4`4at.4,´,4`t/´at`4,4/tdt/H‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÈJNÂˆHØ]Ú
+^Ù\[Ûˆ˜Z[\™JHÂˆ[“Û•ZU™XY
+
+
+HOˆÈYˆ
+Z\Ñš[š\Ú[™Ê
+H	‰ˆZ\Ñ\Ý›ÞYY
+
+JBˆØ\Ý›XZÙU^
+\Ë´'t-H4`ô-4,4.ô/´`tc4`t/´at`4,4/t.4`´cÔÕˆ4,4`4at.4,´,‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÈJNÂˆBˆJNÂˆ™]\›ŽÂˆBˆYˆ
+™\]Y\ÝÛÙHOH‘TUQTÕÒSTÔ•ÐÔQ•ÓPPÔ“ÊHÂˆ[\ÜÜ˜YXXÜ›Ê\šJNÂˆH[ÙHYˆ
+™\]Y\ÝÛÙHOH‘TUQTÕÑVÔ•ÐÔQ•ÓPPÔ“ÊHÂˆž]V×Hž]\ÈH[™[™ÐÜ˜YXXÜ›Ñ^ÜÂˆ[™[™ÐÜ˜YXXÜ›Ñ^ÜH[ÂˆYˆ
+ž]\ÈOH[
+H™]\›ŽÂˆ[Ù\Ñ^XÝ]Ü‹™^XÝ]J
+
+HOˆÂˆžH
+Ý]]Ý™X[HÝ]HÙ]ÛÛ[™\ÛÛ™\Š
+K›Ü[“Ý]]Ý™X[J\šJJHÂˆYˆ
+Ý]OH[
+H›ÝÈ™]ÈSÑ^Ù\[ÛŠ“Ý]]Ý™X[H[˜]˜Z[X›HŠNÂˆÝ]Üš]Jž]\ÊNÂˆ[“Û•ZU™XY
+
+
+HOˆÈYˆ
+Z\Ñš[š\Ú[™Ê
+H	‰ˆZ\Ñ\Ý›ÞYY
+
+JBˆØ\Ý›XZÙU^
+\Ë´'4,4.´`4/´`H4ct.´`t/ô/´`4`´.4`4/´,´,4/H‹Ø\Ý“S‘ÕÔÒÔ•
+KœÚÝÊ
+NÈJNÂˆHØ]Ú
+^Ù\[Ûˆ˜Z[\™JHÂˆ[“Û•ZU™XY
+
+
+HOˆÈYˆ
+Z\Ñš[š\Ú[™Ê
+H	‰ˆZ\Ñ\Ý›ÞYY
+
+JBˆØ\Ý›XZÙU^
+\Ë´+t.´`t/ô/´`4`ˆ4/4,4.´`4/´`t,4/t-H4,´bô/ô/´.ô/t-t/H‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÈJNÂˆBˆJNÂˆH[ÙHYˆ
+™\]Y\ÝÛÙHOH‘TUQTÕÑVÔ•Ô“Ò‘PÕ™\]Y\ÝÛÙHOH‘TUQTÕÑVÔ•Ô“Ò‘PÕÖ’T
+HÂˆš[˜[Ýš[™ÈœÛÛˆHÙ]Ú\™Y™Y™\™[˜Ù\Ê‘Q”ËSÑWÔ’UUJK™Ù]Ýš[™ÊPÕU‘WÔ“Ò‘PÕžßHŠNÂˆ[Ù\Ñ^XÝ]Ü‹™^XÝ]J
+
+HOˆÂˆžH
+Ý]]Ý™X[HÝ]HÙ]ÛÛ[™\ÛÛ™\Š
+K›Ü[“Ý]]Ý™X[J\šJJHÂˆYˆ
+Ý]OH[
+H›ÝÈ™]ÈSÑ^Ù\[ÛŠ“Ý]]Ý™X[H[˜]˜Z[X›HŠNÂˆYˆ
+™\]Y\ÝÛÙHOH‘TUQTÕÑVÔ•Ô“Ò‘PÕÖ’T
+HÂˆ›Ú™XÝYYXTÙ\šXÙK™^Ü›Ú™XÝš\[™JÝ]œÛÛ‹ÛÝ\˜ÙHOˆ™XY›Ú™XÝYYXQ]JÛÝ\˜ÙKœÛÛŠJNÂˆH[ÙHÝ]Üš]JœÛÛ‹™Ù]ž]\ÊÝ[™\™Ú\œÙ]Ë•U—Î
+JNÂˆ[“Û•ZU™XY
+
+
+HOˆÈYˆ
+Z\Ñš[š\Ú[™Ê
+H	‰ˆZ\Ñ\Ý›ÞYY
+
+JBˆØ\Ý›XZÙU^
+\Ë´'ô`4/´-t.´`ˆ4ct.´`t/ô/´`4`´.4`4/´,´,4/H‹Ø\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÈJNÂˆHØ]Ú
+^Ù\[Ûˆ\œ›ÜŠHÂˆ[™›ÚY][“ÙË™J“ÓÑÒÖH‹”›Ú™XÝ^Ü˜Z[Y‹\œ›ÜŠNÂˆ[“Û•ZU™XY
+
+
+HOˆÈYˆ
+Z\Ñš[š\Ú[™Ê
+H	‰ˆZ\Ñ\Ý›ÞYY
+
+JBˆØ\Ý›XZÙU^
+\Ë´'´b4.4,t.´,4ct.´`t/ô/´`4`´,ˆˆ
+È\œ›Ü‹™Ù]Y\ÜØYÙJ
+KØ\Ý“S‘ÕÓÓ‘ÊKœÚÝÊ
+NÈJNÂˆBˆJNÂˆH[ÙHYˆ
+™\]Y\ÝÛÙHOH‘TUQTÕÒSTÔ•Ô“Ò‘PÕ
+HÂˆ[\Ü›Ú™XÝ[™J\šJNÂˆBˆB‚ˆš]˜]H›ÚYš[š\Ú[™[™ÓYYXPÛÜJ[\X[ÙÈX[ÙÊHÂˆYˆ
+X[ÙÈOH[X[ÙÈOHXÝ]™T›Ü\Y\ÑX[ÙÊH™]\›ŽÂˆ[™[™ÓYYXPÛÜPÛÝ[HX]›X^
+[™[™ÓYYXPÛÜPÛÝ[HJNÂˆ]Ûˆ\HHX[ÙË™Ù]]ÛŠ[\X[ÙË•UÓ—ÔÔÒUU‘JNÂˆYˆ
+\HOH[
+H\KœÙ][˜X›Y
+[™[™ÓYYXPÛÜPÛÝ[OH
+NÂˆB‚ˆš]˜]HÝ]XÈš[˜[Û\ÜÈ[™[™ÓYYXPÛÜHÂˆš[˜[Ýš[™È›Ú™XÝœÛÛŽÂˆš[˜[Ýš[™È›Ú™XÝ]Âˆ[™[™ÓYYXPÛÜJÝš[™È›Ú™XÝœÛÛ‹Ýš[™È›Ú™XÝ]
+HÂˆ\Ëœ›Ú™XÝœÛÛˆH›Ú™XÝœÛÛŽÂˆ\Ëœ›Ú™XÝ]H›Ú™XÝ]ÂˆBˆB‚ˆš]˜]H›ÚY˜XÚÔ[™[™ÓYYXPÛÜJ[\X[ÙÈX[ÙËÝš[™È›Ú™XÝœÛÛ‹ˆ›Ú™XÝYYXTÙ\šXÙK”Ù[XÝYYYXPÛÜHÛÜJHÂˆYˆ
+ÛÜHOH[XÛÜK˜Ü™X]Y
+H™]\›ŽÂˆ\Ý[™[™ÓYYXPÛÜOˆÛÜY\ÈH[™[™ÓYYXPÛÜY\Ë™Ù]
+X[ÙÊNÂˆYˆ
+ÛÜY\ÈOH[
+HÂˆÛÜY\ÈH™]È\œ˜^S\ÝŠ
+NÂˆ[™[™ÓYYXPÛÜY\Ëœ]
+X[ÙËÛÜY\ÊNÂˆBˆÛÜY\Ë˜Y
+™]È[™[™ÓYYXPÛÜJ›Ú™XÝœÛÛ‹ÛÜKœ›Ú™XÝ]
+JNÂˆB‚ˆš]˜]H›ÚYÛX[\[œ™Y™\™[˜ÙYYYXPÛÜJÝš[™È›Ú™XÝœÛÛ‹ˆ›Ú™XÝYYXTÙ\šXÙK”Ù[XÝYYYXPÛÜHÛÜJHÂˆYˆ
+ÛÜHOH[XÛÜK˜Ü™X]Y
+H™]\›ŽÂˆÝš[™ÈØ]™Y›Ú™XÝœÛÛˆHÙ]Ú\™Y™Y™\™[˜Ù\Ê‘Q”ËSÑWÔ’UUJK™Ù]Ýš[™ÊPÕU‘WÔ“Ò‘PÕžßHŠNÂˆžHÂˆ›Ú™XÝYYXTÙ\šXÙK™[]U[œ™Y™\™[˜ÙYÙ[XÝYYYXJˆÙ]š[\Ñ\Š
+K›Ú™XÝœÛÛ‹ÛÜKœ›Ú™XÝ]Ø]™Y›Ú™XÝœÛÛŠNÂˆHØ]Ú
+SÑ^Ù\[ÛˆÛX[\˜Z[\™JHÂˆ[™›ÚY][“ÙËÊ“ÓÑÒÖH‹ÛÝ[›Ý™[[Ý™HØ[˜Ù[Y›Ú™XÝYYXH‹ÛX[\˜Z[\™JNÂˆBˆB‚ˆš]˜]H›ÚYÛX[\[™[™ÓYYXPÛÜY\Ê[\X[ÙÈX[ÙÊHÂˆ\Ý[™[™ÓYYXPÛÜOˆÛÜY\ÈH[™[™ÓYYXPÛÜY\Ëœ™[[Ý™JX[ÙÊNÂˆYˆ
+ÛÜY\ÈOH[ÛÜY\Ëš\Ñ[\J
+JH™]\›ŽÂˆÝš[™ÈØ]™Y›Ú™XÝœÛÛˆHÙ]Ú\™Y™Y™\™[˜Ù\Ê‘Q”ËSÑWÔ’UUJK™Ù]Ýš[™ÊPÕU‘WÔ“Ò‘PÕžßHŠNÂˆ›Üˆ
+[™[™ÓYYXPÛÜHÛÜHˆÛÜY\ÊHÂˆžHÂˆ›Ú™XÝYYXTÙ\šXÙK™[]U[œ™Y™\™[˜ÙYÙ[XÝYYYXJˆÙ]š[\Ñ\Š
+KÛÜKœ›Ú™XÝœÛÛ‹ÛÜKœ›Ú™XÝ]Ø]™Y›Ú™XÝœÛÛŠNÂˆHØ]Ú
+SÑ^Ù\[ÛˆÛX[\˜Z[\™JHÂˆ[™›ÚY][“ÙËÊ“ÓÑÒÖH‹ÛÝ[›Ý™[[Ý™HØ[˜Ù[Y›Ú™XÝYYXH‹ÛX[\˜Z[\™JNÂˆBˆBˆB‚ˆš]˜]HÝš[™ÈÙ[XÝYYYXQ\Ü^S˜[YJ\šH\šJHÂˆžH
+[™›ÚY™]X˜\ÙKÝ\œÛÜˆÝ\œÛÜˆHÙ]ÛÛ[™\ÛÛ™\Š
+Kœ]Y\žJ\šKˆ™]ÈÝš[™Ö×^Ø[™›ÚYœ›ÝšY\‹“Ü[˜X›PÛÛ[[œË‘TÔVWÓSQ_K[[[
+JHÂˆYˆ
+Ý\œÛÜˆOH[	‰ˆÝ\œÛÜ‹›[Ý™UÑš\œÝ
+
+JHÂˆ[ÛÛ[[ˆHÝ\œÛÜ‹™Ù]ÛÛ[[’[™^
+[™›ÚYœ›ÝšY\‹“Ü[˜X›PÛÛ[[œË‘TÔVWÓSQJNÂˆYˆ
+ÛÛ[[ˆH
+HÂˆÝš[™È˜[YHHÝ\œÛÜ‹™Ù]Ýš[™ÊÛÛ[[ŠNÂˆYˆ
+˜[YHOH[	‰ˆ[˜[YKš[J
+Kš\Ñ[\J
+JH™]\›ˆ˜[YNÂˆBˆBˆHØ]Ú
+^Ù\[ÛˆYÛ›Ü™Y
+HÈBˆ™]\›ˆ\šHOH[È›YYXK˜š[ˆˆˆ\šK™Ù]\Ý]ÙYÛY[
+
+NÂˆB‚‚ˆš]˜]H›ÚYY]›Ú™XÝ˜[YJ
+HÂˆY]^[œ]H™]ÈY]^
+\ÊNÂˆ[œ]œÙ]Ú[™ÛS[™JYJNÂˆ[œ]œÙ]^
+›Ú™XÝ˜[YJNÂˆ™]È[\X[ÙËZ[\Š\ÊBˆœÙ]]J´&4/4cÈ4/ô`4/´-t.´`´,ŠBˆœÙ]šY]Ê[œ]
+BˆœÙ]™YØ]]™P]ÛŠ´'´`´/4-t/t,‹[
+BˆœÙ]ÜÚ]]™P]ÛŠ´(t/´at`4,4/t.4`´c‹
+X[ÙËÚXÚ
+HOˆÂˆÝš[™È˜[YHH[œ]™Ù]^
+
+KÔÝš[™Ê
+Kš[J
+NÂˆYˆ
+]˜[YKš\Ñ[\J
+JHµÓßwÚÚ$z{-®éÜj×et.type)) {
             double diff;
             if (hasNamedFbdInput(inputPins)) {
                 diff = fbdNumericPinValue(numInputs, inputPins, "IN1", 0, 0.0)
@@ -9042,6 +4051,8 @@ public class MainActivity extends Activity {
                 if (!w.visible || (operatorMode && ("ÐšÐ½Ð¾Ð¿ÐºÐ°".equals(w.type) || "ÐšÐ¾Ð½ÑÑ‚Ð°Ð½Ñ‚Ð½Ð°Ñ ÐºÐ½Ð¾Ð¿ÐºÐ° Craft".equals(w.type)
                         || "ÐŸÐµÑ€ÐµÑ…Ð¾Ð´ Ð½Ð° ÑÐºÑ€Ð°Ð½".equals(w.type))
                         && !w.extraFields.optBoolean("craftButtonVisibleInWork", true))
+                        || (operatorMode && OriginalCraftSwitch.supports(w.type)
+                        && !w.extraFields.optBoolean("craftSwitchVisibleInWork", OriginalCraftSwitch.visibleInWork(w.extraFields)))
                         || (operatorMode && isFbd(w))
                         || (operatorMode && "Ð¡Ð¿Ð¸ÑÐ¾Ðº Craft".equals(w.type)
                         && !w.extraFields.optBoolean("craftListVisibleInWork", true))) continue;
@@ -9053,6 +4064,8 @@ public class MainActivity extends Activity {
                     paint.setColor(Color.rgb(237, 233, 254));
                 } else if ("Ð˜Ð½Ð´Ð¸ÐºÐ°Ñ‚Ð¾Ñ€".equals(w.type) || "Ð”Ð²ÑƒÑ…Ð¿Ð¾Ð·Ð¸Ñ†Ð¸Ð¾Ð½Ð½Ñ‹Ð¹ Ð¸Ð½Ð´Ð¸ÐºÐ°Ñ‚Ð¾Ñ€".equals(w.type)) {
                     paint.setColor(Color.rgb(220, 252, 231));
+                } else if (OriginalCraftSwitch.supports(w.type)) {
+                    paint.setColor(Color.TRANSPARENT);
                 } else if ("ÐšÐ½Ð¾Ð¿ÐºÐ°".equals(w.type) || "ÐšÐ¾Ð½ÑÑ‚Ð°Ð½Ñ‚Ð½Ð°Ñ ÐºÐ½Ð¾Ð¿ÐºÐ° Craft".equals(w.type)) {
                     paint.setColor(w.buttonState ? Color.rgb(187, 247, 208) : Color.rgb(219, 234, 254));
                 } else if ("Ð—Ð°Ð´Ð°Ñ‚Ñ‡Ð¸Ðº".equals(w.type)) {
@@ -9067,10 +4080,14 @@ public class MainActivity extends Activity {
                 // A source-backed FBD body already paints its own square
                 // outline; never leave the former purple rounded rectangle halo.
                 boolean sourceFbdSkin = FbdSourceCanvasSkin.shouldUse(w);
-                if (!OriginalIndicator.supports(w.type) && !sourceFbdSkin)
+                boolean sourceCraftSwitch = OriginalCraftSwitch.supports(w.type);
+                if (sourceCraftSwitch) {
+                    OriginalCraftSwitchRenderer.draw(canvas, getResources(), rect, w.extraFields, w.buttonState, paint);
+                }
+                if (!OriginalIndicator.supports(w.type) && !sourceFbdSkin && !sourceCraftSwitch)
                     canvas.drawRoundRect(rect, dp(6), dp(6), paint);
                 if ((!OriginalIndicator.supports(w.type) && w.showFrame
-                        && !sourceFbdSkin) || i == selected || selectedWidgets.contains(i)) {
+                        && !sourceFbdSkin && !sourceCraftSwitch) || i == selected || selectedWidgets.contains(i)) {
                     paint.setStyle(Paint.Style.STROKE);
                     paint.setStrokeWidth(dp(i == selected ? 2.5f : 1));
                     paint.setColor(i == selected || selectedWidgets.contains(i) ? Color.rgb(21, 101, 192) : Color.rgb(148, 163, 184));
@@ -9085,7 +4102,9 @@ public class MainActivity extends Activity {
                 paint.setStyle(Paint.Style.FILL);
                 paint.setColor(w.textColor);
                 paint.setTextSize(dp(w.textSizeSp));
-                if (w.type != null && w.type.startsWith("FBD ")) {
+                if (sourceCraftSwitch) {
+                    // The source switch is a pair of full-size original bitmaps; it has no text overlay.
+                } else if (w.type != null && w.type.startsWith("FBD ")) {
                     if (FbdSourceCanvasSkin.shouldUse(w)) {
                         FbdSourceCanvasSkin.draw(canvas, paint, w, getResources().getDisplayMetrics().density);
                         if (i == selected || selectedWidgets.contains(i)) {
@@ -9484,6 +4503,59 @@ public class MainActivity extends Activity {
             queueCraftBitButtonWrite(widget, binding, index, bit, false);
         }
 
+        private void activateCraftSwitch(Widget widget, int index) {
+            boolean previous = widget.buttonState;
+            boolean next = !previous;
+            widget.buttonState = next;
+            persistProject();
+            invalidate();
+            if (!widget.extraFields.optBoolean("craftSwitchBitEnabled", false)) {
+                Toast.makeText(MainActivity.this, "ÐŸÐµÑ€ÐµÐºÐ»ÑŽÑ‡Ð°Ñ‚ÐµÐ»ÑŒ: " + (next ? "Ð’ÐšÐ›" : "Ð’Ð«ÐšÐ›"), Toast.LENGTH_SHORT).show();
+                return;
+            }
+            BindingRequest binding = parseBinding(-1, widget.connectionInfo);
+            if (binding == null || binding.functionCode != 3) {
+                widget.buttonState = previous;
+                persistProject();
+                invalidate();
+                Toast.makeText(MainActivity.this, "Ð”Ð»Ñ Ð·Ð°Ð¿Ð¸ÑÐ¸ Ð±Ð¸Ñ‚Ð° Ð½ÑƒÐ¶ÐµÐ½ TCP holding-Ñ€ÐµÐ³Ð¸ÑÑ‚Ñ€ FC03/FC22", Toast.LENGTH_LONG).show();
+                return;
+            }
+            final int bit = widget.extraFields.optInt("craftSwitchBit", -1);
+            final int[] masks;
+            try { masks = OriginalCraftSwitch.writeMasks(bit, next); }
+            catch (IllegalArgumentException invalid) {
+                widget.buttonState = previous;
+                persistProject();
+                invalidate();
+                Toast.makeText(MainActivity.this, invalid.getMessage(), Toast.LENGTH_LONG).show();
+                return;
+            }
+            final String requestedState = next ? "Ð’ÐšÐ›" : "Ð’Ð«ÐšÐ›";
+            final int requestSequence = widget.extraFields.optInt("craftSwitchWriteSequence", 0) + 1;
+            try { widget.extraFields.put("craftSwitchWriteSequence", requestSequence); } catch (Exception ignored) { }
+            persistProject();
+            modbusExecutor.execute(() -> {
+                Exception failure = null;
+                try {
+                    if (!activityResumed || !operatorMode || !widgets.contains(widget))
+                        throw new IOException("Ð Ð°Ð±Ð¾Ñ‡Ð¸Ð¹ Ñ€ÐµÐ¶Ð¸Ð¼ Ð¾ÑÑ‚Ð°Ð½Ð¾Ð²Ð»ÐµÐ½");
+                    new ModbusTcpClient(binding.host, binding.port).writeMask(binding.unit, binding.address, masks[0], masks[1]);
+                } catch (Exception error) { failure = error; }
+                final Exception result = failure;
+                if (result != null) runOnUiThread(() -> {
+                    if (!widgets.contains(widget) || widgets.indexOf(widget) != index
+                            || widget.extraFields.optInt("craftSwitchWriteSequence", 0) != requestSequence
+                            || widget.buttonState != next) return;
+                    widget.buttonState = previous;
+                    persistProject();
+                    if (editor != null) editor.invalidate();
+                    Toast.makeText(MainActivity.this, "ÐžÑˆÐ¸Ð±ÐºÐ° Ð·Ð°Ð¿Ð¸ÑÐ¸ Ð±Ð¸Ñ‚Ð° Ð¿ÐµÑ€ÐµÐºÐ»ÑŽÑ‡Ð°Ñ‚ÐµÐ»Ñ: " + describeModbusError(result), Toast.LENGTH_LONG).show();
+                });
+            });
+            Toast.makeText(MainActivity.this, "ÐŸÐµÑ€ÐµÐºÐ»ÑŽÑ‡Ð°Ñ‚ÐµÐ»ÑŒ: " + requestedState, Toast.LENGTH_SHORT).show();
+        }
+
         private void queueCraftBitButtonWrite(Widget widget, BindingRequest binding, int index, int bit, boolean pressed) {
             final int[] masks = CraftMomentaryButton.masks(bit, pressed);
             modbusExecutor.execute(() -> {
@@ -9511,6 +4583,8 @@ public class MainActivity extends Activity {
                         && !(("ÐšÐ½Ð¾Ð¿ÐºÐ°".equals(w.type) || "ÐšÐ¾Ð½ÑÑ‚Ð°Ð½Ñ‚Ð½Ð°Ñ ÐºÐ½Ð¾Ð¿ÐºÐ° Craft".equals(w.type)
                         || "ÐŸÐµÑ€ÐµÑ…Ð¾Ð´ Ð½Ð° ÑÐºÑ€Ð°Ð½".equals(w.type))
                         && !w.extraFields.optBoolean("craftButtonVisibleInWork", true))
+                        && !(OriginalCraftSwitch.supports(w.type)
+                        && !w.extraFields.optBoolean("craftSwitchVisibleInWork", OriginalCraftSwitch.visibleInWork(w.extraFields)))
                         && x >= w.x && x <= w.x + w.w && y >= w.y && y <= w.y + w.h) return i;
             }
             return -1;
@@ -9793,6 +4867,8 @@ public class MainActivity extends Activity {
                 openCraftLinearSetter(picked, index);
             } else if ("Ð¡Ð¿Ð¸ÑÐ¾Ðº Craft".equals(picked.type)) {
                 openCraftBitList(picked, index);
+            } else if (OriginalCraftSwitch.supports(picked.type)) {
+                activateCraftSwitch(picked, index);
             } else if ("ÐšÐ¾Ð½ÑÑ‚Ð°Ð½Ñ‚Ð½Ð°Ñ ÐºÐ½Ð¾Ð¿ÐºÐ° Craft".equals(picked.type)) {
                 activateCraftConstantButton(picked, index);
             } else if ("ÐšÐ½Ð¾Ð¿ÐºÐ°".equals(picked.type)) {

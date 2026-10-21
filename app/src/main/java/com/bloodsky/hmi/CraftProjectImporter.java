@@ -196,7 +196,7 @@ public final class CraftProjectImporter {
                                                Map<String, byte[]> availableMedia) throws Exception {
         JSONObject widget = new JSONObject();
         String type;
-        if (componentId == 1) type = "Индикатор"; // CustomComponents.y, image-state indicator
+        if (componentId == 1) type = OriginalCraftSwitch.TYPE; // CustomComponents.y, eight original switch skins
         else if (componentId == 2 || componentId == 4) type = "Текст"; // label / numeric display
         else if (componentId == 5) type = "Индикатор"; // Craft two-state image
         else if (componentId == 9) type = "Звуковой сигнал"; // CustomComponents.c, looping alarm with five built-in sounds
@@ -254,6 +254,13 @@ public final class CraftProjectImporter {
                 imagePaths.put(resolvedPath);
             }
             widget.put("imagePathStates", imagePaths);
+        }
+        if (componentId == 1) {
+            widget.put("craftSwitchSkin", Math.max(1, Math.min(8, other.optInt("imagePosition", 1))));
+            widget.put("craftSwitchBit", Math.max(0, Math.min(15,
+                    objectValue(component.opt("jsTableComponent_connectionInfo")).optInt("addressBit", 0))));
+            widget.put("craftSwitchBitEnabled", false);
+            widget.put("craftSwitchVisibleInWork", other.optBoolean("visibleInWork", true));
         }
         if (componentId == 12) {
             widget.put("minValue", decimal(other.opt("min"), 0));
