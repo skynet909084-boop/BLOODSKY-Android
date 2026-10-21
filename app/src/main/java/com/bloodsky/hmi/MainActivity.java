@@ -5729,11 +5729,14 @@ public class MainActivity extends Activity {
                     : "Диапазон шкалы (минимум / максимум)");
             rangeLabel.setPadding(0, dp(10), 0, 0);
             form.addView(rangeLabel);
-            if (sourceThresholdGauge || sourceGraduatedGauge) {
+            if (sourceThresholdGauge) {
                 minValField = null;
             } else {
-                minValField = propertyField(Double.toString(w.minValue), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-                minValField.setHint("Минимум (например 0)");
+                int minInputType = sourceGraduatedGauge
+                        ? InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED
+                        : InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL;
+                minValField = propertyField(Double.toString(w.minValue), minInputType);
+                minValField.setHint(sourceGraduatedGauge ? "Минимум шкалы (целое число)" : "Минимум (например 0)");
                 form.addView(minValField);
             }
             maxValField = propertyField(Double.toString(w.maxValue), sourceThresholdGauge || sourceGraduatedGauge
