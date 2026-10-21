@@ -1,11 +1,8 @@
 name: Original Craft 1.0.7 emulator probe
 
+# Keep original-app emulation manual during active feature work; standard PR CI
+# still runs unit tests and builds the BLOODSKY APK. Run quick/full at acceptance.
 on:
-  pull_request:
-    types: [opened, reopened, synchronize, ready_for_review]
-    paths:
-      - '.github/workflows/original-craft-emulator.yml'
-      - 'tools/original_craft_emulator_probe.py'
   workflow_dispatch:
     inputs:
       profile:
@@ -17,40 +14,68 @@ on:
 
 permissions:
   contents: read
-  actions: read
 
 concurrency:
-  group: original-craft-emulator-${{ github.ref }}
-  cancel-in-progress: true
+  group: original-craft-emulator-${{ github.ref }}-${{ github.event.inputs.profile || 'quick' }}
+  cancel-in-progress: false
 
 jobs:
   rebuild-and-probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.profile == 'full' && 360 || 35 }}
     steps:
       - uses: actions/checkout@v4
-      - name: Download pinned full Craft 1.0.7 decompilation
-        uses: actions/download-artifact@v4
+      - uses: actions/setup-python@v5
         with:
-          name: BLOODSKY-Kaskada-decompiled
-          run-id: 38600957172
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: build/craft-decompiled
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
+          python-version: '3.12'
+      - name: Download and verify pinned original release APK
+        id: original-apk
+        shell: bash
+        run: |
+          set -u
+          mkdir -p build
+          apk='build/KaScada-Craft-1.0.7.apk'
+          url='https://github.com/skynet909084-boop/BLOODSKY-Android/releases/download/kascada-analysis-1/KaScada.Smart.Craft.1.0.7.08.02.2026.apk'
+          expected='11464db76f59393ccf698f57e60af1756756ffc78cb315d43052ae92adb50d4f'
+          if curl -fL --retry 3 --retry-all-errors "$url" -o "$apk" \
+              && echo "$expected  $apk" | sha256sum --check --status; then
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+            echo 'provenance=original-release' >> "$GITHUB_OUTPUT"
+          else
+            rm -f "$apk"
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+            echo 'provenance=reconstructed-debug' >> "$GITHUB_OUTPUT"
+          fi
       - uses: android-actions/setup-android@v3
         with:
           packages: 'platform-tools'
-      - name: Install probe dependencies
-        run: python -m pip install Pillow
-      - name: Install matching Apktool and Android build tools
+      - uses: actions/setup-java@v4
+        if: steps.original-apk.outputs.ready != 'true'
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Restore verified pinned decompilation for fallback rebuild
+        if: steps.original-apk.outputs.ready != 'true'
+        run: |
+          echo '316da0335dc4ea0c8f2d8c14550118ba33bd0e95d7c926f67ed848429c554cdd  reference/craft-reference.zip' | sha256sum --check
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          target = Path("build/craft-decompiled")
+          target.mkdir(parents=True, exist_ok=True)
+          with ZipFile("reference/craft-reference.zip") as archive:
+              archive.extractall(target)
+          if not (target / "apktool" / "AndroidManifest.xml").is_file():
+              raise SystemExit("Pinned reference ZIP does not contain apktool/AndroidManifest.xml")
+          PY
+      - name: Install Apktool and matching Android build tools for fallback
+        if: steps.original-apk.outputs.ready != 'true'
         run: |
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
           curl -fsSL https://github.com/iBotPeaches/Apktool/releases/download/v3.0.3/apktool_3.0.3.jar -o /tmp/apktool.jar
           java -jar /tmp/apktool.jar --version
       - name: Normalize invalid decoded resource names
+        if: steps.original-apk.outputs.ready != 'true'
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -71,6 +96,7 @@ jobs:
                   path.write_text(data, encoding="utf-8")
           PY
       - name: Rebuild original APK
+        if: steps.original-apk.outputs.ready != 'true'
         run: |
           cp "$ANDROID_HOME/build-tools/35.0.0/aapt2" /tmp/aapt2
           chmod +x /tmp/aapt2
@@ -78,11 +104,21 @@ jobs:
           keytool -genkeypair -keystore /tmp/craft-debug.keystore -storepass android -keypass android -alias androiddebugkey -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign --ks /tmp/craft-debug.keystore --ks-pass pass:android --key-pass pass:android --out build/KaScada-Craft-1.0.7.apk build/KaScada-Craft-1.0.7-unsigned.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify build/KaScada-Craft-1.0.7.apk
+      - name: Verify selected APK and record provenance
+        run: |
+          test -s build/KaScada-Craft-1.0.7.apk
+          sha256sum build/KaScada-Craft-1.0.7.apk
+      - name: Install probe dependencies
+        run: python -m pip install Pillow
       - name: Enable KVM access
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      - name: Mark emulator startup
+        run: |
+          mkdir -p build-reports/original-craft-1.0.7
+          python -c 'import time; print(time.time())' > build-reports/original-craft-1.0.7/emulator-started-at.txt
       - name: Install, launch and traverse original UI offline
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
@@ -100,14 +136,16 @@ jobs:
             adb shell svc wifi disable || true
             adb shell svc data disable || true
             adb install -r build/KaScada-Craft-1.0.7.apk
-            python tools/original_craft_emulator_probe.py build-reports/original-craft-1.0.7 ${{ github.event_name == 'workflow_dispatch' && inputs.profile == 'full' && '--full' || '' }}
-      - name: Upload rebuilt APK and full UI evidence
+            python tools/original_craft_emulator_probe.py build-reports/original-craft-1.0.7 ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.profile == 'full' && '--full' || '' }}
+        env:
+          ORIGINAL_CRAFT_APK_PROVENANCE: ${{ steps.original-apk.outputs.provenance }}
+          ORIGINAL_CRAFT_START_MARKER: ${{ github.workspace }}/build-reports/original-craft-1.0.7/emulator-started-at.txt
+      - name: Upload original Craft UI evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Original-Craft-1.0.7-emulator-probe
+          name: Original-Craft-1.0.7-probe-evidence
           path: |
-            build/KaScada-Craft-1.0.7.apk
             build-reports/original-craft-1.0.7/
           if-no-files-found: warn
           retention-days: 7

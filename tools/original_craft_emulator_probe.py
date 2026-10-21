@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 import re
 import subprocess
 import sys
@@ -13,6 +14,7 @@ import xml.etree.ElementTree as ET
 from collections import Counter, deque
 from pathlib import Path
 from PIL import Image
+from original_craft_probe_contract import ProbeBudget, ProbeDeadlineExceeded, quick_smoke_passes
 
 OUT = Path(sys.argv[1])
 OUT.mkdir(parents=True, exist_ok=True)
@@ -23,16 +25,33 @@ MAX_STATES = 12 if PROFILE == "quick" else 300
 MAX_DEPTH = 8 if PROFILE == "quick" else 12
 MAX_QUEUED = 240
 MAX_ACTIONS_PER_STATE = 10 if PROFILE == "quick" else 240
-MAX_RUNTIME_SECONDS = 0 if PROFILE == "quick" else 5 * 3600 + 45 * 60
+MAX_RUNTIME_SECONDS = 5 * 60 if PROFILE == "quick" else 5 * 3600 + 45 * 60
 WAIT = 2.0
+APK_PROVENANCE = os.environ.get("ORIGINAL_CRAFT_APK_PROVENANCE", "unspecified")
+metrics = {"adb_calls": 0, "adb_seconds": 0.0, "ui_dumps": 0, "screenshots": 0,
+           "fresh_starts": 0, "path_replays": 0, "states_new": 0,
+           "states_duplicate": 0, "timeouts": 0}
+budget = None
 
 
 def adb(*args: str, check: bool = True) -> str:
+    timeout = ADB_TIMEOUT
+    if budget is not None:
+        try:
+            timeout = min(timeout, budget.check())
+        except ProbeDeadlineExceeded:
+            metrics["timeouts"] += 1
+            raise
+    began = time.monotonic()
+    metrics["adb_calls"] += 1
     try:
         p = subprocess.run(["adb", *args], text=True, capture_output=True,
-                           timeout=ADB_TIMEOUT)
+                           timeout=timeout)
     except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"adb {' '.join(args)} timed out after {ADB_TIMEOUT}s") from exc
+        metrics["timeouts"] += 1
+        raise RuntimeError(f"adb {' '.join(args)} timed out after {timeout:.1f}s") from exc
+    finally:
+        metrics["adb_seconds"] += time.monotonic() - began
     if check and p.returncode:
         raise RuntimeError(f"adb {' '.join(args)} failed: {p.stderr.strip()}")
     return p.stdout.strip()
@@ -43,10 +62,20 @@ def save_screenshot(png: Path) -> bool:
     png.unlink(missing_ok=True)
     last_error = "empty screenshot output"
     for attempt in range(2):
+        timeout = ADB_TIMEOUT
+        if budget is not None:
+            try:
+                timeout = min(timeout, budget.check())
+            except ProbeDeadlineExceeded:
+                metrics["timeouts"] += 1
+                last_error = "interaction budget expired"
+                break
+        began = time.monotonic()
+        metrics["adb_calls"] += 1
         try:
             result = subprocess.run(
                 ["adb", "exec-out", "screencap", "-p"],
-                capture_output=True, timeout=ADB_TIMEOUT,
+                capture_output=True, timeout=timeout,
             )
             if result.returncode != 0:
                 last_error = result.stderr.decode(errors="replace").strip() or f"adb exit {result.returncode}"
@@ -56,11 +85,15 @@ def save_screenshot(png: Path) -> bool:
                 with Image.open(io.BytesIO(result.stdout)) as image:
                     image.verify()
                 png.write_bytes(result.stdout)
+                metrics["screenshots"] += 1
                 return True
         except subprocess.TimeoutExpired:
-            last_error = f"adb screenshot timed out after {ADB_TIMEOUT}s"
+            metrics["timeouts"] += 1
+            last_error = f"adb screenshot timed out after {timeout:.1f}s"
         except (OSError, SyntaxError, ValueError) as exc:
             last_error = f"invalid PNG: {exc}"
+        finally:
+            metrics["adb_seconds"] += time.monotonic() - began
         if attempt == 0:
             time.sleep(0.25)
     print(f"warning: screenshot unavailable for {png.name}: {last_error}", flush=True)
@@ -69,6 +102,7 @@ def save_screenshot(png: Path) -> bool:
 
 
 def dump_ui(label: str, capture_screenshot: bool = True):
+    metrics["ui_dumps"] += 1
     remote = "/sdcard/craft-audit-window.xml"
     adb("shell", "uiautomator", "dump", remote, check=False)
     local = OUT / f"{label}.xml"
@@ -258,6 +292,7 @@ def perform(action):
 
 
 def fresh_start(clear_data: bool = True):
+    metrics["fresh_starts"] += 1
     adb("shell", "am", "force-stop", PACKAGE, check=False)
     if clear_data:
         adb("shell", "pm", "clear", PACKAGE, check=False)
@@ -275,6 +310,7 @@ def fresh_start(clear_data: bool = True):
 
 def replay(path):
     # Keep project data during fallback path replay; the audit clears data only once.
+    metrics["path_replays"] += 1
     fresh_start(clear_data=False)
     for action in path:
         # Replay already observed prefixes, waiting after each tap. The main loop
@@ -309,12 +345,27 @@ seen = set()
 state_rows = []
 transition_rows = []
 started = time.time()
+startup_seconds = None
+marker = os.environ.get("ORIGINAL_CRAFT_START_MARKER", "")
+if marker:
+    try:
+        startup_seconds = round(max(0.0, started - float(Path(marker).read_text().strip())), 1)
+    except (OSError, ValueError):
+        startup_seconds = None
+budget = ProbeBudget(MAX_RUNTIME_SECONDS)
 quick_goal_reached = False
+launcher_observed = False
+editor_observed = False
+screenshot_verified = False
+action_results = {"project_created": False, "palette_opened": False,
+                  "component_properties_opened": False}
+probe_error = ""
 
 
 def save_checkpoint(complete=False):
     report = {
         "app_package": PACKAGE,
+        "apk_provenance": APK_PROVENANCE,
         "offline": True,
         "profile": PROFILE,
         "execution_finished": complete,
@@ -327,7 +378,22 @@ def save_checkpoint(complete=False):
         "coverage_complete": (PROFILE == "full" and not runtime_limit_hit and not coverage_limited
                               and len(state_rows) < MAX_STATES),
         "guided_goal_reached": quick_goal_reached,
+        "launcher_observed": launcher_observed,
+        "editor_observed": editor_observed,
+        "screenshot_verified": screenshot_verified,
+        "action_results": dict(action_results),
+        "quick_smoke_passed": quick_smoke_passes({
+            "launcher_observed": launcher_observed,
+            "editor_observed": editor_observed,
+            "screenshot_verified": screenshot_verified,
+            "guided_goal_reached": quick_goal_reached,
+            "action_results": action_results,
+            "runtime_limit_hit": runtime_limit_hit,
+            "probe_error": probe_error,
+        }) if PROFILE == "quick" else False,
+        "probe_error": probe_error,
         "termination_reason": ("runtime_limit" if runtime_limit_hit else
+                               "probe_error" if probe_error else
                                "guided_goal_reached" if quick_goal_reached else
                                "state_limit" if len(state_rows) >= MAX_STATES else
                                "depth_or_control_limit" if coverage_limited else "frontier_exhausted"),
@@ -335,6 +401,9 @@ def save_checkpoint(complete=False):
         "unique_state_signatures": len(seen),
         "transitions_visited": len(transition_rows),
         "elapsed_seconds": round(time.time() - started, 1),
+        "interaction_seconds": round(time.time() - started, 1),
+        "emulator_startup_seconds": startup_seconds,
+        "metrics": {**metrics, "adb_seconds": round(metrics["adb_seconds"], 2)},
         "project_loading_stalled_states": sum(1 for row in state_rows if row["project_loading_stalled"]),
         "states": state_rows,
         "transitions": transition_rows,
@@ -356,23 +425,36 @@ def save_checkpoint(complete=False):
     temporary.write_text(json.dumps(report, ensure_ascii=False, indent=2))
     temporary.replace(target)
     if len(state_rows) % 10 == 0:
-        log = adb("logcat", "-d", "-v", "brief", "AndroidRuntime:E", "*:S", check=False)
-        (OUT / "android-runtime-errors.log").write_text(log)
+        try:
+            log = adb("logcat", "-d", "-v", "brief", "AndroidRuntime:E", "*:S", check=False)
+            (OUT / "android-runtime-errors.log").write_text(log)
+        except (ProbeDeadlineExceeded, RuntimeError):
+            pass
 
 
 def capture_state(path):
+    global launcher_observed, editor_observed, screenshot_verified
     label = f"state-{len(state_rows):03d}"
     root, xml, png = dump_ui(label, capture_screenshot=False)
+    package_nodes = [n for n in root.iter("node") if n.attrib.get("package") == PACKAGE]
+    if not state_rows and package_nodes:
+        launcher_observed = True
+    editor_ids = ("menu_bar_component", "switch_layout", "tab_dyn_pictures", "worktoolbar")
+    if any(any(token in n.attrib.get("resource-id", "").lower() for token in editor_ids)
+           for n in package_nodes):
+        editor_observed = True
     loading_stalled = is_project_loading(root)
     visible = visible_state(root)
     signature = hashlib.sha256(json.dumps(visible, ensure_ascii=False).encode()).hexdigest()
     if signature in seen:
+        metrics["states_duplicate"] += 1
         (OUT / f"{label}.xml").unlink(missing_ok=True)
         return None
 
     # Save the expensive screenshot only for a new state; every unique capture
     # still waits WAIT seconds after the preceding action before reaching here.
     screenshot_ok = save_screenshot(png)
+    screenshot_verified = screenshot_verified or screenshot_ok
     ctrls = [] if loading_stalled else controls(root)
     if PROFILE == "quick" and not loading_stalled:
         # Fill the project name once and confirm; skip orientation/cancel branches.
@@ -399,6 +481,7 @@ def capture_state(path):
            "controls": ctrls, "screenshot_sha256": screenshot_hash,
            "project_loading_stalled": loading_stalled}
     state_rows.append(row)
+    metrics["states_new"] += 1
     print(f"{label}: depth={len(path)} controls={len(ctrls)} loading_stalled={loading_stalled} path={' / '.join(path_labels[-3:])}", flush=True)
     save_checkpoint()
 
@@ -556,6 +639,14 @@ def guided_quick_walk():
         perform(action)
         path.append(action)
         captured = capture_state(path)
+        latest_controls = state_rows[-1]["controls"] if state_rows else []
+        if label == "create project":
+            action_results["project_created"] = editor_observed
+        elif label == "component palette":
+            action_results["palette_opened"] = any(
+                node.get("resource_id", "").endswith("tab_dyn_pictures")
+                for node in latest_controls
+            )
         if label == "drag Craft ID17 dynamic picture to canvas" and captured is not None:
             with Image.open(OUT / f"{captured[0]}.png") as image:
                 width, height = image.size
@@ -593,6 +684,7 @@ def guided_quick_walk():
                 for node in visible_controls
             )
             quick_goal_reached = bool(property_controls) and not palette_still_open
+            action_results["component_properties_opened"] = quick_goal_reached
             coverage_limited = True
             if not quick_goal_reached:
                 print(
@@ -603,17 +695,37 @@ def guided_quick_walk():
                 )
 
 
-fresh_start()
-if PROFILE == "quick":
-    guided_quick_walk()
-else:
-    fast_walk([])
-remaining_frontier = 0
+try:
+    fresh_start()
+    if PROFILE == "quick":
+        guided_quick_walk()
+    else:
+        fast_walk([])
+except ProbeDeadlineExceeded as exc:
+    runtime_limit_hit = True
+    probe_error = str(exc)
+except Exception as exc:
+    probe_error = f"{type(exc).__name__}: {exc}"
 
-# Capture all uncaught Android Java exceptions from this audit session.
-log = adb("logcat", "-d", "-v", "brief", "AndroidRuntime:E", "*:S", check=False)
-(OUT / "android-runtime-errors.log").write_text(log)
-save_checkpoint(complete=True)
+if budget.remaining <= 0:
+    runtime_limit_hit = True
+    if not probe_error:
+        probe_error = f"probe exceeded its {MAX_RUNTIME_SECONDS}s interaction budget"
+
+# A failed or timed-out probe still publishes its partial diagnostics.
+try:
+    if budget.remaining > 0:
+        log = adb("logcat", "-d", "-v", "brief", "AndroidRuntime:E", "*:S", check=False)
+        (OUT / "android-runtime-errors.log").write_text(log)
+except (ProbeDeadlineExceeded, RuntimeError):
+    pass
+save_checkpoint(complete=not probe_error)
 summary = json.loads((OUT / "ui-audit.json").read_text())
-print(json.dumps({k: summary[k] for k in ("profile", "states_captured", "transitions_visited", "elapsed_seconds", "execution_finished", "coverage_complete", "termination_reason")}), flush=True)
+print(json.dumps({k: summary[k] for k in (
+    "profile", "states_captured", "transitions_visited", "interaction_seconds",
+    "execution_finished", "quick_smoke_passed", "coverage_complete", "termination_reason",
+    "metrics",
+)}), flush=True)
+if probe_error or (PROFILE == "quick" and not summary["quick_smoke_passed"]):
+    sys.exit(1)
 
