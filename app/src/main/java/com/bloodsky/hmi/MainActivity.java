@@ -1565,12 +1565,12 @@ public class MainActivity extends Activity {
             String binding = snapshotWidgets.get(i).connectionInfo;
             boolean usbProjectBindingAllowed = isCraftRegisterSource(snapshotWidgets.get(i).type)
                     || "FBD Вход".equals(snapshotWidgets.get(i).type);
-                invalidBindings.put(i, "CFG");
             int numericIndicatorQuantity = OriginalCraftNumericIndicator.TYPE.equals(snapshotWidgets.get(i).type)
                     ? OriginalCraftNumericIndicator.readQuantity(snapshotWidgets.get(i).extraFields
                     .optInt("craftNumericIndicatorType", 0)) : 1;
             if (binding != null && binding.startsWith("tcp://")
                     && parseBinding(i, binding, numericIndicatorQuantity) == null)
+                invalidBindings.put(i, "CFG");
             else if (usbProjectBindingAllowed && binding != null && binding.startsWith("usb://")
                     && parseProjectBinding(i, binding,
                     isCraftRegisterFloat(snapshotWidgets.get(i).type) ? 2 : 1) == null) invalidBindings.put(i, "CFG");
