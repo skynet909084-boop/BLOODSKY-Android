@@ -15,6 +15,9 @@ from collections import Counter, deque
 from pathlib import Path
 from PIL import Image
 from original_craft_probe_contract import ProbeBudget, ProbeDeadlineExceeded, quick_smoke_passes
+from original_craft_probe_checkpoint import (
+    atomic_write_json, checkpoint_from_run, load_checkpoint, new_checkpoint,
+)
 
 OUT = Path(sys.argv[1])
 OUT.mkdir(parents=True, exist_ok=True)
@@ -28,6 +31,7 @@ MAX_ACTIONS_PER_STATE = 10 if PROFILE == "quick" else 240
 MAX_RUNTIME_SECONDS = 5 * 60 if PROFILE == "quick" else 5 * 3600 + 45 * 60
 WAIT = 2.0
 APK_PROVENANCE = os.environ.get("ORIGINAL_CRAFT_APK_PROVENANCE", "unspecified")
+APK_SHA256 = os.environ.get("ORIGINAL_CRAFT_APK_SHA256", "")
 metrics = {"adb_calls": 0, "adb_seconds": 0.0, "ui_dumps": 0, "screenshots": 0,
            "fresh_starts": 0, "path_replays": 0, "states_new": 0,
            "states_duplicate": 0, "timeouts": 0}
@@ -344,6 +348,8 @@ def visible_state(root):
 seen = set()
 state_rows = []
 transition_rows = []
+frontier = [[]]
+expanded_paths = []
 started = time.time()
 startup_seconds = None
 marker = os.environ.get("ORIGINAL_CRAFT_START_MARKER", "")
@@ -363,9 +369,15 @@ probe_error = ""
 
 
 def save_checkpoint(complete=False):
+    checkpoint = checkpoint_from_run(
+        frontier, seen, state_rows, transition_rows, expanded_paths,
+        APK_PROVENANCE, APK_SHA256, coverage_limited, PROFILE,
+    )
+    atomic_write_json(OUT / "checkpoint.json", checkpoint)
     report = {
         "app_package": PACKAGE,
         "apk_provenance": APK_PROVENANCE,
+        "apk_sha256": APK_SHA256,
         "offline": True,
         "profile": PROFILE,
         "execution_finished": complete,
@@ -376,7 +388,17 @@ def save_checkpoint(complete=False):
         "runtime_limit_hit": runtime_limit_hit,
         "coverage_limited": coverage_limited,
         "coverage_complete": (PROFILE == "full" and not runtime_limit_hit and not coverage_limited
-                              and len(state_rows) < MAX_STATES),
+                              and not probe_error and not frontier and len(state_rows) < MAX_STATES),
+        "run_status": ("complete" if PROFILE == "full" and not runtime_limit_hit
+                        and not coverage_limited and not probe_error and not frontier
+                        and len(state_rows) < MAX_STATES else "incomplete"),
+        "pending_frontier_paths": len(frontier),
+        "coverage_cap_reasons": ([reason for reason, hit in (
+            ("runtime_limit", runtime_limit_hit),
+            ("state_limit", len(state_rows) >= MAX_STATES),
+            ("depth_or_action_or_queue_limit", coverage_limited),
+            ("probe_error", bool(probe_error)),
+        ) if hit]),
         "guided_goal_reached": quick_goal_reached,
         "launcher_observed": launcher_observed,
         "editor_observed": editor_observed,
@@ -407,6 +429,12 @@ def save_checkpoint(complete=False):
         "project_loading_stalled_states": sum(1 for row in state_rows if row["project_loading_stalled"]),
         "states": state_rows,
         "transitions": transition_rows,
+        "k107_case_status": "WAITING_FOR_ANDROID_RUNTIME",
+        "k107_cases_total": 550,
+        "k107_cases_remaining": 550,
+        "k107_case_ids": [f"K107-{i:04d}" for i in range(1, 551)],
+        "k107_observations": [],
+        "k107_mapping_note": "No case-to-screen mapping manifest is present in the repository; UI captures remain unassigned and all acceptance IDs stay WAITING.",
         "runtime_error_log": "android-runtime-errors.log",
         "limitations": [
             "Quick profile targets the Craft ID17 palette-to-properties path; it is a focused sample, never a complete UI audit.",
@@ -421,9 +449,7 @@ def save_checkpoint(complete=False):
         ],
     }
     target = OUT / "ui-audit.json"
-    temporary = OUT / "ui-audit.json.tmp"
-    temporary.write_text(json.dumps(report, ensure_ascii=False, indent=2))
-    temporary.replace(target)
+    atomic_write_json(target, report)
     if len(state_rows) % 10 == 0:
         try:
             log = adb("logcat", "-d", "-v", "brief", "AndroidRuntime:E", "*:S", check=False)
@@ -450,6 +476,7 @@ def capture_state(path):
         metrics["states_duplicate"] += 1
         (OUT / f"{label}.xml").unlink(missing_ok=True)
         return None
+    seen.add(signature)
 
     # Save the expensive screenshot only for a new state; every unique capture
     # still waits WAIT seconds after the preceding action before reaching here.
@@ -477,13 +504,14 @@ def capture_state(path):
     if loading_stalled:
         screenshot_hash = ""
     path_labels = [a["label"] for a in path]
-    row = {"state": label, "path": path_labels, "control_count": len(ctrls),
+    row = {"state": label, "signature": signature, "path": path_labels, "control_count": len(ctrls),
            "controls": ctrls, "screenshot_sha256": screenshot_hash,
            "project_loading_stalled": loading_stalled}
     state_rows.append(row)
     metrics["states_new"] += 1
     print(f"{label}: depth={len(path)} controls={len(ctrls)} loading_stalled={loading_stalled} path={' / '.join(path_labels[-3:])}", flush=True)
-    save_checkpoint()
+    if PROFILE == "quick":
+        save_checkpoint()
 
     actions = []
     seen_points = set()
@@ -585,21 +613,39 @@ def fast_walk(path, parent_signature=None):
 
 
 def full_walk():
-    queue = deque([[]])
+    queue = deque(frontier)
     while queue and len(state_rows) < MAX_STATES:
         path = queue.popleft()
         replay(path)
         captured = capture_state(path)
         if captured is None:
+            expanded_paths.append(path)
+            frontier[:] = list(queue)
+            save_checkpoint()
             continue
         _, _, actions = captured
         if len(path) >= MAX_DEPTH:
+            if actions:
+                coverage_limited = True
             continue
-        for action in actions:
+        if len(actions) > MAX_ACTIONS_PER_STATE:
+            coverage_limited = True
+        for action in actions[:MAX_ACTIONS_PER_STATE]:
             child = path + [action]
             if len(queue) + len(state_rows) >= MAX_QUEUED:
+                coverage_limited = True
                 break
             queue.append(child)
+            transition_rows.append({
+                "from": state_rows[-1]["state"],
+                "from_signature": state_rows[-1]["signature"],
+                "action": action["label"],
+                "action_path": [step["label"] for step in child],
+                "depth": len(child),
+            })
+        expanded_paths.append(path)
+        frontier[:] = list(queue)
+        save_checkpoint()
     return len(queue)
 
 
@@ -696,6 +742,16 @@ def guided_quick_walk():
 
 
 try:
+    checkpoint_file = OUT / "checkpoint.json"
+    if PROFILE == "full" and checkpoint_file.exists():
+        restored = load_checkpoint(checkpoint_file, APK_PROVENANCE, APK_SHA256)
+        frontier[:] = restored["frontier"]
+        seen.update(restored["visited_signatures"])
+        state_rows.extend(restored["states"])
+        transition_rows.extend(restored["transitions"])
+        expanded_paths.extend(restored["expanded_paths"])
+        coverage_limited = bool(restored.get("coverage_limited"))
+        print(f"resumed checkpoint: {len(state_rows)} states, {len(frontier)} pending paths", flush=True)
     fresh_start()
     if PROFILE == "quick":
         guided_quick_walk()
