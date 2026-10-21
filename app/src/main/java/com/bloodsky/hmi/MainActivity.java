@@ -5894,10 +5894,13 @@ public class MainActivity extends Activity {
 
         final EditText trendIntervalField;
         final EditText trendPointCountField;
+        final EditText trendChannelCountField;
+        final EditText trendTypeField;
+        final EditText[] trendSeriesNameFields;
         if ("График / Тренд".equals(w.type)
                 && w.extraFields.optInt("craftComponentId", -1) == 14) {
             TextView trendLabel = new TextView(this);
-            trendLabel.setText("История Craft ID14: период в мс и ограничение точек");
+            trendLabel.setText("Настройки графика Craft ID14");
             trendLabel.setPadding(0, dp(8), 0, 0);
             form.addView(trendLabel);
             trendIntervalField = propertyField(Integer.toString(
@@ -5910,9 +5913,33 @@ public class MainActivity extends Activity {
             trendPointCountField.setHint("Максимум точек истории (1–2000)");
             trendPointCountField.setContentDescription("Максимум точек графика");
             form.addView(trendPointCountField);
+            trendChannelCountField = propertyField(Integer.toString(
+                    w.extraFields.optInt("craftTrendChannelCount", 1)), InputType.TYPE_CLASS_NUMBER);
+            trendChannelCountField.setHint("Число рядов (1–4)");
+            trendChannelCountField.setContentDescription("Число рядов графика");
+            form.addView(trendChannelCountField);
+            trendTypeField = propertyField(Integer.toString(
+                    w.extraFields.optInt("craftTrendType", 1)), InputType.TYPE_CLASS_NUMBER);
+            trendTypeField.setHint("Тип: 0 UINT16, 1 INT16, 2 FLOAT32");
+            trendTypeField.setContentDescription("Тип данных графика");
+            form.addView(trendTypeField);
+            trendSeriesNameFields = new EditText[4];
+            JSONArray existingNames = w.extraFields.optJSONArray("craftTrendSeriesNames");
+            for (int channel = 0; channel < trendSeriesNameFields.length; channel++) {
+                trendSeriesNameFields[channel] = propertyField(
+                        existingNames == null ? Integer.toString(channel + 1)
+                                : existingNames.optString(channel, Integer.toString(channel + 1)),
+                        InputType.TYPE_CLASS_TEXT);
+                trendSeriesNameFields[channel].setHint("Название ряда " + (channel + 1));
+                trendSeriesNameFields[channel].setContentDescription("Название ряда " + (channel + 1));
+                form.addView(trendSeriesNameFields[channel]);
+            }
         } else {
             trendIntervalField = null;
             trendPointCountField = null;
+            trendChannelCountField = null;
+            trendTypeField = null;
+            trendSeriesNameFields = null;
         }
 
         final android.widget.CheckBox gaugeShowTextField;
@@ -6730,11 +6757,19 @@ public class MainActivity extends Activity {
                     }
                     if (trendIntervalField != null) {
                         try {
+                            String[] seriesNames = new String[trendSeriesNameFields.length];
+                            for (int i = 0; i < seriesNames.length; i++)
+                                seriesNames[i] = trendSeriesNameFields[i].getText().toString();
                             CraftTrendGraphProperties.apply(w.extraFields,
                                     readPositiveInt(trendIntervalField,
                                             w.extraFields.optInt("craftTrendIntervalMs", 500), false),
                                     readPositiveInt(trendPointCountField,
-                                            w.extraFields.optInt("craftTrendMaxPoints", 300), false));
+                                            w.extraFields.optInt("craftTrendMaxPoints", 300), false),
+                                    readPositiveInt(trendChannelCountField,
+                                            w.extraFields.optInt("craftTrendChannelCount", 1), false),
+                                    readPositiveInt(trendTypeField,
+                                            w.extraFields.optInt("craftTrendType", 1), true),
+                                    seriesNames);
                         } catch (IllegalArgumentException | org.json.JSONException invalid) {
                             Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show();
                             return;
