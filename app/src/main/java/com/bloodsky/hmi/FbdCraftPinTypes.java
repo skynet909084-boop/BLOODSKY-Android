@@ -27,6 +27,10 @@ final class FbdCraftPinTypes {
             if (!output && "PT".equals(name)) return "INT";
         }
         if ("FBD CRAFT CTU".equals(kind) && output && "Q".equals(name)) return "INT";
+        if (kind.startsWith("FBD CRAFT VAR NAME IN ") && output && "Q".equals(name))
+            return namedVariableType(kind);
+        if (kind.startsWith("FBD CRAFT VAR NAME OUT ") && !output && "IN".equals(name))
+            return namedVariableType(kind);
         if ("FBD CRAFT POW".equals(kind)) {
             if (output && "Q".equals(name)) return "FLOAT";
             if (!output && ("X".equals(name) || "Y".equals(name))) return "FLOAT";
@@ -94,6 +98,13 @@ final class FbdCraftPinTypes {
     }
 
     private static String mqttType(String blockType) {
+        if (blockType.endsWith(" BOOL")) return "BOOL";
+        if (blockType.endsWith(" INT")) return "INT";
+        if (blockType.endsWith(" FLOAT")) return "FLOAT";
+        return null;
+    }
+
+    private static String namedVariableType(String blockType) {
         if (blockType.endsWith(" BOOL")) return "BOOL";
         if (blockType.endsWith(" INT")) return "INT";
         if (blockType.endsWith(" FLOAT")) return "FLOAT";
