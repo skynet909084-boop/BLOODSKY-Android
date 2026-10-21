@@ -881,4 +881,45 @@ public class CraftProjectImporterTest {
         assertEquals("http://example.test/z", reopened.getJSONObject("craftOther").getString("link15"));
     }
 
+    @Test public void craftEmailCredentialsAreMovedOutOfProjectJsonBeforePersistence() throws Exception {
+        String source = "{\"TableNameProject\":{\"name\":\"Email project\",\"countScreen\":1},"
+                + "\"TableConnections\":[],\"TableComponent\":[{"
+                + "\"componentId\":28,\"text\":\"\",\"x\":12,\"y\":24,\"width\":240,\"height\":96,"
+                + "\"jsTableComponent_other\":{\"numScreen\":1,\"title\":\"Pump alarm\","
+                + "\"body\":\"Pump is running\",\"emailTo\":\"ops@example.test\","
+                + "\"emailLogin\":\"sender@example.test\",\"emailPassword\":\"secret-value\","
+                + "\"futureField\":\"keep\"}}]}";
+
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(source));
+        final String[] captured = new String[3];
+        String protectedJson = CraftEmailCredentialMigration.protect(project.toString(), (key, login, password) -> {
+            captured[0] = key;
+            captured[1] = login;
+            captured[2] = password;
+        });
+
+        JSONObject widget = new JSONObject(protectedJson).getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0);
+        assertEquals("Email Craft", widget.getString("type"));
+        assertEquals("Pump alarm", widget.getString("craftEmailTitle"));
+        assertEquals("Pump is running", widget.getString("craftEmailBody"));
+        assertEquals("ops@example.test", widget.getString("craftEmailTo"));
+        assertFalse(widget.getBoolean("craftEmailEnabled"));
+        assertTrue(captured[0] != null && !captured[0].isEmpty());
+        assertEquals("sender@example.test", captured[1]);
+        assertEquals("secret-value", captured[2]);
+        assertEquals(captured[0], widget.getString("craftEmailCredentialKey"));
+        assertTrue(widget.getBoolean("craftEmailCredentialStored"));
+        assertEquals("keep", widget.getJSONObject("craftOther").getString("futureField"));
+        assertFalse(widget.getJSONObject("craftOther").has("emailLogin"));
+        assertFalse(widget.getJSONObject("craftOther").has("emailPassword"));
+        assertFalse(protectedJson.contains("sender@example.test"));
+        assertFalse(protectedJson.contains("secret-value"));
+
+        final int[] secondSave = {0};
+        assertEquals(protectedJson, CraftEmailCredentialMigration.protect(protectedJson,
+                (key, login, password) -> secondSave[0]++));
+        assertEquals(0, secondSave[0]);
+    }
+
 }

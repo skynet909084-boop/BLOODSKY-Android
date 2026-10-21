@@ -209,6 +209,7 @@ public final class CraftProjectImporter {
         else if (componentId == 22) type = "Шлюз битовый"; // CustomComponents.l, source/receive/trigger bit gateway
         else if (componentId == 23) type = "Видео RTSP Craft"; // CustomComponents.f; preserve as disabled until source-backed player mapping
         else if (componentId == 26) type = "WebView Craft"; // b0; preserve links but do not auto-navigate on imported signals
+        else if (componentId == 28) type = "Email Craft"; // j; imported credentials are migrated to Android Keystore before persistence
         else if (componentId == 13) type = "Линейный задатчик Craft"; // CustomSeekBar
         else if (componentId == 15) type = "Архив Craft"; // local-only history; Craft device links stay disabled until remapped
         else if (componentId == 14) type = "График / Тренд"; // CustomComponents.o, legacy device link remains inactive
@@ -239,6 +240,7 @@ public final class CraftProjectImporter {
         if (componentId == 21 && displayText.trim().isEmpty()) displayText = "Звуковой банк";
         if (componentId == 25 && displayText.trim().isEmpty()) displayText = other.optString("title", "");
         if (componentId == 26 && displayText.trim().isEmpty()) displayText = "WebView Craft";
+        if (componentId == 28 && displayText.trim().isEmpty()) displayText = other.optString("title", "Email Craft");
         widget.put("text", boundedString(displayText, 2000));
         // Craft's device-link encoding differs from BLOODSKY's tcp:// grammar.
         // Keep it for round-trip recovery without activating an unverified binding.
@@ -287,6 +289,14 @@ public final class CraftProjectImporter {
             String[] links = CraftWebViewLinks.read(other);
             widget.put("craftOther", CraftWebViewLinks.write(other, links));
             widget.put("craftWebViewLinks", CraftWebViewLinks.toJsonArray(links));
+        }
+        if (componentId == 28) {
+            widget.put("craftUnsupportedComponent", true);
+            widget.put("craftEmailEnabled", false);
+            widget.put("craftEmailTitle", boundedString(other.optString("title", displayText), 120));
+            widget.put("craftEmailBody", boundedString(other.optString("body", ""), 2000));
+            widget.put("craftEmailTo", boundedString(other.optString("emailTo", ""), 320));
+            widget.put("craftEmailCredentialKey", "");
         }
         if (componentId == 16) {
             String sourcePath = other.optString("pathGif", "").trim();
@@ -545,7 +555,7 @@ public final class CraftProjectImporter {
     }
 
     private static boolean isSupportedComponent(int id) {
-        return id == 1 || id == 2 || id == 4 || id == 5 || id == 6 || id == 7 || id == 9 || id == 10 || id == 11 || id == 12 || id == 13 || id == 16 || id == 17 || id == 18 || id == 20 || id == 21 || id == 22 || id == 23 || id == 24 || id == 25 || id == 26;
+        return id == 1 || id == 2 || id == 4 || id == 5 || id == 6 || id == 7 || id == 9 || id == 10 || id == 11 || id == 12 || id == 13 || id == 16 || id == 17 || id == 18 || id == 20 || id == 21 || id == 22 || id == 23 || id == 24 || id == 25 || id == 26 || id == 28;
     }
 
     private static String timerMode(int mode) {

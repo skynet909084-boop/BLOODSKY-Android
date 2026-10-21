@@ -2593,6 +2593,12 @@ public class MainActivity extends Activity {
             try (InputStream in = getContentResolver().openInputStream(uri)) {
                 if (in == null) throw new IOException("Input stream unavailable");
                 ProjectMediaService.importProjectBundle(getFilesDir(), in, json -> {
+                    try {
+                        json = CraftEmailCredentialMigration.protect(json,
+                                (key, login, password) -> CraftEmailCredentialStore.save(this, key, login, password));
+                    } catch (Exception credentialFailure) {
+                        throw new IllegalArgumentException("Не удалось безопасно сохранить учётные данные Craft email", credentialFailure);
+                    }
                     try { validateImportedProject(json); }
                     catch (Exception invalid) { throw new IllegalArgumentException("Invalid imported project", invalid); }
                     try { return storeActiveProject(json, true); }
@@ -5934,6 +5940,25 @@ public class MainActivity extends Activity {
             form.addView(webHelp);
         }
 
+        final EditText craftEmailBodyField, craftEmailToField;
+        if (w.extraFields.optInt("craftComponentId", -1) == 28 || "Email Craft".equals(w.type)) {
+            craftEmailBodyField = propertyField(w.extraFields.optString("craftEmailBody", ""),
+                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+            craftEmailBodyField.setMinLines(2);
+            craftEmailBodyField.setHint("Текст письма");
+            form.addView(craftEmailBodyField);
+            craftEmailToField = propertyField(w.extraFields.optString("craftEmailTo", ""),
+                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+            craftEmailToField.setHint("Получатель");
+            form.addView(craftEmailToField);
+            TextView emailHelp = new TextView(this);
+            emailHelp.setText("Тема и текст сохраняются. Отправка email не подключена. Импортированные логин и пароль зашифрованы Android Keystore и не включаются в JSON проекта.");
+            form.addView(emailHelp);
+        } else {
+            craftEmailBodyField = null;
+            craftEmailToField = null;
+        }
+
         final EditText timerPresetField;
         final android.widget.Spinner timerUnitSelector;
         final android.widget.Spinner timerModeSelector;
@@ -6994,6 +7019,33 @@ public class MainActivity extends Activity {
                             return;
                         }
                     }
+                    if (craftEmailBodyField != null) {
+                        String title = textField.getText().toString();
+                        String body = craftEmailBodyField.getText().toString();
+                        String recipient = craftEmailToField.getText().toString().trim();
+                        if (title.length() > 120 || body.length() > 2000 || recipient.length() > 320) {
+                            Toast.makeText(MainActivity.this,
+                                    "Тема: до 120, текст: до 2000, адрес: до 320 символов", Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                        try {
+                            JSONObject sourceOther = w.extraFields.optJSONObject("craftOther");
+                            if (sourceOther == null) sourceOther = new JSONObject();
+                            sourceOther.put("title", title);
+                            sourceOther.put("body", body);
+                            sourceOther.put("emailTo", recipient);
+                            sourceOther.remove("emailLogin");
+                            sourceOther.remove("emailPassword");
+                            w.extraFields.put("craftOther", sourceOther);
+                            w.extraFields.put("craftEmailTitle", title);
+                            w.extraFields.put("craftEmailBody", body);
+                            w.extraFields.put("craftEmailTo", recipient);
+                            w.extraFields.put("craftEmailEnabled", false);
+                        } catch (org.json.JSONException failure) {
+                            Toast.makeText(MainActivity.this, "Не удалось сохранить настройки email", Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                    }
                     if (timerPresetField != null) {
                         String oldMode = FbdDurationUnits.modeForType(w.type);
                         String newMode = String.valueOf(timerModeSelector.getSelectedItem());
@@ -8024,6 +8076,19 @@ public class MainActivity extends Activity {
             android.util.Log.e("BLOODSKY", "Legacy project migration failed", failure);
             Toast.makeText(this, "Не удалось перенести старые файлы проекта. Проект не изменён.",
                     Toast.LENGTH_LONG).show();
+            return false;
+        }
+        try {
+            String protectedJson = CraftEmailCredentialMigration.protect(json,
+                    (key, login, password) -> CraftEmailCredentialStore.save(this, key, login, password));
+            if (!protectedJson.equals(json)) {
+                if (!storeActiveProject(protectedJson, true))
+                    throw new IOException("Не удалось сохранить защищённый проект");
+                json = protectedJson;
+            }
+        } catch (Exception failure) {
+            android.util.Log.e("BLOODSKY", "Could not protect legacy Craft email credentials", failure);
+            Toast.makeText(this, "Проект не открыт: не удалось защитить учётные данные email", Toast.LENGTH_LONG).show();
             return false;
         }
         fbdWireHistory.clear();
@@ -11116,7 +11181,21 @@ public class MainActivity extends Activity {
                     paint.setColor(Color.rgb(148, 163, 184));
                     paint.setTextSize(dp(9));
                     canvas.drawText("16 исходных ссылок сохранены", w.x + dp(12), w.y + w.h - dp(10), paint);
-} else if ("Голосовое сообщение".equals(w.type)) {
+                } else if ("Email Craft".equals(w.type)) {
+                    paint.setColor(Color.rgb(30, 41, 59));
+                    canvas.drawRoundRect(new RectF(w.x + dp(6), w.y + dp(6),
+                            w.x + w.w - dp(6), w.y + w.h - dp(6)), dp(4), dp(4), paint);
+                    paint.setColor(Color.rgb(203, 213, 225));
+                    paint.setTextSize(dp(11));
+                    canvas.drawText(w.text, w.x + dp(12), w.y + dp(19), paint);
+                    paint.setColor(Color.rgb(248, 113, 113));
+                    paint.setTextSize(dp(10));
+                    canvas.drawText("Отправка email не подключена",
+                            w.x + dp(12), w.y + w.h / 2 + dp(4), paint);
+                    paint.setColor(Color.rgb(148, 163, 184));
+                    paint.setTextSize(dp(9));
+                    canvas.drawText("Учётные данные защищены", w.x + dp(12), w.y + w.h - dp(10), paint);
+                } else if ("Голосовое сообщение".equals(w.type)) {
                     int voiceIdx = 0;
                     if (liveValues.containsKey(i)) {
                         try { voiceIdx = (int) Math.round(Double.parseDouble(liveValues.get(i))); } catch (Exception ignored) {}
