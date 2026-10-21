@@ -204,6 +204,7 @@ public final class CraftProjectImporter {
         else if (componentId == 9) type = "Звуковой сигнал"; // CustomComponents.c, looping alarm with five built-in sounds
         else if (componentId == 10) type = "SMS-уведомление"; // CustomComponents.w; outgoing action requires explicit opt-in
         else if (componentId == 21) type = "Звуковой сигнал Craft"; // CustomSound: eight bit-triggered tracks
+        else if (componentId == 25) type = "Уведомление Craft"; // CustomComponents.t; local opt-in, legacy FCM key is not reused
         else if (componentId == 19) type = "Шлюз Craft"; // CustomComponents.k, source/receive/trigger register gateway
         else if (componentId == 22) type = "Шлюз битовый"; // CustomComponents.l, source/receive/trigger bit gateway
         else if (componentId == 23) type = "Видео RTSP Craft"; // CustomComponents.f; preserve as disabled until source-backed player mapping
@@ -235,6 +236,7 @@ public final class CraftProjectImporter {
             displayText = other.optString("indicatorName", "");
         if (componentId == 10) displayText = other.optString("message", displayText);
         if (componentId == 21 && displayText.trim().isEmpty()) displayText = "Звуковой банк";
+        if (componentId == 25 && displayText.trim().isEmpty()) displayText = other.optString("title", "");
         widget.put("text", boundedString(displayText, 2000));
         // Craft's device-link encoding differs from BLOODSKY's tcp:// grammar.
         // Keep it for round-trip recovery without activating an unverified binding.
@@ -270,6 +272,12 @@ public final class CraftProjectImporter {
             }
             widget.put("craftSoundPaths", soundPaths);
             widget.put("craftSoundEnabled", false);
+        }
+        if (componentId == 25) {
+            widget.put("craftPushTitle", boundedString(other.optString("title", displayText), 120));
+            widget.put("craftPushBody", boundedString(other.optString("body", ""), 2000));
+            widget.put("craftPushTopic", boundedString(other.optString("to", ""), 200));
+            widget.put("craftPushEnabled", false);
         }
         if (componentId == 16) {
             String sourcePath = other.optString("pathGif", "").trim();
@@ -528,7 +536,7 @@ public final class CraftProjectImporter {
     }
 
     private static boolean isSupportedComponent(int id) {
-        return id == 1 || id == 2 || id == 4 || id == 5 || id == 6 || id == 7 || id == 9 || id == 10 || id == 11 || id == 12 || id == 13 || id == 16 || id == 17 || id == 18 || id == 20 || id == 21 || id == 22 || id == 23 || id == 24;
+        return id == 1 || id == 2 || id == 4 || id == 5 || id == 6 || id == 7 || id == 9 || id == 10 || id == 11 || id == 12 || id == 13 || id == 16 || id == 17 || id == 18 || id == 20 || id == 21 || id == 22 || id == 23 || id == 24 || id == 25;
     }
 
     private static String timerMode(int mode) {
