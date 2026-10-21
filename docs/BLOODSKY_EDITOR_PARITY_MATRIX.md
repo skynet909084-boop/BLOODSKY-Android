@@ -11,7 +11,7 @@ This matrix separates source-confirmed Kaskada Craft behavior from BLOODSKY impl
 | Resize | `StartResize(View)`, `Resizing(View)` | Handles respect minimum size; grid snapping does not cause jumps; geometry survives reopen |
 | Context properties | Component-specific settings and `connectionInfo` / `other` fields | Dialog is type-aware; changing a property updates the canvas and is saved |
 | Copy / cut / paste | `selectActionCopy`, `selectActionCut`, `selectActionPaste` | All widget properties and unknown metadata survive; pasted item gets a new identity and offset position |
-| Align | `alignSelectView`, `openDialogAlignComponents` | Alignment is deterministic and persists for all selected widgets |
+| Align | `alignSelectView`, `openDialogAlignComponents` | A single widget retains canvas alignment. Multi-selection now supports group-edge/center alignment, original max-width/max-height operations, and horizontal/vertical distribution across the selected bounds. `CanvasGroupAlignmentTest` covers geometry and the source fallback. Undo, bulk clipboard, and same-density visual acceptance remain open. |
 | Multiple screens | Screen navigation and per-screen component tables | Names, background colors, and widgets remain attached to the right screen through navigation and restart |
 | Project persistence | SQLite tables plus JSON/ZIP import-export | Save/reopen and export/import round trips preserve project name, geometry, colors, bindings, extra fields and assets |
 | Runtime / work mode | `onClickWorkToolbar`, runtime lifecycle | Runtime interactions do not accidentally move widgets; leaving runtime stops polling and releases resources |

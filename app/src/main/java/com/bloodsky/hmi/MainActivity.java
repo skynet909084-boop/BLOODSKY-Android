@@ -2708,9 +2708,65 @@ public class MainActivity extends Activity {
         Toast.makeText(this, "Элемент выровнен", Toast.LENGTH_SHORT).show();
     }
 
+    private void alignSelectedWidgets(String alignMode) {
+        if (editor == null || editor.selectedWidgets.size() < 2) return;
+        ArrayList<Integer> indexes = new ArrayList<>();
+        java.util.HashSet<Integer> seen = new java.util.HashSet<>();
+        for (int index : editor.selectedWidgets) {
+            if (index >= 0 && index < widgets.size() && seen.add(index)) indexes.add(index);
+        }
+        if (indexes.size() < 2) {
+            Toast.makeText(this, "Выбери несколько элементов", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        float[][] geometry = new float[indexes.size()][4];
+        for (int i = 0; i < indexes.size(); i++) {
+            Widget widget = widgets.get(indexes.get(i));
+            geometry[i][0] = widget.x;
+            geometry[i][1] = widget.y;
+            geometry[i][2] = widget.w;
+            geometry[i][3] = widget.h;
+        }
+        float[][] aligned = CanvasGroupAlignment.apply(geometry, alignMode);
+        for (int i = 0; i < indexes.size(); i++) {
+            Widget widget = widgets.get(indexes.get(i));
+            widget.x = aligned[i][0];
+            widget.y = aligned[i][1];
+            widget.w = aligned[i][2];
+            widget.h = aligned[i][3];
+        }
+        persistProject();
+        editor.invalidate();
+        Toast.makeText(this, "Элементы выровнены", Toast.LENGTH_SHORT).show();
+    }
+
     private void showAlignDialog() {
         if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
             Toast.makeText(this, "Выбери элемент на экране", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (editor.selectedWidgets.size() > 1) {
+            ArrayList<String> options = new ArrayList<>(java.util.Arrays.asList(
+                    "По левому краю группы", "По правому краю группы",
+                    "По верхнему краю группы", "По нижнему краю группы",
+                    "По центру группы горизонтально", "По центру группы вертикально"));
+            ArrayList<String> modes = new ArrayList<>(java.util.Arrays.asList(
+                    "left", "right", "top", "bottom", "center_h", "center_v"));
+            if (editor.selectedWidgets.size() >= 3) {
+                options.add("Распределить по горизонтали");
+                options.add("Распределить по вертикали");
+                modes.add("space_h");
+                modes.add("space_v");
+            }
+            options.add("Одинаковая максимальная ширина");
+            options.add("Одинаковая максимальная высота");
+            modes.add("max_width");
+            modes.add("max_height");
+            new AlertDialog.Builder(this)
+                    .setTitle("Выравнивание выбранных элементов")
+                    .setItems(options.toArray(new String[0]), (dialog, which) -> alignSelectedWidgets(modes.get(which)))
+                    .setNegativeButton("Отмена", null)
+                    .show();
             return;
         }
         String[] options = {"По левому краю", "По правому краю", "По верхнему краю", "По нижнему краю", "По центру (горизонт.)", "По центру (вертик.)"};
