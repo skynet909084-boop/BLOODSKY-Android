@@ -18,6 +18,7 @@ from original_craft_probe_contract import ProbeBudget, ProbeDeadlineExceeded, qu
 from original_craft_probe_checkpoint import (
     atomic_write_json, checkpoint_from_run, load_checkpoint, new_checkpoint,
 )
+from original_craft_probe_k107 import build_k107_report, load_case_matrix, map_action_to_case_ids
 
 OUT = Path(sys.argv[1])
 OUT.mkdir(parents=True, exist_ok=True)
@@ -32,6 +33,8 @@ MAX_RUNTIME_SECONDS = 5 * 60 if PROFILE == "quick" else 5 * 3600 + 45 * 60
 WAIT = 2.0
 APK_PROVENANCE = os.environ.get("ORIGINAL_CRAFT_APK_PROVENANCE", "unspecified")
 APK_SHA256 = os.environ.get("ORIGINAL_CRAFT_APK_SHA256", "")
+K107_MATRIX_PATH = Path(__file__).resolve().parents[1] / "docs/reference-kascada-107/full_function_test_matrix.json"
+K107_CASES = load_case_matrix(K107_MATRIX_PATH)
 metrics = {"adb_calls": 0, "adb_seconds": 0.0, "ui_dumps": 0, "screenshots": 0,
            "fresh_starts": 0, "path_replays": 0, "states_new": 0,
            "states_duplicate": 0, "timeouts": 0}
@@ -374,6 +377,7 @@ def save_checkpoint(complete=False):
         APK_PROVENANCE, APK_SHA256, coverage_limited, PROFILE,
     )
     atomic_write_json(OUT / "checkpoint.json", checkpoint)
+    k107_report = build_k107_report(K107_CASES, state_rows, OUT)
     report = {
         "app_package": PACKAGE,
         "apk_provenance": APK_PROVENANCE,
@@ -429,12 +433,17 @@ def save_checkpoint(complete=False):
         "project_loading_stalled_states": sum(1 for row in state_rows if row["project_loading_stalled"]),
         "states": state_rows,
         "transitions": transition_rows,
-        "k107_case_status": "WAITING_FOR_ANDROID_RUNTIME",
-        "k107_cases_total": 550,
-        "k107_cases_remaining": 550,
-        "k107_case_ids": [f"K107-{i:04d}" for i in range(1, 551)],
-        "k107_observations": [],
-        "k107_mapping_note": "The 550-case static matrix is proposed in PR #192 at docs/reference-kascada-107/full_function_test_matrix.json. Generic traversal does not establish its per-case assertions, so captures remain unassigned and all IDs stay WAITING.",
+        "k107_case_status": "WAITING",
+        "k107_cases_total": len(K107_CASES),
+        "k107_cases_remaining": len(k107_report["remaining_case_ids"]),
+        "k107_case_ids": [case["id"] for case in K107_CASES],
+        "k107_case_statuses": k107_report["case_statuses"],
+        "k107_remaining_case_ids": k107_report["remaining_case_ids"],
+        "k107_observations": k107_report["observations"],
+        "k107_mapped_case_count": k107_report["mapped_case_count"],
+        "k107_unmapped_state_count": k107_report["unmapped_state_count"],
+        "k107_source_matrix": "docs/reference-kascada-107/full_function_test_matrix.json",
+        "k107_mapping_note": "Case links match only exact accessibility resource IDs named in the source test step. A generic traversal does not run every expected assertion, so linked cases remain WAITING until case-specific acceptance is complete.",
         "runtime_error_log": "android-runtime-errors.log",
         "limitations": [
             "Quick profile targets the Craft ID17 palette-to-properties path; it is a focused sample, never a complete UI audit.",
@@ -504,7 +513,9 @@ def capture_state(path):
     if loading_stalled:
         screenshot_hash = ""
     path_labels = [a["label"] for a in path]
-    row = {"state": label, "signature": signature, "path": path_labels, "control_count": len(ctrls),
+    case_ids = map_action_to_case_ids(path[-1], K107_CASES) if path else []
+    row = {"state": label, "signature": signature, "path": path_labels,
+           "k107_case_ids": case_ids, "control_count": len(ctrls),
            "controls": ctrls, "screenshot_sha256": screenshot_hash,
            "project_loading_stalled": loading_stalled}
     state_rows.append(row)
