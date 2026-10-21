@@ -84,6 +84,23 @@ public class FbdCraftTypedWireContractsTest {
         assertTrue(wire("FBD Вход", "Q", "FBD CRAFT MQTT PUB INT", "EN"));
     }
 
+    @Test public void namedVariablePortsKeepTheirOriginalDynamicType() throws Exception {
+        assertEquals("BOOL", FbdCraftPinTypes.typeForBlock(
+                "FBD CRAFT VAR NAME IN BOOL", "Q", true));
+        assertEquals("INT", FbdCraftPinTypes.typeForBlock(
+                "FBD CRAFT VAR NAME IN INT", "Q", true));
+        assertEquals("FLOAT", FbdCraftPinTypes.typeForBlock(
+                "FBD CRAFT VAR NAME OUT FLOAT", "IN", false));
+        assertTrue(wire("FBD CRAFT VAR NAME IN INT", "Q",
+                "FBD CRAFT VAR NAME OUT INT", "IN"));
+        assertTrue(wire("FBD CRAFT VAR NAME IN FLOAT", "Q",
+                "FBD CRAFT VAR NAME OUT FLOAT", "IN"));
+        assertFalse(wire("FBD CRAFT VAR NAME IN INT", "Q",
+                "FBD CRAFT VAR NAME OUT FLOAT", "IN"));
+        assertArrayEquals(new String[0], MainActivity.compatibleFbdTargetPins(
+                "FBD CRAFT VAR NAME IN INT", "Q", "FBD CRAFT VAR NAME OUT FLOAT"));
+    }
+
     private static boolean wire(String sourceType, String sourcePin, String targetType,
                                 String targetPin) throws Exception {
         return wire(sourceType, sourcePin, targetType, targetPin, null, null);
