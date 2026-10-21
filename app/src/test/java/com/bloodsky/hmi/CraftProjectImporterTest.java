@@ -478,6 +478,7 @@ public class CraftProjectImporterTest {
         assertEquals("SMS-уведомление", action.getString("type"));
         assertEquals("Alarm %1", action.getString("text"));
         assertEquals("", action.getString("connectionInfo"));
+        assertFalse(action.has("craftUnsupportedComponent"));
         assertFalse(action.getBoolean("smsEnabled"));
         assertTrue(action.getBoolean("craftSmsOption"));
         assertEquals(42, action.getInt("craftSmsOptionRegister"));
