@@ -101,6 +101,14 @@ public final class CraftProjectExporter {
                         String key = keys.next();
                         merged.put(key, editedOther.get(key));
                     }
+                    // Craft VarOutFloat stores these preferences under legacy
+                    // names; the editor/runtime use the normalized names.
+                    if (widget.optInt("craftComponentId", -1) == 109) {
+                        if (widget.has("craftSwapWord"))
+                            merged.put("isHighRegister", widget.optBoolean("craftSwapWord"));
+                        if (widget.has("craftSwapByte"))
+                            merged.put("isHighByte", widget.optBoolean("craftSwapByte"));
+                    }
                     Object raw = source.opt("jsTableComponent_other");
                     output.put("jsTableComponent_other", raw instanceof String ? merged.toString() : merged);
                 }

@@ -114,7 +114,8 @@ public class FbdCraftRegisterGraphTest {
                         .put("reg", 10).put("isConstant", true).put("constant", "1.5"));
         JSONObject sinkFloat = new JSONObject().put("componentId", "109").put("text", "Float out")
                 .put("jsTableComponent_other", new JSONObject().put("numScreen", 1)
-                        .put("reg", 1000).put("isHighRegister", true).put("isHighByte", true));
+                        .put("reg", 1000).put("isHighRegister", true).put("isHighByte", true)
+                        .put("vendorFloatOption", "keep"));
         JSONObject sourceProject = new JSONObject()
                 .put("TableNameProject", new JSONObject().put("name", "Float order").put("countScreen", 1))
                 .put("TableComponent", new JSONArray().put(sourceFloat).put(sinkFloat))
@@ -127,6 +128,16 @@ public class FbdCraftRegisterGraphTest {
         assertTrue(output.extraFields.getBoolean("isHighByte"));
         assertTrue(output.extraFields.getBoolean("craftSwapWord"));
         assertTrue(output.extraFields.getBoolean("craftSwapByte"));
+        JSONObject editedProject = new JSONObject(imported.toString());
+        JSONObject editedSink = editedProject.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(1);
+        editedSink.put("craftSwapWord", false).put("craftSwapByte", true);
+        JSONObject exported = new JSONObject(CraftProjectExporter.export(editedProject.toString()));
+        JSONObject exportedOther = exported.getJSONArray("TableComponent").getJSONObject(1)
+                .getJSONObject("jsTableComponent_other");
+        assertFalse(exportedOther.getBoolean("isHighRegister"));
+        assertTrue(exportedOther.getBoolean("isHighByte"));
+        assertEquals("keep", exportedOther.getString("vendorFloatOption"));
         List<MainActivity.Widget> nodes = Arrays.asList(value, output);
         List<MainActivity.FbdConnection> edges = Arrays.asList(
                 MainActivity.pinnedFbdConnection(0, "Q", 1, "IN"));
