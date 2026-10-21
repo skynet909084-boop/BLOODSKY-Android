@@ -25,11 +25,33 @@ public final class CraftEmailCredentialMigration {
                 }
             }
             protectWidgets(project.optJSONArray("widgets"), sink, changed);
+            protectCraftSource(project, changed);
         } else if (parsed instanceof JSONArray) {
             JSONArray widgets = (JSONArray) parsed;
             protectWidgets(widgets, sink, changed);
         }
         return changed[0] ? parsed.toString() : json;
+    }
+
+    private static void protectCraftSource(JSONObject project, boolean[] changed) throws Exception {
+        JSONObject source = project.optJSONObject("craftSource");
+        JSONArray components = source == null ? null : source.optJSONArray("TableComponent");
+        if (components == null) return;
+        for (int i = 0; i < components.length(); i++) {
+            JSONObject component = components.optJSONObject(i);
+            if (component == null || component.optInt("componentId", -1) != 28) continue;
+            Object rawOther = component.opt("jsTableComponent_other");
+            JSONObject other;
+            boolean wasString = rawOther instanceof String;
+            if (rawOther instanceof JSONObject) other = (JSONObject) rawOther;
+            else if (wasString) other = new JSONObject((String) rawOther);
+            else continue;
+            if (!other.has("emailLogin") && !other.has("emailPassword")) continue;
+            other.remove("emailLogin");
+            other.remove("emailPassword");
+            component.put("jsTableComponent_other", wasString ? other.toString() : other);
+            changed[0] = true;
+        }
     }
 
     private static void protectWidgets(JSONArray widgets, CredentialSink sink, boolean[] changed) throws Exception {

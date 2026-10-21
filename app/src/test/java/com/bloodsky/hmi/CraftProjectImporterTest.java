@@ -913,6 +913,10 @@ public class CraftProjectImporterTest {
         assertEquals("keep", widget.getJSONObject("craftOther").getString("futureField"));
         assertFalse(widget.getJSONObject("craftOther").has("emailLogin"));
         assertFalse(widget.getJSONObject("craftOther").has("emailPassword"));
+        JSONObject craftSourceComponent = new JSONObject(protectedJson).getJSONObject("craftSource")
+                .getJSONArray("TableComponent").getJSONObject(0);
+        assertFalse(craftSourceComponent.getJSONObject("jsTableComponent_other").has("emailLogin"));
+        assertFalse(craftSourceComponent.getJSONObject("jsTableComponent_other").has("emailPassword"));
         assertFalse(protectedJson.contains("sender@example.test"));
         assertFalse(protectedJson.contains("secret-value"));
 
