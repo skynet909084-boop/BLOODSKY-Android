@@ -45,6 +45,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.URI;
@@ -8825,11 +8826,9 @@ public class MainActivity extends Activity {
         String targetExact = FbdCraftPinTypes.typeForBlock(targetType, targetPin, false);
         if (!FbdCraftPinTypes.compatible(sourceExact, targetExact)) return false;
         if (sourceKnown != null && edge.has("sourceSignalType")
-                && !("ANY".equalsIgnoreCase(edge.optString("sourceSignalType"))
-                || sourceKnown.equalsIgnoreCase(edge.optString("sourceSignalType")))) return false;
+                && !isCompatibleFbdSignalMetadata(sourceKnown, edge.optString("sourceSignalType"))) return false;
         if (targetKnown != null && edge.has("targetSignalType")
-                && !("ANY".equalsIgnoreCase(edge.optString("targetSignalType"))
-                || targetKnown.equalsIgnoreCase(edge.optString("targetSignalType")))) return false;
+                && !isCompatibleFbdSignalMetadata(targetKnown, edge.optString("targetSignalType"))) return false;
         return true;
     }
 
@@ -8852,12 +8851,19 @@ public class MainActivity extends Activity {
         String targetExact = FbdCraftPinTypes.typeForWidget(targetWidget, targetPin, false);
         if (!FbdCraftPinTypes.compatible(sourceExact, targetExact)) return false;
         if (sourceKnown != null && edge.has("sourceSignalType")
-                && !("ANY".equalsIgnoreCase(edge.optString("sourceSignalType"))
-                || sourceKnown.equalsIgnoreCase(edge.optString("sourceSignalType")))) return false;
+                && !isCompatibleFbdSignalMetadata(sourceKnown, edge.optString("sourceSignalType"))) return false;
         if (targetKnown != null && edge.has("targetSignalType")
-                && !("ANY".equalsIgnoreCase(edge.optString("targetSignalType"))
-                || targetKnown.equalsIgnoreCase(edge.optString("targetSignalType")))) return false;
+                && !isCompatibleFbdSignalMetadata(targetKnown, edge.optString("targetSignalType"))) return false;
         return true;
+    }
+
+    private static boolean isCompatibleFbdSignalMetadata(String pinType, String storedType) {
+        if (pinType == null || storedType == null) return true;
+        if ("ANY".equalsIgnoreCase(storedType)) return true;
+        if ("BOOL".equalsIgnoreCase(pinType) || "BOOL".equalsIgnoreCase(storedType))
+            return pinType.equalsIgnoreCase(storedType);
+        return FbdCraftPinTypes.compatible(pinType.toUpperCase(Locale.ROOT),
+                storedType.toUpperCase(Locale.ROOT));
     }
 
     /** Validate pin metadata on import while leaving legacy unpinned connections intact. */
