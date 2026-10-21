@@ -98,4 +98,24 @@ public class FbdCraftOutputInversionTest {
         // A complete but invalid typed graph must not turn the evaluator's safe false into true.
         assertFalse(evaluate(mismatched, wrongTypes, 2));
     }
+
+    @Test public void craftBlinkInversionWorksWithSavedPresetAndOnlyItsRequiredBooleanInput() throws Exception {
+        MainActivity.Widget input = block("FBD Вход");
+        MainActivity.Widget blink = block("FBD CRAFT BLINK");
+        blink.timerPresetMs = 250;
+        blink.extraFields.put("invertOut", true);
+        List<MainActivity.Widget> widgets = Arrays.asList(input, blink);
+        List<MainActivity.FbdConnection> edges = Arrays.asList(
+                MainActivity.pinnedFbdConnection(0, "Q", 1, "IN"));
+
+        assertTrue("A source connected to IN is enough when BLINK uses its saved PT", evaluate(widgets, edges, 1));
+
+        MainActivity.Widget wrongPresetType = block("FBD Вход");
+        List<MainActivity.Widget> malformed = Arrays.asList(input, wrongPresetType, blink);
+        List<MainActivity.FbdConnection> malformedEdges = Arrays.asList(
+                MainActivity.pinnedFbdConnection(0, "Q", 2, "IN"),
+                MainActivity.pinnedFbdConnection(1, "Q", 2, "PT"));
+        assertFalse("A BOOL wired to numeric PT must not enable output inversion",
+                evaluate(malformed, malformedEdges, 2));
+    }
 }
