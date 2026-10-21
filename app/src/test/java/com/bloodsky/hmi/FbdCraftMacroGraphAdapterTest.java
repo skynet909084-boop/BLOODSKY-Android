@@ -222,8 +222,8 @@ public class FbdCraftMacroGraphAdapterTest {
     @Test public void importedMacroMqttSubscriberReceivesTypedRuntimeValues() throws Exception {
         JSONObject originalChild = new JSONObject().put("componentId", 139)
                 .put("x", 0).put("y", 0).put("saveKey", 50).put("keyOut", 900)
-                .put("craftMqttTopic", "plant/temperature").put("craftMqttType", 1)
-                .put("craftMqttServer", 2).put("nMcr", "TemperatureIn")
+                .put("topic", "plant/temperature").put("typeQ", 1)
+                .put("numMqttServer", 2).put("nMcr", "TemperatureIn")
                 .put("unIdMcr", 52);
         JSONObject root = new JSONObject().put("name", "TemperatureIn").put("uniqueId", 52)
                 .put("countIn", 0).put("typeOut", 1).put("nameOut", "Q")
