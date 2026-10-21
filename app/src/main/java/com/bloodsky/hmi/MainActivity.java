@@ -5721,21 +5721,29 @@ public class MainActivity extends Activity {
         if ("Шкала / Стрелка".equals(w.type) || "Прогресс-бар".equals(w.type) || "График / Тренд".equals(w.type)) {
             boolean sourceThresholdGauge = "Шкала / Стрелка".equals(w.type)
                     && w.extraFields.optInt("craftComponentId", -1) == 12;
+            boolean sourceGraduatedGauge = "Шкала / Стрелка".equals(w.type)
+                    && w.extraFields.optInt("craftComponentId", -1) == 24;
             TextView rangeLabel = new TextView(this);
-            rangeLabel.setText(sourceThresholdGauge ? "Максимум исходной шкалы Craft" : "Диапазон шкалы (минимум / максимум)");
+            rangeLabel.setText(sourceThresholdGauge ? "Максимум исходной шкалы Craft"
+                    : sourceGraduatedGauge ? "Диапазон Craft minGauge / maxGauge"
+                    : "Диапазон шкалы (минимум / максимум)");
             rangeLabel.setPadding(0, dp(10), 0, 0);
             form.addView(rangeLabel);
             if (sourceThresholdGauge) {
                 minValField = null;
             } else {
-                minValField = propertyField(Double.toString(w.minValue), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-                minValField.setHint("Минимум (например 0)");
+                int minInputType = sourceGraduatedGauge
+                        ? InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED
+                        : InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL;
+                minValField = propertyField(Double.toString(w.minValue), minInputType);
+                minValField.setHint(sourceGraduatedGauge ? "Минимум шкалы (целое число)" : "Минимум (например 0)");
                 form.addView(minValField);
             }
-            maxValField = propertyField(Double.toString(w.maxValue), sourceThresholdGauge
+            maxValField = propertyField(Double.toString(w.maxValue), sourceThresholdGauge || sourceGraduatedGauge
                     ? InputType.TYPE_CLASS_NUMBER
                     : InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-            maxValField.setHint(sourceThresholdGauge ? "Максимум (целое число от 1)" : "Максимум (например 100)");
+            maxValField.setHint(sourceThresholdGauge ? "Максимум (целое число от 1)"
+                    : sourceGraduatedGauge ? "Максимум шкалы (целое число)" : "Максимум (например 100)");
             form.addView(maxValField);
         } else {
             minValField = null;
@@ -5789,6 +5797,90 @@ public class MainActivity extends Activity {
             gaugeCenterColorField = null;
             gaugeFirstColorPointField = null;
             gaugeSecondColorPointField = null;
+        }
+
+        final EditText graduatedGaugeMinField;
+        final EditText graduatedGaugeMaxField;
+        final EditText graduatedGaugeCountField;
+        final EditText graduatedGaugeTextSizeField;
+        final EditText graduatedGaugeTextValueColorField;
+        final EditText graduatedGaugeTextScaleColorField;
+        final EditText graduatedGaugeCenterColorField;
+        final EditText graduatedGaugeIndicatorColorField;
+        final EditText graduatedGaugeMarkColorField;
+        final EditText graduatedGaugeLowPercentField;
+        final EditText graduatedGaugeMediumPercentField;
+        final android.widget.CheckBox graduatedGaugeHideBackgroundField;
+        final Spinner graduatedGaugeIndicatorField;
+        if ("Шкала / Стрелка".equals(w.type)
+                && w.extraFields.optInt("craftComponentId", -1) == 24) {
+            TextView graduatedLabel = new TextView(this);
+            graduatedLabel.setText("Свойства градуированной шкалы Craft");
+            graduatedLabel.setPadding(0, dp(10), 0, 0);
+            form.addView(graduatedLabel);
+            graduatedGaugeMinField = minValField;
+            graduatedGaugeMaxField = maxValField;
+            graduatedGaugeCountField = propertyField(Integer.toString(
+                    w.extraFields.optInt("craftGaugeScaleCount", 6)), InputType.TYPE_CLASS_NUMBER);
+            graduatedGaugeCountField.setHint("Число делений (0–64)");
+            form.addView(graduatedGaugeCountField);
+            graduatedGaugeTextSizeField = propertyField(Integer.toString(
+                    w.extraFields.optInt("craftGaugeTextSize", 20)), InputType.TYPE_CLASS_NUMBER);
+            graduatedGaugeTextSizeField.setHint("Размер текста (1–256 px)");
+            form.addView(graduatedGaugeTextSizeField);
+            graduatedGaugeTextValueColorField = propertyField(String.format(java.util.Locale.ROOT, "#%06X",
+                    0xFFFFFF & w.extraFields.optInt("craftGaugeTextValueColor", Color.BLACK)), InputType.TYPE_CLASS_TEXT);
+            graduatedGaugeTextValueColorField.setHint("Цвет текущего значения");
+            form.addView(graduatedGaugeTextValueColorField);
+            graduatedGaugeTextScaleColorField = propertyField(String.format(java.util.Locale.ROOT, "#%06X",
+                    0xFFFFFF & w.extraFields.optInt("craftGaugeTextScaleColor", Color.BLACK)), InputType.TYPE_CLASS_TEXT);
+            graduatedGaugeTextScaleColorField.setHint("Цвет подписей шкалы");
+            form.addView(graduatedGaugeTextScaleColorField);
+            graduatedGaugeCenterColorField = propertyField(String.format(java.util.Locale.ROOT, "#%06X",
+                    0xFFFFFF & w.extraFields.optInt("craftGaugeCenterColor", Color.parseColor("#BFBFBF"))), InputType.TYPE_CLASS_TEXT);
+            graduatedGaugeCenterColorField.setHint("Цвет центральной окружности");
+            form.addView(graduatedGaugeCenterColorField);
+            graduatedGaugeIndicatorColorField = propertyField(String.format(java.util.Locale.ROOT, "#%06X",
+                    0xFFFFFF & w.extraFields.optInt("craftGaugeIndicatorColor", Color.BLUE)), InputType.TYPE_CLASS_TEXT);
+            graduatedGaugeIndicatorColorField.setHint("Цвет указателя");
+            form.addView(graduatedGaugeIndicatorColorField);
+            graduatedGaugeMarkColorField = propertyField(String.format(java.util.Locale.ROOT, "#%06X",
+                    0xFFFFFF & w.extraFields.optInt("craftGaugeMarkColor", Color.BLACK)), InputType.TYPE_CLASS_TEXT);
+            graduatedGaugeMarkColorField.setHint("Цвет меток");
+            form.addView(graduatedGaugeMarkColorField);
+            graduatedGaugeLowPercentField = propertyField(Integer.toString(
+                    w.extraFields.optInt("craftGaugeLowPercent", 75)), InputType.TYPE_CLASS_NUMBER);
+            graduatedGaugeLowPercentField.setHint("Нижний порог цветовой зоны, %");
+            form.addView(graduatedGaugeLowPercentField);
+            graduatedGaugeMediumPercentField = propertyField(Integer.toString(
+                    w.extraFields.optInt("craftGaugeMediumPercent", 90)), InputType.TYPE_CLASS_NUMBER);
+            graduatedGaugeMediumPercentField.setHint("Верхний порог цветовой зоны, %");
+            form.addView(graduatedGaugeMediumPercentField);
+            graduatedGaugeHideBackgroundField = new android.widget.CheckBox(this);
+            graduatedGaugeHideBackgroundField.setText("Скрывать фон шкалы");
+            graduatedGaugeHideBackgroundField.setChecked(
+                    w.extraFields.optBoolean("craftGaugeHideBackground", false));
+            form.addView(graduatedGaugeHideBackgroundField);
+            graduatedGaugeIndicatorField = new Spinner(this);
+            String[] indicatorNames = new String[]{"HalfLineIndicator", "KiteIndicator",
+                    "LineIndicator", "NeedleIndicator", "NormalIndicator", "NormalSmallIndicator",
+                    "QuarterLineIndicator", "SpindleIndicator", "TriangleIndicator"};
+            graduatedGaugeIndicatorField.setAdapter(new ArrayAdapter<>(this,
+                    android.R.layout.simple_spinner_item, indicatorNames));
+            ((ArrayAdapter<?>) graduatedGaugeIndicatorField.getAdapter()).setDropDownViewResource(
+                    android.R.layout.simple_spinner_dropdown_item);
+            String currentIndicator = w.extraFields.optString("craftGaugeIndicatorName", "NormalIndicator");
+            for (int i = 0; i < indicatorNames.length; i++)
+                if (indicatorNames[i].equals(currentIndicator)) graduatedGaugeIndicatorField.setSelection(i);
+            form.addView(graduatedGaugeIndicatorField);
+        } else {
+            graduatedGaugeMinField = null; graduatedGaugeMaxField = null;
+            graduatedGaugeCountField = null; graduatedGaugeTextSizeField = null;
+            graduatedGaugeTextValueColorField = null; graduatedGaugeTextScaleColorField = null;
+            graduatedGaugeCenterColorField = null; graduatedGaugeIndicatorColorField = null;
+            graduatedGaugeMarkColorField = null; graduatedGaugeLowPercentField = null;
+            graduatedGaugeMediumPercentField = null; graduatedGaugeHideBackgroundField = null;
+            graduatedGaugeIndicatorField = null;
         }
 
         final android.widget.CheckBox progressShowTextField;
@@ -6490,6 +6582,36 @@ public class MainActivity extends Activity {
                                             w.extraFields.optInt("craftGaugeFirstColorPoint", 0), true),
                                     readPositiveInt(gaugeSecondColorPointField,
                                             w.extraFields.optInt("craftGaugeSecondColorPoint", 0), true));
+                        } catch (IllegalArgumentException | org.json.JSONException invalid) {
+                            Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                    }
+                    if (graduatedGaugeCountField != null) {
+                        try {
+                            CraftGraduatedGaugeProperties.apply(w.extraFields,
+                                    (int) Math.round(readDouble(graduatedGaugeMinField, w.minValue)),
+                                    (int) Math.round(readDouble(graduatedGaugeMaxField, w.maxValue)),
+                                    readPositiveInt(graduatedGaugeCountField,
+                                            w.extraFields.optInt("craftGaugeScaleCount", 6), true),
+                                    readPositiveInt(graduatedGaugeTextSizeField,
+                                            w.extraFields.optInt("craftGaugeTextSize", 20), false),
+                                    parseOptionalColor(graduatedGaugeTextValueColorField.getText().toString(),
+                                            w.extraFields.optInt("craftGaugeTextValueColor", Color.BLACK)),
+                                    parseOptionalColor(graduatedGaugeTextScaleColorField.getText().toString(),
+                                            w.extraFields.optInt("craftGaugeTextScaleColor", Color.BLACK)),
+                                    parseOptionalColor(graduatedGaugeCenterColorField.getText().toString(),
+                                            w.extraFields.optInt("craftGaugeCenterColor", Color.parseColor("#BFBFBF"))),
+                                    parseOptionalColor(graduatedGaugeIndicatorColorField.getText().toString(),
+                                            w.extraFields.optInt("craftGaugeIndicatorColor", Color.BLUE)),
+                                    parseOptionalColor(graduatedGaugeMarkColorField.getText().toString(),
+                                            w.extraFields.optInt("craftGaugeMarkColor", Color.BLACK)),
+                                    readPositiveInt(graduatedGaugeLowPercentField,
+                                            w.extraFields.optInt("craftGaugeLowPercent", 75), true),
+                                    readPositiveInt(graduatedGaugeMediumPercentField,
+                                            w.extraFields.optInt("craftGaugeMediumPercent", 90), true),
+                                    graduatedGaugeHideBackgroundField.isChecked(),
+                                    String.valueOf(graduatedGaugeIndicatorField.getSelectedItem()));
                         } catch (IllegalArgumentException | org.json.JSONException invalid) {
                             Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show();
                             return;
