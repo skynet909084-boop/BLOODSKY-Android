@@ -118,4 +118,21 @@ public class FbdCraftOutputInversionTest {
         assertFalse("A BOOL wired to numeric PT must not enable output inversion",
                 evaluate(malformed, malformedEdges, 2));
     }
+
+    @Test public void outputInversionGateUsesExactNumericPinTypes() {
+        MainActivity.Widget integer = block("FBD CRAFT VAR INT");
+        MainActivity.Widget floating = block("FBD CRAFT VAR FLOAT");
+        MainActivity.Widget blink = block("FBD CRAFT BLINK");
+        assertTrue(MainActivity.areFbdPinTypesCompatible(integer, "Q", blink, "PT",
+                MainActivity.knownFbdPinType(integer.type, "Q", true),
+                MainActivity.knownFbdPinType(blink.type, "PT", false)));
+        assertFalse(MainActivity.areFbdPinTypesCompatible(floating, "Q", blink, "PT",
+                MainActivity.knownFbdPinType(floating.type, "Q", true),
+                MainActivity.knownFbdPinType(blink.type, "PT", false)));
+
+        MainActivity.Widget intCompare = block("FBD CRAFT COMPARE");
+        assertFalse(MainActivity.areFbdPinTypesCompatible(floating, "Q", intCompare, "IN1",
+                MainActivity.knownFbdPinType(floating.type, "Q", true),
+                MainActivity.knownFbdPinType(intCompare.type, "IN1", false)));
+    }
 }
