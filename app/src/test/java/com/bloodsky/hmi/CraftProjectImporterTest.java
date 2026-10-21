@@ -107,11 +107,13 @@ public class CraftProjectImporterTest {
         assertEquals(1, first.length());
         assertEquals(2, second.length());
         JSONObject numeric = first.getJSONObject(0);
-        assertEquals("Текст", numeric.getString("type"));
         assertEquals(12.5, numeric.getDouble("x"), 0.001);
+        assertEquals(OriginalCraftNumericIndicator.TYPE, numeric.getString("type"));
         assertEquals("", numeric.getString("connectionInfo"));
         assertEquals("legacy-device-binding", numeric.getString("craftConnectionInfo"));
         assertEquals(2, numeric.getJSONObject("craftOther").getInt("digit"));
+        assertEquals(2, numeric.getInt("craftNumericIndicatorDigits"));
+        assertEquals(0, numeric.getInt("craftNumericIndicatorType"));
         assertEquals("Индикатор", second.getJSONObject(0).getString("type"));
         assertEquals("Прогресс-бар", second.getJSONObject(1).getString("type"));
         assertEquals(100.0, second.getJSONObject(1).getDouble("maxValue"), 0.001);

@@ -197,8 +197,9 @@ public final class CraftProjectImporter {
         JSONObject widget = new JSONObject();
         String type;
         if (componentId == 1) type = OriginalCraftSwitch.TYPE; // CustomComponents.y, eight original switch skins
-        else if (componentId == 2 || componentId == 4) type = "Текст"; // label / numeric display
         else if (componentId == 5) type = "Индикатор"; // Craft two-state image
+        else if (componentId == 2) type = "Текст"; // Craft label
+        else if (componentId == 4) type = OriginalCraftNumericIndicator.TYPE; // CustomComponents.u, digital register display
         else if (componentId == 9) type = "Звуковой сигнал"; // CustomComponents.c, looping alarm with five built-in sounds
         else if (componentId == 19) type = "Шлюз Craft"; // CustomComponents.k, source/receive/trigger register gateway
         else if (componentId == 22) type = "Шлюз битовый"; // CustomComponents.l, source/receive/trigger bit gateway
@@ -273,6 +274,13 @@ public final class CraftProjectImporter {
             widget.put("craftGaugeScaleCount", boundedInt(other.opt("countTextScale"), 0, 0, 64));
             widget.put("craftGaugeHideBackground", other.optBoolean("hideBackground", false));
             widget.put("craftGaugeKind", "graduated");
+        }
+        if (componentId == 4) {
+            widget.put("craftNumericIndicatorType", Math.max(0, Math.min(3, other.optInt("type", 0))));
+            widget.put("craftNumericIndicatorDigits", Math.max(1, Math.min(18, other.optInt("digit", 5))));
+            widget.put("craftNumericIndicatorDecimals", Math.max(0, Math.min(9, other.optInt("divisor", 0))));
+            widget.put("craftNumericIndicatorFontChange", other.optBoolean("fontChange", false));
+            widget.put("craftNumericIndicatorFrame", other.optBoolean("enableFrameRegister", false));
         }
         if (componentId == 15) {
             widget.put("craftArchiveChannelCount", boundedInt(other.opt("countChannel"), 1, 1, 4));
