@@ -542,3 +542,10 @@ Eight open PRs were found. #188, #191, #192 and #197 target `prototype/all-in-on
 
 - PR #191's intermediate regression fix at `5a5e3c2f938d2d4550d1cde5c4823ceee2d97300` still expected two slashes in a Python raw string; run #1258 correctly caught that test defect. The expected raw string is now corrected to one slash in `830ec27c712d3a9679c51fed3997e69a8f1757a5`; exact-head APK/JUnit #1259 (run 39507061681) is running and UI #894 (run 39507061334) is queued. Do not treat the failed intermediate run as evidence about app behavior.
 - PR #188 exact-head APK/JUnit #1256 (run 39506790310) is green, including prepared-resource Python tests, Android tests and APK build. Android API 30 UI run #891 (39506790196) remains in progress.
+
+## 21 Oct follow-up — emulator findings
+
+- PR #188 exact-head APK/JUnit #1256 and full Android API 30 UI smoke #891 (run 39506790196) both passed. This is evidence for the tested BLOODSKY scenarios in that smoke, not full parity.
+- PR #191 exact-head APK/JUnit #1259 passed, but UI smoke #894 (run 39507061334) failed. The job has no retrievable artifact from the Actions artifact API in this check; detailed job-log fetch returned a transport error, so the UI root cause is still unresolved. Keep PR open and do not infer an application regression until diagnostics are recovered.
+- Original full run #174 (39504354431) installed the exact published Release APK (source original-release, required SHA-256 verified), then captured only 162 states / 161 transitions before adb shell input tap 719 79 timed out after 45 seconds. Report coverage_complete=false, execution_finished=false, and unique_state_signatures=0. Review found capture_state never inserted a signature after checking the dedup set. PR #198 now adds the missing registration and a focused helper test; latest exact-head APK/JUnit #1263 and full emulator probe #178 are queued.
+- Run #174 is PARTIAL, not PASS. K107 statuses stay 0 PASS / 0 FAIL / 0 BLOCKED / 550 WAITING / 0 retest; unified readiness stays 5/139. Resume/replay remains an open follow-up under issue #196. Stable main unchanged.
