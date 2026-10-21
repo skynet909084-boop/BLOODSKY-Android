@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "app/src/main/java/com/bloodsky/hmi/MainActivity.java"
 WORKFLOW = ROOT / ".github/workflows/android-apk.yml"
 TCP_CLIENT = ROOT / "app/src/main/java/com/bloodsky/hmi/ModbusTcpClient.java"
+MEDIA_SERVICE = ROOT / "app/src/main/java/com/bloodsky/hmi/ProjectMediaService.java"
 
 
 class AndroidSourceContractTests(unittest.TestCase):
@@ -36,6 +37,19 @@ class AndroidSourceContractTests(unittest.TestCase):
     def test_atomic_save_and_load(self):
         self.assertIn("saveProjectAtomic(", self.source)
         self.assertIn("loadProjectAtomic(", self.source)
+
+    def test_project_deletion_cleans_only_private_media_after_catalog_commit(self):
+        delete_start = self.source.index("private void deleteSavedProject(")
+        delete_end = self.source.index("private void showModbusScanner()", delete_start)
+        delete_method = self.source[delete_start:delete_end]
+        commit = delete_method.index("if (!edit.commit())")
+        cleanup = delete_method.index("ProjectMediaService.deleteProjectMedia(")
+        self.assertLess(commit, cleanup)
+        self.assertIn("selected.toString()", delete_method[cleanup:])
+        service = MEDIA_SERVICE.read_text(encoding="utf-8")
+        self.assertIn("public static boolean deleteProjectMedia(", service)
+        self.assertIn('new File(appRoot, "projects")', service)
+        self.assertIn("canonical.getPath().startsWith(projectRoot + File.separator)", service)
 
     def test_zip_export_and_import(self):
         self.assertIn("exportProjectToZip(", self.source)

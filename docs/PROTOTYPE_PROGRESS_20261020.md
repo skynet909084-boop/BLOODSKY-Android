@@ -500,3 +500,9 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 - The Craft probe artifact audit is recorded in [CRAFT_PROBE_172_ARTIFACT_AUDIT_20261020.md](CRAFT_PROBE_172_ARTIFACT_AUDIT_20261020.md): all ten artifacts were opened, but all ten report `coverage_complete=false`; no direction is exhaustive.
 - Android 12 UI smoke run [#861](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39452421413) remains the next gate for PR #188. It is running on PR head `eefa0469b8a2193c8c4dc836f59af5b31032c52d`, based before subsequent prototype commits. Do not merge it until the full run passes and the branch is synchronized with the current prototype head.
 - Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+## Project deletion media cleanup — 21 Oct 2026
+
+- Issue [#208](https://github.com/skynet909084-boop/BLOODSKY-Android/issues/208) records a confirmed storage lifecycle gap: after a project was removed from the saved catalog, all its app-private media generations remained on disk.
+- A focused change removes only that project's hashed private directory after the catalog commit succeeds, validates canonical paths, and keeps other project directories intact. Regression coverage includes two generations, an unrelated project, repeated deletion and missing identity.
+- Local Python suite: 167 passed; `git diff --check`: passed. Gradle unit tests and APK assembly: **NOT RUN** because Gradle and the wrapper are absent. Exact-head Android CI is pending; no UI or device acceptance is claimed.
