@@ -13,6 +13,19 @@ public class CraftGraduatedGaugeTest {
         assertArrayEquals(new int[]{0, 100}, CraftGraduatedGauge.tickValues(0, 100, 2));
     }
 
+    @Test public void valueAndNeedleClampToGraduatedRange(){
+        assertEquals(0.0,CraftGraduatedGauge.ratio(-30,-20,300),0.0);
+        assertEquals(0.5,CraftGraduatedGauge.ratio(140,-20,300),0.0001);
+        assertEquals(1.0,CraftGraduatedGauge.ratio(400,-20,300),0.0);
+        assertEquals(270f,CraftGraduatedGauge.needleDegrees(140,-20,300),0.001f);
+        assertEquals(180f,CraftGraduatedGauge.needleDegrees(1,1,1),0.001f);
+    }
+    @Test public void indicatorTypesMatchOriginalPickerNames(){
+        assertTrue(CraftGraduatedGauge.isIndicatorName("TriangleIndicator"));
+        assertTrue(CraftGraduatedGauge.isIndicatorName("NormalIndicator"));
+        assertFalse(CraftGraduatedGauge.isIndicatorName("Pressure"));
+    }
+
     @Test public void propertiesRoundTripAndKeepUnknownSourceFields() throws Exception {
         JSONObject fields = new JSONObject().put("craftOther",
                 new JSONObject().put("future", "retained"));
