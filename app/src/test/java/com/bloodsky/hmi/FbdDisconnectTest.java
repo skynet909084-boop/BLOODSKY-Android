@@ -362,6 +362,36 @@ public class FbdDisconnectTest {
                 trigger.craftToggleLastInput);
     }
 
+    @Test public void craftFloatCompareKeepsMissingInputNullForDownstreamTrigger() throws Exception {
+        MainActivity.Widget unavailableSensor = new MainActivity.Widget();
+        unavailableSensor.type = "FBD CRAFT SENSOR LIGHT";
+        MainActivity.Widget validInput = new MainActivity.Widget();
+        validInput.type = "FBD Вход";
+        validInput.inputValue = true;
+        MainActivity.Widget compare = new MainActivity.Widget();
+        compare.type = "FBD CRAFT COMPARE FLOAT";
+        MainActivity.Widget trigger = new MainActivity.Widget();
+        trigger.type = "FBD CRAFT T";
+        trigger.craftToggleLastInput = true;
+
+        List<MainActivity.Widget> nodes = java.util.Arrays.asList(
+                unavailableSensor, validInput, compare, trigger);
+        List<MainActivity.FbdConnection> edges = java.util.Arrays.asList(
+                MainActivity.pinnedFbdConnection(0, "Q", 2, "IN1"),
+                MainActivity.pinnedFbdConnection(1, "Q", 2, "IN2"),
+                MainActivity.pinnedFbdConnection(2, "Q", 3, "IN"));
+        boolean[] visiting = new boolean[4];
+        boolean[] cacheValid = new boolean[4];
+        boolean[] cacheValues = new boolean[4];
+        double[] cacheNumeric = new double[4];
+
+        double output = MainActivity.evaluateFbdBlockNumeric(nodes, edges, 3,
+                visiting, cacheValid, cacheValues, cacheNumeric);
+        assertTrue("Native float compare must preserve its null result", Double.isNaN(cacheNumeric[2]));
+        assertTrue("Downstream trigger must also remain unavailable", Double.isNaN(output));
+        assertTrue("Missing compare input must not advance the trigger", trigger.craftToggleLastInput);
+    }
+
     @Test public void tonExecutionUsesNamedInNotFirstIncomingWire() throws Exception {
         MainActivity.Widget first = new MainActivity.Widget();
         first.type = "FBD Вход";
