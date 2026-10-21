@@ -64,6 +64,7 @@ public class MainActivity extends Activity {
     private static final ThreadLocal<Boolean> ACTIVE_FBD_SYSTEM_REGISTER_WRITES = new ThreadLocal<>();
     private static final String ACTIVE_PROJECT = "active_project";
     private static final String PROJECT_CATALOG = "project_catalog_v1";
+    private static final String PROJECT_TRASH = "project_trash_v1";
     private static final String TELEGRAM_PREFS = "bloodsky_telegram";
     private static final int REQUEST_EXPORT_PROJECT = 7101;
     private static final int REQUEST_IMPORT_PROJECT = 7102;
@@ -724,6 +725,7 @@ public class MainActivity extends Activity {
         addLegacyMenuItem("Создать новый проект", this::createNamedProject, menuWidth);
         addLegacyMenuItem("Загрузить проект", () -> chooseSavedProject(false), menuWidth);
         addLegacyMenuItem("Удалить проект", () -> chooseSavedProject(true), menuWidth);
+        addLegacyMenuItem("Восстановить проект", this::chooseTrashedProject, menuWidth);
         addLegacyMenuItem("Экспорт проекта", () -> {
             if (getSharedPreferences(PREFS, MODE_PRIVATE).contains(ACTIVE_PROJECT)) {
                 if (loadProject()) exportProject();
@@ -846,27 +848,61 @@ public class MainActivity extends Activity {
             android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
             String key = ProjectMediaService.getOrGenerateProjectId(selected.toString());
             String oldCatalog = prefs.getString(PROJECT_CATALOG, "{}");
+            String oldTrash = prefs.getString(PROJECT_TRASH, "{}");
             String active = prefs.getString(ACTIVE_PROJECT, null);
             String oldName = prefs.getString("project_name", null);
             boolean deletingActive = active != null && key.equals(ProjectMediaService.getOrGenerateProjectId(active));
+            JSONObject moved = ProjectCatalog.moveToTrash(oldCatalog, oldTrash, key);
             android.content.SharedPreferences.Editor edit = prefs.edit()
-                    .putString(PROJECT_CATALOG, ProjectCatalog.remove(oldCatalog, key));
+                    .putString(PROJECT_CATALOG, moved.getJSONObject("catalog").toString())
+                    .putString(PROJECT_TRASH, moved.getJSONObject("trash").toString());
             if (deletingActive) edit.remove(ACTIVE_PROJECT).remove("project_name");
             if (!edit.commit()) {
-                android.content.SharedPreferences.Editor restore = prefs.edit().putString(PROJECT_CATALOG, oldCatalog);
+                android.content.SharedPreferences.Editor restore = prefs.edit()
+                        .putString(PROJECT_CATALOG, oldCatalog).putString(PROJECT_TRASH, oldTrash);
                 if (active != null) restore.putString(ACTIVE_PROJECT, active);
                 if (oldName != null) restore.putString("project_name", oldName);
                 if (!restore.commit()) android.util.Log.e("BLOODSKY", "Could not persist restored catalog");
                 throw new IOException("Не удалось удалить проект");
             }
-            try { ProjectMediaService.deleteProjectMedia(getFilesDir(), selected.toString()); }
-            catch (IOException cleanupFailure) {
-                android.util.Log.e("BLOODSKY", "Deleted project media could not be cleaned", cleanupFailure);
-                Toast.makeText(this, "Проект удалён, но его медиа не удалось очистить", Toast.LENGTH_LONG).show();
-            }
             showHome();
             if (deletingActive) { widgets.clear(); screens.clear(); projectExtraFields = new JSONObject(); clipboardWidgets = null; imageCache.clear(); gifCache.clear(); }
         } catch (Exception error) { Toast.makeText(this, error.getMessage(), Toast.LENGTH_LONG).show(); }
+    }
+
+    private void chooseTrashedProject() {
+        try {
+            android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+            List<JSONObject> projects = ProjectCatalog.list(prefs.getString(PROJECT_TRASH, "{}"));
+            if (projects.isEmpty()) {
+                Toast.makeText(this, "Нет удалённых проектов", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            String[] labels = new String[projects.size()];
+            for (int i = 0; i < labels.length; i++)
+                labels[i] = projects.get(i).optString("projectName", "Мой проект");
+            new AlertDialog.Builder(this).setTitle("Восстановить проект")
+                    .setItems(labels, (dialog, which) -> restoreTrashedProject(projects.get(which)))
+                    .setNegativeButton("Отмена", null).show();
+        } catch (Exception error) {
+            Toast.makeText(this, "Корзина проектов: " + error.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void restoreTrashedProject(JSONObject selected) {
+        try {
+            android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+            String oldCatalog = prefs.getString(PROJECT_CATALOG, "{}");
+            String oldTrash = prefs.getString(PROJECT_TRASH, "{}");
+            String key = ProjectMediaService.getOrGenerateProjectId(selected.toString());
+            JSONObject restored = ProjectCatalog.restoreFromTrash(oldCatalog, oldTrash, key);
+            if (!prefs.edit().putString(PROJECT_CATALOG, restored.getJSONObject("catalog").toString())
+                    .putString(PROJECT_TRASH, restored.getJSONObject("trash").toString()).commit())
+                throw new IOException("Не удалось восстановить проект");
+            Toast.makeText(this, "Проект восстановлен", Toast.LENGTH_SHORT).show();
+        } catch (Exception error) {
+            Toast.makeText(this, error.getMessage(), Toast.LENGTH_LONG).show();
+        }
     }
 
     private void showModbusScanner() {

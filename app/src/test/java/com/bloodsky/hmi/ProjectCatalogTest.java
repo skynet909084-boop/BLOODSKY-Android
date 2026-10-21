@@ -41,6 +41,55 @@ public class ProjectCatalogTest {
         assertEquals(ProjectMediaService.getOrGenerateProjectId(b), ProjectMediaService.getOrGenerateProjectId(ProjectCatalog.list(removed).get(0).toString()));
     }
 
+    @Test public void deletedProjectMovesToTrashAndRestoresUnknownFieldsAndMediaIdentity() throws Exception {
+        JSONObject project = new JSONObject(ProjectCatalog.create("Recover me"))
+                .put("mediaGeneration", "01234567-89ab-cdef-0123-456789abcdef")
+                .put("vendorProjectMetadata", new JSONObject("{\"nested\":[1,{\"flag\":true}]}"))
+                .put("craftSource", new JSONObject().put("TableNameProject",
+                        new JSONObject().put("vendorField", "keep")));
+        JSONObject screen = project.getJSONArray("screens").getJSONObject(0);
+        screen.put("vendorScreenField", "preserve-screen");
+        screen.getJSONArray("widgets").put(new JSONObject().put("type", "Unknown")
+                .put("craftComponentId", 998).put("opaque", new JSONObject().put("v", 17)));
+        String original = ProjectCatalog.upsert("{}", project.toString());
+        String key = ProjectMediaService.getOrGenerateProjectId(project.toString());
+
+        JSONObject moved = ProjectCatalog.moveToTrash(original, "{}", key);
+        assertEquals(0, ProjectCatalog.list(moved.getJSONObject("catalog").toString()).size());
+        assertEquals(1, ProjectCatalog.list(moved.getJSONObject("trash").toString()).size());
+        JSONObject trashed = ProjectCatalog.list(moved.getJSONObject("trash").toString()).get(0);
+        assertEquals(project.getString("mediaGeneration"), trashed.getString("mediaGeneration"));
+        assertEquals("keep", trashed.getJSONObject("craftSource")
+                .getJSONObject("TableNameProject").getString("vendorField"));
+        assertEquals("preserve-screen", trashed.getJSONArray("screens").getJSONObject(0)
+                .getString("vendorScreenField"));
+        assertEquals(17, trashed.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets")
+                .getJSONObject(0).getJSONObject("opaque").getInt("v"));
+
+        JSONObject restored = ProjectCatalog.restoreFromTrash(moved.getJSONObject("catalog").toString(),
+                moved.getJSONObject("trash").toString(), key);
+        assertEquals(1, ProjectCatalog.list(restored.getJSONObject("catalog").toString()).size());
+        assertEquals(0, ProjectCatalog.list(restored.getJSONObject("trash").toString()).size());
+        JSONObject reopened = ProjectCatalog.list(restored.getJSONObject("catalog").toString()).get(0);
+        assertEquals(project.getString("mediaGeneration"), reopened.getString("mediaGeneration"));
+        assertEquals("keep", reopened.getJSONObject("craftSource")
+                .getJSONObject("TableNameProject").getString("vendorField"));
+    }
+
+    @Test public void restoringTrashedProjectNeverOverwritesAnotherSavedRecord() throws Exception {
+        String project = ProjectCatalog.create("No overwrite");
+        String key = ProjectMediaService.getOrGenerateProjectId(project);
+        JSONObject moved = ProjectCatalog.moveToTrash(ProjectCatalog.upsert("{}", project), "{}", key);
+        String collisionCatalog = ProjectCatalog.upsert("{}", project);
+        try {
+            ProjectCatalog.restoreFromTrash(collisionCatalog, moved.getJSONObject("trash").toString(), key);
+            fail("Restore must not replace an existing project");
+        } catch (IllegalArgumentException expected) {
+            assertEquals(1, ProjectCatalog.list(collisionCatalog).size());
+            assertEquals(1, ProjectCatalog.list(moved.getJSONObject("trash").toString()).size());
+        }
+    }
+
     @Test public void legacyActiveProjectCanBeMigratedOnceAndReopened() throws Exception {
         JSONObject widget = new JSONObject().put("type", "Текст").put("text", "Legacy")
                 .put("originalComponentId", 54).put("x", 10.5);

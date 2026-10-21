@@ -40,14 +40,15 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("saveProjectAtomic(", self.source)
         self.assertIn("loadProjectAtomic(", self.source)
 
-    def test_project_deletion_cleans_only_private_media_after_catalog_commit(self):
+    def test_project_deletion_moves_project_to_recoverable_trash(self):
         delete_start = self.source.index("private void deleteSavedProject(")
-        delete_end = self.source.index("private void showModbusScanner()", delete_start)
+        delete_end = self.source.index("private void chooseTrashedProject()", delete_start)
         delete_method = self.source[delete_start:delete_end]
         commit = delete_method.index("if (!edit.commit())")
-        cleanup = delete_method.index("ProjectMediaService.deleteProjectMedia(")
-        self.assertLess(commit, cleanup)
-        self.assertIn("selected.toString()", delete_method[cleanup:])
+        self.assertLess(delete_method.index("ProjectCatalog.moveToTrash("), commit)
+        self.assertIn("PROJECT_TRASH", delete_method)
+        self.assertNotIn("ProjectMediaService.deleteProjectMedia(", delete_method)
+        self.assertIn("restoreTrashedProject(", delete_method + self.source[delete_end:])
         service = MEDIA_SERVICE.read_text(encoding="utf-8")
         self.assertIn("public static boolean deleteProjectMedia(", service)
         self.assertIn('new File(appRoot, "projects")', service)
