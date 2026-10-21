@@ -84,6 +84,7 @@ public class MainActivity extends Activity {
     private String projectName = "Мой проект";
     private JSONObject projectExtraFields = new JSONObject();
     private final CraftSystemRegisterBank systemRegisterBank = new CraftSystemRegisterBank();
+    private CraftModbusTcpSlave modbusTcpSlave;
     private boolean systemRegisterBankPersistable = true;
     private LinearLayout root;
     private android.widget.PopupWindow sourceOverflowPopup;
@@ -404,6 +405,7 @@ public class MainActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         activityResumed = true;
+        updateModbusTcpSlaveRuntime();
         updateCraftDeviceRegisters();
         if (editor != null) {
             mainHandler.removeCallbacks(craftServiceRegisterTicker);
@@ -466,6 +468,7 @@ public class MainActivity extends Activity {
             editor.operatorMomentaryCandidate = -1;
         }
         activityResumed = false;
+        stopModbusTcpSlave();
         mainHandler.removeCallbacks(craftServiceRegisterTicker);
         unregisterIncomingSmsReceiver();
         stopModbusPolling();
@@ -480,6 +483,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         manualUsbScreenGeneration++;
+        stopModbusTcpSlave();
         closeManualUsbConnection();
         unregisterIncomingSmsReceiver();
         stopModbusPolling();
@@ -3056,7 +3060,7 @@ public class MainActivity extends Activity {
         form.setPadding(pad, dp(4), pad, 0);
 
         TextView note = new TextView(this);
-        note.setText("Примечание: Настройки станции и Modbus Slave сохраняются в метаданных проекта. Они задают параметры конфигурации, но не запускают фоновый TCP-сервер Modbus Slave.");
+        note.setText("Примечание: TCP Slave запускается только после отдельного включения в меню «Сетевое управление» и только пока проект открыт в рабочем режиме. Сервер доступен в локальной сети; чтение и запись ограничены пользовательскими регистрами проекта.");
         note.setTextColor(Color.rgb(100, 116, 139));
         note.setTextSize(12);
         note.setPadding(0, 0, 0, dp(8));
@@ -3122,6 +3126,7 @@ public class MainActivity extends Activity {
                 }
                 projectExtraFields = updated;
                 persistProject();
+                updateModbusTcpSlaveRuntime();
                 settings.dismiss();
                 Toast.makeText(this, "Настройки проекта сохранены", Toast.LENGTH_SHORT).show();
             } catch (IllegalArgumentException ex) {
@@ -3259,7 +3264,49 @@ public class MainActivity extends Activity {
         if (!operatorMode) for (Widget value : widgets) if (isCraftOdTempSource(value.type)) {
             value.craftSensorValid = false; value.craftOdTempNextPollAt = 0L;
         }
+        updateModbusTcpSlaveRuntime();
         showEditor();
+    }
+
+    private void updateModbusTcpSlaveRuntime() {
+        stopModbusTcpSlave();
+        if (!activityResumed || !operatorMode
+                || !projectExtraFields.optBoolean("modbusSlaveEnabled", false)) return;
+        int port = projectExtraFields.optInt("modbusSlavePort", 502);
+        int unitId = projectExtraFields.optInt("modbusSlaveId", 1);
+        try {
+            CraftModbusTcpSlave server = new CraftModbusTcpSlave(port, unitId, systemRegisterBank);
+            int listeningPort = server.start();
+            modbusTcpSlave = server;
+            Toast.makeText(this, "Modbus TCP Slave запущен: порт " + listeningPort
+                    + ", ID " + unitId, Toast.LENGTH_LONG).show();
+        } catch (Exception failure) {
+            Toast.makeText(this, "Не удалось запустить Modbus TCP Slave: "
+                    + (failure.getMessage() == null ? "ошибка порта" : failure.getMessage()),
+                    Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void stopModbusTcpSlave() {
+        CraftModbusTcpSlave server = modbusTcpSlave;
+        modbusTcpSlave = null;
+        if (server != null) server.close();
+    }
+
+    private void toggleModbusTcpSlaveEnabled() {
+        boolean oldValue = projectExtraFields.optBoolean("modbusSlaveEnabled", false);
+        try {
+            projectExtraFields.put("modbusSlaveEnabled", !oldValue);
+            persistProject();
+            updateModbusTcpSlaveRuntime();
+            Toast.makeText(this, !oldValue
+                    ? "Modbus TCP Slave включён для проекта" : "Modbus TCP Slave выключен",
+                    Toast.LENGTH_SHORT).show();
+            showEditor();
+        } catch (Exception failure) {
+            try { projectExtraFields.put("modbusSlaveEnabled", oldValue); } catch (Exception ignored) {}
+            Toast.makeText(this, "Не удалось сохранить настройку Modbus TCP Slave", Toast.LENGTH_LONG).show();
+        }
     }
 
     private void showEditorCommands(View anchor) {
@@ -3287,7 +3334,11 @@ public class MainActivity extends Activity {
                 });
         addSourceMenuRow(rows, "Показывать тайм-ауты", "Отдельное отображение тайм-аутов пока не подключено", false, null);
         // Craft includes the Wi-Fi-to-USB row only when its hidden feature flag is enabled.
-        addSourceMenuRow(rows, "Сетевое управление", "Modbus TCP Slave-сервер пока не реализован", false, null);
+        boolean slaveEnabled = projectExtraFields.optBoolean("modbusSlaveEnabled", false);
+        addSourceMenuRow(rows, slaveEnabled ? "Modbus TCP Slave: включён" : "Modbus TCP Slave: выключен",
+                slaveEnabled ? "TCP настраивается в параметрах; слушает только в открытом рабочем режиме"
+                        : "Включить TCP-сервер для этого проекта; доступны пользовательские регистры",
+                true, this::toggleModbusTcpSlaveEnabled);
         addSourceMenuRow(rows, "Работа в фоне", "Фоновый сервис проекта пока не реализован", false, null);
         View divider = new View(this);
         divider.setBackgroundColor(Color.rgb(75, 75, 75));
