@@ -2,10 +2,21 @@ import unittest
 import tempfile
 from pathlib import Path
 
-from original_craft_probe_state import load_checkpoint, remember_state_signature, write_checkpoint
+from original_craft_probe_state import load_checkpoint, remember_state_signature, write_checkpoint, configured_state_limit
 
 
 class OriginalCraftProbeStateTests(unittest.TestCase):
+    def test_full_state_limit_can_be_capped_without_expanding_quick_profile(self):
+        self.assertEqual(12, configured_state_limit("quick"))
+        self.assertEqual(12, configured_state_limit("quick", "300"))
+        self.assertEqual(300, configured_state_limit("full"))
+        for cap in ("3", "10", "25", "300"):
+            with self.subTest(cap=cap):
+                self.assertEqual(int(cap), configured_state_limit("full", cap))
+        for cap in ("0", "301", "many"):
+            with self.subTest(cap=cap), self.assertRaisesRegex(ValueError, "max_states"):
+                configured_state_limit("full", cap)
+
     def test_signature_is_registered_once_and_duplicate_is_rejected(self):
         seen = set()
         self.assertTrue(remember_state_signature(seen, "screen-a"))
