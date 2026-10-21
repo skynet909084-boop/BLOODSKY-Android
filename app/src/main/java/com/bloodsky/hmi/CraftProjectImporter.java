@@ -275,8 +275,17 @@ public final class CraftProjectImporter {
             widget.put("craftSwitchVisibleInWork", other.optBoolean("visibleInWork", true));
         }
         if (componentId == 12) {
-            widget.put("minValue", decimal(other.opt("min"), 0));
-            widget.put("maxValue", decimal(other.opt("max"), 100));
+            int gaugeMax = boundedInt(other.opt("max"), 100, 1, 1_000_000);
+            widget.put("minValue", 0);
+            widget.put("maxValue", gaugeMax);
+            widget.put("craftGaugeShowText", other.optBoolean("showText", true));
+            widget.put("craftGaugeTextSize", boundedInt(other.opt("sizeText"), 12, 1, 256));
+            widget.put("craftGaugeTextColor", color(other.opt("colorText"), Color.BLACK));
+            widget.put("craftGaugeInColor", color(other.opt("inColor"), Color.rgb(136, 136, 136)));
+            widget.put("craftGaugeOutColor", color(other.opt("outColor"), Color.parseColor("#FF277454")));
+            widget.put("craftGaugeCenterColor", color(other.opt("centerColor"), Color.BLACK));
+            widget.put("craftGaugeFirstColorPoint", boundedInt(other.opt("firstColorPoint"), 0, 0, gaugeMax));
+            widget.put("craftGaugeSecondColorPoint", boundedInt(other.opt("secondColorPoint"), 0, 0, gaugeMax));
             widget.put("craftGaugeKind", "threshold");
         } else if (componentId == 24) {
             widget.put("minValue", decimal(other.opt("minGauge"), 0));
