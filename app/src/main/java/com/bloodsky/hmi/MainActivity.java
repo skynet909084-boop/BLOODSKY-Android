@@ -10231,7 +10231,12 @@ public class MainActivity extends Activity {
                     nestedVisiting, nestedCacheValid, nestedCacheValues, nestedCacheNumeric);
             double value = nestedCacheNumeric[outputNode];
             FbdCraftMacroDefinition.Port output = definition.getOutput();
-            if (output.type == 1) value = outputBool ? 1.0 : 0.0;
+            Widget outputWidget = nested.get(outputNode);
+            boolean outputAvailable = outputWidget != null && outputWidget.fbdOutputAvailable;
+            if (!outputAvailable) value = Double.NaN;
+            else if (output.type == 1) value = outputBool ? 1.0 : 0.0;
+            macro.fbdOutputAvailable = outputAvailable;
+            macro.fbdOutputAvailabilityExplicit = true;
             cacheNumeric[index] = value;
             return output.type == 1 ? outputBool : Double.isFinite(value) && value != 0.0;
         } finally {
