@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 18493)
-Total output lines: 1042
-
 package com.bloodsky.hmi;
 
 import org.json.JSONArray;
@@ -446,7 +443,133 @@ public class CraftProjectImporterTest {
 
         JSONObject exported = new JSONObject(CraftProjectExporter.export(imported.toString()));
         JSONArray resultRows = exported.getJSONArray("TableComponent");
-        assertEquals(2, other(resul…2493 tokens truncated…ONObject("craftSource").getJSONArray("TableComponent").getJSONObject(1).getInt("componentId"));
+        assertEquals(2, other(resultRows, 0).getInt("compareAction"));
+        assertEquals(3, other(resultRows, 1).getInt("compareAction"));
+        assertEquals(4, other(resultRows, 2).getInt("compareAction"));
+        assertEquals(6, other(resultRows, 3).getInt("compareAction"));
+        assertEquals("keep", other(resultRows, 0).getString("vendorCompare"));
+        assertEquals(7, other(resultRows, 4).getInt("bit"));
+        assertTrue(other(resultRows, 4).getBoolean("isConstant"));
+        assertEquals("1", other(resultRows, 4).getString("constant"));
+        assertEquals(3, other(resultRows, 5).getInt("typeVar"));
+        assertEquals("NewInput", other(resultRows, 5).getString("typeVarValue"));
+        assertEquals("1.25", other(resultRows, 5).getString("constant"));
+        assertEquals(1, other(resultRows, 6).getInt("typeVar"));
+        assertEquals("NewOutput", other(resultRows, 6).getString("typeVarValue"));
+        assertEquals(3, other(resultRows, 7).getInt("type"));
+        assertEquals(2, other(resultRows, 8).getInt("type"));
+
+        JSONArray restored = new JSONObject(CraftProjectImporter.convert(exported.toString()))
+                .getJSONArray("screens").getJSONObject(0).getJSONArray("widgets");
+        assertEquals("<", restored.getJSONObject(0).getString("compareOperator"));
+        assertEquals("*", restored.getJSONObject(1).getString("compareOperator"));
+        assertEquals("/", restored.getJSONObject(2).getString("compareOperator"));
+        assertEquals("!=", restored.getJSONObject(3).getString("compareOperator"));
+        assertEquals("NewInput", restored.getJSONObject(5).getString("craftVariableName"));
+        assertEquals("NewOutput", restored.getJSONObject(6).getString("craftVariableName"));
+        assertEquals(3, restored.getJSONObject(7).getInt("craftSensorAxis"));
+        assertEquals("SS", restored.getJSONObject(8).getString("craftSunriseMode"));
+    }
+
+    private static JSONObject component(int id, JSONObject other) throws Exception {
+        other.put("saveKey", id).put("keyOut", -1).put("numOnIn", -1);
+        return new JSONObject().put("componentId", id).put("text", "FBD " + id)
+                .put("x", id).put("y", 0).put("width", 120).put("height", 76)
+                .put("jsTableComponent_other", other);
+    }
+
+    private static JSONObject other(JSONArray rows, int index) throws Exception {
+        return rows.getJSONObject(index).getJSONObject("jsTableComponent_other");
+    }
+
+    @Test public void mapsCraftLabelsButtonsAndImageIndicatorsFromVerifiedComponentClasses() throws Exception {
+        String json = "{\"TableNameProject\":{\"name\":\"Widgets\",\"countScreen\":2},\"TableConnections\":[],\"TableComponent\":["
+                + "{\"componentId\":1,\"text\":\"\",\"x\":1,\"y\":2,\"width\":30,\"height\":30,\"jsTableComponent_other\":{\"numScreen\":1,\"imagePosition\":2,\"visibleInWork\":true}},"
+                + "{\"componentId\":2,\"text\":\"Room\",\"x\":3,\"y\":4,\"width\":80,\"height\":24,\"jsTableComponent_other\":{\"numScreen\":1,\"autoResizeText\":true,\"enableFrameLabel\":false}},"
+                + "{\"componentId\":6,\"text\":\"Open\",\"x\":5,\"y\":6,\"width\":90,\"height\":30,\"jsTableComponent_other\":{\"numScreen\":1,\"changeScreen\":2,\"mode\":1,\"autoResizeText\":true,\"visibleInWork\":false}}]}";
+        JSONArray widgets = new JSONObject(CraftProjectImporter.convert(json))
+                .getJSONArray("screens").getJSONObject(0).getJSONArray("widgets");
+        assertEquals(OriginalCraftSwitch.TYPE, widgets.getJSONObject(0).getString("type"));
+        assertEquals(1, widgets.getJSONObject(0).getInt("craftComponentId"));
+        assertEquals(2, widgets.getJSONObject(0).getJSONObject("craftOther").getInt("imagePosition"));
+        assertEquals("Текст", widgets.getJSONObject(1).getString("type"));
+        assertTrue(widgets.getJSONObject(1).getBoolean("autoResizeText"));
+        assertTrue(!widgets.getJSONObject(1).getBoolean("showFrame"));
+        assertEquals("Переход на экран", widgets.getJSONObject(2).getString("type"));
+        assertEquals(1, widgets.getJSONObject(2).getInt("targetScreenIndex"));
+        assertFalse(widgets.getJSONObject(2).getBoolean("craftButtonVisibleInWork"));
+        assertTrue(widgets.getJSONObject(2).getBoolean("autoResizeText"));
+        assertEquals(1, widgets.getJSONObject(2).getInt("targetScreenIndex"));
+        assertEquals(2, widgets.getJSONObject(2).getJSONObject("craftOther").getInt("changeScreen"));
+    }
+
+    @Test public void skipsCraftFbdEdgesThatWouldCreateUnsupportedCycles() throws Exception {
+        String json = "{\"TableNameProject\":{\"name\":\"Cycle\",\"countScreen\":1},\"TableConnections\":[],\"TableComponent\":["
+                + "{\"componentId\":114,\"text\":\"T\",\"x\":0,\"y\":0,\"width\":100,\"height\":100,\"jsTableComponent_other\":{\"numScreen\":1,\"saveKey\":1,\"keyOut\":2,\"numOnIn\":1}},"
+                + "{\"componentId\":115,\"text\":\"Timer\",\"x\":120,\"y\":0,\"width\":100,\"height\":100,\"jsTableComponent_other\":{\"numScreen\":1,\"saveKey\":2,\"keyOut\":1,\"numOnIn\":1,\"type\":1,\"typeTime\":1}}]}";
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(json));
+        JSONArray edges = project.getJSONArray("screens").getJSONObject(0).getJSONArray("connections");
+        assertEquals(1, edges.length());
+        MainActivity.validateImportedProjectStatic(project.toString());
+    }
+
+    @Test public void mapsVerifiedCraftButtonScreenModeToOperatorNavigation() throws Exception {
+        String json = "{\"TableNameProject\":{\"name\":\"Navigation\",\"countScreen\":2},\"TableConnections\":[],\"TableComponent\":["
+                + "{\"componentId\":6,\"text\":\"Next\",\"x\":10,\"y\":20,\"width\":100,\"height\":40,\"jsTableComponent_other\":{\"numScreen\":1,\"mode\":1,\"changeScreen\":2,\"autoResizeText\":true}},"
+                + "{\"componentId\":6,\"text\":\"Invalid\",\"x\":10,\"y\":20,\"width\":100,\"height\":40,\"jsTableComponent_other\":{\"numScreen\":2,\"mode\":1,\"changeScreen\":3}}]}";
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(json));
+        JSONObject valid = project.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0);
+        assertEquals("Переход на экран", valid.getString("type"));
+        assertEquals(1, valid.getInt("targetScreenIndex"));
+        assertEquals(1, valid.getJSONObject("craftOther").getInt("mode"));
+        assertTrue(valid.getBoolean("autoResizeText"));
+
+        JSONObject invalid = project.getJSONArray("screens").getJSONObject(1)
+                .getJSONArray("widgets").getJSONObject(0);
+        assertEquals(-1, invalid.getInt("targetScreenIndex"));
+        assertTrue(invalid.getBoolean("craftUnsupportedAction"));
+        MainActivity.validateImportedProjectStatic(project.toString());
+    }
+
+    @Test public void mapsCraftAlarmAndPreservesInactiveRegisterGateway() throws Exception {
+        String json = "{\"TableNameProject\":{\"name\":\"Unmapped rows\",\"countScreen\":1},"
+                + "\"TableConnections\":[],\"TableComponent\":["
+                + "{\"componentId\":9,\"text\":\"Legacy 9\",\"x\":1,\"y\":2,\"width\":30,\"height\":30,"
+                + "\"jsTableComponent_connectionInfo\":{\"addressRegister\":\"7\",\"addressBit\":\"2\"},"
+                + "\"jsTableComponent_other\":{\"numScreen\":1,\"posSound\":4,\"timeZ\":12}},"
+                + "{\"componentId\":19,\"text\":\"Legacy 19\",\"x\":4,\"y\":5,\"width\":30,\"height\":30,"
+                + "\"jsTableComponent_connectionInfo\":{\"posDeviceNetworkInList_source\":2,\"addressRegister_source\":17,"
+                + "\"posDeviceNetworkInList_receive\":3,\"addressRegister_receive\":21,\"posDeviceNetworkInList_trigger\":4,\"countRegister_source\":6},"
+                + "\"jsTableComponent_other\":{\"numScreen\":1,\"mode\":2,\"regMode\":1,\"bitMode\":3}},"
+                + "{\"componentId\":18,\"text\":\"SET\",\"x\":7,\"y\":8,\"width\":90,\"height\":30,"
+                + "\"jsTableComponent_connectionInfo\":{\"register\":17},"
+                + "\"jsTableComponent_other\":{\"numScreen\":1,\"mode\":1,\"vendorSmsCommand\":\"preserve-me\"}}]}";
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(json));
+        JSONArray widgets = project.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets");
+        assertEquals(3, widgets.length());
+        JSONObject alarm = widgets.getJSONObject(0);
+        assertEquals("Звуковой сигнал", alarm.getString("type"));
+        assertEquals(4, alarm.getInt("craftAlarmSoundIndex"));
+        assertTrue(alarm.getBoolean("craftAlarmLoop"));
+        assertTrue(!alarm.has("craftUnsupportedComponent"));
+        assertEquals("", alarm.getString("connectionInfo"));
+        assertTrue(alarm.getJSONObject("craftConnectionInfo").has("addressRegister"));
+
+        JSONObject gateway = widgets.getJSONObject(1);
+        assertEquals("Шлюз Craft", gateway.getString("type"));
+        assertTrue(gateway.getBoolean("craftUnsupportedComponent"));
+        assertFalse(gateway.getBoolean("craftGatewayEnabled"));
+        assertEquals("", gateway.getString("connectionInfo"));
+        assertEquals(2, gateway.getInt("craftGatewayMode"));
+        assertEquals(1, gateway.getInt("craftGatewayRegisterMode"));
+        assertEquals(3, gateway.getInt("craftGatewayBitMode"));
+        assertEquals(6, gateway.getInt("craftGatewayCount"));
+        assertEquals(17, gateway.getJSONObject("craftConnectionInfo").getInt("addressRegister_source"));
+        assertEquals(21, gateway.getJSONObject("craftConnectionInfo").getInt("addressRegister_receive"));
+        assertEquals(4, gateway.getJSONObject("craftConnectionInfo").getInt("posDeviceNetworkInList_trigger"));
+        assertEquals(9, project.getJSONObject("craftSource").getJSONArray("TableComponent").getJSONObject(0).getInt("componentId"));
+        assertEquals(19, project.getJSONObject("craftSource").getJSONArray("TableComponent").getJSONObject(1).getInt("componentId"));
         JSONObject incomingSms = widgets.getJSONObject(2);
         assertEquals("Входящее SMS", incomingSms.getString("type"));
         assertFalse(incomingSms.getBoolean("smsEnabled"));
