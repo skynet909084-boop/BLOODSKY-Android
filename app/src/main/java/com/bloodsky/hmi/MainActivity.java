@@ -1820,6 +1820,26 @@ public class MainActivity extends Activity {
                                 w.lastSoundState = false;
                                 stopCraftAlarmAlert(alarmKey);
                             }
+                        } else if ("Звуковой сигнал Craft".equals(w.type)) {
+                            boolean soundEnabled = w.extraFields.optBoolean("craftSoundEnabled", false);
+                            int activeMask = soundEnabled ? CraftSoundBank.activeMask(entry.getValue()) : 0;
+                            String soundKey = currentScreenIndex + ":" + index + ":craftSound";
+                            w.craftSoundActiveMask = activeMask;
+                            if (!soundEnabled) {
+                                w.craftSoundPlayedMask = 0;
+                                stopCraftAlarmAlert(soundKey);
+                            } else if (!craftAlarmPlayers.containsKey(soundKey)) {
+                                // The original widget only inspects bit edges while its player is idle.
+                                w.craftSoundPlayedMask = CraftSoundBank.clearInactive(w.craftSoundPlayedMask, activeMask);
+                                if (activeMask != 0) {
+                                    int channel = CraftSoundBank.nextPendingChannel(activeMask, w.craftSoundPlayedMask);
+                                    if (channel >= 0) {
+                                        w.craftSoundPlayedMask |= 1 << channel;
+                                        String path = CraftSoundBank.pathAt(w.extraFields.optJSONArray("craftSoundPaths"), channel);
+                                        if (!path.isEmpty()) playCraftAlarmAlert(soundKey, path, -1, false);
+                                    }
+                                }
+                            }
                         } else if ("Голосовое сообщение".equals(w.type)) {
                             int voiceIdx = 0;
                             if (entry.getValue() != null) {
@@ -5380,6 +5400,32 @@ public class MainActivity extends Activity {
             smsRegistersHelp.setText("Читаются последовательные регистры от адреса привязки. Значения подставляются в %1…%8; если номера %n не указаны и нет {value}, значения добавляются в конец через пробел.");
             form.addView(smsRegistersHelp);
         } else { smsPhoneField=null; smsRegisterCountField=null; craftSmsEnabledField=null; craftSmsOptionField=null; craftSmsOptionRegisterField=null; }
+        final android.widget.CheckBox craftSoundEnabledField;
+        final EditText[] craftSoundPathFields = new EditText[CraftSoundBank.CHANNELS];
+        if (w.extraFields.optInt("craftComponentId", -1) == 21
+                || "Звуковой сигнал Craft".equals(w.type)) {
+            TextView soundHeader = new TextView(this);
+            soundHeader.setText("Звуковой банк Craft — 8 дорожек по битам регистра");
+            soundHeader.setPadding(0, dp(10), 0, 0);
+            form.addView(soundHeader);
+            craftSoundEnabledField = new android.widget.CheckBox(this);
+            craftSoundEnabledField.setText("Разрешить воспроизведение аудио в операторском режиме");
+            craftSoundEnabledField.setChecked(w.extraFields.optBoolean("craftSoundEnabled", false));
+            form.addView(craftSoundEnabledField);
+            JSONArray soundPaths = w.extraFields.optJSONArray("craftSoundPaths");
+            for (int channel = 0; channel < CraftSoundBank.CHANNELS; channel++) {
+                craftSoundPathFields[channel] = propertyField(CraftSoundBank.pathAt(soundPaths, channel),
+                        InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+                craftSoundPathFields[channel].setHint("Дорожка " + (channel + 1) + " (путь к файлу)");
+                form.addView(craftSoundPathFields[channel]);
+                addMediaPicker(form, craftSoundPathFields[channel], "audio/*");
+            }
+            TextView soundHelp = new TextView(this);
+            soundHelp.setText("Импортированная привязка Craft отключена. Укажи явную tcp://… привязку регистра в поле выше и включи воспроизведение. Каждая дорожка срабатывает по своему биту 0–7; проигрывается одна дорожка за раз.");
+            form.addView(soundHelp);
+        } else {
+            craftSoundEnabledField = null;
+        }
         final android.widget.CheckBox incomingSmsEnabledField;
         final EditText incomingSmsSenderField, incomingSmsCommandField, incomingSmsBitField;
         final android.widget.Spinner incomingSmsModeField;
@@ -6735,6 +6781,19 @@ public class MainActivity extends Activity {
                         w.soundThreshold = readDouble(soundThresholdField, w.soundThreshold);
                         w.soundFilePath = soundFilePathField.getText().toString();
                         w.craftAlarmSoundIndex = soundPresetField.getSelectedItemPosition();
+                    }
+                    if (craftSoundEnabledField != null) {
+                        String[] paths = new String[CraftSoundBank.CHANNELS];
+                        for (int channel = 0; channel < paths.length; channel++)
+                            paths[channel] = craftSoundPathFields[channel] == null ? ""
+                                    : craftSoundPathFields[channel].getText().toString();
+                        try {
+                            CraftSoundBank.storeProperties(w.extraFields, craftSoundEnabledField.isChecked(), paths);
+                            w.craftSoundPlayedMask = 0;
+                        } catch (org.json.JSONException failure) {
+                            Toast.makeText(this, "Не удалось сохранить настройки звукового банка", Toast.LENGTH_LONG).show();
+                            return;
+                        }
                     }
                     if (targetScreenIndexField != null) {
                         int selectedTarget = targetScreenIndexField.getSelectedItemPosition();
@@ -10263,6 +10322,9 @@ public class MainActivity extends Activity {
         public String soundFilePath = "Аларм";
         public int craftAlarmSoundIndex = 0;
         public boolean craftAlarmLoop = false;
+        // ID21 sound-bank latches are runtime-only like Craft's MediaPlayer state.
+        transient int craftSoundActiveMask;
+        transient int craftSoundPlayedMask;
         public int targetScreenIndex = 0;
         public String targetUrl = "";
         public int lastVoiceState = -1;
@@ -10774,6 +10836,23 @@ public class MainActivity extends Activity {
                     paint.setStyle(Paint.Style.FILL);
                     paint.setColor(Color.rgb(120, 80, 10));
                     canvas.drawText("−             +", w.x + dp(18), w.y + w.h - dp(16), paint);
+                } else if ("Звуковой сигнал Craft".equals(w.type)) {
+                    StringBuilder activeChannels = new StringBuilder();
+                    for (int channel = 0; channel < CraftSoundBank.CHANNELS; channel++) {
+                        if ((w.craftSoundActiveMask & (1 << channel)) != 0) {
+                            if (activeChannels.length() > 0) activeChannels.append(",");
+                            activeChannels.append(channel);
+                        }
+                    }
+                    boolean active = activeChannels.length() > 0;
+                    paint.setColor(active ? Color.rgb(239, 68, 68) : Color.rgb(100, 116, 139));
+                    canvas.drawCircle(w.x + dp(16), w.y + w.h / 2, dp(6), paint);
+                    paint.setColor(w.textColor);
+                    String soundLabel = (active ? "🔊 " : "🔇 ") + w.text
+                            + (active ? " [" + activeChannels + "]" : " [0–7]");
+                    if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(),
+                            Math.max(dp(8), (w.w - dp(32)) / Math.max(4f, soundLabel.length() * 0.58f))));
+                    canvas.drawText(soundLabel, w.x + dp(28), w.y + w.h / 2 + dp(5), paint);
                 } else if ("Звуковой сигнал".equals(w.type)) {
                     boolean active = w.soundActive;
                     if (liveValues.containsKey(i)) {
