@@ -13,8 +13,8 @@ All details are extracted directly from the decompiled KaScada Craft 1.0.7 refer
 The original APK contains **152 image assets** (151 PNGs + 1 JPG) in `res/drawable`:
 
 - **Total packaged original images in APK archive**: 152
-- **Directly referenced in BLOODSKY Java source code**: 12 (dynamically verified against current `app/` source tree by `tools/verify_original_source_contracts.py`)
-- **Packaged-but-unused in current BLOODSKY runtime**: 140
+- **Directly referenced in BLOODSKY Java source code**: 59 (dynamically verified against current `app/` source tree by `tools/verify_original_source_contracts.py`)
+- **Packaged-but-unused in current BLOODSKY runtime**: 93
 
 ### Asset Inventory Summary
 - **Buttons / Switches**: `kc_button.png`, `kc_button2.png`, `kc_button3.png`, `kc_switch1_off.png`..`kc_switch8_on.png`
@@ -67,7 +67,7 @@ System Registers reside in **Device 0** (System Device / "Системные р�
 | **CustomList** | `CustomComponents.CustomList` | `res/layout/dialog_list.xml` | `MainActivity.addWidget` | Partial | Basic ListView; missing original dialog list configuration. |
 | **CustomSound** | `CustomComponents.CustomSound` | `res/raw/kc_alarm.wav` | `MainActivity.playSoundAlert` | Partial | ToneGenerator fallback; missing embedded sound asset trigger. |
 | **CustomScreenLink** | `CustomComponents.b0` | `kc_arrow_right.png` | `MainActivity.activateScreen` | Implemented | Navigates active screen index on tap. |
-| **CustomMultiStatePhoto** | `CustomComponents.h` | `kc_dyn_picture.png`, `kc_no_picture.png` | `MainActivity.loadCachedBitmap` | Partial | Decodes image URI; missing state index fallback image frame. |
+| **CustomMultiStatePhoto** | `CustomComponents.h` | `kc_dyn_picture.png`, `kc_no_picture.png` | `MainActivity.loadCachedBitmap` | Partial | Resolves a selected state to its project image and uses the original `kc_no_picture` frame when the path is empty or cannot be decoded; applies the source's 10-pixel image inset. Source register/device mapping and visual/device acceptance remain open. |
 | **CustomVoice** | `CustomComponents.a0` | `res/layout/dialog_voice.xml` | `MainActivity.speakVoiceAnnouncement` | Partial | TTS initialized; missing rising-edge trigger check. |
 
 ---

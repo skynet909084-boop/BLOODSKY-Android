@@ -22,4 +22,9 @@ public final class CraftMultiStateImage {
         }
         return -1;
     }
+
+    /** Craft displays its no-picture resource when a selected state has no decoded image. */
+    public static boolean shouldShowNoPicture(int selectedIndex, boolean imageLoaded) {
+        return selectedIndex >= 0 && selectedIndex < STATE_COUNT && !imageLoaded;
+    }
 }
