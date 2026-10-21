@@ -9727,6 +9727,12 @@ public class MainActivity extends Activity {
             return result;
         }
         if ("FBD RS".equals(widget.type)) {
+            // Original FB_RS returns no output and does not scan its latch until both
+            // input blocks expose values. Preserve that nullable-output contract.
+            if (!hasCompleteFbdInputConnections(connectionsList, index, "R", "S")) {
+                cacheNumeric[index] = Double.NaN;
+                return false;
+            }
             boolean set = fbdBooleanPinValue(inputs, inputPins, "S", 0);
             boolean reset = fbdBooleanPinValue(inputs, inputPins, "R", 1);
             if (reset) widget.rsState = false;
