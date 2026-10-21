@@ -434,7 +434,7 @@ def save_checkpoint(complete=False):
         "k107_cases_remaining": 550,
         "k107_case_ids": [f"K107-{i:04d}" for i in range(1, 551)],
         "k107_observations": [],
-        "k107_mapping_note": "No case-to-screen mapping manifest is present in the repository; UI captures remain unassigned and all acceptance IDs stay WAITING.",
+        "k107_mapping_note": "The 550-case static matrix is proposed in PR #192 at docs/reference-kascada-107/full_function_test_matrix.json. Generic traversal does not establish its per-case assertions, so captures remain unassigned and all IDs stay WAITING.",
         "runtime_error_log": "android-runtime-errors.log",
         "limitations": [
             "Quick profile targets the Craft ID17 palette-to-properties path; it is a focused sample, never a complete UI audit.",
