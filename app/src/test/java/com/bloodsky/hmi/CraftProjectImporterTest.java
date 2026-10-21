@@ -824,4 +824,34 @@ public class CraftProjectImporterTest {
         assertEquals(originalBinding.toString(), saved.getJSONObject("craftConnectionInfo").toString());
     }
 
+    @Test public void craftPushImportsAsOptInLocalNotificationAndPreservesFcmMetadata() throws Exception {
+        String topic = "plant-room-a";
+        String source = "{\"TableNameProject\":{\"name\":\"Push project\",\"countScreen\":1},"
+                + "\"TableConnections\":[],\"TableComponent\":[{"
+                + "\"componentId\":25,\"text\":\"\",\"x\":12,\"y\":24,\"width\":240,\"height\":72,"
+                + "\"jsTableComponent_connectionInfo\":{\"legacyDevice\":5},"
+                + "\"jsTableComponent_other\":{\"numScreen\":1,\"title\":\"Pump alarm\","
+                + "\"body\":\"Pump is running\",\"to\":\"" + topic + "\",\"futureField\":\"keep\"}}]}";
+
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(source));
+        JSONObject widget = project.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0);
+
+        assertEquals("Уведомление Craft", widget.getString("type"));
+        assertEquals("Pump alarm", widget.getString("text"));
+        assertEquals("Pump alarm", widget.getString("craftPushTitle"));
+        assertEquals("Pump is running", widget.getString("craftPushBody"));
+        assertEquals(topic, widget.getString("craftPushTopic"));
+        assertFalse(widget.getBoolean("craftPushEnabled"));
+        assertEquals("", widget.getString("connectionInfo"));
+        assertEquals(25, widget.getInt("craftComponentId"));
+        assertEquals("keep", widget.getJSONObject("craftOther").getString("futureField"));
+        assertEquals(topic, widget.getJSONObject("craftOther").getString("to"));
+
+        JSONObject reopened = MainActivity.widgetToJson(MainActivity.widgetFromJson(widget));
+        assertEquals("Уведомление Craft", reopened.getString("type"));
+        assertFalse(reopened.getBoolean("craftPushEnabled"));
+        assertEquals(topic, reopened.getJSONObject("craftOther").getString("to"));
+    }
+
 }

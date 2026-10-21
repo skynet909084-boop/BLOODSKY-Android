@@ -139,8 +139,11 @@ public class MainActivity extends Activity {
     private static final int REQUEST_SMS_SEND_PERMISSION = 6202;
     private static final int REQUEST_SMS_RECEIVE_PERMISSION = 6203;
     private static final int REQUEST_CRAFT_BLUETOOTH_PERMISSION = 6204;
+    private static final int REQUEST_CRAFT_PUSH_NOTIFICATION_PERMISSION = 6205;
     private int pendingCraftBluetoothSlot = -1;
     private boolean pendingCraftBluetoothReturnsToDevices;
+    private String pendingCraftNotificationTitle, pendingCraftNotificationBody;
+    private int pendingCraftNotificationId;
     private android.content.BroadcastReceiver incomingSmsReceiver;
     private boolean smsReceivePermissionRequested;
     private static final int VOICE_LOCAL = 1;
@@ -436,6 +439,18 @@ public class MainActivity extends Activity {
             if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED)
                 showCraftBluetoothPicker(pendingCraftBluetoothReturnsToDevices, pendingCraftBluetoothSlot);
             else Toast.makeText(this, "Список Bluetooth-устройств недоступен без разрешения", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (requestCode == REQUEST_CRAFT_PUSH_NOTIFICATION_PERMISSION) {
+            if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                String title = pendingCraftNotificationTitle, body = pendingCraftNotificationBody;
+                int id = pendingCraftNotificationId;
+                pendingCraftNotificationTitle = pendingCraftNotificationBody = null;
+                if (title != null && body != null) showCraftLocalNotification(title, body, id);
+            } else {
+                pendingCraftNotificationTitle = pendingCraftNotificationBody = null;
+                Toast.makeText(this, "Уведомление не показано без разрешения POST_NOTIFICATIONS", Toast.LENGTH_LONG).show();
+            }
             return;
         }
         if (requestCode != REQUEST_FBD_SPEED_LOCATION) return;
@@ -1857,6 +1872,14 @@ public class MainActivity extends Activity {
                                 if (active && !w.lastTelegramState) sendTelegramNotification(index, w, state);
                                 w.lastTelegramState = active;
                             }
+                        } else if ("Уведомление Craft".equals(w.type)) {
+                            String state = entry.getValue();
+                            boolean active = state != null && !state.startsWith("ERR:") && !state.startsWith("CFG")
+                                    && isActiveModbusValue(state);
+                            boolean enabled = w.extraFields.optBoolean("craftPushEnabled", false);
+                            if (enabled && active && !w.lastCraftPushState)
+                                sendCraftLocalNotification(currentScreenIndex, index, w);
+                            w.lastCraftPushState = active;
                         } else if ("SMS-уведомление".equals(w.type)) {
                             String state = entry.getValue();
                             if (state != null && !state.startsWith("ERR:") && !state.startsWith("CFG")) {
@@ -4254,6 +4277,55 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void sendCraftLocalNotification(int screenIndex, int widgetIndex, Widget widget) {
+        String title = CraftLocalNotification.title(widget.extraFields.optString("craftPushTitle", widget.text));
+        String body = CraftLocalNotification.body(widget.extraFields.optString("craftPushBody", ""));
+        int notificationId = CraftLocalNotification.notificationId(screenIndex, widgetIndex);
+        if (android.os.Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            pendingCraftNotificationTitle = title;
+            pendingCraftNotificationBody = body;
+            pendingCraftNotificationId = notificationId;
+            requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},
+                    REQUEST_CRAFT_PUSH_NOTIFICATION_PERMISSION);
+            liveValues.put(widgetIndex, "Разрешение уведомлений");
+            if (editor != null) editor.invalidate();
+            return;
+        }
+        showCraftLocalNotification(title, body, notificationId);
+        liveValues.put(widgetIndex, "Локально отправлено");
+        if (editor != null) editor.invalidate();
+    }
+
+    private void showCraftLocalNotification(String title, String body, int notificationId) {
+        final String channelId = "craft_component_notifications";
+        android.app.NotificationManager manager = getSystemService(android.app.NotificationManager.class);
+        if (manager == null) return;
+        if (android.os.Build.VERSION.SDK_INT >= 26) {
+            android.app.NotificationChannel channel = new android.app.NotificationChannel(channelId,
+                    "Уведомления Craft", android.app.NotificationManager.IMPORTANCE_DEFAULT);
+            manager.createNotificationChannel(channel);
+        }
+        android.content.Intent launch = new android.content.Intent(this, MainActivity.class)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP | android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        int pendingFlags = android.app.PendingIntent.FLAG_UPDATE_CURRENT;
+        if (android.os.Build.VERSION.SDK_INT >= 23) pendingFlags |= android.app.PendingIntent.FLAG_IMMUTABLE;
+        android.app.PendingIntent pendingIntent = android.app.PendingIntent.getActivity(this, notificationId,
+                launch, pendingFlags);
+        android.app.Notification.Builder builder = android.os.Build.VERSION.SDK_INT >= 26
+                ? new android.app.Notification.Builder(this, channelId)
+                : new android.app.Notification.Builder(this);
+        builder.setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle(CraftLocalNotification.title(title))
+                .setContentText(body == null || body.isEmpty() ? "Сигнал активен" : body)
+                .setAutoCancel(true)
+                .setContentIntent(pendingIntent);
+        if (body != null && body.length() > 40)
+            builder.setStyle(new android.app.Notification.BigTextStyle().bigText(body));
+        manager.notify(notificationId, builder.build());
+    }
+
     @Override public void onBackPressed() {
         if (nestedMacroEdit != null) { closeNestedMacroGraphEditor(); return; }
         if (manualUsbScreenVisible) { showHome(); return; }
@@ -5425,6 +5497,31 @@ public class MainActivity extends Activity {
             form.addView(soundHelp);
         } else {
             craftSoundEnabledField = null;
+        }
+        final android.widget.CheckBox craftPushEnabledField;
+        final EditText craftPushBodyField, craftPushTopicField;
+        if (w.extraFields.optInt("craftComponentId", -1) == 25
+                || "Уведомление Craft".equals(w.type)) {
+            craftPushEnabledField = new android.widget.CheckBox(this);
+            craftPushEnabledField.setText("Разрешить локальное уведомление при переходе 0→1");
+            craftPushEnabledField.setChecked(w.extraFields.optBoolean("craftPushEnabled", false));
+            form.addView(craftPushEnabledField);
+            craftPushBodyField = propertyField(w.extraFields.optString("craftPushBody", ""),
+                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+            craftPushBodyField.setMinLines(2);
+            craftPushBodyField.setHint("Текст уведомления");
+            form.addView(craftPushBodyField);
+            craftPushTopicField = propertyField(w.extraFields.optString("craftPushTopic", ""),
+                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+            craftPushTopicField.setHint("Исходная тема FCM (только для сохранения)");
+            form.addView(craftPushTopicField);
+            TextView pushHelp = new TextView(this);
+            pushHelp.setText("Заголовок берётся из основного поля текста. Оригинал отправляет FCM в удалённую тему с встроенным серверным ключом. BLOODSKY сохраняет тему, но использует только локальное уведомление на этом устройстве. Для отправки удалённым адресатам настрой Telegram отдельно.");
+            form.addView(pushHelp);
+        } else {
+            craftPushEnabledField = null;
+            craftPushBodyField = null;
+            craftPushTopicField = null;
         }
         final android.widget.CheckBox incomingSmsEnabledField;
         final EditText incomingSmsSenderField, incomingSmsCommandField, incomingSmsBitField;
@@ -6615,6 +6712,28 @@ public class MainActivity extends Activity {
                                 : "FBD CRAFT MQTT PUB " + suffix;
                     }
                     w.text = textField.getText().toString();
+                    if (craftPushEnabledField != null) {
+                        try {
+                            String title = CraftLocalNotification.title(w.text);
+                            String body = CraftLocalNotification.body(craftPushBodyField.getText().toString());
+                            String topic = craftPushTopicField.getText().toString().trim();
+                            if (topic.length() > 200) topic = topic.substring(0, 200);
+                            w.extraFields.put("craftPushTitle", title);
+                            w.extraFields.put("craftPushBody", body);
+                            w.extraFields.put("craftPushTopic", topic);
+                            w.extraFields.put("craftPushEnabled", craftPushEnabledField.isChecked());
+                            org.json.JSONObject craftOther = w.extraFields.optJSONObject("craftOther");
+                            if (craftOther == null) craftOther = new org.json.JSONObject();
+                            craftOther.put("title", title);
+                            craftOther.put("body", body);
+                            craftOther.put("to", topic);
+                            w.extraFields.put("craftOther", craftOther);
+                            w.lastCraftPushState = false;
+                        } catch (org.json.JSONException failure) {
+                            Toast.makeText(this, "Не удалось сохранить настройки уведомления", Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                    }
                     w.connectionInfo = connectionField.getText().toString().trim();
                     if (craftIndicatorTypeField != null) {
                         try {
@@ -10330,6 +10449,7 @@ public class MainActivity extends Activity {
         public int lastVoiceState = -1;
         public boolean lastSoundState = false;
         public boolean lastTelegramState = false;
+        transient boolean lastCraftPushState = false;
         transient boolean lastSmsState = false;
         public JSONObject extraFields = new JSONObject();
         transient JSONObject craftMacroDefinitionSourceCache;
