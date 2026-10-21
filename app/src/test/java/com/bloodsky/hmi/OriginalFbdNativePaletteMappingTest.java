@@ -13,7 +13,7 @@ public class OriginalFbdNativePaletteMappingTest {
         assertEquals("FBD CRAFT CTU", mapped);
         assertEquals("CTU 16 bit", OriginalFbdPalette.nativeLabelForOriginalTag("FB_CTU"));
         assertArrayEquals(new String[]{"+","-","R"}, MainActivity.knownFbdPins(mapped, false));
-        assertEquals("NUMBER", MainActivity.knownFbdPinType(mapped, "Q", true));
+        assertEquals("INT", MainActivity.knownFbdPinType(mapped, "Q", true));
         assertNotEquals("FBD CTU", mapped);
         assertEquals("BOOL", MainActivity.knownFbdPinType("FBD CTU", "Q", true));
     }
@@ -166,7 +166,7 @@ public class OriginalFbdNativePaletteMappingTest {
         assertArrayEquals(new String[]{"IN", "MS"}, MainActivity.knownFbdPins(timer, false));
         assertArrayEquals(new String[]{"Q"}, MainActivity.knownFbdPins(timer, true));
         assertEquals("BOOL", MainActivity.knownFbdPinType(timer, "IN", false));
-        assertEquals("NUMBER", MainActivity.knownFbdPinType(timer, "MS", false));
+        assertEquals("INT", MainActivity.knownFbdPinType(timer, "MS", false));
         assertEquals("BOOL", MainActivity.knownFbdPinType(timer, "Q", true));
 
         String[] sourceTags = {"SIN", "ABS", "IntToFloat", "FloatToInt"};

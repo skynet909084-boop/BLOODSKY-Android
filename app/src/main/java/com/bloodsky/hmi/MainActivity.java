@@ -45,6 +45,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.URI;
@@ -8623,7 +8624,12 @@ public class MainActivity extends Activity {
         if (kind.equals("FBD CRAFT TIMER")) {
             if (output && "Q".equals(name)) return "BOOL";
             if (!output && "IN".equals(name)) return "BOOL";
-            if (!output && ("MS".equals(name) || "PT".equals(name))) return "NUMBER";
+            if (!output && ("MS".equals(name) || "PT".equals(name))) return "INT";
+        }
+        if (kind.equals("FBD CRAFT BLINK")) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && "IN".equals(name)) return "BOOL";
+            if (!output && "PT".equals(name)) return "INT";
         }
         if (kind.equals("FBD CRAFT ARITHMETIC INT")
                 || kind.equals("FBD CRAFT ARITHMETIC FLOAT")) {
@@ -8639,7 +8645,7 @@ public class MainActivity extends Activity {
             if (!output && "IN".equals(name)) return "BOOL";
         }
         if (kind.equals("FBD CRAFT CTU")) {
-            if (output && "Q".equals(name)) return "NUMBER";
+            if (output && "Q".equals(name)) return "INT";
             if (!output && ("+".equals(name) || "-".equals(name) || "R".equals(name)))
                 return "BOOL";
         }
@@ -8814,16 +8820,15 @@ public class MainActivity extends Activity {
         boolean targetBlockKnown = knownFbdPins(targetType, true).length > 0
                 || knownFbdPins(targetType, false).length > 0;
         if ((sourceBlockKnown && sourceKnown == null) || (targetBlockKnown && targetKnown == null)) return false;
-        if (sourceKnown != null && targetKnown != null && !sourceKnown.equals(targetKnown)) return false;
+        if (sourceKnown != null && targetKnown != null
+                && !FbdCraftPinTypes.compatible(sourceKnown, targetKnown)) return false;
         String sourceExact = FbdCraftPinTypes.typeForBlock(sourceType, sourcePin, true);
         String targetExact = FbdCraftPinTypes.typeForBlock(targetType, targetPin, false);
         if (!FbdCraftPinTypes.compatible(sourceExact, targetExact)) return false;
         if (sourceKnown != null && edge.has("sourceSignalType")
-                && !("ANY".equalsIgnoreCase(edge.optString("sourceSignalType"))
-                || sourceKnown.equalsIgnoreCase(edge.optString("sourceSignalType")))) return false;
+                && !isCompatibleFbdSignalMetadata(sourceKnown, edge.optString("sourceSignalType"))) return false;
         if (targetKnown != null && edge.has("targetSignalType")
-                && !("ANY".equalsIgnoreCase(edge.optString("targetSignalType"))
-                || targetKnown.equalsIgnoreCase(edge.optString("targetSignalType")))) return false;
+                && !isCompatibleFbdSignalMetadata(targetKnown, edge.optString("targetSignalType"))) return false;
         return true;
     }
 
@@ -8840,17 +8845,25 @@ public class MainActivity extends Activity {
         boolean targetBlockKnown = knownFbdPins(targetWidget, true).length > 0
                 || knownFbdPins(targetWidget, false).length > 0;
         if ((sourceBlockKnown && sourceKnown == null) || (targetBlockKnown && targetKnown == null)) return false;
-        if (sourceKnown != null && targetKnown != null && !sourceKnown.equals(targetKnown)) return false;
+        if (sourceKnown != null && targetKnown != null
+                && !FbdCraftPinTypes.compatible(sourceKnown, targetKnown)) return false;
         String sourceExact = FbdCraftPinTypes.typeForWidget(sourceWidget, sourcePin, true);
         String targetExact = FbdCraftPinTypes.typeForWidget(targetWidget, targetPin, false);
         if (!FbdCraftPinTypes.compatible(sourceExact, targetExact)) return false;
         if (sourceKnown != null && edge.has("sourceSignalType")
-                && !("ANY".equalsIgnoreCase(edge.optString("sourceSignalType"))
-                || sourceKnown.equalsIgnoreCase(edge.optString("sourceSignalType")))) return false;
+                && !isCompatibleFbdSignalMetadata(sourceKnown, edge.optString("sourceSignalType"))) return false;
         if (targetKnown != null && edge.has("targetSignalType")
-                && !("ANY".equalsIgnoreCase(edge.optString("targetSignalType"))
-                || targetKnown.equalsIgnoreCase(edge.optString("targetSignalType")))) return false;
+                && !isCompatibleFbdSignalMetadata(targetKnown, edge.optString("targetSignalType"))) return false;
         return true;
+    }
+
+    private static boolean isCompatibleFbdSignalMetadata(String pinType, String storedType) {
+        if (pinType == null || storedType == null) return true;
+        if ("ANY".equalsIgnoreCase(storedType)) return true;
+        if ("BOOL".equalsIgnoreCase(pinType) || "BOOL".equalsIgnoreCase(storedType))
+            return pinType.equalsIgnoreCase(storedType);
+        return FbdCraftPinTypes.compatible(pinType.toUpperCase(Locale.ROOT),
+                storedType.toUpperCase(Locale.ROOT));
     }
 
     /** Validate pin metadata on import while leaving legacy unpinned connections intact. */
@@ -10604,7 +10617,8 @@ public class MainActivity extends Activity {
         List<String> compatible = new ArrayList<>();
         for (String targetPin : targetPins) {
             String targetSignal = knownFbdPinType(targetType, targetPin, false);
-            if (sourceSignal == null || targetSignal == null || sourceSignal.equals(targetSignal))
+            if (sourceSignal == null || targetSignal == null
+                    || FbdCraftPinTypes.compatible(sourceSignal, targetSignal))
                 compatible.add(targetPin);
         }
         return compatible.toArray(new String[0]);
@@ -10617,7 +10631,8 @@ public class MainActivity extends Activity {
         List<String> compatible = new ArrayList<>();
         for (String targetPin : targetPins) {
             String targetSignal = knownFbdPinType(target, targetPin, false);
-            if (sourceSignal == null || targetSignal == null || sourceSignal.equals(targetSignal))
+            if (sourceSignal == null || targetSignal == null
+                    || FbdCraftPinTypes.compatible(sourceSignal, targetSignal))
                 compatible.add(targetPin);
         }
         return compatible.toArray(new String[0]);

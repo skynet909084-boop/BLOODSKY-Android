@@ -8,6 +8,19 @@ final class FbdCraftPinTypes {
         if (blockType == null || pin == null) return null;
         String kind = MainActivity.canonicalFbdBlockType(blockType);
         String name = MainActivity.canonicalFbdPinName(pin);
+        if ("FBD CRAFT TIMER".equals(kind)) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && "IN".equals(name)) return "BOOL";
+            // FB_TIMER declares MS with Craft type code 2 (Integer). PT is
+            // BLOODSKY's persisted legacy alias for the same preset input.
+            if (!output && ("MS".equals(name) || "PT".equals(name))) return "INT";
+        }
+        if ("FBD CRAFT BLINK".equals(kind)) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && "IN".equals(name)) return "BOOL";
+            if (!output && "PT".equals(name)) return "INT";
+        }
+        if ("FBD CRAFT CTU".equals(kind) && output && "Q".equals(name)) return "INT";
         if ("FBD CRAFT VAR INT".equals(kind) || "FBD CRAFT VAR OUT INT".equals(kind)
                 || "FBD CRAFT MOVE".equals(kind) || "FBD CRAFT MX".equals(kind)
                 || "FBD CRAFT ARRAY".equals(kind) || "FBD CRAFT SEL".equals(kind)
@@ -93,7 +106,8 @@ final class FbdCraftPinTypes {
 
     static boolean compatible(String source, String target) {
         if (source == null || target == null || source.equals(target)) return true;
-        return "NUMBER".equals(source) || "NUMBER".equals(target)
-                || "ANY".equals(source) || "ANY".equals(target);
+        if ("ANY".equals(source) || "ANY".equals(target)) return true;
+        if ("BOOL".equals(source) || "BOOL".equals(target)) return false;
+        return "NUMBER".equals(source) || "NUMBER".equals(target);
     }
 }

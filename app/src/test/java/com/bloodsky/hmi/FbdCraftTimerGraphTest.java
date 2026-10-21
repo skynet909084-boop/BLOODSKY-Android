@@ -9,7 +9,7 @@ public class FbdCraftTimerGraphTest {
         assertArrayEquals(new String[]{"IN", "MS"}, MainActivity.knownFbdPins("FBD CRAFT TIMER", false));
         assertArrayEquals(new String[]{"Q"}, MainActivity.knownFbdPins("FBD CRAFT TIMER", true));
         assertEquals("BOOL", MainActivity.knownFbdPinType("FBD CRAFT TIMER", "IN", false));
-        assertEquals("NUMBER", MainActivity.knownFbdPinType("FBD CRAFT TIMER", "MS", false));
+        assertEquals("INT", MainActivity.knownFbdPinType("FBD CRAFT TIMER", "MS", false));
         assertEquals("BOOL", MainActivity.knownFbdPinType("FBD CRAFT TIMER", "Q", true));
         assertEquals(.5f, FbdSourceCanvasSkin.inputY("FBD CRAFT TIMER", "IN"), .00001f);
         assertEquals(5f/6f, FbdSourceCanvasSkin.inputY("FBD CRAFT TIMER", "MS"), .00001f);

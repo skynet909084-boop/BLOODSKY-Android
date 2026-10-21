@@ -30,10 +30,35 @@ public class FbdCraftTypedWireContractsTest {
         assertEquals("FLOAT", FbdCraftPinTypes.typeForBlock("FBD CRAFT VAR FLOAT", "Q", true));
     }
 
+    @Test public void craftTimerPresetRequiresIntegerWhileAcceptingLegacyPinAlias() throws Exception {
+        assertEquals("INT", FbdCraftPinTypes.typeForBlock("FBD CRAFT TIMER", "MS", false));
+        assertEquals("INT", FbdCraftPinTypes.typeForBlock("FBD CRAFT TIMER", "PT", false));
+        assertTrue(wire("FBD CRAFT VAR INT", "Q", "FBD CRAFT TIMER", "MS"));
+        assertTrue(wire("FBD CRAFT VAR INT", "Q", "FBD CRAFT TIMER", "PT"));
+        assertTrue(wire("FBD CRAFT CTU", "Q", "FBD CRAFT TIMER", "MS",
+                "NUMBER", "NUMBER"));
+        assertFalse(wire("FBD CRAFT VAR FLOAT", "Q", "FBD CRAFT TIMER", "MS"));
+        assertFalse(wire("FBD CRAFT VAR FLOAT", "Q", "FBD CRAFT TIMER", "PT"));
+    }
+
+    @Test public void craftCounterOutputUsesOriginalIntegerType() throws Exception {
+        assertEquals("INT", FbdCraftPinTypes.typeForBlock("FBD CRAFT CTU", "Q", true));
+        assertTrue(wire("FBD CRAFT CTU", "Q", "FBD CRAFT VAR OUT INT", "IN"));
+        assertFalse(wire("FBD CRAFT CTU", "Q", "FBD CRAFT VAR OUT FLOAT", "IN"));
+    }
+
     private static boolean wire(String sourceType, String sourcePin, String targetType,
                                 String targetPin) throws Exception {
+        return wire(sourceType, sourcePin, targetType, targetPin, null, null);
+    }
+
+    private static boolean wire(String sourceType, String sourcePin, String targetType,
+                                String targetPin, String storedSourceSignal,
+                                String storedTargetSignal) throws Exception {
         JSONObject edge = new JSONObject().put("source", 0).put("target", 1)
                 .put("sourcePin", sourcePin).put("targetPin", targetPin);
+        if (storedSourceSignal != null) edge.put("sourceSignalType", storedSourceSignal);
+        if (storedTargetSignal != null) edge.put("targetSignalType", storedTargetSignal);
         return MainActivity.hasCompatibleKnownFbdPins(edge, sourceType, targetType);
     }
 }
