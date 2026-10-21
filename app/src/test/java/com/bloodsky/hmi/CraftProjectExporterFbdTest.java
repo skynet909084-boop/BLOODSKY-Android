@@ -59,4 +59,24 @@ public class CraftProjectExporterFbdTest {
         assertEquals(0, reimported.getJSONArray("screens").getJSONObject(0)
                 .getJSONArray("connections").length());
     }
+
+    @Test public void deletingFbdTargetRemovesItsRowAndClearsRemainingSourceWire() throws Exception {
+        JSONObject project = new JSONObject(project());
+        JSONObject screen = project.getJSONArray("screens").getJSONObject(0);
+        screen.getJSONArray("widgets").remove(1);
+        screen.getJSONArray("connections").remove(0);
+
+        JSONObject exported = new JSONObject(CraftProjectExporter.export(project.toString()));
+        JSONArray rows = exported.getJSONArray("TableComponent");
+        assertEquals(1, rows.length());
+        JSONObject sourceOther = rows.getJSONObject(0).getJSONObject("jsTableComponent_other");
+        assertEquals(-1, sourceOther.getInt("keyOut"));
+        assertEquals(-1, sourceOther.getInt("numOnIn"));
+        assertEquals("retained", sourceOther.getString("vendorBlockData"));
+
+        JSONObject reimported = new JSONObject(CraftProjectImporter.convert(exported.toString()));
+        JSONObject restored = reimported.getJSONArray("screens").getJSONObject(0);
+        assertEquals(1, restored.getJSONArray("widgets").length());
+        assertEquals(0, restored.getJSONArray("connections").length());
+    }
 }

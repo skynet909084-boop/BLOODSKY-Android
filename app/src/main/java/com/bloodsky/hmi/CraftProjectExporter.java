@@ -168,9 +168,11 @@ public final class CraftProjectExporter {
             }
             sourceRowsByScreen.add(sourceRowsForScreen);
         }
-        for (boolean mapped : seen) if (!mapped)
-            throw new IOException("Удаление компонентов пока нельзя экспортировать в KaScada");
         writeFbdConnections(screens, importedScreens, sourceRowsByScreen, sourceRows, outputRows);
+        JSONArray retainedRows = new JSONArray();
+        for (int row = 0; row < outputRows.length(); row++)
+            if (seen[row]) retainedRows.put(outputRows.get(row));
+        result.put("TableComponent", retainedRows);
         meta.put("countScreen", screens.length());
         if (meta.has("jsTableNameProject_screenBackground"))
             meta.put("jsTableNameProject_screenBackground", backgrounds);
@@ -189,15 +191,49 @@ public final class CraftProjectExporter {
 
             int[] rows = sourceRowsByScreen.get(screenIndex);
             JSONArray widgets = screen.getJSONArray("widgets");
+            java.util.Set<Integer> retained = new java.util.HashSet<>();
+            for (int row : rows) retained.add(row);
             int originalMappedOutgoing = 0;
             for (int widgetIndex = 0; widgetIndex < rows.length; widgetIndex++) {
                 JSONObject widget = widgets.getJSONObject(widgetIndex);
                 if (!isCraftFbd(widget)) continue;
                 JSONObject sourceOther = objectValue(sourceRows.getJSONObject(rows[widgetIndex])
                         .opt("jsTableComponent_other"));
-                if (sourceOther.optInt("keyOut", -1) >= 0) originalMappedOutgoing++;
+                int targetKey = sourceOther.optInt("keyOut", -1);
+                if (targetKey < 0) continue;
+                int targetRow = -1;
+                for (int candidate = 0; candidate < sourceRows.length(); candidate++) {
+                    JSONObject candidateRow = sourceRows.getJSONObject(candidate);
+                    if (candidateRow.optInt("componentId", -1) < 101
+                            || candidateRow.optInt("componentId", -1) > 140) continue;
+                    JSONObject candidateOther = objectValue(candidateRow.opt("jsTableComponent_other"));
+                    if (candidateOther.optInt("numScreen", 1) != screenIndex + 1
+                            || candidateOther.optInt("saveKey", Integer.MIN_VALUE) != targetKey) continue;
+                    if (targetRow >= 0)
+                        throw new IOException("Ключ saveKey исходной связи неоднозначен на экране");
+                    targetRow = candidate;
+                }
+                if (targetRow < 0)
+                    throw new IOException("Исходная FBD-связь не имеет однозначного целевого блока");
+                if (retained.contains(targetRow)) originalMappedOutgoing++;
             }
-            if (originalMappedOutgoing != baseline.optJSONArray("connections").length())
+            JSONArray baselineEdges = baseline.optJSONArray("connections");
+            int survivingBaselineEdges = 0;
+            JSONArray baselineWidgets = baseline.optJSONArray("widgets");
+            if (baselineEdges == null || baselineWidgets == null)
+                throw new IOException("Исходная FBD-связь не имеет однозначного представления для экспорта");
+            for (int i = 0; i < baselineEdges.length(); i++) {
+                JSONObject edge = baselineEdges.optJSONObject(i);
+                if (edge == null) throw new IOException("Исходная FBD-связь повреждена");
+                int sourceIndex = edge.optInt("source", -1), targetIndex = edge.optInt("target", -1);
+                if (sourceIndex < 0 || sourceIndex >= baselineWidgets.length()
+                        || targetIndex < 0 || targetIndex >= baselineWidgets.length())
+                    throw new IOException("Исходная FBD-связь повреждена");
+                int sourceRow = baselineWidgets.getJSONObject(sourceIndex).optInt("craftSourceRow", -1);
+                int targetRow = baselineWidgets.getJSONObject(targetIndex).optInt("craftSourceRow", -1);
+                if (retained.contains(sourceRow) && retained.contains(targetRow)) survivingBaselineEdges++;
+            }
+            if (originalMappedOutgoing != survivingBaselineEdges)
                 throw new IOException("Исходная FBD-связь не имеет однозначного представления для экспорта");
 
             int[] outgoingCount = new int[rows.length];
