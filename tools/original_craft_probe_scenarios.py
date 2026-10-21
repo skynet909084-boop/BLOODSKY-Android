@@ -1,37 +1,44 @@
-"""CLI and evidence mapping for bounded original Craft scenarios."""
+"""Small independent runtime checks for the original Craft emulator probe."""
+from __future__ import annotations
+
 
 QUICK_SCENARIOS = {
     "project-create": {
         "case_ids": ["K107-0001"],
-        "expected": "The create flow reaches the editor with screen navigation controls.",
+        "expected": "Creating a project reaches the editor and shows screen navigation.",
+        "steps": ["create project dialog", "project name", "create project"],
     },
     "hmi-palette": {
         "case_ids": ["K107-0023"],
-        "expected": "The HMI palette exposes the dynamic-picture component and layout switch.",
+        "expected": "The editor exposes dynamic pictures and the layout switch.",
+        "steps": ["create project dialog", "project name", "create project", "component palette"],
     },
     "hmi-id17-properties": {
         "case_ids": ["K107-0023"],
-        "expected": "After placing Craft ID17, the properties editor opens with editable fields.",
+        "expected": "Placing Craft ID17 opens its property editor with editable fields.",
+        "steps": ["create project dialog", "project name", "create project", "component palette",
+                  "drag Craft ID17 dynamic picture to canvas"],
     },
 }
 
 
-def parse_probe_options(arguments):
-    """Return (profile, scenario); reject unknown or incomplete CLI arguments."""
-    profile = "full" if "--full" in arguments else "quick"
+def parse_probe_options(arguments: list[str]) -> tuple[str, str]:
+    """Parse the bounded scenario selector and the manual-only full flag."""
+    profile = "quick"
     scenario = "hmi-id17-properties"
-    args = list(arguments)
-    if "--full" in args:
-        args.remove("--full")
-    if "--scenario" in args:
-        index = args.index("--scenario")
-        if index + 1 >= len(args):
-            raise ValueError("--scenario requires a scenario name")
-        scenario = args[index + 1]
-        del args[index:index + 2]
-    unknown = [arg for arg in args if arg]
-    if unknown:
-        raise ValueError(f"unknown probe arguments: {unknown}")
+    index = 0
+    while index < len(arguments):
+        option = arguments[index]
+        if option == "--full":
+            profile = "full"
+        elif option == "--scenario":
+            index += 1
+            if index >= len(arguments):
+                raise ValueError("--scenario requires a scenario name")
+            scenario = arguments[index]
+        else:
+            raise ValueError(f"unknown probe option: {option}")
+        index += 1
     if scenario not in QUICK_SCENARIOS:
         raise ValueError(f"unknown quick scenario: {scenario}")
     return profile, scenario

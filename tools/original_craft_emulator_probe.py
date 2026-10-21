@@ -15,6 +15,7 @@ from pathlib import Path
 import os
 from PIL import Image
 from original_craft_probe_state import remember_state_signature
+from original_craft_probe_scenarios import QUICK_SCENARIOS, parse_probe_options
 
 OUT = Path(sys.argv[1])
 OUT.mkdir(parents=True, exist_ok=True)
@@ -22,7 +23,10 @@ PACKAGE = "ru.kascada.modbus"
 APK_SOURCE = os.environ.get("KASCADA_PROBE_APK_SOURCE", "unknown")
 APK_SHA256 = os.environ.get("KASCADA_PROBE_APK_SHA256", "")
 ADB_TIMEOUT = 45
-PROFILE = "quick" if "--full" not in sys.argv[2:] else "full"
+try:
+    PROFILE, QUICK_SCENARIO = parse_probe_options(sys.argv[2:])
+except ValueError as exc:
+    raise SystemExit(str(exc)) from exc
 MAX_STATES = 12 if PROFILE == "quick" else 300
 MAX_DEPTH = 8 if PROFILE == "quick" else 12
 MAX_QUEUED = 240
@@ -323,6 +327,11 @@ def save_checkpoint(complete=False):
         "apk_sha256": APK_SHA256,
         "offline": True,
         "profile": PROFILE,
+        "scenario": QUICK_SCENARIO if PROFILE == "quick" else "full",
+        "scenario_case_ids": QUICK_SCENARIOS[QUICK_SCENARIO]["case_ids"] if PROFILE == "quick" else [],
+        "scenario_expected": QUICK_SCENARIOS[QUICK_SCENARIO]["expected"] if PROFILE == "quick" else "Exhaustive exploration is bounded and not a case-level PASS.",
+        "scenario_status": ("PASS" if quick_goal_reached else "FAIL") if PROFILE == "quick" and complete else "RUNNING" if PROFILE == "quick" else "NOT_A_SCENARIO",
+        "k107_case_status": "WAITING_FOR_BLOODSKY_COMPARISON",
         "execution_finished": complete,
         "max_states": MAX_STATES,
         "max_path_depth": MAX_DEPTH,
@@ -346,7 +355,7 @@ def save_checkpoint(complete=False):
         "transitions": transition_rows,
         "runtime_error_log": "android-runtime-errors.log",
         "limitations": [
-            "Quick profile targets the Craft ID17 palette-to-properties path; it is a focused sample, never a complete UI audit.",
+            "Quick profile executes one independently selected scenario; a scenario PASS is runtime evidence for the original only, not a K107 acceptance PASS or BLOODSKY parity claim.",
             "Full profile explores up to 300 unique states with depth 12, up to 240 controls per state, and a 5h45m limit so artifact upload has time before the six-hour runner cap.",
             "Full traversal uses one app session with Back navigation and de-duplicates identical visible accessibility states; identical screens with different hidden data may merge.",
             "Depth, per-screen action, state, or wall-clock caps are recorded as incomplete coverage rather than a complete audit.",
@@ -527,20 +536,21 @@ def full_walk():
 
 
 def guided_quick_walk():
-    """Follow project creation -> Craft ID17 placement -> ID17 properties."""
+    """Execute one selected, bounded route and assert its observed endpoint."""
     global coverage_limited, quick_goal_reached
     path = []
     captured = capture_state(path)
     if captured is None:
         return
-    steps = [
-        ("create project dialog", lambda n: "CREATE A NEW PROJECT" in n.get("text", "").upper()),
-        ("project name", lambda n: n.get("field")),
-        ("create project", lambda n: n.get("text", "").strip().upper() == "CREATE" and not n.get("field")),
-        ("component palette", lambda n: n.get("resource_id", "").endswith("menu_bar_component")),
-        ("drag Craft ID17 dynamic picture to canvas", lambda n: n.get("resource_id", "").endswith("tab_dyn_pictures")),
-    ]
-    for label, predicate in steps:
+    predicates = {
+        "create project dialog": lambda n: "CREATE A NEW PROJECT" in n.get("text", "").upper(),
+        "project name": lambda n: n.get("field"),
+        "create project": lambda n: n.get("text", "").strip().upper() == "CREATE" and not n.get("field"),
+        "component palette": lambda n: n.get("resource_id", "").endswith("menu_bar_component"),
+        "drag Craft ID17 dynamic picture to canvas": lambda n: n.get("resource_id", "").endswith("tab_dyn_pictures"),
+    }
+    for label in QUICK_SCENARIOS[QUICK_SCENARIO]["steps"]:
+        predicate = predicates[label]
         if captured is None:
             print(f"guided route stopped before {label}: previous screen was unchanged", flush=True)
             break
@@ -562,7 +572,7 @@ def guided_quick_walk():
         perform(action)
         path.append(action)
         captured = capture_state(path)
-        if label == "drag Craft ID17 dynamic picture to canvas" and captured is not None:
+        if QUICK_SCENARIO == "hmi-id17-properties" and label == "drag Craft ID17 dynamic picture to canvas" and captured is not None:
             with Image.open(OUT / f"{captured[0]}.png") as image:
                 width, height = image.size
             reveal_action = {
@@ -578,7 +588,7 @@ def guided_quick_walk():
             perform(reveal_action)
             path.append(reveal_action)
             captured = capture_state(path)
-        if label == "drag Craft ID17 dynamic picture to canvas" and captured is not None:
+        if QUICK_SCENARIO == "hmi-id17-properties" and label == "drag Craft ID17 dynamic picture to canvas" and captured is not None:
             property_x, property_y = placed_widget_point(captured[0])
             properties_action = {
                 "kind": "tap", "node": {"x": property_x, "y": property_y, "field": False},
@@ -607,6 +617,16 @@ def guided_quick_walk():
                     f"property_fields={len(property_controls)}",
                     flush=True,
                 )
+    if QUICK_SCENARIO == "project-create" and captured is not None:
+        controls_now = state_rows[-1]["controls"]
+        quick_goal_reached = (any(n.get("resource_id", "").endswith("menu_bar_component") for n in controls_now)
+                              and any(n.get("resource_id", "").endswith("numScreen") for n in controls_now))
+    elif QUICK_SCENARIO == "hmi-palette" and captured is not None:
+        controls_now = state_rows[-1]["controls"]
+        quick_goal_reached = (any(n.get("resource_id", "").endswith("tab_dyn_pictures") for n in controls_now)
+                              and any(n.get("resource_id", "").endswith("switch_layout") for n in controls_now))
+    if not quick_goal_reached:
+        coverage_limited = True
 
 
 fresh_start()
@@ -621,5 +641,7 @@ log = adb("logcat", "-d", "-v", "brief", "AndroidRuntime:E", "*:S", check=False)
 (OUT / "android-runtime-errors.log").write_text(log)
 save_checkpoint(complete=True)
 summary = json.loads((OUT / "ui-audit.json").read_text())
-print(json.dumps({k: summary[k] for k in ("profile", "states_captured", "transitions_visited", "elapsed_seconds", "execution_finished", "coverage_complete", "termination_reason")}), flush=True)
+print(json.dumps({k: summary[k] for k in ("profile", "scenario", "scenario_status", "states_captured", "transitions_visited", "elapsed_seconds", "execution_finished", "coverage_complete", "termination_reason")}), flush=True)
+if PROFILE == "quick" and not quick_goal_reached:
+    raise SystemExit("quick scenario did not reach its required observed endpoint")
 
