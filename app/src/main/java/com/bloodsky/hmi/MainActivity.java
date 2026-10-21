@@ -126,7 +126,7 @@ public class MainActivity extends Activity {
             new java.util.concurrent.ConcurrentHashMap<Widget, Boolean>());
     private FbdCraftMqttRuntime craftMqttRuntime;
     private final Map<Integer, String> liveValues = new HashMap<>();
-    private final java.util.Map<Widget, CraftTrendHistory> trendHistories =
+    private final java.util.Map<Widget, CraftTrendHistory[]> trendHistories =
             java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
     private boolean modbusPollingActive = false;
     private boolean activityResumed = false;
@@ -1438,11 +1438,24 @@ public class MainActivity extends Activity {
                 widget.extraFields.optString("craftArchiveRecordType", "INT"));
     }
 
+    private int trendReadQuantity(Widget widget) {
+        return CraftTrendGraphCodec.readQuantity(widget.extraFields.optInt("craftTrendType", 1),
+                widget.extraFields.optInt("craftTrendChannelCount", 1));
+    }
+
     private String formatPolledValue(Widget widget, int[] words) {
         if ("График / Тренд".equals(widget.type)
-                && widget.extraFields.optInt("craftComponentId", -1) == 14)
-            return Double.toString(CraftTrendGraphCodec.decodeFirst(words,
-                    widget.extraFields.optInt("craftTrendType", 1)));
+                && widget.extraFields.optInt("craftComponentId", -1) == 14) {
+            double[] channels = CraftTrendGraphCodec.decodeChannels(words,
+                    widget.extraFields.optInt("craftTrendType", 1),
+                    widget.extraFields.optInt("craftTrendChannelCount", 1));
+            StringBuilder encoded = new StringBuilder();
+            for (int i = 0; i < channels.length; i++) {
+                if (i > 0) encoded.append('|');
+                encoded.append(Double.toString(channels[i]));
+            }
+            return encoded.toString();
+        }
         if ("Архив Craft".equals(widget.type)) return CraftArchiveChannels.decode(words,
                 widget.extraFields.optInt("craftArchiveChannelCount", 1),
                 widget.extraFields.optString("craftArchiveRecordType", "INT"));
@@ -1576,7 +1589,7 @@ public class MainActivity extends Activity {
             int quantity = craftSource && isCraftRegisterFloat(widget.type) ? 2 : 1;
             if ("График / Тренд".equals(widget.type)
                     && widget.extraFields.optInt("craftComponentId", -1) == 14)
-                quantity = CraftTrendGraphCodec.readQuantity(widget.extraFields.optInt("craftTrendType", 1));
+                quantity = trendReadQuantity(widget);
             if (OriginalCraftNumericIndicator.TYPE.equals(widget.type))
                 quantity = OriginalCraftNumericIndicator.readQuantity(widget.extraFields.optInt("craftNumericIndicatorType", 0));
             if ("Архив Craft".equals(widget.type)) quantity = archiveReadQuantity(widget);
@@ -1602,14 +1615,16 @@ public class MainActivity extends Activity {
                     .optInt("craftNumericIndicatorType", 0)) : 1;
             if ("График / Тренд".equals(snapshotWidgets.get(i).type)
                     && snapshotWidgets.get(i).extraFields.optInt("craftComponentId", -1) == 14)
-                numericIndicatorQuantity = CraftTrendGraphCodec.readQuantity(snapshotWidgets.get(i).extraFields
-                        .optInt("craftTrendType", 1));
+                numericIndicatorQuantity = trendReadQuantity(snapshotWidgets.get(i));
             if (binding != null && binding.startsWith("tcp://")
                     && parseBinding(i, binding, numericIndicatorQuantity) == null)
                 invalidBindings.put(i, "CFG");
             else if (usbProjectBindingAllowed && binding != null && binding.startsWith("usb://")
                     && parseProjectBinding(i, binding,
-                    isCraftRegisterFloat(snapshotWidgets.get(i).type) ? 2 : 1) == null) invalidBindings.put(i, "CFG");
+                    "График / Тренд".equals(snapshotWidgets.get(i).type)
+                            && snapshotWidgets.get(i).extraFields.optInt("craftComponentId", -1) == 14
+                            ? trendReadQuantity(snapshotWidgets.get(i))
+                            : isCraftRegisterFloat(snapshotWidgets.get(i).type) ? 2 : 1) == null) invalidBindings.put(i, "CFG");
         }
         if (requests.isEmpty() && invalidBindings.isEmpty() && craftSystemTextUpdates.isEmpty()
                 && craftSystemNumericUpdates.isEmpty()
@@ -1844,18 +1859,26 @@ public class MainActivity extends Activity {
 
     private void recordTrendSample(Widget widget, String rawValue) {
         if (rawValue == null || rawValue.startsWith("ERR") || rawValue.startsWith("CFG")) return;
-        final double value;
-        try { value = Double.parseDouble(rawValue.trim()); }
-        catch (NumberFormatException invalid) { return; }
-        if (!Double.isFinite(value)) return;
-        CraftTrendHistory history = trendHistories.get(widget);
-        if (history == null) {
-            history = new CraftTrendHistory();
-            trendHistories.put(widget, history);
+        String[] encoded = rawValue.split("\\|", -1);
+        int channels = Math.min(encoded.length, Math.max(1, Math.min(4,
+                widget.extraFields.optInt("craftTrendChannelCount", 1))));
+        CraftTrendHistory[] histories = trendHistories.get(widget);
+        if (histories == null || histories.length != channels) {
+            CraftTrendHistory[] created = new CraftTrendHistory[channels];
+            for (int i = 0; i < channels; i++) created[i] = new CraftTrendHistory();
+            trendHistories.put(widget, created);
+            histories = created;
         }
-        history.append(value, android.os.SystemClock.elapsedRealtime(),
-                widget.extraFields.optLong("craftTrendIntervalMs", 500),
-                widget.extraFields.optInt("craftTrendMaxPoints", 300));
+        long now = android.os.SystemClock.elapsedRealtime();
+        for (int i = 0; i < channels; i++) {
+            final double value;
+            try { value = Double.parseDouble(encoded[i].trim()); }
+            catch (NumberFormatException invalid) { continue; }
+            if (!Double.isFinite(value)) continue;
+            histories[i].append(value, now,
+                    widget.extraFields.optLong("craftTrendIntervalMs", 500),
+                    widget.extraFields.optInt("craftTrendMaxPoints", 300));
+        }
     }
 
     private void drawCraftTrendGraph(Canvas canvas, Widget widget, String liveValue, Paint paint) {
@@ -1873,37 +1896,68 @@ public class MainActivity extends Activity {
         paint.setStrokeWidth(dp(1));
         paint.setColor(widget.extraFields.optInt("craftTrendLabelsColor", Color.WHITE));
         canvas.drawRect(left, top, right, bottom, paint);
-        CraftTrendHistory history = trendHistories.get(widget);
-        double[] samples = history == null ? new double[0] : history.snapshotValues();
+        CraftTrendHistory[] histories = trendHistories.get(widget);
+        int configuredChannels = Math.max(1, Math.min(4,
+                widget.extraFields.optInt("craftTrendChannelCount", 1)));
+        int channelCount = histories == null ? configuredChannels : Math.min(configuredChannels, histories.length);
+        double[][] series = new double[channelCount][];
+        double min = Double.POSITIVE_INFINITY, max = Double.NEGATIVE_INFINITY;
+        for (int channel = 0; channel < channelCount; channel++) {
+            series[channel] = histories == null || channel >= histories.length
+                    ? new double[0] : histories[channel].snapshotValues();
+            for (double sample : series[channel]) {
+                min = Math.min(min, sample);
+                max = Math.max(max, sample);
+            }
+        }
+        double[] firstSeries = series.length == 0 ? new double[0] : series[0];
         paint.setTextSize(dp(10));
         paint.setTextAlign(Paint.Align.LEFT);
         paint.setStyle(Paint.Style.FILL);
         paint.setColor(widget.extraFields.optInt("craftTrendLabelsColor", Color.WHITE));
-        String title = widget.text == null || widget.text.trim().isEmpty()
-                ? widget.extraFields.optString("craftTrendSeries1", "ID14") : widget.text;
-        String latest = liveValue != null && !liveValue.startsWith("ERR") && !liveValue.startsWith("CFG")
-                ? liveValue : (samples.length == 0 ? "ожидание привязки"
-                : String.format(java.util.Locale.ROOT, "%.3f", samples[samples.length - 1]));
+        JSONArray names = widget.extraFields.optJSONArray("craftTrendSeriesNames");
+        String firstName = names == null ? "1" : names.optString(0, "1");
+        String title = widget.text == null || widget.text.trim().isEmpty() ? firstName : widget.text;
+        String latest = "ожидание привязки";
+        if (liveValue != null && !liveValue.startsWith("ERR") && !liveValue.startsWith("CFG")) {
+            String[] liveChannels = liveValue.split("\\|", -1);
+            latest = liveChannels[0];
+        } else if (firstSeries.length > 0) {
+            latest = String.format(java.util.Locale.ROOT, "%.3f", firstSeries[firstSeries.length - 1]);
+        }
         canvas.drawText(title + "  " + latest, left + dp(3), top - dp(5), paint);
-        if (samples.length > 0) {
-            double min = samples[0], max = samples[0];
-            for (double sample : samples) { min = Math.min(min, sample); max = Math.max(max, sample); }
+        if (max > Double.NEGATIVE_INFINITY) {
             if (max - min < 1e-9) { min -= 1; max += 1; }
             float plotLeft = left + dp(3), plotRight = Math.max(plotLeft, right - dp(3));
-            float plotTop = top + dp(3), plotBottom = Math.max(plotTop, bottom - dp(3));
-            android.graphics.Path line = new android.graphics.Path();
-            for (int sampleIndex = 0; sampleIndex < samples.length; sampleIndex++) {
-                float x = samples.length == 1 ? (plotLeft + plotRight) / 2f
-                        : plotLeft + (plotRight - plotLeft) * sampleIndex / (samples.length - 1f);
-                float y = plotBottom - (float) ((samples[sampleIndex] - min) / (max - min))
-                        * (plotBottom - plotTop);
-                if (sampleIndex == 0) line.moveTo(x, y); else line.lineTo(x, y);
-            }
+            float plotTop = top + dp(25), plotBottom = Math.max(plotTop, bottom - dp(3));
             JSONArray colors = widget.extraFields.optJSONArray("craftTrendSeriesColors");
-            paint.setColor(colors == null ? Color.GREEN : colors.optInt(0, Color.GREEN));
-            paint.setStyle(Paint.Style.STROKE);
-            paint.setStrokeWidth(dp(2));
-            canvas.drawPath(line, paint);
+            for (int channel = 0; channel < series.length; channel++) {
+                int fallback = new int[]{Color.RED, Color.GREEN, Color.YELLOW, Color.BLUE}[channel];
+                int seriesColor = colors == null ? fallback : colors.optInt(channel, fallback);
+                String seriesName = names == null ? Integer.toString(channel + 1)
+                        : names.optString(channel, Integer.toString(channel + 1));
+                paint.setStyle(Paint.Style.FILL);
+                paint.setTextSize(dp(8));
+                paint.setColor(seriesColor);
+                float columnWidth = (right - left) / 2f;
+                float legendX = left + dp(4) + (channel % 2) * columnWidth;
+                float legendY = top + dp(10) + (channel / 2) * dp(10);
+                canvas.drawText(seriesName, legendX, legendY, paint);
+                double[] samples = series[channel];
+                if (samples.length == 0) continue;
+                android.graphics.Path line = new android.graphics.Path();
+                for (int sampleIndex = 0; sampleIndex < samples.length; sampleIndex++) {
+                    float x = samples.length == 1 ? (plotLeft + plotRight) / 2f
+                            : plotLeft + (plotRight - plotLeft) * sampleIndex / (samples.length - 1f);
+                    float y = plotBottom - (float) ((samples[sampleIndex] - min) / (max - min))
+                            * (plotBottom - plotTop);
+                    if (sampleIndex == 0) line.moveTo(x, y); else line.lineTo(x, y);
+                }
+                paint.setColor(seriesColor);
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(dp(2));
+                canvas.drawPath(line, paint);
+            }
         } else if (liveValue != null && (liveValue.startsWith("ERR") || liveValue.startsWith("CFG"))) {
             paint.setColor(Color.rgb(255, 120, 120));
             canvas.drawText(liveValue, left + dp(3), (top + bottom) / 2f, paint);
