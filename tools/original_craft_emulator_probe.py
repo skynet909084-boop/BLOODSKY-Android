@@ -14,6 +14,7 @@ from collections import Counter, deque
 from pathlib import Path
 import os
 from PIL import Image
+from original_craft_probe_state import remember_state_signature
 
 OUT = Path(sys.argv[1])
 OUT.mkdir(parents=True, exist_ok=True)
@@ -371,10 +372,9 @@ def capture_state(path):
     loading_stalled = is_project_loading(root)
     visible = visible_state(root)
     signature = hashlib.sha256(json.dumps(visible, ensure_ascii=False).encode()).hexdigest()
-    if signature in seen:
+    if not remember_state_signature(seen, signature):
         (OUT / f"{label}.xml").unlink(missing_ok=True)
         return None
-    seen.add(signature)
 
     # Save the expensive screenshot only for a new state; every unique capture
     # still waits WAIT seconds after the preceding action before reaching here.
