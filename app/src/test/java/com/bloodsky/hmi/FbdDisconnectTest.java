@@ -264,6 +264,31 @@ public class FbdDisconnectTest {
         assertFalse("Reset must clear the latch", runFbd(nodes, edges, 2));
     }
 
+    @Test public void rsWaitsForBothOriginalInputBlocksBeforeUpdatingOrProducingOutput() throws Exception {
+        MainActivity.Widget set = new MainActivity.Widget();
+        set.type = "FBD Вход";
+        set.inputValue = true;
+        MainActivity.Widget reset = new MainActivity.Widget();
+        reset.type = "FBD Вход";
+        MainActivity.Widget latch = new MainActivity.Widget();
+        latch.type = "FBD RS";
+        List<MainActivity.Widget> nodes = java.util.Arrays.asList(set, reset, latch);
+        List<MainActivity.FbdConnection> onlySet = java.util.Collections.singletonList(
+                MainActivity.pinnedFbdConnection(0, "Q", 2, "S"));
+
+        assertFalse("Original FB_RS has no output while R is unconnected", runFbd(nodes, onlySet, 2));
+        assertFalse("An incomplete scan must not set the stored latch", latch.rsState);
+        assertTrue(Double.isNaN(MainActivity.evaluateFbdBlockNumeric(nodes, onlySet, 2,
+                new boolean[3], new boolean[3], new boolean[3], new double[3])));
+
+        List<MainActivity.FbdConnection> complete = java.util.Arrays.asList(
+                MainActivity.pinnedFbdConnection(0, "Q", 2, "S"),
+                MainActivity.pinnedFbdConnection(1, "Q", 2, "R"));
+        assertTrue("Once both source outputs exist, the set input updates the latch",
+                runFbd(nodes, complete, 2));
+        assertTrue(latch.rsState);
+    }
+
     @Test public void tonExecutionUsesNamedInNotFirstIncomingWire() throws Exception {
         MainActivity.Widget first = new MainActivity.Widget();
         first.type = "FBD Вход";
