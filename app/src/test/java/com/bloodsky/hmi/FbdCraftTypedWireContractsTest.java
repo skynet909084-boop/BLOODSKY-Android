@@ -101,6 +101,30 @@ public class FbdCraftTypedWireContractsTest {
                 "FBD CRAFT VAR NAME IN INT", "Q", "FBD CRAFT VAR NAME OUT FLOAT"));
     }
 
+    @Test public void originalSensorSourcesKeepTheirDeclaredIntegerOrFloatType() throws Exception {
+        assertEquals("INT", FbdCraftPinTypes.typeForBlock(
+                "FBD CRAFT SENSOR LIGHT", "Q", true));
+        assertEquals("INT", FbdCraftPinTypes.typeForBlock(
+                "FBD CRAFT SUNRISE", "Q", true));
+        assertEquals("FLOAT", FbdCraftPinTypes.typeForBlock(
+                "FBD CRAFT SENSOR ORIENTATION", "Q", true));
+        assertEquals("FLOAT", FbdCraftPinTypes.typeForBlock(
+                "FBD CRAFT SENSOR SPEED", "Q", true));
+        assertEquals("FLOAT", FbdCraftPinTypes.typeForBlock(
+                "FBD CRAFT ODTEMP", "Q", true));
+
+        assertTrue(wire("FBD CRAFT SENSOR LIGHT", "Q", "FBD CRAFT VAR OUT INT", "IN"));
+        assertTrue(wire("FBD CRAFT SUNRISE", "Q", "FBD CRAFT VAR OUT INT", "IN"));
+        assertTrue(wire("FBD CRAFT SENSOR SPEED", "Q", "FBD CRAFT VAR OUT FLOAT", "IN"));
+        assertTrue(wire("FBD CRAFT ODTEMP", "Q", "FBD CRAFT VAR OUT FLOAT", "IN"));
+        assertFalse(wire("FBD CRAFT SENSOR LIGHT", "Q", "FBD CRAFT VAR OUT FLOAT", "IN"));
+        assertFalse(wire("FBD CRAFT SENSOR ORIENTATION", "Q", "FBD CRAFT VAR OUT INT", "IN"));
+        assertArrayEquals(new String[0], MainActivity.compatibleFbdTargetPins(
+                "FBD CRAFT SENSOR LIGHT", "Q", "FBD CRAFT VAR OUT FLOAT"));
+        assertArrayEquals(new String[0], MainActivity.compatibleFbdTargetPins(
+                "FBD CRAFT ODTEMP", "Q", "FBD CRAFT VAR OUT INT"));
+    }
+
     private static boolean wire(String sourceType, String sourcePin, String targetType,
                                 String targetPin) throws Exception {
         return wire(sourceType, sourcePin, targetType, targetPin, null, null);

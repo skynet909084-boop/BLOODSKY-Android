@@ -27,6 +27,16 @@ final class FbdCraftPinTypes {
             if (!output && "PT".equals(name)) return "INT";
         }
         if ("FBD CRAFT CTU".equals(kind) && output && "Q".equals(name)) return "INT";
+        // The original source classes declare these output types with
+        // getTypeVarOut(): Light and Sunrise_GPS are Integer (2), while
+        // Orientation, Speed, and ODTEMP are Float (3).
+        if (output && "Q".equals(name)) {
+            if ("FBD CRAFT SENSOR LIGHT".equals(kind)
+                    || "FBD CRAFT SUNRISE".equals(kind)) return "INT";
+            if ("FBD CRAFT SENSOR ORIENTATION".equals(kind)
+                    || "FBD CRAFT SENSOR SPEED".equals(kind)
+                    || "FBD CRAFT ODTEMP".equals(kind)) return "FLOAT";
+        }
         if (kind.startsWith("FBD CRAFT VAR NAME IN ") && output && "Q".equals(name))
             return namedVariableType(kind);
         if (kind.startsWith("FBD CRAFT VAR NAME OUT ") && !output && "IN".equals(name))
