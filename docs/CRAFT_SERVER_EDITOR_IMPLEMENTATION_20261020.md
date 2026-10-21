@@ -38,3 +38,10 @@ Local checks on 20 Oct 2026:
 - This container has no Gradle executable or project wrapper. Java compilation/JUnit and emulator UI smoke remain pending exact-head GitHub Actions. Earlier UI run #882 failed in the picker route; its artifact lacks a failure traceback. The next run will save `failure.txt` and Activity/project diagnostics.
 
 Acceptance remains partial. Still required: consume/round-trip original `deviceNetwork` and server records without shadowing them, verify all 16 slots and validation, preserve edits through import/export/reopen and Activity recreation, compare same-density screenshots with Craft, verify Android Bluetooth permissions, and run transport/hardware acceptance separately. The whole-app source-fidelity rule is recorded in `CRAFT_UI_SOURCE_FIDELITY_20261020.md`.
+
+
+## Native Craft project round-trip update — 21 Oct 2026
+
+PR [#211](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/211) now hydrates `craftNetworkDevices` and `craftServerConnections` from native `TableNameProject.deviceNetwork` and `TableConnections` during import. Save writes edited known fields back into the nested Craft source while retaining vendor fields, repeated type IDs, sparse slots, original array/string shape and the independent `countDevice` value. Connector assignment resolves only when the type and native server value identify one row; ambiguity stays inactive until an explicit editor selection.
+
+The exact PR head `77344773dfbe9ab1ad61cc88afab6eedcb4a4d83` passed APK/JUnit [#1299](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39548787279), with debug APK artifact `12322693578`, and Android 11 UI smoke [#925](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39548787333). Tests prove import hydration and native JSON save round-trip; they do not establish physical transport behavior or complete same-density visual parity.
