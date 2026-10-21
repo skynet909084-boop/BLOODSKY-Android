@@ -394,7 +394,10 @@ public final class CraftProjectExporter {
     private static void addMacroDefinitionAndNested(JSONObject rawDefinition, String mediaPath,
             Map<String, FbdCraftMacroDefinition> definitions, int depth) throws Exception {
         if (rawDefinition == null || depth >= 8) return;
-        FbdCraftMacroDefinition definition = FbdCraftMacroDefinition.fromJson(rawDefinition.toString());
+        JSONObject synchronizedDefinition = FbdCraftMacroGraphAdapter
+                .applyEditedModesToCraftRecords(rawDefinition);
+        FbdCraftMacroDefinition definition = FbdCraftMacroDefinition.fromJson(
+                synchronizedDefinition.toString());
         String macroPath = definition.getName() + ".mcr";
         putMacroDefinition(definitions, macroPath, definition);
         if (mediaPath != null && !mediaPath.trim().isEmpty())

@@ -72,6 +72,65 @@ public class CraftProjectMacroImportTest {
                 converted.toString(), exported).get("Scale.mcr"));
     }
 
+    @Test public void editedCraftTriggerAndTimerModesExportToOriginalMacroChildCodes() throws Exception {
+        JSONObject trigger = new JSONObject().put("componentId", 114).put("x", 8).put("y", 12)
+                .put("saveKey", 50).put("keyOut", 900).put("numOnIn", -1)
+                .put("type", 2).put("vendorTriggerField", "retain-trigger")
+                .put("nMcr", "Scale").put("unIdMcr", 42);
+        JSONObject timer = new JSONObject().put("componentId", 115).put("x", 40).put("y", 12)
+                .put("saveKey", 60).put("keyOut", -1).put("numOnIn", -1)
+                .put("type", 1).put("typeTime", 1).put("vendorTimerField", "retain-timer")
+                .put("nMcr", "Scale").put("unIdMcr", 42);
+        JSONObject definition = new JSONObject().put("name", "Scale").put("uniqueId", 42)
+                .put("countIn", 0).put("nameOut", "Q").put("typeOut", 1)
+                .put("saveKeyOut", 900).put("fbInMacros", new JSONArray().put(trigger).put(timer));
+        byte[] originalSidecar = definition.toString().getBytes(StandardCharsets.UTF_8);
+        Map<String, byte[]> sidecars = Collections.singletonMap("project/Scale.mcr", originalSidecar);
+        JSONObject converted = new JSONObject(CraftProjectImporter.convert(
+                sourceProject().toString(), "project/Main.pro", sidecars));
+        JSONObject macroWidget = converted.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0);
+        JSONObject editedDefinition = macroWidget.getJSONObject("craftMacroDefinition");
+        JSONArray graphWidgets = editedDefinition.getJSONObject("bloodskyGraph").getJSONArray("widgets");
+        graphWidgets.getJSONObject(0).put("craftTriggerMode", "F");
+        graphWidgets.getJSONObject(1).put("craftTimerMode", "TP").put("craftTimerUnit", "MIN");
+        macroWidget.put("craftMacroDefinition", editedDefinition);
+
+        java.io.ByteArrayOutputStream zipBytes = new java.io.ByteArrayOutputStream();
+        ProjectMediaService.exportCraftProjectZipBundle(zipBytes, converted.toString(), path -> {
+            if ("project/Scale.mcr".equals(path)) return originalSidecar;
+            throw new java.io.IOException("missing media " + path);
+        });
+        byte[] exportedSidecar = null;
+        try (java.util.zip.ZipInputStream zip = new java.util.zip.ZipInputStream(
+                new java.io.ByteArrayInputStream(zipBytes.toByteArray()))) {
+            java.util.zip.ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) {
+                if (!"Scale.mcr".equals(entry.getName())) continue;
+                java.io.ByteArrayOutputStream data = new java.io.ByteArrayOutputStream();
+                byte[] buffer = new byte[2048];
+                int count;
+                while ((count = zip.read(buffer)) >= 0) data.write(buffer, 0, count);
+                exportedSidecar = data.toByteArray();
+            }
+        }
+        assertNotNull("edited macro sidecar must be included", exportedSidecar);
+        JSONObject exportedDefinition = new JSONObject(new String(exportedSidecar, StandardCharsets.UTF_8));
+        JSONArray exportedChildren = exportedDefinition.getJSONArray("fbInMacros");
+        assertEquals(3, exportedChildren.getJSONObject(0).getInt("type"));
+        assertEquals("retain-trigger", exportedChildren.getJSONObject(0).getString("vendorTriggerField"));
+        assertEquals(3, exportedChildren.getJSONObject(1).getInt("type"));
+        assertEquals(3, exportedChildren.getJSONObject(1).getInt("typeTime"));
+        assertEquals("retain-timer", exportedChildren.getJSONObject(1).getString("vendorTimerField"));
+
+        FbdCraftMacroDefinition reopened = FbdCraftMacroGraphAdapter.expandIfSupported(
+                FbdCraftMacroDefinition.fromMcrBytes(exportedSidecar));
+        JSONArray reopenedWidgets = reopened.toJson().getJSONObject("bloodskyGraph").getJSONArray("widgets");
+        assertEquals("F", reopenedWidgets.getJSONObject(0).getString("craftTriggerMode"));
+        assertEquals("TP", reopenedWidgets.getJSONObject(1).getString("craftTimerMode"));
+        assertEquals("MIN", reopenedWidgets.getJSONObject(1).getString("craftTimerUnit"));
+    }
+
     @Test public void importsNestedMacroSidecarsAndRunsTheirResolvedGraph() throws Exception {
         JSONObject project = sourceProject();
         project.getJSONArray("TableComponent").getJSONObject(0).getJSONObject("jsTableComponent_other")
