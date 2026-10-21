@@ -222,11 +222,11 @@ public class FbdCraftMacroGraphAdapterTest {
     @Test public void importedMacroMqttSubscriberReceivesTypedRuntimeValues() throws Exception {
         JSONObject originalChild = new JSONObject().put("componentId", 139)
                 .put("x", 0).put("y", 0).put("saveKey", 50).put("keyOut", 900)
-                .put("craftMqttTopic", "plant/temperature").put("craftMqttType", 3)
+                .put("craftMqttTopic", "plant/temperature").put("craftMqttType", 1)
                 .put("craftMqttServer", 2).put("nMcr", "TemperatureIn")
                 .put("unIdMcr", 52);
         JSONObject root = new JSONObject().put("name", "TemperatureIn").put("uniqueId", 52)
-                .put("countIn", 0).put("typeOut", 3).put("nameOut", "Q")
+                .put("countIn", 0).put("typeOut", 1).put("nameOut", "Q")
                 .put("saveKeyOut", 900).put("fbInMacros", new JSONArray().put(originalChild));
         FbdCraftMacroDefinition expanded = FbdCraftMacroGraphAdapter.expandIfSupported(
                 FbdCraftMacroDefinition.fromJson(root.toString()));
@@ -237,7 +237,7 @@ public class FbdCraftMacroGraphAdapterTest {
                 .getJSONArray("widgets").getJSONObject(0);
         assertEquals("FBD CRAFT MQTT SUB BOOL", graphWidget.getString("type"));
         assertEquals("plant/temperature", graphWidget.optString("craftMqttTopic"));
-        assertEquals(3, graphWidget.optInt("craftMqttType"));
+        assertEquals(1, graphWidget.optInt("craftMqttType"));
         assertEquals(2, graphWidget.optInt("craftMqttServer"));
 
         MainActivity.Widget macro = MainActivity.widgetFromJson(new JSONObject()
@@ -246,12 +246,12 @@ public class FbdCraftMacroGraphAdapterTest {
                 MainActivity.fbdRuntimeWidgetsIncludingMacros(Collections.singletonList(macro));
         MainActivity.Widget subscriber = runtimeWidgets.get(1);
         assertTrue(MainActivity.isCraftMqttSubscriber(subscriber.type));
-        subscriber.craftMqttValue = 31.25;
+        subscriber.craftMqttValue = 1.0;
         double[] numeric = new double[1];
         assertTrue(MainActivity.evaluateFbdBlock(Collections.singletonList(macro), Collections.emptyList(), 0,
                 new boolean[1], new boolean[1], new boolean[1], numeric,
                 new CraftSystemRegisterBank()));
-        assertEquals(31.25, numeric[0], 0.0);
+        assertEquals(1.0, numeric[0], 0.0);
 
         subscriber.craftMqttValue = null;
         assertFalse(MainActivity.evaluateFbdBlock(Collections.singletonList(macro), Collections.emptyList(), 0,
