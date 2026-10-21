@@ -8,15 +8,16 @@ public final class CraftGraduatedGauge {
         if (max <= min) return new int[]{min, max};
         if (divisions <= 2) return new int[]{min, max};
         int[] ticks = new int[divisions + 1];
-        int step = (max - min) / divisions;
-        for (int i = 0; i < divisions; i++) ticks[i] = min + i * step;
+        // Both bounds are signed Craft integers; their distance can exceed INT_MAX.
+        long step = ((long) max - min) / divisions;
+        for (int i = 0; i < divisions; i++) ticks[i] = (int) (min + i * step);
         ticks[divisions] = max;
         return ticks;
     }
 
     public static double ratio(double value,int min,int max){
         if(!Double.isFinite(value)||max<=min)return 0.0;
-        return Math.max(0.0,Math.min(1.0,(value-min)/(double)(max-min)));
+        return Math.max(0.0,Math.min(1.0,(value-min)/((double)max-min)));
     }
     public static float needleDegrees(double value,int min,int max){
         return (float)(180.0+ratio(value,min,max)*180.0);

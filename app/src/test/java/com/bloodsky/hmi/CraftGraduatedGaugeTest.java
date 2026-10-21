@@ -6,6 +6,32 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class CraftGraduatedGaugeTest {
+    @Test public void wideSignedRangeKeepsTicksOrderedAndNeedleAtEndpoints() {
+        assertArrayEquals(new int[]{Integer.MIN_VALUE, -1073741825, -2,
+                        1073741821, Integer.MAX_VALUE},
+                CraftGraduatedGauge.tickValues(Integer.MIN_VALUE, Integer.MAX_VALUE, 4));
+        assertEquals(0.5, CraftGraduatedGauge.ratio(0, -2000000000, 2000000000), 0.0);
+        assertEquals(270f, CraftGraduatedGauge.needleDegrees(0, -2000000000, 2000000000), 0f);
+        assertEquals(180f, CraftGraduatedGauge.needleDegrees(Integer.MIN_VALUE,
+                Integer.MIN_VALUE, Integer.MAX_VALUE), 0f);
+        assertEquals(360f, CraftGraduatedGauge.needleDegrees(Integer.MAX_VALUE,
+                Integer.MIN_VALUE, Integer.MAX_VALUE), 0f);
+        for (int divisions = 3; divisions <= 64; divisions++) {
+            int[] ticks = CraftGraduatedGauge.tickValues(Integer.MIN_VALUE, Integer.MAX_VALUE, divisions);
+            for (int i = 1; i < ticks.length; i++) assertTrue(ticks[i] > ticks[i - 1]);
+        }
+    }
+
+    @Test public void wideRangeClampsWithoutOverflowAndInvalidValuesStaySafe() {
+        assertEquals(0.0, CraftGraduatedGauge.ratio(-Double.MAX_VALUE,
+                Integer.MIN_VALUE, Integer.MAX_VALUE), 0.0);
+        assertEquals(1.0, CraftGraduatedGauge.ratio(Double.MAX_VALUE,
+                Integer.MIN_VALUE, Integer.MAX_VALUE), 0.0);
+        assertEquals(0.0, CraftGraduatedGauge.ratio(Double.NaN, -1, 1), 0.0);
+        assertEquals(0.0, CraftGraduatedGauge.ratio(Double.POSITIVE_INFINITY, -1, 1), 0.0);
+        assertEquals(0.0, CraftGraduatedGauge.ratio(5, 10, 10), 0.0);
+    }
+
     @Test public void sourceScaleDivisionsIncludeBothEndpoints() {
         assertArrayEquals(new int[]{-20, 33, 86, 139, 192, 245, 300},
                 CraftGraduatedGauge.tickValues(-20, 300, 6));
