@@ -466,6 +466,29 @@ public class CraftProjectImporterTest {
         assertEquals(18, project.getJSONObject("craftSource").getJSONArray("TableComponent").getJSONObject(2).getInt("componentId"));
     }
 
+    @Test public void mapsCraftOutgoingSmsAsDisabledUntilExplicitUserOptIn() throws Exception {
+        String json = "{\"TableNameProject\":{\"name\":\"SMS action\",\"countScreen\":1},"
+                + "\"TableConnections\":[],\"TableComponent\":["
+                + "{\"componentId\":10,\"text\":\"old label\",\"x\":1,\"y\":2,\"width\":90,\"height\":30,"
+                + "\"jsTableComponent_connectionInfo\":{\"addressRegister\":\"7\",\"addressBit\":\"2\",\"typeRequest\":3},"
+                + "\"jsTableComponent_other\":{\"numScreen\":1,\"phone\":\"+79991234567\",\"message\":\"Alarm %1\","
+                + "\"option\":true,\"optionRegister\":42,\"optionCountRegister\":3,\"vendorField\":\"keep\"}}]}";
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(json));
+        JSONObject action = project.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets").getJSONObject(0);
+        assertEquals("SMS-уведомление", action.getString("type"));
+        assertEquals("Alarm %1", action.getString("text"));
+        assertEquals("", action.getString("connectionInfo"));
+        assertFalse(action.getBoolean("smsEnabled"));
+        assertTrue(action.getBoolean("craftSmsOption"));
+        assertEquals(42, action.getInt("craftSmsOptionRegister"));
+        assertEquals(3, action.getInt("craftSmsOptionCount"));
+        JSONObject original = action.getJSONObject("craftOther");
+        assertEquals("+79991234567", original.getString("phone"));
+        assertEquals("keep", original.getString("vendorField"));
+        assertEquals(10, project.getJSONObject("craftSource").getJSONArray("TableComponent")
+                .getJSONObject(0).getInt("componentId"));
+    }
+
     @Test public void mapsCraftBitGatewayAsDisabledAndPreservesItsFunctionAndBitCount() throws Exception {
         String json = "{\"TableNameProject\":{\"name\":\"Bit gateway\",\"countScreen\":1},"
                 + "\"TableConnections\":[],\"TableComponent\":["

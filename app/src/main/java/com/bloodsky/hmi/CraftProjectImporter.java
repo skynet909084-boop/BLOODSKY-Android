@@ -202,6 +202,7 @@ public final class CraftProjectImporter {
         else if (componentId == 2) type = "Текст"; // Craft label
         else if (componentId == 4) type = OriginalCraftNumericIndicator.TYPE; // CustomComponents.u, digital register display
         else if (componentId == 9) type = "Звуковой сигнал"; // CustomComponents.c, looping alarm with five built-in sounds
+        else if (componentId == 10) type = "SMS-уведомление"; // CustomComponents.w; outgoing action requires explicit opt-in
         else if (componentId == 19) type = "Шлюз Craft"; // CustomComponents.k, source/receive/trigger register gateway
         else if (componentId == 22) type = "Шлюз битовый"; // CustomComponents.l, source/receive/trigger bit gateway
         else if (componentId == 23) type = "Видео RTSP Craft"; // CustomComponents.f; preserve as disabled until source-backed player mapping
@@ -231,6 +232,7 @@ public final class CraftProjectImporter {
         String displayText = source.optString("text", "");
         if (displayText.trim().isEmpty() && componentId == 24)
             displayText = other.optString("indicatorName", "");
+        if (componentId == 10) displayText = other.optString("message", displayText);
         widget.put("text", boundedString(displayText, 2000));
         // Craft's device-link encoding differs from BLOODSKY's tcp:// grammar.
         // Keep it for round-trip recovery without activating an unverified binding.
@@ -246,6 +248,13 @@ public final class CraftProjectImporter {
         widget.put("backgroundColor", color(source.opt("colorBackground"), Color.TRANSPARENT));
         widget.put("craftComponentId", componentId);
         widget.put("craftOther", other);
+        if (componentId == 10) {
+            widget.put("smsEnabled", false);
+            widget.put("craftSmsOption", other.optBoolean("option", false));
+            widget.put("craftSmsOptionRegister", boundedInt(other.opt("optionRegister"), 0, 0, 65535));
+            widget.put("craftSmsOptionCount", boundedInt(other.opt("optionCountRegister"), 1, 1, 8));
+            widget.put("smsRegisterCount", boundedInt(other.opt("optionCountRegister"), 1, 1, 8));
+        }
         if (componentId == 16) {
             String sourcePath = other.optString("pathGif", "").trim();
             String resolvedPath = "";

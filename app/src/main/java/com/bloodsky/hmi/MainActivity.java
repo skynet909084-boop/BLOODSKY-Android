@@ -1841,7 +1841,9 @@ public class MainActivity extends Activity {
                             String state = entry.getValue();
                             if (state != null && !state.startsWith("ERR:") && !state.startsWith("CFG")) {
                                 boolean active = isActiveModbusValue(state);
-                                if (active && !w.lastSmsState) sendSmsNotification(w, state);
+                                boolean craftActionEnabled = w.extraFields.optInt("craftComponentId", -1) != 10
+                                        || w.extraFields.optBoolean("smsEnabled", false);
+                                if (active && !w.lastSmsState && craftActionEnabled) sendSmsNotification(w, state);
                                 w.lastSmsState = active;
                             }
                         }
@@ -3776,9 +3778,21 @@ public class MainActivity extends Activity {
         if(checkSelfPermission(android.Manifest.permission.SEND_SMS)!=android.content.pm.PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{android.Manifest.permission.SEND_SMS},REQUEST_SMS_SEND_PERMISSION);return;
         }
-        int count = widget.extraFields.optInt("smsRegisterCount", 1);
+        boolean craftSms = widget.extraFields.optInt("craftComponentId", -1) == 10;
+        boolean optionMode = craftSms && widget.extraFields.optBoolean("craftSmsOption", false);
+        int count = optionMode ? widget.extraFields.optInt("craftSmsOptionCount", 1)
+                : widget.extraFields.optInt("smsRegisterCount", 1);
         if (count < 1 || count > 8) { Toast.makeText(this, "Количество регистров SMS должно быть 1–8", Toast.LENGTH_LONG).show(); return; }
-        BindingRequest source = parseBinding(-1, widget.connectionInfo, count);
+        String registerBinding = widget.connectionInfo;
+        if (optionMode) {
+            BindingRequest trigger = parseBinding(-1, widget.connectionInfo);
+            int optionRegister = widget.extraFields.optInt("craftSmsOptionRegister", -1);
+            if (trigger == null || optionRegister < 0 || optionRegister > 65535) {
+                Toast.makeText(this, "Проверь TCP-привязку и адрес SMS-регистра", Toast.LENGTH_LONG).show(); return;
+            }
+            registerBinding = "tcp://" + trigger.host + ":" + trigger.port + "/" + trigger.unit + "/" + optionRegister;
+        }
+        BindingRequest source = parseBinding(-1, registerBinding, optionMode ? count : 1);
         if (source == null || (source.functionCode != 3 && source.functionCode != 4)) {
             Toast.makeText(this, "Укажи корректный адрес регистра для SMS", Toast.LENGTH_LONG).show(); return;
         }
@@ -3787,17 +3801,22 @@ public class MainActivity extends Activity {
         final int port = source.port, unit = source.unit, address = source.address;
         final int functionCode = source.functionCode;
         final long sessionToken = pollSession.token();
+        final boolean readOptionRegisters = optionMode;
         smsExecutor.execute(() -> {
             String message;
             boolean readFailed = false;
-            try {
-                int[] registers = new ModbusTcpClient(host, port).read(unit, address, count, functionCode);
-                String[] values = new String[registers.length];
-                for (int i = 0; i < registers.length; i++) values[i] = Integer.toString(registers[i]);
-                message = SmsOutgoingTemplate.render(template, values, triggerValue);
-            } catch (Exception failure) {
-                message = SmsNotificationClient.message(template, triggerValue) + " !NO RESPONSE!";
-                readFailed = true;
+            if (!readOptionRegisters) {
+                message = SmsNotificationClient.message(template, triggerValue);
+            } else {
+                try {
+                    int[] registers = new ModbusTcpClient(host, port).read(unit, address, count, functionCode);
+                    String[] values = new String[registers.length];
+                    for (int i = 0; i < registers.length; i++) values[i] = Integer.toString(registers[i]);
+                    message = SmsOutgoingTemplate.render(template, values, triggerValue);
+                } catch (Exception failure) {
+                    message = SmsNotificationClient.message(template, triggerValue) + " !NO RESPONSE!";
+                    readFailed = true;
+                }
             }
             if (!pollSession.accepts(sessionToken) || !activityResumed || !operatorMode) return;
             boolean sent = false;
@@ -5321,11 +5340,32 @@ public class MainActivity extends Activity {
 
         final EditText smsPhoneField;
         final android.widget.Spinner smsRegisterCountField;
+        final android.widget.CheckBox craftSmsEnabledField, craftSmsOptionField;
+        final EditText craftSmsOptionRegisterField;
         if ("SMS-уведомление".equals(w.type)) {
             String savedPhone="";
             try{savedPhone=SmsRecipientStore.read(this,w.extraFields.optString("smsRecipientId",""));}catch(Exception ignored){}
+            if (savedPhone.isEmpty() && w.extraFields.optInt("craftComponentId", -1) == 10)
+                savedPhone = w.extraFields.optJSONObject("craftOther") == null ? ""
+                        : w.extraFields.optJSONObject("craftOther").optString("phone", "");
             smsPhoneField=propertyField(savedPhone,InputType.TYPE_CLASS_PHONE);
             smsPhoneField.setHint("Номер получателя, например +79991234567");form.addView(smsPhoneField);
+            if (w.extraFields.optInt("craftComponentId", -1) == 10) {
+                craftSmsEnabledField = new android.widget.CheckBox(this);
+                craftSmsEnabledField.setText("Разрешить отправку SMS при срабатывании (явное подтверждение)");
+                craftSmsEnabledField.setChecked(w.extraFields.optBoolean("smsEnabled", false));
+                form.addView(craftSmsEnabledField);
+                craftSmsOptionField = new android.widget.CheckBox(this);
+                craftSmsOptionField.setText("Подставлять значения из регистров Craft");
+                craftSmsOptionField.setChecked(w.extraFields.optBoolean("craftSmsOption", false));
+                form.addView(craftSmsOptionField);
+                craftSmsOptionRegisterField = propertyField(Integer.toString(
+                        w.extraFields.optInt("craftSmsOptionRegister", 0)), InputType.TYPE_CLASS_NUMBER);
+                craftSmsOptionRegisterField.setHint("Адрес первого регистра SMS (0–65535)");
+                form.addView(craftSmsOptionRegisterField);
+            } else {
+                craftSmsEnabledField = null; craftSmsOptionField = null; craftSmsOptionRegisterField = null;
+            }
             smsRegisterCountField = new android.widget.Spinner(this);
             String[] smsRegisterOptions = new String[8];
             for (int i = 0; i < smsRegisterOptions.length; i++) smsRegisterOptions[i] = (i + 1) + " рег.";
@@ -5339,7 +5379,7 @@ public class MainActivity extends Activity {
             TextView smsRegistersHelp = new TextView(this);
             smsRegistersHelp.setText("Читаются последовательные регистры от адреса привязки. Значения подставляются в %1…%8; если номера %n не указаны и нет {value}, значения добавляются в конец через пробел.");
             form.addView(smsRegistersHelp);
-        } else { smsPhoneField=null; smsRegisterCountField=null; }
+        } else { smsPhoneField=null; smsRegisterCountField=null; craftSmsEnabledField=null; craftSmsOptionField=null; craftSmsOptionRegisterField=null; }
         final android.widget.CheckBox incomingSmsEnabledField;
         final EditText incomingSmsSenderField, incomingSmsCommandField, incomingSmsBitField;
         final android.widget.Spinner incomingSmsModeField;
@@ -6584,20 +6624,50 @@ public class MainActivity extends Activity {
                     }
                     if(smsPhoneField!=null) {
                         String phone=smsPhoneField.getText().toString().trim();
-                        if(!SmsNotificationClient.isValidPhone(phone)) {
+                        boolean craftSms = craftSmsEnabledField != null;
+                        boolean enabled = !craftSms || craftSmsEnabledField.isChecked();
+                        if((enabled || !phone.isEmpty()) && !SmsNotificationClient.isValidPhone(phone)) {
                             Toast.makeText(this,"Укажи номер получателя в международном формате",Toast.LENGTH_LONG).show();return;
                         }
                         int registerCount = smsRegisterCountField.getSelectedItemPosition() + 1;
-                        String[] previewValues = new String[registerCount];
-                        java.util.Arrays.fill(previewValues, "0");
-                        try { SmsOutgoingTemplate.render(textField.getText().toString(), previewValues, "0"); }
-                        catch (IllegalArgumentException invalidTemplate) {
-                            Toast.makeText(this, "Шаблон SMS использует номер регистра выше выбранного количества", Toast.LENGTH_LONG).show(); return;
+                        boolean optionMode = craftSms && craftSmsOptionField.isChecked();
+                        int optionRegister = craftSms ? w.extraFields.optInt("craftSmsOptionRegister", 0) : -1;
+                        if (optionMode) {
+                            try { optionRegister = Integer.parseInt(craftSmsOptionRegisterField.getText().toString().trim()); }
+                            catch (NumberFormatException invalid) { optionRegister = -1; }
+                            if (optionRegister < 0 || optionRegister > 65535) {
+                                Toast.makeText(this, "Адрес регистра SMS должен быть 0–65535", Toast.LENGTH_LONG).show(); return;
+                            }
                         }
-                        String recipientKey=java.util.UUID.randomUUID().toString();
-                        try{SmsRecipientStore.save(this,recipientKey,phone);w.extraFields.put("smsRecipientId",recipientKey);
-                            w.extraFields.put("smsRegisterCount",registerCount);}
-                        catch(Exception failure){Toast.makeText(this,"Не удалось безопасно сохранить номер SMS",Toast.LENGTH_LONG).show();return;}
+                        if (!craftSms || optionMode) {
+                            String[] previewValues = new String[registerCount];
+                            java.util.Arrays.fill(previewValues, "0");
+                            try { SmsOutgoingTemplate.render(textField.getText().toString(), previewValues, "0"); }
+                            catch (IllegalArgumentException invalidTemplate) {
+                                Toast.makeText(this, "Шаблон SMS использует номер регистра выше выбранного количества", Toast.LENGTH_LONG).show(); return;
+                            }
+                        }
+                        try {
+                            if (SmsNotificationClient.isValidPhone(phone)) {
+                                String recipientKey=java.util.UUID.randomUUID().toString();
+                                SmsRecipientStore.save(this,recipientKey,phone);w.extraFields.put("smsRecipientId",recipientKey);
+                            }
+                            w.extraFields.put("smsRegisterCount",registerCount);
+                            if (craftSms) {
+                                w.extraFields.put("smsEnabled", enabled);
+                                w.extraFields.put("craftSmsOption", optionMode);
+                                w.extraFields.put("craftSmsOptionRegister", Math.max(0, optionRegister));
+                                w.extraFields.put("craftSmsOptionCount", registerCount);
+                                org.json.JSONObject craftOther = w.extraFields.optJSONObject("craftOther");
+                                if (craftOther != null) {
+                                    craftOther.put("phone", phone);
+                                    craftOther.put("message", textField.getText().toString());
+                                    craftOther.put("option", optionMode);
+                                    craftOther.put("optionRegister", Math.max(0, optionRegister));
+                                    craftOther.put("optionCountRegister", registerCount);
+                                }
+                            }
+                        } catch(Exception failure){Toast.makeText(this,"Не удалось безопасно сохранить настройки SMS",Toast.LENGTH_LONG).show();return;}
                     }
                     if (incomingSmsEnabledField != null) {
                         boolean enabled = incomingSmsEnabledField.isChecked();
