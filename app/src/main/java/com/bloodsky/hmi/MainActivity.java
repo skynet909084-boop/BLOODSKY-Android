@@ -3387,7 +3387,7 @@ public class MainActivity extends Activity {
 
     private void assignCraftServer(int slot, int serverIndex) {
         JSONArray devices = CraftServerConnectionStore.devices(projectExtraFields); JSONObject device = devices.optJSONObject(slot);
-        if (device != null) try { device.put("serverIndex", serverIndex); projectExtraFields.put(CraftServerConnectionStore.DEVICES_KEY, devices); } catch (Exception ignored) {}
+        if (device != null) try { device.put("serverIndex", serverIndex).put("craftServerSelectionTouched", true); projectExtraFields.put(CraftServerConnectionStore.DEVICES_KEY, devices); } catch (Exception ignored) {}
     }
 
     private void deleteCraftConnection(int index, int deviceSlot) {
@@ -7024,6 +7024,7 @@ public class MainActivity extends Activity {
                 java.util.Iterator<String> projectKeys = projectExtraFields.keys();
                 while (projectKeys.hasNext()) { String key = projectKeys.next(); project.put(key, projectExtraFields.get(key)); }
             }
+            CraftProjectNetworkBridge.sync(project);
             if (systemRegisterBankPersistable) project.put("systemRegisters", systemRegisterBank.toProjectJson());
             JSONArray screenArray = new JSONArray();
             for (Screen screen : screens) {
