@@ -68,6 +68,7 @@ public class MainActivity extends Activity {
     private static final int REQUEST_IMPORT_PROJECT = 7102;
     private static final int REQUEST_PICK_MEDIA = 7103;
     private static final int REQUEST_EXPORT_PROJECT_ZIP = 7104;
+    private static final int REQUEST_EXPORT_CRAFT_PROJECT = 7108;
     private static final int REQUEST_IMPORT_CRAFT_MACRO = 7105;
     private static final int REQUEST_EXPORT_CRAFT_MACRO = 7106;
     private static final int REQUEST_EXPORT_LOCAL_ARCHIVE = 7107;
@@ -2036,14 +2037,27 @@ public class MainActivity extends Activity {
 
     private void exportProject() {
         persistProject();
+        String active = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
+        final boolean hasCraftSource;
+        boolean detectedCraftSource;
+        try { detectedCraftSource = new JSONObject(active).has("craftSource"); }
+        catch (Exception ignored) { detectedCraftSource = false; }
+        hasCraftSource = detectedCraftSource;
+        String[] options = hasCraftSource
+                ? new String[]{"KaScada .pro ZIP — проект и медиа", "BLOODSKY ZIP — проект и медиа", "JSON — только настройки"}
+                : new String[]{"ZIP — проект и медиа", "JSON — только настройки"};
         new AlertDialog.Builder(this).setTitle("Экспорт проекта")
-                .setItems(new String[]{"ZIP — проект и медиа", "JSON — только настройки"}, (dialog, which) -> {
+                .setItems(options, (dialog, which) -> {
+                    boolean craftZip = hasCraftSource && which == 0;
+                    boolean portableZip = hasCraftSource ? which == 1 : which == 0;
                     Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
                     intent.addCategory(Intent.CATEGORY_OPENABLE);
-                    intent.setType(which == 0 ? "application/zip" : "application/json");
+                    intent.setType(portableZip || craftZip ? "application/zip" : "application/json");
                     intent.putExtra(Intent.EXTRA_TITLE, projectName.replaceAll("[^A-Za-zА-Яа-я0-9._-]", "_")
-                            + (which == 0 ? ".bloodsky.zip" : ".bloodsky.json"));
-                    try { startActivityForResult(intent, which == 0 ? REQUEST_EXPORT_PROJECT_ZIP : REQUEST_EXPORT_PROJECT); }
+                            + (craftZip ? ".craft.zip" : portableZip ? ".bloodsky.zip" : ".bloodsky.json"));
+                    int request = craftZip ? REQUEST_EXPORT_CRAFT_PROJECT
+                            : portableZip ? REQUEST_EXPORT_PROJECT_ZIP : REQUEST_EXPORT_PROJECT;
+                    try { startActivityForResult(intent, request); }
                     catch (Exception e) { Toast.makeText(this, "Не удалось открыть выбор файла", Toast.LENGTH_LONG).show(); }
                 }).show();
     }
@@ -2751,12 +2765,16 @@ public class MainActivity extends Activity {
                         Toast.makeText(this, "Экспорт макроса не выполнен", Toast.LENGTH_LONG).show(); });
                 }
             });
-        } else if (requestCode == REQUEST_EXPORT_PROJECT || requestCode == REQUEST_EXPORT_PROJECT_ZIP) {
+        } else if (requestCode == REQUEST_EXPORT_PROJECT || requestCode == REQUEST_EXPORT_PROJECT_ZIP
+                || requestCode == REQUEST_EXPORT_CRAFT_PROJECT) {
             final String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
             modbusExecutor.execute(() -> {
                 try (OutputStream out = getContentResolver().openOutputStream(uri)) {
                     if (out == null) throw new IOException("Output stream unavailable");
-                    if (requestCode == REQUEST_EXPORT_PROJECT_ZIP) {
+                    if (requestCode == REQUEST_EXPORT_CRAFT_PROJECT) {
+                        ProjectMediaService.exportCraftProjectZipBundle(out, json,
+                                source -> readProjectMediaData(source, json));
+                    } else if (requestCode == REQUEST_EXPORT_PROJECT_ZIP) {
                         ProjectMediaService.exportProjectZipBundle(out, json, source -> readProjectMediaData(source, json));
                     } else out.write(json.getBytes(StandardCharsets.UTF_8));
                     runOnUiThread(() -> { if (!isFinishing() && !isDestroyed())

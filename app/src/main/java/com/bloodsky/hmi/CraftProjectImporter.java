@@ -82,6 +82,7 @@ public final class CraftProjectImporter {
             if (screenNumber > screenCount) throw new IllegalArgumentException("Компонент ссылается на отсутствующий экран Craft");
             int componentId = positiveInt(component.opt("componentId"), -1);
             JSONObject widget = convertComponent(component, other, componentId, screenCount, archiveParent, availableMedia);
+            widget.put("craftSourceRow", index);
             JSONObject bindingResolution = CraftNetworkBindingResolver.resolve(
                     source, component.opt("jsTableComponent_connectionInfo"));
             if (bindingResolution != null) widget.put("craftBindingResolution", bindingResolution);

@@ -603,6 +603,40 @@ public class PortableZipMediaTest {
                 .optBoolean("craftUnsupportedComponent", false));
         assertArrayEquals(sourceImage, java.nio.file.Files.readAllBytes(ProjectMediaService.resolveMediaFile(
                 rootDir, second.toString(), secondBackgroundPath).toPath()));
+
+        JSONObject editedCraftProject = new JSONObject(first.toString());
+        JSONObject editedCraftWidget = editedCraftProject.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0);
+        editedCraftWidget.put("x", 44.5);
+        editedCraftWidget.put("textColor", 0xff123456);
+        ByteArrayOutputStream craftZip = new ByteArrayOutputStream();
+        ProjectMediaService.exportCraftProjectZipBundle(craftZip, editedCraftProject.toString(), path -> {
+            if ("bg.png".equals(path)) return sourceImage;
+            return null;
+        });
+        Map<String, byte[]> craftMedia = new java.util.HashMap<>();
+        JSONObject reimportedCraft = new JSONObject(MainActivity.importProjectFromZip(
+                new ByteArrayInputStream(craftZip.toByteArray()), craftMedia));
+        JSONObject emittedSource = reimportedCraft.getJSONObject("craftSource");
+        JSONObject emittedRow = emittedSource.getJSONArray("TableComponent").getJSONObject(0);
+        assertEquals("Edited in acceptance test", emittedRow.getString("text"));
+        assertEquals("44.5", emittedRow.getString("x"));
+        assertEquals("-15584170", emittedRow.getString("colorText"));
+        assertEquals("retain-me", emittedRow.getString("vendorComponentField"));
+        assertTrue(emittedRow.getJSONObject("jsTableComponent_other").has("vendorOther"));
+        assertTrue(craftMedia.containsKey("bg.png"));
+        assertArrayEquals(sourceImage, craftMedia.get("bg.png"));
+        assertEquals("Edited in acceptance test", reimportedCraft.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0).getString("text"));
+
+        JSONObject deletedWidgetProject = new JSONObject(editedCraftProject.toString());
+        deletedWidgetProject.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets").remove(1);
+        try {
+            CraftProjectExporter.export(deletedWidgetProject.toString());
+            fail("Structural edits must be rejected until Craft row deletion is safely mapped");
+        } catch (java.io.IOException expected) {
+            assertTrue(expected.getMessage().contains("Удаление компонентов"));
+        }
     }
 
 
