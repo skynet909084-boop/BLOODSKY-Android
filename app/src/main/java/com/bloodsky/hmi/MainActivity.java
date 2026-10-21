@@ -11423,4 +11423,33 @@ public class MainActivity extends Activity {
                 } else if (selected >= 0 && fbdWireMode) {
                     Widget picked = widgets.get(selected);
                     if (!isFbd(picked)) {
-                        Toast.makeText(MainActivity.this, "В режиме связ
+                        Toast.makeText(MainActivity.this, "В режиме связи выбери FBD-блок", Toast.LENGTH_SHORT).show();
+                    } else if (wireSource < 0) {
+                        wireSource = selected;
+                        Toast.makeText(MainActivity.this, "Источник выбран: " + picked.text + ". Теперь выбери целевой блок", Toast.LENGTH_LONG).show();
+                    } else {
+                        int source = wireSource;
+                        wireSource = -1;
+                        connectFbdWidgets(source, selected);
+                        fbdWireMode = false;
+                    }
+                } else if (selected >= 0) {
+                    editSelectedWidget();
+                }
+                dragOrigins.clear();
+                invalidate();
+                return true;
+            }
+            if (action == MotionEvent.ACTION_CANCEL) {
+                android.view.ViewParent parent = getParent();
+                if (parent != null) parent.requestDisallowInterceptTouchEvent(false);
+                selected = -1; dragging = false; resizing = false; marqueeActive = false;
+                dragOrigins.clear();
+                invalidate();
+                return true;
+            }
+            return true;
+        }
+    }
+}
+
