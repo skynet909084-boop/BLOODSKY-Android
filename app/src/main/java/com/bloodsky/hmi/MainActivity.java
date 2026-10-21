@@ -2038,8 +2038,11 @@ public class MainActivity extends Activity {
     private void exportProject() {
         persistProject();
         String active = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
-        boolean hasCraftSource = false;
-        try { hasCraftSource = new JSONObject(active).has("craftSource"); } catch (Exception ignored) { }
+        final boolean hasCraftSource;
+        boolean detectedCraftSource;
+        try { detectedCraftSource = new JSONObject(active).has("craftSource"); }
+        catch (Exception ignored) { detectedCraftSource = false; }
+        hasCraftSource = detectedCraftSource;
         String[] options = hasCraftSource
                 ? new String[]{"KaScada .pro ZIP — проект и медиа", "BLOODSKY ZIP — проект и медиа", "JSON — только настройки"}
                 : new String[]{"ZIP — проект и медиа", "JSON — только настройки"};
@@ -2047,7 +2050,6 @@ public class MainActivity extends Activity {
                 .setItems(options, (dialog, which) -> {
                     boolean craftZip = hasCraftSource && which == 0;
                     boolean portableZip = hasCraftSource ? which == 1 : which == 0;
-                    boolean jsonOnly = hasCraftSource ? which == 2 : which == 1;
                     Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
                     intent.addCategory(Intent.CATEGORY_OPENABLE);
                     intent.setType(portableZip || craftZip ? "application/zip" : "application/json");
