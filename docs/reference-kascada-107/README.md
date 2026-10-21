@@ -12,6 +12,20 @@ This folder imports a **static inspection of the user-supplied APK**, intended t
 
 **These materials are not a claim that all 550 scenarios were executed**: each imported case starts at `WAITING_FOR_ANDROID_RUNTIME` and `STATIC_APK_RESOURCE_ONLY`. Do not convert it to `PASS` without a tested build/device, reproducible actions, an observed result and an artifact path. Blocked licensing, absent physical hardware, and source-only findings must be represented explicitly.
 
+## Current 550-case execution count (2026-10-21)
+
+The count is derived from `full_function_test_matrix.json`; it measures original-app cases with acceptable evidence, not BLOODSKY feature readiness.
+
+| Status | Count |
+| --- | ---: |
+| PASS | 0 |
+| FAIL | 0 |
+| BLOCKED | 0 |
+| NOT RUN (`WAITING_FOR_ANDROID_RUNTIME`) | 550 |
+| Requires recheck | 0 |
+
+The short original-app probes in PRs #201 and #202 have recorded bounded scenario results, but no individual case has yet met the matrix's original-plus-BLOODSKY equivalence evidence rule. Those scenario runs therefore do not change these K107 counts. The resumable full-profile implementation in PR #203 still requires exact-head CI and a deliberately interrupted/resumed artifact; no multi-hour traversal was started.
+
 ## Reconcile with evidence already in BLOODSKY
 
 Existing project evidence predates this imported test matrix:
