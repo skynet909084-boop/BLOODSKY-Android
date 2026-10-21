@@ -20,6 +20,11 @@ public class OriginalCraftNumericIndicatorTest {
         catch (IllegalArgumentException expected) { }
         try { OriginalCraftNumericIndicator.decode(new int[]{1}, 4); fail("expected unknown input"); }
         catch (IllegalArgumentException expected) { }
+        assertFalse(OriginalCraftNumericIndicator.isSupportedSourceType(4));
+        assertFalse(OriginalCraftNumericIndicator.isSupportedSourceType(-1));
+        assertEquals("—", OriginalCraftNumericIndicator.format(12, 5, 0, 4));
+        try { OriginalCraftNumericIndicator.readQuantity(4); fail("expected unknown input"); }
+        catch (IllegalArgumentException expected) { }
     }
 
     @Test public void formatsFractionWidthAndSourceDigitOverflow() {

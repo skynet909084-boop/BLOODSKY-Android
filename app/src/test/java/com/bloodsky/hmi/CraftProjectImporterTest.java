@@ -151,6 +151,38 @@ public class CraftProjectImporterTest {
         assertEquals(0, progress.getInt("craftProgressBackgroundColor"));
     }
 
+    @Test public void unknownNumericIndicatorFormatSurvivesImportEditAndExport() throws Exception {
+        JSONObject component = new JSONObject().put("componentId", 4).put("text", "Value")
+                .put("width", 90).put("height", 30)
+                .put("jsTableComponent_other", new JSONObject().put("numScreen", 1)
+                        .put("type", 9).put("digit", 6).put("vendorMode", "keep"));
+        JSONObject source = new JSONObject()
+                .put("TableNameProject", new JSONObject().put("name", "Unknown indicator").put("countScreen", 1))
+                .put("TableComponent", new JSONArray().put(component))
+                .put("TableConnections", new JSONArray());
+
+        JSONObject imported = new JSONObject(CraftProjectImporter.convert(source.toString()));
+        JSONObject widget = imported.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0);
+        assertEquals(9, widget.getInt("craftNumericIndicatorType"));
+        assertEquals(9, widget.getJSONObject("craftOther").getInt("type"));
+        assertEquals("keep", widget.getJSONObject("craftOther").getString("vendorMode"));
+        MainActivity.Widget restored = MainActivity.widgetFromJson(widget);
+        assertEquals(9, restored.extraFields.getInt("craftNumericIndicatorType"));
+        assertEquals(9, restored.extraFields.getJSONObject("craftOther").getInt("type"));
+
+        JSONObject edited = new JSONObject(imported.toString());
+        JSONObject editedWidget = edited.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0);
+        editedWidget.put("text", "Edited label");
+        JSONObject exported = new JSONObject(CraftProjectExporter.export(edited.toString()));
+        JSONObject exportedOther = exported.getJSONArray("TableComponent").getJSONObject(0)
+                .getJSONObject("jsTableComponent_other");
+        assertEquals(9, exportedOther.getInt("type"));
+        assertEquals(6, exportedOther.getInt("digit"));
+        assertEquals("keep", exportedOther.getString("vendorMode"));
+    }
+
     @Test public void importsCraftGaugeIdsAsEditableGaugesAndKeepsLegacyLinksInactive() throws Exception {
         JSONObject source = new JSONObject()
                 .put("TableNameProject", new JSONObject().put("name", "Gauges").put("countScreen", 1))

@@ -398,7 +398,9 @@ public final class CraftProjectImporter {
             widget.put("craftGaugeKind", "graduated");
         }
         if (componentId == 4) {
-            widget.put("craftNumericIndicatorType", Math.max(0, Math.min(3, other.optInt("type", 0))));
+            // Keep unknown source codes intact so re-export does not silently
+            // reinterpret a future Craft format as a supported numeric type.
+            widget.put("craftNumericIndicatorType", other.optInt("type", 0));
             widget.put("craftNumericIndicatorDigits", Math.max(1, Math.min(18, other.optInt("digit", 5))));
             widget.put("craftNumericIndicatorDecimals", Math.max(0, Math.min(9, other.optInt("divisor", 0))));
             widget.put("craftNumericIndicatorFontChange", other.optBoolean("fontChange", false));

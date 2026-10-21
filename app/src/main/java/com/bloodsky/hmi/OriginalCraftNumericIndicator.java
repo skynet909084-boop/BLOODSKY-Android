@@ -10,10 +10,16 @@ final class OriginalCraftNumericIndicator {
 
     private OriginalCraftNumericIndicator() {}
 
+    static boolean isSupportedSourceType(int sourceType) {
+        return sourceType >= SIGNED_INT16 && sourceType <= SIGNED_INT32;
+    }
+
     static int readQuantity(int sourceType) {
+        if (!isSupportedSourceType(sourceType))
+            throw new IllegalArgumentException("Unknown Craft numeric indicator source type");
         if (sourceType == SIGNED_INT16 || sourceType == UINT16) return 1;
         if (sourceType == FLOAT32 || sourceType == SIGNED_INT32) return 2;
-        throw new IllegalArgumentException("Unknown Craft numeric indicator source type");
+        throw new AssertionError("unreachable Craft numeric indicator type");
     }
 
     static double decode(int[] words, int sourceType) {
@@ -39,6 +45,7 @@ final class OriginalCraftNumericIndicator {
     }
 
     static String format(double value, int digit, int divisor, int sourceType) {
+        if (!isSupportedSourceType(sourceType)) return "—";
         if (!Double.isFinite(value)) return "—";
         int maxIntegerDigits = Math.max(1, Math.min(18, digit));
         int decimalPlaces = Math.max(0, Math.min(9, divisor));
