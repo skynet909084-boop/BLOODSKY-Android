@@ -1342,7 +1342,8 @@ public class MainActivity extends Activity {
         FbdCraftMqttRuntime active = craftMqttRuntime;
         craftMqttRuntime = null;
         if (active != null) active.close();
-        for (Widget widget : widgets) if (isCraftMqttSubscriber(widget.type)) widget.craftMqttValue = null;
+        for (Widget widget : fbdRuntimeWidgetsIncludingMacros(widgets))
+            if (isCraftMqttSubscriber(widget.type)) widget.craftMqttValue = null;
     }
 
     private void startCraftMqtt() {
@@ -1351,6 +1352,7 @@ public class MainActivity extends Activity {
         FbdCraftMqttRuntime runtime = new FbdCraftMqttRuntime();
         craftMqttRuntime = runtime;
         final EditorCanvas sessionEditor = editor;
+        final List<Widget> runtimeWidgets = fbdRuntimeWidgetsIncludingMacros(widgets);
         for (int server = 1; server <= 2; server++) {
             JSONObject saved;
             try { saved = new JSONObject(getSharedPreferences("bloodsky_mqtt", MODE_PRIVATE)
@@ -1360,22 +1362,22 @@ public class MainActivity extends Activity {
                     saved.optString("uri", ""), saved.optString("username", ""), saved.optString("password", ""));
             Map<String, FbdCraftMqttRuntime.MessageListener> subscriptions = new LinkedHashMap<>();
             boolean used = false;
-            for (int i = 0; i < widgets.size(); i++) {
-                Widget target = widgets.get(i);
+            for (Widget target : runtimeWidgets) {
                 if (isCraftMqttSubscriber(target.type) && mqttServer(target) == server) {
                     used = true;
                     String topic = target.extraFields.optString("craftMqttTopic", "").trim();
                     int type = mqttType(target);
-                    final int targetIndex = i;
+                    final int targetIndex = widgets.indexOf(target);
                     if (FbdCraftMqttRuntime.validTopicFilter(topic)) {
                         FbdCraftMqttRuntime.MessageListener nextListener = (receivedTopic, payload) -> {
                         Double value = FbdCraftMqttRuntime.parsePayload(payload, type);
                         runOnUiThread(() -> {
                             if (craftMqttRuntime != runtime || !activityResumed || !operatorMode
-                                    || editor != sessionEditor || targetIndex >= widgets.size()
-                                    || widgets.get(targetIndex) != target) return;
+                                    || editor != sessionEditor
+                                    || !fbdRuntimeWidgetsIncludingMacros(widgets).contains(target)) return;
                             target.craftMqttValue = value;
-                            liveValues.put(targetIndex, value == null ? "ERR: MQTT payload" : Double.toString(value));
+                            if (targetIndex >= 0) liveValues.put(targetIndex,
+                                    value == null ? "ERR: MQTT payload" : Double.toString(value));
                             if (editor != null) editor.invalidate();
                         });
                         };
@@ -10229,7 +10231,12 @@ public class MainActivity extends Activity {
                     nestedVisiting, nestedCacheValid, nestedCacheValues, nestedCacheNumeric);
             double value = nestedCacheNumeric[outputNode];
             FbdCraftMacroDefinition.Port output = definition.getOutput();
-            if (output.type == 1) value = outputBool ? 1.0 : 0.0;
+            Widget outputWidget = nested.get(outputNode);
+            boolean outputAvailable = outputWidget != null && outputWidget.fbdOutputAvailable;
+            if (!outputAvailable) value = Double.NaN;
+            else if (output.type == 1) value = outputBool ? 1.0 : 0.0;
+            macro.fbdOutputAvailable = outputAvailable;
+            macro.fbdOutputAvailabilityExplicit = true;
             cacheNumeric[index] = value;
             return output.type == 1 ? outputBool : Double.isFinite(value) && value != 0.0;
         } finally {
