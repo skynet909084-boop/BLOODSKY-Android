@@ -427,7 +427,8 @@ public final class CraftProjectImporter {
             if (type.contains("ARITHMETIC")) widget.put("compareOperator", arithmeticOperator(compareAction));
             else if (type.contains("COMPARE")) widget.put("compareOperator", comparisonOperator(compareAction));
             if (type.startsWith("FBD CRAFT VAR NAME ")) {
-                widget.put("craftVariableName", other.optString("name", ""));
+                widget.put("craftVariableName", other.optString("typeVarValue",
+                        other.optString("name", "")));
                 if (other.has("isConstant")) widget.put("craftNamedConstantMode", other.optBoolean("isConstant"));
                 if (other.has("constant")) widget.put("craftNamedConstant", String.valueOf(other.opt("constant")));
             } else if (type.startsWith("FBD CRAFT VAR ")) {

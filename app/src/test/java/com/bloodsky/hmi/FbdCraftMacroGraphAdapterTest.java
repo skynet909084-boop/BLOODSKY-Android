@@ -190,10 +190,10 @@ public class FbdCraftMacroGraphAdapterTest {
                 .put(new JSONObject().put("componentId", 109).put("x", 0).put("y", 0)
                         .put("saveKey", 10).put("keyOut", -1).put("isHighRegister", false)
                         .put("isHighByte", false).put("vendorFloatField", "keep"))
-                .put(new JSONObject().put("componentId", 117).put("x", 0).put("y", 0)
+                .put(new JSONObject().put("componentId", 120).put("x", 0).put("y", 0)
                         .put("saveKey", 20).put("keyOut", -1).put("type", 1)
                         .put("vendorAxisField", "keep"))
-                .put(new JSONObject().put("componentId", 119).put("x", 0).put("y", 0)
+                .put(new JSONObject().put("componentId", 127).put("x", 0).put("y", 0)
                         .put("saveKey", 30).put("keyOut", -1).put("type", 1)
                         .put("vendorSunriseField", "keep"))
                 .put(new JSONObject().put("componentId", 103).put("x", 0).put("y", 0)
@@ -260,6 +260,39 @@ public class FbdCraftMacroGraphAdapterTest {
         assertEquals("1.25", records.getJSONObject(1).getString("constant"));
         assertEquals(2, records.getJSONObject(2).getInt("typeVar"));
         assertEquals("NewOutput", records.getJSONObject(2).getString("typeVarValue"));
+    }
+
+    @Test public void exportsEditedMacroCompareAndArithmeticActionsToCraftCodes() throws Exception {
+        JSONArray children = new JSONArray()
+                .put(new JSONObject().put("componentId", 107).put("x", 0).put("y", 0)
+                        .put("saveKey", 10).put("keyOut", -1).put("compareAction", 1)
+                        .put("vendorCompare", "keep"))
+                .put(new JSONObject().put("componentId", 110).put("x", 0).put("y", 0)
+                        .put("saveKey", 20).put("keyOut", -1).put("compareAction", 1))
+                .put(new JSONObject().put("componentId", 111).put("x", 0).put("y", 0)
+                        .put("saveKey", 30).put("keyOut", -1).put("compareAction", 1))
+                .put(new JSONObject().put("componentId", 112).put("x", 0).put("y", 0)
+                        .put("saveKey", 40).put("keyOut", -1).put("compareAction", 1))
+                .put(new JSONObject().put("componentId", 103).put("x", 0).put("y", 0)
+                        .put("saveKey", 50).put("keyOut", 900));
+        JSONObject root = new JSONObject().put("countIn", 0).put("saveKeyOut", 900)
+                .put("fbInMacros", children);
+        JSONObject graph = FbdCraftMacroGraphAdapter.translate(root, children);
+        assertNotNull(graph);
+        JSONArray widgets = graph.getJSONArray("widgets");
+        widgets.getJSONObject(0).put("compareOperator", "<=");
+        widgets.getJSONObject(1).put("compareOperator", "-");
+        widgets.getJSONObject(2).put("compareOperator", "*");
+        widgets.getJSONObject(3).put("compareOperator", "<>");
+
+        JSONObject exported = FbdCraftMacroGraphAdapter.applyEditedPropertiesToCraftRecords(
+                new JSONObject(root.toString()).put("bloodskyGraph", graph));
+        JSONArray records = exported.getJSONArray("fbInMacros");
+        assertEquals(3, records.getJSONObject(0).getInt("compareAction"));
+        assertEquals("keep", records.getJSONObject(0).getString("vendorCompare"));
+        assertEquals(2, records.getJSONObject(1).getInt("compareAction"));
+        assertEquals(3, records.getJSONObject(2).getInt("compareAction"));
+        assertEquals(6, records.getJSONObject(3).getInt("compareAction"));
     }
 
     @Test public void preservesMacrosThatNeedScreenLevelIo() throws Exception {

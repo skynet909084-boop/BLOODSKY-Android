@@ -319,10 +319,10 @@ final class FbdCraftMacroGraphAdapter {
                     child.put("isHighRegister", widget.optBoolean("craftSwapWord"));
                 if (widget.has("craftSwapByte"))
                     child.put("isHighByte", widget.optBoolean("craftSwapByte"));
-            } else if (componentId == 117 && widget.has("craftSensorAxis")) {
+            } else if (componentId == 120 && widget.has("craftSensorAxis")) {
                 int axis = widget.optInt("craftSensorAxis", -1);
                 if (axis >= 1 && axis <= 3) child.put("type", axis);
-            } else if (componentId == 119 && widget.has("craftSunriseMode")) {
+            } else if (componentId == 127 && widget.has("craftSunriseMode")) {
                 int mode = sunriseType(widget.optString("craftSunriseMode", ""));
                 if (mode > 0) child.put("type", mode);
             } else if ((componentId == 101 || componentId == 105 || componentId == 108)) {
@@ -340,6 +340,11 @@ final class FbdCraftMacroGraphAdapter {
                     child.put("isConstant", widget.optBoolean("craftNamedConstantMode"));
                 if (widget.has("craftNamedConstant"))
                     child.put("constant", widget.optString("craftNamedConstant"));
+            } else if (CraftProjectExporter.isCraftOperatorComponent(componentId)
+                    && widget.has("compareOperator")) {
+                int action = CraftProjectExporter.craftOperatorAction(componentId,
+                        widget.optString("compareOperator", ""));
+                if (action > 0) child.put("compareAction", action);
             }
         }
         return result;
