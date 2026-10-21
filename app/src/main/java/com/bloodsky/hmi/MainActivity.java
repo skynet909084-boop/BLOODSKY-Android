@@ -6756,6 +6756,82 @@ public class MainActivity extends Activity {
         canvas.drawArc(bounds, start, sweep, false, paint);
     }
 
+    private void drawCraftGraduatedGauge(android.graphics.Canvas canvas, Widget widget,
+                                         double rawValue, android.graphics.Paint paint) {
+        int min = (int) Math.round(widget.minValue), max = (int) Math.round(widget.maxValue);
+        if (max <= min) max = min == Integer.MAX_VALUE ? min : min + 1;
+        float ratio = (float) CraftGraduatedGauge.ratio(rawValue, min, max);
+        float cx = widget.x + widget.w / 2f, cy = widget.y + widget.h - dp(14);
+        float radius = Math.max(dp(10), Math.min(widget.w / 2f - dp(8), widget.h - dp(22)));
+        android.graphics.RectF dial = new android.graphics.RectF(cx-radius, cy-radius, cx+radius, cy+radius);
+        paint.setShader(null); paint.setStyle(android.graphics.Paint.Style.STROKE);
+        paint.setStrokeCap(android.graphics.Paint.Cap.BUTT); paint.setStrokeWidth(dp(6));
+        if (!widget.extraFields.optBoolean("craftGaugeHideBackground", false)) {
+            paint.setColor(Color.rgb(205,205,205)); canvas.drawArc(dial,180f,180f,false,paint);
+        }
+        float low=Math.max(0,Math.min(100,widget.extraFields.optInt("craftGaugeLowPercent",75)))/100f;
+        float med=Math.max(low,Math.min(100,widget.extraFields.optInt("craftGaugeMediumPercent",90)))/100f;
+        if(low>0){paint.setColor(Color.GREEN);canvas.drawArc(dial,180f,low*180f,false,paint);}
+        if(med>low){paint.setColor(Color.YELLOW);canvas.drawArc(dial,180f+low*180f,(med-low)*180f,false,paint);}
+        if(med<1){paint.setColor(Color.RED);canvas.drawArc(dial,180f+med*180f,(1-med)*180f,false,paint);}
+        int count=Math.max(0,Math.min(64,widget.extraFields.optInt("craftGaugeScaleCount",6)));
+        int[] ticks=CraftGraduatedGauge.tickValues(min,max,count);
+        paint.setStrokeWidth(dp(1.5f)); paint.setColor(widget.extraFields.optInt("craftGaugeMarkColor",Color.BLACK));
+        for(int tick:ticks){
+            double tr=CraftGraduatedGauge.ratio(tick,min,max), a=Math.toRadians(180+tr*180);
+            float cos=(float)Math.cos(a),sin=(float)Math.sin(a);
+            canvas.drawLine(cx+cos*radius*.82f,cy+sin*radius*.82f,cx+cos*radius*.98f,cy+sin*radius*.98f,paint);
+            paint.setStyle(android.graphics.Paint.Style.FILL); paint.setTextAlign(android.graphics.Paint.Align.CENTER);
+            paint.setTextSize(dp(Math.max(1,widget.extraFields.optInt("craftGaugeTextSize",20))));
+            paint.setColor(widget.extraFields.optInt("craftGaugeTextScaleColor",Color.BLACK));
+            canvas.drawText(Integer.toString(tick),cx+cos*radius*1.16f,cy+sin*radius*1.16f+dp(4),paint);
+            paint.setStyle(android.graphics.Paint.Style.STROKE);paint.setColor(widget.extraFields.optInt("craftGaugeMarkColor",Color.BLACK));
+        }
+        float angle=(float)Math.toRadians(CraftGraduatedGauge.needleDegrees(rawValue,min,max));
+        drawCraftGraduatedIndicator(canvas,paint,cx,cy,radius,angle,
+                widget.extraFields.optInt("craftGaugeIndicatorColor",Color.BLUE),
+                widget.extraFields.optString("craftGaugeIndicatorName","NormalIndicator"));
+        paint.setStyle(android.graphics.Paint.Style.FILL);
+        paint.setColor(widget.extraFields.optInt("craftGaugeCenterColor",Color.parseColor("#BFBFBF")));
+        canvas.drawCircle(cx,cy,Math.max(dp(4),radius*.11f),paint);
+        paint.setTextAlign(android.graphics.Paint.Align.CENTER);
+        paint.setTextSize(dp(Math.max(1,widget.extraFields.optInt("craftGaugeTextSize",20))));
+        paint.setColor(widget.extraFields.optInt("craftGaugeTextValueColor",Color.BLACK));
+        canvas.drawText(String.format(java.util.Locale.ROOT,"%.1f",rawValue),cx,cy+radius*.42f,paint);
+        paint.setTextAlign(android.graphics.Paint.Align.LEFT);paint.setStrokeWidth(dp(1));
+    }
+
+    private void drawCraftGraduatedIndicator(android.graphics.Canvas canvas,android.graphics.Paint paint,
+            float cx,float cy,float radius,float angle,int color,String type) {
+        float ux=(float)Math.cos(angle),uy=(float)Math.sin(angle),px=-uy,py=ux;
+        float length=radius*.76f; paint.setStyle(android.graphics.Paint.Style.STROKE);
+        paint.setStrokeWidth(dp(3));paint.setColor(color);
+        if("LineIndicator".equals(type)||"HalfLineIndicator".equals(type)
+                ||"QuarterLineIndicator".equals(type)||"SpindleIndicator".equals(type)){
+            float f="HalfLineIndicator".equals(type)?.5f:"QuarterLineIndicator".equals(type)?.25f:1f;
+            canvas.drawLine(cx,cy,cx+ux*length*f,cy+uy*length*f,paint);
+            if("SpindleIndicator".equals(type))canvas.drawLine(cx-ux*length*.2f,cy-uy*length*.2f,cx,cy,paint);
+            return;
+        }
+        float tip=length*("NormalSmallIndicator".equals(type)?.65f:1f),half=Math.max(dp(2),radius*.045f);
+        if("NeedleIndicator".equals(type)){
+            paint.setStrokeWidth(dp(2));
+            canvas.drawLine(cx-ux*radius*.18f,cy-uy*radius*.18f,
+                    cx+ux*length,cy+uy*length,paint);
+            return;
+        }
+        android.graphics.Path p=new android.graphics.Path();
+        p.moveTo(cx+ux*tip,cy+uy*tip);
+        if("KiteIndicator".equals(type)){
+            p.lineTo(cx+px*half,cy+py*half);p.lineTo(cx-ux*radius*.1f,cy-uy*radius*.1f);p.lineTo(cx-px*half,cy-py*half);
+        }else if("TriangleIndicator".equals(type)){
+            p.lineTo(cx+px*half*1.7f,cy+py*half*1.7f);p.lineTo(cx-px*half*1.7f,cy-py*half*1.7f);
+        }else{
+            p.lineTo(cx+px*half,cy+py*half);p.lineTo(cx-ux*radius*.1f,cy-uy*radius*.1f);p.lineTo(cx-px*half,cy-py*half);
+        }
+        p.close();paint.setStyle(android.graphics.Paint.Style.FILL);canvas.drawPath(p,paint);
+    }
+
     private double readDouble(EditText field, double fallback) {
         try {
             double value = Double.parseDouble(field.getText().toString().trim().replace(',', '.'));
@@ -10332,6 +10408,13 @@ public class MainActivity extends Activity {
                         try { val = Double.parseDouble(liveValues.get(i)); } catch (Exception ignored) {}
                     }
                     drawCraftThresholdGauge(canvas, w, val, paint);
+                } else if ("Шкала / Стрелка".equals(w.type)
+                        && w.extraFields.optInt("craftComponentId", -1) == 24) {
+                    double val = 0.0;
+                    if (liveValues.containsKey(i)) {
+                        try { val = Double.parseDouble(liveValues.get(i)); } catch (Exception ignored) {}
+                    }
+                    drawCraftGraduatedGauge(canvas, w, val, paint);
                 } else if ("Шкала / Стрелка".equals(w.type)) {
                     double val = 0.0;
                     if (liveValues.containsKey(i)) {
