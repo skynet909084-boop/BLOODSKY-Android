@@ -26,6 +26,40 @@ public class CraftTrendGraphPropertiesTest {
         assertInvalid(100, CraftTrendHistory.MAX_POINTS + 1);
     }
 
+    @Test public void editsSourceChannelContractAndPreservesOpaqueFields() throws Exception {
+        JSONObject fields = new JSONObject().put("craftOther",
+                new JSONObject().put("futureKey", "keep").put("vendorSeriesColor", 0xff123456));
+        String[] names = {"Температура", "Влажность", "Давление", "Резерв"};
+        CraftTrendGraphProperties.apply(fields, 1000, 600, 3, 2, names,
+                0xffeeeeee, 0xff101010);
+        JSONObject other = fields.getJSONObject("craftOther");
+        assertEquals(3, fields.getInt("craftTrendChannelCount"));
+        assertEquals(2, fields.getInt("craftTrendType"));
+        assertEquals("Влажность", fields.getJSONArray("craftTrendSeriesNames").getString(1));
+        assertEquals(3, other.getInt("countGraphChannel"));
+        assertEquals(2, other.getInt("typeGraph"));
+        assertEquals("Давление", other.getString("nameSeries3"));
+        assertEquals(0xffeeeeee, fields.getInt("craftTrendLabelsColor"));
+        assertEquals(0xff101010, fields.getInt("craftTrendBackgroundColor"));
+        assertEquals(0xffeeeeee, other.getInt("colorLabelsXY"));
+        assertEquals(0xff101010, other.getInt("colorBackground"));
+        assertEquals("keep", other.getString("futureKey"));
+        assertEquals(0xff123456, other.getInt("vendorSeriesColor"));
+    }
+
+    @Test public void rejectsInvalidChannelContractWithoutChangingFields() throws Exception {
+        JSONObject fields = new JSONObject().put("craftTrendIntervalMs", 750)
+                .put("craftOther", new JSONObject().put("typeGraph", 1).put("vendor", "keep"));
+        try {
+            CraftTrendGraphProperties.apply(fields, 1500, 400, 5, 2,
+                    new String[]{"A", "B", "C", "D"});
+            fail("expected channel bound rejection");
+        } catch (IllegalArgumentException expected) { }
+        assertEquals(750, fields.getInt("craftTrendIntervalMs"));
+        assertEquals(1, fields.getJSONObject("craftOther").getInt("typeGraph"));
+        assertEquals("keep", fields.getJSONObject("craftOther").getString("vendor"));
+    }
+
     private static void assertInvalid(int interval, int points) throws Exception {
         try {
             CraftTrendGraphProperties.apply(new JSONObject(), interval, points);
