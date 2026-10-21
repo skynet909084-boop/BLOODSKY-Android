@@ -111,10 +111,10 @@
         },
         {
           "id": "widget.progressbar",
-          "name": "Progress Bar (CustomComponents.v)",
+          "name": "Progress Bar (CustomComponents.r / Craft ID 11)",
           "status": "partial",
           "criteria": "Horizontal progress bar displaying percentage or scaled value.",
-          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
+          "audit_note": "Craft ID11 range, text/scale flags, size, and colors are imported and rendered with clamped numeric progress, source-style gradients and 20 center ticks. Property editor changes, explicit register mapping, and device/visual acceptance remain open."
         },
         {
           "id": "widget.trend",

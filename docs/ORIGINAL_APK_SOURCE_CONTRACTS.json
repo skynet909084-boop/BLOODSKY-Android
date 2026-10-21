@@ -260,21 +260,23 @@
     },
     {
       "id": "CustomProgressBar",
-      "source_class": "ru.himik.nightscream.kascada.CustomComponents.v",
-      "resources": [
-        "kc_progress.png"
-      ],
+      "source_class": "ru.himik.nightscream.kascada.CustomComponents.r",
+      "resources": [],
       "properties": [
-        "minValue",
-        "maxValue",
-        "orientation",
-        "barColor",
+        "min",
+        "max",
+        "showText",
+        "sizeText",
+        "colorText",
+        "showScale",
+        "colorProgress",
+        "colorBackground",
         "device",
         "register"
       ],
       "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.addWidget",
       "status": "partial",
-      "evidence": "Simple fill Rect; missing original progress bar texture/frame asset."
+      "evidence": "Imports Craft range, text/scale flags, size and colors; runtime renders clamped progress, original gradient track/fill and 20-division center scale. Property editing, register mapping, and device/visual acceptance remain open."
     },
     {
       "id": "CustomTrend",
