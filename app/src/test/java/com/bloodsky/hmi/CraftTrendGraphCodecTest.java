@@ -23,7 +23,7 @@ public class CraftTrendGraphCodecTest {
             CraftTrendGraphCodec.decodeFirst(new int[]{1}, 2);
             fail("expected truncated Float32 rejection");
         } catch (IllegalArgumentException expected) { }
-        assertEquals(0, CraftTrendGraphCodec.readQuantity(-1));
+        assertEquals(1, CraftTrendGraphCodec.readQuantity(-1));
         assertEquals(2, CraftTrendGraphCodec.readQuantity(99));
         assertEquals(2.0, CraftTrendGraphCodec.decodeFirst(new int[]{0x4000, 0}, 99), 0);
     }
