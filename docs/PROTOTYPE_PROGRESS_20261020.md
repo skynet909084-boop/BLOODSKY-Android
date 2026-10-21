@@ -500,3 +500,64 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 - The Craft probe artifact audit is recorded in [CRAFT_PROBE_172_ARTIFACT_AUDIT_20261020.md](CRAFT_PROBE_172_ARTIFACT_AUDIT_20261020.md): all ten artifacts were opened, but all ten report `coverage_complete=false`; no direction is exhaustive.
 - Android 12 UI smoke run [#861](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39452421413) remains the next gate for PR #188. It is running on PR head `eefa0469b8a2193c8c4dc836f59af5b31032c52d`, based before subsequent prototype commits. Do not merge it until the full run passes and the branch is synchronized with the current prototype head.
 - Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+
+## Checkpoint — 20 Oct 2026
+
+- Reviewed PR #192's static audit: 550 unique sequential K107 IDs and correct source identity/count checks. All 550 remain waiting for live Android evidence. Its exact-head APK/JUnit run #1249 passed; PR is marked ready for human review and remains unmerged.
+- Diagnosed PR #188 Android UI smoke failure: the app process was already killed, but `pidof` returned a stale PID. Updated the gate to inspect each original PID's `/proc/<pid>/stat`; reaped/zombie PIDs pass termination, live PIDs still fail. Added focused tests. Full local Python suite passed on the clean local patch; Gradle is unavailable locally. The first remote attempt exposed a malformed transferred file; the complete source and test files were restored from the clean local commit. APK/JUnit #1252 passed on the corrected exact head; Android UI smoke #889 is still running.
+- Diagnosed PR #191 UI artifact: indicator media path was persisted but the project-owned image bytes were absent after reload. Added `commitPendingMediaCopy` on the PR branch and created P0 issue #195. APK/JUnit #1250 passed. UI smoke #887 then confirmed the file existed under the project directory and its bytes matched the path SHA-256 after restart; issue #195 is closed. The run failed later because the test expected `16` on an empty network-device list. The test now creates slots 1–16 and verifies the cap; exact-head APK/JUnit #39504722170 passed; Android UI #39504722101 is now exercising Android 11.
+- Reviewed original emulator workflow. It installs a reconstructed, debug-signed APK from a pinned decompilation artifact, not the exact Release APK. `full` saves a UI report but not the BFS frontier for future continuation. Created issue #196 to add direct-release hash verification, resumable checkpoints, K107 evidence mapping and cap-aware reporting. PR #198 workflow [#173](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39503961179) passed the Release APK download/hash step, then failed before install because the emulator action split a multiline shell `if` into separate `/bin/sh` invocations. The logic is now in `tools/run_original_craft_emulator_probe.sh`, locally validated with `bash -n`; exact-head full retry [#174](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39504354431) is running. Check the artifact's `apk-source.txt` and `ui-audit.json` before counting any runtime evidence.
+- No changes to `main`. The unified readiness estimate remains 5/139 (3.6%); pending checks are not treated as accepted functionality. Original-source matrix is 0 PASS, 0 FAIL, 0 BLOCKED, 550 WAITING, 0 retest.
+
+### Next exact actions
+
+1. Poll APK/JUnit #1252 and UI smoke #889 on PR #188 head `eca37f20a6c334eeb6aecbf3339502797b42b921`; if green, review the artifact and update PR #188 status.
+2. Poll PR #191 exact-head checks #39504722170/#39504722101 after the slot-count test correction; inspect the artifact for the 16-slot cap and server association.
+3. Implement issue #196 on an isolated branch. Start the full profile only after the workflow hashes and attempts the exact Release APK, and persist/resume its frontier and per-K107 evidence.
+4. Keep PR #192 unmerged until human review; merge only into `prototype/all-in-one-20261020` after required checks. Never modify `main`.
+
+### Legacy probe branch dependency review
+
+- #149 is a draft based on `feat/craft-screen-navigation-import-20261018` and is not mergeable to the integration branch as-is. Its APK build passed; its original Craft emulator and supplemental runs were cancelled.
+- #150 is a draft stacked on #149's probe branch. APK/JUnit passed; its supplemental emulator run was cancelled.
+- #151 is a draft stacked on #150. APK/JUnit and probe workflow #172 completed, but the artifact audit records incomplete coverage (no direction met `coverage_complete`). Keep its direction and long-press observations as partial evidence.
+- PR #198 introduces a focused exact-release APK attempt and a single-shell runner, but touches the same probe workflow family. Do not merge its workflow changes independently of #149–#151; reconcile the helpers and preserve their distinct direction/long-press coverage after #174's artifact is available.
+
+### Open PR inventory checked on 20 Oct 2026
+
+Eight open PRs were found. #188, #191, #192 and #197 target `prototype/all-in-one-20261020` and are ready for review; #198 targets the same branch but remains draft while the original emulator run is active. #149, #150 and #151 are draft research PRs stacked on older feature/probe branches; #149 is not mergeable to the integration target, and #150/#151 depend on that stack. No PR targets `main`.
+
+
+## 20 Oct follow-up checkpoint — smoke-driver fixes
+
+- PR #188 artifact 12301994921 (run 39503536963) showed the process survived because Android SELinux denied `run-as ... kill -9` (AVC `sigkill` denial). Updated the stopped-app recreation test to use `adb shell am kill` via ActivityManager and added an exact-command unit test. Branch head: `3db9176e97d3b931762aebbf1634dcf9986da410`; exact-head APK/JUnit #1256 (run 39506790310) and UI smoke #891 (run 39506790196) are running.
+- PR #191 artifact 12302969381 (run 39504722101) showed the Craft Wi-Fi option is literally `Wi-Fi\\3G\\4G`; the smoke selector had encoded two backslashes. Updated it to match observed XML and added a regression test. The first CI attempt caught an over-escaped test fixture; that was corrected before the latest head `5a5e3c2f938d2d4550d1cde5c4823ceee2d97300`. Exact-head APK/JUnit #1258 (run 39506898438) and UI smoke #893 (run 39506898456) are pending/in progress. Do not accept the PR until both finish green.
+- Focused local helper suite for PR #188: 24/24 PASS. Full local Python suite on this scratch checkout: 175 tests, FAIL (4 failures, 2 errors) because the clone lacks generated original drawable/reference assets that CI prepares with `tools/prepare_craft_resources.py`; this is NOT a pass. The exact-head GitHub run performs resource preparation before the full suite. Local Gradle/SDK remain unavailable; rely on exact-head GitHub APK/JUnit and smoke jobs.
+- Original full profile run #174 (39504354431) has verified/downloaded the published APK and SHA, rebuilt the fallback decompilation, and remains in Android API 30 traversal. No runtime test outcomes have been marked PASS yet.
+- Readiness remains 5/139; K107 matrix remains 0 PASS / 0 FAIL / 0 BLOCKED / 550 WAITING / 0 retest. Stable `main` unchanged.
+
+
+### Follow-up correction
+
+- PR #191's intermediate regression fix at `5a5e3c2f938d2d4550d1cde5c4823ceee2d97300` still expected two slashes in a Python raw string; run #1258 correctly caught that test defect. The expected raw string is now corrected to one slash in `830ec27c712d3a9679c51fed3997e69a8f1757a5`; exact-head APK/JUnit #1259 (run 39507061681) is running and UI #894 (run 39507061334) is queued. Do not treat the failed intermediate run as evidence about app behavior.
+- PR #188 exact-head APK/JUnit #1256 (run 39506790310) is green, including prepared-resource Python tests, Android tests and APK build. Android API 30 UI run #891 (39506790196) remains in progress.
+
+## 21 Oct follow-up — emulator findings
+
+- PR #188 exact-head APK/JUnit #1256 and full Android API 30 UI smoke #891 (run 39506790196) both passed. This is evidence for the tested BLOODSKY scenarios in that smoke, not full parity.
+- PR #191 exact-head APK/JUnit #1259 passed, but UI smoke #894 (run 39507061334) failed. The job has no retrievable artifact from the Actions artifact API in this check; detailed job-log fetch returned a transport error, so the UI root cause is still unresolved. Keep PR open and do not infer an application regression until diagnostics are recovered.
+- Original full run #174 (39504354431) installed the exact published Release APK (source original-release, required SHA-256 verified), then captured only 162 states / 161 transitions before adb shell input tap 719 79 timed out after 45 seconds. Report coverage_complete=false, execution_finished=false, and unique_state_signatures=0. Review found capture_state never inserted a signature after checking the dedup set. PR #198 now adds the missing registration and a focused helper test; latest exact-head APK/JUnit #1263 and full emulator probe #178 are queued.
+- Run #174 is PARTIAL, not PASS. K107 statuses stay 0 PASS / 0 FAIL / 0 BLOCKED / 550 WAITING / 0 retest; unified readiness stays 5/139. Resume/replay remains an open follow-up under issue #196. Stable main unchanged.
+
+
+## Продолжение checkpoint — 2026-10-21 UTC
+
+- **PR #188:** exact-head APK/JUnit #1256 и Android 11/API 30 UI #891 завершились успешно; проверен artifact #12304512450 (result.json: passed). Это покрытие сценариев smoke, не полный parity.
+- **PR #191:** UI #894 ранее упал без доступных логов/artifact. Точный повтор #1264 остановился на одном Python regression, который проверял старую буквальную форму workflow после двух лишних branch clauses. Лишние условия удалены в 1585d075f153515594558349febfd7459da873d1; APK/JUnit #1265 прошёл полный Python suite, Android unit tests и assembleDebug. UI #896 выполняет Android 11/API 30 smoke; artifact ещё не проверен, поэтому UI gate остаётся pending.
+- **PR #198:** exact-head APK/JUnit #1263 прошёл Python, Android unit tests и assembleDebug. Полный probe #178 всё ещё выполняет оригинальный UI traversal после проверки SHA и запуска эмулятора. Предыдущий run #174 — только частичный (162 состояния / 161 переход, timeout одного ADB tap), не полный результат. В probe исправлен учёт state signatures; checkpoint/resume и сопоставление K107 остаются незавершёнными.
+- **PR #192:** структурная проверка матрицы и provenance корректна; README дополнен точным различием между базовым rebuild/debug-sign workflow и изменениями PR #198 для установки опубликованного APK. APK/JUnit #1249 прошёл на предыдущем head 5b6717c; новый docs-only head 5c05cfb не получил повторного exact-head CI. PR открыт, human review/свежая проверка остаются нужны.
+- **PR #149–#151:** проверены зависимости и свежие результаты. #149: APK #987 passed, probe #38 cancelled и ветка конфликтует с target. #150: APK #993 passed, supplemental probe #8 cancelled. Для #151 скачан artifact #12271497650/run #172: workflow job success, но отчёт full profile показывает coverage_complete=false, runtime_limit_hit=true, 22/22 уникальных состояний, 142 перехода и 125 из 510 long-press действий; APK реконструирован и debug-signed. Это частичное исследование; K107 статусы не меняются. PR #149–#151 остаются draft и не объединяются отдельно от согласования с #198.\n- **Охват оригинала:** 0 PASS / 0 FAIL / 0 BLOCKED / 550 WAITING / 0 retest. Не менялся: навигация crawler не подтверждает наблюдаемое действие.
+- **Единая готовность BLOODSKY:** 5/139 (3.6%); после новых evidence-критериев оценка не увеличивалась. main не менялся; ни один PR не объединён.
+
+**Следующая команда/операция для продолжения:** опрашивать GitHub Actions run IDs 39526565447, 39526565516 и 39526270855; после завершения скачать/проверить artifacts и job logs, сопоставить только реально наблюдавшиеся действия с K107 IDs, затем обновить журнал и readiness matrix. Если #178 остановился неполным, сохранить frontier и исправить resume/crawler timeout перед повтором.
