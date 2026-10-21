@@ -4,13 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       ui_profile:
-        description: "Run all UI regressions (full) or focused FBD gate (quick)"
+        description: "Run focused FBD smoke (quick) or full UI regression (full)"
         required: true
         type: choice
-        default: full
+        default: quick
         options: [full, quick]
   pull_request:
-    types: [opened, reopened, synchronize, ready_for_review]
+    types: [opened, reopened, synchronize, ready_for_review, labeled]
     paths:
       - 'app/**'
       - 'tools/android_ui_smoke.py'
@@ -47,15 +47,16 @@ concurrency:
 
 jobs:
   emulator-smoke:
-    # Run the full emulator gate for the integration PR and stable-main PRs.
-    # Other intermediate feature PRs keep the quick profile on demand.
-    if: github.event_name != 'pull_request' || github.base_ref == 'main' || github.base_ref == 'feat/craft-project-json-import-20261018' || contains(github.head_ref, 'craft-server-editor') || github.event.action != 'synchronize'
+    # Product development prioritizes fast APK/JUnit CI. Feature PRs run Android
+    # only once marked ready for review, when labelled 'android-smoke', or from
+    # a manual workflow_dispatch. Main-branch release gates stay automatic.
+    if: github.event_name != 'pull_request' || github.base_ref == 'main' || github.event.action == 'ready_for_review' || contains(github.event.pull_request.labels.*.name, 'android-smoke')
     runs-on: ubuntu-latest
-    timeout-minutes: 35
-    # Other feature→feature PRs use fast FBD verification; integration/main PRs,
-    # push→main and manually dispatched default runs use the full UI suite.
+    timeout-minutes: ${{ github.event_name == 'pull_request' && github.base_ref != 'main' && 18 || 35 }}
+    # Feature PRs always use the bounded quick suite; only PRs into main,
+    # main pushes and explicit full dispatch run the lengthy full suite.
     env:
-      BLOODSKY_UI_PROFILE: ${{ github.event_name == 'pull_request' && !startsWith(github.head_ref, 'fix/document-picker-') && !contains(github.head_ref, 'craft-server-editor') && github.base_ref != 'main' && github.base_ref != 'feat/craft-project-json-import-20261018' && 'quick' || (github.event_name == 'workflow_dispatch' && inputs.ui_profile == 'quick' && 'quick' || 'full') }}
+      BLOODSKY_UI_PROFILE: ${{ (github.event_name == 'pull_request' && github.base_ref != 'main' && 'quick') || (github.event_name == 'workflow_dispatch' && inputs.ui_profile == 'quick' && 'quick') || 'full' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -104,8 +105,9 @@ jobs:
             echo "## BLOODSKY Android UI"
             echo "- Profile: $BLOODSKY_UI_PROFILE"
             echo "- Commit: $GITHUB_SHA"
-            echo "- To run full on a feature branch: Actions → BLOODSKY Android UI smoke → Run workflow → ui_profile=full"
-            echo "- PRs targeting main always use full"
+            echo "- Feature PRs: run quick on ready_for_review or when the android-smoke label is present; changes without the label do not automatically re-run the emulator"
+            echo "- Manually run quick/full on a branch: Actions → BLOODSKY Android UI smoke → Run workflow → choose ui_profile"
+            echo "- PRs targeting main and pushes to main always use full"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Save UI screenshots and diagnostics
         if: always()
