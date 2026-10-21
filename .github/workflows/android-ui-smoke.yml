@@ -4,13 +4,16 @@ on:
   workflow_dispatch:
     inputs:
       ui_profile:
-        description: "Run focused FBD smoke (quick) or full UI regression (full)"
+        description: "Release acceptance: quick FBD smoke or full Android UI regression"
         required: true
         type: choice
-        default: quick
+        default: full
         options: [full, quick]
+  # Only release PRs targeting stable main start Android automatically.
+  # Feature/integration PRs targeting prototype branches never boot an emulator.
   pull_request:
-    types: [opened, reopened, synchronize, ready_for_review, labeled]
+    branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review]
     paths:
       - 'app/**'
       - 'tools/android_ui_smoke.py'
@@ -47,16 +50,12 @@ concurrency:
 
 jobs:
   emulator-smoke:
-    # Product development prioritizes fast APK/JUnit CI. Feature PRs run Android
-    # only once marked ready for review, when labelled 'android-smoke', or from
-    # a manual workflow_dispatch. Main-branch release gates stay automatic.
-    if: github.event_name != 'pull_request' || github.base_ref == 'main' || github.event.action == 'ready_for_review' || contains(github.event.pull_request.labels.*.name, 'android-smoke')
+    # Keep Android out of active development. Only manual dispatch, release
+    # PRs targeting main, and main pushes can run this job.
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ github.event_name == 'pull_request' && github.base_ref != 'main' && 18 || 35 }}
-    # Feature PRs always use the bounded quick suite; only PRs into main,
-    # main pushes and explicit full dispatch run the lengthy full suite.
+    timeout-minutes: 35
     env:
-      BLOODSKY_UI_PROFILE: ${{ (github.event_name == 'pull_request' && github.base_ref != 'main' && 'quick') || (github.event_name == 'workflow_dispatch' && inputs.ui_profile == 'quick' && 'quick') || 'full' }}
+      BLOODSKY_UI_PROFILE: ${{ github.event_name == 'workflow_dispatch' && inputs.ui_profile == 'quick' && 'quick' || 'full' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -105,9 +104,9 @@ jobs:
             echo "## BLOODSKY Android UI"
             echo "- Profile: $BLOODSKY_UI_PROFILE"
             echo "- Commit: $GITHUB_SHA"
-            echo "- Feature PRs: run quick on ready_for_review or when the android-smoke label is present; changes without the label do not automatically re-run the emulator"
-            echo "- Manually run quick/full on a branch: Actions → BLOODSKY Android UI smoke → Run workflow → choose ui_profile"
-            echo "- PRs targeting main and pushes to main always use full"
+            echo "- Feature and prototype integration PRs do NOT automatically boot Android"
+            echo "- Before release, manually run quick/full on a chosen branch: Actions → BLOODSKY Android UI smoke → Run workflow → choose ui_profile"
+            echo "- PRs targeting main and pushes to main automatically run full"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Save UI screenshots and diagnostics
         if: always()
