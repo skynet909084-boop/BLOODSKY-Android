@@ -604,6 +604,19 @@ public class PortableZipMediaTest {
         assertArrayEquals(sourceImage, java.nio.file.Files.readAllBytes(ProjectMediaService.resolveMediaFile(
                 rootDir, second.toString(), secondBackgroundPath).toPath()));
 
+        ByteArrayOutputStream reexportedCraftZip = new ByteArrayOutputStream();
+        ProjectMediaService.exportCraftProjectZipBundle(reexportedCraftZip, second.toString(), path ->
+                java.nio.file.Files.readAllBytes(ProjectMediaService.resolveMediaFile(
+                        rootDir, second.toString(), path).toPath()));
+        Map<String, byte[]> reexportedCraftMedia = new java.util.HashMap<>();
+        JSONObject reimportedAfterPortableZip = new JSONObject(MainActivity.importProjectFromZip(
+                new ByteArrayInputStream(reexportedCraftZip.toByteArray()), reexportedCraftMedia));
+        assertEquals("bg.png", reimportedAfterPortableZip.getJSONObject("craftSource")
+                .getJSONObject("TableNameProject").getJSONObject("jsTableNameProject_screenBackground")
+                .getString("screen1PathImage"));
+        assertTrue(reexportedCraftMedia.containsKey("bg.png"));
+        assertArrayEquals(sourceImage, reexportedCraftMedia.get("bg.png"));
+
         JSONObject editedCraftProject = new JSONObject(first.toString());
         JSONObject editedCraftWidget = editedCraftProject.getJSONArray("screens").getJSONObject(0)
                 .getJSONArray("widgets").getJSONObject(0);

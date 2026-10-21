@@ -278,11 +278,25 @@ public class ProjectMediaService {
             String craftJson = CraftProjectExporter.export(projectJson);
             source = new JSONObject(craftJson);
             projectBytes = craftJson.getBytes(StandardCharsets.UTF_8);
+            Map<String, String> mediaAliases = CraftProjectExporter.mediaPathAliases(projectJson, source);
             long total = projectBytes.length;
             for (String path : CraftProjectExporter.referencedMedia(source)) {
-                byte[] bytes = resolver == null ? null : resolver.readMedia(path);
+                byte[] bytes = null;
+                IOException directFailure = null;
+                if (resolver != null) try { bytes = resolver.readMedia(path); }
+                catch (IOException missingOriginalPath) { directFailure = missingOriginalPath; }
+                if ((bytes == null || bytes.length == 0) && resolver != null) {
+                    String currentPath = mediaAliases.get(path);
+                    if (currentPath != null) try {
+                        bytes = resolver.readMedia(currentPath);
+                        if (bytes != null && bytes.length == 0) bytes = null;
+                    }
+                    catch (IOException missingCurrentPath) {
+                        if (directFailure == null) directFailure = missingCurrentPath;
+                    }
+                }
                 if (bytes == null || bytes.length == 0)
-                    throw new IOException("Медиа KaScada отсутствует или недоступно: " + path);
+                    throw new IOException("Медиа KaScada отсутствует или недоступно: " + path, directFailure);
                 if (total > MAX_BUNDLE_BYTES - bytes.length)
                     throw new IOException("Размер проекта KaScada превышает лимит ZIP");
                 total += bytes.length;
