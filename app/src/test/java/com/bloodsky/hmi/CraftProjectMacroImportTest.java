@@ -188,7 +188,10 @@ public class CraftProjectMacroImportTest {
             }
         }
         assertNotNull(exportedProject);
-        assertArrayEquals(macros.get("project/Inner.mcr"), exportedMedia.get("Inner.mcr"));
+        JSONObject bundledInner = new JSONObject(new String(exportedMedia.get("Inner.mcr"),
+                StandardCharsets.UTF_8));
+        assertEquals("47", bundledInner.getJSONObject("bloodskyGraph")
+                .getJSONArray("widgets").getJSONObject(0).getString("craftVarConstant"));
 
         JSONObject reopenedBloodsky = new JSONObject(CraftProjectImporter.convert(
                 new String(exportedProject, StandardCharsets.UTF_8), "Project.pro", exportedMedia));
@@ -211,11 +214,20 @@ public class CraftProjectMacroImportTest {
         sourceCompatibleOther.remove("craftMacroMediaPath");
         JSONObject reopened = new JSONObject(CraftProjectImporter.convert(sourceCompatiblePro.toString(),
                 "Project.pro", exportedMedia));
-        JSONObject reopenedDefinition = reopened.getJSONArray("screens").getJSONObject(0)
-                .getJSONArray("widgets").getJSONObject(0).getJSONObject("craftMacroDefinition");
+        JSONObject reopenedSourceCompatibleMacro = reopened.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0);
+        JSONObject reopenedDefinition = reopenedSourceCompatibleMacro.getJSONObject("craftMacroDefinition");
         assertEquals("Inner", reopenedDefinition.getJSONObject("bloodskyGraph")
                 .getJSONArray("widgets").getJSONObject(0).getJSONObject("craftMacroDefinition")
                 .getString("name"));
+        MainActivity.Widget reopenedSourceCompatibleRuntime =
+                MainActivity.widgetFromJson(reopenedSourceCompatibleMacro);
+        double[] sourceCompatibleValue = new double[1];
+        MainActivity.evaluateFbdBlock(Collections.singletonList(reopenedSourceCompatibleRuntime),
+                Collections.emptyList(), 0, new boolean[1], new boolean[1], new boolean[1],
+                sourceCompatibleValue, new CraftSystemRegisterBank(), false);
+        assertEquals("edited nested graph must travel in bundled .mcr sidecars", 47.0,
+                sourceCompatibleValue[0], 0.0);
     }
 
     @Test public void unsupportedMacroGraphIsVisibleButExplicitlyNonExecutable() throws Exception {
