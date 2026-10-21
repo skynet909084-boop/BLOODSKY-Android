@@ -208,7 +208,7 @@ public class FbdCraftMacroGraphAdapterTest {
                 new CraftSystemRegisterBank());
         assertEquals(23.75, numeric[0], 0.0);
 
-        int[] unsupportedIds = {139, 140};
+        int[] unsupportedIds = {140};
         for (int id : unsupportedIds) {
             JSONObject networkMacro = validMacro();
             networkMacro.getJSONArray("fbInMacros").getJSONObject(0).put("componentId", id);
@@ -217,6 +217,43 @@ public class FbdCraftMacroGraphAdapterTest {
             assertNull("MQTT block " + id + " still requires its own runtime lifecycle",
                     unsupported.toJson().optJSONObject("bloodskyGraph"));
         }
+    }
+
+    @Test public void importedMacroMqttSubscriberReceivesTypedRuntimeValues() throws Exception {
+        JSONObject root = validMacro();
+        JSONObject originalChild = root.getJSONArray("fbInMacros").getJSONObject(0);
+        originalChild.put("componentId", 139).put("craftMqttTopic", "plant/temperature")
+                .put("craftMqttType", 3).put("craftMqttServer", 2);
+        FbdCraftMacroDefinition expanded = FbdCraftMacroGraphAdapter.expandIfSupported(
+                FbdCraftMacroDefinition.fromJson(root.toString()));
+        assertNotNull("MQTT subscriber can join the operator subscription lifecycle",
+                expanded.toJson().optJSONObject("bloodskyGraph"));
+
+        JSONObject graphWidget = expanded.toJson().getJSONObject("bloodskyGraph")
+                .getJSONArray("widgets").getJSONObject(2);
+        assertEquals("FBD CRAFT MQTT SUB BOOL", graphWidget.getString("type"));
+        assertEquals("plant/temperature", graphWidget.optString("craftMqttTopic"));
+        assertEquals(3, graphWidget.optInt("craftMqttType"));
+        assertEquals(2, graphWidget.optInt("craftMqttServer"));
+
+        MainActivity.Widget macro = MainActivity.widgetFromJson(new JSONObject()
+                .put("type", "FBD CRAFT MACRO").put("craftMacroDefinition", expanded.toJson()));
+        java.util.List<MainActivity.Widget> runtimeWidgets =
+                MainActivity.fbdRuntimeWidgetsIncludingMacros(Collections.singletonList(macro));
+        MainActivity.Widget subscriber = runtimeWidgets.get(2);
+        assertTrue(MainActivity.isCraftMqttSubscriber(subscriber.type));
+        subscriber.craftMqttValue = 31.25;
+        double[] numeric = new double[1];
+        assertTrue(MainActivity.evaluateFbdBlock(Collections.singletonList(macro), Collections.emptyList(), 0,
+                new boolean[1], new boolean[1], new boolean[1], numeric,
+                new CraftSystemRegisterBank()));
+        assertEquals(31.25, numeric[0], 0.0);
+
+        subscriber.craftMqttValue = null;
+        assertFalse(MainActivity.evaluateFbdBlock(Collections.singletonList(macro), Collections.emptyList(), 0,
+                new boolean[1], new boolean[1], new boolean[1], numeric,
+                new CraftSystemRegisterBank()));
+        assertTrue(Double.isNaN(numeric[0]));
     }
 
     @Test public void executesImportedRegisterWritesOnlyDuringOperatorScan() throws Exception {
@@ -418,7 +455,7 @@ public class FbdCraftMacroGraphAdapterTest {
     }
 
     @Test public void preservesMacrosThatNeedScreenLevelIo() throws Exception {
-        int[] unsupported = {130, 139, 140};
+        int[] unsupported = {130, 140};
         for (int id : unsupported) {
             JSONObject root = validMacro();
             root.getJSONArray("fbInMacros").getJSONObject(0).put("componentId", id);
