@@ -16,8 +16,9 @@ public class FbdCraftChangeTransitionsTest {
 
     private static boolean scan(List<MainActivity.Widget> nodes,
                                 List<MainActivity.FbdConnection> connections) {
-        int n = nodes.size();
-        return MainActivity.evaluateFbdBlock(nodes, connections, 1,
+        FbdCraftTestGraphs.Graph graph = FbdCraftTestGraphs.withReadyCraftCounters(nodes, connections);
+        int n = graph.widgets.size();
+        return MainActivity.evaluateFbdBlock(graph.widgets, graph.connections, 1,
                 new boolean[n], new boolean[n], new boolean[n], new double[n]);
     }
 
