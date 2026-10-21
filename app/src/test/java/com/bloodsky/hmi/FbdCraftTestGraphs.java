@@ -31,7 +31,11 @@ final class FbdCraftTestGraphs {
                 input.inputValue = false;
                 int source = widgets.size();
                 widgets.add(input);
-                connections.add(MainActivity.pinnedFbdConnection(source, "Q", target, pin));
+                try {
+                    connections.add(MainActivity.pinnedFbdConnection(source, "Q", target, pin));
+                } catch (Exception invalidFixture) {
+                    throw new AssertionError("Test CTU input fixture must be valid", invalidFixture);
+                }
             }
         }
         return new Graph(widgets, connections);
