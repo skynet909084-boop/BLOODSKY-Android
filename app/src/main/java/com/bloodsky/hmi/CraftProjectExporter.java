@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -347,6 +348,50 @@ public final class CraftProjectExporter {
             if (!name.isEmpty()) addPath(paths, name + ".mcr");
             addNestedMacroMediaReferences(nested, paths, depth + 1);
         }
+    }
+
+    /** Return edited validated macro definitions keyed by the paths used in a Craft ZIP. */
+    static Map<String, FbdCraftMacroDefinition> macroDefinitionsByMediaPath(JSONObject source)
+            throws Exception {
+        Map<String, FbdCraftMacroDefinition> definitions = new HashMap<>();
+        JSONArray rows = source == null ? null : source.optJSONArray("TableComponent");
+        if (rows == null) return definitions;
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject row = rows.optJSONObject(i);
+            if (row == null || row.optInt("componentId", -1) != 135) continue;
+            JSONObject other = objectValue(row.opt("jsTableComponent_other"));
+            JSONObject definition = other.optJSONObject("craftMacroDefinition");
+            if (definition != null)
+                addMacroDefinitionAndNested(definition,
+                        other.optString("craftMacroMediaPath", ""), definitions, 0);
+        }
+        return definitions;
+    }
+
+    private static void addMacroDefinitionAndNested(JSONObject rawDefinition, String mediaPath,
+            Map<String, FbdCraftMacroDefinition> definitions, int depth) throws Exception {
+        if (rawDefinition == null || depth >= 8) return;
+        FbdCraftMacroDefinition definition = FbdCraftMacroDefinition.fromJson(rawDefinition.toString());
+        String macroPath = definition.getName() + ".mcr";
+        putMacroDefinition(definitions, macroPath, definition);
+        if (mediaPath != null && !mediaPath.trim().isEmpty())
+            putMacroDefinition(definitions, mediaPath, definition);
+        JSONObject graph = definition.toJson().optJSONObject("bloodskyGraph");
+        JSONArray widgets = graph == null ? null : graph.optJSONArray("widgets");
+        if (widgets == null) return;
+        for (int i = 0; i < widgets.length(); i++) {
+            JSONObject widget = widgets.optJSONObject(i);
+            if (widget == null || !"FBD CRAFT MACRO".equals(widget.optString("type", ""))) continue;
+            JSONObject nested = widget.optJSONObject("craftMacroDefinition");
+            if (nested != null) addMacroDefinitionAndNested(nested,
+                    widget.optString("craftMacroMediaPath", ""), definitions, depth + 1);
+        }
+    }
+
+    private static void putMacroDefinition(Map<String, FbdCraftMacroDefinition> definitions,
+            String path, FbdCraftMacroDefinition definition) {
+        String key = path == null ? "" : path.trim().replace('\\', '/');
+        if (!key.isEmpty() && !"0".equals(key)) definitions.put(key.toLowerCase(Locale.ROOT), definition);
     }
 
     private static void addNestedMacroMediaAliases(JSONObject definition,
