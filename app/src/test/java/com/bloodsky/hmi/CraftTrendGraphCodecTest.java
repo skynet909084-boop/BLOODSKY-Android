@@ -5,9 +5,11 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class CraftTrendGraphCodecTest {
-    @Test public void decodesUnsignedAndSignedInt16Registers() {
-        assertEquals(65535.0, CraftTrendGraphCodec.decodeFirst(new int[]{0xffff}, 0), 0);
-        assertEquals(-1.0, CraftTrendGraphCodec.decodeFirst(new int[]{0xffff}, 1), 0);
+    @Test public void followsOriginalTypeGraphSignedAndUnsignedWordMapping() {
+        assertEquals(-1.0, CraftTrendGraphCodec.decodeFirst(new int[]{0xffff}, 0), 0);
+        assertEquals(65535.0, CraftTrendGraphCodec.decodeFirst(new int[]{0xffff}, 1), 0);
+        assertEquals(-32768.0, CraftTrendGraphCodec.decodeFirst(new int[]{0x8000}, 0), 0);
+        assertEquals(32768.0, CraftTrendGraphCodec.decodeFirst(new int[]{0x8000}, 1), 0);
         assertEquals(1, CraftTrendGraphCodec.readQuantity(0));
         assertEquals(1, CraftTrendGraphCodec.readQuantity(1));
     }
@@ -29,9 +31,9 @@ public class CraftTrendGraphCodecTest {
     }
 
     @Test public void decodesAllSourceChannelsFromContiguousRegisterBlocks() {
-        assertArrayEquals(new double[]{65535.0, 2.0},
-                CraftTrendGraphCodec.decodeChannels(new int[]{0xffff, 2}, 0, 2), 0);
         assertArrayEquals(new double[]{-1.0, 2.0},
+                CraftTrendGraphCodec.decodeChannels(new int[]{0xffff, 2}, 0, 2), 0);
+        assertArrayEquals(new double[]{65535.0, 2.0},
                 CraftTrendGraphCodec.decodeChannels(new int[]{0xffff, 2}, 1, 2), 0);
         assertArrayEquals(new double[]{1.0, 2.0},
                 CraftTrendGraphCodec.decodeChannels(new int[]{0x3f80, 0, 0x4000, 0}, 2, 2), 0);

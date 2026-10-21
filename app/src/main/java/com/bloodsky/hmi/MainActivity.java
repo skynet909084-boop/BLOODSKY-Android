@@ -6217,7 +6217,7 @@ public class MainActivity extends Activity {
             form.addView(trendChannelCountField);
             trendTypeField = propertyField(Integer.toString(
                     w.extraFields.optInt("craftTrendType", 1)), InputType.TYPE_CLASS_NUMBER);
-            trendTypeField.setHint("Тип: 0 UINT16, 1 INT16, 2 FLOAT32");
+            trendTypeField.setHint("Тип: 0 INT16, 1 UINT16, 2 FLOAT32");
             trendTypeField.setContentDescription("Тип данных графика");
             form.addView(trendTypeField);
             trendLabelsColorField = propertyField(String.format(java.util.Locale.ROOT, "#%08X",
