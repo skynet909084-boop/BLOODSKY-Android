@@ -652,6 +652,57 @@ public class PortableZipMediaTest {
         }
     }
 
+    @Test public void editedCraftIndicatorImageIsWrittenToProAndBundled() throws Exception {
+        byte[] originalImage = new byte[]{1, 2, 3};
+        byte[] selectedImage = new byte[]{9, 8, 7, 6};
+        JSONObject source = new JSONObject()
+                .put("TableNameProject", new JSONObject().put("name", "Indicator media")
+                        .put("countScreen", 1))
+                .put("TableConnections", new JSONArray())
+                .put("TableComponent", new JSONArray().put(new JSONObject()
+                        .put("componentId", 5).put("text", "Lamp")
+                        .put("x", 1).put("y", 2).put("width", 40).put("height", 40)
+                        .put("jsTableComponent_other", new JSONObject().put("numScreen", 1)
+                                .put("isImageUserOff", false).put("pathOrNameOff", "off")
+                                .put("isImageUserOn", true).put("pathOrNameOn", "original.png")
+                                .put("vendorIndicatorField", "preserve"))));
+        byte[] archive = createCraftProjectZip(source.toString(), "original.png", originalImage);
+        final String[] importedJson = new String[1];
+        ProjectMediaService.importProjectBundle(rootDir, new ByteArrayInputStream(archive), json -> {
+            importedJson[0] = json;
+            return true;
+        });
+        assertNotNull(importedJson[0]);
+
+        JSONObject project = new JSONObject(importedJson[0]).put("id", "indicator-image-roundtrip");
+        JSONObject widget = project.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0);
+        String selectedPath = ProjectMediaService.storeSelectedMedia(rootDir, project.toString(),
+                "replacement.png", new ByteArrayInputStream(selectedImage));
+        String mediaProject = project.toString();
+        assertArrayEquals(selectedImage, java.nio.file.Files.readAllBytes(
+                ProjectMediaService.resolveMediaFile(rootDir, mediaProject, selectedPath).toPath()));
+        JSONObject edited = OriginalIndicator.withImage(widget, true, true, selectedPath);
+        widget.put("other", edited.getJSONObject("other"));
+        assertEquals("original.png", widget.getJSONObject("craftOther").getString("pathOrNameOn"));
+
+        ByteArrayOutputStream exported = new ByteArrayOutputStream();
+        String editedJson = project.toString();
+        ProjectMediaService.exportCraftProjectZipBundle(exported, editedJson, path -> {
+            if (selectedPath.equals(path)) return selectedImage;
+            if ("original.png".equals(path)) return originalImage;
+            throw new IOException("Unexpected Craft media path: " + path);
+        });
+        Map<String, byte[]> media = new HashMap<>();
+        JSONObject reopened = new JSONObject(MainActivity.importProjectFromZip(
+                new ByteArrayInputStream(exported.toByteArray()), media));
+        JSONObject emittedOther = reopened.getJSONObject("craftSource").getJSONArray("TableComponent")
+                .getJSONObject(0).getJSONObject("jsTableComponent_other");
+        assertEquals(selectedPath, emittedOther.getString("pathOrNameOn"));
+        assertEquals("preserve", emittedOther.getString("vendorIndicatorField"));
+        assertArrayEquals(selectedImage, media.get(selectedPath.substring("media/".length())));
+    }
+
 
 
     @Test
