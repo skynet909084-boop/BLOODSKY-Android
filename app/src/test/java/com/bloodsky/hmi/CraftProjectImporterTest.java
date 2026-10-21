@@ -369,6 +369,41 @@ public class CraftProjectImporterTest {
         MainActivity.validateImportedProjectStatic(project.toString());
     }
 
+    @Test public void editedCraftTimerAndTriggerModesRoundTripThroughOriginalTypeCodes() throws Exception {
+        JSONObject source = new JSONObject()
+                .put("TableNameProject", new JSONObject().put("name", "FBD mode export").put("countScreen", 1))
+                .put("TableConnections", new JSONArray())
+                .put("TableComponent", new JSONArray()
+                        .put(new JSONObject().put("componentId", 114).put("text", "T")
+                                .put("jsTableComponent_other", new JSONObject().put("numScreen", 1)
+                                        .put("type", 2).put("vendorTriggerField", "keep")))
+                        .put(new JSONObject().put("componentId", 115).put("text", "TON")
+                                .put("jsTableComponent_other", new JSONObject().put("numScreen", 1)
+                                        .put("type", 1).put("typeTime", 1)
+                                        .put("vendorTimerField", 42))));
+        JSONObject imported = new JSONObject(CraftProjectImporter.convert(source.toString()));
+        JSONArray widgets = imported.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets");
+        assertEquals("R", widgets.getJSONObject(0).getString("craftTriggerMode"));
+        widgets.getJSONObject(0).put("craftTriggerMode", "F");
+        widgets.getJSONObject(1).put("craftTimerMode", "TP").put("craftTimerUnit", "MIN");
+
+        JSONObject exported = new JSONObject(CraftProjectExporter.export(imported.toString()));
+        JSONArray components = exported.getJSONArray("TableComponent");
+        JSONObject triggerOther = components.getJSONObject(0).getJSONObject("jsTableComponent_other");
+        JSONObject timerOther = components.getJSONObject(1).getJSONObject("jsTableComponent_other");
+        assertEquals(3, triggerOther.getInt("type"));
+        assertEquals("keep", triggerOther.getString("vendorTriggerField"));
+        assertEquals(3, timerOther.getInt("type"));
+        assertEquals(3, timerOther.getInt("typeTime"));
+        assertEquals(42, timerOther.getInt("vendorTimerField"));
+
+        JSONArray restored = new JSONObject(CraftProjectImporter.convert(exported.toString()))
+                .getJSONArray("screens").getJSONObject(0).getJSONArray("widgets");
+        assertEquals("F", restored.getJSONObject(0).getString("craftTriggerMode"));
+        assertEquals("TP", restored.getJSONObject(1).getString("craftTimerMode"));
+        assertEquals("MIN", restored.getJSONObject(1).getString("craftTimerUnit"));
+    }
+
     @Test public void mapsCraftLabelsButtonsAndImageIndicatorsFromVerifiedComponentClasses() throws Exception {
         String json = "{\"TableNameProject\":{\"name\":\"Widgets\",\"countScreen\":2},\"TableConnections\":[],\"TableComponent\":["
                 + "{\"componentId\":1,\"text\":\"\",\"x\":1,\"y\":2,\"width\":30,\"height\":30,\"jsTableComponent_other\":{\"numScreen\":1,\"imagePosition\":2,\"visibleInWork\":true}},"

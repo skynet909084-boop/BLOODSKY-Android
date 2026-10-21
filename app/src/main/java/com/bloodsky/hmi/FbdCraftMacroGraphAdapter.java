@@ -110,6 +110,8 @@ final class FbdCraftMacroGraphAdapter {
                 widget.put("craftTimerMode", timerMode(child.optInt("type", 1)));
                 widget.put("craftTimerUnit", timerUnit(child.optInt("typeTime", 1)));
             }
+            if ("FBD CRAFT T".equals(type))
+                widget.put("craftTriggerMode", triggerMode(child.optInt("type", 1)));
             if ("FBD CRAFT SENSOR ORIENTATION".equals(type))
                 widget.put("craftSensorAxis", Math.max(1, Math.min(3, child.optInt("type", 1))));
             if ("FBD CRAFT SUNRISE".equals(type))
@@ -266,5 +268,9 @@ final class FbdCraftMacroGraphAdapter {
 
     private static String timerUnit(int unit) {
         switch (unit) { case 2: return "SEK"; case 3: return "MIN"; default: return "MS"; }
+    }
+
+    private static String triggerMode(int mode) {
+        switch (mode) { case 2: return "R"; case 3: return "F"; default: return "T"; }
     }
 }

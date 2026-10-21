@@ -165,6 +165,8 @@ public class FbdCraftMacroGraphAdapterTest {
                 .put(new JSONObject().put("componentId", 109).put("x", 0).put("y", 0)
                         .put("saveKey", 45).put("keyOut", -1).put("isHighRegister", true)
                         .put("isHighByte", true))
+                .put(new JSONObject().put("componentId", 114).put("x", 0).put("y", 0)
+                        .put("saveKey", 46).put("keyOut", -1).put("type", 3))
                 .put(new JSONObject().put("componentId", 121).put("x", 0).put("y", 0)
                         .put("saveKey", 50).put("keyOut", 900));
         JSONObject root = new JSONObject().put("countIn", 0).put("saveKeyOut", 900)
@@ -180,6 +182,7 @@ public class FbdCraftMacroGraphAdapterTest {
         assertTrue(widgets.getJSONObject(3).getBoolean("craftMqttRetain"));
         assertTrue(widgets.getJSONObject(4).getBoolean("craftSwapWord"));
         assertTrue(widgets.getJSONObject(4).getBoolean("craftSwapByte"));
+        assertEquals("F", widgets.getJSONObject(5).getString("craftTriggerMode"));
     }
 
     @Test public void preservesMacrosThatNeedScreenLevelIo() throws Exception {
