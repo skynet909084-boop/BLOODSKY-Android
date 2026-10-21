@@ -343,8 +343,10 @@ public final class CraftProjectExporter {
                 String key = keys.next();
                 if ("pathGif".equals(key) || key.startsWith("pathPic_") || key.startsWith("pathSound_"))
                     addPath(paths, other.optString(key, ""));
-                if (("pathOrNameOff".equals(key) || "pathOrNameOn".equals(key))
-                        && (other.optBoolean("isImageUserOff", false) || other.optBoolean("isImageUserOn", false)))
+                boolean userIndicatorImage = ("pathOrNameOff".equals(key)
+                        && other.optBoolean("isImageUserOff", false))
+                        || ("pathOrNameOn".equals(key) && other.optBoolean("isImageUserOn", false));
+                if (userIndicatorImage)
                     addPath(paths, other.optString(key, ""));
             }
         }
