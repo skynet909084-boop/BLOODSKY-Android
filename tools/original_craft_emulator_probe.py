@@ -14,7 +14,7 @@ from collections import Counter, deque
 from pathlib import Path
 import os
 from PIL import Image
-from original_craft_probe_state import remember_state_signature
+from original_craft_probe_state import load_checkpoint, remember_state_signature, write_checkpoint
 from original_craft_probe_scenarios import QUICK_SCENARIOS, parse_probe_options
 
 OUT = Path(sys.argv[1])
@@ -24,7 +24,7 @@ APK_SOURCE = os.environ.get("KASCADA_PROBE_APK_SOURCE", "unknown")
 APK_SHA256 = os.environ.get("KASCADA_PROBE_APK_SHA256", "")
 ADB_TIMEOUT = 45
 try:
-    PROFILE, QUICK_SCENARIO = parse_probe_options(sys.argv[2:])
+    PROFILE, QUICK_SCENARIO, RESUME = parse_probe_options(sys.argv[2:])
 except ValueError as exc:
     raise SystemExit(str(exc)) from exc
 MAX_STATES = 12 if PROFILE == "quick" else 300
@@ -318,6 +318,27 @@ state_rows = []
 transition_rows = []
 started = time.time()
 quick_goal_reached = False
+checkpoint_seen = set()
+checkpoint_state_rows = []
+checkpoint_transition_rows = []
+checkpoint_pending_paths = [[]]
+remaining_frontier = 0
+elapsed_seconds_before_resume = 0.0
+resume_count = 0
+
+if RESUME:
+    checkpoint = load_checkpoint(OUT / "checkpoint.json", apk_sha256=APK_SHA256)
+    seen = set(checkpoint["visited_signatures"])
+    state_rows = list(checkpoint["state_rows"])
+    transition_rows = list(checkpoint["transition_rows"])
+    checkpoint_seen = set(seen)
+    checkpoint_state_rows = list(state_rows)
+    checkpoint_transition_rows = list(transition_rows)
+    checkpoint_pending_paths = list(checkpoint["pending_paths"])
+    remaining_frontier = len(checkpoint_pending_paths)
+    elapsed_seconds_before_resume = float(checkpoint.get("elapsed_seconds_total", 0.0))
+    resume_count = int(checkpoint.get("resume_count", 0)) + 1
+    print(f"resuming checkpoint: states={len(state_rows)} pending={remaining_frontier}", flush=True)
 
 
 def save_checkpoint(complete=False):
@@ -331,7 +352,8 @@ def save_checkpoint(complete=False):
         "scenario_case_ids": QUICK_SCENARIOS[QUICK_SCENARIO]["case_ids"] if PROFILE == "quick" else [],
         "scenario_expected": QUICK_SCENARIOS[QUICK_SCENARIO]["expected"] if PROFILE == "quick" else "Exhaustive exploration is bounded and not a case-level PASS.",
         "scenario_status": ("PASS" if quick_goal_reached else "FAIL") if PROFILE == "quick" and complete else "RUNNING" if PROFILE == "quick" else "NOT_A_SCENARIO",
-        "k107_case_status": "WAITING_FOR_BLOODSKY_COMPARISON",
+        "k107_case_status": "WAITING",
+        "k107_status_reason": "Original runtime only; BLOODSKY equivalent action and comparison remain required.",
         "execution_finished": complete,
         "max_states": MAX_STATES,
         "max_path_depth": MAX_DEPTH,
@@ -340,7 +362,7 @@ def save_checkpoint(complete=False):
         "runtime_limit_hit": runtime_limit_hit,
         "coverage_limited": coverage_limited,
         "coverage_complete": (PROFILE == "full" and not runtime_limit_hit and not coverage_limited
-                              and len(state_rows) < MAX_STATES),
+                              and remaining_frontier == 0 and len(state_rows) < MAX_STATES),
         "guided_goal_reached": quick_goal_reached,
         "termination_reason": ("runtime_limit" if runtime_limit_hit else
                                "guided_goal_reached" if quick_goal_reached else
@@ -350,9 +372,17 @@ def save_checkpoint(complete=False):
         "unique_state_signatures": len(seen),
         "transitions_visited": len(transition_rows),
         "elapsed_seconds": round(time.time() - started, 1),
+        "elapsed_seconds_total": round(elapsed_seconds_before_resume + time.time() - started, 1),
+        "resume_count": resume_count,
         "project_loading_stalled_states": sum(1 for row in state_rows if row["project_loading_stalled"]),
         "states": state_rows,
         "transitions": transition_rows,
+        "remaining_frontier": remaining_frontier,
+        "checkpoint_file": "checkpoint.json" if PROFILE == "full" else None,
+        "resume_requested": RESUME,
+        "k107_remaining_ids": [f"K107-{index:04d}" for index in range(1, 551)],
+        "k107_counts": {"total": 550, "pass": 0, "fail": 0, "blocked": 0,
+                        "waiting": 550, "requires_retest": 0},
         "runtime_error_log": "android-runtime-errors.log",
         "limitations": [
             "Quick profile executes one independently selected scenario; a scenario PASS is runtime evidence for the original only, not a K107 acceptance PASS or BLOODSKY parity claim.",
@@ -370,6 +400,21 @@ def save_checkpoint(complete=False):
     temporary = OUT / "ui-audit.json.tmp"
     temporary.write_text(json.dumps(report, ensure_ascii=False, indent=2))
     temporary.replace(target)
+    if PROFILE == "full":
+        write_checkpoint(OUT / "checkpoint.json", {
+            "profile": PROFILE,
+            "apk_source": APK_SOURCE,
+            "apk_sha256": APK_SHA256,
+            "visited_signatures": sorted(checkpoint_seen),
+            "state_rows": checkpoint_state_rows,
+            "transition_rows": checkpoint_transition_rows,
+            "pending_paths": checkpoint_pending_paths,
+            "remaining_k107_ids": [f"K107-{index:04d}" for index in range(1, 551)],
+            "k107_counts": {"total": 550, "pass": 0, "fail": 0, "blocked": 0,
+                            "waiting": 550, "requires_retest": 0},
+            "elapsed_seconds_total": round(elapsed_seconds_before_resume + time.time() - started, 1),
+            "resume_count": resume_count,
+        })
     if len(state_rows) % 10 == 0:
         log = adb("logcat", "-d", "-v", "brief", "AndroidRuntime:E", "*:S", check=False)
         (OUT / "android-runtime-errors.log").write_text(log)
@@ -410,7 +455,11 @@ def capture_state(path):
     if loading_stalled:
         screenshot_hash = ""
     path_labels = [a["label"] for a in path]
-    row = {"state": label, "path": path_labels, "control_count": len(ctrls),
+    row = {"state": label, "state_signature": signature, "path": path_labels,
+           "k107_case_ids": QUICK_SCENARIOS[QUICK_SCENARIO]["case_ids"] if PROFILE == "quick" else [],
+           "k107_status": "WAITING",
+           "k107_status_reason": "Original runtime evidence only; BLOODSKY comparison is still required.",
+           "control_count": len(ctrls),
            "controls": ctrls, "screenshot_sha256": screenshot_hash,
            "project_loading_stalled": loading_stalled}
     state_rows.append(row)
@@ -517,22 +566,45 @@ def fast_walk(path, parent_signature=None):
 
 
 def full_walk():
-    queue = deque([[]])
+    global runtime_limit_hit, coverage_limited, remaining_frontier
+    global checkpoint_pending_paths, checkpoint_seen, checkpoint_state_rows, checkpoint_transition_rows
+    queue = deque(checkpoint_pending_paths)
     while queue and len(state_rows) < MAX_STATES:
-        path = queue.popleft()
+        if MAX_RUNTIME_SECONDS and time.time() - started >= MAX_RUNTIME_SECONDS:
+            runtime_limit_hit = True
+            break
+        path = queue[0]
         replay(path)
         captured = capture_state(path)
-        if captured is None:
-            continue
-        _, _, actions = captured
+        actions = [] if captured is None else captured[2]
+        parent_label = "duplicate-state" if captured is None else captured[0]
         if len(path) >= MAX_DEPTH:
-            continue
-        for action in actions:
-            child = path + [action]
-            if len(queue) + len(state_rows) >= MAX_QUEUED:
-                break
-            queue.append(child)
-    return len(queue)
+            if actions:
+                coverage_limited = True
+        else:
+            for action in actions:
+                if len(queue) + len(state_rows) >= MAX_QUEUED:
+                    coverage_limited = True
+                    break
+                child = path + [action]
+                queue.append(child)
+                transition_rows.append({"from": parent_label, "action": action["label"], "depth": len(child)})
+        queue.popleft()
+        checkpoint_pending_paths = list(queue)
+        checkpoint_seen = set(seen)
+        checkpoint_state_rows = list(state_rows)
+        checkpoint_transition_rows = list(transition_rows)
+        remaining_frontier = len(queue)
+        save_checkpoint()
+    if len(state_rows) >= MAX_STATES and queue:
+        coverage_limited = True
+    remaining_frontier = len(queue)
+    checkpoint_pending_paths = list(queue)
+    checkpoint_seen = set(seen)
+    checkpoint_state_rows = list(state_rows)
+    checkpoint_transition_rows = list(transition_rows)
+    save_checkpoint()
+    return remaining_frontier
 
 
 def guided_quick_walk():
@@ -633,8 +705,7 @@ fresh_start()
 if PROFILE == "quick":
     guided_quick_walk()
 else:
-    fast_walk([])
-remaining_frontier = 0
+    remaining_frontier = full_walk()
 
 # Capture all uncaught Android Java exceptions from this audit session.
 log = adb("logcat", "-d", "-v", "brief", "AndroidRuntime:E", "*:S", check=False)

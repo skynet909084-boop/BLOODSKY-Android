@@ -15,13 +15,17 @@ class ProbeWorkflowScenarioTests(unittest.TestCase):
         self.assertIn("options: [project-create, hmi-palette, hmi-id17-properties]", workflow)
         self.assertIn("default: hmi-id17-properties", workflow)
         self.assertIn("--scenario", workflow)
+        self.assertIn("resume_run_id:", workflow)
+        self.assertIn("actions/download-artifact@v4", workflow)
+        self.assertIn("--resume", workflow)
         self.assertIn("tools/test_original_craft_probe_workflow_scenarios.py", workflow)
 
     def test_scenario_pass_is_not_a_k107_or_parity_pass(self):
         probe = PROBE.read_text(encoding="utf-8")
-        self.assertIn('"k107_case_status": "WAITING_FOR_BLOODSKY_COMPARISON"', probe)
+        self.assertIn('"k107_case_status": "WAITING"', probe)
         self.assertIn('"scenario_status"', probe)
         self.assertIn("not a K107 acceptance PASS or BLOODSKY parity claim", probe)
+        self.assertIn("state_signature", probe)
         self.assertIn('raise SystemExit("quick scenario did not reach its required observed endpoint")', probe)
 
 

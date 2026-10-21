@@ -11,8 +11,15 @@ on:
       - 'tools/original_craft_probe_scenarios.py'
       - 'tools/test_original_craft_probe_scenarios.py'
       - 'tools/test_original_craft_probe_workflow_scenarios.py'
+      - 'tools/original_craft_probe_state.py'
+      - 'tools/test_original_craft_probe_state.py'
   workflow_dispatch:
     inputs:
+      resume_run_id:
+        description: 'Prior full run ID to resume from its uploaded evidence artifact'
+        required: false
+        type: string
+        default: ''
       quick_scenario:
         description: 'Select one short independent check'
         required: true
@@ -43,6 +50,21 @@ jobs:
     timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.profile == 'full' && 360 || 25 }}
     steps:
       - uses: actions/checkout@v4
+      - name: Validate resume request
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.resume_run_id != '' }}
+        run: |
+          if [ '${{ inputs.profile }}' != 'full' ]; then
+            echo 'resume_run_id requires profile=full' >&2
+            exit 2
+          fi
+      - name: Download prior full-run checkpoint
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.resume_run_id != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: Original-Craft-1.0.7-emulator-probe
+          path: build-reports/original-craft-1.0.7/
+          run-id: ${{ inputs.resume_run_id }}
+          github-token: ${{ github.token }}
       - name: Download the exact original Release APK
         run: |
           mkdir -p build
@@ -75,7 +97,7 @@ jobs:
           script: |
             # Every PR push gets a bounded quick scenario, regardless of branch name.
             # Run a full audit explicitly from Actions > Run workflow > profile: full.
-            bash tools/run_original_craft_emulator_probe.sh build-reports/original-craft-1.0.7 --scenario '${{ github.event_name == 'workflow_dispatch' && inputs.quick_scenario || 'hmi-id17-properties' }}' ${{ (github.event_name == 'workflow_dispatch' && inputs.profile == 'full') && '--full' || '' }}
+            bash tools/run_original_craft_emulator_probe.sh build-reports/original-craft-1.0.7 --scenario '${{ github.event_name == 'workflow_dispatch' && inputs.quick_scenario || 'hmi-id17-properties' }}' ${{ (github.event_name == 'workflow_dispatch' && inputs.profile == 'full') && '--full' || '' }} ${{ (github.event_name == 'workflow_dispatch' && inputs.resume_run_id != '') && '--resume' || '' }}
       - name: Upload original APK provenance and UI evidence
         if: always()
         uses: actions/upload-artifact@v4

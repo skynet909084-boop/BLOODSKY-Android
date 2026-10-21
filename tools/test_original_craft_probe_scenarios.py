@@ -12,16 +12,19 @@ class ProbeScenarioTests(unittest.TestCase):
                 self.assertTrue(case["case_ids"])
                 self.assertTrue(case["expected"])
                 self.assertTrue(case["steps"])
-                self.assertEqual(("quick", name), parse_probe_options(["--scenario", name]))
+                self.assertEqual(("quick", name, False), parse_probe_options(["--scenario", name]))
 
     def test_default_preserves_previous_short_route(self):
-        self.assertEqual(("quick", "hmi-id17-properties"), parse_probe_options([]))
+        self.assertEqual(("quick", "hmi-id17-properties", False), parse_probe_options([]))
 
     def test_manual_full_can_select_scenario_but_profile_is_full(self):
-        self.assertEqual(("full", "hmi-palette"), parse_probe_options(["--full", "--scenario", "hmi-palette"]))
+        self.assertEqual(("full", "hmi-palette", False), parse_probe_options(["--full", "--scenario", "hmi-palette"]))
+
+    def test_resume_requires_manual_full_profile(self):
+        self.assertEqual(("full", "hmi-id17-properties", True), parse_probe_options(["--full", "--resume"]))
 
     def test_invalid_and_missing_scenario_are_rejected(self):
-        for args in (["--scenario"], ["--scenario", "unknown"], ["--unexpected"]):
+        for args in (["--scenario"], ["--scenario", "unknown"], ["--unexpected"], ["--resume"]):
             with self.subTest(args=args), self.assertRaises(ValueError):
                 parse_probe_options(args)
 
