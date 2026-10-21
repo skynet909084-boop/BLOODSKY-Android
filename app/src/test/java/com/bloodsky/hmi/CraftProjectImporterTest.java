@@ -702,4 +702,35 @@ public class CraftProjectImporterTest {
         assertEquals("", widget.getString("connectionInfo"));
     }
 
+    @Test public void craftProgressBarKeepsImportedBindingInactiveUntilExplicitTcpRemap() throws Exception {
+        JSONObject source = new JSONObject(sample());
+        JSONArray slots = new JSONArray().put(new JSONObject()
+                .put("num", 4).put("name", "Tank controller").put("address", 7)
+                .put("server", "endpoint-metadata"));
+        source.getJSONObject("TableNameProject").put("deviceNetwork", slots.toString());
+        JSONObject originalBinding = new JSONObject().put("posDeviceNetworkInList", 4)
+                .put("addressRegister", 321).put("typeRequest", 3);
+        JSONObject component = source.getJSONArray("TableComponent").getJSONObject(0);
+        component.put("componentId", 11)
+                .put("jsTableComponent_connectionInfo", originalBinding)
+                .put("jsTableComponent_other", new JSONObject()
+                        .put("numScreen", 1).put("min", -20).put("max", 80));
+
+        JSONObject imported = new JSONObject(CraftProjectImporter.convert(source.toString()));
+        JSONObject widget = imported.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0);
+        assertEquals("Прогресс-бар", widget.getString("type"));
+        assertEquals("", widget.getString("connectionInfo"));
+        assertEquals(originalBinding.toString(), widget.getJSONObject("craftConnectionInfo").toString());
+        assertEquals("device", widget.getJSONObject("craftBindingResolution").getString("kind"));
+        assertEquals(4, widget.getJSONObject("craftBindingResolution").getInt("deviceSlot"));
+        assertTrue(widget.getJSONObject("craftBindingResolution").getBoolean("endpointConfigured"));
+        assertEquals(321, widget.getJSONObject("craftConnectionInfo").getInt("addressRegister"));
+
+        widget.put("connectionInfo", "tcp://192.168.1.20:502/1/40322");
+        JSONObject saved = MainActivity.widgetToJson(MainActivity.widgetFromJson(widget));
+        assertEquals("tcp://192.168.1.20:502/1/40322", saved.getString("connectionInfo"));
+        assertEquals(originalBinding.toString(), saved.getJSONObject("craftConnectionInfo").toString());
+    }
+
 }

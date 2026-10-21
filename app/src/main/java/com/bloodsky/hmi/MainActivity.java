@@ -4976,6 +4976,9 @@ public class MainActivity extends Activity {
         form.addView(connectionLabel);
         EditText connectionField = propertyField(w.connectionInfo == null ? "" : w.connectionInfo, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         connectionField.setHint("tcp://192.168.1.10:502/1/40001 (FC03/FC04) или fbd://N (номер блока с 1)");
+        if ("Прогресс-бар".equals(w.type)
+                && w.extraFields.optInt("craftComponentId", -1) == 11)
+            connectionField.setHint("Переназначь вручную: tcp://192.168.1.10:502/1/40001 (исходная связь Craft не активна)");
         if (isCraftRegisterSource(w.type) || isCraftRegisterSink(w.type))
             connectionField.setHint("TCP: tcp://192.168.1.10:502/1/40001 · USB RTU: usb://1/40001 (явно подключи адаптер)");
         else if ("FBD Вход".equals(w.type))
