@@ -8,6 +8,12 @@ final class FbdCraftPinTypes {
         if (blockType == null || pin == null) return null;
         String kind = MainActivity.canonicalFbdBlockType(blockType);
         String name = MainActivity.canonicalFbdPinName(pin);
+        if (MainActivity.isCraftMqttSubscriber(kind) && output && "Q".equals(name))
+            return mqttType(kind);
+        if (MainActivity.isCraftMqttPublisher(kind) && !output && "IN".equals(name))
+            return mqttType(kind);
+        if (MainActivity.isCraftMqttPublisher(kind) && !output && "EN".equals(name))
+            return "BOOL";
         if ("FBD CRAFT TIMER".equals(kind)) {
             if (output && "Q".equals(name)) return "BOOL";
             if (!output && "IN".equals(name)) return "BOOL";
@@ -85,6 +91,13 @@ final class FbdCraftPinTypes {
 
     private static String typeForPort(int type) {
         return type == 1 ? "BOOL" : type == 2 ? "INT" : type == 3 ? "FLOAT" : null;
+    }
+
+    private static String mqttType(String blockType) {
+        if (blockType.endsWith(" BOOL")) return "BOOL";
+        if (blockType.endsWith(" INT")) return "INT";
+        if (blockType.endsWith(" FLOAT")) return "FLOAT";
+        return null;
     }
 
     private static boolean intPin(String kind, String pin, boolean output) {
