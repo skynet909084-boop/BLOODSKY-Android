@@ -437,6 +437,39 @@ public class PortableZipMediaTest {
     }
 
 
+    @Test public void deletingProjectRemovesOnlyItsPrivateMediaGenerations() throws Exception {
+        JSONObject deletedProject = new JSONObject().put("id", "delete-me");
+        String generationOne = new JSONObject(deletedProject.toString())
+                .put("mediaGeneration", "11111111-1111-4111-8111-111111111111").toString();
+        String generationTwo = new JSONObject(deletedProject.toString())
+                .put("mediaGeneration", "22222222-2222-4222-8222-222222222222").toString();
+        File generationOneDir = ProjectMediaService.getProjectMediaDir(rootDir, generationOne);
+        File generationTwoDir = ProjectMediaService.getProjectMediaDir(rootDir, generationTwo);
+        assertTrue(generationOneDir.mkdirs() || generationOneDir.isDirectory());
+        assertTrue(generationTwoDir.mkdirs() || generationTwoDir.isDirectory());
+        File markerOne = new File(generationOneDir, "asset-one.png");
+        File markerTwo = new File(generationTwoDir, "asset-two.png");
+        assertTrue(markerOne.createNewFile());
+        assertTrue(markerTwo.createNewFile());
+
+        String otherProject = new JSONObject().put("id", "keep-me").toString();
+        File otherMedia = ProjectMediaService.getProjectMediaDir(rootDir, otherProject);
+        assertTrue(otherMedia.mkdirs() || otherMedia.isDirectory());
+        File otherMarker = new File(otherMedia, "keep.png");
+        assertTrue(otherMarker.createNewFile());
+
+        assertTrue(ProjectMediaService.deleteProjectMedia(rootDir, deletedProject.toString()));
+        assertFalse(markerOne.exists());
+        assertFalse(markerTwo.exists());
+        assertTrue("Another project's media must be preserved", otherMarker.isFile());
+        assertFalse(ProjectMediaService.deleteProjectMedia(rootDir, deletedProject.toString()));
+
+        try {
+            ProjectMediaService.deleteProjectMedia(rootDir, "{}");
+            fail("Project without a stable identity must not target a media directory");
+        } catch (IOException expected) { }
+    }
+
     private static byte[] createCraftProjectZip(String projectJson, String mediaPath, byte[] mediaBytes) throws Exception {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(out)) {

@@ -99,6 +99,45 @@ public class ProjectMediaService {
         return mediaDir;
     }
 
+    /** Remove all private media generations belonging to a project after catalog deletion. */
+    public static boolean deleteProjectMedia(File filesDir, String projectJson) throws IOException {
+        if (filesDir == null) throw new IOException("Missing app files directory");
+        final String projectId;
+        try { projectId = getOrGenerateProjectId(projectJson); }
+        catch (RuntimeException invalidProject) {
+            throw new IOException("Project has no stable media identity", invalidProject);
+        }
+        File appRoot = filesDir.getCanonicalFile();
+        File projectsPath = new File(appRoot, "projects").getAbsoluteFile();
+        File projectsRoot = projectsPath.getCanonicalFile();
+        if (!projectsRoot.equals(projectsPath)
+                || !projectsRoot.getPath().startsWith(appRoot.getPath() + File.separator))
+            throw new IOException("Unsafe private projects directory");
+        File projectPath = new File(projectsRoot, projectId).getAbsoluteFile();
+        File projectDirectory = projectPath.getCanonicalFile();
+        if (!projectDirectory.equals(projectPath)
+                || !projectDirectory.getPath().startsWith(projectsRoot.getPath() + File.separator))
+            throw new IOException("Unsafe project media directory");
+        if (!projectDirectory.exists()) return false;
+        deleteProjectTree(projectDirectory, projectDirectory.getCanonicalPath());
+        return !projectDirectory.exists();
+    }
+
+    private static void deleteProjectTree(File entry, String projectRoot) throws IOException {
+        File canonical = entry.getCanonicalFile();
+        if (!canonical.equals(entry.getAbsoluteFile())
+                || !(canonical.getPath().equals(projectRoot)
+                || canonical.getPath().startsWith(projectRoot + File.separator)))
+            throw new IOException("Unsafe path in project media directory");
+        if (canonical.isDirectory()) {
+            File[] children = canonical.listFiles();
+            if (children == null) throw new IOException("Cannot inspect project media directory");
+            for (File child : children) deleteProjectTree(child, projectRoot);
+        }
+        if (!canonical.delete() && canonical.exists())
+            throw new IOException("Could not delete project media entry");
+    }
+
     public static boolean isExactImagePlaceholder(String path) {
         if (path == null) return true;
         String p = path.trim();

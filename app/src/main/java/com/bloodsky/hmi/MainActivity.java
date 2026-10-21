@@ -811,6 +811,11 @@ public class MainActivity extends Activity {
                 if (!restore.commit()) android.util.Log.e("BLOODSKY", "Could not persist restored catalog");
                 throw new IOException("Не удалось удалить проект");
             }
+            try { ProjectMediaService.deleteProjectMedia(getFilesDir(), selected.toString()); }
+            catch (IOException cleanupFailure) {
+                android.util.Log.e("BLOODSKY", "Deleted project media could not be cleaned", cleanupFailure);
+                Toast.makeText(this, "Проект удалён, но его медиа не удалось очистить", Toast.LENGTH_LONG).show();
+            }
             if (deletingActive) { widgets.clear(); screens.clear(); projectExtraFields = new JSONObject(); clipboardWidget = null; imageCache.clear(); }
             showHome();
         } catch (Exception error) { Toast.makeText(this, error.getMessage(), Toast.LENGTH_LONG).show(); }
