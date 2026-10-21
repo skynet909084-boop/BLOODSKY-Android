@@ -337,7 +337,7 @@ public class FbdDisconnectTest {
         assertTrue("Missing source output must not release the + edge latch", counter.craftLastPlus);
     }
 
-    @Test public void craftTriggerDoesNotScanWhenItsUpstreamCraftTimerOutputIsUnavailable() {
+    @Test public void craftTriggerDoesNotScanWhenItsUpstreamCraftTimerOutputIsUnavailable() throws Exception {
         MainActivity.Widget set = new MainActivity.Widget();
         set.type = "FBD Вход";
         set.inputValue = true;
