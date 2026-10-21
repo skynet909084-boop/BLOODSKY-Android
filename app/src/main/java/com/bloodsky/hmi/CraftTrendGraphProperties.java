@@ -28,7 +28,7 @@ public final class CraftTrendGraphProperties {
         if (channelCount < 1 || channelCount > 4)
             throw new IllegalArgumentException("Число рядов графика должно быть от 1 до 4");
         if (graphType < 0 || graphType > 2)
-            throw new IllegalArgumentException("Тип графика: 0 UINT16, 1 INT16 или 2 FLOAT32");
+            throw new IllegalArgumentException("Тип графика: 0 INT16, 1 UINT16 или 2 FLOAT32");
         if (seriesNames == null || seriesNames.length != 4)
             throw new IllegalArgumentException("Нужны названия всех четырёх рядов графика");
         for (String name : seriesNames) {

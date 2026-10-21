@@ -15,15 +15,15 @@ public final class CraftTrendGraphCodec {
         return readQuantity(graphType) * channels;
     }
 
-    /** Decodes the first configured series. Craft's ID14 uses unsigned, signed, or big-endian float. */
+    /** Decodes Craft's typeGraph: 0=Java short, 1=Java char, 2=big-endian Float32. */
     public static double decodeFirst(int[] registers, int graphType) {
         if (registers == null) throw new IllegalArgumentException("Нет регистров графика");
         int type = Math.max(0, Math.min(2, graphType));
         int quantity = readQuantity(type);
         if (registers.length < quantity) throw new IllegalArgumentException("Недостаточно регистров графика");
         int first = registers[0] & 0xffff;
-        if (type == 0) return first;
-        if (type == 1) return (short) first;
+        if (type == 0) return (short) first;
+        if (type == 1) return first;
         int bits = (first << 16) | (registers[1] & 0xffff);
         float value = Float.intBitsToFloat(bits);
         return Float.isFinite(value) ? value : Double.NaN;
@@ -41,9 +41,9 @@ public final class CraftTrendGraphCodec {
         for (int channel = 0; channel < channels; channel++) {
             int offset = channel * width;
             if (type == 0) {
-                values[channel] = registers[offset] & 0xffff;
-            } else if (type == 1) {
                 values[channel] = (short) (registers[offset] & 0xffff);
+            } else if (type == 1) {
+                values[channel] = registers[offset] & 0xffff;
             } else {
                 int bits = ((registers[offset] & 0xffff) << 16)
                         | (registers[offset + 1] & 0xffff);
