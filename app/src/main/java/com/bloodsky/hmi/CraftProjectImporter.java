@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 11888)
-Total output lines: 737
-
 package com.bloodsky.hmi;
 
 import android.graphics.Color;
@@ -299,7 +296,112 @@ public final class CraftProjectImporter {
         if (componentId == 25) {
             widget.put("craftPushTitle", boundedString(other.optString("title", displayText), 120));
             widget.put("craftPushBody", boundedString(other.optString("body", ""), 2000));
-            wid…1888 tokens truncated…          widget.put("craftArchiveMaxRows", 10000);
+            widget.put("craftPushTopic", boundedString(other.optString("to", ""), 200));
+            widget.put("craftPushEnabled", false);
+        }
+        if (componentId == 26) {
+            widget.put("craftUnsupportedComponent", true);
+            widget.put("craftWebViewEnabled", false);
+            String[] links = CraftWebViewLinks.read(other);
+            widget.put("craftOther", CraftWebViewLinks.write(other, links));
+            widget.put("craftWebViewLinks", CraftWebViewLinks.toJsonArray(links));
+        }
+        if (componentId == 28) {
+            widget.put("craftUnsupportedComponent", true);
+            widget.put("craftEmailEnabled", false);
+            widget.put("craftEmailTitle", boundedString(other.optString("title", displayText), 120));
+            widget.put("craftEmailBody", boundedString(other.optString("body", ""), 2000));
+            widget.put("craftEmailTo", boundedString(other.optString("emailTo", ""), 320));
+            widget.put("craftEmailCredentialKey", "");
+        }
+        if (componentId == 16) {
+            String sourcePath = other.optString("pathGif", "").trim();
+            String resolvedPath = "";
+            if (!sourcePath.isEmpty() && !"0".equals(sourcePath) && availableMedia != null) {
+                String candidate = archiveRelativeImage(archiveParent, sourcePath, availableMedia);
+                if (candidate != null && availableMedia.containsKey(candidate)) resolvedPath = "media/" + candidate;
+            }
+            widget.put("craftGifPath", resolvedPath);
+        }
+        if (componentId == 17) {
+            JSONArray imagePaths = new JSONArray();
+            for (int state = 0; state < 16; state++) {
+                String sourcePath = other.optString("pathPic_" + state, "").trim();
+                String resolvedPath = "";
+                if (!sourcePath.isEmpty() && !"0".equals(sourcePath) && availableMedia != null) {
+                    String candidate = archiveRelativeImage(archiveParent, sourcePath, availableMedia);
+                    if (candidate != null && availableMedia.containsKey(candidate)) resolvedPath = candidate;
+                }
+                imagePaths.put(resolvedPath);
+            }
+            widget.put("imagePathStates", imagePaths);
+        }
+        if (componentId == 14) {
+            widget.put("craftTrendChannelCount", boundedInt(other.opt("countGraphChannel"), 1, 1, 4));
+            widget.put("craftTrendMaxPoints", boundedInt(other.opt("countPoint"), 300, 1, CraftTrendHistory.MAX_POINTS));
+            widget.put("craftTrendIntervalMs", boundedInt(other.opt("secondPeriod"), 500,
+                    (int) CraftTrendHistory.MIN_INTERVAL_MS, (int) CraftTrendHistory.MAX_INTERVAL_MS));
+            widget.put("craftTrendType", boundedSignedInt(other.opt("typeGraph"), 1, 0, 2));
+            widget.put("craftTrendLabelsColor", color(other.opt("colorLabelsXY"), Color.WHITE));
+            widget.put("craftTrendBackgroundColor", color(other.opt("colorBackground"), Color.BLACK));
+            widget.put("craftTrendSeriesNames", new JSONArray()
+                    .put(boundedString(other.optString("nameSeries1", "1"), 128))
+                    .put(boundedString(other.optString("nameSeries2", "2"), 128))
+                    .put(boundedString(other.optString("nameSeries3", "3"), 128))
+                    .put(boundedString(other.optString("nameSeries4", "4"), 128)));
+            widget.put("craftTrendSeriesColors", new JSONArray()
+                    .put(Color.RED).put(Color.GREEN).put(Color.YELLOW).put(Color.BLUE));
+        }
+        if (componentId == 1) {
+            widget.put("craftSwitchSkin", Math.max(1, Math.min(8, other.optInt("imagePosition", 1))));
+            widget.put("craftSwitchBit", Math.max(0, Math.min(15,
+                    objectValue(source.opt("jsTableComponent_connectionInfo")).optInt("addressBit", 0))));
+            widget.put("craftSwitchBitEnabled", false);
+            widget.put("craftSwitchVisibleInWork", other.optBoolean("visibleInWork", true));
+        }
+        if (componentId == 12) {
+            int gaugeMax = boundedInt(other.opt("max"), 100, 1, 1_000_000);
+            widget.put("minValue", 0);
+            widget.put("maxValue", gaugeMax);
+            widget.put("craftGaugeShowText", other.optBoolean("showText", true));
+            widget.put("craftGaugeTextSize", boundedInt(other.opt("sizeText"), 12, 1, 256));
+            widget.put("craftGaugeTextColor", color(other.opt("colorText"), Color.BLACK));
+            widget.put("craftGaugeInColor", color(other.opt("inColor"), Color.rgb(136, 136, 136)));
+            widget.put("craftGaugeOutColor", color(other.opt("outColor"), Color.parseColor("#FF277454")));
+            widget.put("craftGaugeCenterColor", color(other.opt("centerColor"), Color.BLACK));
+            widget.put("craftGaugeFirstColorPoint", boundedInt(other.opt("firstColorPoint"), 0, 0, gaugeMax));
+            widget.put("craftGaugeSecondColorPoint", boundedInt(other.opt("secondColorPoint"), 0, 0, gaugeMax));
+            widget.put("craftGaugeKind", "threshold");
+        } else if (componentId == 24) {
+            widget.put("minValue", boundedSignedInt(other.opt("minGauge"), 0, -1_000_000, 1_000_000));
+            widget.put("maxValue", boundedInt(other.opt("maxGauge"), 100, -1_000_000, 1_000_000));
+            widget.put("textSizeSp", boundedInt(other.opt("sizeText"), 20, 1, 256));
+            widget.put("craftGaugeTextSize", boundedInt(other.opt("sizeText"), 20, 1, 256));
+            widget.put("craftGaugeScaleCount", boundedInt(other.opt("countTextScale"), 6, 0, 64));
+            widget.put("craftGaugeTextValueColor", color(other.opt("colorTextValue"), Color.BLACK));
+            widget.put("craftGaugeTextScaleColor", color(other.opt("colorTextScale"), Color.BLACK));
+            widget.put("craftGaugeCenterColor", color(other.opt("colorCenterCircle"), Color.parseColor("#BFBFBF")));
+            widget.put("craftGaugeIndicatorColor", color(other.opt("colorIndicator"), Color.BLUE));
+            widget.put("craftGaugeMarkColor", color(other.opt("colorMark"), Color.BLACK));
+            widget.put("craftGaugeLowPercent", boundedInt(other.opt("percentLowScale"), 75, 0, 100));
+            widget.put("craftGaugeMediumPercent", boundedInt(other.opt("percentMediumScale"), 90, 0, 100));
+            widget.put("craftGaugeHideBackground", other.optBoolean("hideBackground", false));
+            widget.put("craftGaugeIndicatorName", boundedString(other.optString("indicatorName", "NormalIndicator"), 64));
+            widget.put("craftGaugeKind", "graduated");
+        }
+        if (componentId == 4) {
+            widget.put("craftNumericIndicatorType", Math.max(0, Math.min(3, other.optInt("type", 0))));
+            widget.put("craftNumericIndicatorDigits", Math.max(1, Math.min(18, other.optInt("digit", 5))));
+            widget.put("craftNumericIndicatorDecimals", Math.max(0, Math.min(9, other.optInt("divisor", 0))));
+            widget.put("craftNumericIndicatorFontChange", other.optBoolean("fontChange", false));
+            widget.put("craftNumericIndicatorFrame", other.optBoolean("enableFrameRegister", false));
+        }
+        if (componentId == 15) {
+            widget.put("craftArchiveChannelCount", boundedInt(other.opt("countChannel"), 1, 1, 4));
+            String archiveType = other.optString("typeRecord", "INT").toUpperCase(java.util.Locale.ROOT);
+            widget.put("craftArchiveRecordType", "FLOAT".equals(archiveType) ? "FLOAT" : "INT");
+            widget.put("craftArchiveIntervalSeconds", 1);
+            widget.put("craftArchiveMaxRows", 10000);
         }
         if (componentId >= 101 && componentId <= 140) {
             java.util.Iterator<String> keys = other.keys();
