@@ -142,6 +142,7 @@ public final class CraftProjectImporter {
             screen.getJSONArray("connections").put(edge);
         }
         converted.put("screens", screens);
+        CraftProjectNetworkBridge.hydrate(converted);
         return converted.toString();
     }
 
