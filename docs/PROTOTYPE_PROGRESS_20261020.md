@@ -566,4 +566,13 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 - Exact PR head `5d8667a47ce5cee05b7ff4a29899e27894ee4c46` passed APK/JUnit [#1311](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39555085167), including Python archive checks, Android unit tests and debug APK build/upload. Artifact `12325116607`, SHA-256 `6ddf748fdea5f7bc6cb662be52a4b70ace55838f4bc34f79479880c4d2105e52`. Local Python: 189/189; `git diff --check`: passed. No UI smoke or device test was run.
 - Imported Craft register metadata is still not itself a live Modbus endpoint. Operator must provide a valid explicit BLOODSKY TCP binding; visual/device acceptance remains open.
 - Unified acceptance remains 5/139 = 3.6%; stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
-- Next feature: close the source-backed ID12/24 gauge's editor/rendering gaps with focused regression tests; keep visual acceptance separate.
+- Next feature after the ID12 implementation: inspect Craft ID24's distinct graduated-gauge source behavior and close the remaining property/rendering gaps; keep visual acceptance separate.
+
+
+## Craft ID12 threshold gauge — 21 Oct 2026
+
+- PR [#220](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/220) imported Craft ID12's 0..max range, text visibility/size/colors, and two zone thresholds; exposed those properties in the editor and round-tripped them into `craftOther` while preserving unknown fields. The canvas now draws the 160° half-dial, five major intervals, threshold-colored arcs, labels, and a clamped needle. ID24 remains on its separate partial graduated-gauge path.
+- Regression coverage: importer source-property mapping, value clamping, tick labels, threshold order validation, native-other round trip and unknown-field preservation. Full Python suite: 189/189; `git diff --check`: passed.
+- Exact PR head `b4ffda4c25f7de665f194e7bf4e8d6c3fce19738` passed APK/JUnit [#1315](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39556414211): archive tests, Android unit tests, debug APK build and upload. APK artifact `12325956806`, SHA-256 `120c58b725fc79e9dc6ce61eb8340d20eceeadb0fd2967becfc261714139d958`.
+- No Android UI smoke, physical device test or original-vs-BLOODSKY visual comparison was run. The unified acceptance matrix remains **5/139 = 3.6%**; no new criterion is claimed fully accepted. Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+- Next task: implement the separate source-confirmed Craft ID24 graduated-gauge properties and rendering, then add focused importer/property tests.
