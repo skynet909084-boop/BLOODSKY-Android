@@ -272,6 +272,12 @@ public final class CraftProjectImporter {
                 if (macroEntry.isEmpty()) macroEntry = findCraftMacroEntry(archiveParent,
                         other.optString("name", source.optString("text", "")).trim(), availableMedia);
                 if (macroEntry != null) widget.put("craftMacroMediaPath", macroEntry);
+            } else {
+                // ID135 remains a visible FBD block when its required .mcr
+                // definition is missing or mismatched, rather than degrading
+                // into a generic text label. No pins or execution are enabled.
+                widget.put("craftUnsupportedComponent", true);
+                widget.put("text", "Макрос Craft — схема .mcr не найдена");
             }
         }
         if (componentId == 10) {

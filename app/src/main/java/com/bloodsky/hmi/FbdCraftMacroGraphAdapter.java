@@ -227,8 +227,10 @@ final class FbdCraftMacroGraphAdapter {
             case 132: return "FBD CRAFT SENSOR SPEED";
             case 133: return namedVariableType(false, child == null ? 2 : child.optInt("typeVar", 2));
             case 134: return namedVariableType(true, child == null ? 2 : child.optInt("typeVar", 2));
-            case 135: return child != null && child.optJSONObject("craftMacroDefinition") != null
-                    ? "FBD CRAFT MACRO" : null;
+            // ID135 is a real source block even when its .mcr sidecar is absent.
+            // Keep it typed and visible; the importer marks it non-executable
+            // until a validated definition is available.
+            case 135: return "FBD CRAFT MACRO";
             case 136: return "FBD CRAFT ARRAY";
             case 137: return "FBD CRAFT CHANGE I";
             case 138: return "FBD CRAFT CHANGE F";
