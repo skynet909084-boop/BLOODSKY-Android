@@ -9009,6 +9009,35 @@ public class MainActivity extends Activity {
                 && Boolean.TRUE.equals(values.get(legacyIndex));
     }
 
+    /** Checks that every required input is connected exactly once, by pin or legacy position. */
+    static boolean hasCompleteFbdInputConnections(List<FbdConnection> connections,
+                                                   int targetIndex, String... requiredPins) {
+        if (connections == null || targetIndex < 0 || requiredPins == null
+                || requiredPins.length == 0) return false;
+        java.util.Set<String> required = new java.util.HashSet<>();
+        for (String pin : requiredPins) {
+            String canonical = canonicalFbdPinName(pin);
+            if (canonical.isEmpty() || !required.add(canonical)) return false;
+        }
+        java.util.Set<String> connected = new java.util.HashSet<>();
+        int legacyCount = 0;
+        boolean named = false, legacy = false;
+        for (FbdConnection edge : connections) {
+            if (edge == null || edge.target != targetIndex) continue;
+            if (edge.extraFields == null) return false;
+            String pin = canonicalFbdPinName(edge.extraFields.optString("targetPin", ""));
+            if (pin.isEmpty()) {
+                legacy = true;
+                legacyCount++;
+            } else {
+                named = true;
+                if (!required.contains(pin) || !connected.add(pin)) return false;
+            }
+        }
+        if (named && legacy) return false;
+        return named ? connected.equals(required) : legacyCount == required.size();
+    }
+
     /** Imported unnamed graphs retain positional math; new named ones use terminals. */
     public static boolean hasNamedFbdInput(List<String> pins) {
         if (pins == null) return false;
@@ -9642,6 +9671,12 @@ public class MainActivity extends Activity {
             // Source-backed Craft +,-,R: independent rising edges, reset last,
             // unsigned (char) 16-bit count and a NUMBER Q output. This is a
             // separate versioned block; legacy BLOODSKY CTU stays unchanged.
+            // Craft FB_CTU returns null and skips its scan until all three
+            // source contacts have an output; do not treat disconnected pins as false.
+            if (!hasCompleteFbdInputConnections(connectionsList, index, "+", "-", "R")) {
+                cacheNumeric[index] = Double.NaN;
+                return false;
+            }
             boolean plus = fbdBooleanPinValue(inputs, inputPins, "+", 0);
             boolean minus = fbdBooleanPinValue(inputs, inputPins, "-", 1);
             boolean reset = fbdBooleanPinValue(inputs, inputPins, "R", 2);
