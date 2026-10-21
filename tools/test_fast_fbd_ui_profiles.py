@@ -21,24 +21,27 @@ class FastFbdUiGateTests(unittest.TestCase):
         self.assertIn("'2345'", script)
         self.assertNotIn("self.tap(description='Добавить: FBD CRAFT TIMER')", script)
 
-    def test_feature_pr_emulator_is_not_restarted_for_each_push(self):
+    def test_feature_pr_emulator_is_deferred_until_release(self):
         workflow = (ROOT / '.github/workflows/android-ui-smoke.yml').read_text(encoding='utf-8')
-        self.assertIn("github.base_ref != 'main' && github.base_ref != 'feat/craft-project-json-import-20261018' && 'quick'", workflow)
-        self.assertIn("github.base_ref == 'main' || github.base_ref == 'feat/craft-project-json-import-20261018' || contains(github.head_ref, 'craft-server-editor') || github.event.action != 'synchronize'", workflow)
-        self.assertIn("!contains(github.head_ref, 'craft-server-editor')", workflow)
-        self.assertIn('types: [opened, reopened, synchronize, ready_for_review]', workflow)
+        pr_trigger = workflow.split('  pull_request:', 1)[1].split('  push:', 1)[0]
+        self.assertIn('branches: [main]', pr_trigger)
+        self.assertIn('types: [opened, reopened, synchronize, ready_for_review]', pr_trigger)
+        self.assertNotIn('labeled', pr_trigger)
+        self.assertNotIn('craft-server-editor', workflow)
+        self.assertNotIn('android-smoke', workflow)
+        self.assertIn('default: full', workflow)
+        self.assertIn('options: [full, quick]', workflow)
         self.assertIn("inputs.ui_profile == 'quick'", workflow)
         self.assertIn("|| 'full'", workflow)
-        self.assertIn("default: full", workflow)
         self.assertIn('BLOODSKY_UI_PROFILE', workflow)
         self.assertIn('script: bash tools/run_android_ui_profile.sh', workflow)
-        runner = (ROOT / 'tools/run_android_ui_profile.sh').read_text(encoding='utf-8')
+        runner = (ROOT / 'tools/run_android_ui_profile.sh').read_text()
         self.assertIn('exec python tools/android_ui_fbd_quick.py', runner)
         self.assertIn('exec python tools/android_ui_smoke.py', runner)
         self.assertIn('set -euo pipefail', runner)
-        self.assertIn("branches: [main]", workflow)
-        self.assertIn("cancel-in-progress: true", workflow)
-        self.assertIn("Save UI screenshots and diagnostics", workflow)
+        self.assertIn('  push:\n    branches: [main]', workflow)
+        self.assertIn('cancel-in-progress: true', workflow)
+        self.assertIn('Save UI screenshots and diagnostics', workflow)
 
     def test_full_ui_regressions_unmodified_and_legacy_media_retained(self):
         full = (ROOT / 'tools/android_ui_smoke.py').read_text(encoding='utf-8')
