@@ -37,8 +37,9 @@ public class FbdCraftIntegerSelectorTest {
 
     private static double graphOutput(List<MainActivity.Widget> nodes,
                                       List<MainActivity.FbdConnection> wires) {
-        int n = nodes.size();
-        return MainActivity.evaluateFbdBlockNumeric(nodes, wires, 3,
+        FbdCraftTestGraphs.Graph graph = FbdCraftTestGraphs.withReadyCraftCounters(nodes, wires);
+        int n = graph.widgets.size();
+        return MainActivity.evaluateFbdBlockNumeric(graph.widgets, graph.connections, 3,
                 new boolean[n], new boolean[n], new boolean[n], new double[n]);
     }
 
@@ -90,12 +91,14 @@ public class FbdCraftIntegerSelectorTest {
                 MainActivity.pinnedFbdConnection(2, "Q", 3, "I2"),
                 MainActivity.pinnedFbdConnection(3, "Q", 5, "IN1"),
                 MainActivity.pinnedFbdConnection(4, "Q", 5, "IN2"));
-        boolean[] visiting = new boolean[nodes.size()];
-        boolean[] valid = new boolean[nodes.size()];
-        boolean[] bools = new boolean[nodes.size()];
-        double[] numeric = new double[nodes.size()];
+        FbdCraftTestGraphs.Graph graph = FbdCraftTestGraphs.withReadyCraftCounters(nodes, wires);
+        int count = graph.widgets.size();
+        boolean[] visiting = new boolean[count];
+        boolean[] valid = new boolean[count];
+        boolean[] bools = new boolean[count];
+        double[] numeric = new double[count];
         assertFalse("Missing native SEL IN must never make false 0 < 10 true",
-                MainActivity.evaluateFbdBlock(nodes, wires, 5,
+                MainActivity.evaluateFbdBlock(graph.widgets, graph.connections, 5,
                         visiting, valid, bools, numeric));
         assertTrue(Double.isNaN(numeric[3]));
         assertEquals("CFG", FbdResultBinding.resolve(
@@ -108,9 +111,9 @@ public class FbdCraftIntegerSelectorTest {
                 MainActivity.pinnedFbdConnection(2, "Q", 3, "I2"),
                 MainActivity.pinnedFbdConnection(3, "Q", 5, "IN1"),
                 MainActivity.pinnedFbdConnection(4, "Q", 5, "IN2"));
-        assertTrue(MainActivity.evaluateFbdBlock(nodes, connected, 5,
-                new boolean[nodes.size()], new boolean[nodes.size()],
-                new boolean[nodes.size()], new double[nodes.size()]));
+        graph = FbdCraftTestGraphs.withReadyCraftCounters(nodes, connected);
+        assertTrue(MainActivity.evaluateFbdBlock(graph.widgets, graph.connections, 5,
+                new boolean[count], new boolean[count], new boolean[count], new double[count]));
     }
 
     @Test public void sourceTerminalsAndLegacyContractDoNotOverlap() throws Exception {

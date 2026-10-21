@@ -34,8 +34,9 @@ public class FbdCraftIntegerCompareTest {
 
     private static boolean result(List<MainActivity.Widget> nodes,
                                   List<MainActivity.FbdConnection> wires) {
-        int n = nodes.size();
-        return MainActivity.evaluateFbdBlock(nodes, wires, 2,
+        FbdCraftTestGraphs.Graph graph = FbdCraftTestGraphs.withReadyCraftCounters(nodes, wires);
+        int n = graph.widgets.size();
+        return MainActivity.evaluateFbdBlock(graph.widgets, graph.connections, 2,
                 new boolean[n], new boolean[n], new boolean[n], new double[n]);
     }
 

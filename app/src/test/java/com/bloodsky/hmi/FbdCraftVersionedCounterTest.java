@@ -75,6 +75,31 @@ public class FbdCraftVersionedCounterTest {
         assertEquals(1, scan(nodes, edges));
     }
 
+    @Test public void nativeCtuWaitsForEveryOriginalInputBeforeScanning() throws Exception {
+        MainActivity.Widget plus = widget("FBD Вход");
+        MainActivity.Widget minus = widget("FBD Вход");
+        MainActivity.Widget reset = widget("FBD Вход");
+        MainActivity.Widget counter = widget("FBD CRAFT CTU");
+        counter.counterValue = 17;
+        List<MainActivity.Widget> nodes = Arrays.asList(plus, minus, reset, counter);
+
+        double unconnected = MainActivity.evaluateFbdBlockNumeric(nodes,
+                java.util.Collections.emptyList(), 3, new boolean[4], new boolean[4],
+                new boolean[4], new double[4]);
+        assertTrue("Craft returns no output until all three contacts are driven",
+                Double.isNaN(unconnected));
+        assertEquals(17, counter.counterValue);
+
+        plus.inputValue = true;
+        List<MainActivity.FbdConnection> partial = Arrays.asList(
+                MainActivity.pinnedFbdConnection(0, "Q", 3, "+"),
+                MainActivity.pinnedFbdConnection(1, "Q", 3, "-"));
+        double partlyConnected = MainActivity.evaluateFbdBlockNumeric(nodes, partial, 3,
+                new boolean[4], new boolean[4], new boolean[4], new double[4]);
+        assertTrue("A connected + cannot count while R has no output", Double.isNaN(partlyConnected));
+        assertEquals(17, counter.counterValue);
+    }
+
     @Test public void nativeCtuGraphWrapsUnsignedSixteenBits() throws Exception {
         MainActivity.Widget plus = widget("FBD Вход");
         MainActivity.Widget minus = widget("FBD Вход");

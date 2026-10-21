@@ -21,8 +21,9 @@ public class FbdCraftNativeIntegerChainTest {
 
     private static boolean scan(List<MainActivity.Widget> nodes,
                                 List<MainActivity.FbdConnection> wires) {
-        int n = nodes.size();
-        return MainActivity.evaluateFbdBlock(nodes, wires, 6,
+        FbdCraftTestGraphs.Graph graph = FbdCraftTestGraphs.withReadyCraftCounters(nodes, wires);
+        int n = graph.widgets.size();
+        return MainActivity.evaluateFbdBlock(graph.widgets, graph.connections, 6,
                 new boolean[n], new boolean[n], new boolean[n], new double[n]);
     }
 

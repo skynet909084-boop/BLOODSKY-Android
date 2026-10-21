@@ -28,9 +28,18 @@ public class FbdCraftMoveTest {
 
     private static boolean scan(List<MainActivity.Widget> nodes,
                                 List<MainActivity.FbdConnection> edges) {
-        int n = nodes.size();
-        return MainActivity.evaluateFbdBlock(nodes, edges, 2, new boolean[n],
+        FbdCraftTestGraphs.Graph graph = FbdCraftTestGraphs.withReadyCraftCounters(nodes, edges);
+        int n = graph.widgets.size();
+        return MainActivity.evaluateFbdBlock(graph.widgets, graph.connections, 2, new boolean[n],
                 new boolean[n], new boolean[n], new double[n]);
+    }
+
+    private static double number(List<MainActivity.Widget> nodes,
+                                 List<MainActivity.FbdConnection> edges) {
+        FbdCraftTestGraphs.Graph graph = FbdCraftTestGraphs.withReadyCraftCounters(nodes, edges);
+        int n = graph.widgets.size();
+        return MainActivity.evaluateFbdBlockNumeric(graph.widgets, graph.connections, 2,
+                new boolean[n], new boolean[n], new boolean[n], new double[n]);
     }
 
     @Test public void namedEnableAndIntegerPinsDriveNumericSourceOutput() throws Exception {
@@ -44,13 +53,11 @@ public class FbdCraftMoveTest {
                 MainActivity.pinnedFbdConnection(0, "Q", 2, "I"),
                 MainActivity.pinnedFbdConnection(1, "Q", 2, "EN"));
         assertTrue(scan(nodes, edges));
-        assertEquals(32767d, MainActivity.evaluateFbdBlockNumeric(nodes, edges, 2,
-                new boolean[3], new boolean[3], new boolean[3], new double[3]), 0d);
+        assertEquals(32767d, number(nodes, edges), 0d);
 
         enable.inputValue = false;
         assertFalse(scan(nodes, edges));
-        assertTrue(Double.isNaN(MainActivity.evaluateFbdBlockNumeric(nodes, edges, 2,
-                new boolean[3], new boolean[3], new boolean[3], new double[3])));
+        assertTrue(Double.isNaN(number(nodes, edges)));
 
         JSONObject saved = MainActivity.widgetToJson(move);
         assertEquals("FBD CRAFT MOVE", MainActivity.widgetFromJson(saved).type);
