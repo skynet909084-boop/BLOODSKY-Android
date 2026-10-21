@@ -12,11 +12,15 @@ import time
 import xml.etree.ElementTree as ET
 from collections import Counter, deque
 from pathlib import Path
+import os
 from PIL import Image
+from original_craft_probe_state import remember_state_signature
 
 OUT = Path(sys.argv[1])
 OUT.mkdir(parents=True, exist_ok=True)
 PACKAGE = "ru.kascada.modbus"
+APK_SOURCE = os.environ.get("KASCADA_PROBE_APK_SOURCE", "unknown")
+APK_SHA256 = os.environ.get("KASCADA_PROBE_APK_SHA256", "")
 ADB_TIMEOUT = 45
 PROFILE = "quick" if "--full" not in sys.argv[2:] else "full"
 MAX_STATES = 12 if PROFILE == "quick" else 300
@@ -315,6 +319,8 @@ quick_goal_reached = False
 def save_checkpoint(complete=False):
     report = {
         "app_package": PACKAGE,
+        "apk_source": APK_SOURCE,
+        "apk_sha256": APK_SHA256,
         "offline": True,
         "profile": PROFILE,
         "execution_finished": complete,
@@ -366,7 +372,7 @@ def capture_state(path):
     loading_stalled = is_project_loading(root)
     visible = visible_state(root)
     signature = hashlib.sha256(json.dumps(visible, ensure_ascii=False).encode()).hexdigest()
-    if signature in seen:
+    if not remember_state_signature(seen, signature):
         (OUT / f"{label}.xml").unlink(missing_ok=True)
         return None
 

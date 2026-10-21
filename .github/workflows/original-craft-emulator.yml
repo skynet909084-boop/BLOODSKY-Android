@@ -36,6 +36,11 @@ jobs:
           run-id: 38600957172
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: build/craft-decompiled
+      - name: Download the exact original Release APK
+        run: |
+          mkdir -p build
+          curl --fail --location --retry 3 --retry-delay 2 "https://github.com/skynet909084-boop/BLOODSKY-Android/releases/download/kascada-analysis-1/KaScada.Smart.Craft.1.0.7.08.02.2026.apk" -o build/KaScada-Smart-Craft-1.0.7-release.apk
+          echo "11464db76f59393ccf698f57e60af1756756ffc78cb315d43052ae92adb50d4f  build/KaScada-Smart-Craft-1.0.7-release.apk" | sha256sum --check -
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -94,13 +99,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu software -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: |
-            set -eu
-            mkdir -p build-reports/original-craft-1.0.7
-            adb shell settings put global airplane_mode_on 1
-            adb shell svc wifi disable || true
-            adb shell svc data disable || true
-            adb install -r build/KaScada-Craft-1.0.7.apk
-            python tools/original_craft_emulator_probe.py build-reports/original-craft-1.0.7 ${{ github.event_name == 'workflow_dispatch' && inputs.profile == 'full' && '--full' || '' }}
+            bash tools/run_original_craft_emulator_probe.sh build-reports/original-craft-1.0.7 ${{ ((github.event_name == 'workflow_dispatch' && inputs.profile == 'full') || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'probe/original-craft-full-'))) && '--full' || '' }}
       - name: Upload rebuilt APK and full UI evidence
         if: always()
         uses: actions/upload-artifact@v4
