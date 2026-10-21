@@ -9825,8 +9825,7 @@ public class MainActivity extends Activity {
             }
             boolean set = fbdBooleanPinValue(inputs, inputPins, "S", 0);
             boolean reset = fbdBooleanPinValue(inputs, inputPins, "R", 1);
-            if (reset) widget.rsState = false;
-            else if (set) widget.rsState = true;
+            widget.rsState = FbdCraftNativeTransitions.rs(widget.rsState, reset, set);
             return widget.rsState;
         }
         if ("FBD SR".equals(widget.type)) {
