@@ -689,13 +689,13 @@ public final class CraftProjectImporter {
         try {
             return FbdCraftMacroGraphAdapter.expandIfSupported(definition, child -> {
                 String nestedName = child.optString("name", "").trim();
-                return loadCraftMacroByName(nestedName, archiveParent, availableMedia, resolving);
+                return loadCraftMacroByName(nestedName, archiveParent, availableMedia, resolving, child);
             });
         } finally { resolving.remove(key); }
     }
 
     private static FbdCraftMacroDefinition loadCraftMacroByName(String name, String archiveParent,
-            Map<String, byte[]> availableMedia, Set<String> resolving) {
+            Map<String, byte[]> availableMedia, Set<String> resolving, JSONObject child) {
         if (name == null || name.trim().isEmpty() || resolving.size() >= 8) return null;
         String key = name.trim().toLowerCase(java.util.Locale.ROOT);
         if (resolving.contains(key)) return null;
@@ -706,7 +706,11 @@ public final class CraftProjectImporter {
         try {
             FbdCraftMacroDefinition definition = FbdCraftMacroDefinition.fromMcrBytes(bytes);
             if (!name.trim().equalsIgnoreCase(definition.getName())) return null;
-            return expandCraftMacro(definition, archiveParent, availableMedia, resolving);
+            FbdCraftMacroDefinition expanded = expandCraftMacro(
+                    definition, archiveParent, availableMedia, resolving);
+            if (expanded != null && expanded.toJson().optJSONObject("bloodskyGraph") != null)
+                child.put("craftMacroMediaPath", entry.replace('\\', '/'));
+            return expanded;
         } catch (Exception invalidOrUnsupported) { return null; }
     }
 

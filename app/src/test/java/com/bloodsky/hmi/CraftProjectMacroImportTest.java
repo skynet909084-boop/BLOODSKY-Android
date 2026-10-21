@@ -75,7 +75,7 @@ public class CraftProjectMacroImportTest {
     @Test public void importsNestedMacroSidecarsAndRunsTheirResolvedGraph() throws Exception {
         JSONObject project = sourceProject();
         project.getJSONArray("TableComponent").getJSONObject(0).getJSONObject("jsTableComponent_other")
-                .put("name", "Outer").put("uniqueId", "9");
+                .put("name", "Outer").put("uniqueId", "9").put("vendorOther", "keep-me");
         JSONObject innerChild = new JSONObject().put("componentId", 105).put("x", 0).put("y", 0)
                 .put("saveKey", 10).put("keyOut", 900).put("numOnIn", 1)
                 .put("isConstant", true).put("constant", 31).put("nMcr", "Inner").put("unIdMcr", 8);
@@ -100,6 +100,7 @@ public class CraftProjectMacroImportTest {
                 .getJSONArray("widgets").getJSONObject(0);
         assertEquals("FBD CRAFT MACRO", nested.getString("type"));
         assertEquals("Inner", nested.getJSONObject("craftMacroDefinition").getString("name"));
+        assertEquals("project/Inner.mcr", nested.getString("craftMacroMediaPath"));
 
         MainActivity.Widget runtime = MainActivity.widgetFromJson(imported);
         double[] numeric = new double[1];
@@ -107,6 +108,60 @@ public class CraftProjectMacroImportTest {
                 new boolean[1], new boolean[1], new boolean[1], numeric,
                 new CraftSystemRegisterBank(), false);
         assertEquals(31.0, numeric[0], 0.0);
+
+        JSONObject exported = new JSONObject(CraftProjectExporter.export(converted.toString()));
+        Set<String> referenced = CraftProjectExporter.referencedMedia(exported);
+        assertTrue(referenced.contains("Outer.mcr"));
+        assertTrue(referenced.contains("Inner.mcr"));
+        Map<String, String> aliases = CraftProjectExporter.mediaPathAliases(converted.toString(), exported);
+        assertEquals("project/Outer.mcr", aliases.get("Outer.mcr"));
+        assertEquals("project/Inner.mcr", aliases.get("Inner.mcr"));
+        JSONObject exportedOther = exported.getJSONArray("TableComponent").getJSONObject(0)
+                .getJSONObject("jsTableComponent_other");
+        assertEquals("keep-me", exportedOther.getString("vendorOther"));
+        assertTrue("edited macro definition must survive .pro export",
+                exportedOther.has("craftMacroDefinition"));
+        assertEquals("project/Inner.mcr", exportedOther.getJSONObject("craftMacroDefinition")
+                .getJSONObject("bloodskyGraph").getJSONArray("widgets").getJSONObject(0)
+                .getString("craftMacroMediaPath"));
+
+        java.io.ByteArrayOutputStream zipBytes = new java.io.ByteArrayOutputStream();
+        ProjectMediaService.exportCraftProjectZipBundle(zipBytes, converted.toString(), path -> {
+            if ("project/Outer.mcr".equals(path)) return macros.get("project/Outer.mcr");
+            if ("project/Inner.mcr".equals(path)) return macros.get("project/Inner.mcr");
+            throw new java.io.IOException("missing " + path);
+        });
+        Map<String, byte[]> exportedMedia = new java.util.HashMap<>();
+        byte[] exportedProject = null;
+        try (java.util.zip.ZipInputStream zip = new java.util.zip.ZipInputStream(
+                new java.io.ByteArrayInputStream(zipBytes.toByteArray()))) {
+            java.util.zip.ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) {
+                java.io.ByteArrayOutputStream data = new java.io.ByteArrayOutputStream();
+                byte[] buffer = new byte[4096];
+                int count;
+                while ((count = zip.read(buffer)) >= 0) data.write(buffer, 0, count);
+                if ("Project.pro".equals(entry.getName())) exportedProject = data.toByteArray();
+                else exportedMedia.put(entry.getName(), data.toByteArray());
+            }
+        }
+        assertNotNull(exportedProject);
+        assertArrayEquals(macros.get("project/Inner.mcr"), exportedMedia.get("Inner.mcr"));
+
+        // Simulate a source-compatible KaScada .pro: BLOODSKY-only inline metadata is absent,
+        // so the nested definition must be recovered from the bundled original .mcr files.
+        JSONObject sourceCompatiblePro = new JSONObject(new String(exportedProject, StandardCharsets.UTF_8));
+        JSONObject sourceCompatibleOther = sourceCompatiblePro.getJSONArray("TableComponent").getJSONObject(0)
+                .getJSONObject("jsTableComponent_other");
+        sourceCompatibleOther.remove("craftMacroDefinition");
+        sourceCompatibleOther.remove("craftMacroMediaPath");
+        JSONObject reopened = new JSONObject(CraftProjectImporter.convert(sourceCompatiblePro.toString(),
+                "Project.pro", exportedMedia));
+        JSONObject reopenedDefinition = reopened.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0).getJSONObject("craftMacroDefinition");
+        assertEquals("Inner", reopenedDefinition.getJSONObject("bloodskyGraph")
+                .getJSONArray("widgets").getJSONObject(0).getJSONObject("craftMacroDefinition")
+                .getString("name"));
     }
 
     @Test public void unsupportedMacroGraphIsVisibleButExplicitlyNonExecutable() throws Exception {
