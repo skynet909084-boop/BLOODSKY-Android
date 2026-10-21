@@ -160,7 +160,10 @@ public class CraftProjectImporterTest {
                                 .put("jsTableComponent_connectionInfo", new JSONObject()
                                         .put("posDeviceNetworkInList", 2).put("addressRegister", 10).put("typeRequest", 3))
                                 .put("jsTableComponent_other", new JSONObject()
-                                        .put("numScreen", 1).put("max", 180)
+                                        .put("numScreen", 1).put("max", 180).put("showText", false)
+                                        .put("sizeText", 22).put("colorText", -1)
+                                        .put("inColor", -7829368).put("outColor", -14135468)
+                                        .put("centerColor", -16777216)
                                         .put("firstColorPoint", 60).put("secondColorPoint", 120)))
                         .put(new JSONObject().put("componentId", 24).put("text", "")
                                 .put("jsTableComponent_connectionInfo", new JSONObject()
@@ -178,6 +181,11 @@ public class CraftProjectImporterTest {
         assertEquals("threshold", thresholdGauge.getString("craftGaugeKind"));
         assertEquals(0.0, thresholdGauge.getDouble("minValue"), 0.001);
         assertEquals(180.0, thresholdGauge.getDouble("maxValue"), 0.001);
+        assertFalse(thresholdGauge.getBoolean("craftGaugeShowText"));
+        assertEquals(22, thresholdGauge.getInt("craftGaugeTextSize"));
+        assertEquals(60, thresholdGauge.getInt("craftGaugeFirstColorPoint"));
+        assertEquals(120, thresholdGauge.getInt("craftGaugeSecondColorPoint"));
+        assertEquals(-14135468, thresholdGauge.getInt("craftGaugeOutColor"));
         assertEquals(60, thresholdGauge.getJSONObject("craftOther").getInt("firstColorPoint"));
         assertEquals("", thresholdGauge.getString("connectionInfo"));
         assertTrue(thresholdGauge.has("craftBindingResolution"));
