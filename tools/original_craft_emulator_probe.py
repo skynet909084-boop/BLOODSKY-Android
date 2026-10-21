@@ -374,6 +374,7 @@ def capture_state(path):
     if signature in seen:
         (OUT / f"{label}.xml").unlink(missing_ok=True)
         return None
+    seen.add(signature)
 
     # Save the expensive screenshot only for a new state; every unique capture
     # still waits WAIT seconds after the preceding action before reaching here.
