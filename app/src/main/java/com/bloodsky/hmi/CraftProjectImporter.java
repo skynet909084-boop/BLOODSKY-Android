@@ -374,6 +374,12 @@ public final class CraftProjectImporter {
         if (componentId == 11) {
             widget.put("minValue", decimal(other.opt("min"), 0));
             widget.put("maxValue", decimal(other.opt("max"), 100));
+            widget.put("craftProgressShowText", other.optBoolean("showText", false));
+            widget.put("craftProgressTextSize", boundedInt(other.opt("sizeText"), 50, 1, 256));
+            widget.put("craftProgressTextColor", color(other.opt("colorText"), Color.BLUE));
+            widget.put("craftProgressShowScale", other.optBoolean("showScale", true));
+            widget.put("craftProgressColor", color(other.opt("colorProgress"), Color.rgb(46, 236, 0)));
+            widget.put("craftProgressBackgroundColor", color(other.opt("colorBackground"), Color.rgb(156, 156, 155)));
         } else if (componentId == 9) {
             widget.put("soundThreshold", 1.0);
             widget.put("craftAlarmSoundIndex", boundedInt(other.opt("posSound"), 1, 1, 5));

@@ -9900,14 +9900,57 @@ public class MainActivity extends Activity {
                     if (liveValues.containsKey(i)) {
                         try { val = Double.parseDouble(liveValues.get(i)); } catch (Exception ignored) {}
                     }
-                    double ratio = Math.max(0.0, Math.min(1.0, (val - w.minValue) / Math.max(0.001, w.maxValue - w.minValue)));
-                    paint.setColor(Color.rgb(203, 213, 225));
-                    canvas.drawRoundRect(w.x + dp(8), w.y + dp(24), w.x + w.w - dp(8), w.y + w.h - dp(8), dp(4), dp(4), paint);
-                    paint.setColor(Color.rgb(37, 99, 235));
-                    canvas.drawRoundRect(w.x + dp(8), w.y + dp(24), w.x + dp(8) + (float) ((w.w - dp(16)) * ratio), w.y + w.h - dp(8), dp(4), dp(4), paint);
-                    paint.setColor(w.textColor);
-                    paint.setTextSize(dp(12));
-                    canvas.drawText(w.text + ": " + String.format(java.util.Locale.ROOT, "%.1f", val), w.x + dp(10), w.y + dp(18), paint);
+                    paint.setShader(null);
+                    paint.setStyle(Paint.Style.FILL);
+                    float ratio = CraftProgressBar.ratio(val, w.minValue, w.maxValue);
+                    float inset = dp(4);
+                    RectF track = new RectF(w.x + inset, w.y + inset,
+                            w.x + w.w - inset, w.y + w.h - inset);
+                    int background = w.extraFields.optInt("craftProgressBackgroundColor", Color.rgb(156, 156, 155));
+                    int progress = w.extraFields.optInt("craftProgressColor", Color.rgb(46, 236, 0));
+                    if (Color.alpha(background) != 0) {
+                        paint.setShader(new android.graphics.LinearGradient(track.left, track.top,
+                                track.left, track.bottom,
+                                new int[]{Color.rgb(40, 40, 40), Color.WHITE, Color.rgb(119, 119, 119)},
+                                null, android.graphics.Shader.TileMode.CLAMP));
+                        canvas.drawRoundRect(track, dp(4), dp(4), paint);
+                        paint.setShader(null);
+                        paint.setStyle(Paint.Style.STROKE);
+                        paint.setStrokeWidth(dp(1));
+                        paint.setColor(Color.rgb(68, 68, 68));
+                        canvas.drawRoundRect(track, dp(4), dp(4), paint);
+                        paint.setStyle(Paint.Style.FILL);
+                    }
+                    RectF fill = new RectF(track.left, track.top,
+                            track.left + track.width() * ratio, track.bottom);
+                    if (fill.width() > 0) {
+                        paint.setShader(new android.graphics.LinearGradient(fill.left, fill.top,
+                                fill.left, fill.bottom,
+                                new int[]{CraftProgressBar.shade(progress, 0.7f), progress,
+                                        CraftProgressBar.shade(progress, 0.7f)},
+                                null, android.graphics.Shader.TileMode.CLAMP));
+                        canvas.drawRoundRect(fill, dp(4), dp(4), paint);
+                        paint.setShader(null);
+                    }
+                    if (w.extraFields.optBoolean("craftProgressShowScale", false)) {
+                        paint.setColor(Color.BLACK);
+                        paint.setStrokeWidth(2f);
+                        float spacing = Math.max(0f, track.height() / 20f);
+                        float center = w.x + w.w / 2f;
+                        for (int tick = 1; tick < 20; tick++) {
+                            float length = tick == 10 ? w.w / 6f : (tick % 2 == 0 ? w.w / 8f : w.w / 16f);
+                            float y = track.top + tick * spacing;
+                            canvas.drawLine(center - length, y, center + length, y, paint);
+                        }
+                    }
+                    if (w.extraFields.optBoolean("craftProgressShowText", true)) {
+                        paint.setColor(w.extraFields.optInt("craftProgressTextColor", w.textColor));
+                        paint.setTextSize(w.extraFields.optInt("craftProgressTextSize", dp(12)));
+                        String valueText = Long.toString(Math.round(val));
+                        canvas.drawText(valueText, w.x + (w.w - paint.measureText(valueText)) / 2f,
+                                w.y + w.h - inset, paint);
+                    }
+                    paint.setStrokeWidth(dp(1));
                 } else if ("Шкала / Стрелка".equals(w.type)) {
                     double val = 0.0;
                     if (liveValues.containsKey(i)) {

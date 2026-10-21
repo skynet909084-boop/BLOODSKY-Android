@@ -36,7 +36,7 @@ public class CraftProjectImporterTest {
                 + "\"TableComponent\":["
                 + "{\"componentId\":\"4\",\"text\":\"Value\",\"x\":\"12.5\",\"y\":\"8\",\"width\":\"90\",\"height\":\"30\",\"textSize\":\"18\",\"colorText\":\"#112233\",\"colorBackground\":\"#00000000\",\"jsTableComponent_connectionInfo\":\"legacy-device-binding\",\"jsTableComponent_other\":{\"numScreen\":\"1\",\"digit\":2}},"
                 + "{\"componentId\":\"5\",\"text\":\"Lamp\",\"x\":\"1\",\"y\":\"2\",\"width\":\"30\",\"height\":\"30\",\"textSize\":\"14\",\"colorText\":\"#ffffff\",\"colorBackground\":\"#00000000\",\"jsTableComponent_other\":\"{\\\"numScreen\\\":2,\\\"isImageUserOn\\\":false,\\\"pathOrNameOn\\\":\\\"green\\\"}\"},"
-                + "{\"componentId\":\"11\",\"text\":\"Level\",\"x\":\"3\",\"y\":\"4\",\"width\":\"80\",\"height\":\"20\",\"textSize\":\"12\",\"colorText\":\"#ffffff\",\"colorBackground\":\"#00000000\",\"jsTableComponent_other\":{\"numScreen\":2,\"min\":0,\"max\":100}}],"
+                + "{\"componentId\":\"11\",\"text\":\"Level\",\"x\":\"3\",\"y\":\"4\",\"width\":\"80\",\"height\":\"20\",\"textSize\":\"12\",\"colorText\":\"#ffffff\",\"colorBackground\":\"#00000000\",\"jsTableComponent_other\":{\"numScreen\":2,\"min\":0,\"max\":100,\"showText\":true,\"sizeText\":18,\"colorText\":-1,\"showScale\":false,\"colorProgress\":-65536,\"colorBackground\":0}}],"
                 + "\"TableConnections\":[{\"privateSetting\":\"preserved\"}]}";
     }
 
@@ -142,6 +142,13 @@ public class CraftProjectImporterTest {
         assertEquals("Индикатор", second.getJSONObject(0).getString("type"));
         assertEquals("Прогресс-бар", second.getJSONObject(1).getString("type"));
         assertEquals(100.0, second.getJSONObject(1).getDouble("maxValue"), 0.001);
+        JSONObject progress = second.getJSONObject(1);
+        assertEquals(true, progress.getBoolean("craftProgressShowText"));
+        assertEquals(18, progress.getInt("craftProgressTextSize"));
+        assertEquals(-1, progress.getInt("craftProgressTextColor"));
+        assertEquals(false, progress.getBoolean("craftProgressShowScale"));
+        assertEquals(-65536, progress.getInt("craftProgressColor"));
+        assertEquals(0, progress.getInt("craftProgressBackgroundColor"));
     }
 
     @Test public void importsCraftGaugeIdsAsEditableGaugesAndKeepsLegacyLinksInactive() throws Exception {
