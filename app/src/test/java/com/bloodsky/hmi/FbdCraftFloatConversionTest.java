@@ -52,8 +52,9 @@ public class FbdCraftFloatConversionTest {
 
     private static double graphOutput(List<MainActivity.Widget> nodes,
                                       List<MainActivity.FbdConnection> edges, int at) {
-        int n = nodes.size();
-        return MainActivity.evaluateFbdBlockNumeric(nodes, edges, at,
+        FbdCraftTestGraphs.Graph graph = FbdCraftTestGraphs.withReadyCraftCounters(nodes, edges);
+        int n = graph.widgets.size();
+        return MainActivity.evaluateFbdBlockNumeric(graph.widgets, graph.connections, at,
                 new boolean[n], new boolean[n], new boolean[n], new double[n]);
     }
 
