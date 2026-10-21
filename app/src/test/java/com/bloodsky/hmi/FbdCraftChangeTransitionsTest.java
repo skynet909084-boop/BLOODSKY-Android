@@ -102,7 +102,7 @@ public class FbdCraftChangeTransitionsTest {
             assertEquals("BOOL", MainActivity.knownFbdPinType(t, "Q", true));
             String input = t.endsWith(" I") ? "I" : "F";
             assertEquals("NUMBER", MainActivity.knownFbdPinType(t, input, false));
-            assertArrayEquals(new String[]{input},
+            assertArrayEquals(t.endsWith(" I") ? new String[]{input} : new String[0],
                     MainActivity.compatibleFbdTargetPins("FBD CRAFT CTU", "Q", t));
             MainActivity.Widget w = widget(t);
             w.craftChangeIntState = new FbdCraftChangeTransitions.IntState(7, true);

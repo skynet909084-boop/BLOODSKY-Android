@@ -45,6 +45,26 @@ public class FbdCraftTypedWireContractsTest {
         assertEquals("INT", FbdCraftPinTypes.typeForBlock("FBD CRAFT CTU", "Q", true));
         assertTrue(wire("FBD CRAFT CTU", "Q", "FBD CRAFT VAR OUT INT", "IN"));
         assertFalse(wire("FBD CRAFT CTU", "Q", "FBD CRAFT VAR OUT FLOAT", "IN"));
+        assertFalse(wire("FBD CRAFT CTU", "Q", "FBD CRAFT CHANGE F", "F"));
+        assertTrue(wire("FBD CRAFT VAR FLOAT", "Q", "FBD CRAFT CHANGE F", "F"));
+    }
+
+    @Test public void originalCraftFloatMathPinsRejectIntegerWires() throws Exception {
+        assertEquals("FLOAT", FbdCraftPinTypes.typeForBlock("FBD CRAFT POW", "X", false));
+        assertEquals("FLOAT", FbdCraftPinTypes.typeForBlock("FBD CRAFT POW", "Q", true));
+        assertTrue(wire("FBD CRAFT VAR FLOAT", "Q", "FBD CRAFT POW", "X"));
+        assertFalse(wire("FBD CRAFT VAR INT", "Q", "FBD CRAFT POW", "X"));
+        assertArrayEquals(new String[]{"X", "Y"}, MainActivity.compatibleFbdTargetPins(
+                "FBD CRAFT VAR FLOAT", "Q", "FBD CRAFT POW"));
+        assertArrayEquals(new String[0], MainActivity.compatibleFbdTargetPins(
+                "FBD CRAFT VAR INT", "Q", "FBD CRAFT POW"));
+
+        for (String kind : new String[]{"FBD CRAFT SIN", "FBD CRAFT LOG", "FBD CRAFT ABS"}) {
+            assertEquals("FLOAT", FbdCraftPinTypes.typeForBlock(kind, "IN", false));
+            assertEquals("FLOAT", FbdCraftPinTypes.typeForBlock(kind, "OUT", true));
+            assertTrue(wire("FBD CRAFT VAR FLOAT", "Q", kind, "IN"));
+            assertFalse(wire("FBD CRAFT VAR INT", "Q", kind, "IN"));
+        }
     }
 
     private static boolean wire(String sourceType, String sourcePin, String targetType,

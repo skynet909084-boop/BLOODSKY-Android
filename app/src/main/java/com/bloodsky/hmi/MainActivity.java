@@ -10617,8 +10617,11 @@ public class MainActivity extends Activity {
         List<String> compatible = new ArrayList<>();
         for (String targetPin : targetPins) {
             String targetSignal = knownFbdPinType(targetType, targetPin, false);
-            if (sourceSignal == null || targetSignal == null
+            String sourceExact = FbdCraftPinTypes.typeForBlock(sourceType, sourcePin, true);
+            String targetExact = FbdCraftPinTypes.typeForBlock(targetType, targetPin, false);
+            if ((sourceSignal == null || targetSignal == null
                     || FbdCraftPinTypes.compatible(sourceSignal, targetSignal))
+                    && FbdCraftPinTypes.compatible(sourceExact, targetExact))
                 compatible.add(targetPin);
         }
         return compatible.toArray(new String[0]);
@@ -10631,8 +10634,11 @@ public class MainActivity extends Activity {
         List<String> compatible = new ArrayList<>();
         for (String targetPin : targetPins) {
             String targetSignal = knownFbdPinType(target, targetPin, false);
-            if (sourceSignal == null || targetSignal == null
+            String sourceExact = FbdCraftPinTypes.typeForWidget(source, sourcePin, true);
+            String targetExact = FbdCraftPinTypes.typeForWidget(target, targetPin, false);
+            if ((sourceSignal == null || targetSignal == null
                     || FbdCraftPinTypes.compatible(sourceSignal, targetSignal))
+                    && FbdCraftPinTypes.compatible(sourceExact, targetExact))
                 compatible.add(targetPin);
         }
         return compatible.toArray(new String[0]);
