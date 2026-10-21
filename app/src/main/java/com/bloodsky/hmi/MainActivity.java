@@ -5719,19 +5719,76 @@ public class MainActivity extends Activity {
         final EditText minValField;
         final EditText maxValField;
         if ("Шкала / Стрелка".equals(w.type) || "Прогресс-бар".equals(w.type) || "График / Тренд".equals(w.type)) {
+            boolean sourceThresholdGauge = "Шкала / Стрелка".equals(w.type)
+                    && w.extraFields.optInt("craftComponentId", -1) == 12;
             TextView rangeLabel = new TextView(this);
-            rangeLabel.setText("Диапазон шкалы (минимум / максимум)");
+            rangeLabel.setText(sourceThresholdGauge ? "Максимум исходной шкалы Craft" : "Диапазон шкалы (минимум / максимум)");
             rangeLabel.setPadding(0, dp(10), 0, 0);
             form.addView(rangeLabel);
-            minValField = propertyField(Double.toString(w.minValue), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-            minValField.setHint("Минимум (например 0)");
-            form.addView(minValField);
-            maxValField = propertyField(Double.toString(w.maxValue), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-            maxValField.setHint("Максимум (например 100)");
+            if (sourceThresholdGauge) {
+                minValField = null;
+            } else {
+                minValField = propertyField(Double.toString(w.minValue), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+                minValField.setHint("Минимум (например 0)");
+                form.addView(minValField);
+            }
+            maxValField = propertyField(Double.toString(w.maxValue), sourceThresholdGauge
+                    ? InputType.TYPE_CLASS_NUMBER
+                    : InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            maxValField.setHint(sourceThresholdGauge ? "Максимум (целое число от 1)" : "Максимум (например 100)");
             form.addView(maxValField);
         } else {
             minValField = null;
             maxValField = null;
+        }
+
+        final android.widget.CheckBox gaugeShowTextField;
+        final EditText gaugeTextSizeField;
+        final EditText gaugeTextColorField;
+        final EditText gaugeInColorField;
+        final EditText gaugeOutColorField;
+        final EditText gaugeCenterColorField;
+        final EditText gaugeFirstColorPointField;
+        final EditText gaugeSecondColorPointField;
+        if ("Шкала / Стрелка".equals(w.type)
+                && w.extraFields.optInt("craftComponentId", -1) == 12) {
+            TextView gaugePropertiesLabel = new TextView(this);
+            gaugePropertiesLabel.setText("Настройки пороговой шкалы Craft");
+            gaugePropertiesLabel.setPadding(0, dp(10), 0, 0);
+            form.addView(gaugePropertiesLabel);
+            gaugeShowTextField = new android.widget.CheckBox(this);
+            gaugeShowTextField.setText("Показывать подписи делений");
+            gaugeShowTextField.setChecked(w.extraFields.optBoolean("craftGaugeShowText", true));
+            form.addView(gaugeShowTextField);
+            gaugeTextSizeField = propertyField(Integer.toString(w.extraFields.optInt("craftGaugeTextSize", 12)), InputType.TYPE_CLASS_NUMBER);
+            gaugeTextSizeField.setHint("Размер подписей (1–256 px)"); form.addView(gaugeTextSizeField);
+            gaugeTextColorField = propertyField(String.format(java.util.Locale.ROOT, "#%06X",
+                    0xFFFFFF & w.extraFields.optInt("craftGaugeTextColor", Color.BLACK)), InputType.TYPE_CLASS_TEXT);
+            gaugeTextColorField.setHint("Цвет подписей: #RRGGBB"); form.addView(gaugeTextColorField);
+            gaugeInColorField = propertyField(String.format(java.util.Locale.ROOT, "#%06X",
+                    0xFFFFFF & w.extraFields.optInt("craftGaugeInColor", Color.rgb(136, 136, 136))), InputType.TYPE_CLASS_TEXT);
+            gaugeInColorField.setHint("Цвет внутренней дуги: #RRGGBB"); form.addView(gaugeInColorField);
+            gaugeOutColorField = propertyField(String.format(java.util.Locale.ROOT, "#%06X",
+                    0xFFFFFF & w.extraFields.optInt("craftGaugeOutColor", Color.parseColor("#FF277454"))), InputType.TYPE_CLASS_TEXT);
+            gaugeOutColorField.setHint("Цвет внешней дуги: #RRGGBB"); form.addView(gaugeOutColorField);
+            gaugeCenterColorField = propertyField(String.format(java.util.Locale.ROOT, "#%06X",
+                    0xFFFFFF & w.extraFields.optInt("craftGaugeCenterColor", Color.BLACK)), InputType.TYPE_CLASS_TEXT);
+            gaugeCenterColorField.setHint("Цвет центра: #RRGGBB"); form.addView(gaugeCenterColorField);
+            gaugeFirstColorPointField = propertyField(Integer.toString(
+                    w.extraFields.optInt("craftGaugeFirstColorPoint", 0)), InputType.TYPE_CLASS_NUMBER);
+            gaugeFirstColorPointField.setHint("Первая граница цветовой зоны"); form.addView(gaugeFirstColorPointField);
+            gaugeSecondColorPointField = propertyField(Integer.toString(
+                    w.extraFields.optInt("craftGaugeSecondColorPoint", 0)), InputType.TYPE_CLASS_NUMBER);
+            gaugeSecondColorPointField.setHint("Вторая граница цветовой зоны"); form.addView(gaugeSecondColorPointField);
+        } else {
+            gaugeShowTextField = null;
+            gaugeTextSizeField = null;
+            gaugeTextColorField = null;
+            gaugeInColorField = null;
+            gaugeOutColorField = null;
+            gaugeCenterColorField = null;
+            gaugeFirstColorPointField = null;
+            gaugeSecondColorPointField = null;
         }
 
         final android.widget.CheckBox progressShowTextField;
@@ -6407,7 +6464,36 @@ public class MainActivity extends Activity {
                     }
                     if (minValField != null) {
                         w.minValue = readDouble(minValField, w.minValue);
+                    } else if ("Шкала / Стрелка".equals(w.type)
+                            && w.extraFields.optInt("craftComponentId", -1) == 12) {
+                        w.minValue = 0.0;
+                    }
+                    if (maxValField != null) {
                         w.maxValue = readDouble(maxValField, w.maxValue);
+                    }
+                    if (gaugeShowTextField != null) {
+                        try {
+                            CraftThresholdGaugeProperties.apply(w.extraFields,
+                                    readPositiveInt(maxValField, (int) w.maxValue, false),
+                                    gaugeShowTextField.isChecked(),
+                                    readPositiveInt(gaugeTextSizeField,
+                                            w.extraFields.optInt("craftGaugeTextSize", 12), false),
+                                    parseOptionalColor(gaugeTextColorField.getText().toString(),
+                                            w.extraFields.optInt("craftGaugeTextColor", Color.BLACK)),
+                                    parseOptionalColor(gaugeInColorField.getText().toString(),
+                                            w.extraFields.optInt("craftGaugeInColor", Color.rgb(136, 136, 136))),
+                                    parseOptionalColor(gaugeOutColorField.getText().toString(),
+                                            w.extraFields.optInt("craftGaugeOutColor", Color.parseColor("#FF277454"))),
+                                    parseOptionalColor(gaugeCenterColorField.getText().toString(),
+                                            w.extraFields.optInt("craftGaugeCenterColor", Color.BLACK)),
+                                    readPositiveInt(gaugeFirstColorPointField,
+                                            w.extraFields.optInt("craftGaugeFirstColorPoint", 0), true),
+                                    readPositiveInt(gaugeSecondColorPointField,
+                                            w.extraFields.optInt("craftGaugeSecondColorPoint", 0), true));
+                        } catch (IllegalArgumentException | org.json.JSONException invalid) {
+                            Toast.makeText(this, invalid.getMessage(), Toast.LENGTH_LONG).show();
+                            return;
+                        }
                     }
                     if (progressShowTextField != null) {
                         try {
@@ -6450,6 +6536,102 @@ public class MainActivity extends Activity {
         }
         Toast.makeText(this, "Цвет задаётся в формате #RRGGBB", Toast.LENGTH_SHORT).show();
         return fallback;
+    }
+
+    private void drawCraftThresholdGauge(android.graphics.Canvas canvas, Widget widget,
+                                        double rawValue, android.graphics.Paint paint) {
+        float cx = widget.x + widget.w / 2f;
+        float cy = widget.y + widget.h - dp(5);
+        float radius = Math.max(dp(12), Math.min(widget.w / 2f - dp(6), widget.h - dp(12)));
+        android.graphics.RectF outer = new android.graphics.RectF(
+                cx - radius, cy - radius, cx + radius, cy + radius);
+        int outColor = widget.extraFields.optInt("craftGaugeOutColor", Color.parseColor("#FF277454"));
+        int inColor = widget.extraFields.optInt("craftGaugeInColor", Color.rgb(136, 136, 136));
+        int centerColor = widget.extraFields.optInt("craftGaugeCenterColor", Color.BLACK);
+        double max = widget.maxValue;
+        double value = CraftThresholdGauge.ratio(rawValue, max) * max;
+
+        paint.setShader(null);
+        paint.setStyle(android.graphics.Paint.Style.FILL);
+        paint.setColor(outColor);
+        canvas.drawArc(outer, 180f, 180f, true, paint);
+        float innerRadius = radius * 0.76f;
+        android.graphics.RectF inner = new android.graphics.RectF(
+                cx - innerRadius, cy - innerRadius, cx + innerRadius, cy + innerRadius);
+        paint.setColor(inColor);
+        canvas.drawArc(inner, 180f, 180f, true, paint);
+
+        float scaleRadius = radius * 0.70f;
+        android.graphics.RectF scale = new android.graphics.RectF(
+                cx - scaleRadius, cy - scaleRadius, cx + scaleRadius, cy + scaleRadius);
+        paint.setStyle(android.graphics.Paint.Style.STROKE);
+        paint.setStrokeWidth(dp(5));
+        paint.setColor(Color.rgb(180, 180, 180));
+        canvas.drawArc(scale, 185f, 170f, false, paint);
+
+        int first = widget.extraFields.optInt("craftGaugeFirstColorPoint", 0);
+        int second = widget.extraFields.optInt("craftGaugeSecondColorPoint", 0);
+        if (first == 0 && second == 0) {
+            drawCraftGaugeBand(canvas, paint, scale, 0, max, max, Color.GREEN);
+        } else if (first == 0) {
+            drawCraftGaugeBand(canvas, paint, scale, 0, second, max, Color.GREEN);
+            drawCraftGaugeBand(canvas, paint, scale, second, max, max, Color.RED);
+        } else {
+            drawCraftGaugeBand(canvas, paint, scale, 0, first, max, Color.GREEN);
+            drawCraftGaugeBand(canvas, paint, scale, first, second == 0 ? max : second, max, Color.YELLOW);
+            if (second > 0) drawCraftGaugeBand(canvas, paint, scale, second, max, max, Color.RED);
+        }
+
+        int[] tickValues = CraftThresholdGauge.majorTickValues(max);
+        paint.setStrokeWidth(dp(1.5f));
+        paint.setColor(Color.DKGRAY);
+        for (int i = 0; i < tickValues.length; i++) {
+            double degree = 10.0 + (i * 160.0 / 5.0);
+            double radians = Math.toRadians(degree);
+            float cos = (float) Math.cos(radians), sin = (float) Math.sin(radians);
+            float x1 = cx - cos * radius * 0.83f;
+            float y1 = cy - sin * radius * 0.83f;
+            float x2 = cx - cos * radius * 0.98f;
+            float y2 = cy - sin * radius * 0.98f;
+            canvas.drawLine(x1, y1, x2, y2, paint);
+            if (widget.extraFields.optBoolean("craftGaugeShowText", true)) {
+                paint.setStyle(android.graphics.Paint.Style.FILL);
+                paint.setColor(widget.extraFields.optInt("craftGaugeTextColor", widget.textColor));
+                paint.setTextSize(dp(widget.extraFields.optInt("craftGaugeTextSize", 12)));
+                paint.setTextAlign(android.graphics.Paint.Align.CENTER);
+                canvas.drawText(Integer.toString(tickValues[i]), cx - cos * radius * 1.10f,
+                        cy - sin * radius * 1.10f + dp(4), paint);
+                paint.setStyle(android.graphics.Paint.Style.STROKE);
+                paint.setColor(Color.DKGRAY);
+            }
+        }
+
+        double needleRadians = Math.toRadians(CraftThresholdGauge.needleDegrees(value, max));
+        float cos = (float) Math.cos(needleRadians), sin = (float) Math.sin(needleRadians);
+        paint.setColor(Color.argb(128, 255, 0, 0));
+        paint.setStrokeWidth(dp(3));
+        canvas.drawLine(cx + cos * radius * 0.14f, cy - sin * radius * 0.14f,
+                cx + cos * radius * 0.72f, cy - sin * radius * 0.72f, paint);
+        paint.setStyle(android.graphics.Paint.Style.FILL);
+        paint.setColor(centerColor);
+        canvas.drawCircle(cx, cy, Math.max(dp(4), radius * 0.12f), paint);
+        paint.setTextAlign(android.graphics.Paint.Align.LEFT);
+        paint.setStrokeWidth(dp(1));
+    }
+
+    private void drawCraftGaugeBand(android.graphics.Canvas canvas, android.graphics.Paint paint,
+                                    android.graphics.RectF bounds, double from, double to,
+                                    double max, int color) {
+        if (max <= 0 || from >= to) return;
+        double low = Math.max(-max * 0.03125, Math.min(max * 1.03125, from));
+        double high = Math.max(-max * 0.03125, Math.min(max * 1.03125, to));
+        if (low >= high) return;
+        paint.setStyle(android.graphics.Paint.Style.STROKE);
+        paint.setStrokeWidth(dp(5));
+        paint.setColor(color);
+        float start = (float) (190.0 + (low / max) * 160.0);
+        float sweep = (float) (((high - low) / max) * 160.0);
+        canvas.drawArc(bounds, start, sweep, false, paint);
     }
 
     private double readDouble(EditText field, double fallback) {
@@ -10021,6 +10203,13 @@ public class MainActivity extends Activity {
                                 w.y + w.h - inset, paint);
                     }
                     paint.setStrokeWidth(dp(1));
+                } else if ("Шкала / Стрелка".equals(w.type)
+                        && w.extraFields.optInt("craftComponentId", -1) == 12) {
+                    double val = 0.0;
+                    if (liveValues.containsKey(i)) {
+                        try { val = Double.parseDouble(liveValues.get(i)); } catch (Exception ignored) {}
+                    }
+                    drawCraftThresholdGauge(canvas, w, val, paint);
                 } else if ("Шкала / Стрелка".equals(w.type)) {
                     double val = 0.0;
                     if (liveValues.containsKey(i)) {
