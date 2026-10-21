@@ -88,6 +88,12 @@ final class FbdCraftMacroGraphAdapter {
             String type = componentId == 135
                     ? (nestedDefinition == null ? null : "FBD CRAFT MACRO")
                     : typeForComponentId(componentId, child);
+            if (componentId == 139 || componentId == 140) {
+                int payloadType = child.optInt("typeQ", child.optInt("typeIn", 1));
+                if (payloadType < 1 || payloadType > 3) return null;
+                String suffix = payloadType == 1 ? "BOOL" : payloadType == 2 ? "INT" : "FLOAT";
+                type = "FBD CRAFT MQTT " + (componentId == 139 ? "SUB " : "PUB ") + suffix;
+            }
             int saveKey = child.optInt("saveKey", Integer.MIN_VALUE);
             if (type == null || saveKey == Integer.MIN_VALUE || bySaveKey.containsKey(saveKey)) return null;
             JSONObject widget = new JSONObject().put("type", type)

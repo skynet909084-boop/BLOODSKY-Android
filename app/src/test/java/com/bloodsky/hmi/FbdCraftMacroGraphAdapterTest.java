@@ -233,7 +233,7 @@ public class FbdCraftMacroGraphAdapterTest {
                 expanded.toJson().optJSONObject("bloodskyGraph"));
         JSONObject graph = expanded.toJson().getJSONObject("bloodskyGraph");
         JSONObject nestedPublisher = graph.getJSONArray("widgets").getJSONObject(2);
-        assertEquals("FBD CRAFT MQTT PUB BOOL", nestedPublisher.getString("type"));
+        assertEquals("FBD CRAFT MQTT PUB FLOAT", nestedPublisher.getString("type"));
         assertEquals("plant/command", nestedPublisher.getString("craftMqttTopic"));
         assertEquals(3, nestedPublisher.getInt("craftMqttType"));
         assertEquals(2, nestedPublisher.getInt("craftMqttServer"));
