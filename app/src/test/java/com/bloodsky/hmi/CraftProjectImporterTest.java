@@ -854,4 +854,31 @@ public class CraftProjectImporterTest {
         assertEquals(topic, reopened.getJSONObject("craftOther").getString("to"));
     }
 
+    @Test public void craftWebViewImportsSixteenLinksWithoutEnablingNavigation() throws Exception {
+        String source = "{\"TableNameProject\":{\"name\":\"Links project\",\"countScreen\":1},"
+                + "\"TableConnections\":[],\"TableComponent\":[{"
+                + "\"componentId\":26,\"text\":\"\",\"x\":12,\"y\":24,\"width\":240,\"height\":120,"
+                + "\"jsTableComponent_connectionInfo\":{\"posDeviceNetworkInList\":1,\"addressBit\":2},"
+                + "\"jsTableComponent_other\":{\"numScreen\":1,\"link0\":\"https://example.test/a\","
+                + "\"link15\":\"http://example.test/z\",\"futureField\":\"keep\"}}]}";
+
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(source));
+        JSONObject widget = project.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0);
+        assertEquals("WebView Craft", widget.getString("type"));
+        assertEquals("WebView Craft", widget.getString("text"));
+        assertEquals("", widget.getString("connectionInfo"));
+        assertTrue(widget.getBoolean("craftUnsupportedComponent"));
+        assertFalse(widget.getBoolean("craftWebViewEnabled"));
+        assertEquals(16, widget.getJSONArray("craftWebViewLinks").length());
+        assertEquals("https://example.test/a", widget.getJSONArray("craftWebViewLinks").getString(0));
+        assertEquals("http://example.test/z", widget.getJSONArray("craftWebViewLinks").getString(15));
+        assertEquals("keep", widget.getJSONObject("craftOther").getString("futureField"));
+
+        JSONObject reopened = MainActivity.widgetToJson(MainActivity.widgetFromJson(widget));
+        assertFalse(reopened.getBoolean("craftWebViewEnabled"));
+        assertEquals("https://example.test/a", reopened.getJSONObject("craftOther").getString("link0"));
+        assertEquals("http://example.test/z", reopened.getJSONObject("craftOther").getString("link15"));
+    }
+
 }

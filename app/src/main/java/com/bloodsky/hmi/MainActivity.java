@@ -5916,6 +5916,24 @@ public class MainActivity extends Activity {
             }
         }
 
+        final EditText[] craftWebViewLinkFields = new EditText[CraftWebViewLinks.LINK_COUNT];
+        if (w.extraFields.optInt("craftComponentId", -1) == 26 || "WebView Craft".equals(w.type)) {
+            JSONObject sourceOther = w.extraFields.optJSONObject("craftOther");
+            String[] links = CraftWebViewLinks.read(sourceOther);
+            TextView webHeader = new TextView(this);
+            webHeader.setText("Ссылки Craft (0–15); автоматический переход выключен");
+            webHeader.setPadding(0, dp(10), 0, 0);
+            form.addView(webHeader);
+            for (int k = 0; k < craftWebViewLinkFields.length; k++) {
+                craftWebViewLinkFields[k] = propertyField(links[k], InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+                craftWebViewLinkFields[k].setHint("Ссылка Craft " + k);
+                form.addView(craftWebViewLinkFields[k]);
+            }
+            TextView webHelp = new TextView(this);
+            webHelp.setText("Оригинал открывает первый адрес по входной битовой маске. BLOODSKY только сохраняет ссылки: импортированные адреса не загружаются и WebView не запускается.");
+            form.addView(webHelp);
+        }
+
         final EditText timerPresetField;
         final android.widget.Spinner timerUnitSelector;
         final android.widget.Spinner timerModeSelector;
@@ -6956,6 +6974,21 @@ public class MainActivity extends Activity {
                             JSONObject sourceOther = CraftVoiceRecognitionFields.write(
                                     w.extraFields.optJSONObject("craftOther"), phrases);
                             w.extraFields.put("craftOther", sourceOther);
+                        } catch (Exception invalid) {
+                            Toast.makeText(MainActivity.this, invalid.getMessage(), Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                    }
+                    if (craftWebViewLinkFields.length > 0 && craftWebViewLinkFields[0] != null) {
+                        String[] links = new String[craftWebViewLinkFields.length];
+                        for (int k = 0; k < links.length; k++)
+                            links[k] = craftWebViewLinkFields[k].getText().toString();
+                        try {
+                            JSONObject sourceOther = CraftWebViewLinks.write(
+                                    w.extraFields.optJSONObject("craftOther"), links);
+                            w.extraFields.put("craftOther", sourceOther);
+                            w.extraFields.put("craftWebViewLinks", CraftWebViewLinks.toJsonArray(links));
+                            w.extraFields.put("craftWebViewEnabled", false);
                         } catch (Exception invalid) {
                             Toast.makeText(MainActivity.this, invalid.getMessage(), Toast.LENGTH_LONG).show();
                             return;
@@ -11070,6 +11103,19 @@ public class MainActivity extends Activity {
                     paint.setTextSize(dp(9));
                     canvas.drawText("Источник сохранён; поток выключен",
                             w.x + dp(12), w.y + w.h - dp(10), paint);
+                } else if ("WebView Craft".equals(w.type)) {
+                    paint.setColor(Color.rgb(30, 41, 59));
+                    canvas.drawRoundRect(new RectF(w.x + dp(6), w.y + dp(6),
+                            w.x + w.w - dp(6), w.y + w.h - dp(6)), dp(4), dp(4), paint);
+                    paint.setColor(Color.rgb(203, 213, 225));
+                    paint.setTextSize(dp(11));
+                    canvas.drawText(w.text, w.x + dp(12), w.y + dp(19), paint);
+                    paint.setColor(Color.rgb(248, 113, 113));
+                    paint.setTextSize(dp(10));
+                    canvas.drawText("WebView выключен", w.x + dp(12), w.y + w.h / 2 + dp(4), paint);
+                    paint.setColor(Color.rgb(148, 163, 184));
+                    paint.setTextSize(dp(9));
+                    canvas.drawText("16 исходных ссылок сохранены", w.x + dp(12), w.y + w.h - dp(10), paint);
 } else if ("Голосовое сообщение".equals(w.type)) {
                     int voiceIdx = 0;
                     if (liveValues.containsKey(i)) {
