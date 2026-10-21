@@ -1342,8 +1342,10 @@ public class MainActivity extends Activity {
         FbdCraftMqttRuntime active = craftMqttRuntime;
         craftMqttRuntime = null;
         if (active != null) active.close();
-        for (Widget widget : fbdRuntimeWidgetsIncludingMacros(widgets))
+        for (Widget widget : fbdRuntimeWidgetsIncludingMacros(widgets)) {
             if (isCraftMqttSubscriber(widget.type)) widget.craftMqttValue = null;
+            if (isCraftMqttPublisher(widget.type)) widget.craftMqttLastEnable = false;
+        }
     }
 
     private void startCraftMqtt() {
@@ -10951,17 +10953,35 @@ public class MainActivity extends Activity {
         FbdCraftMqttRuntime runtime = craftMqttRuntime;
         if (runtime == null || !operatorMode || screens.isEmpty()
                 || currentScreenIndex < 0 || currentScreenIndex >= screens.size()) return;
-        for (int target = 0; target < widgets.size(); target++) {
-            Widget publisher = widgets.get(target);
+        java.util.Set<Widget> seen = java.util.Collections.newSetFromMap(
+                new java.util.IdentityHashMap<Widget, Boolean>());
+        publishCraftMqttEdgesInGraph(runtime, widgets, screens.get(currentScreenIndex).connections,
+                seen, 0, true);
+    }
+
+    private void publishCraftMqttEdgesInGraph(FbdCraftMqttRuntime runtime,
+            List<Widget> graphWidgets, List<FbdConnection> graphConnections,
+            java.util.Set<Widget> seen, int depth, boolean screenGraph) {
+        if (graphWidgets == null || graphConnections == null || depth > 8) return;
+        boolean[] cacheValid = new boolean[graphWidgets.size()];
+        boolean[] cacheValues = new boolean[graphWidgets.size()];
+        double[] cacheNumeric = new double[graphWidgets.size()];
+        for (int target = 0; target < graphWidgets.size(); target++) {
+            Widget publisher = graphWidgets.get(target);
             if (!isCraftMqttPublisher(publisher.type)) continue;
             List<Boolean> booleanValues = new ArrayList<>();
             List<Double> numericValues = new ArrayList<>();
             List<String> pins = new ArrayList<>();
-            for (FbdConnection edge : screens.get(currentScreenIndex).connections) {
-                if (edge.target != target || edge.source < 0 || edge.source >= widgets.size()) continue;
+            for (FbdConnection edge : graphConnections) {
+                if (edge == null || edge.target != target || edge.source < 0
+                        || edge.source >= graphWidgets.size()) continue;
                 pins.add(edge.extraFields.optString("targetPin", ""));
-                booleanValues.add(evaluateFbd(edge.source, new boolean[widgets.size()]));
-                numericValues.add(evaluateFbdNumeric(edge.source, new boolean[widgets.size()]));
+                booleanValues.add(evaluateFbdBlock(graphWidgets, graphConnections, edge.source,
+                        new boolean[graphWidgets.size()], cacheValid, cacheValues, cacheNumeric,
+                        systemRegisterBank, true));
+                numericValues.add(evaluateFbdBlockNumeric(graphWidgets, graphConnections, edge.source,
+                        new boolean[graphWidgets.size()], cacheValid, cacheValues, cacheNumeric,
+                        systemRegisterBank));
             }
             boolean enabled = fbdBooleanPinValue(booleanValues, pins, "EN", 0);
             if (!enabled) { publisher.craftMqttLastEnable = false; continue; }
@@ -10973,24 +10993,39 @@ public class MainActivity extends Activity {
                 payload = Boolean.toString(fbdBooleanPinValue(booleanValues, pins, "IN", 1));
             } else {
                 double value = fbdNumericPinValue(numericValues, pins, "IN", 1, Double.NaN);
-                if (!Double.isFinite(value)) { liveValues.put(target, "MQTT CFG"); continue; }
+                if (!Double.isFinite(value)) {
+                    if (screenGraph) liveValues.put(target, "MQTT CFG");
+                    continue;
+                }
                 if (type == 2) {
                     Integer exact = FbdCraftIntegerSelector.exactInteger(value);
-                    if (exact == null) { liveValues.put(target, "MQTT CFG"); continue; }
+                    if (exact == null) {
+                        if (screenGraph) liveValues.put(target, "MQTT CFG");
+                        continue;
+                    }
                     payload = Integer.toString(exact);
                 } else {
                     float narrowed = (float) value;
-                    if (!Float.isFinite(narrowed)) { liveValues.put(target, "MQTT CFG"); continue; }
+                    if (!Float.isFinite(narrowed)) {
+                        if (screenGraph) liveValues.put(target, "MQTT CFG");
+                        continue;
+                    }
                     payload = Float.toString(narrowed);
                 }
             }
             String topic = publisher.extraFields.optString("craftMqttTopic", "").trim();
             boolean sent = runtime.publish(mqttServer(publisher), topic, payload,
                     publisher.extraFields.optBoolean("craftMqttRetain", false));
-            liveValues.put(target, sent ? "MQTT → " + topic : "MQTT offline");
+            if (screenGraph) liveValues.put(target, sent ? "MQTT → " + topic : "MQTT offline");
+        }
+        for (Widget macro : graphWidgets) {
+            if (!seen.add(macro) || !"FBD CRAFT MACRO".equals(canonicalFbdBlockType(macro.type))
+                    || !ensureCraftMacroRuntimeGraph(macro)) continue;
+            isolateCraftMacroVariables(macro, macro.craftMacroRuntimeWidgets);
+            publishCraftMqttEdgesInGraph(runtime, macro.craftMacroRuntimeWidgets,
+                    macro.craftMacroRuntimeConnections, seen, depth + 1, false);
         }
     }
-
     private class EditorCanvas extends View {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         int selected = -1;

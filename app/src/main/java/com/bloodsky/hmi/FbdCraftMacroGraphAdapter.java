@@ -47,11 +47,10 @@ final class FbdCraftMacroGraphAdapter {
                         return false;
                 } catch (Exception unresolved) { return false; }
             }
-            // ODTEMP uses the operator's bounded HTTP poller. MQTT subscribers use
-            // the same operator subscription lifecycle at either graph depth;
-            // publishers still require nested output-edge scheduling.
+            // ODTEMP uses the operator's bounded HTTP poller. MQTT subscribers
+            // share the operator subscription lifecycle and publishers are scanned
+            // from each validated graph with their original EN rising-edge behavior.
             // Phone sensors (120/131/132) use the same listeners at either depth.
-            if (id == 140) return false;
         }
         return true;
     }
@@ -89,6 +88,12 @@ final class FbdCraftMacroGraphAdapter {
             String type = componentId == 135
                     ? (nestedDefinition == null ? null : "FBD CRAFT MACRO")
                     : typeForComponentId(componentId, child);
+            if (componentId == 139 || componentId == 140) {
+                int payloadType = child.optInt("typeQ", child.optInt("typeIn", 1));
+                if (payloadType < 1 || payloadType > 3) return null;
+                String suffix = payloadType == 1 ? "BOOL" : payloadType == 2 ? "INT" : "FLOAT";
+                type = "FBD CRAFT MQTT " + (componentId == 139 ? "SUB " : "PUB ") + suffix;
+            }
             int saveKey = child.optInt("saveKey", Integer.MIN_VALUE);
             if (type == null || saveKey == Integer.MIN_VALUE || bySaveKey.containsKey(saveKey)) return null;
             JSONObject widget = new JSONObject().put("type", type)
