@@ -274,6 +274,7 @@ public final class CraftProjectExporter {
             if (component.optInt("componentId", -1) == 135) {
                 String macroName = other.optString("name", "").trim();
                 if (!macroName.isEmpty()) addPath(paths, macroName + ".mcr");
+                addNestedMacroMediaReferences(other.optJSONObject("craftMacroDefinition"), paths, 0);
             }
             java.util.Iterator<String> keys = other.keys();
             while (keys.hasNext()) {
@@ -317,6 +318,7 @@ public final class CraftProjectExporter {
                     String macroName = other.optString("name", "").trim();
                     if (!macroName.isEmpty()) addAlias(aliases, macroName + ".mcr",
                             widget.optString("craftMacroMediaPath", ""));
+                    addNestedMacroMediaAliases(widget.optJSONObject("craftMacroDefinition"), aliases, 0);
                 }
                 addAlias(aliases, other.optString("pathGif", ""), widget.optString("craftGifPath", ""));
                 JSONArray images = widget.optJSONArray("imagePathStates");
@@ -328,6 +330,42 @@ public final class CraftProjectExporter {
             }
         }
         return aliases;
+    }
+
+    private static void addNestedMacroMediaReferences(JSONObject definition, Set<String> paths,
+            int depth) throws IOException {
+        if (definition == null || depth >= 8) return;
+        JSONObject graph = definition.optJSONObject("bloodskyGraph");
+        JSONArray widgets = graph == null ? null : graph.optJSONArray("widgets");
+        if (widgets == null) return;
+        for (int i = 0; i < widgets.length(); i++) {
+            JSONObject widget = widgets.optJSONObject(i);
+            if (widget == null || !"FBD CRAFT MACRO".equals(widget.optString("type", ""))) continue;
+            JSONObject nested = widget.optJSONObject("craftMacroDefinition");
+            String name = (nested == null ? widget.optString("text", "")
+                    : nested.optString("name", widget.optString("text", ""))).trim();
+            if (!name.isEmpty()) addPath(paths, name + ".mcr");
+            addNestedMacroMediaReferences(nested, paths, depth + 1);
+        }
+    }
+
+    private static void addNestedMacroMediaAliases(JSONObject definition,
+            Map<String, String> aliases, int depth) {
+        if (definition == null || depth >= 8) return;
+        JSONObject graph = definition.optJSONObject("bloodskyGraph");
+        JSONArray widgets = graph == null ? null : graph.optJSONArray("widgets");
+        if (widgets == null) return;
+        for (int i = 0; i < widgets.length(); i++) {
+            JSONObject widget = widgets.optJSONObject(i);
+            if (widget == null || !"FBD CRAFT MACRO".equals(widget.optString("type", ""))) continue;
+            JSONObject nested = widget.optJSONObject("craftMacroDefinition");
+            String name = nested == null ? widget.optString("text", "")
+                    : nested.optString("name", widget.optString("text", ""));
+            String mediaPath = widget.optString("craftMacroMediaPath", "");
+            if (!name.trim().isEmpty() && !mediaPath.trim().isEmpty())
+                addAlias(aliases, name.trim() + ".mcr", mediaPath);
+            addNestedMacroMediaAliases(nested, aliases, depth + 1);
+        }
     }
 
     private static void addAlias(Map<String, String> aliases, String original, String current) {

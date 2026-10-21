@@ -706,7 +706,11 @@ public final class CraftProjectImporter {
         try {
             FbdCraftMacroDefinition definition = FbdCraftMacroDefinition.fromMcrBytes(bytes);
             if (!name.trim().equalsIgnoreCase(definition.getName())) return null;
-            return expandCraftMacro(definition, archiveParent, availableMedia, resolving);
+            FbdCraftMacroDefinition expanded = expandCraftMacro(
+                    definition, archiveParent, availableMedia, resolving);
+            if (expanded != null && expanded.toJson().optJSONObject("bloodskyGraph") != null)
+                child.put("craftMacroMediaPath", entry.replace('\\', '/'));
+            return expanded;
         } catch (Exception invalidOrUnsupported) { return null; }
     }
 
