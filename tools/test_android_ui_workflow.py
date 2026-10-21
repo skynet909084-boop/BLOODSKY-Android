@@ -1,4 +1,4 @@
-"""Regression tests for the feature-first Android UI workflow gate."""
+"""Regression tests: Android emulator is a release-acceptance tool, not a dev gate."""
 import unittest
 from pathlib import Path
 
@@ -7,30 +7,33 @@ WORKFLOW = Path(__file__).resolve().parents[1] / '.github/workflows/android-ui-s
 
 
 class AndroidUiWorkflowProfileTests(unittest.TestCase):
-    def test_feature_pr_smoke_only_on_review_or_opt_in(self):
-        workflow = WORKFLOW.read_text()
-        gate = next(line for line in workflow.splitlines() if line.strip().startswith('if:'))
-        self.assertIn("github.base_ref == 'main'", gate)
-        self.assertIn("github.event.action == 'ready_for_review'", gate)
-        self.assertIn("contains(github.event.pull_request.labels.*.name, 'android-smoke')", gate)
-        self.assertNotIn('craft-server-editor', gate)
-        self.assertNotIn("github.event.action != 'synchronize'", gate)
-        self.assertIn('types: [opened, reopened, synchronize, ready_for_review, labeled]', workflow)
+    def test_no_android_on_feature_or_integration_pull_requests(self):
+        workflow = WORKFLOW.read_text(encoding='utf-8')
+        pr_trigger = workflow.split('  pull_request:', 1)[1].split('  push:', 1)[0]
+        self.assertIn('branches: [main]', pr_trigger)
+        self.assertIn('types: [opened, reopened, synchronize, ready_for_review]', pr_trigger)
+        self.assertNotIn("github.event.action == 'ready_for_review'", workflow)
+        self.assertNotIn("github.event.pull_request.labels.*.name", workflow)
+        self.assertNotIn('craft-server-editor', workflow)
+        self.assertNotIn('    if: ', workflow)
+        self.assertNotIn("default: quick", workflow)
 
-    def test_feature_profile_is_quick_main_and_manual_full_remain(self):
-        workflow = WORKFLOW.read_text()
+    def test_manual_release_profiles_remain_available(self):
+        workflow = WORKFLOW.read_text(encoding='utf-8')
+        dispatch = workflow.split('  workflow_dispatch:', 1)[1].split('  pull_request:', 1)[0]
         profile = next(line for line in workflow.splitlines() if 'BLOODSKY_UI_PROFILE:' in line)
-        self.assertIn("github.event_name == 'pull_request' && github.base_ref != 'main' && 'quick'", profile)
+        self.assertIn('default: full', dispatch)
+        self.assertIn('options: [full, quick]', dispatch)
+        self.assertIn("github.event_name == 'workflow_dispatch'", profile)
         self.assertIn("inputs.ui_profile == 'quick'", profile)
         self.assertIn("|| 'full'", profile)
-        self.assertIn('default: quick', workflow)
-        self.assertIn('timeout-minutes:', workflow)
-        self.assertIn("github.base_ref != 'main' && 18 || 35", workflow)
         self.assertIn('script: bash tools/run_android_ui_profile.sh', workflow)
 
-    def test_evidence_is_still_saved_and_main_release_is_checked(self):
-        workflow = WORKFLOW.read_text()
-        self.assertIn('branches: [main]', workflow)
+    def test_release_main_gate_and_diagnostics_preserved(self):
+        workflow = WORKFLOW.read_text(encoding='utf-8')
+        self.assertIn('  push:\n    branches: [main]', workflow)
+        self.assertIn('  pull_request:\n    branches: [main]', workflow)
+        self.assertIn('timeout-minutes: 35', workflow)
         self.assertIn('Save UI screenshots and diagnostics', workflow)
         self.assertIn('retention-days: 14', workflow)
         self.assertIn('cancel-in-progress: true', workflow)
