@@ -30,8 +30,7 @@ final class FbdCraftMacroGraphAdapter {
             if (child == null) return false;
             int id = child.optInt("componentId", -1);
             // These blocks need screen-level polling, subscription, or output scheduling.
-            if (id == 120 || id == 130 || id == 131 || id == 132 || id == 139 || id == 140
-                    || id == 102 || id == 106 || id == 109) return false;
+            if (id == 120 || id == 130 || id == 131 || id == 132 || id == 139 || id == 140) return false;
             // Craft register sources are executable in a nested graph only as literals.
             if ((id == 101 || id == 105 || id == 108)
                     && !child.optBoolean("isConstant", false)) return false;
