@@ -9896,6 +9896,14 @@ public class MainActivity extends Activity {
         if ("FBD CRAFT ARITHMETIC INT".equals(widget.type)
                 || "FBD CRAFT ARITHMETIC FLOAT".equals(widget.type)
                 || "FBD CRAFT COMPARE FLOAT".equals(widget.type)) {
+            // The original arithmetic/comparison blocks expose null until both
+            // upstream objects expose a value. Keep that null distinct from a
+            // valid false/zero so later native state blocks do not scan it.
+            if (!hasReadyCraftNativeInputOutputs(widgetsList, connectionsList, index,
+                    numInputs, "IN1", "IN2")) {
+                cacheNumeric[index] = Double.NaN;
+                return false;
+            }
             boolean leftConnected = false, rightConnected = false;
             for (String pin : inputPins) {
                 String normalized = canonicalFbdPinName(pin);
@@ -9926,6 +9934,11 @@ public class MainActivity extends Activity {
         if ("FBD CRAFT COMPARE".equals(widget.type)) {
             // Source FB_COMPARE uses signed Integer operands, never float.
             // Invalid, disconnected or fractional operands safely return false.
+            if (!hasReadyCraftNativeInputOutputs(widgetsList, connectionsList, index,
+                    numInputs, "IN1", "IN2")) {
+                cacheNumeric[index] = Double.NaN;
+                return false;
+            }
             boolean i1Connected = false, i2Connected = false;
             for (String name : inputPins) {
                 if ("IN1".equals(canonicalFbdPinName(name))) i1Connected = true;
