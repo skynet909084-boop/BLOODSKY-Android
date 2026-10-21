@@ -9061,7 +9061,8 @@ public class MainActivity extends Activity {
             }
             String sourceSignal = knownFbdPinType(source.type, sourcePin, true);
             String targetSignal = knownFbdPinType(target.type, targetPin, false);
-            if (sourceSignal == null || targetSignal == null || !sourceSignal.equals(targetSignal))
+            if (!areFbdPinTypesCompatible(source, sourcePin, target, targetPin,
+                    sourceSignal, targetSignal))
                 return false;
         }
         return true;
@@ -9082,7 +9083,8 @@ public class MainActivity extends Activity {
             if (sourcePin.isEmpty() || targetPin.isEmpty()) return false;
             String sourceType = knownFbdPinType(widgets.get(edge.source).type, sourcePin, true);
             String targetType = knownFbdPinType(widgets.get(targetIndex).type, targetPin, false);
-            if (sourceType == null || !sourceType.equals(targetType)) return false;
+            if (!areFbdPinTypesCompatible(widgets.get(edge.source), sourcePin,
+                    widgets.get(targetIndex), targetPin, sourceType, targetType)) return false;
             if ("IN".equals(targetPin)) {
                 if (hasInput || !"BOOL".equals(targetType)) return false;
                 hasInput = true;
@@ -9092,6 +9094,16 @@ public class MainActivity extends Activity {
             } else return false;
         }
         return hasInput;
+    }
+
+    static boolean areFbdPinTypesCompatible(Widget source, String sourcePin,
+                                                    Widget target, String targetPin,
+                                                    String sourceSignal, String targetSignal) {
+        if (sourceSignal == null || targetSignal == null
+                || !FbdCraftPinTypes.compatible(sourceSignal, targetSignal)) return false;
+        return FbdCraftPinTypes.compatible(
+                FbdCraftPinTypes.typeForWidget(source, sourcePin, true),
+                FbdCraftPinTypes.typeForWidget(target, targetPin, false));
     }
 
     private static boolean hasCompleteCraftGateInputs(List<Widget> widgets,
