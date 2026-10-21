@@ -47,11 +47,10 @@ final class FbdCraftMacroGraphAdapter {
                         return false;
                 } catch (Exception unresolved) { return false; }
             }
-            // ODTEMP uses the operator's bounded HTTP poller. MQTT subscribers use
-            // the same operator subscription lifecycle at either graph depth;
-            // publishers still require nested output-edge scheduling.
+            // ODTEMP uses the operator's bounded HTTP poller. MQTT subscribers
+            // share the operator subscription lifecycle and publishers are scanned
+            // from each validated graph with their original EN rising-edge behavior.
             // Phone sensors (120/131/132) use the same listeners at either depth.
-            if (id == 140) return false;
         }
         return true;
     }

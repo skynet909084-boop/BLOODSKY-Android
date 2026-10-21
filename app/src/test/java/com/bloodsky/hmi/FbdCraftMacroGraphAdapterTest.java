@@ -174,7 +174,7 @@ public class FbdCraftMacroGraphAdapterTest {
         }
     }
 
-    @Test public void importedMacroOdtempUsesRuntimePollTargetAndKeepsMqttFailClosed() throws Exception {
+    @Test public void importedMacroOdtempUsesRuntimePollTarget() throws Exception {
         JSONObject odtemp = new JSONObject().put("componentId", 130).put("x", 0).put("y", 0)
                 .put("saveKey", 50).put("keyOut", 900).put("ip", "192.168.1.20")
                 .put("typeSensor", 2).put("typeResponse", 1)
@@ -208,15 +208,46 @@ public class FbdCraftMacroGraphAdapterTest {
                 new CraftSystemRegisterBank());
         assertEquals(23.75, numeric[0], 0.0);
 
-        int[] unsupportedIds = {140};
-        for (int id : unsupportedIds) {
-            JSONObject networkMacro = validMacro();
-            networkMacro.getJSONArray("fbInMacros").getJSONObject(0).put("componentId", id);
-            FbdCraftMacroDefinition unsupported = FbdCraftMacroGraphAdapter.expandIfSupported(
-                    FbdCraftMacroDefinition.fromJson(networkMacro.toString()));
-            assertNull("MQTT block " + id + " still requires its own runtime lifecycle",
-                    unsupported.toJson().optJSONObject("bloodskyGraph"));
-        }
+    }
+
+    @Test public void importedMacroMqttPublisherKeepsTypedEnAndInEdges() throws Exception {
+        JSONObject publisher = new JSONObject().put("componentId", 140)
+                .put("x", 0).put("y", 0).put("saveKey", 50).put("keyOut", -1)
+                .put("topic", "plant/command").put("typeQ", 3)
+                .put("numMqttServer", 2).put("mqttRetain", true)
+                .put("nMcr", "PublishValue").put("unIdMcr", 53);
+        JSONObject output = new JSONObject().put("componentId", 108)
+                .put("x", 20).put("y", 0).put("saveKey", 60).put("keyOut", 900)
+                .put("isConstant", true).put("constant", 2.5)
+                .put("nMcr", "PublishValue").put("unIdMcr", 53);
+        JSONObject root = new JSONObject().put("name", "PublishValue").put("uniqueId", 53)
+                .put("countIn", 2).put("nameIn1", "EN").put("typeIn1", 1)
+                .put("nameIn2", "IN").put("typeIn2", 3)
+                .put("keyOutIn1", 50).put("numOnIn1", 1)
+                .put("keyOutIn2", 50).put("numOnIn2", 2)
+                .put("typeOut", 3).put("nameOut", "Q").put("saveKeyOut", 900)
+                .put("fbInMacros", new JSONArray().put(publisher).put(output));
+        FbdCraftMacroDefinition expanded = FbdCraftMacroGraphAdapter.expandIfSupported(
+                FbdCraftMacroDefinition.fromJson(root.toString()));
+        assertNotNull("MQTT publisher joins the operator graph scan",
+                expanded.toJson().optJSONObject("bloodskyGraph"));
+        JSONObject graph = expanded.toJson().getJSONObject("bloodskyGraph");
+        JSONObject nestedPublisher = graph.getJSONArray("widgets").getJSONObject(2);
+        assertEquals("FBD CRAFT MQTT PUB BOOL", nestedPublisher.getString("type"));
+        assertEquals("plant/command", nestedPublisher.getString("craftMqttTopic"));
+        assertEquals(3, nestedPublisher.getInt("craftMqttType"));
+        assertEquals(2, nestedPublisher.getInt("craftMqttServer"));
+        assertTrue(nestedPublisher.getBoolean("craftMqttRetain"));
+
+        JSONArray edges = graph.getJSONArray("connections");
+        assertEquals(2, edges.length());
+        assertEquals("EN", edges.getJSONObject(0).getString("targetPin"));
+        assertEquals("IN", edges.getJSONObject(1).getString("targetPin"));
+        MainActivity.Widget macro = MainActivity.widgetFromJson(new JSONObject()
+                .put("type", "FBD CRAFT MACRO").put("craftMacroDefinition", expanded.toJson()));
+        MainActivity.Widget runtimePublisher = MainActivity.fbdRuntimeWidgetsIncludingMacros(
+                Collections.singletonList(macro)).get(3);
+        assertTrue(MainActivity.isCraftMqttPublisher(runtimePublisher.type));
     }
 
     @Test public void importedMacroMqttSubscriberReceivesTypedRuntimeValues() throws Exception {
@@ -459,7 +490,7 @@ public class FbdCraftMacroGraphAdapterTest {
     }
 
     @Test public void preservesMacrosThatNeedScreenLevelIo() throws Exception {
-        int[] unsupported = {130, 140};
+        int[] unsupported = {130};
         for (int id : unsupported) {
             JSONObject root = validMacro();
             root.getJSONArray("fbInMacros").getJSONObject(0).put("componentId", id);
