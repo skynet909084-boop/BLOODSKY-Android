@@ -1,6 +1,8 @@
 package com.bloodsky.hmi;
 
 import org.junit.Test;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import java.util.Arrays;
 import java.util.List;
 import static org.junit.Assert.*;
@@ -104,6 +106,37 @@ public class FbdCraftRegisterGraphTest {
         assertEquals(-17.0, number(nodes, edges, 0, bank), 0.0);
         assertEquals(1.0, number(nodes, edges, 1, bank), 0.0);
         assertEquals(12.5, number(nodes, edges, 2, bank), 0.0);
+    }
+
+    @Test public void importedVarOutFloatUsesOriginalCraftByteOrderFlagsDuringExecution() throws Exception {
+        JSONObject sourceFloat = new JSONObject().put("componentId", "108").put("text", "Float")
+                .put("jsTableComponent_other", new JSONObject().put("numScreen", 1)
+                        .put("reg", 10).put("isConstant", true).put("constant", "1.5"));
+        JSONObject sinkFloat = new JSONObject().put("componentId", "109").put("text", "Float out")
+                .put("jsTableComponent_other", new JSONObject().put("numScreen", 1)
+                        .put("reg", 1000).put("isHighRegister", true).put("isHighByte", true));
+        JSONObject sourceProject = new JSONObject()
+                .put("TableNameProject", new JSONObject().put("name", "Float order").put("countScreen", 1))
+                .put("TableComponent", new JSONArray().put(sourceFloat).put(sinkFloat))
+                .put("TableConnections", new JSONArray());
+        JSONObject imported = new JSONObject(CraftProjectImporter.convert(sourceProject.toString()));
+        JSONArray encodedWidgets = imported.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets");
+        MainActivity.Widget value = MainActivity.widgetFromJson(encodedWidgets.getJSONObject(0));
+        MainActivity.Widget output = MainActivity.widgetFromJson(encodedWidgets.getJSONObject(1));
+        assertTrue(output.extraFields.getBoolean("isHighRegister"));
+        assertTrue(output.extraFields.getBoolean("isHighByte"));
+        assertTrue(output.extraFields.getBoolean("craftSwapWord"));
+        assertTrue(output.extraFields.getBoolean("craftSwapByte"));
+        List<MainActivity.Widget> nodes = Arrays.asList(value, output);
+        List<MainActivity.FbdConnection> edges = Arrays.asList(
+                MainActivity.pinnedFbdConnection(0, "Q", 1, "IN"));
+        CraftSystemRegisterBank bank = new CraftSystemRegisterBank();
+        int n = nodes.size();
+        MainActivity.evaluateFbdBlock(nodes, edges, 1, new boolean[n], new boolean[n],
+                new boolean[n], new double[n], bank, true);
+        int[] expected = FbdCraftRegisterCodec.floatRegisters(1.5f, true, true);
+        assertEquals(expected[0], bank.readWord(1000));
+        assertEquals(expected[1], bank.readWord(1001));
     }
 
     @Test public void invalidArrayIndexCannotReadOrWriteOutsideSourceBank() throws Exception {
