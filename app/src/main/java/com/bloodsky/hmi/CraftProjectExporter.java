@@ -109,6 +109,21 @@ public final class CraftProjectExporter {
                         if (widget.has("craftSwapByte"))
                             merged.put("isHighByte", widget.optBoolean("craftSwapByte"));
                     }
+                    if (widget.optInt("craftComponentId", -1) == 114
+                            && widget.has("craftTriggerMode")) {
+                        int triggerType = craftTriggerType(widget.optString("craftTriggerMode", ""));
+                        if (triggerType > 0) merged.put("type", triggerType);
+                    }
+                    if (widget.optInt("craftComponentId", -1) == 115) {
+                        if (widget.has("craftTimerMode")) {
+                            int timerType = craftTimerType(widget.optString("craftTimerMode", ""));
+                            if (timerType > 0) merged.put("type", timerType);
+                        }
+                        if (widget.has("craftTimerUnit")) {
+                            int timeUnit = craftTimerUnit(widget.optString("craftTimerUnit", ""));
+                            if (timeUnit > 0) merged.put("typeTime", timeUnit);
+                        }
+                    }
                     Object raw = source.opt("jsTableComponent_other");
                     output.put("jsTableComponent_other", raw instanceof String ? merged.toString() : merged);
                 }
@@ -452,6 +467,25 @@ public final class CraftProjectExporter {
             String text = String.valueOf(value);
             return text.startsWith("#") ? (longColor(text)) : Integer.parseInt(text);
         } catch (Exception ignored) { return fallback; }
+    }
+    private static int craftTriggerType(String mode) {
+        if ("T".equals(mode)) return 1;
+        if ("R".equals(mode)) return 2;
+        if ("F".equals(mode)) return 3;
+        return 0;
+    }
+    private static int craftTimerType(String mode) {
+        if ("TON".equals(mode)) return 1;
+        if ("TOF".equals(mode)) return 2;
+        if ("TP".equals(mode)) return 3;
+        if ("BLINK".equals(mode)) return 4;
+        return 0;
+    }
+    private static int craftTimerUnit(String unit) {
+        if ("MS".equals(unit)) return 1;
+        if ("SEK".equals(unit)) return 2;
+        if ("MIN".equals(unit)) return 3;
+        return 0;
     }
     private static int longColor(String value) { return (int) Long.parseLong(value.substring(1), 16); }
     private static boolean sameJson(JSONArray left, JSONArray right) {

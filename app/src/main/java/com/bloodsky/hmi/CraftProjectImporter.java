@@ -421,6 +421,8 @@ public final class CraftProjectImporter {
                 widget.put("craftTimerMode", timerMode(other.optInt("type", 1)));
                 widget.put("craftTimerUnit", timerUnit(other.optInt("typeTime", 1)));
             }
+            if ("FBD CRAFT T".equals(type))
+                widget.put("craftTriggerMode", triggerMode(other.optInt("type", 1)));
             int compareAction = other.optInt("compareAction", 0);
             if (type.contains("ARITHMETIC")) widget.put("compareOperator", arithmeticOperator(compareAction));
             else if (type.contains("COMPARE")) widget.put("compareOperator", comparisonOperator(compareAction));
@@ -593,6 +595,10 @@ public final class CraftProjectImporter {
 
     private static String timerUnit(int unit) {
         switch (unit) { case 2: return "SEK"; case 3: return "MIN"; default: return "MS"; }
+    }
+
+    private static String triggerMode(int mode) {
+        switch (mode) { case 2: return "R"; case 3: return "F"; default: return "T"; }
     }
 
     private static String arithmeticOperator(int action) {
