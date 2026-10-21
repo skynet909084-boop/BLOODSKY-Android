@@ -68,3 +68,20 @@ def load_checkpoint(path: Path, *, apk_sha256: str, profile: str = "full") -> di
     if not all(isinstance(path_item, list) for path_item in data["pending_paths"]):
         raise ValueError("checkpoint frontier paths must be arrays")
     return data
+
+
+def configured_state_limit(profile: str, requested=None) -> int:
+    """Return the safe traversal cap; quick runs stay short and full is capped at 300."""
+    if profile == "quick":
+        return 12
+    if profile != "full":
+        raise ValueError("profile must be quick or full")
+    if requested in (None, ""):
+        return 300
+    try:
+        limit = int(requested)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("max_states must be an integer from 1 to 300") from exc
+    if not 1 <= limit <= 300:
+        raise ValueError("max_states must be between 1 and 300")
+    return limit
