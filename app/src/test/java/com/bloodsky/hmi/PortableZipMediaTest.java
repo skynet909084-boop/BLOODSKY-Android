@@ -644,12 +644,13 @@ public class PortableZipMediaTest {
 
         JSONObject deletedWidgetProject = new JSONObject(editedCraftProject.toString());
         deletedWidgetProject.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets").remove(1);
-        try {
-            CraftProjectExporter.export(deletedWidgetProject.toString());
-            fail("Structural edits must be rejected until Craft row deletion is safely mapped");
-        } catch (java.io.IOException expected) {
-            assertTrue(expected.getMessage().contains("Удаление компонентов"));
-        }
+        JSONObject deletedSource = new JSONObject(CraftProjectExporter.export(deletedWidgetProject.toString()));
+        assertEquals(1, deletedSource.getJSONArray("TableComponent").length());
+        assertEquals("Edited in acceptance test", deletedSource.getJSONArray("TableComponent")
+                .getJSONObject(0).getString("text"));
+        JSONObject restoredAfterDelete = new JSONObject(CraftProjectImporter.convert(deletedSource.toString()));
+        assertEquals(1, restoredAfterDelete.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").length());
     }
 
     @Test public void editedCraftIndicatorImageIsWrittenToProAndBundled() throws Exception {
