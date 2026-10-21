@@ -313,6 +313,17 @@ final class FbdCraftMacroGraphAdapter {
                     int unit = timerUnitCode(widget.optString("craftTimerUnit", ""));
                     if (unit > 0) child.put("typeTime", unit);
                 }
+            } else if (componentId == 109) {
+                if (widget.has("craftSwapWord"))
+                    child.put("isHighRegister", widget.optBoolean("craftSwapWord"));
+                if (widget.has("craftSwapByte"))
+                    child.put("isHighByte", widget.optBoolean("craftSwapByte"));
+            } else if (componentId == 117 && widget.has("craftSensorAxis")) {
+                int axis = widget.optInt("craftSensorAxis", -1);
+                if (axis >= 1 && axis <= 3) child.put("type", axis);
+            } else if (componentId == 119 && widget.has("craftSunriseMode")) {
+                int mode = sunriseType(widget.optString("craftSunriseMode", ""));
+                if (mode > 0) child.put("type", mode);
             }
         }
         return result;
@@ -337,6 +348,12 @@ final class FbdCraftMacroGraphAdapter {
         if ("MS".equals(unit)) return 1;
         if ("SEK".equals(unit)) return 2;
         if ("MIN".equals(unit)) return 3;
+        return 0;
+    }
+
+    private static int sunriseType(String mode) {
+        if ("SR".equals(mode)) return 1;
+        if ("SS".equals(mode)) return 2;
         return 0;
     }
 }
