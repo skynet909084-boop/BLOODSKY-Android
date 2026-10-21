@@ -4,7 +4,7 @@ package com.bloodsky.hmi;
  * Independently testable transition model based on pinned original Craft
  * FB_TIMER.java f(), SHA256 e92072664732a19373a21afb21bb33837c412f8b7b711f3814d80bddca53c9f7.
  *
- * This is NOT connected to existing BLOODSKY TON/TOF/TP runtime or palette.
+ * Used by the imported Craft timer runtime and the Craft BLINK block.
  * Source's System.currentTimeMillis() is injected for deterministic tests.
  * The source constructor explicitly initializes d0=false (lines 23-51).
  * Native mode TP (3) has no visible 'output=true' assignment in f()
@@ -120,5 +120,15 @@ public final class FbdCraftNativeTimer {
     public static boolean output(State state, boolean inverted) {
         if (state == null) throw new IllegalArgumentException("missing timer state");
         return inverted ? !state.output : state.output;
+    }
+
+    /** Whether an operator-mode redraw is needed to advance a running Craft timer. */
+    public static boolean needsRedraw(int mode, State state, long nowMillis,
+                                      long durationMillis) {
+        if (state == null || durationMillis < 1 || mode < TON || mode > BLINK) return false;
+        // BLINK alternates in two phases while armed; the phase boundary itself
+        // is advanced by the next FBD scan, so keep scheduling frames throughout.
+        if (mode == BLINK) return state.armed;
+        return state.started && nowMillis - state.startMillis < durationMillis;
     }
 }

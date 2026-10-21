@@ -150,4 +150,22 @@ public class FbdCraftNativeTimerTest {
             fail("Zero duration accepted");
         } catch (IllegalArgumentException expected) {}
     }
+
+    @Test public void operatorRedrawContinuesOnlyWhileTimerCanStillChange() {
+        FbdCraftNativeTimer.State active = new FbdCraftNativeTimer.State(false, true, true, 100);
+        assertTrue(FbdCraftNativeTimer.needsRedraw(FbdCraftNativeTimer.TON, active, 149, 50));
+        assertFalse(FbdCraftNativeTimer.needsRedraw(FbdCraftNativeTimer.TON, active, 150, 50));
+        assertTrue(FbdCraftNativeTimer.needsRedraw(FbdCraftNativeTimer.TOF, active, 149, 50));
+        assertTrue(FbdCraftNativeTimer.needsRedraw(FbdCraftNativeTimer.TP, active, 149, 50));
+
+        FbdCraftNativeTimer.State blinkOffPhase = new FbdCraftNativeTimer.State(false,
+                false, true, 100);
+        assertTrue("BLINK needs another scan after toggling into its off phase",
+                FbdCraftNativeTimer.needsRedraw(FbdCraftNativeTimer.BLINK,
+                        blinkOffPhase, 1000, 50));
+        assertFalse(FbdCraftNativeTimer.needsRedraw(FbdCraftNativeTimer.BLINK,
+                FbdCraftNativeTimer.State.initial(), 1000, 50));
+        assertFalse(FbdCraftNativeTimer.needsRedraw(FbdCraftNativeTimer.TON,
+                active, 149, 0));
+    }
 }

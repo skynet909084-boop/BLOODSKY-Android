@@ -9807,11 +9807,13 @@ public class MainActivity extends Activity {
         if ("FBD CRAFT TIMER".equals(canonicalType)) {
             if (!fbdCraftTimerInputsReady(numInputs, inputPins)) {
                 cacheNumeric[index] = Double.NaN;
+                widget.craftTimerRuntimePresetMs = 0L;
                 return false;
             }
             boolean input = fbdBooleanPinValue(inputs, inputPins, "IN", 0);
             long presetMs = fbdCraftTimerPresetMs(numInputs, inputPins, widget.timerPresetMs,
                     widget.extraFields.optString("craftTimerUnit", "MS"));
+            widget.craftTimerRuntimePresetMs = presetMs;
             FbdCraftNativeTimer.State prior = widget.craftTimerState == null
                     ? FbdCraftNativeTimer.State.initial() : widget.craftTimerState;
             String mode = widget.extraFields.optString("craftTimerMode", "TON");
@@ -10558,6 +10560,7 @@ public class MainActivity extends Activity {
         // Blink runtime epoch is not saved; a newly opened project starts idle.
         FbdCraftNativeTimer.State craftBlinkState = FbdCraftNativeTimer.State.initial();
         FbdCraftNativeTimer.State craftTimerState = FbdCraftNativeTimer.State.initial();
+        transient long craftTimerRuntimePresetMs;
         boolean craftArrayLastEnable = false;
         transient double craftSensorValue = Double.NaN;
         transient Double craftMqttValue;
@@ -11278,6 +11281,23 @@ public class MainActivity extends Activity {
                         && SystemClock.elapsedRealtime() - widget.timerStartedAt < widget.timerPresetMs) {
                     postInvalidateDelayed(100L);
                     break;
+                }
+                if ("FBD CRAFT BLINK".equals(widget.type)
+                        && FbdCraftNativeTimer.needsRedraw(FbdCraftNativeTimer.BLINK,
+                        widget.craftBlinkState, System.currentTimeMillis(), widget.timerPresetMs)) {
+                    postInvalidateDelayed(100L);
+                    break;
+                }
+                if ("FBD CRAFT TIMER".equals(widget.type)) {
+                    String mode = widget.extraFields.optString("craftTimerMode", "TON");
+                    int modeCode = "TOF".equals(mode) ? FbdCraftNativeTimer.TOF
+                            : "TP".equals(mode) ? FbdCraftNativeTimer.TP
+                            : "BLINK".equals(mode) ? FbdCraftNativeTimer.BLINK : FbdCraftNativeTimer.TON;
+                    if (FbdCraftNativeTimer.needsRedraw(modeCode, widget.craftTimerState,
+                            System.currentTimeMillis(), widget.craftTimerRuntimePresetMs)) {
+                        postInvalidateDelayed(100L);
+                        break;
+                    }
                 }
             }
             if (marqueeActive && dragging) {
