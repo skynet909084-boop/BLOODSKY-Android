@@ -8819,7 +8819,8 @@ public class MainActivity extends Activity {
         boolean targetBlockKnown = knownFbdPins(targetType, true).length > 0
                 || knownFbdPins(targetType, false).length > 0;
         if ((sourceBlockKnown && sourceKnown == null) || (targetBlockKnown && targetKnown == null)) return false;
-        if (sourceKnown != null && targetKnown != null && !sourceKnown.equals(targetKnown)) return false;
+        if (sourceKnown != null && targetKnown != null
+                && !FbdCraftPinTypes.compatible(sourceKnown, targetKnown)) return false;
         String sourceExact = FbdCraftPinTypes.typeForBlock(sourceType, sourcePin, true);
         String targetExact = FbdCraftPinTypes.typeForBlock(targetType, targetPin, false);
         if (!FbdCraftPinTypes.compatible(sourceExact, targetExact)) return false;
@@ -8845,7 +8846,8 @@ public class MainActivity extends Activity {
         boolean targetBlockKnown = knownFbdPins(targetWidget, true).length > 0
                 || knownFbdPins(targetWidget, false).length > 0;
         if ((sourceBlockKnown && sourceKnown == null) || (targetBlockKnown && targetKnown == null)) return false;
-        if (sourceKnown != null && targetKnown != null && !sourceKnown.equals(targetKnown)) return false;
+        if (sourceKnown != null && targetKnown != null
+                && !FbdCraftPinTypes.compatible(sourceKnown, targetKnown)) return false;
         String sourceExact = FbdCraftPinTypes.typeForWidget(sourceWidget, sourcePin, true);
         String targetExact = FbdCraftPinTypes.typeForWidget(targetWidget, targetPin, false);
         if (!FbdCraftPinTypes.compatible(sourceExact, targetExact)) return false;

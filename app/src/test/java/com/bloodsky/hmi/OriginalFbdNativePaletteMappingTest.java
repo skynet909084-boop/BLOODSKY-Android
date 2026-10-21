@@ -166,7 +166,7 @@ public class OriginalFbdNativePaletteMappingTest {
         assertArrayEquals(new String[]{"IN", "MS"}, MainActivity.knownFbdPins(timer, false));
         assertArrayEquals(new String[]{"Q"}, MainActivity.knownFbdPins(timer, true));
         assertEquals("BOOL", MainActivity.knownFbdPinType(timer, "IN", false));
-        assertEquals("NUMBER", MainActivity.knownFbdPinType(timer, "MS", false));
+        assertEquals("INT", MainActivity.knownFbdPinType(timer, "MS", false));
         assertEquals("BOOL", MainActivity.knownFbdPinType(timer, "Q", true));
 
         String[] sourceTags = {"SIN", "ABS", "IntToFloat", "FloatToInt"};
