@@ -529,8 +529,9 @@ public final class CraftProjectImporter {
 
     private static int boundedSignedInt(Object value, int fallback, int min, int max) {
         double parsed = decimal(value, fallback);
-        int rounded = (int) Math.round(parsed);
-        return Math.max(min, Math.min(max, rounded));
+        if (parsed <= min) return min;
+        if (parsed >= max) return max;
+        return (int) Math.round(parsed);
     }
 
     private static double decimal(Object value, double fallback) {
