@@ -8909,6 +8909,8 @@ public class MainActivity extends Activity {
                 || "FBD OR".equals(canonicalFbdBlockType(target.type))
                 || "FBD XOR".equals(canonicalFbdBlockType(target.type)))
             return hasCompleteCraftGateInputs(widgets, connections, targetIndex);
+        if ("FBD CRAFT BLINK".equals(canonicalFbdBlockType(target.type)))
+            return hasCraftBlinkInvertibleInputs(widgets, connections, targetIndex);
         if (!supportsFbdBlockOutputInversion(target.type) || connections == null) return false;
 
         String[] required = knownFbdPins(target.type, false);
@@ -8951,6 +8953,33 @@ public class MainActivity extends Activity {
                 return false;
         }
         return true;
+    }
+
+    /** Craft BLINK can use its saved PT when that optional numeric pin is unwired. */
+    private static boolean hasCraftBlinkInvertibleInputs(List<Widget> widgets,
+                                                          List<FbdConnection> connections,
+                                                          int targetIndex) {
+        if (connections == null || targetIndex < 0 || targetIndex >= widgets.size()) return false;
+        boolean hasInput = false;
+        boolean hasPreset = false;
+        for (FbdConnection edge : connections) {
+            if (edge == null || edge.target != targetIndex) continue;
+            if (edge.source < 0 || edge.source >= widgets.size() || edge.extraFields == null) return false;
+            String sourcePin = canonicalFbdPinName(edge.extraFields.optString("sourcePin", ""));
+            String targetPin = canonicalFbdPinName(edge.extraFields.optString("targetPin", ""));
+            if (sourcePin.isEmpty() || targetPin.isEmpty()) return false;
+            String sourceType = knownFbdPinType(widgets.get(edge.source).type, sourcePin, true);
+            String targetType = knownFbdPinType(widgets.get(targetIndex).type, targetPin, false);
+            if (sourceType == null || !sourceType.equals(targetType)) return false;
+            if ("IN".equals(targetPin)) {
+                if (hasInput || !"BOOL".equals(targetType)) return false;
+                hasInput = true;
+            } else if ("PT".equals(targetPin)) {
+                if (hasPreset || !"NUMBER".equals(targetType)) return false;
+                hasPreset = true;
+            } else return false;
+        }
+        return hasInput;
     }
 
     private static boolean hasCompleteCraftGateInputs(List<Widget> widgets,
