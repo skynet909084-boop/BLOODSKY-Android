@@ -30,6 +30,15 @@ public class FbdCraftTypedWireContractsTest {
         assertEquals("FLOAT", FbdCraftPinTypes.typeForBlock("FBD CRAFT VAR FLOAT", "Q", true));
     }
 
+    @Test public void craftTimerPresetRequiresIntegerWhileAcceptingLegacyPinAlias() throws Exception {
+        assertEquals("INT", FbdCraftPinTypes.typeForBlock("FBD CRAFT TIMER", "MS", false));
+        assertEquals("INT", FbdCraftPinTypes.typeForBlock("FBD CRAFT TIMER", "PT", false));
+        assertTrue(wire("FBD CRAFT VAR INT", "Q", "FBD CRAFT TIMER", "MS"));
+        assertTrue(wire("FBD CRAFT VAR INT", "Q", "FBD CRAFT TIMER", "PT"));
+        assertFalse(wire("FBD CRAFT VAR FLOAT", "Q", "FBD CRAFT TIMER", "MS"));
+        assertFalse(wire("FBD CRAFT VAR FLOAT", "Q", "FBD CRAFT TIMER", "PT"));
+    }
+
     private static boolean wire(String sourceType, String sourcePin, String targetType,
                                 String targetPin) throws Exception {
         JSONObject edge = new JSONObject().put("source", 0).put("target", 1)

@@ -8623,7 +8623,12 @@ public class MainActivity extends Activity {
         if (kind.equals("FBD CRAFT TIMER")) {
             if (output && "Q".equals(name)) return "BOOL";
             if (!output && "IN".equals(name)) return "BOOL";
-            if (!output && ("MS".equals(name) || "PT".equals(name))) return "NUMBER";
+            if (!output && ("MS".equals(name) || "PT".equals(name))) return "INT";
+        }
+        if (kind.equals("FBD CRAFT BLINK")) {
+            if (output && "Q".equals(name)) return "BOOL";
+            if (!output && "IN".equals(name)) return "BOOL";
+            if (!output && "PT".equals(name)) return "INT";
         }
         if (kind.equals("FBD CRAFT ARITHMETIC INT")
                 || kind.equals("FBD CRAFT ARITHMETIC FLOAT")) {

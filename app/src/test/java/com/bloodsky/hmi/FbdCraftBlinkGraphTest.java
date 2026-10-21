@@ -29,7 +29,7 @@ public class FbdCraftBlinkGraphTest {
                 MainActivity.knownFbdPins("FBD CRAFT BLINK", true));
         assertEquals("BOOL", MainActivity.knownFbdPinType("FBD CRAFT BLINK", "Q", true));
         assertEquals("BOOL", MainActivity.knownFbdPinType("FBD CRAFT BLINK", "IN", false));
-        assertEquals("NUMBER", MainActivity.knownFbdPinType("FBD CRAFT BLINK", "PT", false));
+        assertEquals("INT", MainActivity.knownFbdPinType("FBD CRAFT BLINK", "PT", false));
         assertArrayEquals(new String[]{"IN"},
                 MainActivity.compatibleFbdTargetPins("FBD Вход", "Q", "FBD CRAFT BLINK"));
         assertArrayEquals(new String[]{"PT"},

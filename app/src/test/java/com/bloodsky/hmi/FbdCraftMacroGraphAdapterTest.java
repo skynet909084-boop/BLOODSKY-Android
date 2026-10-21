@@ -23,8 +23,8 @@ public class FbdCraftMacroGraphAdapterTest {
     @Test public void mapsOriginalCraftTimerContactAndRetainsLegacyPtAlias() {
         assertArrayEquals(new String[]{"IN", "MS"},
                 MainActivity.knownFbdPins("FBD CRAFT TIMER", false));
-        assertEquals("NUMBER", MainActivity.knownFbdPinType("FBD CRAFT TIMER", "MS", false));
-        assertEquals("NUMBER", MainActivity.knownFbdPinType("FBD CRAFT TIMER", "PT", false));
+        assertEquals("INT", MainActivity.knownFbdPinType("FBD CRAFT TIMER", "MS", false));
+        assertEquals("INT", MainActivity.knownFbdPinType("FBD CRAFT TIMER", "PT", false));
         assertEquals(2000L, MainActivity.fbdCraftTimerPresetMs(
                 java.util.Collections.singletonList(2.0), java.util.Collections.singletonList("MS"),
                 1000, "SEK"));
