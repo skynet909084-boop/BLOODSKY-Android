@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 5079)
-Total output lines: 300
-
 package com.bloodsky.hmi;
 
 import org.json.JSONArray;
@@ -151,7 +148,12 @@ public final class CraftProjectExporter {
                         if (triggerType > 0) merged.put("type", triggerType);
                     }
                     if (widget.optInt("craftComponentId", -1) == 115) {
-                   …79 tokens truncated…                    int timeUnit = craftTimerUnit(widget.optString("craftTimerUnit", ""));
+                        if (widget.has("craftTimerMode")) {
+                            int timerType = craftTimerType(widget.optString("craftTimerMode", ""));
+                            if (timerType > 0) merged.put("type", timerType);
+                        }
+                        if (widget.has("craftTimerUnit")) {
+                            int timeUnit = craftTimerUnit(widget.optString("craftTimerUnit", ""));
                             if (timeUnit > 0) merged.put("typeTime", timeUnit);
                         }
                     }

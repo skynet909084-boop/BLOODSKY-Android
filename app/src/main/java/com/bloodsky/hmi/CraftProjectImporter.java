@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 5016)
-Total output lines: 300
-
 package com.bloodsky.hmi;
 
 import android.graphics.Color;
@@ -160,7 +157,9 @@ public final class CraftProjectImporter {
             JSONObject other = objectValue(rawOther);
             JSONObject retained = new JSONObject();
             java.util.Iterator<String> keys = other.keys();
-            while (key…16 tokens truncated…         if (!key.toLowerCase(java.util.Locale.ROOT).contains("cloud"))
+            while (keys.hasNext()) {
+                String key = keys.next();
+                if (!key.toLowerCase(java.util.Locale.ROOT).contains("cloud"))
                     retained.put(key, other.get(key));
             }
             component.put("jsTableComponent_other", rawOther instanceof String ? retained.toString() : retained);
@@ -299,9 +298,6 @@ public final class CraftProjectImporter {
                 }
                 soundPaths.put(resolvedPath);
             }
-Warning: truncated output (original token count: 5283)
-Total output lines: 300
-
             widget.put("craftSoundPaths", soundPaths);
             widget.put("craftSoundEnabled", false);
         }
@@ -443,7 +439,24 @@ Total output lines: 300
                 if (other.has("constant")) widget.put("craftVarConstant", String.valueOf(other.opt("constant")));
             }
             if ("FBD CRAFT VAR OUT FLOAT".equals(type)) {
-                widget.put("craftSwapWord", other.optBoolean("isHighRegister", false…283 tokens truncated…Fields.keys();
+                widget.put("craftSwapWord", other.optBoolean("isHighRegister", false));
+                widget.put("craftSwapByte", other.optBoolean("isHighByte", false));
+            }
+            if ("FBD CRAFT SENSOR ORIENTATION".equals(type))
+                widget.put("craftSensorAxis", Math.max(1, Math.min(3, other.optInt("type", 1))));
+            if ("FBD CRAFT SUNRISE".equals(type))
+                widget.put("craftSunriseMode", other.optInt("type", 1) == 2 ? "SS" : "SR");
+            if (type.startsWith("FBD CRAFT MQTT ")) {
+                widget.put("craftMqttTopic", other.optString("topic", ""));
+                widget.put("craftMqttType", other.optInt("typeQ", other.optInt("typeIn", 1)));
+                widget.put("craftMqttServer", other.optInt("numMqttServer", 1));
+                if (other.has("mqttRetain")) widget.put("craftMqttRetain", other.optBoolean("mqttRetain"));
+            }
+        }
+        if (componentId == 8) {
+            JSONObject numericConnection = objectValue(source.opt("jsTableComponent_connectionInfo"));
+            JSONObject numericFields = CraftNumericInput.fromCraft(numericConnection, other);
+            java.util.Iterator<String> numericKeys = numericFields.keys();
             while (numericKeys.hasNext()) {
                 String key = numericKeys.next();
                 widget.put(key, numericFields.get(key));
