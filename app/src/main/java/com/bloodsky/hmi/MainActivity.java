@@ -9055,7 +9055,8 @@ private String archiveProjectKey() {
             return;
         }
         final Screen screen = screens.get(currentScreenIndex);
-        final ArrayList<Integer> selection = new ArrayList<>(editor.selectedWidgets);
+        final ArrayList<Integer> originalSelection = new ArrayList<>(editor.selectedWidgets);
+        final ArrayList<Integer> selection = new ArrayList<>(originalSelection);
         if (selection.isEmpty()) selection.add(editor.selected);
         // WidgetClipboard.deleteSelection renumbers edges and positional
         // result bindings in place. Snapshot their original identities and
@@ -9117,7 +9118,7 @@ private String archiveProjectKey() {
                 projectExtraFields = originalProjectFields;
                 editor.selected = originalFocused;
                 editor.selectedWidgets.clear();
-                editor.selectedWidgets.addAll(selection);
+                editor.selectedWidgets.addAll(originalSelection);
                 saveActiveScreen();
                 editor.invalidate();
             }
