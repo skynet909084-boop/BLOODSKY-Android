@@ -4960,7 +4960,8 @@ public class MainActivity extends Activity {
 
     private void showStandardWidgetContextMenu() {
         // The editor context menu must never be usable in operator/runtime mode.
-        if (operatorMode || editor == null || editor.selected < 0
+        if (operatorMode || editor == null || currentScreenIndex < 0
+                || currentScreenIndex >= screens.size() || editor.selected < 0
                 || editor.selected >= widgets.size()) return;
 
         Widget selectedWidget = widgets.get(editor.selected);
@@ -4979,6 +4980,36 @@ public class MainActivity extends Activity {
         scroll.addView(list);
 
         final AlertDialog[] menu = new AlertDialog[1];
+        // Indicators have their own original two-state artwork selector.
+        // Expose it directly without discarding the normal type-specific settings.
+        if (OriginalIndicator.supports(selectedWidget.type)) {
+            TextView imagesAction = new TextView(this);
+            imagesAction.setText("Изображения ВКЛ / ВЫКЛ");
+            imagesAction.setTextSize(16);
+            imagesAction.setTextColor(Color.rgb(237, 176, 59));
+            imagesAction.setGravity(Gravity.CENTER_VERTICAL);
+            imagesAction.setPadding(dp(18), dp(10), dp(10), dp(10));
+            imagesAction.setMinimumHeight(dp(54));
+            imagesAction.setFocusable(true);
+            imagesAction.setClickable(true);
+            imagesAction.setContentDescription(selectedWidget.type + ": Изображения ВКЛ / ВЫКЛ");
+            imagesAction.setBackgroundColor(Color.rgb(48, 48, 48));
+            imagesAction.setOnClickListener(v -> {
+                if (menu[0] != null) menu[0].dismiss();
+                if (operatorMode || editor != menuCanvas
+                        || currentScreenIndex != menuScreenIndex
+                        || currentScreenIndex >= screens.size()
+                        || screens.get(currentScreenIndex) != menuScreen
+                        || editor.selected < 0 || editor.selected >= widgets.size()
+                        || widgets.get(editor.selected) != selectedWidget) {
+                    Toast.makeText(this, "Элемент изменён: выбери его заново",
+                            Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                showIndicatorImages(selectedWidget);
+            });
+            list.addView(imagesAction, new LinearLayout.LayoutParams(-1, -2));
+        }
         // Route the primary action to the existing type-specific property editor.
         // Its original dialog is chosen by editSelectedWidget(), not a generic form.
         final String primaryLabel;
