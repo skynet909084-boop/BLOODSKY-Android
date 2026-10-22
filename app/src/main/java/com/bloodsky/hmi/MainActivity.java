@@ -10683,6 +10683,11 @@ public class MainActivity extends Activity {
                         visiting, cacheValid, cacheValues, cacheNumeric);
                 double sourceNumber = evaluateFbdBlockNumeric(widgetsList, connectionsList,
                         edge.source, visiting, cacheValid, cacheValues, cacheNumeric);
+                // A BOOL evaluator returns false both for a valid false signal and for
+                // unavailable sources. Preserve availability separately across the port.
+                boolean sourceAvailable = widgetsList.get(edge.source).fbdOutputAvailable;
+                if (!sourceAvailable || (input.type != 1 && !Double.isFinite(sourceNumber)))
+                    continue;
                 inputNode.craftMacroInputValue = input.type == 1
                         ? (sourceBool ? 1.0 : 0.0) : sourceNumber;
                 inputNode.craftMacroInputValid = true;
