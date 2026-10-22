@@ -13723,6 +13723,91 @@ private String archiveProjectKey() {
             });
         }
 
+        /** Legacy two-button setpoint: safe local step or FC06 holding-register write. */
+        private void adjustSetpoint(Widget widget, int direction) {
+            if (!operatorMode || !activityResumed || editor != this
+                    || widget == null || direction == 0) return;
+            final int index = widgets.indexOf(widget);
+            if (index < 0 || !"Задатчик".equals(widget.type)) return;
+            final double min = Math.min(widget.minValue, widget.maxValue);
+            final double max = Math.max(widget.minValue, widget.maxValue);
+            if (!Double.isFinite(min) || !Double.isFinite(max)
+                    || min < Integer.MIN_VALUE || max > Integer.MAX_VALUE) {
+                Toast.makeText(MainActivity.this, "Некорректный диапазон задатчика",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+            final int lower = (int) Math.ceil(min), upper = (int) Math.floor(max);
+            if (lower > upper) return;
+            final int oldValue = widget.extraFields.optInt("bloodskySetpointValue", lower);
+            final int step = Math.max(1, Math.min(65535,
+                    widget.extraFields.optInt("bloodskySetpointStep", 1)));
+            final long requested = (long) oldValue + (direction < 0 ? -(long) step : step);
+            final int next = (int) Math.max(lower, Math.min(upper, requested));
+            if (next == oldValue) return;
+            final String connection = widget.connectionInfo == null ? "" : widget.connectionInfo.trim();
+            final BindingRequest binding = connection.isEmpty() ? null : parseBinding(-1, connection);
+            if (!connection.isEmpty() && (binding == null || binding.functionCode != 3
+                    || next < 0 || next > 65535)) {
+                Toast.makeText(MainActivity.this,
+                        "Для задатчика нужен TCP holding-регистр FC03/FC06 (0–65535)",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+            final EditorCanvas originalCanvas = this;
+            final Screen originalScreen = currentScreenIndex >= 0
+                    && currentScreenIndex < screens.size() ? screens.get(currentScreenIndex) : null;
+            final int originalScreenIndex = currentScreenIndex;
+            final Runnable apply = () -> {
+                if (!operatorMode || !activityResumed || editor != originalCanvas
+                        || originalScreen == null || currentScreenIndex != originalScreenIndex
+                        || currentScreenIndex < 0 || currentScreenIndex >= screens.size()
+                        || screens.get(currentScreenIndex) != originalScreen
+                        || index >= widgets.size() || widgets.get(index) != widget) return;
+                JSONObject previous = widget.extraFields;
+                try {
+                    widget.extraFields = new JSONObject(previous.toString());
+                    widget.extraFields.put("bloodskySetpointValue", next);
+                    if (!persistProjectNow(true)) {
+                        widget.extraFields = previous;
+                        saveActiveScreen();
+                        Toast.makeText(MainActivity.this, "Не удалось сохранить уставку",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    liveValues.put(index, Integer.toString(next));
+                    invalidate();
+                    Toast.makeText(MainActivity.this, "Уставка: " + next, Toast.LENGTH_SHORT).show();
+                } catch (Exception failure) {
+                    widget.extraFields = previous;
+                    saveActiveScreen();
+                    Toast.makeText(MainActivity.this, "Не удалось изменить уставку",
+                            Toast.LENGTH_LONG).show();
+                }
+            };
+            if (binding == null) {
+                apply.run();
+                return;
+            }
+            modbusExecutor.execute(() -> {
+                Exception failure = null;
+                try {
+                    if (!operatorMode || !activityResumed || editor != originalCanvas
+                            || !widgets.contains(widget)) throw new IOException("Рабочий режим остановлен");
+                    new ModbusTcpClient(binding.host, binding.port)
+                            .writeSingle(binding.unit, binding.address, next);
+                } catch (Exception error) { failure = error; }
+                final Exception result = failure;
+                runOnUiThread(() -> {
+                    if (result == null) apply.run();
+                    else if (editor == originalCanvas && widgets.contains(widget))
+                        Toast.makeText(MainActivity.this,
+                                "Ошибка записи уставки: " + describeModbusError(result),
+                                Toast.LENGTH_LONG).show();
+                });
+            });
+        }
+
         private void openCraftLinearSetter(Widget widget, int widgetIndex) {
             final int maximum = CraftLinearSetter.maximum(widget.extraFields);
             final int initial = CraftLinearSetter.value(widget.extraFields, liveValues.get(widgetIndex));
