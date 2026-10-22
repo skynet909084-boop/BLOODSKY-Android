@@ -13965,45 +13965,130 @@ private String archiveProjectKey() {
             });
         }
 
+        /** Delayed operator dialogs must never commit into a replaced canvas/page. */
+        private boolean isRuntimeWidgetCurrent(Widget widget, int index,
+                Screen originalScreen, int originalScreenIndex) {
+            return activityResumed && operatorMode && editor == this
+                    && originalScreen != null && originalScreenIndex >= 0
+                    && currentScreenIndex == originalScreenIndex
+                    && currentScreenIndex < screens.size()
+                    && screens.get(currentScreenIndex) == originalScreen
+                    && index >= 0 && index < widgets.size()
+                    && widgets.get(index) == widget;
+        }
+
+        /** Apply an operator value only when its project snapshot persists. */
+        private boolean saveRuntimeLinearSetpoint(Widget widget, int index, int next,
+                Screen originalScreen, int originalScreenIndex) {
+            if (!isRuntimeWidgetCurrent(widget, index, originalScreen, originalScreenIndex))
+                return false;
+            JSONObject oldFields = widget.extraFields;
+            JSONObject oldProject = projectExtraFields;
+            try {
+                widget.extraFields = new JSONObject(oldFields.toString());
+                widget.extraFields.put("craftLinearValue", next);
+                if (!persistProjectNow(true)) {
+                    widget.extraFields = oldFields;
+                    projectExtraFields = oldProject;
+                    saveActiveScreen();
+                    Toast.makeText(MainActivity.this, "Не удалось сохранить уставку",
+                            Toast.LENGTH_LONG).show();
+                    return false;
+                }
+                liveValues.put(index, Integer.toString(next));
+                invalidate();
+                return true;
+            } catch (Exception error) {
+                widget.extraFields = oldFields;
+                projectExtraFields = oldProject;
+                saveActiveScreen();
+                Toast.makeText(MainActivity.this, "Не удалось сохранить уставку",
+                        Toast.LENGTH_LONG).show();
+                return false;
+            }
+        }
+
         private void openCraftLinearSetter(Widget widget, int widgetIndex) {
+            final int openingScreenIndex = currentScreenIndex;
+            final Screen openingScreen = openingScreenIndex >= 0
+                    && openingScreenIndex < screens.size()
+                    ? screens.get(openingScreenIndex) : null;
+            if (!isRuntimeWidgetCurrent(widget, widgetIndex, openingScreen, openingScreenIndex))
+                return;
             final int maximum = CraftLinearSetter.maximum(widget.extraFields);
             final int initial = CraftLinearSetter.value(widget.extraFields, liveValues.get(widgetIndex));
-            final BindingRequest binding = parseBinding(-1, widget.connectionInfo);
-            if (widget.connectionInfo != null && !widget.connectionInfo.trim().isEmpty() && (binding == null || binding.functionCode != 3)) {
-                Toast.makeText(MainActivity.this, "Проверь TCP holding-регистр FC03/FC06", Toast.LENGTH_LONG).show(); return;
+            final String connection = widget.connectionInfo == null ? ""
+                    : widget.connectionInfo.trim();
+            final BindingRequest binding = connection.isEmpty() ? null
+                    : parseBinding(-1, connection);
+            if (!connection.isEmpty() && (binding == null || binding.functionCode != 3)) {
+                Toast.makeText(MainActivity.this, "Проверь TCP holding-регистр FC03/FC06",
+                        Toast.LENGTH_LONG).show();
+                return;
             }
             android.widget.LinearLayout form = new android.widget.LinearLayout(MainActivity.this);
-            form.setOrientation(android.widget.LinearLayout.VERTICAL); form.setPadding(dp(22), dp(14), dp(22), dp(4));
-            TextView current = new TextView(MainActivity.this); current.setText(initial + " / " + maximum); form.addView(current);
-            android.widget.SeekBar slider = new android.widget.SeekBar(MainActivity.this); slider.setMax(maximum); slider.setProgress(initial);
-            if (widget.extraFields.optBoolean("craftLinearVertical", false)) slider.setRotation(270f);
+            form.setOrientation(android.widget.LinearLayout.VERTICAL);
+            form.setPadding(dp(22), dp(14), dp(22), dp(4));
+            TextView current = new TextView(MainActivity.this);
+            current.setText(initial + " / " + maximum);
+            form.addView(current);
+            android.widget.SeekBar slider = new android.widget.SeekBar(MainActivity.this);
+            slider.setMax(maximum);
+            slider.setProgress(initial);
+            if (widget.extraFields.optBoolean("craftLinearVertical", false))
+                slider.setRotation(270f);
             form.addView(slider);
             slider.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
-                @Override public void onProgressChanged(android.widget.SeekBar seekBar, int progress, boolean fromUser) { current.setText(progress + " / " + maximum); }
-                @Override public void onStartTrackingTouch(android.widget.SeekBar seekBar) { }
-                @Override public void onStopTrackingTouch(android.widget.SeekBar seekBar) { }
+                @Override public void onProgressChanged(android.widget.SeekBar seekBar,
+                        int progress, boolean fromUser) {
+                    current.setText(progress + " / " + maximum);
+                }
+                @Override public void onStartTrackingTouch(android.widget.SeekBar seekBar) {}
+                @Override public void onStopTrackingTouch(android.widget.SeekBar seekBar) {}
             });
-            new AlertDialog.Builder(MainActivity.this).setTitle(widget.text == null || widget.text.isEmpty() ? "Линейный задатчик" : widget.text)
+            new AlertDialog.Builder(MainActivity.this)
+                    .setTitle(widget.text == null || widget.text.isEmpty()
+                            ? "Линейный задатчик" : widget.text)
                     .setView(form).setNegativeButton("Отмена", null)
-                    .setPositiveButton("Задать", (d, which) -> {
-                        int next = slider.getProgress();
+                    .setPositiveButton("Задать", (dialog, which) -> {
+                        if (!isRuntimeWidgetCurrent(widget, widgetIndex,
+                                openingScreen, openingScreenIndex)) {
+                            Toast.makeText(MainActivity.this,
+                                    "Экран изменился: повторно открой задатчик",
+                                    Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                        final int next = slider.getProgress();
                         if (binding == null) {
-                            try { widget.extraFields.put("craftLinearValue", next); } catch (Exception ignored) { }
-                            liveValues.put(widgetIndex, Integer.toString(next)); persistProject(); invalidate(); return;
+                            saveRuntimeLinearSetpoint(widget, widgetIndex, next,
+                                    openingScreen, openingScreenIndex);
+                            return;
                         }
                         modbusExecutor.execute(() -> {
                             Exception failure = null;
                             try {
-                                if (!operatorMode || !activityResumed || !widgets.contains(widget)) throw new IOException("Рабочий режим остановлен");
-                                new ModbusTcpClient(binding.host, binding.port).writeSingle(binding.unit, binding.address, next);
+                                if (!isRuntimeWidgetCurrent(widget, widgetIndex,
+                                        openingScreen, openingScreenIndex))
+                                    throw new IOException("Рабочий режим остановлен");
+                                new ModbusTcpClient(binding.host, binding.port)
+                                        .writeSingle(binding.unit, binding.address, next);
                             } catch (Exception error) { failure = error; }
                             final Exception result = failure;
                             runOnUiThread(() -> {
-                                if (!widgets.contains(widget) || !operatorMode || widgets.indexOf(widget) != widgetIndex) return;
+                                if (!isRuntimeWidgetCurrent(widget, widgetIndex,
+                                        openingScreen, openingScreenIndex)) return;
                                 if (result == null) {
-                                    try { widget.extraFields.put("craftLinearValue", next); } catch (Exception ignored) { }
-                                    liveValues.put(widgetIndex, Integer.toString(next)); persistProject();
-                                } else Toast.makeText(MainActivity.this, "Не удалось записать значение: " + describeModbusError(result), Toast.LENGTH_LONG).show();
+                                    if (!saveRuntimeLinearSetpoint(widget, widgetIndex, next,
+                                            openingScreen, openingScreenIndex))
+                                        Toast.makeText(MainActivity.this,
+                                                "Регистр записан, но проект не сохранён",
+                                                Toast.LENGTH_LONG).show();
+                                } else {
+                                    Toast.makeText(MainActivity.this,
+                                            "Не удалось записать значение: "
+                                                    + describeModbusError(result),
+                                            Toast.LENGTH_LONG).show();
+                                }
                                 invalidate();
                             });
                         });
