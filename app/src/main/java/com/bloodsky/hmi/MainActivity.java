@@ -6140,7 +6140,9 @@ public class MainActivity extends Activity {
             timerLabel.setPadding(0, dp(10), 0, 0);
             form.addView(timerLabel);
             String[] unitValues = {"MS", "SEK", "MIN"};
-            String initialUnit = FbdDurationUnits.normalize(w.extraFields.optString("bloodskyFbdTimeUnit", "MS"));
+            String initialUnit = FbdDurationUnits.editorUnit(originalCraftTimer,
+                    w.extraFields.optString("craftTimerUnit", "MS"),
+                    w.extraFields.optString("bloodskyFbdTimeUnit", "MS"));
             int initialUnitIndex = "SEK".equals(initialUnit) ? 1 : "MIN".equals(initialUnit) ? 2 : 0;
             timerPresetField = propertyField(FbdDurationUnits.display(w.timerPresetMs, initialUnit),
                     InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL

@@ -1,5 +1,7 @@
 package com.bloodsky.hmi;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
 import org.junit.Test;
 import static org.junit.Assert.*;
 
@@ -33,6 +35,39 @@ public class FbdDurationUnitsTest {
         }
         assertEquals(1500, FbdDurationUnits.parse("1.5", "SEK", 1));
         assertEquals(30000, FbdDurationUnits.parse("0,5", "MIN", 1));
+    }
+
+    @Test public void importedCraftTimerUsesItsOriginalUnitInThePropertyEditor() {
+        assertEquals("SEK", FbdDurationUnits.editorUnit(true, "SEK", "MS"));
+        assertEquals("MIN", FbdDurationUnits.editorUnit(true, "MIN", "MS"));
+        assertEquals("MS", FbdDurationUnits.editorUnit(true, "unknown", "MIN"));
+        assertEquals("MIN", FbdDurationUnits.editorUnit(false, "SEK", "MIN"));
+    }
+
+    @Test public void importedCraftTimerUnitSurvivesProjectRoundTrip() throws Exception {
+        for (int originalUnit = 1; originalUnit <= 3; originalUnit++) {
+            JSONObject other = new JSONObject().put("numScreen", 1).put("type", 4)
+                    .put("typeTime", originalUnit).put("vendorTimerFlag", "keep");
+            JSONObject component = new JSONObject().put("componentId", 115)
+                    .put("text", "Craft timer").put("jsTableComponent_other", other);
+            JSONObject source = new JSONObject()
+                    .put("TableNameProject", new JSONObject().put("name", "Timer").put("countScreen", 1))
+                    .put("TableComponent", new JSONArray().put(component))
+                    .put("TableConnections", new JSONArray());
+
+            JSONObject imported = new JSONObject(CraftProjectImporter.convert(source.toString()));
+            JSONObject widget = imported.getJSONArray("screens").getJSONObject(0)
+                    .getJSONArray("widgets").getJSONObject(0);
+            String expectedUnit = originalUnit == 2 ? "SEK" : originalUnit == 3 ? "MIN" : "MS";
+            assertEquals(expectedUnit, FbdDurationUnits.editorUnit(true,
+                    widget.optString("craftTimerUnit"), "MS"));
+
+            JSONObject exported = new JSONObject(CraftProjectExporter.export(imported.toString()));
+            JSONObject exportedOther = exported.getJSONArray("TableComponent").getJSONObject(0)
+                    .getJSONObject("jsTableComponent_other");
+            assertEquals(originalUnit, exportedOther.getInt("typeTime"));
+            assertEquals("keep", exportedOther.getString("vendorTimerFlag"));
+        }
     }
 
     @Test public void modeChangesPreserveUnrelatedMetadata() throws Exception {
