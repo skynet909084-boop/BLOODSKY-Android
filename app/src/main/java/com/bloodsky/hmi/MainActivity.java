@@ -6245,6 +6245,22 @@ public class MainActivity extends Activity {
             }, () -> editSelectedWidget(true));
             return;
         }
+        if (!advanced && "Числовой ввод Craft".equals(w.type)) {
+            CraftNumericInputSettingsDialog.show(this, w.extraFields, updated -> {
+                JSONObject previous = w.extraFields;
+                w.extraFields = updated;
+                if (!persistProjectNow(true)) {
+                    w.extraFields = previous;
+                    saveActiveScreen();
+                    Toast.makeText(this, "Не удалось сохранить числовой ввод",
+                            Toast.LENGTH_LONG).show();
+                    return false;
+                }
+                if (editor != null) editor.invalidate();
+                return true;
+            }, () -> editSelectedWidget(true));
+            return;
+        }
         LinearLayout form = new LinearLayout(this);
         form.setOrientation(LinearLayout.VERTICAL);
         int pad = dp(16);
