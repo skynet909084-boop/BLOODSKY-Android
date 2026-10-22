@@ -6204,6 +6204,27 @@ public class MainActivity extends Activity {
             }, () -> editSelectedWidget(true));
             return;
         }
+        if (!advanced && "Прогресс-бар".equals(w.type)) {
+            CraftProgressBarSettingsDialog.show(this, w.extraFields,
+                    w.minValue, w.maxValue, (updated, min, max) -> {
+                JSONObject previousFields = w.extraFields;
+                double previousMin = w.minValue, previousMax = w.maxValue;
+                w.extraFields = updated;
+                w.minValue = min;
+                w.maxValue = max;
+                if (!persistProjectNow(true)) {
+                    w.extraFields = previousFields;
+                    w.minValue = previousMin;
+                    w.maxValue = previousMax;
+                    saveActiveScreen();
+                    Toast.makeText(this, "Не удалось сохранить шкалу", Toast.LENGTH_LONG).show();
+                    return false;
+                }
+                if (editor != null) editor.invalidate();
+                return true;
+            }, () -> editSelectedWidget(true));
+            return;
+        }
         LinearLayout form = new LinearLayout(this);
         form.setOrientation(LinearLayout.VERTICAL);
         int pad = dp(16);
