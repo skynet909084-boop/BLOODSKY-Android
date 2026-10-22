@@ -4,42 +4,35 @@
 
 | Layer | Status | Evidence |
 |---|---|---|
-| Modbus TCP master | **Implemented** | `ModbusTcpClient`, unit fixtures, production regression tests |
-| RTU framing (CRC16, frames) | **Implemented (framing only)** | `ModbusRtu`, expanded unit tests |
-| RTU serial / USB / Bluetooth transport | **Not implemented** | No Android serial stack, permissions or device tests |
+| Modbus TCP master | **Implemented** | `ModbusTcpClient`, unit fixtures |
+| RTU framing helpers | **Implemented** | `ModbusRtu` on main |
+| RTU stream client | **Porting** | `ModbusRtuClient` from `feat/bluetooth-spp-modbus-rtu-20261022` |
+| USB serial (FTDI/CP210x/…) | **Porting** | `UsbSerialConnector` + mik3y usb-serial-for-android 3.11.0 |
+| Bluetooth Classic SPP | **Porting** | `BluetoothModbusConnection` / `BluetoothRtuBinding` |
 | Hardware / physical device | **Not verified** | Explicit release gate |
 
-Do not describe BLOODSKY as having full Modbus RTU or hardware support until a real transport exists and is tested on device.
+Do **not** claim production RTU support until a physical adapter/device acceptance pass is recorded.
 
-## TCP (production path)
+## Binding URIs (explicit, project-stored)
 
-See also `MODBUS_TCP_TRANSPORT.md`.
+- `tcp://host:port/...` — existing TCP path
+- `usb://<unit>/<register>` — USB RTU after user selects adapter (`UsbSerialBinding`)
+- `bt://AA:BB:CC:DD:EE:FF/<unit>/<register>` — paired SPP only (`BluetoothRtuBinding`)
 
-Supported: FC01/02 (1..2000 bits), FC03/04 (1..125 regs), FC06, FC16 (1..123). Zero-based PDU addresses. Unit 0..255. Per-request sockets. Validation before connect.
+3xxxx/4xxxx register prefixes map to FC04/FC03 as in Craft-style addressing.
 
-## RTU framing
+## Permissions / features
 
-`ModbusRtu`: CRC-16, read/write frames, CRC validation, stream exchange helper for a future serial transport. No Android USB/Bluetooth.
-
-`MainActivity.calculateModbusRtuCrc` / `buildModbusRtuFrame` remain; tests check CRC/frame compatibility.
-
-## Transport interface
-
-`ModbusTransport` + `ModbusTcpClient implements ModbusTransport`.
+- `BLUETOOTH` / `BLUETOOTH_ADMIN` (≤ API 30), `BLUETOOTH_CONNECT`
+- `android.hardware.usb.host` optional
+- `android.hardware.bluetooth` optional
 
 ## Remaining gates
 
-1. Android USB / Bluetooth open-close, permissions, lifecycle
-2. Inter-frame timing on real UARTs
-3. Reconnect after unplug/drop
-4. Original Craft device-picker / system registers
-5. Physical-device acceptance tests
-6. Background service under Doze
+1. Finish landing `ModbusRtuClient`, `UsbSerialSession`, `UsbSerialConnector`, `UsbSerialModbusConnection`, `BluetoothModbusConnection` on this branch
+2. Wire operator polling for `usb://` and `bt://` (off UI thread)
+3. Physical USB + SPP acceptance (no emulator)
+4. Inter-frame timing on real UARTs
+5. Reconnect after detach/drop
 
-## Tests
-
-`ModbusTcpClientTest`, production regression tests, expanded `ModbusRtuTest`, `Batch3ModbusAndSettingsTest`.
-
-```sh
-gradle testDebugUnitTest --tests 'com.bloodsky.hmi.Modbus*'
-```
+Source of the serial stack: branch `feat/bluetooth-spp-modbus-rtu-20261022` (already implemented there; not yet fully on main).
