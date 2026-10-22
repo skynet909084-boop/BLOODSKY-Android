@@ -81,6 +81,40 @@ class CraftRuntimeWriteContractTests(unittest.TestCase):
                 self.assertIn(required, numeric)
         self.assertNotIn("persistProject();", numeric)
 
+    def test_bit_list_restores_local_failed_saves_and_failed_network_choices(self):
+        helper = self.method(self.canvas, "private void restoreCraftBitListChecks(",
+                             "private void openCraftBitList(")
+        self.assertIn("list.setItemChecked(i,", helper)
+        bits = self.method(self.canvas, "private void openCraftBitList(",
+                           "private void activateCraftSwitch(") if (
+            self.canvas.index("private void openCraftBitList(")
+            < self.canvas.index("private void activateCraftSwitch(")
+        ) else self.canvas.split("private void openCraftBitList(", 1)[1].split(
+            "\n        private ", 1
+        )[0]
+        for required in (
+            "final Screen openingScreen",
+            "isRuntimeWidgetCurrent(widget, widgetIndex,",
+            "craftListCheckNoChange",
+            "final int[] confirmedMask",
+            "final int[] changeSequence",
+            "new JSONObject(previous.toString())",
+            'widget.extraFields.put("craftListInitialMask", next)',
+            "if (!persistProjectNow(true))",
+            "widget.extraFields = previous",
+            "projectExtraFields = previousProject",
+            "restoreCraftBitListChecks(d, bits, previousMask)",
+            "final int sequence = ++changeSequence[0]",
+            "writeSingle(",
+            "if (result == null) confirmedMask[0] = requestedMask",
+            "if (sequence == changeSequence[0])",
+            "mask[0] = confirmedMask[0]",
+            "restoreCraftBitListChecks(d, bits, mask[0])",
+        ):
+            with self.subTest(check=required):
+                self.assertIn(required, bits)
+        self.assertNotIn("persistProject();", bits)
+
     def test_craft_switch_prevents_double_write_and_waits_for_fc22_success(self):
         self.assertIn("transient boolean craftSwitchWritePending;", self.source)
         switch = self.method(self.canvas, "private void activateCraftSwitch(",
