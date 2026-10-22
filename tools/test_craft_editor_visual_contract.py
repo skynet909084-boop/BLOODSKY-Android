@@ -99,6 +99,8 @@ class CraftEditorVisualContractTests(unittest.TestCase):
         menu = self.source.split("private void showStandardWidgetContextMenu()", 1)[1].split(
             "private void ", 1)[0]
         self.assertIn("new ArrayList<>(editor.selectedWidgets)", menu)
+        self.assertIn("final int menuFocusedIndex = editor.selected", menu)
+        self.assertEqual(menu.count("editor.selected != menuFocusedIndex"), 2)
         self.assertEqual(menu.count("!editor.selectedWidgets.equals(menuSelection)"), 2)
         self.assertIn("menuSelectionWidgets.add(widgets.get(selectionIndex))", menu)
         self.assertEqual(menu.count("sameSelectedWidgetObjects(menuSelection, menuSelectionWidgets)"), 2)
