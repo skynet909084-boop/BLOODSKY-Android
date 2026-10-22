@@ -59,11 +59,16 @@ final class CraftButtonCompactSettings {
         other.put("visibleInWork", visible);
         result.put("craftOther", otherRaw instanceof String ? other.toString() : other);
         boolean bitChanged = bit != bit(fields);
+        boolean sourceRegisterChanged = register != sourceRegister(fields);
         result.put("craftButtonBit", bit);
         result.put("craftButtonVisibleInWork", visible);
-        // Changing the target bit requires deliberate reconfirmation in advanced
-        // settings. Keep the existing endpoint inert until the operator opts in.
-        if (bitChanged) result.put("craftButtonBitEnabled", false);
+        // Changing the original register/bit invalidates prior approval for
+        // the explicitly remapped TCP write. Do not switch the active endpoint
+        // behind the operator's back; require reconfirmation in Advanced.
+        if (bitChanged || sourceRegisterChanged)
+            result.put("craftButtonBitEnabled", false);
+        if (sourceRegisterChanged)
+            result.put("craftButtonConstantEnabled", false);
         // Caption is stored on the Widget itself, not in original Craft internals.
         return result;
     }

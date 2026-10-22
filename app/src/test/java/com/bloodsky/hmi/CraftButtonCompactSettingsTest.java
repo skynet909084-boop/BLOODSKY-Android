@@ -37,6 +37,8 @@ public class CraftButtonCompactSettingsTest {
                 .put("craftButtonMode", 0)
                 .put("craftButtonBit", 3)
                 .put("craftButtonBitEnabled", true)
+                .put("craftConnectionInfo", new JSONObject().put("addressRegister", 1)
+                        .put("addressBit", 3))
                 .put("connectionInfo", "tcp://192.168.1.5:502/1/40001");
         JSONObject same = CraftButtonCompactSettings.withSettings(
                 fields, 1, 3, "Hold", true);
@@ -46,6 +48,30 @@ public class CraftButtonCompactSettingsTest {
         assertFalse(changed.getBoolean("craftButtonBitEnabled"));
         assertEquals("tcp://192.168.1.5:502/1/40001", changed.getString("connectionInfo"));
         assertTrue(fields.getBoolean("craftButtonBitEnabled"));
+    }
+
+    @Test public void sourceRegisterChangeRevokesBothTcpWriteModesWithoutRemovingBinding()
+            throws Exception {
+        JSONObject original = new JSONObject()
+                .put("craftButtonMode", 2).put("craftButtonBit", 4)
+                .put("craftButtonBitEnabled", true).put("craftButtonConstantEnabled", true)
+                .put("craftConnectionInfo", "{\"addressRegister\":41,\"addressBit\":4,\"vendor\":77}")
+                .put("craftOther", "{\"vendorFlag\":true}")
+                .put("connectionInfo", "tcp://192.0.2.1:502/1/40041");
+        JSONObject changed = CraftButtonCompactSettings.withSettings(
+                original, 42, 4, "Relay", true);
+        assertFalse(changed.getBoolean("craftButtonBitEnabled"));
+        assertFalse(changed.getBoolean("craftButtonConstantEnabled"));
+        assertEquals("tcp://192.0.2.1:502/1/40041", changed.getString("connectionInfo"));
+        assertEquals(77, new JSONObject(changed.getString("craftConnectionInfo"))
+                .getInt("vendor"));
+        assertTrue(new JSONObject(changed.getString("craftOther")).getBoolean("vendorFlag"));
+        assertTrue(original.getBoolean("craftButtonBitEnabled"));
+        assertTrue(original.getBoolean("craftButtonConstantEnabled"));
+        JSONObject cosmetic = CraftButtonCompactSettings.withSettings(
+                original, 41, 4, "Relay", false);
+        assertTrue(cosmetic.getBoolean("craftButtonBitEnabled"));
+        assertTrue(cosmetic.getBoolean("craftButtonConstantEnabled"));
     }
 
     @Test public void originalStringFragmentsAndInvalidEditsAreSafe() throws Exception {
