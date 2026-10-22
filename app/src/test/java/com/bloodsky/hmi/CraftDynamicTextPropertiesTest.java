@@ -108,9 +108,10 @@ public class CraftDynamicTextPropertiesTest {
 
     @Test public void stateEditorPreservesCraftStringEncodedFragments() throws Exception {
         JSONObject source = new JSONObject()
-                .put("craftOther", "{\\"sourceKey\\":5}")
-                .put("craftConnectionInfo", "{\\"addressRegister\\":6,\\"manufacturer\\":true}");
-        String[] captions = new String[16];
+                .put("craftOther", new JSONObject().put("sourceKey", 5).toString())
+                .put("craftConnectionInfo", new JSONObject()
+                        .put("addressRegister", 6).put("manufacturer", true).toString());
+                String[] captions = new String[16];
         int[] colors = new int[16];
         java.util.Arrays.fill(captions, "Running");
         JSONObject updated = CraftDynamicTextProperties.withSettings(
