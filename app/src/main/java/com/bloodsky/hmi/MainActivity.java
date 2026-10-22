@@ -4986,6 +4986,14 @@ public class MainActivity extends Activity {
         else if ("Кнопка".equals(selectedWidget.type)
                 || "Константная кнопка Craft".equals(selectedWidget.type)) primaryLabel = "Настройки кнопки";
         else if ("Числовой ввод Craft".equals(selectedWidget.type)) primaryLabel = "Настройки ввода";
+        else if (CraftLabelAppearance.isLabel(selectedWidget.type)) primaryLabel = "Настройки надписи";
+        else if ("Динамический текст".equals(selectedWidget.type)) primaryLabel = "Настройки динамического текста";
+        else if ("Шкала / Стрелка".equals(selectedWidget.type)
+                && selectedWidget.extraFields.optInt("craftComponentId", -1) == 12)
+            primaryLabel = "Настройки пороговой шкалы";
+        else if ("Шкала / Стрелка".equals(selectedWidget.type)
+                && selectedWidget.extraFields.optInt("craftComponentId", -1) == 24)
+            primaryLabel = "Настройки градуированной шкалы";
         else primaryLabel = "Свойства";
         final String[] labels = {primaryLabel, "Расширенные свойства", "Выравнивание", "Копировать", "Удалить"};
         final String[] details = {
@@ -5033,6 +5041,14 @@ public class MainActivity extends Activity {
 
             row.setOnClickListener(v -> {
                 if (menu[0] != null) menu[0].dismiss();
+                // A dialog can outlive a canvas selection or screen change.
+                // Never apply a stale menu action to a different widget.
+                if (operatorMode || editor == null || editor.selected < 0
+                        || editor.selected >= widgets.size()
+                        || widgets.get(editor.selected) != selectedWidget) {
+                    Toast.makeText(this, "Элемент изменён: выбери его заново", Toast.LENGTH_SHORT).show();
+                    return;
+                }
                 if (index == 0) editSelectedWidget();
                 else if (index == 1) editSelectedWidget(true);
                 else if (index == 2) showAlignDialog();
