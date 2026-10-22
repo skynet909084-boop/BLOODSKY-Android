@@ -95,6 +95,14 @@ class CraftEditorVisualContractTests(unittest.TestCase):
         self.assertIn("screens.get(currentScreenIndex) != menuScreen", menu)
         self.assertIn("widgets.get(editor.selected) != selectedWidget", menu)
 
+    def test_context_actions_reject_changed_group_selection(self):
+        menu = self.source.split("private void showStandardWidgetContextMenu()", 1)[1].split(
+            "private void ", 1)[0]
+        self.assertIn("new ArrayList<>(editor.selectedWidgets)", menu)
+        self.assertEqual(menu.count("!editor.selectedWidgets.equals(menuSelection)"), 2)
+        self.assertIn("copySelectedWidget()", menu)
+        self.assertIn("deleteSelectedWidget()", menu)
+
     def test_runtime_never_opens_editor_context_actions(self):
         menu = self.source.split("private void showStandardWidgetContextMenu()", 1)[1].split(
             "private void ", 1)[0]
