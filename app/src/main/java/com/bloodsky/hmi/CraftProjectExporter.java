@@ -22,14 +22,26 @@ public final class CraftProjectExporter {
         if (!CraftProjectImporter.isCraftProject(original))
             throw new IOException("Проект не содержит исходные таблицы KaScada");
         JSONArray screens = project.optJSONArray("screens");
-        if (screens == null || screens.length() != original.getJSONObject("TableNameProject").optInt("countScreen", 1))
-            throw new IOException("Экспорт KaScada требует исходное число экранов");
+        if (screens == null || screens.length() < 1 || screens.length() > 128)
+            throw new IOException("Для экспорта KaScada требуется от 1 до 128 экранов");
 
         // Re-import the source once to distinguish untouched opaque Craft links from edits.
         JSONObject baselineSource = sourceWithProjectMacroDefinitions(original, project);
         JSONObject imported = new JSONObject(CraftProjectImporter.convert(baselineSource.toString()));
         JSONArray sourceRows = baselineSource.getJSONArray("TableComponent");
         JSONArray importedScreens = imported.getJSONArray("screens");
+        // Craft stores screen membership as one-based numScreen, rather than a
+        // separate screen table. Appending screens leaves every existing number,
+        // device link and opaque field intact. Use the inferred source count:
+        // real projects may have a stale countScreen below their highest numScreen.
+        if (screens.length() < importedScreens.length())
+            throw new IOException("Удаление исходных экранов требует переназначения ссылок KaScada");
+        while (importedScreens.length() < screens.length()) {
+            int number = importedScreens.length() + 1;
+            importedScreens.put(new JSONObject().put("name", "Экран " + number)
+                    .put("craftScreenNumber", number).put("widgets", new JSONArray())
+                    .put("connections", new JSONArray()));
+        }
         int rowCapacity = sourceRows.length();
         for (int screenIndex = 0; screenIndex < screens.length(); screenIndex++) {
             JSONObject screen = screens.optJSONObject(screenIndex);
