@@ -79,6 +79,90 @@ public class CraftProjectExporterFbdTest {
         assertEquals(1, restored.getJSONArray("widgets").length());
         assertEquals(0, restored.getJSONArray("connections").length());
     }
+
+    @Test public void newlyAddedCraftNativeFbdPaletteBlocksRoundTripIdsSettingsAndTypedWires() throws Exception {
+        JSONObject source = new JSONObject()
+                .put("TableNameProject", new JSONObject().put("name", "Craft native FBD palette")
+                        .put("countScreen", 1))
+                .put("TableComponent", new JSONArray())
+                .put("TableConnections", new JSONArray());
+        JSONObject imported = new JSONObject(CraftProjectImporter.convert(source.toString()));
+        JSONObject screen = imported.getJSONArray("screens").getJSONObject(0);
+        JSONArray widgets = screen.getJSONArray("widgets");
+        // Exercise a typed source -> MOVE -> sink chain alongside the added palette blocks.
+        widgets.put(new JSONObject().put("type", "FBD CRAFT VAR BOOL").put("text", "Enable")
+                .put("x", 0).put("y", 60).put("w", 90).put("h", 50));
+        widgets.put(new JSONObject().put("type", "FBD CRAFT VAR INT").put("text", "Source")
+                .put("x", 0).put("y", 0).put("w", 90).put("h", 50)
+                .put("craftVarConstantMode", true).put("craftVarConstant", "23"));
+        widgets.put(new JSONObject().put("type", "FBD CRAFT MOVE").put("text", "MOVE")
+                .put("x", 100).put("y", 10).put("w", 90).put("h", 50));
+        widgets.put(new JSONObject().put("type", "FBD CRAFT VAR OUT INT").put("text", "Sink")
+                .put("x", 200).put("y", 10).put("w", 90).put("h", 50));
+        screen.getJSONArray("connections")
+                .put(MainActivity.connectionToJson(MainActivity.pinnedFbdConnection(0, "Q", 2, "EN")))
+                .put(MainActivity.connectionToJson(MainActivity.pinnedFbdConnection(1, "Q", 2, "I")))
+                .put(MainActivity.connectionToJson(MainActivity.pinnedFbdConnection(2, "Q", 3, "IN")));
+
+        String[] types = {
+                "FBD CRAFT INT TO FLOAT", "FBD CRAFT FLOAT TO INT", "FBD CRAFT SENSOR ORIENTATION",
+                "FBD CRAFT SIN", "FBD CRAFT LOG", "FBD CRAFT ABS", "FBD CRAFT POW", "FBD CRAFT SEL",
+                "FBD CRAFT SUNRISE", "FBD CRAFT MX", "FBD CRAFT WORD TO FLOAT", "FBD CRAFT ODTEMP",
+                "FBD CRAFT SENSOR LIGHT", "FBD CRAFT SENSOR SPEED", "FBD CRAFT ARRAY",
+                "FBD CRAFT CHANGE I", "FBD CRAFT CHANGE F", "FBD CRAFT MQTT SUB INT",
+                "FBD CRAFT MQTT PUB FLOAT"
+        };
+        for (int i = 0; i < types.length; i++) {
+            JSONObject widget = new JSONObject().put("type", types[i]).put("text", types[i])
+                    .put("x", 20 + i * 4).put("y", 100 + i * 4).put("w", 90).put("h", 50);
+            if ("FBD CRAFT SENSOR ORIENTATION".equals(types[i])) widget.put("craftSensorAxis", 3);
+            if ("FBD CRAFT SUNRISE".equals(types[i]))
+                widget.put("craftSunriseMode", "SS").put("latitude", 47.6).put("longitude", -122.3);
+            if ("FBD CRAFT ODTEMP".equals(types[i])) widget.put("craftOdTempHost", "192.0.2.44")
+                    .put("craftOdTempType", 2).put("craftOdTempResponse", 2);
+            if (types[i].startsWith("FBD CRAFT MQTT ")) widget.put("craftMqttTopic", "plant/temperature")
+                    .put("craftMqttType", 3).put("craftMqttServer", 2)
+                    .put("craftMqttRetain", "FBD CRAFT MQTT PUB FLOAT".equals(types[i]));
+            widgets.put(widget);
+        }
+
+        JSONObject exported = new JSONObject(CraftProjectExporter.export(imported.toString()));
+        JSONArray rows = exported.getJSONArray("TableComponent");
+        int[] expectedIds = {101, 105, 117, 106, 118, 119, 120, 121, 122, 123, 124, 126,
+                127, 128, 129, 130, 131, 132, 136, 137, 138, 139, 140};
+        assertEquals(expectedIds.length, rows.length());
+        for (int i = 0; i < expectedIds.length; i++)
+            assertEquals("Craft ID at row " + i, expectedIds[i], rows.getJSONObject(i).getInt("componentId"));
+        assertEquals(3, rows.getJSONObject(6).getJSONObject("jsTableComponent_other").getInt("type"));
+        JSONObject sunrise = rows.getJSONObject(12).getJSONObject("jsTableComponent_other");
+        assertEquals(2, sunrise.getInt("type"));
+        assertEquals(47.6, sunrise.getDouble("latitude"), 0.0);
+        JSONObject odtemp = rows.getJSONObject(15).getJSONObject("jsTableComponent_other");
+        assertEquals("192.0.2.44", odtemp.getString("ip"));
+        assertEquals(2, odtemp.getInt("typeSensor"));
+        JSONObject mqttSub = rows.getJSONObject(21).getJSONObject("jsTableComponent_other");
+        assertEquals("plant/temperature", mqttSub.getString("topic"));
+        assertEquals(2, mqttSub.getInt("numMqttServer"));
+        assertEquals(3, mqttSub.getInt("typeQ"));
+        JSONObject mqttPub = rows.getJSONObject(22).getJSONObject("jsTableComponent_other");
+        assertEquals(3, mqttPub.getInt("typeIn"));
+        assertEquals(true, mqttPub.getBoolean("mqttRetain"));
+        assertEquals(2, exported.getJSONArray("TableComponent").getJSONObject(0)
+                .getJSONObject("jsTableComponent_other").getInt("keyOut"));
+        assertEquals(3, exported.getJSONArray("TableComponent").getJSONObject(1)
+                .getJSONObject("jsTableComponent_other").getInt("keyOut"));
+        assertEquals(4, exported.getJSONArray("TableComponent").getJSONObject(2)
+                .getJSONObject("jsTableComponent_other").getInt("keyOut"));
+
+        JSONObject restored = new JSONObject(CraftProjectImporter.convert(exported.toString()));
+        JSONObject restoredScreen = restored.getJSONArray("screens").getJSONObject(0);
+        assertEquals(expectedIds.length, restoredScreen.getJSONArray("widgets").length());
+        assertEquals(3, restoredScreen.getJSONArray("connections").length());
+        assertEquals("FBD CRAFT MOVE", restoredScreen.getJSONArray("widgets").getJSONObject(2).getString("type"));
+        assertEquals("FBD CRAFT SENSOR ORIENTATION", restoredScreen.getJSONArray("widgets").getJSONObject(6).getString("type"));
+        assertEquals(3, restoredScreen.getJSONArray("widgets").getJSONObject(6).getInt("craftSensorAxis"));
+        assertEquals("plant/temperature", restoredScreen.getJSONArray("widgets").getJSONObject(21).getString("craftMqttTopic"));
+    }
     @Test public void multiScreenCraftProjectRoundTripsFbdWiresTimerEditsAndOpaqueTables() throws Exception {
         JSONObject and = new JSONObject().put("componentId", 103).put("text", "AND")
                 .put("x", 10).put("y", 20).put("width", 80).put("height", 40)
