@@ -13664,56 +13664,100 @@ private String archiveProjectKey() {
         }
 
         private void activateCraftSwitch(Widget widget, int index) {
-            boolean previous = widget.buttonState;
-            boolean next = !previous;
-            widget.buttonState = next;
-            persistProject();
-            invalidate();
+            final int originalScreenIndex = currentScreenIndex;
+            final Screen originalScreen = originalScreenIndex >= 0
+                    && originalScreenIndex < screens.size()
+                    ? screens.get(originalScreenIndex) : null;
+            if (!isRuntimeWidgetCurrent(widget, index, originalScreen, originalScreenIndex))
+                return;
+            final boolean previous = widget.buttonState;
+            final boolean next = !previous;
             if (!widget.extraFields.optBoolean("craftSwitchBitEnabled", false)) {
-                Toast.makeText(MainActivity.this, "Переключатель: " + (next ? "ВКЛ" : "ВЫКЛ"), Toast.LENGTH_SHORT).show();
+                JSONObject oldProject = projectExtraFields;
+                widget.buttonState = next;
+                if (!persistProjectNow(true)) {
+                    widget.buttonState = previous;
+                    projectExtraFields = oldProject;
+                    saveActiveScreen();
+                    Toast.makeText(MainActivity.this, "Не удалось сохранить переключатель",
+                            Toast.LENGTH_LONG).show();
+                } else {
+                    Toast.makeText(MainActivity.this,
+                            "Переключатель: " + (next ? "ВКЛ" : "ВЫКЛ"),
+                            Toast.LENGTH_SHORT).show();
+                }
+                invalidate();
                 return;
             }
-            BindingRequest binding = parseBinding(-1, widget.connectionInfo);
+            final BindingRequest binding = parseBinding(-1, widget.connectionInfo);
             if (binding == null || binding.functionCode != 3) {
-                widget.buttonState = previous;
-                persistProject();
-                invalidate();
-                Toast.makeText(MainActivity.this, "Для записи бита нужен TCP holding-регистр FC03/FC22", Toast.LENGTH_LONG).show();
+                Toast.makeText(MainActivity.this,
+                        "Для записи бита нужен TCP holding-регистр FC03/FC22",
+                        Toast.LENGTH_LONG).show();
                 return;
             }
             final int bit = widget.extraFields.optInt("craftSwitchBit", -1);
             final int[] masks;
             try { masks = OriginalCraftSwitch.writeMasks(bit, next); }
             catch (IllegalArgumentException invalid) {
-                widget.buttonState = previous;
-                persistProject();
-                invalidate();
-                Toast.makeText(MainActivity.this, invalid.getMessage(), Toast.LENGTH_LONG).show();
+                Toast.makeText(MainActivity.this, invalid.getMessage(),
+                        Toast.LENGTH_LONG).show();
                 return;
             }
-            final String requestedState = next ? "ВКЛ" : "ВЫКЛ";
-            final int requestSequence = widget.extraFields.optInt("craftSwitchWriteSequence", 0) + 1;
-            try { widget.extraFields.put("craftSwitchWriteSequence", requestSequence); } catch (Exception ignored) { }
-            persistProject();
+            final JSONObject oldFields = widget.extraFields;
+            final int requestSequence =
+                    widget.extraFields.optInt("craftSwitchWriteSequence", 0) + 1;
+            try {
+                widget.extraFields = new JSONObject(oldFields.toString());
+                widget.extraFields.put("craftSwitchWriteSequence", requestSequence);
+            } catch (Exception error) {
+                widget.extraFields = oldFields;
+                Toast.makeText(MainActivity.this, "Не удалось подготовить запись бита",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
             modbusExecutor.execute(() -> {
                 Exception failure = null;
                 try {
-                    if (!activityResumed || !operatorMode || !widgets.contains(widget))
+                    if (!isRuntimeWidgetCurrent(widget, index, originalScreen,
+                            originalScreenIndex))
                         throw new IOException("Рабочий режим остановлен");
-                    new ModbusTcpClient(binding.host, binding.port).writeMask(binding.unit, binding.address, masks[0], masks[1]);
+                    new ModbusTcpClient(binding.host, binding.port).writeMask(
+                            binding.unit, binding.address, masks[0], masks[1]);
                 } catch (Exception error) { failure = error; }
                 final Exception result = failure;
-                if (result != null) runOnUiThread(() -> {
-                    if (!widgets.contains(widget) || widgets.indexOf(widget) != index
-                            || widget.extraFields.optInt("craftSwitchWriteSequence", 0) != requestSequence
-                            || widget.buttonState != next) return;
-                    widget.buttonState = previous;
-                    persistProject();
-                    if (editor != null) editor.invalidate();
-                    Toast.makeText(MainActivity.this, "Ошибка записи бита переключателя: " + describeModbusError(result), Toast.LENGTH_LONG).show();
+                runOnUiThread(() -> {
+                    if (!isRuntimeWidgetCurrent(widget, index, originalScreen,
+                            originalScreenIndex)
+                            || widget.extraFields.optInt("craftSwitchWriteSequence", 0)
+                                    != requestSequence
+                            || widget.buttonState != previous) return;
+                    if (result != null) {
+                        widget.extraFields = oldFields;
+                        Toast.makeText(MainActivity.this,
+                                "Ошибка записи бита переключателя: "
+                                        + describeModbusError(result), Toast.LENGTH_LONG).show();
+                        invalidate();
+                        return;
+                    }
+                    JSONObject oldProject = projectExtraFields;
+                    widget.buttonState = next;
+                    if (!persistProjectNow(true)) {
+                        widget.buttonState = previous;
+                        widget.extraFields = oldFields;
+                        projectExtraFields = oldProject;
+                        saveActiveScreen();
+                        Toast.makeText(MainActivity.this,
+                                "Бит записан, но проект не сохранён",
+                                Toast.LENGTH_LONG).show();
+                    } else {
+                        Toast.makeText(MainActivity.this,
+                                "Переключатель: " + (next ? "ВКЛ" : "ВЫКЛ"),
+                                Toast.LENGTH_SHORT).show();
+                    }
+                    invalidate();
                 });
             });
-            Toast.makeText(MainActivity.this, "Переключатель: " + requestedState, Toast.LENGTH_SHORT).show();
         }
 
         private void queueCraftBitButtonWrite(Widget widget, BindingRequest binding, int index, int bit, boolean pressed) {
