@@ -455,6 +455,73 @@ class CraftEditorVisualContractTests(unittest.TestCase):
             with self.subTest(required=required):
                 self.assertIn(required, method)
 
+    def test_craft_dialog_guard_keeps_widget_screen_and_canvas_identity(self):
+        guard = self.source.split("private final class CraftWidgetDialogGuard", 1)[1].split(
+            "private boolean sameSelectedWidgetObjects(", 1)[0]
+        for phrase in (
+            "private final EditorCanvas canvas", "private final Screen screen",
+            "private final int screenIndex", "private final int widgetIndex",
+            "private final Widget widget", "private final ArrayList<Widget> order",
+            "isEditorDialogContextCurrent(canvas, screen, screenIndex, order)",
+            "widgets.get(widgetIndex) == widget", "editor.selected == widgetIndex",
+            "Элемент изменён: открой настройки заново",
+            "if (require()) editSelectedWidget(true)",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, guard)
+
+    def test_all_specialized_widget_property_saves_reject_stale_dialog(self):
+        editor = self.source.split("private void editSelectedWidget(boolean advanced)", 1)[1].split(
+            "LinearLayout form = new LinearLayout(this)", 1)[0]
+        self.assertIn("if (operatorMode || currentScreenIndex < 0", editor)
+        self.assertIn("new CraftWidgetDialogGuard(w)", editor)
+        self.assertEqual(8, editor.count("if (!dialogGuard.require()) return false;"))
+        self.assertEqual(8, editor.count("dialogGuard::advanced"))
+        for dialog in (
+            "CraftListSettingsDialog", "CraftProgressBarSettingsDialog",
+            "CraftButtonSettingsDialog", "CraftNumericInputSettingsDialog",
+            "CraftLabelSettingsDialog", "CraftDynamicTextSettingsDialog",
+            "CraftThresholdGaugeSettingsDialog", "CraftGraduatedGaugeSettingsDialog",
+        ):
+            start = editor.index(dialog + ".show(")
+            end = editor.index("            return;\n        }", start)
+            segment = editor[start:end]
+            with self.subTest(dialog=dialog):
+                self.assertLess(segment.index("if (!dialogGuard.require()) return false;"),
+                                segment.index("persistProjectNow(true)"))
+                self.assertIn("dialogGuard::advanced", segment)
+
+    def test_four_source_based_craft_settings_guard_saves_and_advanced_actions(self):
+        source = self.source
+        for name in (
+            "showOriginalLampSettings(Widget lamp)",
+            "showOriginalSwitchSettings(Widget widget)",
+            "showOriginalNumericIndicatorSettings(Widget widget)",
+            "showOriginalLinearSetterSettings(Widget widget)",
+        ):
+            start = source.index("private void " + name)
+            end = source.index("\n    private ", start + 20)
+            body = source[start:end]
+            with self.subTest(name=name):
+                self.assertIn("new CraftWidgetDialogGuard(", body)
+                self.assertIn("if (!dialogGuard.require()) return;", body)
+                self.assertIn("dialogGuard.advanced();", body)
+                self.assertLess(body.index("if (!dialogGuard.require()) return;"),
+                                body.index("persistProjectNow(true)"))
+                self.assertIn("R.style.Theme_Material_Dialog_Alert", body)
+
+    def test_original_image_selectors_reject_stale_widget_and_screen(self):
+        selector = self.source.split("private boolean selectIndicatorImage(", 1)[1].split(
+            "private void showIndicatorImages(", 1)[0]
+        images = self.source.split("private void showIndicatorImages(", 1)[1].split(
+            "private void ", 1)[0]
+        self.assertIn("new CraftWidgetDialogGuard(widget).require()", selector)
+        self.assertIn("final CraftWidgetDialogGuard imageGuard", images)
+        self.assertIn("if (!imageGuard.require()", images)
+        self.assertIn("return imageGuard.require() && selectIndicatorImage(", images)
+        self.assertIn("if (!imageGuard.require()) return;", images)
+        self.assertIn("R.drawable.kc_align_open_menu", self.source)
+
     def test_main_settings_reuse_existing_specialized_dialogs(self):
         editor = self.source.split("private void editSelectedWidget(boolean advanced)", 1)[1]
         for dialog in ("CraftListSettingsDialog", "CraftProgressBarSettingsDialog",
