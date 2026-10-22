@@ -86,7 +86,9 @@ public final class CraftProjectExporter {
                         int addedComponentId = addedCraftFbdBlockId(widget);
                         if (addedComponentId < 0)
                             throw new IOException("Для нового компонента нет проверенного соответствия палитре KaScada");
-                        row = appendCraftFbdBlock(widget, addedComponentId, s, sourceRows, outputRows);
+                        row = addedComponentId == 26
+                                ? appendCraftWebView(widget, s, sourceRows, outputRows)
+                                : appendCraftFbdBlock(widget, addedComponentId, s, sourceRows, outputRows);
                     }
                 }
                 if (row >= sourceRows.length() || seen[row])
@@ -246,6 +248,28 @@ public final class CraftProjectExporter {
         return result.toString();
     }
 
+    /** ID26 has no FBD saveKey or output pins; retain its native HMI fields. */
+    private static int appendCraftWebView(JSONObject widget, int screenIndex,
+                                          JSONArray sourceRows, JSONArray outputRows) throws Exception {
+        JSONObject other = CraftWebViewLinks.write(widget.optJSONObject("craftOther"),
+                CraftWebViewLinks.read(widget.optJSONObject("craftOther")));
+        other.put("numScreen", screenIndex + 1);
+        if (!other.has("timeZ")) other.put("timeZ", 0);
+        JSONObject row = new JSONObject().put("componentId", 26)
+                .put("text", widget.optString("text", "Веб-страница"))
+                .put("x", widget.optDouble("x", 40)).put("y", widget.optDouble("y", 50))
+                .put("width", widget.optDouble("w", 240)).put("height", widget.optDouble("h", 120))
+                .put("textSize", String.valueOf(widget.optInt("textSizeSp", 14)))
+                .put("colorText", String.valueOf(widget.optInt("textColor", 0xff1f2937)))
+                .put("colorBackground", String.valueOf(widget.optInt("backgroundColor", 0)))
+                .put("jsTableComponent_other", other);
+        int index = sourceRows.length();
+        sourceRows.put(row);
+        outputRows.put(new JSONObject(row.toString()));
+        widget.put("craftComponentId", 26).put("craftSourceRow", index).put("craftOther", other);
+        return index;
+    }
+
     /** Add a verified Craft FBD block with a unique screen-local saveKey. */
     private static int appendCopiedComponentRow(JSONObject widget, int originalRow, int screenIndex,
             JSONArray sourceRows, JSONArray outputRows) throws Exception {
@@ -367,6 +391,7 @@ public final class CraftProjectExporter {
 
     private static int addedCraftFbdBlockId(JSONObject widget) {
         if (widget == null) return -1;
+        if ("WebView Craft".equals(widget.optString("type", ""))) return 26;
         int declared = widget.optInt("craftComponentId", -1);
         if (declared >= 101 && declared <= 140 && declared != 135)
             return declared;

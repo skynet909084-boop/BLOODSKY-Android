@@ -78,6 +78,7 @@ public class MainActivity extends Activity {
     private String pendingArchiveProjectId, pendingArchiveWidgetKey, pendingArchiveTitle;
     private EditText pendingMediaField;
     private AlertDialog activePropertiesDialog;
+    private final CraftWebViewWindow craftWebViewWindow = new CraftWebViewWindow();
     private LinearLayout activePropertiesForm;
     private int pendingMediaWidgetIndex = -1;
     private String pendingMediaFieldPath;
@@ -465,6 +466,7 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onPause() {
+        craftWebViewWindow.close();
         if (editor != null) {
             editor.endCraftBitButton();
             editor.operatorMomentaryCandidate = -1;
@@ -484,6 +486,7 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        craftWebViewWindow.close();
         manualUsbScreenGeneration++;
         stopModbusTcpSlave();
         closeManualUsbConnection();
@@ -3344,6 +3347,7 @@ public class MainActivity extends Activity {
                 value.craftMqttValue = null;
             }
         }
+        craftWebViewWindow.close();
         operatorMode = !operatorMode; fbdWireMode = false; wireSource = -1;
         if (!operatorMode) for (Widget value : fbdRuntimeWidgetsIncludingMacros(widgets))
             if (isCraftOdTempSource(value.type)) {
@@ -4542,6 +4546,7 @@ public class MainActivity extends Activity {
     }
 
     private void activateScreen(int index) {
+        craftWebViewWindow.close();
         fbdWireHistory.clear();
         stopCurrentScreenAlarms();
         saveActiveScreen();
@@ -5226,6 +5231,14 @@ public class MainActivity extends Activity {
                 w.extraFields.put("craftListLabels", CraftBitList.toJson(labels));
                 w.extraFields.put("craftListVisibleInWork", true);
                 w.extraFields.put("craftListCheckNoChange", true);
+            } catch (Exception ignored) { }
+        }
+        if ("WebView Craft".equals(type)) {
+            w.w = dp(240); w.h = dp(120);
+            try {
+                w.extraFields.put("craftComponentId", 26);
+                w.extraFields.put("craftWebViewEnabled", false);
+                w.extraFields.put("craftOther", CraftWebViewLinks.write(null, new String[16]));
             } catch (Exception ignored) { }
         }
         if ("GIF Craft".equals(type)) {
@@ -6094,6 +6107,7 @@ public class MainActivity extends Activity {
             }
         }
 
+        final CheckBox craftWebViewEnabledField = new CheckBox(this);
         final EditText[] craftWebViewLinkFields = new EditText[CraftWebViewLinks.LINK_COUNT];
         if (w.extraFields.optInt("craftComponentId", -1) == 26 || "WebView Craft".equals(w.type)) {
             JSONObject sourceOther = w.extraFields.optJSONObject("craftOther");
@@ -6107,8 +6121,11 @@ public class MainActivity extends Activity {
                 craftWebViewLinkFields[k].setHint("Ссылка Craft " + k);
                 form.addView(craftWebViewLinkFields[k]);
             }
+            craftWebViewEnabledField.setText("Разрешить открытие HTTPS по нажатию оператора");
+            craftWebViewEnabledField.setChecked(w.extraFields.optBoolean("craftWebViewEnabled", false));
+            form.addView(craftWebViewEnabledField);
             TextView webHelp = new TextView(this);
-            webHelp.setText("Оригинал открывает первый адрес по входной битовой маске. BLOODSKY только сохраняет ссылки: импортированные адреса не загружаются и WebView не запускается.");
+            webHelp.setText("При TCP-привязке выбирается первая установленная позиция битовой маски 0–15. Без привязки можно выбрать ссылку вручную. Каждый переход требует подтверждения. Только HTTPS и ресурсы выбранного сервера; JavaScript, cookies, файлы и отправка форм выключены. HTTP сохраняется для Craft, но не загружается.");
             form.addView(webHelp);
         }
 
@@ -7205,7 +7222,7 @@ public class MainActivity extends Activity {
                                     w.extraFields.optJSONObject("craftOther"), links);
                             w.extraFields.put("craftOther", sourceOther);
                             w.extraFields.put("craftWebViewLinks", CraftWebViewLinks.toJsonArray(links));
-                            w.extraFields.put("craftWebViewEnabled", false);
+                            w.extraFields.put("craftWebViewEnabled", craftWebViewEnabledField.isChecked());
                         } catch (Exception invalid) {
                             Toast.makeText(MainActivity.this, invalid.getMessage(), Toast.LENGTH_LONG).show();
                             return;
@@ -11663,7 +11680,9 @@ public class MainActivity extends Activity {
                     canvas.drawText(w.text, w.x + dp(12), w.y + dp(19), paint);
                     paint.setColor(Color.rgb(248, 113, 113));
                     paint.setTextSize(dp(10));
-                    canvas.drawText("WebView выключен", w.x + dp(12), w.y + w.h / 2 + dp(4), paint);
+                    canvas.drawText(w.extraFields.optBoolean("craftWebViewEnabled", false)
+                            ? "WebView • нажмите для открытия" : "WebView выключен",
+                            w.x + dp(12), w.y + w.h / 2 + dp(4), paint);
                     paint.setColor(Color.rgb(148, 163, 184));
                     paint.setTextSize(dp(9));
                     canvas.drawText("16 исходных ссылок сохранены", w.x + dp(12), w.y + w.h - dp(10), paint);
@@ -12143,9 +12162,53 @@ public class MainActivity extends Activity {
             dialog.show(); value.requestFocus();
         }
 
+        private void openCraftWebView(Widget widget, int index) {
+            if (!operatorMode || !activityResumed || !widget.extraFields.optBoolean("craftWebViewEnabled", false)) {
+                Toast.makeText(MainActivity.this, "Разрешите WebView в свойствах компонента", Toast.LENGTH_LONG).show();
+                return;
+            }
+            String[] links = CraftWebViewLinks.read(widget.extraFields.optJSONObject("craftOther"));
+            if (!widget.connectionInfo.trim().isEmpty()) {
+                int selected = CraftWebViewPolicy.selectedIndex(liveValues.get(index));
+                if (selected < 0) {
+                    Toast.makeText(MainActivity.this, "Нет активного бита или достоверного значения регистра", Toast.LENGTH_LONG).show();
+                    return;
+                }
+                confirmCraftWebView(widget, links[selected]);
+            } else {
+                String[] labels = new String[links.length];
+                for (int i = 0; i < links.length; i++) labels[i] = i + ": " + links[i];
+                new AlertDialog.Builder(MainActivity.this).setTitle("Ссылка WebView")
+                        .setItems(labels, (d, which) -> confirmCraftWebView(widget, links[which]))
+                        .setNegativeButton("Отмена", null).show();
+            }
+        }
+
+        private void confirmCraftWebView(Widget widget, String candidate) {
+            final String url;
+            try { url = CraftWebViewPolicy.checkedUrl(candidate); }
+            catch (IllegalArgumentException invalid) {
+                Toast.makeText(MainActivity.this, invalid.getMessage(), Toast.LENGTH_LONG).show(); return;
+            }
+            new AlertDialog.Builder(MainActivity.this).setTitle("Открыть страницу?")
+                    .setMessage(url + "\nБудет выполнен сетевой запрос к этому серверу.")
+                    .setNegativeButton("Отмена", null)
+                    .setPositiveButton("Открыть", (d, which) -> {
+                        if (!operatorMode || !activityResumed || !widgets.contains(widget)
+                                || !widget.extraFields.optBoolean("craftWebViewEnabled", false)) return;
+                        try { craftWebViewWindow.open(MainActivity.this, url); }
+                        catch (RuntimeException failure) {
+                            craftWebViewWindow.close();
+                            Toast.makeText(MainActivity.this, "Не удалось открыть WebView", Toast.LENGTH_LONG).show();
+                        }
+                    }).show();
+        }
+
         private void activateRuntimeWidget(int index, float x, float y) {
             Widget picked = widgets.get(index);
-            if ("Архив Craft".equals(picked.type)) {
+            if ("WebView Craft".equals(picked.type)) {
+                openCraftWebView(picked, index);
+            } else if ("Архив Craft".equals(picked.type)) {
                 showLocalArchive(picked);
             } else if ("Числовой ввод Craft".equals(picked.type)) {
                 openCraftNumericInput(picked, index);

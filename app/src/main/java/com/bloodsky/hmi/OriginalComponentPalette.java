@@ -39,7 +39,7 @@ public final class OriginalComponentPalette {
         dialog.findViewById(R.id.kc_picker_tab_sms_out).setVisibility(View.VISIBLE);
         unavailable(dialog, R.id.kc_picker_tab_camera, "Камера");
         bind(dialog, R.id.kc_picker_tab_push_notif, "Telegram-уведомление", "Событие", add);
-        unavailable(dialog, R.id.kc_picker_tab_web_view, "Веб-страница");
+        bind(dialog, R.id.kc_picker_tab_web_view, "WebView Craft", "Веб-страница", add);
         bind(dialog, R.id.kc_picker_tab_button, "Кнопка", "Кнопка", add);
         bind(dialog, R.id.kc_picker_tab_digital_setters, "Числовой ввод Craft", "0", add);
         bind(dialog, R.id.kc_picker_tab_text, "Текст", "Надпись", add);
