@@ -4836,6 +4836,33 @@ public class MainActivity extends Activity {
         copy.x = source.x; copy.y = source.y; copy.w = source.w; copy.h = source.h;
         return copy;
     }
+    /** Restore persisted Craft widget properties without breaking its editor identity. */
+    private static void restoreWidgetFromSnapshot(Widget target, Widget source) {
+        target.type = source.type; target.text = source.text; target.connectionInfo = source.connectionInfo; target.inputValue = source.inputValue; target.buttonState = source.buttonState; target.rsState = source.rsState; target.counterPreset = source.counterPreset; target.counterValue = source.counterValue; target.counterLastInput = source.counterLastInput; target.timerPresetMs = source.timerPresetMs; target.timerStartedAt = source.timerStartedAt; target.compareA = source.compareA; target.compareB = source.compareB; target.compareOperator = source.compareOperator;
+        target.minValue = source.minValue; target.maxValue = source.maxValue;
+        target.backgroundColor = source.backgroundColor; target.textColor = source.textColor; target.textSizeSp = source.textSizeSp;
+        target.visible = source.visible; target.showFrame = source.showFrame; target.autoResizeText = source.autoResizeText;
+        for (int i = 0; i < 16; i++) {
+            target.dynTextStates[i] = source.dynTextStates[i];            target.dynTextColors[i] = source.dynTextColors[i];
+            target.bitListLabels[i] = source.bitListLabels[i];
+            target.voiceMessages[i] = source.voiceMessages[i];
+            target.imagePathStates[i] = source.imagePathStates[i];
+        }
+        target.soundThreshold = source.soundThreshold;
+        target.soundActive = source.soundActive;
+        target.soundFilePath = source.soundFilePath;
+        target.craftAlarmSoundIndex = source.craftAlarmSoundIndex;
+        target.craftAlarmLoop = source.craftAlarmLoop;
+        target.targetScreenIndex = source.targetScreenIndex;
+        target.targetUrl = source.targetUrl;
+        target.lastVoiceState = source.lastVoiceState;
+        target.lastSoundState = source.lastSoundState;
+        target.lastTelegramState = source.lastTelegramState;
+        target.craftVariableNamespace = source.craftVariableNamespace;
+        try { target.extraFields = new JSONObject(source.extraFields.toString()); } catch (Exception ignored) { target.extraFields = new JSONObject(); }
+        target.x = source.x; target.y = source.y; target.w = source.w; target.h = source.h;
+    }
+
 
     private void activateScreen(int index) {
         if (nestedMacroEdit != null || screens.isEmpty() || currentScreenIndex < 0
