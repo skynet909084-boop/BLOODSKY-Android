@@ -11766,20 +11766,22 @@ public class MainActivity extends Activity {
                 } else if ("Список Craft".equals(w.type)) {
                     int mask = w.extraFields.optInt("craftListInitialMask", 0) & 0xffff;
                     String liveMask = liveValues.get(i);
-                    if (liveMask != null) try { mask = CraftBitList.fromRegister(Integer.parseInt(liveMask)); } catch (Exception ignored) { }
+                    int decodedMask = CraftHmiStateSignal.decodeWord(liveMask);
+                    boolean signalUnavailable = liveMask != null && decodedMask < 0;
+                    if (decodedMask >= 0) mask = decodedMask;
                     String[] labels = CraftBitList.fromJson(w.extraFields.optJSONArray("craftListLabels"));
                     paint.setColor(w.textColor); paint.setTextSize(dp(12));
-                    canvas.drawText(w.text + "  " + String.format(java.util.Locale.ROOT, "0x%04X", mask), w.x + dp(8), w.y + dp(17), paint);
+                    canvas.drawText(w.text + "  " + (signalUnavailable ? "Нет связи" : String.format(java.util.Locale.ROOT, "0x%04X", mask)), w.x + dp(8), w.y + dp(17), paint);
                     paint.setTextSize(dp(10));
                     StringBuilder chosen = new StringBuilder();
                     for (int bit = 0; bit < 16; bit++) if ((mask & (1 << bit)) != 0 && labels[bit] != null && !labels[bit].isEmpty()) {
                         if (chosen.length() > 0) chosen.append(", ");
                         chosen.append(labels[bit]);
                     }
-                    String summary = chosen.length() == 0 ? "Выбрать пункты" : chosen.toString();
+                    String summary = signalUnavailable ? "Нет связи" : chosen.length() == 0 ? "Выбрать пункты" : chosen.toString();
                     if (summary.length() > 64) summary = summary.substring(0, 61) + "…";
                     canvas.drawText(summary, w.x + dp(8), w.y + dp(34), paint);
-                    if (liveMask != null && liveMask.startsWith("ERR:")) {
+                    if (signalUnavailable) {
                         paint.setColor(Color.rgb(185, 28, 28)); paint.setTextSize(dp(9));
                         canvas.drawText("Нет связи", w.x + dp(8), w.y + w.h - dp(5), paint);
                     }
@@ -11809,21 +11811,25 @@ public class MainActivity extends Activity {
                         canvas.drawText("Нет связи", w.x + dp(7), w.y + w.h - dp(3), paint);
                     }
                 } else if ("Битовый список".equals(w.type)) {
-                    int bitmask = 0;
-                    if (liveValues.containsKey(i)) {
-                        try { bitmask = Integer.parseInt(liveValues.get(i)); } catch (Exception ignored) {}
-                    }
+                    int decodedMask = CraftHmiStateSignal.decodeWord(liveValues.get(i));
+                    boolean signalUnavailable = liveValues.containsKey(i) && decodedMask < 0;
+                    int bitmask = decodedMask >= 0 ? decodedMask : 0;
                     paint.setColor(w.textColor);
                     paint.setTextSize(dp(11));
                     float lineY = w.y + dp(16);
-                    canvas.drawText(w.text + ": 0x" + String.format(java.util.Locale.ROOT, "%04X", bitmask), w.x + dp(8), lineY, paint);
+                    canvas.drawText(w.text + ": " + (signalUnavailable ? "Нет связи"
+                            : String.format(java.util.Locale.ROOT, "0x%04X", bitmask)),
+                            w.x + dp(8), lineY, paint);
                     lineY += dp(14);
                     for (int b = 0; b < 3 && lineY < w.y + w.h - dp(4); b++) {
                         boolean bitOn = (bitmask & (1 << b)) != 0;
-                        paint.setColor(bitOn ? Color.rgb(22, 163, 74) : Color.rgb(148, 163, 184));
+                        paint.setColor(!signalUnavailable && bitOn
+                                ? Color.rgb(22, 163, 74) : Color.rgb(148, 163, 184));
                         canvas.drawCircle(w.x + dp(12), lineY - dp(4), dp(4), paint);
                         paint.setColor(w.textColor);
-                        canvas.drawText(w.bitListLabels[b] + ": " + (bitOn ? "1" : "0"), w.x + dp(22), lineY, paint);
+                        canvas.drawText(w.bitListLabels[b] + ": "
+                                + (signalUnavailable ? "?" : bitOn ? "1" : "0"),
+                                w.x + dp(22), lineY, paint);
                         lineY += dp(14);
                     }
                 } else if ("Прогресс-бар".equals(w.type)) {
