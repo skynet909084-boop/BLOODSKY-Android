@@ -23,6 +23,10 @@ final class CraftNumericInputCompactSettings {
         CraftNumericInput.validateRange(min, max);
         if (mode != CraftNumericInput.INTEGER && mode != CraftNumericInput.FLOAT32)
             throw new IllegalArgumentException("Недопустимый тип числового ввода");
+        // Original Craft ID8 uses a two-register value in Float32 mode.
+        // Never save an impossible terminal Modbus register pair.
+        if (mode == CraftNumericInput.FLOAT32 && register == 65535)
+            throw new IllegalArgumentException("Для FLOAT32 нужен регистр от 0 до 65534");
         if (integerType != CraftNumericInput.UNSIGNED_16 && integerType != CraftNumericInput.SIGNED_16)
             throw new IllegalArgumentException("Недопустимый тип целого числа");
         if (decimals < 0 || decimals > 8)
