@@ -11519,32 +11519,56 @@ public class MainActivity extends Activity {
         boolean resizing;
         boolean marqueeActive;
 
+        private final Bitmap craftCanvasBackdrop =
+                BitmapFactory.decodeResource(getResources(), R.drawable.kc_main_background_small);
+
         EditorCanvas() {
             super(MainActivity.this);
-            setBackgroundColor(Color.WHITE);
+            setBackgroundColor(Color.rgb(92, 92, 92));
             setWillNotDraw(false);
         }
 
         @Override protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
             Screen currentScreen = screens.isEmpty() ? null : screens.get(currentScreenIndex);
-            canvas.drawColor(currentScreen == null ? Color.rgb(250, 252, 255) : currentScreen.backgroundColor);
-            if (currentScreen != null) {
-                String backgroundImage = currentScreen.extraFields.optString("backgroundImagePath", "");
-                Bitmap bitmap = backgroundImage.isEmpty() ? null : loadCachedBitmap(backgroundImage);
-                if (bitmap != null) {
+            int screenColor = currentScreen == null
+                    ? CraftCanvasVisualStyle.LEGACY_LIGHT_BACKGROUND : currentScreen.backgroundColor;
+            String backgroundImage = currentScreen == null ? ""
+                    : currentScreen.extraFields.optString("backgroundImagePath", "");
+            Bitmap selectedBackground = backgroundImage.isEmpty() ? null : loadCachedBitmap(backgroundImage);
+            boolean originalDefault = CraftCanvasVisualStyle.useOriginalBackdrop(screenColor, backgroundImage);
+            if (originalDefault) {
+                // Actual bundled Craft wallpaper, not BLOODSKY's former white editor surface.
+                canvas.drawColor(Color.rgb(92, 92, 92));
+                if (craftCanvasBackdrop != null) {
                     paint.setStyle(Paint.Style.FILL);
                     paint.setFilterBitmap(true);
-                    canvas.drawBitmap(bitmap, null, new Rect(0, 0, getWidth(), getHeight()), paint);
+                    canvas.drawBitmap(craftCanvasBackdrop, null,
+                            new Rect(0, 0, getWidth(), getHeight()), paint);
+                    paint.setFilterBitmap(false);
+                }
+            } else {
+                // Explicitly selected screen color / private-project bitmap is authoritative.
+                canvas.drawColor(screenColor);
+                if (selectedBackground != null) {
+                    paint.setStyle(Paint.Style.FILL);
+                    paint.setFilterBitmap(true);
+                    canvas.drawBitmap(selectedBackground, null,
+                            new Rect(0, 0, getWidth(), getHeight()), paint);
                     paint.setFilterBitmap(false);
                 }
             }
-            paint.setColor(Color.rgb(228, 234, 241));
-            paint.setStrokeWidth(1);
-            int grid = dp(20);
-            if (!operatorMode) {
-                for (int x = 0; x < getWidth(); x += grid) canvas.drawLine(x, 0, x, getHeight(), paint);
-                for (int y = 0; y < getHeight(); y += grid) canvas.drawLine(0, y, getWidth(), y, paint);
+            // The Craft screen shown by the user has no conspicuous blue/white
+            // design grid. Keep snap-to-grid but render guides only when requested.
+            if (CraftCanvasVisualStyle.showDesignGrid(operatorMode,
+                    projectExtraFields.optBoolean("bloodskyShowDesignGrid", false))) {
+                paint.setColor(Color.argb(45, 210, 210, 210));
+                paint.setStrokeWidth(1);
+                int grid = dp(20);
+                for (int x = 0; x < getWidth(); x += grid)
+                    canvas.drawLine(x, 0, x, getHeight(), paint);
+                for (int y = 0; y < getHeight(); y += grid)
+                    canvas.drawLine(0, y, getWidth(), y, paint);
             }
 
             if (!operatorMode && !screens.isEmpty()) {
