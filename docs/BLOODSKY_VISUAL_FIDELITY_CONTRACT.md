@@ -44,3 +44,36 @@ Use a side-by-side comparison and, where possible, a 50% alpha overlay or pixel-
 ## Known evidence limitation
 
 The repository's decompilation inventory confirms `mbCanvas`, component configuration fields and original import/export structures, but decompiled Java alone is not sufficient to establish every exact visual dimension. JADX reported decompilation errors for some classes. Where layout or behavior is uncertain, verify resources and Smali rather than inventing a replacement. Do not call the interface pixel-identical until original screenshots/resources have been compared directly.
+
+## Asset provenance gate (KaScada Craft 1.0.7 / 107)
+
+The reference archive is pinned by SHA-256 in `tools/prepare_craft_resources.py`.
+During the Android APK workflow, that archive is unpacked; complete original
+`apktool/res` and `apktool/assets` trees and their per-file SHA-256 manifest
+are retained under `build/craft-reference/bundled` for auditing. The complete
+decoded trees are **not** packaged wholesale into the BLOODSKY APK.
+
+Only supported original drawable and audio files are copied into Android
+`drawable-nodpi/kc_*` and `raw/kc_*` aliases, preserving their contents.
+The mandatory `tools/verify_craft_resource_aliases.py` build gate compares
+each compiled alias to the pinned decoded original **byte for byte**.
+It also validates the source-backed 40dp FIT_XY cut/copy/paste/align layout and
+essential original wallpaper, toolbar and action icon names. It rejects absent
+or modified assets and publishes
+`build-reports/kascada-original-alias-integrity.md` as part of the CI diagnostics.
+
+Evidence categories must remain distinct:
+
+- **Byte-identical original:** `kc_*` image/audio aliases that passed the
+  hash comparison with pinned decoded KaScada files.
+- **Source-derived layout:** layouts such as `kc_selection_actions.xml` that
+  reproduce verified original action mappings and dimensions but have Android
+  resource IDs renamed for BLOODSKY. They are not claimed byte-identical.
+- **Implemented approximation / unverified:** Java-built dialogs, canvas
+  composition, native component rendering and interaction states until
+  screenshot/gesture comparison with original KaScada on equivalent devices.
+
+A successful resource-integrity gate establishes **asset origin**, not
+pixel-level visual parity, functional completeness, device compatibility or
+rights to distribute third-party artwork. Final release acceptance still
+requires original-reference screen comparisons and applicable permissions.
