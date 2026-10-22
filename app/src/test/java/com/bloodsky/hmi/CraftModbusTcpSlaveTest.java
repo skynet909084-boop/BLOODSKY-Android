@@ -128,7 +128,7 @@ public class CraftModbusTcpSlaveTest {
         assertArrayEquals(new byte[]{(byte) 0x85, 3}, Arrays.copyOfRange(badValue, 7, badValue.length));
         byte[] wrongUnit = CraftModbusTcpSlave.respond(request(3, 8, 3, 0, 10, 0, 1), 7, bank);
         assertEquals(11, wrongUnit[8] & 255);
-        byte[] unsupported = response(bank, 4, 0, 0, 0, 1);
+        byte[] unsupported = response(bank, 7, 0, 0, 0, 1);
         assertEquals(1, unsupported[8] & 255);
         assertNull(CraftModbusTcpSlave.respond(new byte[]{0, 1}, 7, bank));
     }
