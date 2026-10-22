@@ -5052,15 +5052,16 @@ public class MainActivity extends Activity {
                 && selectedWidget.extraFields.optInt("craftComponentId", -1) == 24)
             primaryLabel = "Настройки градуированной шкалы";
         else primaryLabel = "Свойства";
-        final String[] labels = {primaryLabel, "Расширенные свойства", "Выравнивание", "Копировать", "Удалить"};
+        final String[] labels = {primaryLabel, "Расширенные свойства", "Выравнивание", "Копировать", "Вставить", "Удалить"};
         final String[] details = {
                 "Параметры выбранного типа элемента",
                 "Геометрия, привязка и дополнительные поля",
                 "Выровнять на холсте",
                 "Создать копию элемента",
+                "Вставить скопированные компоненты",
                 "Удалить элемент с экрана"
         };
-        final int[] symbols = {0x2699, 0x2637, 0x21D4, 0x29C9, 0x2715};
+        final int[] symbols = {0x2699, 0x2637, 0x21D4, 0x29C9, 0x29C9, 0x2715};
 
         for (int i = 0; i < labels.length; i++) {
             final int index = i;
@@ -5080,11 +5081,12 @@ public class MainActivity extends Activity {
             row.setBackgroundColor(i % 2 == 0
                     ? Color.rgb(48, 48, 48) : Color.rgb(40, 40, 40));
 
-            if (i == 2 || i == 3) {
+            if (i == 2 || i == 3 || i == 4) {
                 // Reuse verified icons from the original kc_selection_actions layout.
                 android.widget.ImageView sourceIcon = new android.widget.ImageView(this);
                 sourceIcon.setImageResource(i == 2
-                        ? R.drawable.kc_align_open_menu : R.drawable.kc_action_copy);
+                        ? R.drawable.kc_align_open_menu
+                        : i == 3 ? R.drawable.kc_action_copy : R.drawable.kc_action_paste);
                 // The original selection-action XML specifies fitXY and 40dp icons.
                 sourceIcon.setScaleType(android.widget.ImageView.ScaleType.FIT_XY);
                 sourceIcon.setContentDescription(null); // The clickable row owns the label.
@@ -5096,7 +5098,7 @@ public class MainActivity extends Activity {
                 symbol.setText(new String(Character.toChars(symbols[i])));
                 symbol.setTextSize(21);
                 symbol.setGravity(Gravity.CENTER);
-                symbol.setTextColor(i == 4 ? Color.rgb(235, 105, 90) : Color.rgb(237, 176, 59));
+                symbol.setTextColor(i == 5 ? Color.rgb(235, 105, 90) : Color.rgb(237, 176, 59));
                 row.addView(symbol, new LinearLayout.LayoutParams(dp(38), -2));
             }
 
@@ -5107,7 +5109,7 @@ public class MainActivity extends Activity {
             label.setText(labels[i]);
             label.setTextSize(16);
             label.setTypeface(null, android.graphics.Typeface.BOLD);
-            label.setTextColor(i == 4 ? Color.rgb(235, 105, 90) : Color.rgb(237, 176, 59));
+            label.setTextColor(i == 5 ? Color.rgb(235, 105, 90) : Color.rgb(237, 176, 59));
             textColumn.addView(label, new LinearLayout.LayoutParams(-1, -2));
 
             TextView detail = new TextView(this);
@@ -5138,6 +5140,7 @@ public class MainActivity extends Activity {
                 else if (index == 1) editSelectedWidget(true);
                 else if (index == 2) showAlignDialog();
                 else if (index == 3) copySelectedWidget();
+                else if (index == 4) pasteWidget();
                 else deleteSelectedWidget();
             });
             list.addView(row, new LinearLayout.LayoutParams(-1, -2));
