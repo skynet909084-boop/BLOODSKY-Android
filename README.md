@@ -10,6 +10,7 @@ The current prototype includes:
 - canvas widgets, selection, dragging, resize grip, cut/copy/paste and delete;
 - widget property editing and preservation of unknown JSON metadata;
 - Craft ID26 WebView: 16 editable links, first-set-bit register selection, explicit operator approval and a foreground HTTPS page with bounded same-origin requests; imported links stay disabled;
+- Craft ID23 RTSP video: editable original `rtsp_url`, foreground playback after explicit opt-in and per-launch operator confirmation; imported streams remain disabled and stop on pause or screen changes;
 - compact original toolbar and a separate foreground operator mode with guarded runtime gestures;
 - local project persistence plus portable ZIP image/audio import/export and JSON export;
 - Craft export retains appended screens (up to 128), their supported components/FBD wiring/backgrounds and opaque source fields; original screen deletion or renumbering still requires explicit remapping;

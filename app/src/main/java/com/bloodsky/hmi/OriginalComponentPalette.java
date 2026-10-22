@@ -37,7 +37,7 @@ public final class OriginalComponentPalette {
         bind(dialog, R.id.kc_picker_tab_sms_out, "SMS-уведомление", "SMS: {value}", add);
         dialog.findViewById(R.id.kc_picker_tab_sms_in).setVisibility(View.VISIBLE);
         dialog.findViewById(R.id.kc_picker_tab_sms_out).setVisibility(View.VISIBLE);
-        unavailable(dialog, R.id.kc_picker_tab_camera, "Камера");
+        bind(dialog, R.id.kc_picker_tab_camera, "Видео RTSP Craft", "Видео", add);
         bind(dialog, R.id.kc_picker_tab_push_notif, "Telegram-уведомление", "Событие", add);
         bind(dialog, R.id.kc_picker_tab_web_view, "WebView Craft", "Веб-страница", add);
         bind(dialog, R.id.kc_picker_tab_button, "Кнопка", "Кнопка", add);

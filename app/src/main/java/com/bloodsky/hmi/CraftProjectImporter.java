@@ -212,7 +212,7 @@ public final class CraftProjectImporter {
         else if (componentId == 25) type = "Уведомление Craft"; // CustomComponents.t; local opt-in, legacy FCM key is not reused
         else if (componentId == 19) type = "Шлюз Craft"; // CustomComponents.k, source/receive/trigger register gateway
         else if (componentId == 22) type = "Шлюз битовый"; // CustomComponents.l, source/receive/trigger bit gateway
-        else if (componentId == 23) type = "Видео RTSP Craft"; // CustomComponents.f; preserve as disabled until source-backed player mapping
+        else if (componentId == 23) type = "Видео RTSP Craft"; // CustomComponents.f; foreground player requires explicit operator opt-in
         else if (componentId == 26) type = "WebView Craft"; // b0; preserve links but do not auto-navigate on imported signals
         else if (componentId == 28) type = "Email Craft"; // j; imported credentials are migrated to Android Keystore before persistence
         else if (componentId == 13) type = "Линейный задатчик Craft"; // CustomSeekBar
@@ -571,11 +571,11 @@ public final class CraftProjectImporter {
             widget.put("craftListEnabled", false);
             widget.put("craftListInitialMask", 0);
         } else if (componentId == 23) {
-            // Preserve unverified Craft video fields, but never start a stream during import.
+            // Preserve the original rtsp_url, but never start a stream during import.
             widget.put("craftUnsupportedComponent", true);
             widget.put("craftRtspEnabled", false);
             if (widget.optString("text", "").trim().isEmpty())
-                widget.put("text", "Видео Craft 23 — воспроизведение не подключено");
+                widget.put("text", "Видео Craft 23");
         } else if (componentId == 18) {
             // Preserve the source object but require an operator to re-enter a trusted sender,
             // command, and verified holding-register binding before this component can execute.
