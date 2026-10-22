@@ -100,6 +100,8 @@ class CraftEditorVisualContractTests(unittest.TestCase):
             "private void ", 1)[0]
         self.assertIn("new ArrayList<>(editor.selectedWidgets)", menu)
         self.assertIn("final int menuFocusedIndex = editor.selected", menu)
+        self.assertIn("final int menuWidgetCount = widgets.size()", menu)
+        self.assertEqual(menu.count("widgets.size() != menuWidgetCount"), 2)
         self.assertEqual(menu.count("editor.selected != menuFocusedIndex"), 2)
         self.assertEqual(menu.count("!editor.selectedWidgets.equals(menuSelection)"), 2)
         self.assertIn("menuSelectionWidgets.add(widgets.get(selectionIndex))", menu)
