@@ -4796,7 +4796,8 @@ public class MainActivity extends Activity {
         releaseVoiceRecognizer();
         craftWebViewWindow.close();
         closeCraftRtspPlayer();
-        fbdWireHistory.clear();
+        // Keep screen-local FBD wire Undo/Redo across navigation. Histories are
+        // cleared on project load and on graph structure changes, not page flips.
         stopCurrentScreenAlarms();
         saveActiveScreen();
         if (screens.isEmpty()) screens.add(new Screen("Экран 1"));
