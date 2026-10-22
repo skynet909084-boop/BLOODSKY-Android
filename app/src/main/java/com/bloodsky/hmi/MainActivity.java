@@ -67,6 +67,7 @@ public class MainActivity extends Activity {
     private static final String ACTIVE_PROJECT = "active_project";
     private static final String PROJECT_CATALOG = "project_catalog_v1";
     private static final String PROJECT_TRASH = "project_trash_v1";
+    private static final String PROJECT_MEDIA_CLEANUP_QUEUE = "project_media_cleanup_pending_v1";
     private static final String TELEGRAM_PREFS = "bloodsky_telegram";
     private static final int REQUEST_EXPORT_PROJECT = 7101;
     private static final int REQUEST_IMPORT_PROJECT = 7102;
@@ -117,6 +118,8 @@ public class MainActivity extends Activity {
         }
     };
     private final ExecutorService modbusExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService projectMediaCleanupExecutor = Executors.newSingleThreadExecutor();
+    private final Object projectMediaCleanupLock = new Object();
     private volatile UsbSerialModbusConnection manualUsbConnection;
     private final java.util.concurrent.ConcurrentHashMap<String, BluetoothModbusConnection> bluetoothModbusConnections =
             new java.util.concurrent.ConcurrentHashMap<>();
@@ -292,6 +295,7 @@ public class MainActivity extends Activity {
             android.util.Log.e("BLOODSKY", "TTS init error", ex);
         }
         if (!restoreMediaPickerState(state)) showHome();
+        schedulePendingProjectMediaCleanup();
     }
 
     private static final String STATE_RESTORE_MEDIA_PICKER = "restore_media_picker";
@@ -538,6 +542,7 @@ public class MainActivity extends Activity {
         releaseVoiceRecognizer();
         editor = null;
         modbusExecutor.shutdownNow();
+        projectMediaCleanupExecutor.shutdownNow();
         craftSensorExecutor.shutdownNow();
         telegramExecutor.shutdownNow();
         homeAssistantExecutor.shutdownNow();
@@ -952,21 +957,69 @@ public class MainActivity extends Activity {
     private void permanentlyDeleteTrashedProject(JSONObject selected) {
         try {
             android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-            String oldTrash = prefs.getString(PROJECT_TRASH, "{}");
-            String key = ProjectMediaService.getOrGenerateProjectId(selected.toString());
-            JSONObject result = ProjectCatalog.permanentlyDeleteFromTrash(oldTrash, key);
-            if (!prefs.edit().putString(PROJECT_TRASH, result.getJSONObject("trash").toString()).commit())
-                throw new IOException("Не удалось сохранить изменения корзины");
-            try {
-                ProjectMediaService.deleteProjectMedia(getFilesDir(), result.getJSONObject("project").toString());
-            } catch (IOException cleanupFailure) {
-                android.util.Log.e("BLOODSKY", "Could not remove permanently deleted project media", cleanupFailure);
-                Toast.makeText(this, "Проект удалён, но часть файлов не удалось очистить", Toast.LENGTH_LONG).show();
-                return;
+            synchronized (projectMediaCleanupLock) {
+                String oldTrash = prefs.getString(PROJECT_TRASH, "{}");
+                String key = ProjectMediaService.getOrGenerateProjectId(selected.toString());
+                JSONObject result = ProjectCatalog.permanentlyDeleteFromTrash(oldTrash, key);
+                // Commit the tombstone in the SAME transaction as removing the
+                // trash entry. If storage cleanup fails or Android kills us,
+                // the next launch can safely retry all private generations.
+                String pending = ProjectMediaCleanupQueue.enqueue(
+                        prefs.getString(PROJECT_MEDIA_CLEANUP_QUEUE, "[]"), key);
+                if (!prefs.edit()
+                        .putString(PROJECT_TRASH, result.getJSONObject("trash").toString())
+                        .putString(PROJECT_MEDIA_CLEANUP_QUEUE, pending)
+                        .commit()) {
+                    throw new IOException("Не удалось сохранить удаление проекта и очередь очистки");
+                }
             }
-            Toast.makeText(this, "Проект и его файлы удалены", Toast.LENGTH_SHORT).show();
+            schedulePendingProjectMediaCleanup();
+            Toast.makeText(this, "Проект удалён; очистка его файлов запущена", Toast.LENGTH_SHORT).show();
         } catch (Exception error) {
             Toast.makeText(this, "Не удалось удалить проект: " + error.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void schedulePendingProjectMediaCleanup() {
+        try {
+            projectMediaCleanupExecutor.execute(this::drainPendingProjectMediaCleanup);
+        } catch (java.util.concurrent.RejectedExecutionException stopped) {
+            // The durable queue remains available on the next launch.
+        }
+    }
+
+    private void drainPendingProjectMediaCleanup() {
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        try {
+            for (String id : ProjectMediaCleanupQueue.pending(
+                    prefs.getString(PROJECT_MEDIA_CLEANUP_QUEUE, "[]"))) {
+                synchronized (projectMediaCleanupLock) {
+                    try {
+                        String queue = prefs.getString(PROJECT_MEDIA_CLEANUP_QUEUE, "[]");
+                        if (!ProjectMediaCleanupQueue.pending(queue).contains(id)) continue;
+                        // Never erase a directory whose identity is now referenced
+                        // by a saved, trashed or active project. Do not delete on
+                        // corrupt catalog/active JSON: fail closed instead.
+                        if (ProjectMediaCleanupQueue.isReferenced(id,
+                                prefs.getString(PROJECT_CATALOG, "{}"),
+                                prefs.getString(PROJECT_TRASH, "{}"),
+                                prefs.getString(ACTIVE_PROJECT, null))) {
+                            if (!prefs.edit().putString(PROJECT_MEDIA_CLEANUP_QUEUE,
+                                    ProjectMediaCleanupQueue.remove(queue, id)).commit())
+                                android.util.Log.e("BLOODSKY", "Could not dismiss reused project cleanup ID");
+                            continue;
+                        }
+                        ProjectMediaService.deleteProjectMediaById(getFilesDir(), id);
+                        if (!prefs.edit().putString(PROJECT_MEDIA_CLEANUP_QUEUE,
+                                ProjectMediaCleanupQueue.remove(queue, id)).commit())
+                            android.util.Log.e("BLOODSKY", "Could not acknowledge deleted media; will retry");
+                    } catch (Exception failure) {
+                        android.util.Log.e("BLOODSKY", "Project media cleanup deferred until next launch", failure);
+                    }
+                }
+            }
+        } catch (Exception invalidQueue) {
+            android.util.Log.e("BLOODSKY", "Invalid project media cleanup queue, refusing deletion", invalidQueue);
         }
     }
 
