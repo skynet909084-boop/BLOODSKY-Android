@@ -58,4 +58,23 @@ public class CraftHmiStateSignalTest {
         assertEquals(0, CraftHmiStateSignal.decode("-0.0"));
         assertEquals(15, CraftHmiStateSignal.decode("15.000"));
     }
+    @Test public void boundOperatorBitListsAreUnknownUntilFirstSample() {
+        org.junit.Assert.assertTrue(CraftHmiStateSignal.unavailableWord(null, true, true));
+        org.junit.Assert.assertTrue(CraftHmiStateSignal.unavailableWord("ERR: offline", true, true));
+        org.junit.Assert.assertTrue(CraftHmiStateSignal.unavailableWord("NaN", true, true));
+        org.junit.Assert.assertTrue(CraftHmiStateSignal.unavailableWord("65536", true, true));
+    }
+
+    @Test public void fullWordZeroAndHighestBitAreRealMeasurements() {
+        org.junit.Assert.assertFalse(CraftHmiStateSignal.unavailableWord("0", true, true));
+        org.junit.Assert.assertFalse(CraftHmiStateSignal.unavailableWord("65535", true, true));
+        org.junit.Assert.assertFalse(CraftHmiStateSignal.unavailableWord("32768", true, true));
+    }
+
+    @Test public void unboundOrEditorBitListsStillShowTheirInitialPreview() {
+        org.junit.Assert.assertFalse(CraftHmiStateSignal.unavailableWord(null, true, false));
+        org.junit.Assert.assertFalse(CraftHmiStateSignal.unavailableWord(null, false, true));
+        org.junit.Assert.assertFalse(CraftHmiStateSignal.unavailableWord("ERR", false, true));
+        org.junit.Assert.assertTrue(CraftHmiStateSignal.unavailableWord("ERR", true, false));
+    }
 }
