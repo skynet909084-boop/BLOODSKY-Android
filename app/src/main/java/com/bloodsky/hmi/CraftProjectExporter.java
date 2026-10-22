@@ -81,7 +81,7 @@ public final class CraftProjectExporter {
                 if (row < 0) {
                     int addedComponentId = addedCraftFbdBlockId(widget);
                     if (addedComponentId < 0)
-                        throw new IOException("Экспорт новых компонентов KaScada поддерживает проверенные блоки AND, OR, XOR, RS, счётчик CTU, триггер и таймер");
+                        throw new IOException("Для нового компонента нет проверенного соответствия палитре KaScada");
                     row = appendCraftFbdBlock(widget, addedComponentId, s, sourceRows, outputRows);
                 }
                 if (row >= sourceRows.length() || seen[row])
@@ -186,6 +186,21 @@ public final class CraftProjectExporter {
                         int mode = craftSunriseType(widget.optString("craftSunriseMode", ""));
                         if (mode > 0) merged.put("type", mode);
                     }
+                    if (componentId == 130) {
+                        if (widget.has("craftOdTempHost")) merged.put("ip", widget.optString("craftOdTempHost"));
+                        if (widget.has("craftOdTempType")) merged.put("typeSensor", widget.optInt("craftOdTempType"));
+                        if (widget.has("craftOdTempResponse")) merged.put("typeResponse", widget.optInt("craftOdTempResponse"));
+                    }
+                    if (componentId == 139 || componentId == 140) {
+                        if (widget.has("craftMqttTopic")) merged.put("topic", widget.optString("craftMqttTopic"));
+                        if (widget.has("craftMqttServer")) merged.put("numMqttServer", widget.optInt("craftMqttServer"));
+                        if (widget.has("craftMqttType")) {
+                            if (componentId == 139) merged.put("typeQ", widget.optInt("craftMqttType"));
+                            else merged.put("typeIn", widget.optInt("craftMqttType"));
+                        }
+                        if (componentId == 140 && widget.has("craftMqttRetain"))
+                            merged.put("mqttRetain", widget.optBoolean("craftMqttRetain"));
+                    }
                     if (isCraftOperatorComponent(componentId) && widget.has("compareOperator")) {
                         int action = craftOperatorAction(componentId,
                                 widget.optString("compareOperator", ""));
@@ -261,6 +276,28 @@ public final class CraftProjectExporter {
             other.put("typeVar", variableType);
             if (widget.has("craftVariableName"))
                 other.put("typeVarValue", widget.optString("craftVariableName"));
+        } else if (componentId == 120) {
+            int axis = widget.optInt("craftSensorAxis", 1);
+            if (axis < 1 || axis > 3) throw new IOException("Неизвестная ось Craft-датчика");
+            other.put("type", axis);
+        } else if (componentId == 127) {
+            int mode = craftSunriseType(widget.optString("craftSunriseMode", "SR"));
+            if (mode == 0) throw new IOException("Неизвестный режим Craft Sunrise");
+            other.put("type", mode);
+            if (widget.has("latitude")) other.put("latitude", widget.optDouble("latitude"));
+            if (widget.has("longitude")) other.put("longitude", widget.optDouble("longitude"));
+        } else if (componentId == 130) {
+            if (widget.has("craftOdTempHost")) other.put("ip", widget.optString("craftOdTempHost"));
+            if (widget.has("craftOdTempType")) other.put("typeSensor", widget.optInt("craftOdTempType"));
+            if (widget.has("craftOdTempResponse")) other.put("typeResponse", widget.optInt("craftOdTempResponse"));
+        } else if (componentId == 139 || componentId == 140) {
+            String topic = widget.optString("craftMqttTopic", "");
+            if (!topic.isEmpty()) other.put("topic", topic);
+            other.put("numMqttServer", widget.optInt("craftMqttServer", 1));
+            int mqttType = widget.optInt("craftMqttType", 1);
+            if (mqttType < 1 || mqttType > 3) throw new IOException("Неизвестный тип Craft MQTT");
+            other.put(componentId == 139 ? "typeQ" : "typeIn", mqttType);
+            if (componentId == 140) other.put("mqttRetain", widget.optBoolean("craftMqttRetain", false));
         }
         JSONObject row = new JSONObject().put("componentId", componentId)
                 .put("text", widget.optString("text", ""))
@@ -295,11 +332,7 @@ public final class CraftProjectExporter {
     private static int addedCraftFbdBlockId(JSONObject widget) {
         if (widget == null) return -1;
         int declared = widget.optInt("craftComponentId", -1);
-        if (declared == 103 || declared == 104 || declared == 113 || declared == 125
-                || declared == 114 || declared == 115 || declared == 116
-                || declared == 107 || declared == 110 || declared == 111 || declared == 112
-                || declared == 101 || declared == 102 || declared == 105 || declared == 106
-                || declared == 108 || declared == 109 || declared == 133 || declared == 134)
+        if (declared >= 101 && declared <= 140 && declared != 135)
             return declared;
         String type = MainActivity.canonicalFbdBlockType(widget.optString("type", ""));
         if ("FBD AND".equals(type)) return 103;
@@ -321,6 +354,26 @@ public final class CraftProjectExporter {
         if ("FBD CRAFT VAR OUT FLOAT".equals(type)) return 109;
         if (type.startsWith("FBD CRAFT VAR NAME IN ")) return 133;
         if (type.startsWith("FBD CRAFT VAR NAME OUT ")) return 134;
+        if ("FBD CRAFT MOVE".equals(type)) return 117;
+        if ("FBD CRAFT INT TO FLOAT".equals(type)) return 118;
+        if ("FBD CRAFT FLOAT TO INT".equals(type)) return 119;
+        if ("FBD CRAFT SENSOR ORIENTATION".equals(type)) return 120;
+        if ("FBD CRAFT SIN".equals(type)) return 121;
+        if ("FBD CRAFT LOG".equals(type)) return 122;
+        if ("FBD CRAFT ABS".equals(type)) return 123;
+        if ("FBD CRAFT POW".equals(type)) return 124;
+        if ("FBD CRAFT SEL".equals(type)) return 126;
+        if ("FBD CRAFT SUNRISE".equals(type)) return 127;
+        if ("FBD CRAFT MX".equals(type)) return 128;
+        if ("FBD CRAFT WORD TO FLOAT".equals(type)) return 129;
+        if ("FBD CRAFT ODTEMP".equals(type)) return 130;
+        if ("FBD CRAFT SENSOR LIGHT".equals(type)) return 131;
+        if ("FBD CRAFT SENSOR SPEED".equals(type)) return 132;
+        if ("FBD CRAFT ARRAY".equals(type)) return 136;
+        if ("FBD CRAFT CHANGE I".equals(type)) return 137;
+        if ("FBD CRAFT CHANGE F".equals(type)) return 138;
+        if (type.startsWith("FBD CRAFT MQTT SUB ")) return 139;
+        if (type.startsWith("FBD CRAFT MQTT PUB ")) return 140;
         return -1;
     }
 
