@@ -4976,6 +4976,9 @@ public class MainActivity extends Activity {
         // A different focused item can change which properties are edited.
         final int menuFocusedIndex = editor.selected;
         final int menuWidgetCount = widgets.size();
+        // Detect replacements/reordering anywhere in the canvas, including
+        // positions outside the current multi-selection.
+        final ArrayList<Widget> menuWidgetOrder = new ArrayList<>(widgets);
         final ArrayList<Widget> menuSelectionWidgets = new ArrayList<>();
         for (int selectionIndex : menuSelection) {
             if (selectionIndex < 0 || selectionIndex >= widgets.size()) return;
@@ -5017,6 +5020,7 @@ public class MainActivity extends Activity {
                         || widgets.get(editor.selected) != selectedWidget
                         || editor.selected != menuFocusedIndex
                         || widgets.size() != menuWidgetCount
+                        || !sameWidgetOrder(menuWidgetOrder)
                         || !editor.selectedWidgets.equals(menuSelection)
                         || !sameSelectedWidgetObjects(menuSelection, menuSelectionWidgets)) {
                     Toast.makeText(this, "Элемент изменён: выбери его заново",
@@ -5124,6 +5128,7 @@ public class MainActivity extends Activity {
                         || widgets.get(editor.selected) != selectedWidget
                         || editor.selected != menuFocusedIndex
                         || widgets.size() != menuWidgetCount
+                        || !sameWidgetOrder(menuWidgetOrder)
                         || !editor.selectedWidgets.equals(menuSelection)
                         || !sameSelectedWidgetObjects(menuSelection, menuSelectionWidgets)) {
                     Toast.makeText(this, "Элемент изменён: выбери его заново", Toast.LENGTH_SHORT).show();
@@ -5153,7 +5158,14 @@ public class MainActivity extends Activity {
         if (dialogTitle != null) dialogTitle.setTextColor(Color.rgb(237, 176, 59));
     }
 
-        private boolean sameSelectedWidgetObjects(ArrayList<Integer> indices,
+        private boolean sameWidgetOrder(ArrayList<Widget> originals) {
+        if (widgets.size() != originals.size()) return false;
+        for (int i = 0; i < originals.size(); i++)
+            if (widgets.get(i) != originals.get(i)) return false;
+        return true;
+    }
+
+    private boolean sameSelectedWidgetObjects(ArrayList<Integer> indices,
             ArrayList<Widget> originals) {
         if (indices.size() != originals.size()) return false;
         for (int i = 0; i < indices.size(); i++) {
