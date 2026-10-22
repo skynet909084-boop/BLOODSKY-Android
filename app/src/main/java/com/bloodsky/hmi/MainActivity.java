@@ -14096,6 +14096,12 @@ private String archiveProjectKey() {
         }
 
         private void openCraftNumericInput(Widget widget, int widgetIndex) {
+            final int openingScreenIndex = currentScreenIndex;
+            final Screen openingScreen = openingScreenIndex >= 0
+                    && openingScreenIndex < screens.size()
+                    ? screens.get(openingScreenIndex) : null;
+            if (!isRuntimeWidgetCurrent(widget, widgetIndex, openingScreen, openingScreenIndex))
+                return;
             if (!widget.extraFields.optBoolean("craftNumericEnabled", false)) {
                 Toast.makeText(MainActivity.this, "Открой свойства ID 8 и явно разреши ввод", Toast.LENGTH_LONG).show(); return;
             }
@@ -14144,6 +14150,13 @@ private String archiveProjectKey() {
                     .setTitle(widget.text == null || widget.text.isEmpty() ? "Числовой ввод" : widget.text)
                     .setView(form).setNegativeButton("Отмена", null).setPositiveButton("Задать", null).create();
             dialog.setOnShowListener(shown -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                if (!isRuntimeWidgetCurrent(widget, widgetIndex,
+                        openingScreen, openingScreenIndex)) {
+                    Toast.makeText(MainActivity.this, "Экран изменился: открой ввод заново",
+                            Toast.LENGTH_LONG).show();
+                    dialog.dismiss();
+                    return;
+                }
                 if (passwordRequired && (passwordField == null || !expectedPassword.equals(passwordField.getText().toString()))) {
                     Toast.makeText(MainActivity.this, "Неверный пароль", Toast.LENGTH_LONG).show(); return;
                 }
@@ -14153,30 +14166,89 @@ private String archiveProjectKey() {
                 final String formatted = widget.extraFields.optInt("craftNumericMode", CraftNumericInput.INTEGER) == CraftNumericInput.FLOAT32
                         ? CraftNumericInput.truncateFloatDisplay((float) next, widget.extraFields) : Integer.toString((int) next);
                 if (binding == null) {
-                    if (craftSystemBinding) {
-                        if (!operatorMode || !activityResumed || !widgets.contains(widget)
-                                || !CraftSystemNumericWidgetBinding.writeValue(widget.extraFields, next, systemRegisterBank)) {
-                            Toast.makeText(MainActivity.this, "Не удалось записать системный регистр", Toast.LENGTH_LONG).show(); return;
+                    final String oldText = widget.text;
+                    final String oldLiveValue = liveValues.get(widgetIndex);
+                    final JSONObject oldProject = projectExtraFields;
+                    org.json.JSONArray oldSystemRegisters = null;
+                    boolean committed = false;
+                    try {
+                        if (craftSystemBinding) {
+                            oldSystemRegisters = systemRegisterBank.toProjectJson();
+                            if (!CraftSystemNumericWidgetBinding.writeValue(
+                                    widget.extraFields, next, systemRegisterBank))
+                                throw new IllegalStateException("Системный регистр недоступен");
+                        }
+                        widget.text = formatted;
+                        if (!persistProjectNow(true))
+                            throw new IllegalStateException("Проект не сохранён");
+                        committed = true;
+                        liveValues.put(widgetIndex, formatted);
+                        invalidate();
+                        dialog.dismiss();
+                    } catch (Exception failure) {
+                        Toast.makeText(MainActivity.this,
+                                "Не удалось записать значение: " + failure.getMessage(),
+                                Toast.LENGTH_LONG).show();
+                    } finally {
+                        if (!committed) {
+                            widget.text = oldText;
+                            projectExtraFields = oldProject;
+                            if (oldSystemRegisters != null)
+                                systemRegisterBank.restoreProjectJson(oldSystemRegisters);
+                            if (oldLiveValue == null) liveValues.remove(widgetIndex);
+                            else liveValues.put(widgetIndex, oldLiveValue);
+                            saveActiveScreen();
+                            invalidate();
                         }
                     }
-                    widget.text = formatted; liveValues.put(widgetIndex, formatted);
-                    persistProject(); invalidate(); dialog.dismiss(); return;
+                    return;
+                }
+                final int registerCount = CraftNumericInput.registerCount(widget.extraFields);
+                final int[] encoded;
+                try {
+                    encoded = registerCount == 2
+                            ? FbdCraftRegisterCodec.floatRegisters((float) next)
+                            : new int[]{CraftNumericInput.integerRegister(next, widget.extraFields)};
+                } catch (Exception invalid) {
+                    Toast.makeText(MainActivity.this, "Неверное значение регистра",
+                            Toast.LENGTH_LONG).show();
+                    return;
                 }
                 modbusExecutor.execute(() -> {
                     Exception failure = null;
                     try {
-                        if (!operatorMode || !activityResumed || !widgets.contains(widget)) throw new IOException("Рабочий режим остановлен");
+                        if (!isRuntimeWidgetCurrent(widget, widgetIndex,
+                                openingScreen, openingScreenIndex))
+                            throw new IOException("Рабочий режим остановлен");
                         ModbusTcpClient client = new ModbusTcpClient(binding.host, binding.port);
-                        if (CraftNumericInput.registerCount(widget.extraFields) == 2)
-                            client.writeMultiple(binding.unit, binding.address, FbdCraftRegisterCodec.floatRegisters((float) next));
-                        else client.writeSingle(binding.unit, binding.address, CraftNumericInput.integerRegister(next, widget.extraFields));
+                        if (registerCount == 2)
+                            client.writeMultiple(binding.unit, binding.address, encoded);
+                        else client.writeSingle(binding.unit, binding.address, encoded[0]);
                     } catch (Exception error) { failure = error; }
                     final Exception result = failure;
                     runOnUiThread(() -> {
-                        if (!widgets.contains(widget) || !operatorMode || widgets.indexOf(widget) != widgetIndex) return;
+                        if (!isRuntimeWidgetCurrent(widget, widgetIndex,
+                                openingScreen, openingScreenIndex)) return;
                         if (result == null) {
-                            widget.text = formatted; liveValues.put(widgetIndex, formatted); persistProject(); dialog.dismiss();
-                        } else Toast.makeText(MainActivity.this, "Не удалось записать значение: " + describeModbusError(result), Toast.LENGTH_LONG).show();
+                            String oldText = widget.text;
+                            JSONObject oldProject = projectExtraFields;
+                            widget.text = formatted;
+                            if (persistProjectNow(true)) {
+                                liveValues.put(widgetIndex, formatted);
+                                dialog.dismiss();
+                            } else {
+                                widget.text = oldText;
+                                projectExtraFields = oldProject;
+                                saveActiveScreen();
+                                Toast.makeText(MainActivity.this,
+                                        "Регистр записан, но проект не сохранён",
+                                        Toast.LENGTH_LONG).show();
+                            }
+                        } else {
+                            Toast.makeText(MainActivity.this,
+                                    "Не удалось записать значение: " + describeModbusError(result),
+                                    Toast.LENGTH_LONG).show();
+                        }
                         invalidate();
                     });
                 });
