@@ -96,9 +96,19 @@ final class FbdCraftPinTypes {
             }
             return null;
         }
-        if ("FBD CRAFT MACRO IN".equals(kind) && output && "Q".equals(name))
-            return typeForPort(widget.extraFields == null ? -1
-                    : widget.extraFields.optInt("craftMacroPortType", -1));
+        if ("FBD CRAFT MACRO IN".equals(kind) && output && "Q".equals(name)) {
+            // The original .mcr macro type is a discrete enum (1..3).
+            // JSONObject.optInt can wrap 4294967297 into BOOL=1 or truncate
+            // 2.9 into INT=2. Invalid runtime widgets must not acquire a
+            // valid-looking pin type and connect to an unrelated signal.
+            if (widget.extraFields == null) return null;
+            try {
+                return typeForPort(CraftExactInteger.read(
+                        widget.extraFields, "craftMacroPortType", -1));
+            } catch (org.json.JSONException invalid) {
+                return null;
+            }
+        }
         String exact = typeForBlock(kind, pin, output);
         return exact != null ? exact : MainActivity.knownFbdPinType(widget, pin, output);
     }
