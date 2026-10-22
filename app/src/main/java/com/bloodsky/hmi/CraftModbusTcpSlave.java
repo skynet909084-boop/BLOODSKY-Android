@@ -195,6 +195,7 @@ public final class CraftModbusTcpSlave implements AutoCloseable {
             case 15: return writeCoils(request, registers);
             case 16: return writeRegisters(request, registers);
             case 22: return maskWriteRegister(request, registers);
+            case 23: return readWriteMultipleRegisters(request, registers);
             default: throw new SlaveException(1);
         }
     }
@@ -285,6 +286,37 @@ public final class CraftModbusTcpSlave implements AutoCloseable {
         requireRegisterRange(address, 1);
         bank.maskWriteWord(address, u16(request, 10), u16(request, 12));
         return copyPdu(request, 7);
+    }
+
+    /**
+     * FC23 (0x17): write holding registers first, then return the read range
+     * from one synchronized transaction. The PDU has 10 fixed request bytes
+     * plus two per written word, so the exact ADU size must be 17 + 2N.
+     */
+    private static byte[] readWriteMultipleRegisters(byte[] request,
+                                                      CraftSystemRegisterBank bank)
+            throws SlaveException {
+        if (request.length < 19) throw new SlaveException(3);
+        int readStart = u16(request, 8);
+        int readCount = u16(request, 10);
+        int writeStart = u16(request, 12);
+        int writeCount = u16(request, 14);
+        int byteCount = request[16] & 255;
+        if (readCount < 1 || readCount > MAX_READ_REGISTERS
+                || writeCount < 1 || writeCount > 121
+                || byteCount != writeCount * 2
+                || request.length != 17 + byteCount) throw new SlaveException(3);
+        requireRegisterRange(readStart, readCount);
+        requireRegisterRange(writeStart, writeCount);
+        int[] writeValues = new int[writeCount];
+        for (int i = 0; i < writeCount; i++) writeValues[i] = u16(request, 17 + i * 2);
+
+        int[] values = bank.readWriteWords(readStart, readCount, writeStart, writeValues);
+        byte[] pdu = new byte[2 + readCount * 2];
+        pdu[0] = 23;
+        pdu[1] = (byte) (readCount * 2);
+        for (int i = 0; i < readCount; i++) putU16(pdu, 2 + i * 2, values[i]);
+        return pdu;
     }
 
     private static byte[] writeMultipleReply(byte[] request, int function) {
