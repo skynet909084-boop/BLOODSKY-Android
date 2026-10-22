@@ -1,5 +1,8 @@
 package com.bloodsky.hmi;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 /** Source-backed display rules for KaScada CustomComponents.u (Craft component ID 4). */
 final class OriginalCraftNumericIndicator {
     static final String TYPE = "Цифровой индикатор Craft";
@@ -32,6 +35,67 @@ final class OriginalCraftNumericIndicator {
         if (sourceType == SIGNED_INT32) return (int) combined;
         if (sourceType == FLOAT32) return Float.intBitsToFloat((int) combined);
         throw new IllegalArgumentException("Unknown Craft numeric indicator source type");
+    }
+
+
+    static int sourceRegister(JSONObject fields) {
+        return OriginalCraftLampConnection.register(fields);
+    }
+
+    static String sourceDeviceLabel(JSONObject fields) {
+        return OriginalCraftLampConnection.deviceLabel(fields);
+    }
+
+    /** Save a Craft ID4 inspector edit while preserving imported source and unknown keys. */
+    static JSONObject withSettings(JSONObject fields, int register, int sourceType,
+                                   int digits, int decimals, boolean systemFont,
+                                   boolean registerFrame) throws JSONException {
+        if (register < 0 || register > 65535)
+            throw new IllegalArgumentException("Регистр должен быть от 0 до 65535");
+        if (digits < 1 || digits > 18 || decimals < 0 || decimals > 9)
+            throw new IllegalArgumentException("Разряды: 1–18, дробная часть: 0–9");
+        int importedType = fields == null ? SIGNED_INT16
+                : fields.optInt("craftNumericIndicatorType", SIGNED_INT16);
+        // Unknown imported types must remain opaque and cannot be silently converted.
+        if (!isSupportedSourceType(sourceType) && sourceType != importedType)
+            throw new IllegalArgumentException("Неизвестный формат числового значения");
+        JSONObject result = fields == null ? new JSONObject() : new JSONObject(fields.toString());
+        Object oldConnection = result.opt("craftConnectionInfo");
+        JSONObject connection;
+        try {
+            connection = oldConnection instanceof JSONObject
+                    ? new JSONObject(oldConnection.toString())
+                    : oldConnection instanceof String
+                    ? new JSONObject((String) oldConnection) : new JSONObject();
+        } catch (JSONException malformed) {
+            // Do not silently discard a malformed/unknown imported endpoint.
+            throw new IllegalArgumentException("Не удалось прочитать исходную привязку Craft", malformed);
+        }
+        connection.put("addressRegister", register);
+        result.put("craftConnectionInfo", oldConnection instanceof String
+                ? connection.toString() : connection);
+
+        Object oldOther = result.opt("craftOther");
+        JSONObject other;
+        try {
+            other = oldOther instanceof JSONObject ? new JSONObject(oldOther.toString())
+                    : oldOther instanceof String
+                    ? new JSONObject((String) oldOther) : new JSONObject();
+        } catch (JSONException malformed) {
+            throw new IllegalArgumentException("Не удалось прочитать исходные свойства Craft", malformed);
+        }
+        other.put("type", sourceType);
+        other.put("digit", digits);
+        other.put("divisor", decimals);
+        other.put("fontChange", systemFont);
+        other.put("enableFrameRegister", registerFrame);
+        result.put("craftOther", oldOther instanceof String ? other.toString() : other);
+        result.put("craftNumericIndicatorType", sourceType);
+        result.put("craftNumericIndicatorDigits", digits);
+        result.put("craftNumericIndicatorDecimals", decimals);
+        result.put("craftNumericIndicatorFontChange", systemFont);
+        result.put("craftNumericIndicatorFrame", registerFrame);
+        return result;
     }
 
     /** Craft digit is the maximum integer width; divisor selects fixed decimal places. */

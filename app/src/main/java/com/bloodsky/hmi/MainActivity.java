@@ -5613,6 +5613,155 @@ public class MainActivity extends Activity {
     }
 
     /**
+     * Craft ID4's compact numeric display inspector. Keep the extended endpoint
+     * remapping UI available without turning an imported source on automatically.
+     */
+    private void showOriginalNumericIndicatorSettings(Widget widget) {
+        final int panelColor = Color.rgb(36, 36, 36);
+        final int labelColor = Color.rgb(210, 210, 210);
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(dp(24), dp(8), dp(24), dp(12));
+        form.setGravity(Gravity.CENTER_HORIZONTAL);
+        form.setBackgroundColor(panelColor);
+
+        TextView heading = new TextView(this);
+        heading.setText("Настройки");
+        heading.setTextSize(26);
+        heading.setTextColor(labelColor);
+        heading.setGravity(Gravity.CENTER);
+        form.addView(heading, new LinearLayout.LayoutParams(-1, dp(48)));
+
+        TextView device = new TextView(this);
+        device.setText("Устройство: " + OriginalCraftNumericIndicator.sourceDeviceLabel(widget.extraFields));
+        device.setTextSize(21);
+        device.setTextColor(labelColor);
+        device.setGravity(Gravity.CENTER);
+        form.addView(device, new LinearLayout.LayoutParams(-1, dp(48)));
+
+        LinearLayout registerRow = new LinearLayout(this);
+        registerRow.setGravity(Gravity.CENTER);
+        TextView registerLabel = new TextView(this);
+        registerLabel.setText("Рег:");
+        registerLabel.setTextSize(20);
+        registerLabel.setTextColor(labelColor);
+        registerRow.addView(registerLabel);
+        EditText registerField = propertyField(Integer.toString(
+                OriginalCraftNumericIndicator.sourceRegister(widget.extraFields)), InputType.TYPE_CLASS_NUMBER);
+        registerField.setTextColor(labelColor);
+        registerField.setTextSize(21);
+        registerField.setGravity(Gravity.CENTER);
+        registerField.setSingleLine(true);
+        registerField.setContentDescription("Регистр цифрового индикатора Craft");
+        registerRow.addView(registerField, new LinearLayout.LayoutParams(dp(90), dp(52)));
+        form.addView(registerRow, new LinearLayout.LayoutParams(-1, dp(56)));
+
+        int savedType = widget.extraFields.optInt("craftNumericIndicatorType", 0);
+        boolean supported = OriginalCraftNumericIndicator.isSupportedSourceType(savedType);
+        String[] types = supported
+                ? new String[]{"INT16", "UINT16", "FLOAT32", "INT32"}
+                : new String[]{"INT16", "UINT16", "FLOAT32", "INT32", "Исходный неизвестный тип"};
+        Spinner typeField = new Spinner(this);
+        android.widget.ArrayAdapter<String> typeAdapter = new android.widget.ArrayAdapter<>(
+                this, android.R.layout.simple_spinner_item, types);
+        typeAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        typeField.setAdapter(typeAdapter);
+        typeField.setSelection(supported ? savedType : 4);
+        typeField.setContentDescription("Тип числа цифрового индикатора Craft");
+        form.addView(typeField, new LinearLayout.LayoutParams(-1, dp(50)));
+
+        LinearLayout digitsRow = new LinearLayout(this);
+        digitsRow.setGravity(Gravity.CENTER);
+        TextView digitsLabel = new TextView(this);
+        digitsLabel.setText("Разряд:");
+        digitsLabel.setTextSize(19); digitsLabel.setTextColor(labelColor);
+        digitsRow.addView(digitsLabel);
+        EditText digitsField = propertyField(Integer.toString(widget.extraFields.optInt(
+                "craftNumericIndicatorDigits", 5)), InputType.TYPE_CLASS_NUMBER);
+        digitsField.setTextColor(labelColor); digitsField.setTextSize(20);
+        digitsField.setGravity(Gravity.CENTER); digitsField.setSingleLine(true);
+        digitsField.setContentDescription("Количество разрядов индикатора Craft");
+        digitsRow.addView(digitsField, new LinearLayout.LayoutParams(dp(65), dp(50)));
+        TextView decimalLabel = new TextView(this);
+        decimalLabel.setText("  Дробная:");
+        decimalLabel.setTextSize(19); decimalLabel.setTextColor(labelColor);
+        digitsRow.addView(decimalLabel);
+        EditText decimalField = propertyField(Integer.toString(widget.extraFields.optInt(
+                "craftNumericIndicatorDecimals", 0)), InputType.TYPE_CLASS_NUMBER);
+        decimalField.setTextColor(labelColor); decimalField.setTextSize(20);
+        decimalField.setGravity(Gravity.CENTER); decimalField.setSingleLine(true);
+        decimalField.setContentDescription("Дробные разряды индикатора Craft");
+        digitsRow.addView(decimalField, new LinearLayout.LayoutParams(dp(65), dp(50)));
+        form.addView(digitsRow, new LinearLayout.LayoutParams(-1, dp(58)));
+
+        CheckBox systemFont = new CheckBox(this);
+        systemFont.setText("Системный шрифт");
+        systemFont.setTextColor(labelColor);
+        systemFont.setChecked(widget.extraFields.optBoolean("craftNumericIndicatorFontChange", false));
+        form.addView(systemFont);
+        CheckBox frame = new CheckBox(this);
+        frame.setText("Рамка по регистру");
+        frame.setTextColor(labelColor);
+        frame.setChecked(widget.extraFields.optBoolean("craftNumericIndicatorFrame", false));
+        form.addView(frame);
+
+        TextView advanced = new TextView(this);
+        advanced.setText("Дополнительно: привязка Modbus");
+        advanced.setGravity(Gravity.CENTER);
+        advanced.setTextSize(13);
+        advanced.setTextColor(Color.rgb(173, 173, 173));
+        advanced.setContentDescription("Расширенные свойства цифрового индикатора и привязка");
+        form.addView(advanced, new LinearLayout.LayoutParams(-1, dp(42)));
+
+        AlertDialog dialog = new AlertDialog.Builder(this,
+                android.R.style.Theme_Material_Dialog_Alert)
+                .setView(form)
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Сохранить", null)
+                .create();
+        advanced.setOnClickListener(v -> {
+            dialog.dismiss();
+            editSelectedWidget(true);
+        });
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                .setOnClickListener(v -> {
+                    JSONObject old = widget.extraFields;
+                    try {
+                        int register = Integer.parseInt(registerField.getText().toString().trim());
+                        int digits = Integer.parseInt(digitsField.getText().toString().trim());
+                        int decimals = Integer.parseInt(decimalField.getText().toString().trim());
+                        int position = typeField.getSelectedItemPosition();
+                        int type = position == 4 ? savedType : position;
+                        widget.extraFields = OriginalCraftNumericIndicator.withSettings(
+                                old, register, type, digits, decimals,
+                                systemFont.isChecked(), frame.isChecked());
+                        if (!persistProjectNow(true)) {
+                            widget.extraFields = old;
+                            saveActiveScreen();
+                            Toast.makeText(this, "Не удалось сохранить индикатор", Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                        if (editor != null) editor.invalidate();
+                        dialog.dismiss();
+                    } catch (Exception invalid) {
+                        widget.extraFields = old;
+                        saveActiveScreen();
+                        Toast.makeText(this, invalid instanceof NumberFormatException
+                                ? "Укажи целые регистр, разряды и дробную часть"
+                                : invalid.getMessage(), Toast.LENGTH_LONG).show();
+                    }
+                }));
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(
+                    new android.graphics.drawable.ColorDrawable(panelColor));
+            int maxWidth = (int) (getResources().getDisplayMetrics().widthPixels * 0.78f);
+            dialog.getWindow().setLayout(Math.min(dp(620), maxWidth),
+                    android.view.WindowManager.LayoutParams.WRAP_CONTENT);
+        }
+    }
+
+    /**
      * Craft ID1 switch settings: source register/bit, original 8 skins and
      * operator visibility. Keep advanced network write opt-in separate.
      */
@@ -5908,6 +6057,10 @@ public class MainActivity extends Activity {
         }
         if (!advanced && OriginalCraftSwitch.supports(w.type)) {
             showOriginalSwitchSettings(w);
+            return;
+        }
+        if (!advanced && OriginalCraftNumericIndicator.TYPE.equals(w.type)) {
+            showOriginalNumericIndicatorSettings(w);
             return;
         }
         LinearLayout form = new LinearLayout(this);
