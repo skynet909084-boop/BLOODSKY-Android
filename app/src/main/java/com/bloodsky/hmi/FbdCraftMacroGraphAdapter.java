@@ -319,13 +319,24 @@ final class FbdCraftMacroGraphAdapter {
             int saveKey = CraftExactInteger.read(child, "saveKey", Integer.MIN_VALUE);
             if (childBySaveKey.put(saveKey, child) != null) duplicateKeys.add(saveKey);
         }
+        java.util.HashSet<Integer> editedKeys = new java.util.HashSet<>();
         for (int i = 0; i < widgets.length(); i++) {
             JSONObject widget = widgets.optJSONObject(i);
             if (widget == null) continue;
             int saveKey = CraftExactInteger.read(widget, "saveKey", Integer.MIN_VALUE);
-            JSONObject child = duplicateKeys.contains(saveKey) ? null : childBySaveKey.get(saveKey);
+            if (duplicateKeys.contains(saveKey))
+                throw new JSONException("Ambiguous original Craft macro child saveKey");
+            JSONObject child = childBySaveKey.get(saveKey);
             if (child == null) continue;
+            if (!editedKeys.add(saveKey))
+                throw new JSONException("Multiple edited graph widgets map to one original Craft child");
             int componentId = CraftExactInteger.read(widget, "craftComponentId", -1);
+            // A widget may edit the properties of exactly its original source
+            // component. saveKey alone must never authorize an unrelated
+            // graph widget to rewrite a different native .mcr child record.
+            int sourceComponentId = CraftExactInteger.read(child, "componentId", -1);
+            if (componentId != sourceComponentId)
+                throw new JSONException("Craft macro child identity differs from the edited widget");
             if (componentId == 114 && widget.has("craftTriggerMode")) {
                 int mode = triggerType(widget.optString("craftTriggerMode", ""));
                 if (mode > 0) child.put("type", mode);
