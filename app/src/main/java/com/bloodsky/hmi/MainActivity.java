@@ -13828,25 +13828,49 @@ private String archiveProjectKey() {
             return true;
         }
 
+        private void restoreCraftBitListChecks(android.content.DialogInterface dialog,
+                java.util.List<Integer> bits, int mask) {
+            if (!(dialog instanceof AlertDialog)) return;
+            android.widget.ListView list = ((AlertDialog) dialog).getListView();
+            if (list == null) return;
+            for (int i = 0; i < bits.size(); i++)
+                list.setItemChecked(i, (mask & (1 << bits.get(i))) != 0);
+        }
+
         private void openCraftBitList(Widget widget, int widgetIndex) {
-            String[] allLabels = CraftBitList.fromJson(widget.extraFields.optJSONArray("craftListLabels"));
+            final int openingScreenIndex = currentScreenIndex;
+            final Screen openingScreen = openingScreenIndex >= 0
+                    && openingScreenIndex < screens.size()
+                    ? screens.get(openingScreenIndex) : null;
+            if (!isRuntimeWidgetCurrent(widget, widgetIndex, openingScreen, openingScreenIndex))
+                return;
+            String[] allLabels = CraftBitList.fromJson(
+                    widget.extraFields.optJSONArray("craftListLabels"));
             java.util.ArrayList<String> choices = new java.util.ArrayList<>();
             java.util.ArrayList<Integer> bits = new java.util.ArrayList<>();
-            for (int bit = 0; bit < 16; bit++) if (allLabels[bit] != null && !allLabels[bit].trim().isEmpty()) {
-                choices.add(allLabels[bit]); bits.add(bit);
-            }
+            for (int bit = 0; bit < 16; bit++)
+                if (allLabels[bit] != null && !allLabels[bit].trim().isEmpty()) {
+                    choices.add(allLabels[bit]);
+                    bits.add(bit);
+                }
             if (choices.isEmpty()) {
-                Toast.makeText(MainActivity.this, "У списка нет подписанных пунктов. Настрой его в редакторе.", Toast.LENGTH_LONG).show();
+                Toast.makeText(MainActivity.this,
+                        "У списка нет подписанных пунктов. Настрой его в редакторе.",
+                        Toast.LENGTH_LONG).show();
                 return;
             }
             if (widget.extraFields.optBoolean("craftListCheckNoChange", false)) {
                 int shownMask = widget.extraFields.optInt("craftListInitialMask", 0) & 0xffff;
                 String liveValue = liveValues.get(widgetIndex);
-                if (liveValue != null) try { shownMask = CraftBitList.fromRegister(Integer.parseInt(liveValue)); } catch (Exception ignored) { }
+                if (liveValue != null) try {
+                    shownMask = CraftBitList.fromRegister(Integer.parseInt(liveValue));
+                } catch (Exception ignored) {}
                 String[] readOnlyChoices = new String[choices.size()];
-                for (int i = 0; i < choices.size(); i++)
-                    readOnlyChoices[i] = ((shownMask & (1 << bits.get(i))) != 0 ? "✓  " : "○  ") + choices.get(i);
-                new AlertDialog.Builder(MainActivity.this).setTitle(widget.text == null ? "Список" : widget.text)
+                for (int k = 0; k < choices.size(); k++)
+                    readOnlyChoices[k] = ((shownMask & (1 << bits.get(k))) != 0
+                            ? "✓  " : "○  ") + choices.get(k);
+                new AlertDialog.Builder(MainActivity.this)
+                        .setTitle(widget.text == null ? "Список" : widget.text)
                         .setItems(readOnlyChoices, null)
                         .setMessage("Значения доступны только для просмотра в рабочем режиме")
                         .setPositiveButton("Закрыть", null).show();
@@ -13854,52 +13878,113 @@ private String archiveProjectKey() {
             }
             int initialMask = widget.extraFields.optInt("craftListInitialMask", 0) & 0xffff;
             String current = liveValues.get(widgetIndex);
-            if (current != null) try { initialMask = CraftBitList.fromRegister(Integer.parseInt(current)); } catch (Exception ignored) { }
+            if (current != null) try {
+                initialMask = CraftBitList.fromRegister(Integer.parseInt(current));
+            } catch (Exception ignored) {}
             final int[] mask = {initialMask};
+            final int[] confirmedMask = {initialMask};
+            final int[] changeSequence = {0};
             boolean[] checked = new boolean[bits.size()];
-            for (int i = 0; i < bits.size(); i++) checked[i] = (mask[0] & (1 << bits.get(i))) != 0;
-            final BindingRequest binding = parseBinding(-1, widget.connectionInfo);
-            if (widget.connectionInfo != null && !widget.connectionInfo.trim().isEmpty() && binding == null) {
-                Toast.makeText(MainActivity.this, "Проверь TCP привязку битового списка", Toast.LENGTH_LONG).show(); return;
+            for (int k = 0; k < bits.size(); k++)
+                checked[k] = (mask[0] & (1 << bits.get(k))) != 0;
+            final String connection = widget.connectionInfo == null
+                    ? "" : widget.connectionInfo.trim();
+            final BindingRequest binding = connection.isEmpty()
+                    ? null : parseBinding(-1, connection);
+            if (!connection.isEmpty() && binding == null) {
+                Toast.makeText(MainActivity.this, "Проверь TCP привязку битового списка",
+                        Toast.LENGTH_LONG).show();
+                return;
             }
             if (binding != null && binding.functionCode != 3) {
-                Toast.makeText(MainActivity.this, "Битовый список использует holding-регистр FC03/FC06", Toast.LENGTH_LONG).show(); return;
+                Toast.makeText(MainActivity.this,
+                        "Битовый список использует holding-регистр FC03/FC06",
+                        Toast.LENGTH_LONG).show();
+                return;
             }
             AlertDialog dialog = new AlertDialog.Builder(MainActivity.this)
-                    .setTitle(widget.text == null || widget.text.isEmpty() ? "Выбери пункты" : widget.text)
-                    .setMultiChoiceItems(choices.toArray(new String[0]), checked, (d, position, isChecked) -> {
-                        int bit = bits.get(position);
-                        int next = isChecked ? mask[0] | (1 << bit) : mask[0] & ~(1 << bit);
-                        next &= 0xffff;
-                        mask[0] = next;
-                        liveValues.put(widgetIndex, Integer.toString(next));
-                        if (binding == null) {
-                            try { widget.extraFields.put("craftListInitialMask", next); } catch (Exception ignored) { }
-                            persistProject();
-                            invalidate();
+                    .setTitle(widget.text == null || widget.text.isEmpty()
+                            ? "Выбери пункты" : widget.text)
+                    .setMultiChoiceItems(choices.toArray(new String[0]), checked,
+                            (d, position, isChecked) -> {
+                        if (!isRuntimeWidgetCurrent(widget, widgetIndex,
+                                openingScreen, openingScreenIndex)) {
+                            d.dismiss();
                             return;
                         }
-                        final int committedMask = next;
-                        modbusExecutor.execute(() -> {
+                        if (position < 0 || position >= bits.size()) return;
+                        int bit = bits.get(position);
+                        final int previousMask = mask[0];
+                        final int next = (isChecked
+                                ? mask[0] | (1 << bit) : mask[0] & ~(1 << bit)) & 0xffff;
+                        if (next == previousMask) return;
+                        if (binding == null) {
+                            JSONObject previous = widget.extraFields;
+                            JSONObject previousProject = projectExtraFields;
+                            boolean committed = false;
                             try {
-                                if (!operatorMode || !activityResumed || !widgets.contains(widget)) throw new IOException("Рабочий режим остановлен");
-                                new ModbusTcpClient(binding.host, binding.port).writeSingle(binding.unit, binding.address, committedMask);
+                                widget.extraFields = new JSONObject(previous.toString());
+                                widget.extraFields.put("craftListInitialMask", next);
+                                if (!persistProjectNow(true))
+                                    throw new IOException("Проект не сохранён");
+                                committed = true;
+                                mask[0] = next;
+                                confirmedMask[0] = next;
+                                liveValues.put(widgetIndex, Integer.toString(next));
                             } catch (Exception failure) {
-                                runOnUiThread(() -> {
-                                    if (!widgets.contains(widget) || !operatorMode || widgets.indexOf(widget) != widgetIndex) return;
-                                    if (mask[0] == committedMask) {
-                                        mask[0] = committedMask ^ (1 << bit);
-                                        liveValues.put(widgetIndex, Integer.toString(mask[0]));
-                                    }
-                                    invalidate();
-                                    Toast.makeText(MainActivity.this, "Не удалось записать маску списка: " + describeModbusError(failure), Toast.LENGTH_LONG).show();
-                                });
+                                Toast.makeText(MainActivity.this,
+                                        "Не удалось сохранить список: " + failure.getMessage(),
+                                        Toast.LENGTH_LONG).show();
+                            } finally {
+                                if (!committed) {
+                                    widget.extraFields = previous;
+                                    projectExtraFields = previousProject;
+                                    mask[0] = previousMask;
+                                    restoreCraftBitListChecks(d, bits, previousMask);
+                                    saveActiveScreen();
+                                }
+                                invalidate();
                             }
+                            return;
+                        }
+                        mask[0] = next;
+                        final int requestedMask = next;
+                        final int sequence = ++changeSequence[0];
+                        modbusExecutor.execute(() -> {
+                            Exception failure = null;
+                            try {
+                                if (!isRuntimeWidgetCurrent(widget, widgetIndex,
+                                        openingScreen, openingScreenIndex))
+                                    throw new IOException("Рабочий режим остановлен");
+                                new ModbusTcpClient(binding.host, binding.port).writeSingle(
+                                        binding.unit, binding.address, requestedMask);
+                            } catch (Exception error) { failure = error; }
+                            final Exception result = failure;
+                            runOnUiThread(() -> {
+                                if (!isRuntimeWidgetCurrent(widget, widgetIndex,
+                                        openingScreen, openingScreenIndex)) return;
+                                if (result == null) confirmedMask[0] = requestedMask;
+                                if (sequence == changeSequence[0]) {
+                                    if (result != null) {
+                                        mask[0] = confirmedMask[0];
+                                        restoreCraftBitListChecks(d, bits, mask[0]);
+                                        Toast.makeText(MainActivity.this,
+                                                "Не удалось записать маску списка: "
+                                                        + describeModbusError(result),
+                                                Toast.LENGTH_LONG).show();
+                                    }
+                                    liveValues.put(widgetIndex, Integer.toString(
+                                            result == null ? requestedMask : confirmedMask[0]));
+                                    invalidate();
+                                }
+                            });
                         });
-                        invalidate();                    })
-                    .setPositiveButton("Готово", null).setNegativeButton("Закрыть", null).create();
+                    })
+                    .setPositiveButton("Готово", null)
+                    .setNegativeButton("Закрыть", null).create();
             dialog.show();
         }
+
 
         private void activateCraftConstantButton(Widget widget, int index) {
             BindingRequest binding = parseBinding(-1, widget.connectionInfo);
