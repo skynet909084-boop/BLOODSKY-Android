@@ -51,6 +51,56 @@ public class FbdCraftNamedVariableStoreTest {
         assertEquals(18.0, FbdCraftNamedVariableStore.read("stage", 2), 0);
     }
 
+    @Test public void float32VariableRoundsOnceOnWriteAndKeepsSignedZero() {
+        FbdCraftNamedVariableStore.clear();
+        assertTrue(FbdCraftNamedVariableStore.write("temperature", 3, 0.1d));
+        assertEquals((double) 0.1f, FbdCraftNamedVariableStore.read("temperature", 3), 0.0d);
+        assertNotEquals(0.1d, FbdCraftNamedVariableStore.read("temperature", 3), 0.0d);
+        assertTrue(FbdCraftNamedVariableStore.write("temperature", 3, -0.0d));
+        assertEquals(Double.doubleToRawLongBits(-0.0d),
+                Double.doubleToRawLongBits(FbdCraftNamedVariableStore.read("temperature", 3)));
+        assertTrue(FbdCraftNamedVariableStore.write("temperature", 3, Double.MIN_VALUE));
+        assertEquals(0.0d, FbdCraftNamedVariableStore.read("temperature", 3), 0.0d);
+        assertTrue(FbdCraftNamedVariableStore.write("temperature", 3, -Double.MIN_VALUE));
+        assertEquals(Double.doubleToRawLongBits(-0.0d),
+                Double.doubleToRawLongBits(FbdCraftNamedVariableStore.read("temperature", 3)));
+    }
+
+    @Test public void float32AcceptsRepresentableExtremesButRejectsOverflowWithoutClobbering() {
+        FbdCraftNamedVariableStore.clear();
+        assertTrue(FbdCraftNamedVariableStore.write("macro:float", 3, Float.MIN_VALUE));
+        assertEquals((double) Float.MIN_VALUE,
+                FbdCraftNamedVariableStore.read("macro:float", 3), 0.0d);
+        assertTrue(FbdCraftNamedVariableStore.write("macro:float", 3, Float.MAX_VALUE));
+        assertEquals((double) Float.MAX_VALUE,
+                FbdCraftNamedVariableStore.read("macro:float", 3), 0.0d);
+        assertFalse(FbdCraftNamedVariableStore.write("macro:float", 3, Double.MAX_VALUE));
+        assertFalse(FbdCraftNamedVariableStore.write("macro:float", 3, Double.POSITIVE_INFINITY));
+        assertFalse(FbdCraftNamedVariableStore.write("macro:float", 3, Double.NaN));
+        assertEquals((double) Float.MAX_VALUE,
+                FbdCraftNamedVariableStore.read("macro:float", 3), 0.0d);
+    }
+
+    @Test public void macroScopeFloat32DoesNotLeakOrChangeInt32AndBoolPins() {
+        FbdCraftNamedVariableStore.clear();
+        assertTrue(FbdCraftNamedVariableStore.write("shared", 3, 0.1d));
+        assertTrue(FbdCraftNamedVariableStore.write("one", "shared", 3, 0.2d));
+        assertTrue(FbdCraftNamedVariableStore.write("two", "shared", 3, 0.3d));
+        assertTrue(FbdCraftNamedVariableStore.write("one", "shared", 2, Integer.MAX_VALUE));
+        assertTrue(FbdCraftNamedVariableStore.write("one", "shared", 1, 1.0d));
+        assertEquals((double) 0.1f, FbdCraftNamedVariableStore.read("shared", 3), 0.0d);
+        assertEquals((double) 0.2f, FbdCraftNamedVariableStore.read("one", "shared", 3), 0.0d);
+        assertEquals((double) 0.3f, FbdCraftNamedVariableStore.read("two", "shared", 3), 0.0d);
+        assertEquals((double) Integer.MAX_VALUE,
+                FbdCraftNamedVariableStore.read("one", "shared", 2), 0.0d);
+        assertEquals(1.0d, FbdCraftNamedVariableStore.read("one", "shared", 1), 0.0d);
+        FbdCraftNamedVariableStore.clearNamespace("one");
+        assertEquals(0.0d, FbdCraftNamedVariableStore.read("one", "shared", 3), 0.0d);
+        assertEquals(0.0d, FbdCraftNamedVariableStore.read("one", "shared", 2), 0.0d);
+        assertEquals((double) 0.3f, FbdCraftNamedVariableStore.read("two", "shared", 3), 0.0d);
+        assertEquals((double) 0.1f, FbdCraftNamedVariableStore.read("shared", 3), 0.0d);
+    }
+
     @Test public void invalidNamesOrTypesRemainRejected() {
         FbdCraftNamedVariableStore.clear();
         assertNull(FbdCraftNamedVariableStore.key("", 2));
