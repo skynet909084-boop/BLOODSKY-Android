@@ -882,10 +882,43 @@ public class MainActivity extends Activity {
             for (int i = 0; i < labels.length; i++)
                 labels[i] = projects.get(i).optString("projectName", "Мой проект");
             new AlertDialog.Builder(this).setTitle("Восстановить проект")
-                    .setItems(labels, (dialog, which) -> restoreTrashedProject(projects.get(which)))
+                    .setItems(labels, (dialog, which) -> showTrashedProjectActions(projects.get(which)))
                     .setNegativeButton("Отмена", null).show();
         } catch (Exception error) {
             Toast.makeText(this, "Корзина проектов: " + error.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void showTrashedProjectActions(JSONObject selected) {
+        new AlertDialog.Builder(this).setTitle(selected.optString("projectName", "Мой проект"))
+                .setItems(new String[]{"Восстановить проект", "Удалить навсегда"}, (dialog, which) -> {
+                    if (which == 0) restoreTrashedProject(selected);
+                    else new AlertDialog.Builder(this).setTitle("Удалить проект и его файлы навсегда?")
+                            .setMessage("Медиа проекта и его резервные поколения будут удалены.")
+                            .setNegativeButton("Отмена", null)
+                            .setPositiveButton("Удалить", (confirm, choice) -> permanentlyDeleteTrashedProject(selected))
+                            .show();
+                }).setNegativeButton("Отмена", null).show();
+    }
+
+    private void permanentlyDeleteTrashedProject(JSONObject selected) {
+        try {
+            android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+            String oldTrash = prefs.getString(PROJECT_TRASH, "{}");
+            String key = ProjectMediaService.getOrGenerateProjectId(selected.toString());
+            JSONObject result = ProjectCatalog.permanentlyDeleteFromTrash(oldTrash, key);
+            if (!prefs.edit().putString(PROJECT_TRASH, result.getJSONObject("trash").toString()).commit())
+                throw new IOException("Не удалось сохранить изменения корзины");
+            try {
+                ProjectMediaService.deleteProjectMedia(getFilesDir(), result.getJSONObject("project").toString());
+            } catch (IOException cleanupFailure) {
+                android.util.Log.e("BLOODSKY", "Could not remove permanently deleted project media", cleanupFailure);
+                Toast.makeText(this, "Проект удалён, но часть файлов не удалось очистить", Toast.LENGTH_LONG).show();
+                return;
+            }
+            Toast.makeText(this, "Проект и его файлы удалены", Toast.LENGTH_SHORT).show();
+        } catch (Exception error) {
+            Toast.makeText(this, "Не удалось удалить проект: " + error.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 

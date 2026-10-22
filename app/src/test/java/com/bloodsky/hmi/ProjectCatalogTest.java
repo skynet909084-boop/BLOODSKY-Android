@@ -90,6 +90,35 @@ public class ProjectCatalogTest {
         }
     }
 
+    @Test public void permanentTrashDeletionRemovesOnlyMatchingValidatedProject() throws Exception {
+        String first = ProjectCatalog.create("Remove me");
+        String second = ProjectCatalog.create("Keep me");
+        String firstId = ProjectMediaService.getOrGenerateProjectId(first);
+        String secondId = ProjectMediaService.getOrGenerateProjectId(second);
+        JSONObject firstMove = ProjectCatalog.moveToTrash(ProjectCatalog.upsert("{}", first), "{}", firstId);
+        JSONObject secondMove = ProjectCatalog.moveToTrash(ProjectCatalog.upsert("{}", second),
+                firstMove.getJSONObject("trash").toString(), secondId);
+
+        JSONObject deleted = ProjectCatalog.permanentlyDeleteFromTrash(
+                secondMove.getJSONObject("trash").toString(), firstId);
+        assertEquals(firstId, ProjectMediaService.getOrGenerateProjectId(deleted.getJSONObject("project").toString()));
+        assertEquals(1, ProjectCatalog.list(deleted.getJSONObject("trash").toString()).size());
+        assertEquals(secondId, ProjectMediaService.getOrGenerateProjectId(
+                ProjectCatalog.list(deleted.getJSONObject("trash").toString()).get(0).toString()));
+        try {
+            ProjectCatalog.permanentlyDeleteFromTrash(deleted.getJSONObject("trash").toString(), firstId);
+            fail("A missing project must not delete any trash entry");
+        } catch (IllegalArgumentException expected) {
+            assertEquals(1, ProjectCatalog.list(deleted.getJSONObject("trash").toString()).size());
+        }
+        try {
+            ProjectCatalog.permanentlyDeleteFromTrash(secondMove.getJSONObject("trash").toString(), "wrong-id");
+            fail("A mismatched identity must not delete a project");
+        } catch (IllegalArgumentException expected) {
+            assertEquals(2, ProjectCatalog.list(secondMove.getJSONObject("trash").toString()).size());
+        }
+    }
+
     @Test public void legacyActiveProjectCanBeMigratedOnceAndReopened() throws Exception {
         JSONObject widget = new JSONObject().put("type", "Текст").put("text", "Legacy")
                 .put("originalComponentId", 54).put("x", 10.5);

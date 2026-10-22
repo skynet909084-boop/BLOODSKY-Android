@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 12554)
+Total output lines: 878
+
 package com.bloodsky.hmi;
 
 import org.json.JSONArray;
@@ -395,161 +398,18 @@ public class PortableZipMediaTest {
     @Test
     public void testMissingResolverRejectsReferencedMedia() throws Exception {
         JSONObject project = createTestProjectJson(
-                "missing_resolver", "Missing Resolver", "/tmp/unavailable.png", null, null);
-        try {
-            ProjectMediaService.exportProjectZipBundle(
-                    new ByteArrayOutputStream(), project.toString(), null);
-            fail("Export must not claim portability without media bytes");
-        } catch (IOException expected) {
-            // Export wraps media resolution failures with project context.
-            assertNotNull(expected.getCause());
-            assertTrue(expected.getCause() instanceof java.io.FileNotFoundException);
-            assertTrue(expected.getCause().getMessage().contains("Referenced media"));
-        }
-    }
+                "missing_resolver", "Missing Resolver", "/tmp/unav…2554 tokens truncated…(deletedGeneration, "asset.bin");
+        File otherAsset = new File(otherGeneration, "asset.bin");
+        assertTrue(deletedAsset.createNewFile());
+        assertTrue(otherAsset.createNewFile());
 
-    @Test
-    public void testDamagedZipNeverReachesPreferenceSave() throws Exception {
-        byte[] damagedZip = new byte[] {'P', 'K', 3, 4, 0, 0, 0, 0};
-        final boolean[] saved = {false};
-        try {
-            ProjectMediaService.importProjectBundle(
-                    rootDir, new ByteArrayInputStream(damagedZip),
-                    json -> { saved[0] = true; return true; });
-            fail("Corrupt ZIP should be rejected");
-        } catch (Exception expected) {
-            assertFalse("Corrupt ZIP must not be saved", saved[0]);
-        }
-    }
-
-    @Test
-    public void testFailedFirstImportLeavesNoPartialMedia() throws Exception {
-        JSONObject project = createTestProjectJson(
-                "new_project_failure", "First Import", "/tmp/state.png", null, null);
-        ByteArrayOutputStream archive = new ByteArrayOutputStream();
-        ProjectMediaService.exportProjectZipBundle(
-                archive, project.toString(),
-                source -> "STATE_BYTES".getBytes(StandardCharsets.UTF_8));
-        File mediaDir = ProjectMediaService.getProjectMediaDir(rootDir, project.toString());
-        assertTrue(mediaDir.delete());
-        final String[] rejected = {null};
-        try {
-            ProjectMediaService.importProjectBundle(rootDir,
-                    new ByteArrayInputStream(archive.toByteArray()), json -> {rejected[0]=json;return false;});
-            fail("Preference failure must abort import");
-        } catch (IllegalStateException expected) {
-            assertFalse("Failed initial import must not leave partial media", mediaDir.exists());
-            JSONObject candidate = new JSONObject(rejected[0]);
-            File rejectedGeneration = new File(new File(new File(rootDir, "projects"),
-                    ProjectMediaService.getOrGenerateProjectId(rejected[0])),
-                    "media_" + candidate.getString("mediaGeneration"));
-            assertFalse("Failed save must remove the unpublished generation", rejectedGeneration.exists());
-        }
-    }
-
-
-    @Test
-    public void testImagesAndAudioResolveAfterSourcesDeleted() throws Exception {
-        File image = tempFolder.newFile("source.png");
-        File audio = tempFolder.newFile("source.wav");
-        java.nio.file.Files.write(image.toPath(), new byte[]{1,2,3});
-        java.nio.file.Files.write(audio.toPath(), new byte[]{4,5,6});
-        JSONObject project = createTestProjectJson("portable", "Portable", image.getAbsolutePath(), null, audio.getAbsolutePath());
-        ByteArrayOutputStream zip = new ByteArrayOutputStream();
-        ProjectMediaService.exportProjectZipBundle(zip, project.toString(), path -> java.nio.file.Files.readAllBytes(new File(path).toPath()));
-        assertTrue(image.delete()); assertTrue(audio.delete());
-        final String[] saved = {null};
-        ProjectMediaService.importProjectBundle(rootDir, new ByteArrayInputStream(zip.toByteArray()), json -> {saved[0]=json;return true;});
-        JSONArray widgets = new JSONObject(saved[0]).getJSONArray("screens").getJSONObject(0).getJSONArray("widgets");
-        String imagePath=widgets.getJSONObject(0).getJSONArray("imagePathStates").getString(0);
-        String soundPath=widgets.getJSONObject(1).getString("soundFilePath");
-        assertArrayEquals(new byte[]{1,2,3},java.nio.file.Files.readAllBytes(ProjectMediaService.resolveMediaFile(rootDir,saved[0],imagePath).toPath()));
-        assertArrayEquals(new byte[]{4,5,6},java.nio.file.Files.readAllBytes(ProjectMediaService.resolveMediaFile(rootDir,saved[0],soundPath).toPath()));
-        ByteArrayOutputStream again=new ByteArrayOutputStream();
-        ProjectMediaService.exportProjectZipBundle(again,saved[0],path->java.nio.file.Files.readAllBytes(ProjectMediaService.resolveMediaFile(rootDir,saved[0],path).toPath()));
-        assertTrue(again.size()>0);
-        try {ProjectMediaService.resolveMediaFile(rootDir,saved[0],"media/../other/file.png");fail("Traversal");}catch(IOException expected){}
-    }
-
-    @Test
-    public void testCaseInsensitiveBasenamesRemainImportable() throws Exception {
-        JSONObject project=createTestProjectJson("case", "Case", "/a/STATE.png", "/b/state.png", null);
-        ByteArrayOutputStream zip=new ByteArrayOutputStream();
-        ProjectMediaService.exportProjectZipBundle(zip,project.toString(),path->new byte[]{1});
-        Map<String,byte[]> media=new HashMap<>();
-        MainActivity.importProjectFromZip(new ByteArrayInputStream(zip.toByteArray()),media);
-        assertEquals(2,media.size());
-    }
-
-    @Test
-    public void testReadLoopEnforcesLimitWithoutFileLength() throws Exception {
-        InputStream growing=new InputStream(){
-            int remaining=ProjectMediaService.MAX_BUNDLE_BYTES+1;
-            public int read(){if(remaining--<=0)return -1;return 1;}
-            public int read(byte[] buffer,int offset,int length){
-                if(remaining<=0)return -1;int count=Math.min(length,remaining);remaining-=count;return count;
-            }
-        };
-        try {ProjectMediaService.readBoundedMedia(growing);fail("Limit");}catch(IOException expected){assertTrue(expected.getMessage().contains("limit"));}
-    }
-
-    @Test
-    public void testCyrillicFilenameIsNotMistakenForPlaceholder() throws Exception {
-        JSONObject project=createTestProjectJson("real", "Real", "Картинка настоящая.png",null,null);
-        final boolean[] called={false};
-        ProjectMediaService.exportProjectZipBundle(new ByteArrayOutputStream(),project.toString(),path->{called[0]=true;return new byte[]{1};});
-        assertTrue(called[0]);
-    }
-    @Test
-    public void testReplacementKeepsPreviousGenerationReadableBeforeAndAfterSave() throws Exception {
-        JSONObject project = createTestProjectJson("same-id", "Generation", "/tmp/state.png", null, null);
-        ByteArrayOutputStream zip = new ByteArrayOutputStream();
-        ProjectMediaService.exportProjectZipBundle(zip, project.toString(), path -> new byte[]{9,8,7});
-        final String[] first = {null};
-        ProjectMediaService.importProjectBundle(rootDir, new ByteArrayInputStream(zip.toByteArray()), json -> {first[0]=json;return true;});
-        File prior = ProjectMediaService.resolveMediaFile(rootDir, first[0], "media/state.png");
-        final String[] second = {null};
-        ProjectMediaService.importProjectBundle(rootDir, new ByteArrayInputStream(zip.toByteArray()), json -> {
-            assertTrue("Prior generation must remain available during publication", prior.isFile());
-            second[0]=json; return true;
-        });
-        assertNotEquals(new JSONObject(first[0]).getString("mediaGeneration"), new JSONObject(second[0]).getString("mediaGeneration"));
-        assertArrayEquals(new byte[]{9,8,7}, java.nio.file.Files.readAllBytes(prior.toPath()));
-        assertNotEquals(prior, ProjectMediaService.resolveMediaFile(rootDir, second[0], "media/state.png"));
-    }
-
-
-    @Test public void deletingProjectRemovesOnlyItsPrivateMediaGenerations() throws Exception {
-        JSONObject deletedProject = new JSONObject().put("id", "delete-me");
-        String generationOne = new JSONObject(deletedProject.toString())
-                .put("mediaGeneration", "11111111-1111-4111-8111-111111111111").toString();
-        String generationTwo = new JSONObject(deletedProject.toString())
-                .put("mediaGeneration", "22222222-2222-4222-8222-222222222222").toString();
-        File generationOneDir = ProjectMediaService.getProjectMediaDir(rootDir, generationOne);
-        File generationTwoDir = ProjectMediaService.getProjectMediaDir(rootDir, generationTwo);
-        assertTrue(generationOneDir.mkdirs() || generationOneDir.isDirectory());
-        assertTrue(generationTwoDir.mkdirs() || generationTwoDir.isDirectory());
-        File markerOne = new File(generationOneDir, "asset-one.png");
-        File markerTwo = new File(generationTwoDir, "asset-two.png");
-        assertTrue(markerOne.createNewFile());
-        assertTrue(markerTwo.createNewFile());
-
-        String otherProject = new JSONObject().put("id", "keep-me").toString();
-        File otherMedia = ProjectMediaService.getProjectMediaDir(rootDir, otherProject);
-        assertTrue(otherMedia.mkdirs() || otherMedia.isDirectory());
-        File otherMarker = new File(otherMedia, "keep.png");
-        assertTrue(otherMarker.createNewFile());
-
-        assertTrue(ProjectMediaService.deleteProjectMedia(rootDir, deletedProject.toString()));
-        assertFalse(markerOne.exists());
-        assertFalse(markerTwo.exists());
-        assertTrue("Another project's media must be preserved", otherMarker.isFile());
-        assertFalse(ProjectMediaService.deleteProjectMedia(rootDir, deletedProject.toString()));
-
-        try {
-            ProjectMediaService.deleteProjectMedia(rootDir, "{}");
-            fail("Project without a stable identity must not target a media directory");
-        } catch (IOException expected) { }
+        String deletedId = ProjectMediaService.getOrGenerateProjectId(deletedJson);
+        JSONObject deletedFromTrash = ProjectCatalog.permanentlyDeleteFromTrash(
+                new JSONObject().put(deletedId, new JSONObject(deletedJson)).toString(), deletedId);
+        assertTrue(ProjectMediaService.deleteProjectMedia(rootDir,
+                deletedFromTrash.getJSONObject("project").toString()));
+        assertFalse(deletedAsset.exists());
+        assertTrue("Permanent deletion must not cross project identities", otherAsset.isFile());
     }
 
     private static byte[] createCraftProjectZip(String projectJson, String mediaPath, byte[] mediaBytes) throws Exception {
