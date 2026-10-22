@@ -147,6 +147,24 @@ public class CraftModbusTcpSlaveTest {
             byte[] pdu = new byte[length - 1]; input.readFully(pdu);
             assertArrayEquals(new byte[]{6, 0, 10, 0x45, 0x67}, pdu);
             assertEquals(0x4567, bank.readWord(10));
+
+            // Exercise FC22 and FC04 on the same real TCP connection.
+            output.write(request(0x2346, 7, 22, 0, 10, 0xff, 0, 0, 0x89));
+            output.flush();
+            input.readFully(header);
+            assertEquals(0x2346, u16(header, 0));
+            length = u16(header, 4);
+            pdu = new byte[length - 1]; input.readFully(pdu);
+            assertArrayEquals(new byte[]{22, 0, 10, (byte) 0xff, 0, 0, (byte) 0x89}, pdu);
+            assertEquals(0x4589, bank.readWord(10));
+
+            output.write(request(0x2347, 7, 4, 0, 10, 0, 1));
+            output.flush();
+            input.readFully(header);
+            assertEquals(0x2347, u16(header, 0));
+            length = u16(header, 4);
+            pdu = new byte[length - 1]; input.readFully(pdu);
+            assertArrayEquals(new byte[]{4, 2, 0x45, (byte) 0x89}, pdu);
         } finally { server.close(); }
         assertFalse(server.isRunning());
     }
