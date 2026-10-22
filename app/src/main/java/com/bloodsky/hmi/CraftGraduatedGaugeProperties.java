@@ -7,6 +7,48 @@ import org.json.JSONObject;
 public final class CraftGraduatedGaugeProperties {
     private CraftGraduatedGaugeProperties() {}
 
+    public static int sourceRegister(JSONObject fields) {
+        return OriginalCraftLampConnection.register(fields);
+    }
+
+    public static String sourceDeviceLabel(JSONObject fields) {
+        return OriginalCraftLampConnection.deviceLabel(fields);
+    }
+
+    public static final String[] INDICATORS = {
+            "HalfLineIndicator", "KiteIndicator", "LineIndicator",
+            "NeedleIndicator", "NormalIndicator", "NormalSmallIndicator",
+            "QuarterLineIndicator", "SpindleIndicator", "TriangleIndicator"
+    };
+
+    /** Keep source gauge appearance, original extra fields, and its register together. */
+    public static JSONObject withSettings(JSONObject fields, int register,
+                                          int min, int max, int countTextScale,
+                                          int sizeText, int colorTextValue, int colorTextScale,
+                                          int colorCenterCircle, int colorIndicator, int colorMark,
+                                          int percentLowScale, int percentMediumScale,
+                                          boolean hideBackground, String indicatorName) throws JSONException {
+        if (register < 0 || register > 65535)
+            throw new IllegalArgumentException("Регистр должен быть от 0 до 65535");
+        JSONObject copy = fields == null ? new JSONObject() : new JSONObject(fields.toString());
+        Object originalSource = copy.opt("craftConnectionInfo");
+        JSONObject source;
+        try {
+            source = originalSource instanceof JSONObject ? new JSONObject(originalSource.toString())
+                    : originalSource instanceof String ? new JSONObject((String) originalSource)
+                    : new JSONObject();
+        } catch (JSONException malformed) {
+            throw new IllegalArgumentException("Повреждена привязка шкалы Craft", malformed);
+        }
+        apply(copy, min, max, countTextScale, sizeText, colorTextValue,
+                colorTextScale, colorCenterCircle, colorIndicator, colorMark,
+                percentLowScale, percentMediumScale, hideBackground, indicatorName);
+        source.put("addressRegister", register);
+        copy.put("craftConnectionInfo",
+                originalSource instanceof String ? source.toString() : source);
+        return copy;
+    }
+
     public static void apply(JSONObject fields, int min, int max, int countTextScale,
                              int sizeText, int colorTextValue, int colorTextScale,
                              int colorCenterCircle, int colorIndicator, int colorMark,
@@ -24,8 +66,15 @@ public final class CraftGraduatedGaugeProperties {
         if (!CraftGraduatedGaugeProperties.isIndicator(safeIndicator))
             throw new IllegalArgumentException("Неизвестный тип указателя Craft");
 
-        JSONObject other = fields.optJSONObject("craftOther");
-        if (other == null) other = new JSONObject();
+        Object oldOther = fields.opt("craftOther");
+        JSONObject other;
+        try {
+            other = oldOther instanceof JSONObject ? new JSONObject(oldOther.toString())
+                    : oldOther instanceof String ? new JSONObject((String) oldOther)
+                    : new JSONObject();
+        } catch (JSONException malformed) {
+            throw new IllegalArgumentException("Повреждены исходные настройки шкалы Craft", malformed);
+        }
         other.put("minGauge", min);
         other.put("maxGauge", max);
         other.put("countTextScale", countTextScale);
@@ -53,7 +102,7 @@ public final class CraftGraduatedGaugeProperties {
         fields.put("craftGaugeHideBackground", hideBackground);
         fields.put("craftGaugeIndicatorName", safeIndicator);
         fields.put("text", safeIndicator);
-        fields.put("craftOther", other);
+        fields.put("craftOther", oldOther instanceof String ? other.toString() : other);
     }
 
     private static boolean isIndicator(String value) {
