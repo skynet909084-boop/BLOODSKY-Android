@@ -79,10 +79,15 @@ public final class CraftProjectExporter {
                 if (widget == null) throw new IOException("Компонент проекта повреждён");
                 int row = widget.optInt("craftSourceRow", -1);
                 if (row < 0) {
-                    int addedComponentId = addedCraftFbdBlockId(widget);
-                    if (addedComponentId < 0)
-                        throw new IOException("Для нового компонента нет проверенного соответствия палитре KaScada");
-                    row = appendCraftFbdBlock(widget, addedComponentId, s, sourceRows, outputRows);
+                    int copiedRow = widget.optInt("craftCopySourceRow", -1);
+                    if (copiedRow >= 0) {
+                        row = appendCopiedComponentRow(widget, copiedRow, s, sourceRows, outputRows);
+                    } else {
+                        int addedComponentId = addedCraftFbdBlockId(widget);
+                        if (addedComponentId < 0)
+                            throw new IOException("Для нового компонента нет проверенного соответствия палитре KaScada");
+                        row = appendCraftFbdBlock(widget, addedComponentId, s, sourceRows, outputRows);
+                    }
                 }
                 if (row >= sourceRows.length() || seen[row])
                     throw new IOException("Компонент KaScada повторно используется или имеет повреждённую исходную строку");
@@ -239,6 +244,37 @@ public final class CraftProjectExporter {
         if (meta.has("jsTableNameProject_screenBackground"))
             meta.put("jsTableNameProject_screenBackground", backgrounds);
         return result.toString();
+    }
+
+    /** Add a verified Craft FBD block with a unique screen-local saveKey. */
+    private static int appendCopiedComponentRow(JSONObject widget, int originalRow, int screenIndex,
+            JSONArray sourceRows, JSONArray outputRows) throws Exception {
+        if (originalRow < 0 || originalRow >= sourceRows.length())
+            throw new IOException("Исходная строка копии компонента отсутствует");
+        JSONObject original = sourceRows.optJSONObject(originalRow);
+        if (original == null) throw new IOException("Исходная строка копии компонента повреждена");
+        int componentId = original.optInt("componentId", -1);
+        JSONObject originalOther = objectValue(original.opt("jsTableComponent_other"));
+        if (originalOther.optInt("numScreen", 1) != screenIndex + 1)
+            throw new IOException("Копию компонента нельзя переместить на другой экран при экспорте");
+
+        JSONObject clone = new JSONObject(original.toString());
+        JSONObject clonedOther = new JSONObject(originalOther.toString());
+        clonedOther.put("numScreen", screenIndex + 1);
+        if (componentId >= 101 && componentId <= 140) {
+            clonedOther.put("saveKey", nextCraftSaveKey(sourceRows, screenIndex + 1));
+            clonedOther.put("keyOut", -1).put("numOnIn", -1);
+        }
+        Object raw = original.opt("jsTableComponent_other");
+        clone.put("jsTableComponent_other", raw instanceof String
+                ? clonedOther.toString() : clonedOther);
+        int row = sourceRows.length();
+        sourceRows.put(clone);
+        outputRows.put(new JSONObject(clone.toString()));
+        widget.put("craftComponentId", componentId).put("craftSourceRow", row)
+                .put("craftOther", new JSONObject(clonedOther.toString()));
+        widget.remove("craftCopySourceRow");
+        return row;
     }
 
     /** Add a verified Craft FBD block with a unique screen-local saveKey. */

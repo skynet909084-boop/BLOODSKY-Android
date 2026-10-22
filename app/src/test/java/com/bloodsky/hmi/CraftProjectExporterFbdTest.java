@@ -2,10 +2,13 @@ package com.bloodsky.hmi;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
+import java.util.ArrayList;
+import java.util.Arrays;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNotEquals;
 
 public class CraftProjectExporterFbdTest {
     private static String project() throws Exception {
@@ -58,6 +61,46 @@ public class CraftProjectExporterFbdTest {
         assertNotNull(reimported.getJSONObject("craftSource"));
         assertEquals(0, reimported.getJSONArray("screens").getJSONObject(0)
                 .getJSONArray("connections").length());
+    }
+
+    @Test public void copyingImportedFbdGroupCreatesIndependentCraftRowsAndPreservesInternalWire() throws Exception {
+        JSONObject project = new JSONObject(project());
+        JSONObject screen = project.getJSONArray("screens").getJSONObject(0);
+        JSONArray widgetRows = screen.getJSONArray("widgets");
+        ArrayList<MainActivity.Widget> originals = new ArrayList<>();
+        for (int i = 0; i < widgetRows.length(); i++)
+            originals.add(MainActivity.widgetFromJson(widgetRows.getJSONObject(i)));
+        ArrayList<MainActivity.FbdConnection> edges = new ArrayList<>();
+        for (int i = 0; i < screen.getJSONArray("connections").length(); i++)
+            edges.add(MainActivity.connectionFromJson(screen.getJSONArray("connections").getJSONObject(i)));
+
+        WidgetClipboard.Bundle bundle = WidgetClipboard.capture(originals, Arrays.asList(0, 1), edges);
+        ArrayList<MainActivity.Widget> copies = WidgetClipboard.place(bundle, 500, 300, 24, originals.size());
+        for (MainActivity.Widget copy : copies) widgetRows.put(MainActivity.widgetToJson(copy));
+        for (MainActivity.FbdConnection edge : WidgetClipboard.placedConnections(bundle, originals.size()))
+            screen.getJSONArray("connections").put(MainActivity.connectionToJson(edge));
+
+        JSONObject exported = new JSONObject(CraftProjectExporter.export(project.toString()));
+        JSONArray rows = exported.getJSONArray("TableComponent");
+        assertEquals(4, rows.length());
+        assertEquals(103, rows.getJSONObject(2).getInt("componentId"));
+        assertEquals(104, rows.getJSONObject(3).getInt("componentId"));
+        JSONObject originalAnd = rows.getJSONObject(0).getJSONObject("jsTableComponent_other");
+        JSONObject originalOr = rows.getJSONObject(1).getJSONObject("jsTableComponent_other");
+        JSONObject copiedAnd = rows.getJSONObject(2).getJSONObject("jsTableComponent_other");
+        JSONObject copiedOr = rows.getJSONObject(3).getJSONObject("jsTableComponent_other");
+        assertEquals(20, originalAnd.getInt("keyOut"));
+        assertEquals(originalAnd.getInt("keyOut"), originalOr.getInt("saveKey"));
+        assertEquals(copiedOr.getInt("saveKey"), copiedAnd.getInt("keyOut"));
+        assertNotEquals(originalAnd.getInt("saveKey"), copiedAnd.getInt("saveKey"));
+
+        JSONObject restored = new JSONObject(CraftProjectImporter.convert(exported.toString()));
+        JSONObject restoredScreen = restored.getJSONArray("screens").getJSONObject(0);
+        assertEquals(4, restoredScreen.getJSONArray("widgets").length());
+        assertEquals(2, restoredScreen.getJSONArray("connections").length());
+        JSONObject copiedEdge = restoredScreen.getJSONArray("connections").getJSONObject(1);
+        assertEquals(2, copiedEdge.getInt("source"));
+        assertEquals(3, copiedEdge.getInt("target"));
     }
 
     @Test public void deletingFbdTargetRemovesItsRowAndClearsRemainingSourceWire() throws Exception {
