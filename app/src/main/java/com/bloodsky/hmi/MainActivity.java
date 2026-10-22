@@ -8909,13 +8909,17 @@ private String archiveProjectKey() {
     }
 
     private void pasteWidget() {
+        // Pasting is an editor-only operation. In operator mode it must not
+        // mutate the running screen, even when a clipboard exists.
+        if (operatorMode || editor == null || currentScreenIndex < 0
+                || currentScreenIndex >= screens.size()) return;
         if (clipboardWidgets == null || clipboardWidgets.widgets.isEmpty()) {
             Toast.makeText(this, "Сначала скопируй элемент", Toast.LENGTH_SHORT).show();
             return;
         }
         try {
-            float width = editor == null ? Math.max(0, clipboardWidgets.maxX + dp(24)) : editor.getWidth();
-            float height = editor == null ? Math.max(0, clipboardWidgets.maxY + dp(24)) : editor.getHeight();
+            float width = editor.getWidth();
+            float height = editor.getHeight();
             fbdWireHistory.clear();
             int first = widgets.size();
             ArrayList<Widget> copies = WidgetClipboard.place(clipboardWidgets, width, height, dp(24), first);
