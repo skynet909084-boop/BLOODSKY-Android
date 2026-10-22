@@ -595,6 +595,14 @@ public final class CraftProjectExporter {
 
             int[] rows = sourceRowsByScreen.get(screenIndex);
             JSONArray widgets = screen.getJSONArray("widgets");
+            JSONArray baselineWidgets = baseline.optJSONArray("widgets");
+            if (baselineWidgets == null)
+                throw new IOException("Исходная FBD-связь не имеет однозначного представления для экспорта");
+            java.util.Set<Integer> originalRowsOnScreen = new java.util.HashSet<>();
+            for (int i = 0; i < baselineWidgets.length(); i++) {
+                int originalRow = baselineWidgets.getJSONObject(i).optInt("craftSourceRow", -1);
+                if (originalRow >= 0) originalRowsOnScreen.add(originalRow);
+            }
             java.util.Set<Integer> retained = new java.util.HashSet<>();
             for (int row : rows) retained.add(row);
             int originalMappedOutgoing = 0;
@@ -611,8 +619,7 @@ public final class CraftProjectExporter {
                     if (candidateRow.optInt("componentId", -1) < 101
                             || candidateRow.optInt("componentId", -1) > 140) continue;
                     JSONObject candidateOther = objectValue(candidateRow.opt("jsTableComponent_other"));
-                    if (!retained.contains(candidate)
-                            || candidateOther.optInt("numScreen", 1) != screenIndex + 1
+                    if (!originalRowsOnScreen.contains(candidate)
                             || candidateOther.optInt("saveKey", Integer.MIN_VALUE) != targetKey) continue;
                     if (targetRow >= 0)
                         throw new IOException("Ключ saveKey исходной связи неоднозначен на экране");
@@ -624,7 +631,6 @@ public final class CraftProjectExporter {
             }
             JSONArray baselineEdges = baseline.optJSONArray("connections");
             int survivingBaselineEdges = 0;
-            JSONArray baselineWidgets = baseline.optJSONArray("widgets");
             if (baselineEdges == null || baselineWidgets == null)
                 throw new IOException("Исходная FBD-связь не имеет однозначного представления для экспорта");
             for (int i = 0; i < baselineEdges.length(); i++) {
