@@ -7907,7 +7907,7 @@ private String archiveProjectKey() {
                     : "FBD CRAFT COMPARE FLOAT".equals(w.type)
                     ? "Craft FLOAT32: оператор >, <, <=, >=, ==, !=; входы IN1/IN2"
                     : ("FBD CRAFT ARITHMETIC INT".equals(w.type)                            || "FBD CRAFT ARITHMETIC FLOAT".equals(w.type))
-                    ? "Craft: оператор +, −, ×, ÷; входы IN1/IN2"
+                    ? "Craft: оператор +, -, *, /; входы IN1/IN2"
                     : "Числовое сравнение A / оператор / B");
             compareLabel.setPadding(0, dp(10), 0, 0);
             form.addView(compareLabel);
@@ -8302,7 +8302,7 @@ private String archiveProjectKey() {
                             timerDurationMs = Integer.toString(FbdDurationUnits.parse(
                                     timerPresetField.getText().toString(), unit, w.timerPresetMs));
                         }
-                        fbd = FbdPropertyEdits.parse(timerDurationMs,
+                        fbd = FbdPropertyEdits.parse(w.type, timerDurationMs,
                                 counterPresetField == null ? null : counterPresetField.getText().toString(),
                                 compareLeftField == null ? null : compareLeftField.getText().toString(),
                                 compareOperatorField == null ? null : compareOperatorField.getText().toString(),
