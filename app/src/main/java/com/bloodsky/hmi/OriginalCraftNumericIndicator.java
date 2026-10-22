@@ -59,6 +59,12 @@ final class OriginalCraftNumericIndicator {
         // Unknown imported types must remain opaque and cannot be silently converted.
         if (!isSupportedSourceType(sourceType) && sourceType != importedType)
             throw new IllegalArgumentException("Неизвестный формат числового значения");
+        // Craft ID4 FLOAT32 and INT32 consume two consecutive Modbus words.
+        // Address 65535 is valid for 16-bit modes, but a two-word request
+        // there would cross the 65535 PDU address boundary.
+        if (isSupportedSourceType(sourceType) && readQuantity(sourceType) == 2
+                && register == 65535)
+            throw new IllegalArgumentException("Для FLOAT32/INT32 нужен регистр от 0 до 65534");
         JSONObject result = fields == null ? new JSONObject() : new JSONObject(fields.toString());
         Object oldConnection = result.opt("craftConnectionInfo");
         JSONObject connection = CraftPropertyRecord.copy(result, "craftConnectionInfo");
