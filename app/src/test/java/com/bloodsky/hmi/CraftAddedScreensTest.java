@@ -114,12 +114,39 @@ public class CraftAddedScreensTest {
         assertEquals(before, project.toString());
     }
 
-    @Test public void deletingNonTrailingScreensStillFailsWithoutMutation() throws Exception {
-        JSONObject project = new JSONObject(CraftProjectImporter.convert(source(3, 1).toString()));
+    @Test public void deletingMiddleScreenRemapsComponentsNavigationAndBackgrounds() throws Exception {
+        JSONObject src = source(3, 1);
+        JSONObject backgrounds = src.getJSONObject("TableNameProject")
+                .getJSONObject("jsTableNameProject_screenBackground");
+        backgrounds.put("screen2Color", -222).put("screen2IsColor", true)
+                .put("screen3Color", -333).put("screen3IsColor", true).put("vendorFuture", "keep");
+        src.getJSONArray("TableComponent").put(new JSONObject().put("componentId", 6)
+                .put("text", "Go to last").put("x", 0).put("y", 0).put("width", 100).put("height", 40)
+                .put("jsTableComponent_other", new JSONObject().put("numScreen", 1).put("mode", 1)
+                        .put("changeScreen", 3)));
+        src.getJSONArray("TableComponent").put(new JSONObject().put("componentId", 103)
+                .put("text", "Last screen block").put("x", 0).put("y", 0).put("width", 100).put("height", 40)
+                .put("jsTableComponent_other", new JSONObject().put("numScreen", 3)
+                        .put("saveKey", 20).put("keyOut", -1).put("numOnIn", -1)));
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(src.toString()));
         project.getJSONArray("screens").remove(1);
-        String before = project.toString();
-        assertThrows(IOException.class, () -> CraftProjectExporter.export(project.toString()));
-        assertEquals(before, project.toString());
+        JSONObject exported = new JSONObject(CraftProjectExporter.export(project.toString()));
+        assertEquals(2, exported.getJSONObject("TableNameProject").getInt("countScreen"));
+        JSONArray rows = exported.getJSONArray("TableComponent");
+        assertEquals(3, rows.length());
+        JSONObject movedRow = rows.getJSONObject(2);
+        assertEquals(2, movedRow.getJSONObject("jsTableComponent_other").getInt("numScreen"));
+        JSONObject navigation = rows.getJSONObject(1).getJSONObject("jsTableComponent_other");
+        assertEquals(2, navigation.getInt("changeScreen"));
+        JSONObject remappedBackgrounds = exported.getJSONObject("TableNameProject")
+                .getJSONObject("jsTableNameProject_screenBackground");
+        assertEquals(-333, remappedBackgrounds.getInt("screen2Color"));
+        assertFalse(remappedBackgrounds.has("screen3Color"));
+        assertEquals("keep", remappedBackgrounds.getString("vendorFuture"));
+        JSONObject restored = new JSONObject(CraftProjectImporter.convert(exported.toString()));
+        assertEquals(2, restored.getJSONArray("screens").length());
+        assertEquals("Last screen block", restored.getJSONArray("screens").getJSONObject(1)
+                .getJSONArray("widgets").getJSONObject(0).getString("text"));
     }
 
     @Test public void exceedingSourceScreenLimitsStillFailsWithoutMutation() throws Exception {
