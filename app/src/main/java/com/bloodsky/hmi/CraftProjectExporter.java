@@ -528,9 +528,16 @@ public final class CraftProjectExporter {
         if ("WebView Craft".equals(widget.optString("type", ""))) return 26;
         if ("Распознавание речи Craft".equals(widget.optString("type", ""))) return 27;
         int declared = CraftExactInteger.read(widget, "craftComponentId", -1);
-        if (declared >= 101 && declared <= 140 && declared != 135)
-            return declared;
         String type = MainActivity.canonicalFbdBlockType(widget.optString("type", ""));
+        int inferred = inferredCraftFbdBlockId(type);
+        // Native componentId is the original Craft factory identity. It is
+        // not permission to serialize a widget of a different FBD type.
+        if (declared >= 101 && declared <= 140 && declared != inferred)
+            throw new org.json.JSONException("New FBD widget and Craft factory IDs disagree");
+        return inferred;
+    }
+
+    private static int inferredCraftFbdBlockId(String type) {
         if ("FBD AND".equals(type)) return 103;
         if ("FBD OR".equals(type)) return 104;
         if ("FBD RS".equals(type)) return 113;
@@ -548,8 +555,8 @@ public final class CraftProjectExporter {
         if ("FBD CRAFT VAR OUT INT".equals(type)) return 106;
         if ("FBD CRAFT VAR FLOAT".equals(type)) return 108;
         if ("FBD CRAFT VAR OUT FLOAT".equals(type)) return 109;
-        if (type.startsWith("FBD CRAFT VAR NAME IN ")) return 133;
-        if (type.startsWith("FBD CRAFT VAR NAME OUT ")) return 134;
+        if (hasNativeCraftSignal(type, "FBD CRAFT VAR NAME IN ")) return 133;
+        if (hasNativeCraftSignal(type, "FBD CRAFT VAR NAME OUT ")) return 134;
         if ("FBD CRAFT MOVE".equals(type)) return 117;
         if ("FBD CRAFT INT TO FLOAT".equals(type)) return 118;
         if ("FBD CRAFT FLOAT TO INT".equals(type)) return 119;
@@ -568,9 +575,15 @@ public final class CraftProjectExporter {
         if ("FBD CRAFT ARRAY".equals(type)) return 136;
         if ("FBD CRAFT CHANGE I".equals(type)) return 137;
         if ("FBD CRAFT CHANGE F".equals(type)) return 138;
-        if (type.startsWith("FBD CRAFT MQTT SUB ")) return 139;
-        if (type.startsWith("FBD CRAFT MQTT PUB ")) return 140;
+        if (hasNativeCraftSignal(type, "FBD CRAFT MQTT SUB ")) return 139;
+        if (hasNativeCraftSignal(type, "FBD CRAFT MQTT PUB ")) return 140;
         return -1;
+    }
+
+    private static boolean hasNativeCraftSignal(String type, String prefix) {
+        if (!type.startsWith(prefix)) return false;
+        String signal = type.substring(prefix.length());
+        return "BOOL".equals(signal) || "INT".equals(signal) || "FLOAT".equals(signal);
     }
 
     /** Persist newly selected assets into Craft's own media fields before building its ZIP. */
