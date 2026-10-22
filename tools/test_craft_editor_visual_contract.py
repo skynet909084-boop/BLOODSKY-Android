@@ -59,6 +59,8 @@ class CraftEditorVisualContractTests(unittest.TestCase):
         self.assertIn("widgets.get(editor.selected) != selectedWidget", menu)
         self.assertIn("operatorMode || editor == null", menu)
         self.assertIn('"Элемент изменён: выбери его заново"', menu)
+        self.assertIn("row.setFocusable(true)", menu)
+        self.assertIn('row.setContentDescription(selectedWidget.type + ": " + labels[i])', menu)
 
     def test_destructive_action_is_still_last_and_red(self):
         menu = self.source.split("private void showStandardWidgetContextMenu()", 1)[1].split(
