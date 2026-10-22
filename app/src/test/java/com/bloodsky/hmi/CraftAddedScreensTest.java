@@ -37,8 +37,8 @@ public class CraftAddedScreensTest {
         links[0] = "https://panel.test/"; links[15] = "http://legacy.test/";
         added.getJSONArray("widgets").put(block("WebView Craft").put("craftComponentId", 26)
                 .put("craftOther", CraftWebViewLinks.write(new JSONObject().put("futureLinkField", true), links)));
-        added.getJSONArray("connections").put(new JSONObject().put("source", 0).put("target", 1)
-                .put("sourcePin", "OUT").put("targetPin", "IN2").put("signalType", "BOOL"));
+        added.getJSONArray("connections").put(MainActivity.connectionToJson(
+                MainActivity.pinnedFbdConnection(0, "Q", 1, "IN2")));
         project.getJSONArray("screens").put(added).put(screen());
 
         JSONObject exported = new JSONObject(CraftProjectExporter.export(project.toString()));
