@@ -6294,6 +6294,35 @@ public class MainActivity extends Activity {
             }, () -> editSelectedWidget(true));
             return;
         }
+        if (!advanced && "Динамический текст".equals(w.type)) {
+            CraftDynamicTextSettingsDialog.show(this, w.extraFields,
+                    w.dynTextStates, w.dynTextColors, w.showFrame, w.autoResizeText,
+                    (updated, labels, colors, frame, fitText) -> {
+                JSONObject previousFields = w.extraFields;
+                String[] previousLabels = w.dynTextStates.clone();
+                int[] previousColors = w.dynTextColors.clone();
+                boolean previousFrame = w.showFrame, previousFitText = w.autoResizeText;
+                w.extraFields = updated;
+                System.arraycopy(labels, 0, w.dynTextStates, 0, labels.length);
+                System.arraycopy(colors, 0, w.dynTextColors, 0, colors.length);
+                w.showFrame = frame;
+                w.autoResizeText = fitText;
+                if (!persistProjectNow(true)) {
+                    w.extraFields = previousFields;
+                    System.arraycopy(previousLabels, 0, w.dynTextStates, 0, previousLabels.length);
+                    System.arraycopy(previousColors, 0, w.dynTextColors, 0, previousColors.length);
+                    w.showFrame = previousFrame;
+                    w.autoResizeText = previousFitText;
+                    saveActiveScreen();
+                    Toast.makeText(this, "Не удалось сохранить динамический текст",
+                            Toast.LENGTH_LONG).show();
+                    return false;
+                }
+                if (editor != null) editor.invalidate();
+                return true;
+            }, () -> editSelectedWidget(true));
+            return;
+        }
         LinearLayout form = new LinearLayout(this);
         form.setOrientation(LinearLayout.VERTICAL);
         int pad = dp(16);
@@ -12334,7 +12363,8 @@ public class MainActivity extends Activity {
                     OriginalCraftSwitchRenderer.draw(canvas, getResources(), rect, w.extraFields, w.buttonState, paint);
                 }
                 if (!OriginalIndicator.supports(w.type) && !sourceFbdSkin && !sourceCraftSwitch
-                        && CraftLabelAppearance.drawBackground(w.type, w.backgroundColor))
+                        && CraftLabelAppearance.drawBackground(w.type, w.backgroundColor)
+                        && CraftDynamicTextProperties.drawBackground(w.type, w.backgroundColor))
                     canvas.drawRoundRect(rect, dp(6), dp(6), paint);
                 if ((!OriginalIndicator.supports(w.type) && w.showFrame
                         && !sourceFbdSkin && !sourceCraftSwitch) || i == selected || selectedWidgets.contains(i)) {
