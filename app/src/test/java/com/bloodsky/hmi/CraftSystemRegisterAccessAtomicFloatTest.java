@@ -58,7 +58,8 @@ public class CraftSystemRegisterAccessAtomicFloatTest {
                         false, false, null, 2L));
         // If the first half had been applied, service register 9 would contain
         // 0x3f80 despite the missing project bank at address 10.
-        assertEquals(0, CraftServiceRegisters.global().readRawWord(9) & 0xfff8);
+        // Clock reads may refresh the weekday bits 0..2 and seconds bit 8.
+        assertEquals(0, CraftServiceRegisters.global().readRawWord(9) & 0xfef8);
     }
 
     @Test public void adjacentLastUserWordsRoundTripAndEndBoundaryIsRejected() {
