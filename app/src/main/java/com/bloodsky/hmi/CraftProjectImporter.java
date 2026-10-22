@@ -233,6 +233,18 @@ public final class CraftProjectImporter {
         else if (componentId == 18) type = "Входящее SMS"; // CustomComponents.x; opt-in runtime only
         else if (componentId == 27) type = "Распознавание речи Craft"; // guarded one-shot local recognition
         else if (componentId == 135 && craftMacro != null) type = "FBD CRAFT MACRO";
+        else if (componentId == 139 || componentId == 140) {
+            // Pinned Craft factory: subscriber 139 reads typeQ, publisher
+            // 140 reads typeIn. The generic FBD mapping names these as
+            // BOOL placeholders, which would lose an original INT/FLOAT
+            // port when importing an ordinary .pro (outside .mcr graphs).
+            int nativeType = CraftExactInteger.read(other,
+                    componentId == 139 ? "typeQ" : "typeIn", 1);
+            if (nativeType < 1 || nativeType > 3)
+                throw new IllegalArgumentException("Invalid original Craft MQTT signal type");
+            String suffix = nativeType == 1 ? "BOOL" : nativeType == 2 ? "INT" : "FLOAT";
+            type = "FBD CRAFT MQTT " + (componentId == 139 ? "SUB " : "PUB ") + suffix;
+        }
         else {
             String fbdType = FbdCraftMacroGraphAdapter.typeForComponentId(componentId, other);
             type = fbdType == null ? "Текст" : fbdType;
@@ -448,7 +460,8 @@ public final class CraftProjectImporter {
                 widget.put("craftSunriseMode", other.optInt("type", 1) == 2 ? "SS" : "SR");
             if (type.startsWith("FBD CRAFT MQTT ")) {
                 widget.put("craftMqttTopic", other.optString("topic", ""));
-                widget.put("craftMqttType", other.optInt("typeQ", other.optInt("typeIn", 1)));
+                widget.put("craftMqttType", CraftExactInteger.read(other,
+                        componentId == 139 ? "typeQ" : "typeIn", 1));
                 widget.put("craftMqttServer", other.optInt("numMqttServer", 1));
                 if (other.has("mqttRetain")) widget.put("craftMqttRetain", other.optBoolean("mqttRetain"));
             }
