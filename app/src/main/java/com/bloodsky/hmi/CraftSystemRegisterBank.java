@@ -26,6 +26,65 @@ public final class CraftSystemRegisterBank {
         return words[address];
     }
 
+    /**
+     * One Modbus transaction must see a consistent multi-register snapshot,
+     * including Float32 register pairs written by another FBD/Modbus client.
+     */
+    public synchronized int[] readWords(int address, int count) {
+        if (count < 1 || count > 125)
+            throw new IllegalArgumentException("Invalid Modbus read register count");
+        requireWordRange(address, count);
+        int[] result = new int[count];
+        for (int i = 0; i < count; i++) result[i] = words[address + i] & 0xffff;
+        return result;
+    }
+
+    /** Validate the whole FC16 range and value set before modifying any word. */
+    public synchronized void writeWords(int address, int[] values) {
+        if (values == null || values.length < 1 || values.length > 123)
+            throw new IllegalArgumentException("Invalid Modbus write register count");
+        requireWordRange(address, values.length);
+        for (int value : values) requireWord(value);
+        System.arraycopy(values, 0, words, address, values.length);
+    }
+
+    /**
+     * Craft's coil address N is the bit (N%16) in user register (N/16).
+     * Read the complete FC01/FC02 mask while holding the same bank lock.
+     */
+    public synchronized boolean[] readCoils(int startBit, int count) {
+        if (count < 1 || count > 2000)
+            throw new IllegalArgumentException("Invalid Modbus bit read count");
+        requireCoilRange(startBit, count);
+        boolean[] result = new boolean[count];
+        for (int i = 0; i < count; i++) {
+            int bitAddress = startBit + i;
+            result[i] = ((words[bitAddress / 16] >>> (bitAddress % 16)) & 1) != 0;
+        }
+        return result;
+    }
+
+    /** FC15 writes a contiguous bit batch atomically across word boundaries. */
+    public synchronized void writeCoils(int startBit, boolean[] values) {
+        if (values == null || values.length < 1 || values.length > 1968)
+            throw new IllegalArgumentException("Invalid Modbus bit write count");
+        requireCoilRange(startBit, values.length);
+        for (int i = 0; i < values.length; i++) {
+            int bitAddress = startBit + i, mask = 1 << (bitAddress % 16);
+            int wordAddress = bitAddress / 16;
+            words[wordAddress] = values[i]
+                    ? words[wordAddress] | mask : words[wordAddress] & ~mask;
+        }
+    }
+
+    private static void requireCoilRange(int startBit, int count) {
+        if (startBit < 0 || count < 1 || (long) startBit + count > (long) SIZE * 16
+                || startBit / 16 < FIRST_USER_REGISTER)
+            throw new IllegalArgumentException("Coil range is not entirely in user registers");
+    }
+
+
+
     public synchronized void writeWord(int address, int value) {
         requireUserRegister(address);
         words[address] = value;

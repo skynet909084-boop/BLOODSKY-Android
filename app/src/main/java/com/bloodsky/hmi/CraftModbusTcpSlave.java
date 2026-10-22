@@ -209,10 +209,9 @@ public final class CraftModbusTcpSlave implements AutoCloseable {
         int byteCount = (count + 7) / 8;
         byte[] pdu = new byte[2 + byteCount];
         pdu[0] = (byte) function; pdu[1] = (byte) byteCount;
+        boolean[] bits = bank.readCoils(start, count);
         for (int bit = 0; bit < count; bit++) {
-            int address = start + bit;
-            if (bank.readBit(address / 16, address % 16))
-                pdu[2 + bit / 8] |= (byte) (1 << (bit % 8));
+            if (bits[bit]) pdu[2 + bit / 8] |= (byte) (1 << (bit % 8));
         }
         return pdu;
     }
@@ -225,7 +224,8 @@ public final class CraftModbusTcpSlave implements AutoCloseable {
         requireRegisterRange(start, count);
         byte[] pdu = new byte[2 + count * 2];
         pdu[0] = (byte) function; pdu[1] = (byte) (count * 2);
-        for (int i = 0; i < count; i++) putU16(pdu, 2 + i * 2, bank.readWord(start + i) & 0xffff);
+        int[] values = bank.readWords(start, count);
+        for (int i = 0; i < count; i++) putU16(pdu, 2 + i * 2, values[i]);
         return pdu;
     }
 
@@ -255,11 +255,10 @@ public final class CraftModbusTcpSlave implements AutoCloseable {
         if (count < 1 || count > MAX_WRITE_COILS || byteCount != (count + 7) / 8
                 || request.length != 13 + byteCount) throw new SlaveException(3);
         requireCoilRange(start, count);
-        for (int i = 0; i < count; i++) {
-            int address = start + i;
-            boolean value = ((request[13 + i / 8] >>> (i % 8)) & 1) != 0;
-            bank.writeBit(address / 16, address % 16, value);
-        }
+        boolean[] values = new boolean[count];
+        for (int i = 0; i < count; i++)
+            values[i] = (((request[13 + i / 8] & 255) >>> (i % 8)) & 1) != 0;
+        bank.writeCoils(start, values);
         return writeMultipleReply(request, 15);
     }
 
@@ -270,7 +269,9 @@ public final class CraftModbusTcpSlave implements AutoCloseable {
         if (count < 1 || count > MAX_WRITE_REGISTERS || byteCount != count * 2
                 || request.length != 13 + byteCount) throw new SlaveException(3);
         requireRegisterRange(start, count);
-        for (int i = 0; i < count; i++) bank.writeWord(start + i, u16(request, 13 + i * 2));
+        int[] values = new int[count];
+        for (int i = 0; i < count; i++) values[i] = u16(request, 13 + i * 2);
+        bank.writeWords(start, values);
         return writeMultipleReply(request, 16);
     }
 
