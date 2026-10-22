@@ -312,6 +312,65 @@ class CraftEditorVisualContractTests(unittest.TestCase):
         self.assertIn("fbdWireMode = false", deletion)
         self.assertIn("wireSource = -1", deletion)
 
+    def test_screen_creation_waits_for_durable_save_before_replacing_editor(self):
+        creation = self.source.split("private void addScreen()", 1)[1].split(
+            "private void removeCurrentScreen()", 1)[0]
+        self.assertIn("operatorMode || nestedMacroEdit != null || editor == null", creation)
+        self.assertIn("new ArrayList<>(screens)", creation)
+        self.assertIn("new ArrayList<>(widgets)", creation)
+        self.assertIn("screens.add(new Screen(", creation)
+        self.assertIn("if (!persistProjectNow(true))", creation)
+        self.assertIn("if (!committed)", creation)
+        self.assertIn("screens.addAll(originalScreens)", creation)
+        self.assertIn("widgets.addAll(originalWidgets)", creation)
+        self.assertIn("projectExtraFields = originalProjectFields", creation)
+        self.assertIn("if (committed) showEditor()", creation)
+        self.assertLess(creation.index("if (!persistProjectNow(true))"),
+                        creation.index("fbdWireMode = false"))
+
+    def test_screen_deletion_is_guarded_and_rolls_back_before_navigation(self):
+        deletion = self.source.split("private void removeCurrentScreen()", 1)[1].split(
+            "private void editScreenBackground()", 1)[0]
+        for required in (
+            "screens.size() <= 1",
+            "final EditorCanvas dialogCanvas",
+            "final Screen dialogScreen",
+            "editor != dialogCanvas",
+            "currentScreenIndex != dialogScreenIndex",
+            "screens.get(currentScreenIndex) != dialogScreen",
+            "new ArrayList<>(screens)",
+            "new ArrayList<>(widgets)",
+            "screens.remove(dialogScreenIndex)",
+            "if (!persistProjectNow(true))",
+            "if (!committed)",
+            "screens.addAll(originalScreens)",
+            "widgets.addAll(originalWidgets)",
+            "projectExtraFields = originalProjectFields",
+            "fbdWireHistory.clear()",
+            "if (committed)",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, deletion)
+        self.assertLess(deletion.index("if (!persistProjectNow(true))"),
+                        deletion.index("fbdWireHistory.clear()"))
+        self.assertLess(deletion.index("if (!persistProjectNow(true))"),
+                        deletion.index("editor = null"))
+
+    def test_screen_rename_and_background_ignore_stale_dialogs(self):
+        background = self.source.split("private void editScreenBackground()", 1)[1].split(
+            "private void renameCurrentScreen()", 1)[0]
+        rename = self.source.split("private void renameCurrentScreen()", 1)[1].split(
+            "private void showWidgetContextMenu()", 1)[0]
+        for method in (background, rename):
+            self.assertIn("operatorMode || nestedMacroEdit != null || editor == null", method)
+            self.assertIn("final EditorCanvas dialogCanvas", method)
+            self.assertIn("currentScreenIndex != dialogScreenIndex", method)
+            self.assertIn("screens.get(currentScreenIndex) != screen", method)
+            self.assertIn("if (!persistProjectNow(true))", method)
+        self.assertIn("screen.backgroundColor = oldColor", background)
+        self.assertIn("screen.name = previousName", rename)
+        self.assertIn("Имя экрана не может быть пустым", rename)
+
     def test_main_settings_reuse_existing_specialized_dialogs(self):
         editor = self.source.split("private void editSelectedWidget(boolean advanced)", 1)[1]
         for dialog in ("CraftListSettingsDialog", "CraftProgressBarSettingsDialog",
