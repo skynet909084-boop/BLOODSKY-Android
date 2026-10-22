@@ -17,8 +17,19 @@ public final class CraftLinearSetter {
     public static int value(JSONObject fields, String liveValue) {
         int maximum = maximum(fields);
         int value = fields == null ? 0 : fields.optInt("craftLinearValue", 0);
-        if (liveValue != null) try { value = (int) Math.round(Double.parseDouble(liveValue)); } catch (Exception ignored) { }
+        Double sample = CraftHmiNumericSignal.decode(liveValue);
+        if (sample != null) {
+            // Clamp while still in long precision: casting an enormous value to
+            // int first can wrap it to zero instead of saturating the slider.
+            long rounded = Math.round(sample);
+            return (int) Math.max(0L, Math.min((long) maximum, rounded));
+        }
         return clamp(value, 0, maximum);
+    }
+
+    /** Missing/malformed remote readings are not the saved local setpoint. */
+    public static boolean unavailable(String raw, boolean operatorMode, boolean hasBinding) {
+        return CraftHmiNumericSignal.unavailable(raw, operatorMode, hasBinding);
     }
 
     public static int fromCraft(JSONObject other) {
