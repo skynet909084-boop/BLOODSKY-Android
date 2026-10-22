@@ -148,7 +148,11 @@ public final class CraftModbusTcpSlave implements AutoCloseable {
         }
     }
 
-    /** Pure request processor shared by socket runtime and deterministic tests. */
+    /**
+     * Pure request processor shared by socket runtime and deterministic tests.
+     * FC02 aliases project coil bits and FC04 aliases project holding words,
+     * both read-only. Service registers remain inaccessible.
+     */
     public static byte[] respond(byte[] request, int expectedUnitId,
                                  CraftSystemRegisterBank registers) {
         if (request == null || registers == null || request.length < 8
@@ -182,17 +186,20 @@ public final class CraftModbusTcpSlave implements AutoCloseable {
     private static byte[] processPdu(byte[] request, int function,
                                      CraftSystemRegisterBank registers) throws SlaveException {
         switch (function) {
-            case 1: return readCoils(request, registers);
-            case 3: return readRegisters(request, registers);
+            case 1: return readBits(request, registers, 1);
+            case 2: return readBits(request, registers, 2);
+            case 3: return readRegisters(request, registers, 3);
+            case 4: return readRegisters(request, registers, 4);
             case 5: return writeCoil(request, registers);
             case 6: return writeRegister(request, registers);
             case 15: return writeCoils(request, registers);
             case 16: return writeRegisters(request, registers);
+            case 22: return maskWriteRegister(request, registers);
             default: throw new SlaveException(1);
         }
     }
 
-    private static byte[] readCoils(byte[] request, CraftSystemRegisterBank bank)
+    private static byte[] readBits(byte[] request, CraftSystemRegisterBank bank, int function)
             throws SlaveException {
         requirePduLength(request, 12);
         int start = u16(request, 8), count = u16(request, 10);
@@ -200,7 +207,7 @@ public final class CraftModbusTcpSlave implements AutoCloseable {
         requireCoilRange(start, count);
         int byteCount = (count + 7) / 8;
         byte[] pdu = new byte[2 + byteCount];
-        pdu[0] = 1; pdu[1] = (byte) byteCount;
+        pdu[0] = (byte) function; pdu[1] = (byte) byteCount;
         for (int bit = 0; bit < count; bit++) {
             int address = start + bit;
             if (bank.readBit(address / 16, address % 16))
@@ -209,14 +216,14 @@ public final class CraftModbusTcpSlave implements AutoCloseable {
         return pdu;
     }
 
-    private static byte[] readRegisters(byte[] request, CraftSystemRegisterBank bank)
+    private static byte[] readRegisters(byte[] request, CraftSystemRegisterBank bank, int function)
             throws SlaveException {
         requirePduLength(request, 12);
         int start = u16(request, 8), count = u16(request, 10);
         if (count < 1 || count > MAX_READ_REGISTERS) throw new SlaveException(3);
         requireRegisterRange(start, count);
         byte[] pdu = new byte[2 + count * 2];
-        pdu[0] = 3; pdu[1] = (byte) (count * 2);
+        pdu[0] = (byte) function; pdu[1] = (byte) (count * 2);
         for (int i = 0; i < count; i++) putU16(pdu, 2 + i * 2, bank.readWord(start + i) & 0xffff);
         return pdu;
     }
@@ -264,6 +271,20 @@ public final class CraftModbusTcpSlave implements AutoCloseable {
         requireRegisterRange(start, count);
         for (int i = 0; i < count; i++) bank.writeWord(start + i, u16(request, 13 + i * 2));
         return writeMultipleReply(request, 16);
+    }
+
+    /**
+     * FC22 Mask Write Register (0x16), echoing the seven-byte request PDU.
+     * Writes are atomic in the shared project bank, preventing concurrent
+     * clients from losing one another's bit changes.
+     */
+    private static byte[] maskWriteRegister(byte[] request, CraftSystemRegisterBank bank)
+            throws SlaveException {
+        requirePduLength(request, 14);
+        int address = u16(request, 8);
+        requireRegisterRange(address, 1);
+        bank.maskWriteWord(address, u16(request, 10), u16(request, 12));
+        return copyPdu(request, 7);
     }
 
     private static byte[] writeMultipleReply(byte[] request, int function) {
