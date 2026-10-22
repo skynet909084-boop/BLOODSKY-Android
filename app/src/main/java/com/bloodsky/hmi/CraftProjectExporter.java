@@ -633,7 +633,8 @@ public final class CraftProjectExporter {
                 throw new IOException("Исходная FBD-связь не имеет однозначного представления для экспорта");
             java.util.Set<Integer> originalRowsOnScreen = new java.util.HashSet<>();
             for (int i = 0; i < baselineWidgets.length(); i++) {
-                int originalRow = baselineWidgets.getJSONObject(i).optInt("craftSourceRow", -1);
+                int originalRow = CraftExactInteger.read(
+                        baselineWidgets.getJSONObject(i), "craftSourceRow", -1);
                 if (originalRow >= 0) originalRowsOnScreen.add(originalRow);
             }
             java.util.Set<Integer> retained = new java.util.HashSet<>();
@@ -644,16 +645,18 @@ public final class CraftProjectExporter {
                 if (!isCraftFbd(widget)) continue;
                 JSONObject sourceOther = objectValue(sourceRows.getJSONObject(rows[widgetIndex])
                         .opt("jsTableComponent_other"));
-                int targetKey = sourceOther.optInt("keyOut", -1);
+                int targetKey = CraftExactInteger.read(sourceOther, "keyOut", -1);
                 if (targetKey < 0) continue;
                 int targetRow = -1;
                 for (int candidate = 0; candidate < sourceRows.length(); candidate++) {
                     JSONObject candidateRow = sourceRows.getJSONObject(candidate);
-                    if (candidateRow.optInt("componentId", -1) < 101
-                            || candidateRow.optInt("componentId", -1) > 140) continue;
+                    int candidateFactory = CraftExactInteger.read(
+                            candidateRow, "componentId", -1);
+                    if (candidateFactory < 101 || candidateFactory > 140) continue;
                     JSONObject candidateOther = objectValue(candidateRow.opt("jsTableComponent_other"));
                     if (!originalRowsOnScreen.contains(candidate)
-                            || candidateOther.optInt("saveKey", Integer.MIN_VALUE) != targetKey) continue;
+                            || CraftExactInteger.read(candidateOther,
+                                    "saveKey", Integer.MIN_VALUE) != targetKey) continue;
                     if (targetRow >= 0)
                         throw new IOException("Ключ saveKey исходной связи неоднозначен на экране");
                     targetRow = candidate;
@@ -669,12 +672,15 @@ public final class CraftProjectExporter {
             for (int i = 0; i < baselineEdges.length(); i++) {
                 JSONObject edge = baselineEdges.optJSONObject(i);
                 if (edge == null) throw new IOException("Исходная FBD-связь повреждена");
-                int sourceIndex = edge.optInt("source", -1), targetIndex = edge.optInt("target", -1);
+                int sourceIndex = CraftExactInteger.read(edge, "source", -1);
+                int targetIndex = CraftExactInteger.read(edge, "target", -1);
                 if (sourceIndex < 0 || sourceIndex >= baselineWidgets.length()
                         || targetIndex < 0 || targetIndex >= baselineWidgets.length())
                     throw new IOException("Исходная FBD-связь повреждена");
-                int sourceRow = baselineWidgets.getJSONObject(sourceIndex).optInt("craftSourceRow", -1);
-                int targetRow = baselineWidgets.getJSONObject(targetIndex).optInt("craftSourceRow", -1);
+                int sourceRow = CraftExactInteger.read(
+                        baselineWidgets.getJSONObject(sourceIndex), "craftSourceRow", -1);
+                int targetRow = CraftExactInteger.read(
+                        baselineWidgets.getJSONObject(targetIndex), "craftSourceRow", -1);
                 if (retained.contains(sourceRow) && retained.contains(targetRow)) survivingBaselineEdges++;
             }
             if (originalMappedOutgoing != survivingBaselineEdges)
@@ -685,8 +691,8 @@ public final class CraftProjectExporter {
             for (int edgeIndex = 0; edgeIndex < edges.length(); edgeIndex++) {
                 JSONObject edge = edges.optJSONObject(edgeIndex);
                 if (edge == null) throw new IOException("Некорректная FBD-связь");
-                int sourceIndex = edge.optInt("source", -1);
-                int targetIndex = edge.optInt("target", -1);
+                int sourceIndex = CraftExactInteger.read(edge, "source", -1);
+                int targetIndex = CraftExactInteger.read(edge, "target", -1);
                 if (sourceIndex < 0 || sourceIndex >= rows.length || targetIndex < 0 || targetIndex >= rows.length
                         || !isCraftFbd(widgets.getJSONObject(sourceIndex))
                         || !isCraftFbd(widgets.getJSONObject(targetIndex)))
@@ -704,7 +710,7 @@ public final class CraftProjectExporter {
                 JSONObject updatedOther = new JSONObject(oldOther.toString());
                 JSONObject edge = outgoing[sourceIndex];
                 if (edge == null) {
-                    if (oldOther.optInt("keyOut", -1) >= 0) {
+                    if (CraftExactInteger.read(oldOther, "keyOut", -1) >= 0) {
                         updatedOther.put("keyOut", -1);
                         updatedOther.put("numOnIn", -1);
                         storeOther(outputRows.getJSONObject(rows[sourceIndex]), sourceRow, updatedOther);
@@ -712,11 +718,12 @@ public final class CraftProjectExporter {
                     continue;
                 }
 
-                int targetIndex = edge.getInt("target");
+                int targetIndex = CraftExactInteger.read(edge, "target", -1);
                 JSONObject targetWidget = widgets.getJSONObject(targetIndex);
                 JSONObject targetRow = sourceRows.getJSONObject(rows[targetIndex]);
                 JSONObject targetOther = objectValue(targetRow.opt("jsTableComponent_other"));
-                int targetSaveKey = targetOther.optInt("saveKey", Integer.MIN_VALUE);
+                int targetSaveKey = CraftExactInteger.read(
+                        targetOther, "saveKey", Integer.MIN_VALUE);
                 if (targetSaveKey < 0)
                     throw new IOException("У целевого блока нет корректного ключа saveKey KaScada");
                 if (!isUniqueSaveKey(targetOther, rows, sourceRows))
@@ -741,19 +748,21 @@ public final class CraftProjectExporter {
 
     private static boolean isUniqueSaveKey(JSONObject targetOther, int[] screenRows,
                                            JSONArray sourceRows) throws Exception {
-        int key = targetOther.optInt("saveKey", Integer.MIN_VALUE);
+        int key = CraftExactInteger.read(targetOther, "saveKey", Integer.MIN_VALUE);
         int count = 0;
         for (int row : screenRows) {
             JSONObject other = objectValue(sourceRows.getJSONObject(row).opt("jsTableComponent_other"));
-            if (other.optInt("saveKey", Integer.MIN_VALUE) == key) count++;
+            if (CraftExactInteger.read(other, "saveKey", Integer.MIN_VALUE) == key)
+                count++;
         }
         return count == 1 && key >= 0;
     }
 
-    private static boolean isCraftFbd(JSONObject widget) {
-        return widget != null && widget.optString("type", "").startsWith("FBD ")
-                && widget.optInt("craftComponentId", -1) >= 101
-                && widget.optInt("craftComponentId", -1) <= 140;
+    private static boolean isCraftFbd(JSONObject widget) throws org.json.JSONException {
+        if (widget == null || !widget.optString("type", "").startsWith("FBD "))
+            return false;
+        int factoryId = CraftExactInteger.read(widget, "craftComponentId", -1);
+        return factoryId >= 101 && factoryId <= 140;
     }
 
     /** Reuse validated imported macro definitions to build an exact baseline without ZIP media. */
