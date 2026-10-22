@@ -5,6 +5,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.Iterator;
+import java.util.Locale;
 
 /** Disarms imported external endpoints and send-capable actions while preserving their settings. */
 public final class ProjectImportSafety {
@@ -12,7 +13,11 @@ public final class ProjectImportSafety {
             "craftGatewayEnabled", "craftBitGatewayEnabled", "smsEnabled",
             "craftWebViewEnabled", "craftEmailEnabled", "craftVoiceRecognitionEnabled",
             "craftButtonBitEnabled", "craftButtonConstantEnabled", "craftSwitchBitEnabled",
-            "craftLinearEnabled", "craftListEnabled", "craftRtspEnabled"
+            "craftLinearEnabled", "craftListEnabled", "craftRtspEnabled",
+            // Project/server-wide listener and other operator opt-ins must not
+            // survive import as active capabilities on a different device.
+            "modbusSlaveEnabled", "craftNumericEnabled", "craftPushEnabled",
+            "craftSoundEnabled", "smsStrobeEnabled"
     };
 
     private ProjectImportSafety() { }
@@ -48,7 +53,11 @@ public final class ProjectImportSafety {
         String endpoint = ((String) raw).trim();
         if (endpoint.isEmpty()) return;
         boolean external = false;
-        for (String scheme : externalSchemes) external |= endpoint.startsWith(scheme);
+        // RFC 3986 URI schemes are case-insensitive. Preserve the original
+        // endpoint text in the inactive field, but compare normalized schemes
+        // so imported TCP:// or Bt:// links cannot slip past disarming.
+        String normalized = endpoint.toLowerCase(Locale.ROOT);
+        for (String scheme : externalSchemes) external |= normalized.startsWith(scheme);
         if (!external) return;
         if (!object.has(preservedKey)) object.put(preservedKey, endpoint);
         object.put(key, "");
