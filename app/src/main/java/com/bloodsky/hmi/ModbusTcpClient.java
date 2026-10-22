@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Addresses are zero-based PDU addresses; values preserve 16-bit signed/unsigned bits.
  * Each operation opens a new socket, so failed exchanges cannot poison later polls.
  */
-public final class ModbusTcpClient {
+public final class ModbusTcpClient implements ModbusTransport {
     public static final int DEFAULT_TIMEOUT_MS = 3000;
     private static final AtomicInteger TRANSACTIONS = new AtomicInteger();
     private final String host;
@@ -29,6 +29,7 @@ public final class ModbusTcpClient {
         this.timeoutMs = timeoutMs;
     }
 
+    @Override
     public int[] read(int unit, int address, int quantity, int functionCode) throws IOException {
         if (functionCode != 1 && functionCode != 2 && functionCode != 3 && functionCode != 4) {
             throw new IllegalArgumentException("Unsupported Modbus function");
@@ -50,6 +51,7 @@ public final class ModbusTcpClient {
         return values;
     }
 
+    @Override
     public void writeSingle(int unit, int address, int value) throws IOException {
         validateUnit(unit);
         validateRange(address, 1, 1);
@@ -58,6 +60,7 @@ public final class ModbusTcpClient {
         validateWriteEcho(pdu, 6, address, value);
     }
 
+    @Override
     public void writeMultiple(int unit, int address, int[] values) throws IOException {
         validateUnit(unit);
         if (values == null) throw new IllegalArgumentException("Register values are required");
