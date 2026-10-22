@@ -119,6 +119,15 @@ class CraftEditorVisualContractTests(unittest.TestCase):
         self.assertIn("deleteSelectedWidget()", menu)
         self.assertIn("pasteWidget()", menu)
 
+    def test_paste_rejects_operator_mode_and_missing_screen(self):
+        source = self.source.split("private void pasteWidget()", 1)[1].split(
+            "private void ", 1)[0]
+        self.assertIn("if (operatorMode || editor == null", source)
+        self.assertIn("currentScreenIndex >= screens.size()", source)
+        self.assertIn("float width = editor.getWidth()", source)
+        self.assertIn("float height = editor.getHeight()", source)
+        self.assertIn("WidgetClipboard.place(", source)
+
     def test_runtime_never_opens_editor_context_actions(self):
         menu = self.source.split("private void showStandardWidgetContextMenu()", 1)[1].split(
             "private void ", 1)[0]
