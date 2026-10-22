@@ -14,15 +14,6 @@ final class CraftNumericInputCompactSettings {
         return OriginalCraftLampConnection.deviceLabel(fields);
     }
 
-    private static JSONObject sourceObject(Object raw, String label) {
-        try {
-            return raw instanceof JSONObject ? new JSONObject(raw.toString())
-                    : raw instanceof String ? new JSONObject((String) raw) : new JSONObject();
-        } catch (Exception invalid) {
-            throw new IllegalArgumentException("Не удалось прочитать исходные " + label + " Craft", invalid);
-        }
-    }
-
     /** Save all native source keys while leaving the password and all permissions untouched. */
     static JSONObject withSettings(JSONObject fields, int register, double min, double max,
                                    int mode, int integerType, int decimals,
@@ -39,7 +30,7 @@ final class CraftNumericInputCompactSettings {
 
         JSONObject edited = fields == null ? new JSONObject() : new JSONObject(fields.toString());
         Object oldConnection = edited.opt("craftConnectionInfo");
-        JSONObject connection = sourceObject(oldConnection, "привязки");
+        JSONObject connection = CraftPropertyRecord.copy(edited, "craftConnectionInfo");
         connection.put("addressRegister", register);
         connection.put("min", min);
         connection.put("max", max);
@@ -47,7 +38,7 @@ final class CraftNumericInputCompactSettings {
                 ? connection.toString() : connection);
 
         Object oldOther = edited.opt("craftOther");
-        JSONObject other = sourceObject(oldOther, "параметры");
+        JSONObject other = CraftPropertyRecord.copy(edited, "craftOther");
         other.put("type", mode);
         other.put("typeInt", integerType);
         other.put("countNumAfterPointEditNumber", decimals);
