@@ -84,6 +84,11 @@ final class WidgetClipboard {
                     new JSONObject(MainActivity.widgetToJson(widget).toString()));
             copy.x += tx;
             copy.y += ty;
+            int sourceRow = copy.extraFields.optInt("craftSourceRow", -1);
+            if (sourceRow >= 0) {
+                copy.extraFields.put("craftCopySourceRow", sourceRow);
+                copy.extraFields.remove("craftSourceRow");
+            }
             Integer copiedSource = bundle.resultBindings.get(result.size());
             if (copiedSource != null) copy.connectionInfo = "fbd://" + (firstWidgetIndex + copiedSource + 1);
             if ("Архив Craft".equals(copy.type))
