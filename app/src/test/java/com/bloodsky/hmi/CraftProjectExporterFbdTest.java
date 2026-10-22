@@ -310,7 +310,11 @@ public class CraftProjectExporterFbdTest {
         assertEquals(4, restoredScreen.getJSONArray("connections").length());
         assertEquals("IN1", restoredScreen.getJSONArray("connections").getJSONObject(0)
                 .getString("targetPin"));
-        assertEquals("IN2", restoredScreen.getJSONArray("connections").getJSONObject(2)
+        assertEquals("IN2", restoredScreen.getJSONArray("connections").getJSONObject(1)
+                .getString("targetPin"));
+        assertEquals("IN1", restoredScreen.getJSONArray("connections").getJSONObject(2)
+                .getString("targetPin"));
+        assertEquals("IN2", restoredScreen.getJSONArray("connections").getJSONObject(3)
                 .getString("targetPin"));
         JSONArray restoredWidgets = restoredScreen.getJSONArray("widgets");
         assertEquals(110, restoredWidgets.getJSONObject(2).getInt("craftComponentId"));
