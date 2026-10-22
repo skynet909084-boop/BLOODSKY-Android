@@ -52,6 +52,31 @@ class CraftEditorVisualContractTests(unittest.TestCase):
         self.assertIn("showAlignDialog()", menu)
         self.assertIn("copySelectedWidget()", menu)
         self.assertIn("deleteSelectedWidget()", menu)
+        self.assertIn('primaryLabel = "Настройки надписи"', menu)
+        self.assertIn('primaryLabel = "Настройки динамического текста"', menu)
+        self.assertIn('primaryLabel = "Настройки пороговой шкалы"', menu)
+        self.assertIn('primaryLabel = "Настройки градуированной шкалы"', menu)
+        self.assertIn("widgets.get(editor.selected) != selectedWidget", menu)
+        self.assertIn("operatorMode || editor == null", menu)
+        self.assertIn('"Элемент изменён: выбери его заново"', menu)
+
+    def test_destructive_action_is_still_last_and_red(self):
+        menu = self.source.split("private void showStandardWidgetContextMenu()", 1)[1].split(
+            "private void ", 1)[0]
+        self.assertIn('"Выравнивание", "Копировать", "Удалить"', menu)
+        self.assertIn("i == 4 ? Color.rgb(235, 105, 90)", menu)
+
+    def test_main_settings_reuse_existing_specialized_dialogs(self):
+        editor = self.source.split("private void editSelectedWidget(boolean advanced)", 1)[1]
+        for dialog in ("CraftListSettingsDialog", "CraftProgressBarSettingsDialog",
+                       "CraftButtonSettingsDialog", "CraftNumericInputSettingsDialog",
+                       "CraftLabelSettingsDialog", "CraftDynamicTextSettingsDialog",
+                       "CraftThresholdGaugeSettingsDialog", "CraftGraduatedGaugeSettingsDialog"):
+            self.assertIn(dialog + ".show(", editor)
+        for handler in ("showOriginalLampSettings(w)", "showOriginalSwitchSettings(w)",
+                        "showOriginalNumericIndicatorSettings(w)",
+                        "showOriginalLinearSetterSettings(w)"):
+            self.assertIn(handler, editor)
 
 
 if __name__ == "__main__":
