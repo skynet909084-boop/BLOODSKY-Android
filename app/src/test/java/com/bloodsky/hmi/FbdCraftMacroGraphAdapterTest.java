@@ -246,7 +246,8 @@ public class FbdCraftMacroGraphAdapterTest {
     @Test public void importedMacroMqttPublisherKeepsTypedEnAndInEdges() throws Exception {
         JSONObject publisher = new JSONObject().put("componentId", 140)
                 .put("x", 0).put("y", 0).put("saveKey", 50).put("keyOut", -1)
-                .put("topic", "plant/command").put("typeQ", 3)
+                // Original ID140 MQTT_PUBLISHER uses typeIn (not ID139's typeQ).
+                .put("topic", "plant/command").put("typeIn", 3)
                 .put("numMqttServer", 2).put("mqttRetain", true)
                 .put("nMcr", "PublishValue").put("unIdMcr", 53);
         JSONObject output = new JSONObject().put("componentId", 108)
