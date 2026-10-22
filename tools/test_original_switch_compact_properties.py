@@ -30,6 +30,8 @@ class OriginalCraftSwitchDialogContractTest(unittest.TestCase):
             "private void showOriginalLampSettings(", 1
         )[0]
         self.assertIn("String[] choices = new String[8]", compact)
+        self.assertIn("changeImage.setOnClickListener(v -> {\n            if (!dialogGuard.require()) return;", compact)
+        self.assertIn("if (!dialogGuard.require()) { picker.dismiss(); return; }", compact)
         self.assertIn("OriginalCraftSwitch.withSettings(", compact)
         self.assertIn("if (!persistProjectNow(true))", compact)
         self.assertIn("widget.extraFields = old;", compact)
