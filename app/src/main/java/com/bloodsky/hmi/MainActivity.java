@@ -4968,6 +4968,10 @@ public class MainActivity extends Activity {
         final EditorCanvas menuCanvas = editor;
         final int menuScreenIndex = currentScreenIndex;
         final Screen menuScreen = screens.get(currentScreenIndex);
+        // Copy/delete operate on the full selection, not just editor.selected.
+        // A stale menu must never act on a newly selected group.
+        final ArrayList<Integer> menuSelection =
+                new ArrayList<>(editor.selectedWidgets);
         String titleText = selectedWidget.text == null || selectedWidget.text.trim().isEmpty()
                 ? selectedWidget.type : selectedWidget.text;
 
@@ -5001,7 +5005,8 @@ public class MainActivity extends Activity {
                         || currentScreenIndex >= screens.size()
                         || screens.get(currentScreenIndex) != menuScreen
                         || editor.selected < 0 || editor.selected >= widgets.size()
-                        || widgets.get(editor.selected) != selectedWidget) {
+                        || widgets.get(editor.selected) != selectedWidget
+                        || !editor.selectedWidgets.equals(menuSelection)) {
                     Toast.makeText(this, "Элемент изменён: выбери его заново",
                             Toast.LENGTH_SHORT).show();
                     return;
@@ -5104,7 +5109,8 @@ public class MainActivity extends Activity {
                         || currentScreenIndex >= screens.size()
                         || screens.get(currentScreenIndex) != menuScreen
                         || editor.selected < 0 || editor.selected >= widgets.size()
-                        || widgets.get(editor.selected) != selectedWidget) {
+                        || widgets.get(editor.selected) != selectedWidget
+                        || !editor.selectedWidgets.equals(menuSelection)) {
                     Toast.makeText(this, "Элемент изменён: выбери его заново", Toast.LENGTH_SHORT).show();
                     return;
                 }
