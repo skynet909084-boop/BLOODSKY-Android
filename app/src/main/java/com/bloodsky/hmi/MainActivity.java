@@ -660,11 +660,15 @@ public class MainActivity extends Activity {
     }
 
     private void stopCurrentScreenAlarms() {
-        for (int index = 0; index < widgets.size(); index++) {
-            Widget widget = widgets.get(index);
+        stopScreenAlarms(currentScreenIndex, widgets);
+    }
+
+    private void stopScreenAlarms(int screenIndex, List<Widget> screenWidgets) {
+        for (int index = 0; index < screenWidgets.size(); index++) {
+            Widget widget = screenWidgets.get(index);
             if ("Звуковой сигнал".equals(widget.type)) {
                 widget.lastSoundState = false;
-                stopCraftAlarmAlert(currentScreenIndex + ":" + index);
+                stopCraftAlarmAlert(screenIndex + ":" + index);
             }
         }
     }
@@ -4878,7 +4882,7 @@ public class MainActivity extends Activity {
         releaseVoiceRecognizer();
         craftWebViewWindow.close();
         closeCraftRtspPlayer();
-        stopCurrentScreenAlarms();
+        stopScreenAlarms(previousScreenIndex, previousCanvasWidgets);
         liveValues.clear();
         fbdWireMode = false;
         wireSource = -1;
