@@ -4,42 +4,32 @@
 
 | Layer | Status | Evidence |
 |---|---|---|
-| Modbus TCP master | **Implemented** | `ModbusTcpClient`, unit fixtures, production regression tests |
-| RTU framing (CRC16, frames) | **Implemented (framing only)** | `ModbusRtu`, expanded unit tests |
-| RTU serial / USB / Bluetooth transport | **Not implemented** | No Android serial stack, permissions or device tests |
-| Hardware / physical device | **Not verified** | Explicit release gate |
+| Modbus TCP master | **Implemented** | `ModbusTcpClient`, unit fixtures |
+| RTU framing helpers | **Implemented** | `ModbusRtu` |
+| RTU stream client | **Implemented (code)** | `ModbusRtuClient` + unit tests |
+| USB serial | **Implemented (code)** | `UsbSerialConnector` / Session / Connection + mik3y 3.11.0 |
+| Bluetooth Classic SPP | **Implemented (code)** | `BluetoothModbusConnection` / `BluetoothRtuBinding` |
+| Operator polling for usb:// and bt:// | **Not wired** | Explicit next step |
+| Hardware / physical device | **Not verified** | Release gate |
 
-Do not describe BLOODSKY as having full Modbus RTU or hardware support until a real transport exists and is tested on device.
+Do **not** claim production RTU support until a physical adapter/device acceptance pass is recorded.
 
-## TCP (production path)
+## Binding URIs
 
-See also `MODBUS_TCP_TRANSPORT.md`.
+- `usb://<unit>/<register>` — after user selects adapter (`UsbSerialBinding`)
+- `bt://AA:BB:CC:DD:EE:FF/<unit>/<register>` — paired SPP only (`BluetoothRtuBinding`)
+- 3xxxx → FC04, 4xxxx → FC03
 
-Supported: FC01/02 (1..2000 bits), FC03/04 (1..125 regs), FC06, FC16 (1..123). Zero-based PDU addresses. Unit 0..255. Per-request sockets. Validation before connect.
+## Permissions
 
-## RTU framing
-
-`ModbusRtu`: CRC-16, read/write frames, CRC validation, stream exchange helper for a future serial transport. No Android USB/Bluetooth.
-
-`MainActivity.calculateModbusRtuCrc` / `buildModbusRtuFrame` remain; tests check CRC/frame compatibility.
-
-## Transport interface
-
-`ModbusTransport` + `ModbusTcpClient implements ModbusTransport`.
+- Bluetooth Classic + `BLUETOOTH_CONNECT`
+- USB host optional feature
 
 ## Remaining gates
 
-1. Android USB / Bluetooth open-close, permissions, lifecycle
-2. Inter-frame timing on real UARTs
-3. Reconnect after unplug/drop
-4. Original Craft device-picker / system registers
-5. Physical-device acceptance tests
-6. Background service under Doze
+1. Wire operator polling for `usb://` / `bt://` (off UI thread)
+2. Physical USB + SPP acceptance (no emulator)
+3. Inter-frame timing on real UARTs
+4. Reconnect after detach/drop
 
-## Tests
-
-`ModbusTcpClientTest`, production regression tests, expanded `ModbusRtuTest`, `Batch3ModbusAndSettingsTest`.
-
-```sh
-gradle testDebugUnitTest --tests 'com.bloodsky.hmi.Modbus*'
-```
+Source: ported from `feat/bluetooth-spp-modbus-rtu-20261022` onto main line.
