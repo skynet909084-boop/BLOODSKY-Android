@@ -86,7 +86,11 @@ final class FbdCraftMacroGraphAdapter {
                     ? (nestedDefinition == null ? null : "FBD CRAFT MACRO")
                     : typeForComponentId(componentId, child);
             if (componentId == 139 || componentId == 140) {
-                int payloadType = child.optInt("typeQ", child.optInt("typeIn", 1));
+                // Original ID139 uses typeQ (subscriber output), while
+                // ID140 uses typeIn (publisher payload input). Never borrow
+                // the opposite field or truncate an oversized JSON enum.
+                int payloadType = CraftExactInteger.read(child,
+                        componentId == 139 ? "typeQ" : "typeIn", 1);
                 if (payloadType < 1 || payloadType > 3) return null;
                 String suffix = payloadType == 1 ? "BOOL" : payloadType == 2 ? "INT" : "FLOAT";
                 type = "FBD CRAFT MQTT " + (componentId == 139 ? "SUB " : "PUB ") + suffix;
@@ -121,7 +125,8 @@ final class FbdCraftMacroGraphAdapter {
                 widget.put("craftSunriseMode", child.optInt("type", 1) == 2 ? "SS" : "SR");
             if (type.startsWith("FBD CRAFT MQTT ")) {
                 widget.put("craftMqttTopic", child.optString("topic", ""));
-                widget.put("craftMqttType", child.optInt("typeQ", child.optInt("typeIn", 1)));
+                widget.put("craftMqttType", CraftExactInteger.read(child,
+                        componentId == 139 ? "typeQ" : "typeIn", 1));
                 widget.put("craftMqttServer", child.optInt("numMqttServer", 1));
                 if (child.has("mqttRetain"))
                     widget.put("craftMqttRetain", child.optBoolean("mqttRetain"));
