@@ -361,15 +361,18 @@ final class FbdCraftMacroGraphAdapter {
                 throw new JSONException("Craft macro child identity differs from the edited widget");
             if (componentId == 114 && widget.has("craftTriggerMode")) {
                 int mode = triggerType(widget.optString("craftTriggerMode", ""));
-                if (mode > 0) child.put("type", mode);
+                if (mode < 1) throw new JSONException("Invalid edited Craft trigger mode");
+                child.put("type", mode);
             } else if (componentId == 115) {
                 if (widget.has("craftTimerMode")) {
                     int mode = timerType(widget.optString("craftTimerMode", ""));
-                    if (mode > 0) child.put("type", mode);
+                    if (mode < 1) throw new JSONException("Invalid edited Craft timer mode");
+                    child.put("type", mode);
                 }
                 if (widget.has("craftTimerUnit")) {
                     int unit = timerUnitCode(widget.optString("craftTimerUnit", ""));
-                    if (unit > 0) child.put("typeTime", unit);
+                    if (unit < 1) throw new JSONException("Invalid edited Craft timer unit");
+                    child.put("typeTime", unit);
                 }
             } else if (componentId == 109) {
                 if (widget.has("craftSwapWord"))
@@ -377,13 +380,21 @@ final class FbdCraftMacroGraphAdapter {
                 if (widget.has("craftSwapByte"))
                     child.put("isHighByte", widget.optBoolean("craftSwapByte"));
             } else if (componentId == 120 && widget.has("craftSensorAxis")) {
-                int axis = widget.optInt("craftSensorAxis", -1);
-                if (axis >= 1 && axis <= 3) child.put("type", axis);
+                int axis = CraftExactInteger.read(widget, "craftSensorAxis", -1);
+                if (axis < 1 || axis > 3)
+                    throw new JSONException("Invalid edited Craft sensor orientation");
+                child.put("type", axis);
             } else if (componentId == 127 && widget.has("craftSunriseMode")) {
                 int mode = sunriseType(widget.optString("craftSunriseMode", ""));
-                if (mode > 0) child.put("type", mode);
-            } else if ((componentId == 101 || componentId == 105 || componentId == 108)) {
-                if (widget.has("craftVarBit")) child.put("bit", widget.optInt("craftVarBit"));
+                if (mode < 1) throw new JSONException("Invalid edited Craft sunrise mode");
+                child.put("type", mode);
+            } else if (componentId == 101 || componentId == 105 || componentId == 108) {
+                if (widget.has("craftVarBit")) {
+                    int bit = CraftExactInteger.read(widget, "craftVarBit", -1);
+                    if (componentId == 101 && (bit < 0 || bit > 15))
+                        throw new JSONException("Invalid Craft BOOL variable bit");
+                    child.put("bit", bit);
+                }
                 if (widget.has("craftVarConstantMode"))
                     child.put("isConstant", widget.optBoolean("craftVarConstantMode"));
                 if (widget.has("craftVarConstant"))
@@ -391,8 +402,12 @@ final class FbdCraftMacroGraphAdapter {
             } else if (componentId == 133 || componentId == 134) {
                 if (widget.has("craftVariableName"))
                     child.put("typeVarValue", widget.optString("craftVariableName"));
-                int variableType = namedVariableTypeCode(widget.optString("type", ""));
-                if (variableType > 0) child.put("typeVar", variableType);
+                if (widget.has("type")) {
+                    int variableType = namedVariableTypeCode(widget.optString("type", ""));
+                    if (variableType < 1)
+                        throw new JSONException("Invalid edited Craft named variable type");
+                    child.put("typeVar", variableType);
+                }
                 if (widget.has("craftNamedConstantMode"))
                     child.put("isConstant", widget.optBoolean("craftNamedConstantMode"));
                 if (widget.has("craftNamedConstant"))
@@ -401,7 +416,8 @@ final class FbdCraftMacroGraphAdapter {
                     && widget.has("compareOperator")) {
                 int action = CraftProjectExporter.craftOperatorAction(componentId,
                         widget.optString("compareOperator", ""));
-                if (action > 0) child.put("compareAction", action);
+                if (action < 1) throw new JSONException("Invalid edited Craft FBD operator");
+                child.put("compareAction", action);
             }
         }
         return result;
