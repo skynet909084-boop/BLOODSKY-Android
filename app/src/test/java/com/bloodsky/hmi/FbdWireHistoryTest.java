@@ -93,6 +93,66 @@ public class FbdWireHistoryTest {
         assertEquals(1, first.size());
     }
 
+    @Test public void independentScreenTimelinesSurviveSwitchingAndUndoInEitherOrder()
+            throws Exception {
+        Object firstScreen = new Object();
+        Object secondScreen = new Object();
+        FbdWireHistory history = new FbdWireHistory();
+        List<MainActivity.FbdConnection> first = new ArrayList<>();
+        List<MainActivity.FbdConnection> second = new ArrayList<>();
+
+        history.recordBefore(firstScreen, first);
+        first.add(edge(0, "Q", 1, "IN1"));
+        history.recordBefore(secondScreen, second);
+        second.add(edge(10, "Q", 11, "IN2"));
+
+        // Recording another screen must not discard the first one's history.
+        assertTrue(history.canUndo(firstScreen));
+        assertTrue(history.canUndo(secondScreen));
+        assertFalse(history.canRedo(firstScreen));
+        assertTrue(history.undo(firstScreen, first));
+        assertTrue(first.isEmpty());
+        assertEquals(1, second.size());
+        assertTrue(history.canRedo(firstScreen));
+
+        // More edits to another screen do not invalidate first screen's redo.
+        history.recordBefore(secondScreen, second);
+        second.add(edge(12, "Q", 13, "IN1"));
+        assertEquals(2, second.size());
+        assertTrue(history.canRedo(firstScreen));
+        assertTrue(history.redo(firstScreen, first));
+        assertEquals(1, first.size());
+        assertEquals("сохранить", MainActivity.connectionToJson(first.get(0))
+                .getJSONObject("customOriginalMetadata").getString("nested"));
+
+        assertTrue(history.undo(secondScreen, second));
+        assertEquals(1, second.size());
+        assertEquals(1, first.size());
+        assertTrue(history.undo(secondScreen, second));
+        assertTrue(second.isEmpty());
+        assertFalse(history.canUndo(secondScreen));
+        assertFalse(history.undo(new Object(), second));
+    }
+
+    @Test public void clearingProjectHistoryDropsEveryScreenTimeline() throws Exception {
+        Object firstScreen = new Object(), secondScreen = new Object();
+        FbdWireHistory history = new FbdWireHistory();
+        List<MainActivity.FbdConnection> first = new ArrayList<>();
+        List<MainActivity.FbdConnection> second = new ArrayList<>();
+        history.recordBefore(firstScreen, first);
+        first.add(edge(0, "Q", 1, "IN1"));
+        history.recordBefore(secondScreen, second);
+        second.add(edge(3, "Q", 4, "IN2"));
+        history.clear();
+        assertFalse(history.canUndo(firstScreen));
+        assertFalse(history.canUndo(secondScreen));
+        assertFalse(history.canRedo(firstScreen));
+        assertFalse(history.undo(firstScreen, first));
+        assertFalse(history.undo(secondScreen, second));
+        assertEquals(1, first.size());
+        assertEquals(1, second.size());
+    }
+
     @Test public void historyIsBoundedAndOnlyRestoresMostRecent32Steps() throws Exception {
         Object screen = new Object();
         FbdWireHistory history = new FbdWireHistory();
