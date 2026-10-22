@@ -11832,7 +11832,8 @@ public class MainActivity extends Activity {
                     }
                 } else if ("Прогресс-бар".equals(w.type)) {
                     Double polled = CraftHmiNumericSignal.decode(liveValues.get(i));
-                    boolean signalUnavailable = operatorMode && liveValues.containsKey(i) && polled == null;
+                    boolean signalUnavailable = CraftHmiNumericSignal.unavailable(liveValues.get(i), operatorMode,
+                            w.connectionInfo != null && !w.connectionInfo.trim().isEmpty());
                     double val = polled == null ? 0.0 : polled;
                     paint.setShader(null);
                     paint.setStyle(Paint.Style.FILL);
@@ -11889,7 +11890,8 @@ public class MainActivity extends Activity {
                 } else if ("Шкала / Стрелка".equals(w.type)
                         && w.extraFields.optInt("craftComponentId", -1) == 12) {
                     Double polled = CraftHmiNumericSignal.decode(liveValues.get(i));
-                    boolean signalUnavailable = operatorMode && liveValues.containsKey(i) && polled == null;
+                    boolean signalUnavailable = CraftHmiNumericSignal.unavailable(liveValues.get(i), operatorMode,
+                            w.connectionInfo != null && !w.connectionInfo.trim().isEmpty());
                     if (signalUnavailable) {
                         paint.setStyle(Paint.Style.FILL);
                         paint.setColor(Color.rgb(185, 28, 28));
@@ -11901,7 +11903,8 @@ public class MainActivity extends Activity {
                 } else if ("Шкала / Стрелка".equals(w.type)
                         && w.extraFields.optInt("craftComponentId", -1) == 24) {
                     Double polled = CraftHmiNumericSignal.decode(liveValues.get(i));
-                    boolean signalUnavailable = operatorMode && liveValues.containsKey(i) && polled == null;
+                    boolean signalUnavailable = CraftHmiNumericSignal.unavailable(liveValues.get(i), operatorMode,
+                            w.connectionInfo != null && !w.connectionInfo.trim().isEmpty());
                     if (signalUnavailable) {
                         paint.setStyle(Paint.Style.FILL);
                         paint.setColor(Color.rgb(185, 28, 28));
@@ -11912,7 +11915,8 @@ public class MainActivity extends Activity {
                     }
                 } else if ("Шкала / Стрелка".equals(w.type)) {
                     Double polled = CraftHmiNumericSignal.decode(liveValues.get(i));
-                    boolean signalUnavailable = operatorMode && liveValues.containsKey(i) && polled == null;
+                    boolean signalUnavailable = CraftHmiNumericSignal.unavailable(liveValues.get(i), operatorMode,
+                            w.connectionInfo != null && !w.connectionInfo.trim().isEmpty());
                     if (signalUnavailable) {
                         paint.setStyle(Paint.Style.FILL);
                         paint.setColor(Color.rgb(185, 28, 28));
