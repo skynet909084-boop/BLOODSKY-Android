@@ -75,6 +75,18 @@ public final class ProjectCatalog {
         return new JSONObject().put("catalog", catalog).put("trash", trash);
     }
 
+    /** Permanently remove one validated project from the recoverable catalog. */
+    public static JSONObject permanentlyDeleteFromTrash(String trashJson, String key)
+            throws Exception {
+        JSONObject trash = new JSONObject(trashJson == null ? "{}" : trashJson);
+        if (key == null || !trash.has(key)) throw new IllegalArgumentException("Trashed project not found");
+        JSONObject project = trash.getJSONObject(key);
+        if (!key.equals(ProjectMediaService.getOrGenerateProjectId(project.toString())))
+            throw new IllegalArgumentException("Trashed project identity mismatch");
+        trash.remove(key);
+        return new JSONObject().put("project", project).put("trash", trash);
+    }
+
     public static List<JSONObject> list(String catalogJson) throws Exception {
         JSONObject catalog = new JSONObject(catalogJson == null ? "{}" : catalogJson);
         List<JSONObject> projects = new ArrayList<>();

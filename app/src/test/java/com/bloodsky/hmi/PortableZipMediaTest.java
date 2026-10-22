@@ -552,6 +552,27 @@ public class PortableZipMediaTest {
         } catch (IOException expected) { }
     }
 
+    @Test public void permanentlyDeletingTrashedProjectCleansItsMediaButKeepsOtherProject() throws Exception {
+        String deletedJson = new JSONObject().put("id", "trash-delete").toString();
+        String otherJson = new JSONObject().put("id", "trash-keep").toString();
+        File deletedGeneration = ProjectMediaService.getProjectMediaDir(rootDir, deletedJson);
+        File otherGeneration = ProjectMediaService.getProjectMediaDir(rootDir, otherJson);
+        assertTrue(deletedGeneration.mkdirs() || deletedGeneration.isDirectory());
+        assertTrue(otherGeneration.mkdirs() || otherGeneration.isDirectory());
+        File deletedAsset = new File(deletedGeneration, "asset.bin");
+        File otherAsset = new File(otherGeneration, "asset.bin");
+        assertTrue(deletedAsset.createNewFile());
+        assertTrue(otherAsset.createNewFile());
+
+        String deletedId = ProjectMediaService.getOrGenerateProjectId(deletedJson);
+        JSONObject deletedFromTrash = ProjectCatalog.permanentlyDeleteFromTrash(
+                new JSONObject().put(deletedId, new JSONObject(deletedJson)).toString(), deletedId);
+        assertTrue(ProjectMediaService.deleteProjectMedia(rootDir,
+                deletedFromTrash.getJSONObject("project").toString()));
+        assertFalse(deletedAsset.exists());
+        assertTrue("Permanent deletion must not cross project identities", otherAsset.isFile());
+    }
+
     private static byte[] createCraftProjectZip(String projectJson, String mediaPath, byte[] mediaBytes) throws Exception {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(out)) {
