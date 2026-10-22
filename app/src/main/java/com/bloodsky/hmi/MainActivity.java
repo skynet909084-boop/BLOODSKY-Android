@@ -2039,10 +2039,10 @@ public class MainActivity extends Activity {
                         if ("FBD Вход".equals(w.type)) {
                             w.inputValue = isActiveModbusValue(entry.getValue());
                         } else if ("Звуковой сигнал".equals(w.type)) {
-                            boolean active = w.soundActive;
-                            if (entry.getValue() != null) {
-                                try { active = Double.parseDouble(entry.getValue()) >= w.soundThreshold; } catch (Exception ignored) {}
-                            }
+                            // A malformed or disconnected source must not trigger a remembered
+                            // locally configured alarm or latch the previous remote state.
+                            Boolean measuredActive = CraftAlarmSignal.active(entry.getValue(), w.soundThreshold);
+                            boolean active = Boolean.TRUE.equals(measuredActive);
                             String alarmKey = currentScreenIndex + ":" + index;
                             if (active && !w.lastSoundState) {
                                 w.lastSoundState = true;
@@ -12008,14 +12008,17 @@ public class MainActivity extends Activity {
                             Math.max(dp(8), (w.w - dp(32)) / Math.max(4f, soundLabel.length() * 0.58f))));
                     canvas.drawText(soundLabel, w.x + dp(28), w.y + w.h / 2 + dp(5), paint);
                 } else if ("Звуковой сигнал".equals(w.type)) {
-                    boolean active = w.soundActive;
-                    if (liveValues.containsKey(i)) {
-                        try { active = Double.parseDouble(liveValues.get(i)) >= w.soundThreshold; } catch (Exception ignored) {}
-                    }
-                    paint.setColor(active ? Color.rgb(239, 68, 68) : Color.rgb(100, 116, 139));
+                    String soundReading = liveValues.get(i);
+                    boolean signalUnavailable = CraftAlarmSignal.unavailable(soundReading, w.soundThreshold,
+                            operatorMode, w.connectionInfo != null && !w.connectionInfo.trim().isEmpty());
+                    Boolean measuredActive = CraftAlarmSignal.active(soundReading, w.soundThreshold);
+                    boolean active = !signalUnavailable && (measuredActive != null ? measuredActive : w.soundActive);
+                    paint.setColor(signalUnavailable ? Color.rgb(185, 28, 28)
+                            : active ? Color.rgb(239, 68, 68) : Color.rgb(100, 116, 139));
                     canvas.drawCircle(w.x + dp(16), w.y + w.h / 2, dp(6), paint);
-                    paint.setColor(w.textColor);
-                    String soundLabel = (active ? "🔊 " : "🔇 ") + w.text + (active ? " [АЛАРМ]" : " [ОК]");
+                    paint.setColor(signalUnavailable ? Color.rgb(185, 28, 28) : w.textColor);
+                    String soundLabel = signalUnavailable ? "⚠ " + w.text + " [Нет связи]"
+                            : (active ? "🔊 " : "🔇 ") + w.text + (active ? " [АЛАРМ]" : " [ОК]");
                     if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(32)) / Math.max(4f, soundLabel.length() * 0.58f))));
                     canvas.drawText(soundLabel, w.x + dp(28), w.y + w.h / 2 + dp(5), paint);
                 } else if ("Архив Craft".equals(w.type)) {
