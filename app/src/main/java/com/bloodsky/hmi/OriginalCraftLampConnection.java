@@ -55,6 +55,11 @@ final class OriginalCraftLampConnection {
         return result;
     }
 
+    static boolean isBitRegister(JSONObject fields) {
+        return fields != null && (fields.has("craftConnectionInfo")
+                || fields.optInt("craftComponentId", -1) == 5);
+    }
+
     static Boolean decodeBit(String raw, JSONObject fields) {
         int word = CraftHmiStateSignal.decodeWord(raw);
         if (word < 0) return null;
