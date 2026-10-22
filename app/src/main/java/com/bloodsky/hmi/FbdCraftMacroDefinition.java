@@ -146,10 +146,15 @@ public final class FbdCraftMacroDefinition {
             outgoing.add(new ArrayList<>());
         }
         MainActivity.Widget resultWidget = parsedWidgets.get(outputNode);
-        String resultSignal = MainActivity.knownFbdPinType(resultWidget, outputPin, true);
+        String resultSignal = FbdCraftPinTypes.typeForWidget(resultWidget, outputPin, true);
         if (resultSignal == null || !resultWidgetPinExists(resultWidget, outputPin, true))
             throw new JSONException("Nested macro output pin is unknown");
-        if ((outputPortType == 1) != "BOOL".equals(resultSignal))
+        // Native Craft macro ports distinguish BOOL=1, INT=2 and FLOAT=3.
+        // Previously any non-BOOL result could be exported as either INT
+        // or FLOAT, silently crossing the original typed macro interface.
+        String expectedSignal = outputPortType == 1 ? "BOOL"
+                : outputPortType == 2 ? "INT" : "FLOAT";
+        if (!FbdCraftPinTypes.compatible(resultSignal, expectedSignal))
             throw new JSONException("Nested macro output type does not match its interface");
         java.util.HashSet<String> drivenPins = new java.util.HashSet<>();
         for (int i = 0; i < connections.length(); i++) {
@@ -170,9 +175,10 @@ public final class FbdCraftMacroDefinition {
             String drivenPin = target + ":" + targetPin.toUpperCase(java.util.Locale.ROOT);
             if (!drivenPins.add(drivenPin))
                 throw new JSONException("Nested macro input pin is driven more than once");
-            String sourceSignal = MainActivity.knownFbdPinType(sourceWidget, sourcePin, true);
-            String targetSignal = MainActivity.knownFbdPinType(targetWidget, targetPin, false);
-            if (sourceSignal != null && targetSignal != null && !sourceSignal.equals(targetSignal))
+            String sourceSignal = FbdCraftPinTypes.typeForWidget(sourceWidget, sourcePin, true);
+            String targetSignal = FbdCraftPinTypes.typeForWidget(targetWidget, targetPin, false);
+            if (sourceSignal == null || targetSignal == null
+                    || !FbdCraftPinTypes.compatible(sourceSignal, targetSignal))
                 throw new JSONException("Nested macro connection has incompatible types");
             outgoing.get(source).add(target);
             indegree[target]++;
