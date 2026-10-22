@@ -118,6 +118,67 @@ public class CraftModbusTcpSlaveTest {
         assertEquals(0xa5aa, bank.readWord(10));
     }
 
+    @Test public void readWriteMultipleRegistersFollowsFc23Specification() {
+        CraftSystemRegisterBank bank = new CraftSystemRegisterBank();
+        bank.writeWord(10, 0x1111);
+        bank.writeWord(11, 0x2222);
+        bank.writeWord(12, 0x3333);
+
+        // First write 10..11, then read the overlapping 10..12 range.
+        byte[] answer = response(bank, 23,
+                0, 10, 0, 3, 0, 10, 0, 2, 4, 0xab, 0xcd, 0xef, 0xfe);
+        assertArrayEquals(new byte[]{23, 6, (byte) 0xab, (byte) 0xcd,
+                (byte) 0xef, (byte) 0xfe, 0x33, 0x33},
+                Arrays.copyOfRange(answer, 7, answer.length));
+        assertEquals(9, u16(answer, 4)); // unit identifier + eight-byte PDU
+        assertEquals(0xabcd, bank.readWord(10));
+        assertEquals(0xeffe, bank.readWord(11));
+        assertEquals(0x3333, bank.readWord(12));
+
+        // Non-overlapping read and write ranges remain independent.
+        byte[] disjoint = response(bank, 23,
+                0, 10, 0, 1, 0, 12, 0, 1, 2, 0x12, 0x34);
+        assertArrayEquals(new byte[]{23, 2, (byte) 0xab, (byte) 0xcd},
+                Arrays.copyOfRange(disjoint, 7, disjoint.length));
+        assertEquals(0x1234, bank.readWord(12));
+    }
+
+    @Test public void fc23RejectsInvalidCountsLengthsAndServiceRegistersAtomically() {
+        CraftSystemRegisterBank bank = new CraftSystemRegisterBank();
+        bank.writeWord(10, 0x1234);
+
+        byte[][] invalidQuantity = {
+                response(bank, 23, 0, 10, 0, 0, 0, 10, 0, 1, 2, 0, 7),
+                response(bank, 23, 0, 10, 0, 1, 0, 10, 0, 0, 0),
+                response(bank, 23, 0, 10, 0, 126, 0, 10, 0, 1, 2, 0, 7),
+                response(bank, 23, 0, 10, 0, 1, 0, 10, 0, 1, 4, 0, 7),
+                response(bank, 23, 0, 10, 0, 1, 0, 10, 0, 1, 2, 0),
+                response(bank, 23, 0, 10, 0, 1, 0, 10, 0, 1, 2, 0, 7, 0)
+        };
+        for (byte[] reply : invalidQuantity) {
+            assertArrayEquals(new byte[]{(byte) 0x97, 3},
+                    Arrays.copyOfRange(reply, 7, 9));
+        }
+        byte[][] invalidAddress = {
+                response(bank, 23, 0, 9, 0, 1, 0, 10, 0, 1, 2, 0, 7),
+                response(bank, 23, 0, 10, 0, 1, 0, 9, 0, 1, 2, 0, 7),
+                response(bank, 23, 7, 0xcf, 0, 2, 0, 10, 0, 1, 2, 0, 7),
+                response(bank, 23, 0, 10, 0, 1, 7, 0xcf, 0, 2, 4, 0, 7, 0, 8)
+        };
+        for (byte[] reply : invalidAddress) {
+            assertArrayEquals(new byte[]{(byte) 0x97, 2},
+                    Arrays.copyOfRange(reply, 7, 9));
+        }
+        assertEquals(0x1234, bank.readWord(10));
+        assertEquals(0, bank.readWord(11));
+
+        byte[] wrongUnit = CraftModbusTcpSlave.respond(
+                request(0x7777, 8, 23, 0, 10, 0, 1, 0, 10, 0, 1, 2, 0, 7), 7, bank);
+        assertArrayEquals(new byte[]{(byte) 0x97, 11},
+                Arrays.copyOfRange(wrongUnit, 7, 9));
+        assertEquals(0x1234, bank.readWord(10));
+    }
+
     @Test public void rejectsServiceAddressesMalformedValuesAndWrongUnitId() {
         CraftSystemRegisterBank bank = new CraftSystemRegisterBank();
         byte[] service = response(bank, 3, 0, 0, 0, 1);
@@ -165,6 +226,16 @@ public class CraftModbusTcpSlaveTest {
             length = u16(header, 4);
             pdu = new byte[length - 1]; input.readFully(pdu);
             assertArrayEquals(new byte[]{4, 2, 0x45, (byte) 0x89}, pdu);
+
+            output.write(request(0x2348, 7, 23, 0, 10, 0, 1,
+                    0, 10, 0, 1, 2, 0x13, 0x57));
+            output.flush();
+            input.readFully(header);
+            assertEquals(0x2348, u16(header, 0));
+            length = u16(header, 4);
+            pdu = new byte[length - 1]; input.readFully(pdu);
+            assertArrayEquals(new byte[]{23, 2, 0x13, 0x57}, pdu);
+            assertEquals(0x1357, bank.readWord(10));
         } finally { server.close(); }
         assertFalse(server.isRunning());
     }
