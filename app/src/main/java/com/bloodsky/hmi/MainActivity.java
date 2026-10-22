@@ -4834,21 +4834,54 @@ public class MainActivity extends Activity {
     }
 
     private void activateScreen(int index) {
+        if (nestedMacroEdit != null || screens.isEmpty() || currentScreenIndex < 0
+                || currentScreenIndex >= screens.size() || index < 0 || index >= screens.size())
+            return;
+        if (index == currentScreenIndex) return;
+        final int previousScreenIndex = currentScreenIndex;
+        final Screen previousScreen = screens.get(currentScreenIndex);
+        final ArrayList<Widget> previousScreenWidgets = new ArrayList<>(previousScreen.widgets);
+        final ArrayList<Widget> previousCanvasWidgets = new ArrayList<>(widgets);
+        final JSONObject previousProjectFields = projectExtraFields;
+        boolean committed = false;
+        try {
+            // Save the departing screen and the target index together.
+            // A failed write must not navigate away from the live editor.
+            saveActiveScreen();
+            currentScreenIndex = index;
+            widgets.clear();
+            for (Widget source : screens.get(index).widgets) widgets.add(copyWidget(source));
+            if (!persistProjectNow(true)) {
+                Toast.makeText(this, "Не удалось сохранить переключение экрана",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+            committed = true;
+        } catch (Exception failure) {
+            Toast.makeText(this, "Не удалось переключить экран", Toast.LENGTH_LONG).show();
+        } finally {
+            if (!committed) {
+                currentScreenIndex = previousScreenIndex;
+                previousScreen.widgets.clear();
+                previousScreen.widgets.addAll(previousScreenWidgets);
+                widgets.clear();
+                widgets.addAll(previousCanvasWidgets);
+                projectExtraFields = previousProjectFields;
+                if (editor != null) editor.invalidate();
+            }
+        }
+        if (!committed) return;
+        // Keep screen-local FBD wire Undo/Redo across navigation. Tear down
+        // outgoing runtime resources only after navigation is durably saved.
         pendingCraftVoiceWidget = null;
         pendingCraftVoicePermission = false;
         releaseVoiceRecognizer();
         craftWebViewWindow.close();
         closeCraftRtspPlayer();
-        // Keep screen-local FBD wire Undo/Redo across navigation. Histories are
-        // cleared on project load and on graph structure changes, not page flips.
         stopCurrentScreenAlarms();
-        saveActiveScreen();
-        if (screens.isEmpty()) screens.add(new Screen("Экран 1"));
-        currentScreenIndex = Math.max(0, Math.min(index, screens.size() - 1));
         liveValues.clear();
-        widgets.clear();
-        for (Widget source : screens.get(currentScreenIndex).widgets) widgets.add(copyWidget(source));
-        persistProject();
+        fbdWireMode = false;
+        wireSource = -1;
         showEditor();
     }
 
