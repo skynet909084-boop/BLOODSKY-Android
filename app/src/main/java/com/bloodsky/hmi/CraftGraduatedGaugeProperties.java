@@ -32,14 +32,7 @@ public final class CraftGraduatedGaugeProperties {
             throw new IllegalArgumentException("Регистр должен быть от 0 до 65535");
         JSONObject copy = fields == null ? new JSONObject() : new JSONObject(fields.toString());
         Object originalSource = copy.opt("craftConnectionInfo");
-        JSONObject source;
-        try {
-            source = originalSource instanceof JSONObject ? new JSONObject(originalSource.toString())
-                    : originalSource instanceof String ? new JSONObject((String) originalSource)
-                    : new JSONObject();
-        } catch (JSONException malformed) {
-            throw new IllegalArgumentException("Повреждена привязка шкалы Craft", malformed);
-        }
+        JSONObject source = CraftPropertyRecord.copy(copy, "craftConnectionInfo");
         apply(copy, min, max, countTextScale, sizeText, colorTextValue,
                 colorTextScale, colorCenterCircle, colorIndicator, colorMark,
                 percentLowScale, percentMediumScale, hideBackground, indicatorName);
@@ -67,14 +60,7 @@ public final class CraftGraduatedGaugeProperties {
             throw new IllegalArgumentException("Неизвестный тип указателя Craft");
 
         Object oldOther = fields.opt("craftOther");
-        JSONObject other;
-        try {
-            other = oldOther instanceof JSONObject ? new JSONObject(oldOther.toString())
-                    : oldOther instanceof String ? new JSONObject((String) oldOther)
-                    : new JSONObject();
-        } catch (JSONException malformed) {
-            throw new IllegalArgumentException("Повреждены исходные настройки шкалы Craft", malformed);
-        }
+        JSONObject other = CraftPropertyRecord.copy(fields, "craftOther");
         other.put("minGauge", min);
         other.put("maxGauge", max);
         other.put("countTextScale", countTextScale);

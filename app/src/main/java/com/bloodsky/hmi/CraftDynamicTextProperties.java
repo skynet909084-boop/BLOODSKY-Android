@@ -60,26 +60,12 @@ public final class CraftDynamicTextProperties {
         }
         JSONObject result = fields == null ? new JSONObject() : new JSONObject(fields.toString());
         Object sourceRaw = result.opt("craftConnectionInfo");
-        JSONObject source;
-        try {
-            source = sourceRaw instanceof JSONObject ? new JSONObject(sourceRaw.toString())
-                    : sourceRaw instanceof String ? new JSONObject((String) sourceRaw)
-                    : new JSONObject();
-        } catch (Exception malformed) {
-            throw new IllegalArgumentException("Повреждена привязка динамического текста Craft", malformed);
-        }
+        JSONObject source = CraftPropertyRecord.copy(result, "craftConnectionInfo");
         source.put("addressRegister", register);
         result.put("craftConnectionInfo", sourceRaw instanceof String ? source.toString() : source);
 
         Object rawOther = result.opt("craftOther");
-        JSONObject other;
-        try {
-            other = rawOther instanceof JSONObject ? new JSONObject(rawOther.toString())
-                    : rawOther instanceof String ? new JSONObject((String) rawOther)
-                    : new JSONObject();
-        } catch (Exception malformed) {
-            throw new IllegalArgumentException("Повреждены исходные свойства динамического текста", malformed);
-        }
+        JSONObject other = CraftPropertyRecord.copy(result, "craftOther");
         JSONArray labels = new JSONArray();
         JSONArray colors = new JSONArray();
         for (int i = 0; i < STATE_COUNT; i++) {
