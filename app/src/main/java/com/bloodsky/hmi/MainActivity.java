@@ -5015,6 +5015,7 @@ public class MainActivity extends Activity {
             // A single actionable accessibility node lets TalkBack and UI smoke
             // tests identify the correct component action without icon guessing.
             row.setFocusable(true);
+            row.setClickable(true);
             row.setContentDescription(selectedWidget.type + ": " + labels[i]);
             row.setBackgroundColor(i % 2 == 0
                     ? Color.rgb(48, 48, 48) : Color.rgb(40, 40, 40));
