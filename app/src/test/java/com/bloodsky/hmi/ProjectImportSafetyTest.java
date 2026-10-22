@@ -89,7 +89,7 @@ public class ProjectImportSafetyTest {
                                         .put("craftPushEnabled", true)
                                         .put("connectionInfo", "Bt://AA:BB:CC:DD:EE:FF/1/40001")
                                         .put("craftArchiveTriggerBinding", "TCP://192.0.2.3:502/1/40002")
-                                        .put("opaque", new JSONObject().put("keep", "metadata"))))));
+                                        .put("opaque", new JSONObject().put("keep", "metadata")))))));
         String once = ProjectImportSafety.deactivateExternalActions(original.toString());
         String twice = ProjectImportSafety.deactivateExternalActions(once);
         JSONObject first = new JSONObject(once).getJSONArray("craftMacroDefinitions")
