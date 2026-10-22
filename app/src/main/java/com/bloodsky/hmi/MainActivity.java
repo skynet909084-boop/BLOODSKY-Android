@@ -5019,6 +5019,9 @@ public class MainActivity extends Activity {
             row.setFocusable(true);
             row.setClickable(true);
             row.setContentDescription(selectedWidget.type + ": " + labels[i]);
+            // Preserve the action name in the accessibility tree while keeping
+            // the same visual row and icon layout as the existing editor menu.
+            row.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
             row.setBackgroundColor(i % 2 == 0
                     ? Color.rgb(48, 48, 48) : Color.rgb(40, 40, 40));
 
@@ -5074,11 +5077,6 @@ public class MainActivity extends Activity {
                 .setView(scroll)
                 .setNegativeButton("Отмена", null)
                 .create();
-        // A menu can remain onscreen while another UI action changes the editor.
-        // Dismissal does not alter selection, project data, or widget metadata.
-        menu[0].setOnDismissListener(dialog -> {
-            // Nothing to commit: only explicit component actions may mutate data.
-        });
         menu[0].show();
         int titleId = getResources().getIdentifier("alertTitle", "id", "android");
         TextView dialogTitle = menu[0].findViewById(titleId);
