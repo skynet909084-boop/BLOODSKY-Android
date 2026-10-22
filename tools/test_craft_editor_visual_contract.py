@@ -63,6 +63,11 @@ class CraftEditorVisualContractTests(unittest.TestCase):
         self.assertIn("row.setClickable(true)", menu)
         self.assertIn('row.setContentDescription(selectedWidget.type + ": " + labels[i])', menu)
 
+    def test_runtime_never_opens_editor_context_actions(self):
+        menu = self.source.split("private void showStandardWidgetContextMenu()", 1)[1].split(
+            "private void ", 1)[0]
+        self.assertIn("if (operatorMode || editor == null", menu)
+
     def test_destructive_action_is_still_last_and_red(self):
         menu = self.source.split("private void showStandardWidgetContextMenu()", 1)[1].split(
             "private void ", 1)[0]
