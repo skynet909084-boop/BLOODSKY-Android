@@ -568,6 +568,43 @@ class CraftEditorVisualContractTests(unittest.TestCase):
             "private void ", 1)[0]
         self.assertIn("stopCraftAlarmAlert(screenIndex + \":\" + index)", alarm)
 
+    def test_advanced_inspector_rolls_back_all_properties_on_validation_or_save_error(self):
+        inspector = self.source.split("private void editSelectedWidget(boolean advanced)", 1)[1]
+        commit = inspector.split("properties.setOnShowListener(", 1)[1].split(
+            "properties.show();", 1)[0]
+        for required in (
+            "if (!dialogGuard.require())",
+            "final Widget original = copyWidget(w)",
+            "final JSONObject originalProjectFields",
+            "new JSONObject(projectExtraFields.toString())",
+            "boolean committed = false",
+            "if (!persistProjectNow(true))",
+            "committed = true",
+            "} finally {",
+            "if (!committed)",
+            "restoreWidgetFromSnapshot(w, original)",
+            "projectExtraFields = originalProjectFields",
+            "saveActiveScreen()",
+            "properties.dismiss()",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, commit)
+        self.assertNotIn("persistProject();", commit)
+        self.assertLess(commit.index("if (!persistProjectNow(true))"),
+                        commit.index("committed = true"))
+        self.assertLess(commit.index("committed = true"),
+                        commit.index("properties.dismiss()"))
+        restore = self.source.split("private static void restoreWidgetFromSnapshot(", 1)[1].split(
+            "private void ", 1)[0]
+        for field in (
+            "target.extraFields = new JSONObject(source.extraFields.toString())",
+            "target.x = source.x", "target.y = source.y", "target.w = source.w",
+            "target.h = source.h", "target.type = source.type",
+            "target.dynTextStates[i] = source.dynTextStates[i]",
+            "target.connectionInfo = source.connectionInfo",
+        ):
+            self.assertIn(field, restore)
+
     def test_main_settings_reuse_existing_specialized_dialogs(self):
         editor = self.source.split("private void editSelectedWidget(boolean advanced)", 1)[1]
         for dialog in ("CraftListSettingsDialog", "CraftProgressBarSettingsDialog",
