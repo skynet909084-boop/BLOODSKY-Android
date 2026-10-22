@@ -19,9 +19,11 @@ class OriginalIndicatorTransferTests(unittest.TestCase):
             self.assertEqual((ROOT/'build/craft-reference/apktool/res/drawable'/ (name+'.png')).read_bytes(),
                              (ROOT/'app/src/main/res/drawable-nodpi'/('kc_'+name+'.png')).read_bytes())
         renderer = source.split('String indicatorValue = liveValues.get(i);', 1)[1].split('} else if ("Кнопка"', 1)[0]
-        self.assertIn('originalIndicatorBitmap(w, isActiveModbusValue(indicatorValue))', renderer)
+        self.assertIn('CraftIndicatorSignal.decode(indicatorValue)', renderer)
+        self.assertIn('signalUnavailable ? null : originalIndicatorBitmap(w, Boolean.TRUE.equals(state))', renderer)
+        self.assertIn('if (signalUnavailable)', renderer)
+        self.assertIn('canvas.drawText("Нет связи"', renderer)
         self.assertNotIn('drawCircle', renderer)
-        self.assertNotIn('drawText', renderer)
         self.assertIn('rect.left + 10', renderer)
         self.assertIn('rect.right - 10', renderer)
 
