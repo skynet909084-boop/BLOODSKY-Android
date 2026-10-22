@@ -71,6 +71,8 @@ class CraftEditorVisualContractTests(unittest.TestCase):
         self.assertIn("R.drawable.kc_align_open_menu", menu)
         self.assertIn("R.drawable.kc_action_copy", menu)
         self.assertIn("sourceIcon.setContentDescription(null)", menu)
+        self.assertIn("sourceIcon.setScaleType(android.widget.ImageView.ScaleType.FIT_XY)", menu)
+        self.assertIn("new LinearLayout.LayoutParams(dp(40), dp(40))", menu)
         layout = (ROOT / "app/src/main/res/layout/kc_selection_actions.xml").read_text(
             encoding="utf-8")
         self.assertIn("@drawable/kc_action_copy", layout)
