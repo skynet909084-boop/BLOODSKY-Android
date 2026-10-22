@@ -60,6 +60,7 @@ class CraftEditorVisualContractTests(unittest.TestCase):
         self.assertIn("operatorMode || editor == null", menu)
         self.assertIn('"Элемент изменён: выбери его заново"', menu)
         self.assertIn("row.setFocusable(true)", menu)
+        self.assertIn("row.setClickable(true)", menu)
         self.assertIn('row.setContentDescription(selectedWidget.type + ": " + labels[i])', menu)
 
     def test_destructive_action_is_still_last_and_red(self):
