@@ -11715,9 +11715,9 @@ public class MainActivity extends Activity {
                     paint.setStyle(Paint.Style.FILL);
                     }
                 } else if (OriginalCraftNumericIndicator.TYPE.equals(w.type)) {
-                    String value = liveValues.get(i);
-                    if (value == null) value = "0";
-                    boolean failed = value.startsWith("ERR") || value.startsWith("CFG");
+                    String value = CraftNumericIndicatorDisplay.value(liveValues.get(i), operatorMode,
+                            w.connectionInfo != null && !w.connectionInfo.trim().isEmpty());
+                    boolean failed = CraftNumericIndicatorDisplay.unavailable(value);
                     android.graphics.Typeface previousTypeface = paint.getTypeface();
                     android.graphics.Paint.Align previousAlign = paint.getTextAlign();
                     if (!w.extraFields.optBoolean("craftNumericIndicatorFontChange", false)) {
