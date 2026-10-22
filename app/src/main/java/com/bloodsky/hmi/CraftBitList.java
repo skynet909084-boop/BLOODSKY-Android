@@ -42,39 +42,15 @@ public final class CraftBitList {
         JSONObject result = fields == null ? new JSONObject() : new JSONObject(fields.toString());
 
         Object originalConnection = result.opt("craftConnectionInfo");
-        JSONObject source;
-        try {
-            source = originalConnection instanceof JSONObject
-                    ? new JSONObject(originalConnection.toString())
-                    : originalConnection instanceof String
-                    ? new JSONObject((String) originalConnection) : new JSONObject();
-        } catch (Exception malformed) {
-            throw new IllegalArgumentException("Не удалось прочитать исходную привязку списка", malformed);
-        }
+        JSONObject source = CraftPropertyRecord.copy(result, "craftConnectionInfo");
         source.put("addressRegister", register);
         result.put("craftConnectionInfo", originalConnection instanceof String
                 ? source.toString() : source);
 
         Object originalOther = result.opt("craftOther");
-        JSONObject other;
-        try {
-            other = originalOther instanceof JSONObject
-                    ? new JSONObject(originalOther.toString())
-                    : originalOther instanceof String
-                    ? new JSONObject((String) originalOther) : new JSONObject();
-        } catch (Exception malformed) {
-            throw new IllegalArgumentException("Не удалось прочитать свойства списка Craft", malformed);
-        }
+        JSONObject other = CraftPropertyRecord.copy(result, "craftOther");
         Object oldText = other.opt("textBit");
-        JSONObject sourceLabels;
-        try {
-            sourceLabels = oldText instanceof JSONObject
-                    ? new JSONObject(oldText.toString())
-                    : oldText instanceof String
-                    ? new JSONObject((String) oldText) : new JSONObject();
-        } catch (Exception malformed) {
-            throw new IllegalArgumentException("Не удалось прочитать подписи списка Craft", malformed);
-        }
+        JSONObject sourceLabels = CraftPropertyRecord.copy(other, "textBit");
         for (int i = 0; i < OPTION_COUNT; i++)
             sourceLabels.put("textBit" + i, labels[i] == null ? "" : labels[i]);
         other.put("textBit", oldText instanceof String ? sourceLabels.toString() : sourceLabels);

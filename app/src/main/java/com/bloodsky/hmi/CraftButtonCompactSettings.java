@@ -35,27 +35,13 @@ final class CraftButtonCompactSettings {
             throw new IllegalArgumentException("Надпись кнопки должна быть не длиннее 100 символов");
         JSONObject result = fields == null ? new JSONObject() : new JSONObject(fields.toString());
         Object sourceRaw = result.opt("craftConnectionInfo");
-        JSONObject source;
-        try {
-            source = sourceRaw instanceof JSONObject ? new JSONObject(sourceRaw.toString())
-                    : sourceRaw instanceof String ? new JSONObject((String) sourceRaw)
-                    : new JSONObject();
-        } catch (Exception malformed) {
-            throw new IllegalArgumentException("Не удалось прочитать привязку Craft", malformed);
-        }
+        JSONObject source = CraftPropertyRecord.copy(result, "craftConnectionInfo");
         source.put("addressRegister", register);
         source.put("addressBit", bit);
         result.put("craftConnectionInfo", sourceRaw instanceof String ? source.toString() : source);
 
         Object otherRaw = result.opt("craftOther");
-        JSONObject other;
-        try {
-            other = otherRaw instanceof JSONObject ? new JSONObject(otherRaw.toString())
-                    : otherRaw instanceof String ? new JSONObject((String) otherRaw)
-                    : new JSONObject();
-        } catch (Exception malformed) {
-            throw new IllegalArgumentException("Не удалось прочитать свойства Craft", malformed);
-        }
+        JSONObject other = CraftPropertyRecord.copy(result, "craftOther");
         other.put("visibleInWork", visible);
         result.put("craftOther", otherRaw instanceof String ? other.toString() : other);
         boolean bitChanged = bit != bit(fields);
