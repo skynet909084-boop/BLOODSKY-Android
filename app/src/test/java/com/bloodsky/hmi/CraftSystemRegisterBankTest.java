@@ -103,6 +103,21 @@ public class CraftSystemRegisterBankTest {
         expectIllegal(() -> new CraftSystemRegisterBank().writeFloat32(10, Float.POSITIVE_INFINITY, false, false));
     }
 
+    @Test public void floatReadsMaskFullWidthProjectWordsBeforeDecoding() {
+        CraftSystemRegisterBank bank = new CraftSystemRegisterBank();
+        // Craft's persisted integer registers legitimately hold 32-bit values;
+        // the FLOAT codec must interpret their low 16 bits, not reject them.
+        bank.writeWord(100, 0x1003f80);
+        bank.writeWord(101, -65536);
+        assertEquals(1.0f, bank.readFloat32(100, false, false), 0.0f);
+        bank.writeWord(100, -65536);
+        bank.writeWord(101, -49280); // low word 0x3f80
+        assertEquals(1.0f, bank.readFloat32(100, true, false), 0.0f);
+        bank.writeWord(100, 0x100803f);
+        bank.writeWord(101, 65536);
+        assertEquals(1.0f, bank.readFloat32(100, false, true), 0.0f);
+    }
+
     @Test public void projectJsonPersistsOnlyNonzeroUserWordsAndRestores() throws Exception {
         CraftSystemRegisterBank source = new CraftSystemRegisterBank();
         source.writeWord(10, -41);

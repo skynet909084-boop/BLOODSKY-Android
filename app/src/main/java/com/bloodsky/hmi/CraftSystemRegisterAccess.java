@@ -48,6 +48,10 @@ public final class CraftSystemRegisterAccess {
     public static float readFloat(int address, boolean swapWord, boolean swapByte,
                                   CraftSystemRegisterBank projectBank) {
         if (!isValidFloatReadAddress(address)) throw new IllegalArgumentException("Craft FLOAT input needs two adjacent registers starting at address 1..1998");
+        // Both project words must be read under the bank's one lock. Two
+        // separate readInt calls can combine halves of different FBD scans.
+        if (address >= CraftSystemRegisterBank.FIRST_USER_REGISTER)
+            return requireProjectBank(projectBank).readFloat32(address, swapWord, swapByte);
         int first = readInt(address, projectBank);
         int second = readInt(address + 1, projectBank);
         if (swapByte) {
@@ -90,6 +94,17 @@ public final class CraftSystemRegisterAccess {
                                      CraftSystemRegisterBank projectBank, long nowMillis) {
         if (!isValidFloatWriteAddress(address)) throw new IllegalArgumentException("Craft FLOAT output needs two adjacent registers starting at address 0..1998");
         int[] words = FbdCraftRegisterCodec.floatRegisters(value, swapWord, swapByte);
+        // User-register FLOAT writes must be one atomic pair: Modbus and FBD
+        // readers may otherwise observe one new word and one old word.
+        if (address >= CraftSystemRegisterBank.FIRST_USER_REGISTER) {
+            requireProjectBank(projectBank).writeFloat32(address, value, swapWord, swapByte);
+            return true;
+        }
+        // The 9->10 service/user boundary needs a project bank before
+        // dispatching any service command, so a missing bank cannot leave
+        // a half-applied write or execute an unrelated screen/exit action.
+        if (address + 1 >= CraftSystemRegisterBank.FIRST_USER_REGISTER)
+            requireProjectBank(projectBank);
         boolean first = writeInt(address, words[0], projectBank);
         boolean second = writeInt(address + 1, words[1], projectBank);
         return first && second;

@@ -105,7 +105,10 @@ public final class CraftSystemRegisterBank {
             first = swapBytes(first);
             second = swapBytes(second);
         }
-        return FbdCraftRegisterCodec.floatValue(first, second);
+        // The shared Craft bank stores raw Java ints, including negative values
+        // and values above 65535. FLOAT sees only the low 16 bits of each
+        // register, just like CraftSystemRegisterAccess and Modbus reads.
+        return FbdCraftRegisterCodec.floatValue(first & 0xffff, second & 0xffff);
     }
 
     /** Store Float32 in two adjacent words, with explicit byte/register order. */
