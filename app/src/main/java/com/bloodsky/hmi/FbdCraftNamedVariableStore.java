@@ -45,7 +45,11 @@ public final class FbdCraftNamedVariableStore {
         if (type == 2 && (value < Integer.MIN_VALUE || value > Integer.MAX_VALUE
                 || value != Math.rint(value))) return false;
         if (type == 3 && Math.abs(value) > Float.MAX_VALUE) return false;
-        VALUES.put(key, value);
+        // Craft VarName type 3 is IEEE-754 Float32, not a Java double. The
+        // graph evaluates numeric pins as doubles, so round on the store
+        // boundary to keep reads and writes faithful to Float32 precision.
+        // Preserve signed zero and underflow exactly as Java float does.
+        VALUES.put(key, type == 3 ? (double) (float) value : value);
         return true;
     }
 
