@@ -510,6 +510,16 @@ class CraftEditorVisualContractTests(unittest.TestCase):
                                 body.index("persistProjectNow(true)"))
                 self.assertIn("R.style.Theme_Material_Dialog_Alert", body)
 
+    def test_advanced_inspector_rejects_stale_apply_and_image_action(self):
+        editor = self.source.split("private void editSelectedWidget(boolean advanced)", 1)[1]
+        callback = editor.split("properties.setOnShowListener(", 1)[1]
+        self.assertIn("if (!dialogGuard.require())", callback)
+        self.assertIn("properties.dismiss();", callback)
+        self.assertLess(callback.index("if (!dialogGuard.require())"),
+                        callback.index("WidgetGeometryEdits.parse("))
+        self.assertIn("if (dialogGuard.require()) showIndicatorImages(w);", editor)
+        self.assertIn("activePropertiesDialog = properties", editor)
+
     def test_original_image_selectors_reject_stale_widget_and_screen(self):
         selector = self.source.split("private boolean selectIndicatorImage(", 1)[1].split(
             "private void showIndicatorImages(", 1)[0]
