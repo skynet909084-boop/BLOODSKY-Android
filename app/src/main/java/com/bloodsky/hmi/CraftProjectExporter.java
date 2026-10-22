@@ -100,6 +100,8 @@ public final class CraftProjectExporter {
                             throw new IOException("Для нового компонента нет проверенного соответствия палитре KaScada");
                         row = addedComponentId == 26
                                 ? appendCraftWebView(widget, s, sourceRows, outputRows)
+                                : addedComponentId == 27
+                                ? appendCraftVoiceRecognition(widget, s, sourceRows, outputRows)
                                 : appendCraftFbdBlock(widget, addedComponentId, s, sourceRows, outputRows);
                     }
                 }
@@ -205,6 +207,11 @@ public final class CraftProjectExporter {
                         int mode = craftSunriseType(widget.optString("craftSunriseMode", ""));
                         if (mode > 0) merged.put("type", mode);
                     }
+                    if (componentId == 27) {
+                        int address = widget.optInt("craftVoiceRegisterAddress", -1);
+                        if (CraftVoiceRecognitionPolicy.validProjectRegister(address))
+                            merged.put("bloodskyVoiceRegisterAddress", address);
+                    }
                     if (componentId == 130) {
                         if (widget.has("craftOdTempHost")) merged.put("ip", widget.optString("craftOdTempHost"));
                         if (widget.has("craftOdTempType")) merged.put("typeSensor", widget.optInt("craftOdTempType"));
@@ -279,6 +286,37 @@ public final class CraftProjectExporter {
         sourceRows.put(row);
         outputRows.put(new JSONObject(row.toString()));
         widget.put("craftComponentId", 26).put("craftSourceRow", index).put("craftOther", other);
+        return index;
+    }
+
+    /** ID27 keeps Craft's phrase schema; activation remains a BLOODSKY-local opt-in. */
+    private static int appendCraftVoiceRecognition(JSONObject widget, int screenIndex,
+                                          JSONArray sourceRows, JSONArray outputRows) throws Exception {
+        JSONObject custom = widget.optJSONObject("craftOther");
+        JSONObject other = CraftVoiceRecognitionFields.write(custom,
+                CraftVoiceRecognitionFields.read(custom));
+        other.put("numScreen", screenIndex + 1);
+        if (!other.has("timeZ")) other.put("timeZ", 0);
+        int register = widget.optInt("craftVoiceRegisterAddress", -1);
+        if (CraftVoiceRecognitionPolicy.validProjectRegister(register))
+            other.put("bloodskyVoiceRegisterAddress", register);
+        JSONObject connection = new JSONObject().put("idComponent", 27)
+                .put("addressRegister", 0).put("addressBit", 0)
+                .put("typeRequest", 0).put("posDeviceNetworkInList", -1);
+        JSONObject row = new JSONObject().put("componentId", 27)
+                .put("text", widget.optString("text", "Голосовая команда"))
+                .put("x", widget.optDouble("x", 40)).put("y", widget.optDouble("y", 50))
+                .put("width", widget.optDouble("w", 180)).put("height", widget.optDouble("h", 72))
+                .put("textSize", String.valueOf(widget.optInt("textSizeSp", 14)))
+                .put("colorText", String.valueOf(widget.optInt("textColor", 0xff1f2937)))
+                .put("colorBackground", String.valueOf(widget.optInt("backgroundColor", 0)))
+                .put("jsTableComponent_connectionInfo", connection)
+                .put("jsTableComponent_other", other);
+        int index = sourceRows.length();
+        sourceRows.put(row);
+        outputRows.put(new JSONObject(row.toString()));
+        widget.put("craftComponentId", 27).put("craftSourceRow", index).put("craftOther", other)
+                .put("craftConnectionInfo", connection);
         return index;
     }
 
@@ -404,6 +442,7 @@ public final class CraftProjectExporter {
     private static int addedCraftFbdBlockId(JSONObject widget) {
         if (widget == null) return -1;
         if ("WebView Craft".equals(widget.optString("type", ""))) return 26;
+        if ("Распознавание речи Craft".equals(widget.optString("type", ""))) return 27;
         int declared = widget.optInt("craftComponentId", -1);
         if (declared >= 101 && declared <= 140 && declared != 135)
             return declared;

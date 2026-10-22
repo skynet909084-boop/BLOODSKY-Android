@@ -159,6 +159,9 @@ public class MainActivity extends Activity {
     private static final int VOICE_ONLINE = 2;
     private int pendingVoiceMode;
     private android.speech.SpeechRecognizer speechRecognizer;
+    private Widget pendingCraftVoiceWidget;
+    private Widget activeCraftVoiceWidget;
+    private boolean pendingCraftVoicePermission;
     private final android.location.LocationListener fbdLocationListener = new android.location.LocationListener() {
         @Override public void onLocationChanged(android.location.Location location) {
             if (location == null || !operatorMode || editor == null) return;
@@ -425,9 +428,15 @@ public class MainActivity extends Activity {
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_VOICE_PERMISSION) {
-            if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED)
-                startVoiceRecognition(pendingVoiceMode);
-            else Toast.makeText(this, "Для голосового управления нужен доступ к микрофону", Toast.LENGTH_LONG).show();
+            Widget requestedCraftVoice = pendingCraftVoiceWidget;
+            pendingCraftVoiceWidget = null;
+            boolean craftRequest = pendingCraftVoicePermission;
+            pendingCraftVoicePermission = false;
+            if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                if (craftRequest) {
+                    if (requestedCraftVoice != null) startCraftVoiceRecognition(requestedCraftVoice);
+                } else startVoiceRecognition(pendingVoiceMode);
+            } else Toast.makeText(this, "Для голосового управления нужен доступ к микрофону", Toast.LENGTH_LONG).show();
             return;
         }
         if (requestCode == REQUEST_SMS_SEND_PERMISSION) {
@@ -483,6 +492,7 @@ public class MainActivity extends Activity {
         stopModbusPolling();
         stopFbdSensors();
         stopCraftMqtt();
+        pendingCraftVoiceWidget = null;
         releaseVoiceRecognizer();
         resetCraftAlarmEdges();
         stopAllCraftAlarmPlayback();
@@ -3357,6 +3367,11 @@ public class MainActivity extends Activity {
     private void toggleOperatorMode() {
         if (nestedMacroEdit != null) return;
         if (!persistProjectNow(true)) return;
+        if (operatorMode) {
+            pendingCraftVoiceWidget = null;
+            pendingCraftVoicePermission = false;
+            releaseVoiceRecognizer();
+        }
         // Editing must not advance timers. Re-entering runtime starts a fresh
         // clock epoch rather than resuming an old saved elapsedRealtime value.
         if (!operatorMode) {
@@ -4277,8 +4292,103 @@ public class MainActivity extends Activity {
                 .setNeutralButton("Отмена", null).show();
     }
 
+    private void requestCraftVoiceRecognition(Widget widget) {
+        if (widget == null || !operatorMode || !activityResumed || !widgets.contains(widget)
+                || !widget.extraFields.optBoolean("craftVoiceRecognitionEnabled", false)) {
+            Toast.makeText(this, "Сначала включи распознавание в свойствах компонента", Toast.LENGTH_LONG).show();
+            return;
+        }
+        int register = widget.extraFields.optInt("craftVoiceRegisterAddress", -1);
+        if (!CraftVoiceRecognitionPolicy.validProjectRegister(register)) {
+            Toast.makeText(this, "В компоненте не задан локальный системный регистр 10–1999", Toast.LENGTH_LONG).show();
+            return;
+        }
+        String[] phrases = CraftVoiceRecognitionFields.read(widget.extraFields.optJSONObject("craftOther"));
+        boolean hasLiteralPhrase = false;
+        for (String phrase : phrases) if (phrase != null && !phrase.trim().isEmpty() && phrase.indexOf('#') < 0) hasLiteralPhrase = true;
+        if (!hasLiteralPhrase) {
+            Toast.makeText(this, "Добавь хотя бы одну буквальную фразу без # в свойствах компонента", Toast.LENGTH_LONG).show();
+            return;
+        }
+        new AlertDialog.Builder(this).setTitle("Слушать команду?")
+                .setMessage("Одноразовое локальное распознавание на устройстве. Аудио не отправляется через BLOODSKY. Совпавшая фраза установит бит в локальном регистре " + register + ".")
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Начать", (dialog, which) -> {
+                    if (!operatorMode || !activityResumed || !widgets.contains(widget)) return;
+                    pendingCraftVoiceWidget = widget;
+                    if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                            != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                        pendingCraftVoicePermission = true;
+                        requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQUEST_VOICE_PERMISSION);
+                    } else {
+                        pendingCraftVoiceWidget = null;
+                        pendingCraftVoicePermission = false;
+                        startCraftVoiceRecognition(widget);
+                    }
+                }).show();
+    }
+
+    private void startCraftVoiceRecognition(Widget widget) {
+        if (!operatorMode || !activityResumed || !widgets.contains(widget)
+                || !widget.extraFields.optBoolean("craftVoiceRecognitionEnabled", false)) return;
+        if (android.os.Build.VERSION.SDK_INT < 31
+                || !android.speech.SpeechRecognizer.isOnDeviceRecognitionAvailable(this)) {
+            Toast.makeText(this, "Локальное распознавание недоступно: требуется Android 12+ с установленной офлайн-службой речи", Toast.LENGTH_LONG).show();
+            return;
+        }
+        try {
+            releaseVoiceRecognizer();
+            activeCraftVoiceWidget = widget;
+            speechRecognizer = android.speech.SpeechRecognizer.createOnDeviceSpeechRecognizer(this);
+            speechRecognizer.setRecognitionListener(new android.speech.RecognitionListener() {
+                @Override public void onReadyForSpeech(Bundle params) {
+                    if (activityResumed && operatorMode && widgets.contains(widget))
+                        Toast.makeText(MainActivity.this, "Слушаю локально…", Toast.LENGTH_SHORT).show();
+                }
+                @Override public void onBeginningOfSpeech() { }
+                @Override public void onRmsChanged(float rmsdB) { }
+                @Override public void onBufferReceived(byte[] buffer) { }
+                @Override public void onEndOfSpeech() { }
+                @Override public void onError(int error) {
+                    releaseVoiceRecognizer();
+                    if (activityResumed && operatorMode && widgets.contains(widget))
+                        Toast.makeText(MainActivity.this, "Команда не распознана (код " + error + ")", Toast.LENGTH_LONG).show();
+                }
+                @Override public void onResults(Bundle results) {
+                    ArrayList<String> recognized = results == null ? null
+                            : results.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION);
+                    releaseVoiceRecognizer();
+                    if (!activityResumed || !operatorMode || !widgets.contains(widget)) return;
+                    String phrase = recognized == null || recognized.isEmpty() ? "" : recognized.get(0);
+                    int address = widget.extraFields.optInt("craftVoiceRegisterAddress", -1);
+                    String[] configured = CraftVoiceRecognitionFields.read(widget.extraFields.optJSONObject("craftOther"));
+                    int bit = CraftVoiceRecognitionPolicy.match(configured, phrase);
+                    if (bit < 0 || !CraftVoiceRecognitionPolicy.apply(configured, phrase, address, systemRegisterBank, System.currentTimeMillis())) {
+                        Toast.makeText(MainActivity.this, "Фраза не совпала с единственной настроенной командой", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    persistProject();
+                    if (editor != null) editor.invalidate();
+                    Toast.makeText(MainActivity.this, "Команда принята: установлен бит " + bit + " регистра " + address, Toast.LENGTH_LONG).show();
+                }
+                @Override public void onPartialResults(Bundle partialResults) { }
+                @Override public void onEvent(int eventType, Bundle params) { }
+            });
+            android.content.Intent intent = new android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                    android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, "ru-RU");
+            intent.putExtra(android.speech.RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+            speechRecognizer.startListening(intent);
+        } catch (Exception failure) {
+            releaseVoiceRecognizer();
+            Toast.makeText(this, "Локальная служба распознавания недоступна", Toast.LENGTH_LONG).show();
+        }
+    }
+
     private void requestVoicePermission(int mode) {
         pendingVoiceMode = mode;
+        pendingCraftVoicePermission = false;
         if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
                 != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQUEST_VOICE_PERMISSION);
@@ -4366,6 +4476,7 @@ public class MainActivity extends Activity {
 
     private void releaseVoiceRecognizer() {
         if (speechRecognizer != null) { try { speechRecognizer.cancel(); speechRecognizer.destroy(); } catch (Exception ignored) {} speechRecognizer = null; }
+        activeCraftVoiceWidget = null;
     }
 
     private void showTelegramSettingsDialog() {
@@ -4568,6 +4679,9 @@ public class MainActivity extends Activity {
     }
 
     private void activateScreen(int index) {
+        pendingCraftVoiceWidget = null;
+        pendingCraftVoicePermission = false;
+        releaseVoiceRecognizer();
         craftWebViewWindow.close();
         closeCraftRtspPlayer();
         fbdWireHistory.clear();
@@ -5271,6 +5385,16 @@ public class MainActivity extends Activity {
                 w.extraFields.put("craftUnsupportedComponent", false);
                 w.extraFields.put("craftRtspEnabled", false);
                 w.extraFields.put("craftOther", new JSONObject().put("rtsp_url", ""));
+            } catch (Exception ignored) { }
+        }
+        if ("Распознавание речи Craft".equals(type)) {
+            w.w = dp(180); w.h = dp(72);
+            try {
+                w.extraFields.put("craftComponentId", 27);
+                w.extraFields.put("craftUnsupportedComponent", false);
+                w.extraFields.put("craftVoiceRecognitionEnabled", false);
+                w.extraFields.put("craftVoiceRegisterAddress", -1);
+                w.extraFields.put("craftOther", CraftVoiceRecognitionFields.write(null, new String[16]));
             } catch (Exception ignored) { }
         }
         if ("GIF Craft".equals(type)) {
@@ -6125,11 +6249,13 @@ public class MainActivity extends Activity {
         }
 
         final EditText[] craftVoicePhraseFields = new EditText[CraftVoiceRecognitionFields.PHRASE_COUNT];
+        final CheckBox craftVoiceRecognitionEnabledField;
+        final EditText craftVoiceRegisterField;
         if ("Распознавание речи Craft".equals(w.type)) {
             JSONObject sourceOther = w.extraFields.optJSONObject("craftOther");
             String[] phrases = CraftVoiceRecognitionFields.read(sourceOther);
             TextView voiceHeader = new TextView(this);
-            voiceHeader.setText("Исходные фразы Craft (0–15); распознавание пока выключено");
+            voiceHeader.setText("Команды Craft (0–15). Для голосового запуска оператор нажимает сам компонент.");
             voiceHeader.setPadding(0, dp(10), 0, 0);
             form.addView(voiceHeader);
             for (int k = 0; k < craftVoicePhraseFields.length; k++) {
@@ -6137,7 +6263,17 @@ public class MainActivity extends Activity {
                 craftVoicePhraseFields[k].setHint("Фраза Craft " + k);
                 form.addView(craftVoicePhraseFields[k]);
             }
-        }
+            craftVoiceRegisterField = propertyField(Integer.toString(w.extraFields.optInt("craftVoiceRegisterAddress", -1)), InputType.TYPE_CLASS_NUMBER);
+            craftVoiceRegisterField.setHint("Локальный системный регистр (10–1999)");
+            form.addView(craftVoiceRegisterField);
+            TextView voiceHelp = new TextView(this);
+            voiceHelp.setText("Принимаются точные текстовые команды из списка. Фразы с # (подстановка переменных исходной KaScada) пока не исполняются. Результат задаёт соответствующий бит 0–15 в локальном регистре проекта; внешняя сеть не используется. Распознавание одноразовое, только на устройстве Android 12+ и только по нажатию в операторском режиме.");
+            form.addView(voiceHelp);
+            craftVoiceRecognitionEnabledField = new CheckBox(this);
+            craftVoiceRecognitionEnabledField.setText("Разрешить одноразовое локальное распознавание");
+            craftVoiceRecognitionEnabledField.setChecked(w.extraFields.optBoolean("craftVoiceRecognitionEnabled", false));
+            form.addView(craftVoiceRecognitionEnabledField);
+        } else { craftVoiceRegisterField = null; craftVoiceRecognitionEnabledField = null; }
 
         final CheckBox craftWebViewEnabledField = new CheckBox(this);
         final EditText[] craftWebViewLinkFields = new EditText[CraftWebViewLinks.LINK_COUNT];
@@ -7258,10 +7394,25 @@ public class MainActivity extends Activity {
                         String[] phrases = new String[craftVoicePhraseFields.length];
                         for (int k = 0; k < craftVoicePhraseFields.length; k++)
                             phrases[k] = craftVoicePhraseFields[k].getText().toString();
+                        int registerAddress;
+                        try { registerAddress = Integer.parseInt(craftVoiceRegisterField.getText().toString().trim()); }
+                        catch (Exception invalid) { registerAddress = -1; }
+                        if (craftVoiceRecognitionEnabledField.isChecked()
+                                && !CraftVoiceRecognitionPolicy.validProjectRegister(registerAddress)) {
+                            Toast.makeText(MainActivity.this, "Укажи локальный системный регистр 10–1999", Toast.LENGTH_LONG).show();
+                            return;
+                        }
                         try {
                             JSONObject sourceOther = CraftVoiceRecognitionFields.write(
                                     w.extraFields.optJSONObject("craftOther"), phrases);
                             w.extraFields.put("craftOther", sourceOther);
+                            w.extraFields.put("craftVoiceRegisterAddress", registerAddress);
+                            w.extraFields.put("craftVoiceRecognitionEnabled", craftVoiceRecognitionEnabledField.isChecked());
+                            JSONObject sourceConnection = w.extraFields.optJSONObject("craftConnectionInfo");
+                            if (sourceConnection == null) sourceConnection = new JSONObject();
+                            sourceConnection.put("addressRegister", registerAddress);
+                            w.extraFields.put("craftConnectionInfo", sourceConnection);
+                            w.extraFields.put("craftUnsupportedComponent", false);
                         } catch (Exception invalid) {
                             Toast.makeText(MainActivity.this, invalid.getMessage(), Toast.LENGTH_LONG).show();
                             return;
@@ -7805,6 +7956,12 @@ public class MainActivity extends Activity {
                 : screens.get(currentScreenIndex).connections;
         ArrayList<Integer> selection = new ArrayList<>(editor.selectedWidgets);
         if (selection.isEmpty()) selection.add(editor.selected);
+        if (activeCraftVoiceWidget != null) for (int index : selection) {
+            if (index >= 0 && index < widgets.size() && widgets.get(index) == activeCraftVoiceWidget) {
+                releaseVoiceRecognizer();
+                break;
+            }
+        }
         if (WidgetClipboard.deleteSelection(widgets, edges, selection) == 0) return;
         editor.selected = -1;
         editor.selectedWidgets.clear();
@@ -11720,13 +11877,15 @@ public class MainActivity extends Activity {
                     paint.setColor(Color.rgb(203, 213, 225));
                     paint.setTextSize(dp(11));
                     canvas.drawText(w.text, w.x + dp(12), w.y + dp(19), paint);
-                    paint.setColor(Color.rgb(248, 113, 113));
+                    boolean voiceEnabled = w.extraFields.optBoolean("craftVoiceRecognitionEnabled", false);
+                    paint.setColor(voiceEnabled ? Color.rgb(134, 239, 172) : Color.rgb(248, 113, 113));
                     paint.setTextSize(dp(10));
-                    canvas.drawText("Распознавание речи не подключено",
+                    canvas.drawText(voiceEnabled ? "Локально • нажми для команды" : "Голосовое управление выключено",
                             w.x + dp(12), w.y + w.h / 2 + dp(4), paint);
                     paint.setColor(Color.rgb(148, 163, 184));
                     paint.setTextSize(dp(9));
-                    canvas.drawText("16 исходных фраз сохранены",
+                    canvas.drawText("16 фраз • локальный регистр "
+                                    + w.extraFields.optInt("craftVoiceRegisterAddress", -1),
                             w.x + dp(12), w.y + w.h - dp(10), paint);
                 } else if ("Видео RTSP Craft".equals(w.type)) {
                     paint.setColor(Color.rgb(30, 41, 59));
@@ -12369,6 +12528,8 @@ public class MainActivity extends Activity {
                 openCraftRtsp(picked);
             } else if ("WebView Craft".equals(picked.type)) {
                 openCraftWebView(picked, index);
+            } else if ("Распознавание речи Craft".equals(picked.type)) {
+                requestCraftVoiceRecognition(picked);
             } else if ("Архив Craft".equals(picked.type)) {
                 showLocalArchive(picked);
             } else if ("Числовой ввод Craft".equals(picked.type)) {

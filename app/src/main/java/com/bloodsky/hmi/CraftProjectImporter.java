@@ -231,7 +231,7 @@ public final class CraftProjectImporter {
         else if (componentId == 11) type = "Прогресс-бар"; // Craft progress bar
         else if (componentId == 12 || componentId == 24) type = "Шкала / Стрелка"; // Existing editable gauge; original styling remains partial
         else if (componentId == 18) type = "Входящее SMS"; // CustomComponents.x; opt-in runtime only
-        else if (componentId == 27) type = "Распознавание речи Craft"; // visible disabled placeholder; original recognition flow is not yet ported
+        else if (componentId == 27) type = "Распознавание речи Craft"; // guarded one-shot local recognition
         else if (componentId == 135 && craftMacro != null) type = "FBD CRAFT MACRO";
         else {
             String fbdType = FbdCraftMacroGraphAdapter.typeForComponentId(componentId, other);
@@ -588,7 +588,13 @@ public final class CraftProjectImporter {
             widget.put("craftUnsupportedComponent", true);
             widget.put("text", "Компонент Craft " + componentId + ": " + widget.optString("text"));
         }
-        if (componentId == 27) widget.put("craftVoiceRecognitionEnabled", false);
+        if (componentId == 27) {
+            // Recognition requires explicit local enablement and a manually selected project register.
+            widget.put("craftVoiceRecognitionEnabled", false);
+            int localRegister = integer(other.opt("bloodskyVoiceRegisterAddress"), -1);
+            if (!CraftVoiceRecognitionPolicy.validProjectRegister(localRegister)) localRegister = -1;
+            widget.put("craftVoiceRegisterAddress", localRegister);
+        }
         if (componentId == 5) {
             // OriginalIndicator reads the legacy other object directly.
             widget.put("other", other);
@@ -598,7 +604,7 @@ public final class CraftProjectImporter {
     }
 
     private static boolean isSupportedComponent(int id) {
-        return id == 1 || id == 2 || id == 4 || id == 5 || id == 6 || id == 7 || id == 9 || id == 10 || id == 11 || id == 12 || id == 13 || id == 16 || id == 17 || id == 18 || id == 20 || id == 21 || id == 22 || id == 23 || id == 24 || id == 25 || id == 26 || id == 28;
+        return id == 1 || id == 2 || id == 4 || id == 5 || id == 6 || id == 7 || id == 9 || id == 10 || id == 11 || id == 12 || id == 13 || id == 16 || id == 17 || id == 18 || id == 20 || id == 21 || id == 22 || id == 23 || id == 24 || id == 25 || id == 26 || id == 27 || id == 28;
     }
 
     private static String timerMode(int mode) {
