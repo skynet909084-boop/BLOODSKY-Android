@@ -8991,99 +8991,137 @@ private String archiveProjectKey() {
     }
 
     private void pasteWidget() {
-        // Pasting is an editor-only operation. In operator mode it must not
-        // mutate the running screen, even when a clipboard exists.
+        // Stage the entire clipboard before changing the current canvas.
         if (operatorMode || editor == null || currentScreenIndex < 0
                 || currentScreenIndex >= screens.size()) return;
         if (clipboardWidgets == null || clipboardWidgets.widgets.isEmpty()) {
             Toast.makeText(this, "Сначала скопируй элемент", Toast.LENGTH_SHORT).show();
             return;
         }
+        final Screen screen = screens.get(currentScreenIndex);
+        final ArrayList<Widget> originalWidgets = new ArrayList<>(widgets);
+        final ArrayList<FbdConnection> originalEdges = new ArrayList<>(screen.connections);
+        final JSONObject originalProjectFields = projectExtraFields;
+        boolean committed = false;
         try {
             float width = editor.getWidth();
             float height = editor.getHeight();
-            fbdWireHistory.clear();
             int first = widgets.size();
-            ArrayList<Widget> copies = WidgetClipboard.place(clipboardWidgets, width, height, dp(24), first);
+            ArrayList<Widget> copies = WidgetClipboard.place(
+                    clipboardWidgets, width, height, dp(24), first);
+            ArrayList<FbdConnection> copiedEdges =
+                    WidgetClipboard.placedConnections(clipboardWidgets, first);
             widgets.addAll(copies);
-            if (!screens.isEmpty() && currentScreenIndex >= 0 && currentScreenIndex < screens.size())
-                screens.get(currentScreenIndex).connections.addAll(
-                        WidgetClipboard.placedConnections(clipboardWidgets, first));
-            if (editor != null) {
-                editor.selectedWidgets.clear();
-                for (int index = first; index < widgets.size(); index++) editor.selectedWidgets.add(index);
-                editor.selected = widgets.size() - 1;
-                editor.invalidate();
+            screen.connections.addAll(copiedEdges);
+            if (!persistProjectNow(true)) {
+                Toast.makeText(this, "Не удалось сохранить вставленные элементы",
+                        Toast.LENGTH_LONG).show();
+                return;
             }
-            persistProject();
+            committed = true;
+            // The prior wire undo chain refers to old widget indexes.
+            fbdWireHistory.clear();
+            fbdWireMode = false;
+            wireSource = -1;
+            editor.selectedWidgets.clear();
+            for (int index = first; index < widgets.size(); index++)
+                editor.selectedWidgets.add(index);
+            editor.selected = widgets.size() - 1;
+            editor.invalidate();
             Toast.makeText(this, copies.size() == 1 ? "Копия добавлена на экран"
-                    : "Группа из " + copies.size() + " элементов добавлена", Toast.LENGTH_SHORT).show();
+                    : "Группа из " + copies.size() + " элементов добавлена",
+                    Toast.LENGTH_SHORT).show();
         } catch (Exception error) {
-            Toast.makeText(this, "Не удалось вставить элемент", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Не удалось вставить элемент", Toast.LENGTH_LONG).show();
+        } finally {
+            if (!committed) {
+                widgets.clear();
+                widgets.addAll(originalWidgets);
+                screen.connections.clear();
+                screen.connections.addAll(originalEdges);
+                projectExtraFields = originalProjectFields;
+                saveActiveScreen();
+                if (editor != null) editor.invalidate();
+            }
         }
-    }
-
-    private void adjustSetpoint(Widget widget, int delta) {
-        String current = widget.text == null ? "Задатчик: 0" : widget.text;
-        int split = current.lastIndexOf(':');
-        String prefix = split >= 0 ? current.substring(0, split + 1) + " " : "Задатчик: ";
-        String valueText = split >= 0 ? current.substring(split + 1).trim() : current.trim();
-        double newValue = delta;
-        try {
-            double value = Double.parseDouble(valueText.replace(',', '.'));
-            newValue = value + delta;
-            widget.text = prefix + newValue;
-        } catch (NumberFormatException ignored) {
-            widget.text = prefix + delta;
-        }
-        persistProject();
-        BindingRequest request = parseBinding(-1, widget.connectionInfo);
-        if (request != null && request.functionCode == 3) {
-            final double valToWrite = newValue;
-            final String oldText = current;
-            modbusExecutor.execute(() -> {
-                try {
-                    boolean ok = writeModbusRegisterStatic(request.host, request.port, request.unit, request.address, (int) valToWrite);
-                    if (!ok) throw new IOException("Устройство отклонило запись регистра");
-                } catch (Exception ex) {
-                    android.util.Log.e("BLOODSKY", "Modbus write failed", ex);
-                    runOnUiThread(() -> {
-                        widget.text = oldText;
-                        persistProject();
-                        if (editor != null) editor.invalidate();
-                        Toast.makeText(MainActivity.this, "Ошибка записи Modbus: " + (ex.getMessage() != null ? ex.getMessage() : "ошибка связи"), Toast.LENGTH_LONG).show();
-                    });
-                }
-            });
-        }
-        Toast.makeText(MainActivity.this, "Значение: " + widget.text, Toast.LENGTH_SHORT).show();
     }
 
     private void deleteSelectedWidget() {
-        if (operatorMode) return;
-        if (editor == null || (editor.selectedWidgets.isEmpty()
-                && (editor.selected < 0 || editor.selected >= widgets.size()))) {
+        if (operatorMode || editor == null || currentScreenIndex < 0
+                || currentScreenIndex >= screens.size()) return;
+        if (editor.selectedWidgets.isEmpty()
+                && (editor.selected < 0 || editor.selected >= widgets.size())) {
             Toast.makeText(this, "Сначала выбери элемент на экране", Toast.LENGTH_SHORT).show();
             return;
         }
-        fbdWireHistory.clear();
-        List<FbdConnection> edges = screens.isEmpty() || currentScreenIndex < 0
-                || currentScreenIndex >= screens.size() ? null
-                : screens.get(currentScreenIndex).connections;
-        ArrayList<Integer> selection = new ArrayList<>(editor.selectedWidgets);
+        final Screen screen = screens.get(currentScreenIndex);
+        final ArrayList<Integer> selection = new ArrayList<>(editor.selectedWidgets);
         if (selection.isEmpty()) selection.add(editor.selected);
-        if (activeCraftVoiceWidget != null) for (int index : selection) {
-            if (index >= 0 && index < widgets.size() && widgets.get(index) == activeCraftVoiceWidget) {
-                releaseVoiceRecognizer();
+        // WidgetClipboard.deleteSelection renumbers edges and positional
+        // result bindings in place. Snapshot their original identities and
+        // mutable fields, not just the list order.
+        final ArrayList<Widget> originalWidgets = new ArrayList<>(widgets);
+        final ArrayList<String> originalBindings = new ArrayList<>();
+        for (Widget widget : originalWidgets) originalBindings.add(widget.connectionInfo);
+        final ArrayList<FbdConnection> originalEdges = new ArrayList<>(screen.connections);
+        final ArrayList<Integer> originalSources = new ArrayList<>();
+        final ArrayList<Integer> originalTargets = new ArrayList<>();
+        for (FbdConnection edge : originalEdges) {
+            originalSources.add(edge.source);
+            originalTargets.add(edge.target);
+        }
+        final JSONObject originalProjectFields = projectExtraFields;
+        final int originalFocused = editor.selected;
+        boolean releaseVoice = false;
+        for (int index : selection) {
+            if (index >= 0 && index < widgets.size()
+                    && widgets.get(index) == activeCraftVoiceWidget) {
+                releaseVoice = true;
                 break;
             }
         }
-        if (WidgetClipboard.deleteSelection(widgets, edges, selection) == 0) return;
-        editor.selected = -1;
-        editor.selectedWidgets.clear();
-        liveValues.clear();
-        persistProject();
-        editor.invalidate();
+        boolean committed = false;
+        try {
+            if (WidgetClipboard.deleteSelection(widgets, screen.connections, selection) == 0)
+                return;
+            if (!persistProjectNow(true)) {
+                Toast.makeText(this, "Не удалось сохранить удаление элементов",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+            committed = true;
+            if (releaseVoice) releaseVoiceRecognizer();
+            // Topology changes invalidate FBD undo references; only clear
+            // history once this deletion is durably saved.
+            fbdWireHistory.clear();
+            fbdWireMode = false;
+            wireSource = -1;
+            editor.selected = -1;
+            editor.selectedWidgets.clear();
+            liveValues.clear();
+            editor.invalidate();
+        } catch (Exception failure) {
+            Toast.makeText(this, "Не удалось удалить элементы", Toast.LENGTH_LONG).show();
+        } finally {
+            if (!committed) {
+                widgets.clear();
+                widgets.addAll(originalWidgets);
+                for (int i = 0; i < originalWidgets.size(); i++)
+                    originalWidgets.get(i).connectionInfo = originalBindings.get(i);
+                screen.connections.clear();
+                screen.connections.addAll(originalEdges);
+                for (int i = 0; i < originalEdges.size(); i++) {
+                    originalEdges.get(i).source = originalSources.get(i);
+                    originalEdges.get(i).target = originalTargets.get(i);
+                }
+                projectExtraFields = originalProjectFields;
+                editor.selected = originalFocused;
+                editor.selectedWidgets.clear();
+                editor.selectedWidgets.addAll(selection);
+                saveActiveScreen();
+                editor.invalidate();
+            }
+        }
     }
 
     public static JSONObject widgetToJson(Widget w) throws Exception {
