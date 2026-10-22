@@ -91,6 +91,60 @@ public class ProjectMediaCleanupQueueTest {
         }
     }
 
+    @Test public void quarantineProtectsAReimportedProjectWithTheSameIdentity()
+            throws Exception {
+        File files = Files.createTempDirectory("bloodsky-quarantine-reimport").toFile();
+        try {
+            String id = ProjectMediaService.getOrGenerateProjectId(PROJECT_A);
+            File old = ProjectMediaService.getProjectMediaDir(files, PROJECT_A);
+            Files.write(new File(old, "old.png").toPath(), new byte[]{1});
+            String gen = "01234567-89ab-cdef-0123-456789abcdef";
+            File oldGeneration = ProjectMediaService.getProjectMediaDir(files,
+                    new JSONObject(PROJECT_A).put("mediaGeneration", gen).toString());
+            Files.write(new File(oldGeneration, "old.wav").toPath(), new byte[]{2});
+            assertTrue(ProjectMediaService.quarantineProjectMediaById(files, id));
+            assertFalse(old.exists());
+            assertFalse(oldGeneration.exists());
+            assertTrue(ProjectMediaService.hasQuarantinedMediaById(files, id));
+
+            // Identical imported ID after the first rename gets a new,
+            // independent app-private directory that worker cleanup must spare.
+            File reimported = ProjectMediaService.getProjectMediaDir(files, PROJECT_A);
+            File fresh = new File(reimported, "new.png");
+            Files.write(fresh.toPath(), new byte[]{3});
+            assertTrue(ProjectMediaService.quarantineProjectMediaById(files, id));
+            assertTrue(fresh.isFile());
+            assertTrue(ProjectMediaService.deleteQuarantinedMediaById(files, id));
+            assertFalse(ProjectMediaService.hasQuarantinedMediaById(files, id));
+            assertTrue(fresh.isFile());
+        } finally {
+            ProjectMediaService.deleteDirectoryRecursively(files);
+        }
+    }
+
+    @Test public void quarantineRejectsSymlinkedPrivateCleanupDirectory() throws Exception {
+        File files = Files.createTempDirectory("bloodsky-quarantine-root").toFile();
+        File outside = Files.createTempDirectory("bloodsky-quarantine-outside").toFile();
+        try {
+            File old = ProjectMediaService.getProjectMediaDir(files, PROJECT_A);
+            Files.write(new File(old, "do-not-touch.wav").toPath(), new byte[]{4});
+            File quarantine = new File(new File(files, "projects"), ".pending_media_cleanup");
+            Files.createSymbolicLink(quarantine.toPath(), outside.toPath());
+            try {
+                ProjectMediaService.quarantineProjectMediaById(files,
+                        ProjectMediaService.getOrGenerateProjectId(PROJECT_A));
+                fail("Symlinked quarantine root accepted");
+            } catch (java.io.IOException expected) {}
+            assertTrue(new File(old, "do-not-touch.wav").exists());
+            assertEquals(0, outside.list().length);
+        } finally {
+            Files.deleteIfExists(new File(new File(files, "projects"),
+                    ".pending_media_cleanup").toPath());
+            ProjectMediaService.deleteDirectoryRecursively(files);
+            ProjectMediaService.deleteDirectoryRecursively(outside);
+        }
+    }
+
     @Test public void pathInjectionAndSymlinkEscapeRejectWithoutDeletingOutside()
             throws Exception {
         File files = Files.createTempDirectory("bloodsky-media-guard").toFile();

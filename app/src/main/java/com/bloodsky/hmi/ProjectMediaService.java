@@ -161,6 +161,71 @@ public class ProjectMediaService {
         return !projectDirectory.exists();
     }
 
+    /**
+     * Resolve the normal project directory and an isolated pending-deletion
+     * directory. A later re-import may reuse the same project identity, but
+     * cleanup will touch only the quarantined directory, not the new project.
+     */
+    private static File[] verifiedCleanupPaths(File filesDir, String projectId) throws IOException {
+        if (filesDir == null || !isValidProjectDirectoryId(projectId))
+            throw new IOException("Invalid project media cleanup identity");
+        File appRoot = filesDir.getCanonicalFile();
+        File projectsPath = new File(appRoot, "projects").getAbsoluteFile();
+        File projectsRoot = projectsPath.getCanonicalFile();
+        File sourcePath = new File(projectsRoot, projectId).getAbsoluteFile();
+        File source = sourcePath.getCanonicalFile();
+        File quarantinePath = new File(projectsRoot, ".pending_media_cleanup").getAbsoluteFile();
+        File quarantineRoot = quarantinePath.getCanonicalFile();
+        File queuedPath = new File(quarantineRoot, projectId).getAbsoluteFile();
+        File queued = queuedPath.getCanonicalFile();
+        if (!projectsRoot.equals(projectsPath)
+                || !projectsRoot.getPath().startsWith(appRoot.getPath() + File.separator)
+                || !source.equals(sourcePath)
+                || !source.getPath().startsWith(projectsRoot.getPath() + File.separator)
+                || !quarantineRoot.equals(quarantinePath)
+                || !quarantineRoot.getPath().startsWith(projectsRoot.getPath() + File.separator)
+                || !queued.equals(queuedPath)
+                || !queued.getPath().startsWith(quarantineRoot.getPath() + File.separator))
+            throw new IOException("Unsafe project media quarantine path");
+        return new File[]{source, queued, quarantineRoot};
+    }
+
+    /** Rename-only staging on the UI thread; no recursive deletion occurs here. */
+    public static boolean quarantineProjectMediaById(File filesDir, String projectId)
+            throws IOException {
+        File[] paths = verifiedCleanupPaths(filesDir, projectId);
+        File source = paths[0], queued = paths[1], root = paths[2];
+        if (queued.exists()) return true; // Already quarantined; never move a re-import.
+        if (!source.exists()) return false;
+        if (!source.isDirectory()) throw new IOException("Project media path is not a directory");
+        if (!root.isDirectory() && (!root.mkdirs() || !root.isDirectory()))
+            throw new IOException("Cannot create private media quarantine");
+        // Rename inside one app-private filesystem is atomic: a later project
+        // using the same ID can safely create its own fresh media directory.
+        if (!source.renameTo(queued))
+            throw new IOException("Could not quarantine project media directory");
+        return true;
+    }
+
+    public static boolean hasProjectMediaDirectoryById(File filesDir, String projectId)
+            throws IOException {
+        return verifiedCleanupPaths(filesDir, projectId)[0].exists();
+    }
+
+    public static boolean hasQuarantinedMediaById(File filesDir, String projectId)
+            throws IOException {
+        return verifiedCleanupPaths(filesDir, projectId)[1].exists();
+    }
+
+    /** Only delete the quarantined old generation, never the current project ID. */
+    public static boolean deleteQuarantinedMediaById(File filesDir, String projectId)
+            throws IOException {
+        File queued = verifiedCleanupPaths(filesDir, projectId)[1];
+        if (!queued.exists()) return false;
+        deleteProjectTree(queued, queued.getCanonicalPath());
+        return !queued.exists();
+    }
+
     private static void deleteProjectTree(File entry, String projectRoot) throws IOException {
         File canonical = entry.getCanonicalFile();
         if (!canonical.equals(entry.getAbsoluteFile())
