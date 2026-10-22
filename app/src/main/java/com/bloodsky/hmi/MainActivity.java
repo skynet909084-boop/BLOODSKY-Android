@@ -294,6 +294,9 @@ public class MainActivity extends Activity {
         } catch (Exception ex) {
             android.util.Log.e("BLOODSKY", "TTS init error", ex);
         }
+        // Quarantine old media BEFORE any project can be reopened or imported.
+        // The background executor deletes only the quarantined directories.
+        stagePendingProjectMediaCleanup();
         if (!restoreMediaPickerState(state)) showHome();
         schedulePendingProjectMediaCleanup();
     }
@@ -973,10 +976,44 @@ public class MainActivity extends Activity {
                     throw new IOException("Не удалось сохранить удаление проекта и очередь очистки");
                 }
             }
+            stagePendingProjectMediaCleanup();
             schedulePendingProjectMediaCleanup();
             Toast.makeText(this, "Проект удалён; очистка его файлов запущена", Toast.LENGTH_SHORT).show();
         } catch (Exception error) {
             Toast.makeText(this, "Не удалось удалить проект: " + error.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void stagePendingProjectMediaCleanup() {
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        try {
+            for (String id : ProjectMediaCleanupQueue.pending(
+                    prefs.getString(PROJECT_MEDIA_CLEANUP_QUEUE, "[]"))) {
+                synchronized (projectMediaCleanupLock) {
+                    try {
+                        String queue = prefs.getString(PROJECT_MEDIA_CLEANUP_QUEUE, "[]");
+                        if (!ProjectMediaCleanupQueue.pending(queue).contains(id)) continue;
+                        boolean referenced = ProjectMediaCleanupQueue.isReferenced(id,
+                                prefs.getString(PROJECT_CATALOG, "{}"),
+                                prefs.getString(PROJECT_TRASH, "{}"),
+                                prefs.getString(ACTIVE_PROJECT, null));
+                        if (referenced) {
+                            // If the old media was already staged, it is safe
+                            // to clean that isolated copy despite ID reuse.
+                            if (!ProjectMediaService.hasQuarantinedMediaById(getFilesDir(), id)
+                                    && !prefs.edit().putString(PROJECT_MEDIA_CLEANUP_QUEUE,
+                                    ProjectMediaCleanupQueue.remove(queue, id)).commit())
+                                android.util.Log.e("BLOODSKY", "Could not dismiss reused cleanup ID");
+                            continue;
+                        }
+                        ProjectMediaService.quarantineProjectMediaById(getFilesDir(), id);
+                    } catch (Exception failure) {
+                        android.util.Log.e("BLOODSKY", "Project media quarantine deferred", failure);
+                    }
+                }
+            }
+        } catch (Exception invalidQueue) {
+            android.util.Log.e("BLOODSKY", "Invalid project media cleanup queue", invalidQueue);
         }
     }
 
@@ -997,19 +1034,23 @@ public class MainActivity extends Activity {
                     try {
                         String queue = prefs.getString(PROJECT_MEDIA_CLEANUP_QUEUE, "[]");
                         if (!ProjectMediaCleanupQueue.pending(queue).contains(id)) continue;
-                        // Never erase a directory whose identity is now referenced
-                        // by a saved, trashed or active project. Do not delete on
-                        // corrupt catalog/active JSON: fail closed instead.
-                        if (ProjectMediaCleanupQueue.isReferenced(id,
+                        // Never delete the live project directory in a worker:
+                        // a project with the same ID may be re-imported while
+                        // this task is running. Only a quarantined directory
+                        // is eligible for recursive deletion.
+                        if (ProjectMediaService.hasQuarantinedMediaById(getFilesDir(), id)) {
+                            ProjectMediaService.deleteQuarantinedMediaById(getFilesDir(), id);
+                        } else if (ProjectMediaCleanupQueue.isReferenced(id,
                                 prefs.getString(PROJECT_CATALOG, "{}"),
                                 prefs.getString(PROJECT_TRASH, "{}"),
                                 prefs.getString(ACTIVE_PROJECT, null))) {
-                            if (!prefs.edit().putString(PROJECT_MEDIA_CLEANUP_QUEUE,
-                                    ProjectMediaCleanupQueue.remove(queue, id)).commit())
-                                android.util.Log.e("BLOODSKY", "Could not dismiss reused project cleanup ID");
+                            // No quarantined old copy exists. A current project
+                            // owns that normal directory; dismiss the tombstone.
+                        } else if (ProjectMediaService.hasProjectMediaDirectoryById(getFilesDir(), id)) {
+                            // Staging failed earlier. Retry at the next launch
+                            // rather than silently losing the only tombstone.
                             continue;
                         }
-                        ProjectMediaService.deleteProjectMediaById(getFilesDir(), id);
                         if (!prefs.edit().putString(PROJECT_MEDIA_CLEANUP_QUEUE,
                                 ProjectMediaCleanupQueue.remove(queue, id)).commit())
                             android.util.Log.e("BLOODSKY", "Could not acknowledge deleted media; will retry");
