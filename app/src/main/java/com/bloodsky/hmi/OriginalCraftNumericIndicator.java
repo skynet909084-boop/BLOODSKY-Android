@@ -61,29 +61,13 @@ final class OriginalCraftNumericIndicator {
             throw new IllegalArgumentException("Неизвестный формат числового значения");
         JSONObject result = fields == null ? new JSONObject() : new JSONObject(fields.toString());
         Object oldConnection = result.opt("craftConnectionInfo");
-        JSONObject connection;
-        try {
-            connection = oldConnection instanceof JSONObject
-                    ? new JSONObject(oldConnection.toString())
-                    : oldConnection instanceof String
-                    ? new JSONObject((String) oldConnection) : new JSONObject();
-        } catch (JSONException malformed) {
-            // Do not silently discard a malformed/unknown imported endpoint.
-            throw new IllegalArgumentException("Не удалось прочитать исходную привязку Craft", malformed);
-        }
+        JSONObject connection = CraftPropertyRecord.copy(result, "craftConnectionInfo");
         connection.put("addressRegister", register);
         result.put("craftConnectionInfo", oldConnection instanceof String
                 ? connection.toString() : connection);
 
         Object oldOther = result.opt("craftOther");
-        JSONObject other;
-        try {
-            other = oldOther instanceof JSONObject ? new JSONObject(oldOther.toString())
-                    : oldOther instanceof String
-                    ? new JSONObject((String) oldOther) : new JSONObject();
-        } catch (JSONException malformed) {
-            throw new IllegalArgumentException("Не удалось прочитать исходные свойства Craft", malformed);
-        }
+        JSONObject other = CraftPropertyRecord.copy(result, "craftOther");
         other.put("type", sourceType);
         other.put("digit", digits);
         other.put("divisor", decimals);
