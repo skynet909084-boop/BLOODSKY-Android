@@ -38,7 +38,7 @@ public final class CraftProjectImporter {
             JSONObject component = components.optJSONObject(i);
             if (component == null) throw new IllegalArgumentException("Строка компонента Craft должна быть объектом");
             JSONObject other = objectValue(component.opt("jsTableComponent_other"));
-            int screenNumber = positiveInt(other.opt("numScreen"), 1);
+            int screenNumber = sourceScreenNumber(other);
             if (screenNumber > 128) throw new IllegalArgumentException("Компонент ссылается на экран Craft за пределами лимита");
             screenCount = Math.max(screenCount, screenNumber);
         }
@@ -80,7 +80,7 @@ public final class CraftProjectImporter {
             JSONObject component = components.optJSONObject(index);
             if (component == null) throw new IllegalArgumentException("Строка компонента Craft должна быть объектом");
             JSONObject other = objectValue(component.opt("jsTableComponent_other"));
-            int screenNumber = positiveInt(other.opt("numScreen"), 1);
+            int screenNumber = sourceScreenNumber(other);
             if (screenNumber > screenCount) throw new IllegalArgumentException("Компонент ссылается на отсутствующий экран Craft");
             int componentId = positiveInt(component.opt("componentId"), -1);
             JSONObject widget = convertComponent(component, other, componentId, screenCount, archiveParent, availableMedia);
@@ -648,10 +648,31 @@ public final class CraftProjectImporter {
     }
 
     private static int positiveInt(Object value, int fallback) {
+        // Imported Craft fields can be JSON Long/Double, not only Integer.
+        // Number.intValue() silently wraps 4294967304 to original factory ID8;
+        // numeric source IDs and screen numbers must never wrap or truncate.
         try {
-            int parsed = value instanceof Number ? ((Number) value).intValue() : Integer.parseInt(String.valueOf(value));
+            if (value instanceof Number) {
+                double numeric = ((Number) value).doubleValue();
+                if (!Double.isFinite(numeric) || numeric < 1
+                        || numeric > Integer.MAX_VALUE || numeric != Math.rint(numeric))
+                    return fallback;
+                return (int) numeric;
+            }
+            int parsed = Integer.parseInt(String.valueOf(value).trim());
             return parsed > 0 ? parsed : fallback;
         } catch (Exception ignored) { return fallback; }
+    }
+
+    private static int sourceScreenNumber(JSONObject other) {
+        // Missing numScreen was historically interpreted as the first screen,
+        // while explicitly invalid coordinates must not silently move a
+        // component into screen 1 after integer overflow.
+        if (other == null || !other.has("numScreen")) return 1;
+        int screen = positiveInt(other.opt("numScreen"), -1);
+        if (screen < 1)
+            throw new IllegalArgumentException("Неверный номер экрана компонента Craft");
+        return screen;
     }
 
     private static int boundedInt(Object value, int fallback, int min, int max) {
