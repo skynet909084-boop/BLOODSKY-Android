@@ -12720,6 +12720,7 @@ private String archiveProjectKey() {
         public String connectionInfo = "";
         public boolean inputValue = false;
         public boolean buttonState = false;
+        transient boolean craftSwitchWritePending;
         public boolean rsState = false;
         // Runtime-only distinction between a missing native output and a valid
         // Float NaN/Infinity produced by Craft IEEE-754 arithmetic.
@@ -13696,6 +13697,11 @@ private String archiveProjectKey() {
                         Toast.LENGTH_LONG).show();
                 return;
             }
+            if (widget.craftSwitchWritePending) {
+                Toast.makeText(MainActivity.this, "Запись переключателя ещё выполняется",
+                        Toast.LENGTH_SHORT).show();
+                return;
+            }
             final int bit = widget.extraFields.optInt("craftSwitchBit", -1);
             final int[] masks;
             try { masks = OriginalCraftSwitch.writeMasks(bit, next); }
@@ -13716,6 +13722,7 @@ private String archiveProjectKey() {
                         Toast.LENGTH_LONG).show();
                 return;
             }
+            widget.craftSwitchWritePending = true;
             modbusExecutor.execute(() -> {
                 Exception failure = null;
                 try {
@@ -13727,6 +13734,7 @@ private String archiveProjectKey() {
                 } catch (Exception error) { failure = error; }
                 final Exception result = failure;
                 runOnUiThread(() -> {
+                    widget.craftSwitchWritePending = false;
                     if (!isRuntimeWidgetCurrent(widget, index, originalScreen,
                             originalScreenIndex)
                             || widget.extraFields.optInt("craftSwitchWriteSequence", 0)
