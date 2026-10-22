@@ -164,7 +164,8 @@ public class CraftProjectExporterFbdTest {
             if ("FBD CRAFT ODTEMP".equals(types[i])) widget.put("craftOdTempHost", "192.0.2.44")
                     .put("craftOdTempType", 2).put("craftOdTempResponse", 2);
             if (types[i].startsWith("FBD CRAFT MQTT ")) widget.put("craftMqttTopic", "plant/temperature")
-                    .put("craftMqttType", 3).put("craftMqttServer", 2)
+                    // Source ID139 SUB INT is INT=2, ID140 PUB FLOAT is FLOAT=3.
+                    .put("craftMqttType", types[i].endsWith(" INT") ? 2 : 3).put("craftMqttServer", 2)
                     .put("craftMqttRetain", "FBD CRAFT MQTT PUB FLOAT".equals(types[i]));
             widgets.put(widget);
         }
@@ -186,7 +187,7 @@ public class CraftProjectExporterFbdTest {
         JSONObject mqttSub = rows.getJSONObject(21).getJSONObject("jsTableComponent_other");
         assertEquals("plant/temperature", mqttSub.getString("topic"));
         assertEquals(2, mqttSub.getInt("numMqttServer"));
-        assertEquals(3, mqttSub.getInt("typeQ"));
+        assertEquals(2, mqttSub.getInt("typeQ"));
         JSONObject mqttPub = rows.getJSONObject(22).getJSONObject("jsTableComponent_other");
         assertEquals(3, mqttPub.getInt("typeIn"));
         assertEquals(true, mqttPub.getBoolean("mqttRetain"));
