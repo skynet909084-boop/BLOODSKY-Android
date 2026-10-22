@@ -6399,12 +6399,14 @@ private String archiveProjectKey() {
         changeImage.setBackgroundColor(Color.TRANSPARENT);
         changeImage.setContentDescription("Выбрать одно из восьми изображений переключателя Craft");
         changeImage.setOnClickListener(v -> {
+            if (!dialogGuard.require()) return;
             String[] choices = new String[8];
             for (int i = 0; i < choices.length; i++)
                 choices[i] = "Переключатель " + (i + 1);
             new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
                     .setTitle("Сменить изображение")
                     .setSingleChoiceItems(choices, selectedImage[0] - 1, (picker, chosen) -> {
+                        if (!dialogGuard.require()) { picker.dismiss(); return; }
                         selectedImage[0] = chosen + 1;
                         refreshPreview.run();
                         picker.dismiss();
