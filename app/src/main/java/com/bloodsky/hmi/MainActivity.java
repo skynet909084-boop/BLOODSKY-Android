@@ -11884,27 +11884,16 @@ private String archiveProjectKey() {
                             || edge.source >= widgets.size() || edge.target >= widgets.size()) return;
                     Widget from = widgets.get(edge.source), to = widgets.get(edge.target);
                     if (!isInvertibleFbdBoolWire(edge, from.type, to.type)) return;
-                    Object previous = edge.extraFields.opt("inverted");
-                    boolean existed = edge.extraFields.has("inverted");
-                    try {
-                        fbdWireHistory.recordBefore(screen, screen.connections);
-                        if (!toggleFbdBooleanWireInversion(edge, from.type, to.type)) return;
-                        if (!persistProjectNow(true)) {
-                            if (existed) edge.extraFields.put("inverted", previous);
-                            else edge.extraFields.remove("inverted");
-                            fbdWireHistory.clear();
-                            Toast.makeText(this, "Инверсия не сохранена", Toast.LENGTH_LONG).show();
-                            return;
-                        }
-                        editor.invalidate();
-                    } catch (Exception failure) {
+                    // Use the same serialized-edge transaction as connect/disconnect.
+                    // A failed save must not erase the prior undo/redo timeline.
+                    commitFbdWireEdit(screen, () -> {
                         try {
-                            if (existed) edge.extraFields.put("inverted", previous);
-                            else edge.extraFields.remove("inverted");
-                        } catch (Exception ignored) {}
-                        fbdWireHistory.clear();
-                        Toast.makeText(this, "Ошибка изменения BOOL-связи", Toast.LENGTH_LONG).show();
-                    }
+                            if (!toggleFbdBooleanWireInversion(edge, from.type, to.type))
+                                throw new IllegalStateException("Связь больше не BOOL");
+                        } catch (Exception failure) {
+                            throw new IllegalStateException("Ошибка инверсии BOOL-связи", failure);
+                        }
+                    }, "Инверсия BOOL-связи изменена");
                 }).setNegativeButton("Отмена", null).show();
     }
 
