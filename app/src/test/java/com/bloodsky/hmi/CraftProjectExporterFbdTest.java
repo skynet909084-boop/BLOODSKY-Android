@@ -324,4 +324,81 @@ public class CraftProjectExporterFbdTest {
         assertEquals("<=", restoredWidgets.getJSONObject(5).getString("compareOperator"));
     }
 
+
+    @Test public void exportsNewCraftRegisterAndNamedVariablesWithSettingsAndWires() throws Exception {
+        JSONObject source = new JSONObject()
+                .put("TableNameProject", new JSONObject().put("name", "New Craft variables")
+                        .put("countScreen", 1))
+                .put("TableComponent", new JSONArray())
+                .put("TableConnections", new JSONArray());
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(source.toString()));
+        JSONObject screen = project.getJSONArray("screens").getJSONObject(0);
+        JSONArray widgets = screen.getJSONArray("widgets");
+        widgets.put(new JSONObject().put("type", "FBD CRAFT VAR BOOL").put("text", "Bool source")
+                .put("x", 10).put("y", 10).put("w", 90).put("h", 50)
+                .put("craftVarBit", 5));
+        widgets.put(new JSONObject().put("type", "FBD CRAFT VAR OUT BOOL").put("text", "Bool sink")
+                .put("x", 120).put("y", 10).put("w", 90).put("h", 50)
+                .put("craftVarBit", 5));
+        widgets.put(new JSONObject().put("type", "FBD CRAFT VAR INT").put("text", "Int source")
+                .put("x", 10).put("y", 80).put("w", 90).put("h", 50)
+                .put("craftVarConstantMode", true).put("craftVarConstant", "37"));
+        widgets.put(new JSONObject().put("type", "FBD CRAFT VAR OUT INT").put("text", "Int sink")
+                .put("x", 120).put("y", 80).put("w", 90).put("h", 50));
+        widgets.put(new JSONObject().put("type", "FBD CRAFT VAR FLOAT").put("text", "Float source")
+                .put("x", 10).put("y", 150).put("w", 90).put("h", 50));
+        widgets.put(new JSONObject().put("type", "FBD CRAFT VAR OUT FLOAT").put("text", "Float sink")
+                .put("x", 120).put("y", 150).put("w", 90).put("h", 50)
+                .put("craftSwapWord", true).put("craftSwapByte", true));
+        widgets.put(new JSONObject().put("type", "FBD CRAFT VAR NAME IN BOOL").put("text", "Named input")
+                .put("x", 10).put("y", 220).put("w", 90).put("h", 50)
+                .put("craftVariableName", "enabled")
+                .put("craftNamedConstantMode", true).put("craftNamedConstant", "1"));
+        widgets.put(new JSONObject().put("type", "FBD CRAFT VAR NAME OUT BOOL").put("text", "Named output")
+                .put("x", 120).put("y", 220).put("w", 90).put("h", 50)
+                .put("craftVariableName", "enabled"));
+        screen.getJSONArray("connections")
+                .put(MainActivity.connectionToJson(MainActivity.pinnedFbdConnection(0, "Q", 1, "IN")))
+                .put(MainActivity.connectionToJson(MainActivity.pinnedFbdConnection(2, "Q", 3, "IN")))
+                .put(MainActivity.connectionToJson(MainActivity.pinnedFbdConnection(4, "Q", 5, "IN")))
+                .put(MainActivity.connectionToJson(MainActivity.pinnedFbdConnection(6, "Q", 7, "IN")));
+
+        JSONObject exported = new JSONObject(CraftProjectExporter.export(project.toString()));
+        JSONArray rows = exported.getJSONArray("TableComponent");
+        assertEquals(8, rows.length());
+        int[] expectedIds = {101, 102, 105, 106, 108, 109, 133, 134};
+        for (int i = 0; i < expectedIds.length; i++)
+            assertEquals(expectedIds[i], rows.getJSONObject(i).getInt("componentId"));
+        JSONObject boolOther = rows.getJSONObject(0).getJSONObject("jsTableComponent_other");
+        JSONObject intOther = rows.getJSONObject(2).getJSONObject("jsTableComponent_other");
+        JSONObject floatSinkOther = rows.getJSONObject(5).getJSONObject("jsTableComponent_other");
+        JSONObject namedInputOther = rows.getJSONObject(6).getJSONObject("jsTableComponent_other");
+        JSONObject namedOutputOther = rows.getJSONObject(7).getJSONObject("jsTableComponent_other");
+        assertEquals(5, boolOther.getInt("bit"));
+        assertEquals(true, intOther.getBoolean("isConstant"));
+        assertEquals("37", intOther.getString("constant"));
+        assertEquals(true, floatSinkOther.getBoolean("isHighRegister"));
+        assertEquals(true, floatSinkOther.getBoolean("isHighByte"));
+        assertEquals(1, namedInputOther.getInt("typeVar"));
+        assertEquals("enabled", namedInputOther.getString("typeVarValue"));
+        assertEquals(1, namedOutputOther.getInt("typeVar"));
+        assertEquals("enabled", namedOutputOther.getString("typeVarValue"));
+        assertEquals(namedOutputOther.getInt("saveKey"), rows.getJSONObject(6)
+                .getJSONObject("jsTableComponent_other").getInt("keyOut"));
+        assertEquals(1, rows.getJSONObject(6).getJSONObject("jsTableComponent_other").getInt("numOnIn"));
+
+        JSONObject restored = new JSONObject(CraftProjectImporter.convert(exported.toString()));
+        JSONObject restoredScreen = restored.getJSONArray("screens").getJSONObject(0);
+        assertEquals(8, restoredScreen.getJSONArray("widgets").length());
+        assertEquals(4, restoredScreen.getJSONArray("connections").length());
+        JSONObject restoredInt = restoredScreen.getJSONArray("widgets").getJSONObject(2);
+        assertEquals(true, restoredInt.getBoolean("craftVarConstantMode"));
+        assertEquals("37", restoredInt.getString("craftVarConstant"));
+        JSONObject restoredFloatSink = restoredScreen.getJSONArray("widgets").getJSONObject(5);
+        assertEquals(true, restoredFloatSink.getBoolean("craftSwapWord"));
+        assertEquals(true, restoredFloatSink.getBoolean("craftSwapByte"));
+        assertEquals("enabled", restoredScreen.getJSONArray("widgets").getJSONObject(6)
+                .getString("craftVariableName"));
+    }
+
 }

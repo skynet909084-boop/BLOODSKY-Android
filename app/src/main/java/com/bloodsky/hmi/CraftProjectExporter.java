@@ -160,7 +160,8 @@ public final class CraftProjectExporter {
                                 != widget.optBoolean("craftDynamicTextOriginalFrame", true))
                             merged.put("enableFrameDynText", widget.optBoolean("showFrame", true));
                     }
-                    if (componentId == 101 || componentId == 105 || componentId == 108) {
+                    if (componentId == 101 || componentId == 102
+                            || componentId == 105 || componentId == 108) {
                         if (widget.has("craftVarBit")) merged.put("bit", widget.optInt("craftVarBit"));
                         if (widget.has("craftVarConstantMode"))
                             merged.put("isConstant", widget.optBoolean("craftVarConstantMode"));
@@ -253,6 +254,13 @@ public final class CraftProjectExporter {
             if (timerType == 0 || timeUnit == 0)
                 throw new IOException("Неизвестный режим или единица времени нового Craft-таймера");
             other.put("type", timerType).put("typeTime", timeUnit);
+        } else if (componentId == 133 || componentId == 134) {
+            int variableType = craftNamedVariableType(widget.optString("type", ""));
+            if (variableType < 1 || variableType > 3)
+                throw new IOException("Неизвестный тип новой Craft-переменной");
+            other.put("typeVar", variableType);
+            if (widget.has("craftVariableName"))
+                other.put("typeVarValue", widget.optString("craftVariableName"));
         }
         JSONObject row = new JSONObject().put("componentId", componentId)
                 .put("text", widget.optString("text", ""))
@@ -289,7 +297,9 @@ public final class CraftProjectExporter {
         int declared = widget.optInt("craftComponentId", -1);
         if (declared == 103 || declared == 104 || declared == 113 || declared == 125
                 || declared == 114 || declared == 115 || declared == 116
-                || declared == 107 || declared == 110 || declared == 111 || declared == 112)
+                || declared == 107 || declared == 110 || declared == 111 || declared == 112
+                || declared == 101 || declared == 102 || declared == 105 || declared == 106
+                || declared == 108 || declared == 109 || declared == 133 || declared == 134)
             return declared;
         String type = MainActivity.canonicalFbdBlockType(widget.optString("type", ""));
         if ("FBD AND".equals(type)) return 103;
@@ -303,6 +313,14 @@ public final class CraftProjectExporter {
         if ("FBD CRAFT ARITHMETIC INT".equals(type)) return 110;
         if ("FBD CRAFT ARITHMETIC FLOAT".equals(type)) return 111;
         if ("FBD CRAFT COMPARE FLOAT".equals(type)) return 112;
+        if ("FBD CRAFT VAR BOOL".equals(type)) return 101;
+        if ("FBD CRAFT VAR OUT BOOL".equals(type)) return 102;
+        if ("FBD CRAFT VAR INT".equals(type)) return 105;
+        if ("FBD CRAFT VAR OUT INT".equals(type)) return 106;
+        if ("FBD CRAFT VAR FLOAT".equals(type)) return 108;
+        if ("FBD CRAFT VAR OUT FLOAT".equals(type)) return 109;
+        if (type.startsWith("FBD CRAFT VAR NAME IN ")) return 133;
+        if (type.startsWith("FBD CRAFT VAR NAME OUT ")) return 134;
         return -1;
     }
 
