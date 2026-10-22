@@ -53,7 +53,7 @@ public class CraftSystemRegisterBankTest {
         bank.writeWord(1999, -1);
         assertEquals(0x7fff, bank.maskWriteWord(1999, 0x7fff, 0));
         assertEquals(0x7fff, bank.readWord(1999));
-        assertEquals(0x7fff, bank.toProjectJson().getJSONObject(0).getInt("reg_1999"));
+        assertEquals(0x7fff, bank.toProjectJson().getJSONObject(1).getInt("reg_1999"));
 
         int unchanged = bank.readWord(10);
         expectIllegal(() -> bank.maskWriteWord(9, 0, 1));
