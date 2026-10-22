@@ -25,9 +25,11 @@ on:
     - cron: '17 3 * * *'
   workflow_dispatch:
 
+# Intermediate PR commits must not queue full APK builds behind superseded heads.
+# Keep independent push refs isolated; exact latest-head CI is still required.
 concurrency:
   group: bloodsky-android-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions:
   contents: read
