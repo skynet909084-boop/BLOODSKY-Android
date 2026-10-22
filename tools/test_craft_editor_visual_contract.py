@@ -62,6 +62,8 @@ class CraftEditorVisualContractTests(unittest.TestCase):
         self.assertIn("final EditorCanvas menuCanvas = editor", menu)
         self.assertIn("editor != menuCanvas", menu)
         self.assertIn("currentScreenIndex != menuScreenIndex", menu)
+        self.assertIn("final Screen menuScreen = screens.get(currentScreenIndex)", menu)
+        self.assertIn("screens.get(currentScreenIndex) != menuScreen", menu)
         self.assertIn("operatorMode || editor == null", menu)
         self.assertIn('"Элемент изменён: выбери его заново"', menu)
         self.assertIn("row.setFocusable(true)", menu)
