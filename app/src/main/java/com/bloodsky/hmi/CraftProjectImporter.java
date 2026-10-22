@@ -431,15 +431,23 @@ public final class CraftProjectImporter {
                 String key = keys.next();
                 if (!"numScreen".equals(key) && !"type".equals(key)) widget.put(key, other.get(key));
             }
+            // Original Craft FBD factory modes are discrete int32 enums.
+            // Invalid explicit source choices must not silently become a
+            // working default through JSONObject.optInt overflow/truncation.
             if ("FBD CRAFT TIMER".equals(type)) {
-                widget.put("craftTimerMode", timerMode(other.optInt("type", 1)));
-                widget.put("craftTimerUnit", timerUnit(other.optInt("typeTime", 1)));
+                int mode = exactFbdMode(other, "type", 1, 4);
+                int unit = exactFbdMode(other, "typeTime", 1, 3);
+                widget.put("craftTimerMode", timerMode(mode));
+                widget.put("craftTimerUnit", timerUnit(unit));
             }
             if ("FBD CRAFT T".equals(type))
-                widget.put("craftTriggerMode", triggerMode(other.optInt("type", 1)));
-            int compareAction = other.optInt("compareAction", 0);
-            if (type.contains("ARITHMETIC")) widget.put("compareOperator", arithmeticOperator(compareAction));
-            else if (type.contains("COMPARE")) widget.put("compareOperator", comparisonOperator(compareAction));
+                widget.put("craftTriggerMode", triggerMode(exactFbdMode(other, "type", 1, 3)));
+            if (type.contains("ARITHMETIC"))
+                widget.put("compareOperator", arithmeticOperator(
+                        exactFbdMode(other, "compareAction", 1, 4)));
+            else if (type.contains("COMPARE"))
+                widget.put("compareOperator", comparisonOperator(
+                        exactFbdMode(other, "compareAction", 1, 6)));
             if (type.startsWith("FBD CRAFT VAR NAME ")) {
                 widget.put("craftVariableName", other.optString("typeVarValue",
                         other.optString("name", "")));
@@ -455,9 +463,10 @@ public final class CraftProjectImporter {
                 widget.put("craftSwapByte", other.optBoolean("isHighByte", false));
             }
             if ("FBD CRAFT SENSOR ORIENTATION".equals(type))
-                widget.put("craftSensorAxis", Math.max(1, Math.min(3, other.optInt("type", 1))));
+                widget.put("craftSensorAxis", exactFbdMode(other, "type", 1, 3));
             if ("FBD CRAFT SUNRISE".equals(type))
-                widget.put("craftSunriseMode", other.optInt("type", 1) == 2 ? "SS" : "SR");
+                widget.put("craftSunriseMode",
+                        exactFbdMode(other, "type", 1, 2) == 2 ? "SS" : "SR");
             if (type.startsWith("FBD CRAFT MQTT ")) {
                 widget.put("craftMqttTopic", other.optString("topic", ""));
                 widget.put("craftMqttType", CraftExactInteger.read(other,
@@ -724,6 +733,14 @@ public final class CraftProjectImporter {
         if (mode < 0 || mode > 2)
             throw new org.json.JSONException("Unsupported original Craft button mode");
         return mode;
+    }
+
+    private static int exactFbdMode(JSONObject source, String key,
+                                    int fallback, int maxValue) throws org.json.JSONException {
+        int code = CraftExactInteger.read(source, key, fallback);
+        if (code < 1 || code > maxValue)
+            throw new org.json.JSONException("Unsupported original Craft FBD mode: " + key);
+        return code;
     }
 
     private static int integer(Object value, int fallback) {
