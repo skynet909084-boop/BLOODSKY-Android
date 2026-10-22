@@ -8884,6 +8884,7 @@ private String archiveProjectKey() {
     }
 
     private boolean copySelectedWidgetToClipboard() {
+        if (operatorMode) return false;
         if (editor == null || (editor.selectedWidgets.isEmpty()
                 && (editor.selected < 0 || editor.selected >= widgets.size()))) {
             Toast.makeText(this, "Сначала выбери элемент на экране", Toast.LENGTH_SHORT).show();
@@ -8978,6 +8979,7 @@ private String archiveProjectKey() {
     }
 
     private void deleteSelectedWidget() {
+        if (operatorMode) return;
         if (editor == null || (editor.selectedWidgets.isEmpty()
                 && (editor.selected < 0 || editor.selected >= widgets.size()))) {
             Toast.makeText(this, "Сначала выбери элемент на экране", Toast.LENGTH_SHORT).show();
