@@ -245,4 +245,79 @@ public class CraftProjectExporterFbdTest {
         assertEquals("MIN", restoredTimer.getString("craftTimerUnit"));
     }
 
+
+    @Test public void exportsNewCraftArithmeticAndCompareBlocksWithTypedWiresAndOperators() throws Exception {
+        JSONObject intInput = new JSONObject().put("componentId", 105).put("text", "Integer input")
+                .put("x", 10).put("y", 10).put("width", 80).put("height", 50)
+                .put("jsTableComponent_other", new JSONObject().put("numScreen", 1)
+                        .put("saveKey", 4).put("keyOut", -1).put("numOnIn", -1));
+        JSONObject floatInput = new JSONObject().put("componentId", 108).put("text", "Float input")
+                .put("x", 10).put("y", 90).put("width", 80).put("height", 50)
+                .put("jsTableComponent_other", new JSONObject().put("numScreen", 1)
+                        .put("saveKey", 9).put("keyOut", -1).put("numOnIn", -1));
+        JSONObject source = new JSONObject()
+                .put("TableNameProject", new JSONObject().put("name", "New Craft math blocks")
+                        .put("countScreen", 1))
+                .put("TableComponent", new JSONArray().put(intInput).put(floatInput))
+                .put("TableConnections", new JSONArray());
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(source.toString()));
+        JSONObject screen = project.getJSONArray("screens").getJSONObject(0);
+        JSONArray widgets = screen.getJSONArray("widgets");
+        widgets.put(new JSONObject().put("type", "FBD CRAFT ARITHMETIC INT").put("text", "INT *")
+                .put("x", 120).put("y", 10).put("w", 90).put("h", 50)
+                .put("compareOperator", "*"));
+        widgets.put(new JSONObject().put("type", "FBD CRAFT COMPARE").put("text", "INT !=")
+                .put("x", 230).put("y", 10).put("w", 90).put("h", 50)
+                .put("compareOperator", "!="));
+        widgets.put(new JSONObject().put("type", "FBD CRAFT ARITHMETIC FLOAT").put("text", "FLOAT /")
+                .put("x", 120).put("y", 90).put("w", 90).put("h", 50)
+                .put("compareOperator", "/"));
+        widgets.put(new JSONObject().put("type", "FBD CRAFT COMPARE FLOAT").put("text", "FLOAT <=")
+                .put("x", 230).put("y", 90).put("w", 90).put("h", 50)
+                .put("compareOperator", "<="));
+        screen.getJSONArray("connections")
+                .put(MainActivity.connectionToJson(MainActivity.pinnedFbdConnection(0, "Q", 2, "IN1")))
+                .put(MainActivity.connectionToJson(MainActivity.pinnedFbdConnection(2, "Q", 3, "IN1")))
+                .put(MainActivity.connectionToJson(MainActivity.pinnedFbdConnection(1, "Q", 4, "IN2")))
+                .put(MainActivity.connectionToJson(MainActivity.pinnedFbdConnection(4, "Q", 5, "IN2")));
+
+        JSONObject exported = new JSONObject(CraftProjectExporter.export(project.toString()));
+        JSONArray rows = exported.getJSONArray("TableComponent");
+        assertEquals(6, rows.length());
+        assertEquals(110, rows.getJSONObject(2).getInt("componentId"));
+        assertEquals(107, rows.getJSONObject(3).getInt("componentId"));
+        assertEquals(111, rows.getJSONObject(4).getInt("componentId"));
+        assertEquals(112, rows.getJSONObject(5).getInt("componentId"));
+        JSONObject intMathOther = rows.getJSONObject(2).getJSONObject("jsTableComponent_other");
+        JSONObject intCompareOther = rows.getJSONObject(3).getJSONObject("jsTableComponent_other");
+        JSONObject floatMathOther = rows.getJSONObject(4).getJSONObject("jsTableComponent_other");
+        JSONObject floatCompareOther = rows.getJSONObject(5).getJSONObject("jsTableComponent_other");
+        assertEquals(3, intMathOther.getInt("compareAction"));
+        assertEquals(6, intCompareOther.getInt("compareAction"));
+        assertEquals(4, floatMathOther.getInt("compareAction"));
+        assertEquals(3, floatCompareOther.getInt("compareAction"));
+        assertEquals(intMathOther.getInt("saveKey"), rows.getJSONObject(0)
+                .getJSONObject("jsTableComponent_other").getInt("keyOut"));
+        assertEquals(intCompareOther.getInt("saveKey"), intMathOther.getInt("keyOut"));
+        assertEquals(floatMathOther.getInt("saveKey"), rows.getJSONObject(1)
+                .getJSONObject("jsTableComponent_other").getInt("keyOut"));
+        assertEquals(floatCompareOther.getInt("saveKey"), floatMathOther.getInt("keyOut"));
+        assertEquals(2, intCompareOther.getInt("numOnIn"));
+        assertEquals(2, floatCompareOther.getInt("numOnIn"));
+
+        JSONObject restored = new JSONObject(CraftProjectImporter.convert(exported.toString()));
+        JSONObject restoredScreen = restored.getJSONArray("screens").getJSONObject(0);
+        assertEquals(4, restoredScreen.getJSONArray("connections").length());
+        assertEquals("IN1", restoredScreen.getJSONArray("connections").getJSONObject(0)
+                .getString("targetPin"));
+        assertEquals("IN2", restoredScreen.getJSONArray("connections").getJSONObject(2)
+                .getString("targetPin"));
+        JSONArray restoredWidgets = restoredScreen.getJSONArray("widgets");
+        assertEquals(110, restoredWidgets.getJSONObject(2).getInt("craftComponentId"));
+        assertEquals("*", restoredWidgets.getJSONObject(2).getString("compareOperator"));
+        assertEquals("!=", restoredWidgets.getJSONObject(3).getString("compareOperator"));
+        assertEquals("/", restoredWidgets.getJSONObject(4).getString("compareOperator"));
+        assertEquals("<=", restoredWidgets.getJSONObject(5).getString("compareOperator"));
+    }
+
 }

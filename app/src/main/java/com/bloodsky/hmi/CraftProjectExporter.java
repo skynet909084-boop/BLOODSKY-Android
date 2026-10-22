@@ -278,7 +278,8 @@ public final class CraftProjectExporter {
         if (widget == null) return -1;
         int declared = widget.optInt("craftComponentId", -1);
         if (declared == 103 || declared == 104 || declared == 113 || declared == 125
-                || declared == 114 || declared == 115 || declared == 116)
+                || declared == 114 || declared == 115 || declared == 116
+                || declared == 107 || declared == 110 || declared == 111 || declared == 112)
             return declared;
         String type = MainActivity.canonicalFbdBlockType(widget.optString("type", ""));
         if ("FBD AND".equals(type)) return 103;
@@ -288,6 +289,10 @@ public final class CraftProjectExporter {
         if ("FBD CRAFT T".equals(type)) return 114;
         if ("FBD CRAFT TIMER".equals(type)) return 115;
         if ("FBD CRAFT CTU".equals(type)) return 116;
+        if ("FBD CRAFT COMPARE".equals(type)) return 107;
+        if ("FBD CRAFT ARITHMETIC INT".equals(type)) return 110;
+        if ("FBD CRAFT ARITHMETIC FLOAT".equals(type)) return 111;
+        if ("FBD CRAFT COMPARE FLOAT".equals(type)) return 112;
         return -1;
     }
 
