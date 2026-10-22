@@ -10840,11 +10840,17 @@ public class MainActivity extends Activity {
         if (operatorMode || currentScreenIndex < 0 || currentScreenIndex >= screens.size()) return;
         Screen current = screens.get(currentScreenIndex);
         try {
-            boolean changed = redo
-                    ? fbdWireHistory.redo(current, current.connections)
-                    : fbdWireHistory.undo(current, current.connections);
-            if (!changed) return;
-            persistProject();
+            boolean available = redo
+                    ? fbdWireHistory.canRedo(current) : fbdWireHistory.canUndo(current);
+            if (!available) return;
+            boolean committed = FbdWireEditTransaction.replay(
+                    current, current.connections, fbdWireHistory, redo,
+                    () -> persistProjectNow(true));
+            if (!committed) {
+                Toast.makeText(this, "Не удалось сохранить изменение связей FBD",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
             if (editor != null) editor.invalidate();
             Toast.makeText(this, redo ? "Связь FBD повторена" : "Связь FBD отменена",
                     Toast.LENGTH_SHORT).show();
