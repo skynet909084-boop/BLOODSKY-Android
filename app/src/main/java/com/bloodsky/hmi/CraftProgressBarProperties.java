@@ -27,14 +27,7 @@ public final class CraftProgressBarProperties {
             throw new IllegalArgumentException("Регистр должен быть от 0 до 65535");
         JSONObject result = fields == null ? new JSONObject() : new JSONObject(fields.toString());
         Object oldConnection = result.opt("craftConnectionInfo");
-        JSONObject connection;
-        try {
-            connection = oldConnection instanceof JSONObject ? new JSONObject(oldConnection.toString())
-                    : oldConnection instanceof String ? new JSONObject((String) oldConnection)
-                    : new JSONObject();
-        } catch (JSONException malformed) {
-            throw new IllegalArgumentException("Не удалось прочитать исходную привязку Craft", malformed);
-        }
+        JSONObject connection = CraftPropertyRecord.copy(result, "craftConnectionInfo");
         connection.put("addressRegister", register);
         result.put("craftConnectionInfo", oldConnection instanceof String
                 ? connection.toString() : connection);
@@ -53,14 +46,7 @@ public final class CraftProgressBarProperties {
             throw new IllegalArgumentException("Размер текста шкалы должен быть от 1 до 256");
 
         Object oldOther = widgetFields.opt("craftOther");
-        JSONObject other = widgetFields.optJSONObject("craftOther");
-        if (oldOther instanceof String) {
-            try { other = new JSONObject((String) oldOther); }
-            catch (JSONException malformed) {
-                throw new IllegalArgumentException("Не удалось прочитать исходные свойства Craft", malformed);
-            }
-        }
-        other = other == null ? new JSONObject() : new JSONObject(other.toString());
+        JSONObject other = CraftPropertyRecord.copy(widgetFields, "craftOther");
         other.put("min", min);
         other.put("max", max);
         other.put("showText", showText);

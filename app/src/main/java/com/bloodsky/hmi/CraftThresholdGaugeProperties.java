@@ -25,14 +25,7 @@ public final class CraftThresholdGaugeProperties {
             throw new IllegalArgumentException("Регистр должен быть от 0 до 65535");
         JSONObject updated = fields == null ? new JSONObject() : new JSONObject(fields.toString());
         Object sourceRaw = updated.opt("craftConnectionInfo");
-        JSONObject source;
-        try {
-            source = sourceRaw instanceof JSONObject ? new JSONObject(sourceRaw.toString())
-                    : sourceRaw instanceof String ? new JSONObject((String) sourceRaw)
-                    : new JSONObject();
-        } catch (JSONException malformed) {
-            throw new IllegalArgumentException("Повреждена привязка шкалы Craft", malformed);
-        }
+        JSONObject source = CraftPropertyRecord.copy(updated, "craftConnectionInfo");
         // Validate all gauge values before returning the edited project.
         apply(updated, max, showText, textSize, textColor, inColor,
                 outColor, centerColor, first, second);
@@ -55,14 +48,7 @@ public final class CraftThresholdGaugeProperties {
             throw new IllegalArgumentException("Границы цветовых зон должны идти по возрастанию внутри шкалы");
 
         Object oldOther = fields.opt("craftOther");
-        JSONObject other;
-        try {
-            other = oldOther instanceof JSONObject ? new JSONObject(oldOther.toString())
-                    : oldOther instanceof String ? new JSONObject((String) oldOther)
-                    : new JSONObject();
-        } catch (JSONException malformed) {
-            throw new IllegalArgumentException("Повреждены исходные свойства шкалы Craft", malformed);
-        }
+        JSONObject other = CraftPropertyRecord.copy(fields, "craftOther");
         other.put("max", max);
         other.put("showText", showText);
         other.put("sizeText", textSize);
