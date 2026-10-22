@@ -136,7 +136,8 @@ final class FbdCraftMacroGraphAdapter {
                 widget.put("craftSwapByte", child.optBoolean("isHighByte", false));
             }
             if (type.startsWith("FBD CRAFT VAR NAME ")) {
-                int variableType = child.optInt("typeVar", 2);
+                int variableType = nativeVariableType(child);
+                if (variableType < 1) return null; // Keep unknown source graph opaque.
                 widget.put("craftVariableName", child.optString("typeVarValue",
                         child.optString("name", "")));
                 widget.put("type", namedVariableType(type.contains("OUT"), variableType));
@@ -235,8 +236,14 @@ final class FbdCraftMacroGraphAdapter {
             case 130: return "FBD CRAFT ODTEMP";
             case 131: return "FBD CRAFT SENSOR LIGHT";
             case 132: return "FBD CRAFT SENSOR SPEED";
-            case 133: return namedVariableType(false, child == null ? 2 : child.optInt("typeVar", 2));
-            case 134: return namedVariableType(true, child == null ? 2 : child.optInt("typeVar", 2));
+            case 133: {
+                int sourceType = nativeVariableType(child);
+                return sourceType < 1 ? null : namedVariableType(false, sourceType);
+            }
+            case 134: {
+                int sourceType = nativeVariableType(child);
+                return sourceType < 1 ? null : namedVariableType(true, sourceType);
+            }
             // ID135 is a real source block even when its .mcr sidecar is absent.
             // Keep it typed and visible; the importer marks it non-executable
             // until a validated definition is available.
@@ -247,6 +254,16 @@ final class FbdCraftMacroGraphAdapter {
             case 139: return "FBD CRAFT MQTT SUB BOOL";
             case 140: return "FBD CRAFT MQTT PUB BOOL";
             default: return null;
+        }
+    }
+
+    private static int nativeVariableType(JSONObject child) {
+        if (child == null) return 2;
+        try {
+            int sourceCode = CraftExactInteger.read(child, "typeVar", 2);
+            return sourceCode >= 1 && sourceCode <= 3 ? sourceCode : -1;
+        } catch (JSONException invalid) {
+            return -1;
         }
     }
 
