@@ -38,6 +38,31 @@ public class CraftSystemRegisterBankTest {
         expectIllegal(() -> bank.writeBit(10, -1, true));
     }
 
+    @Test public void modbusMaskWriteIsAtomicAndPreservesUnmaskedBits() throws Exception {
+        CraftSystemRegisterBank bank = new CraftSystemRegisterBank();
+        bank.writeWord(10, 0xa55a);
+        assertEquals(0xa5aa, bank.maskWriteWord(10, 0xff0f, 0x00a0));
+        assertEquals(0xa5aa, bank.readWord(10));
+        // Clear all bits, then set one; covers both AND and OR masks.
+        assertEquals(0x1234, bank.maskWriteWord(10, 0, 0x1234));
+        assertEquals(0x1234, bank.readWord(10));
+        assertEquals(0x1234, bank.maskWriteWord(10, 0xffff, 0xffff));
+
+        // Modbus operates on one unsigned 16-bit word even if Craft had a
+        // signed/32-bit value stored in the project register bank.
+        bank.writeWord(1999, -1);
+        assertEquals(0x7fff, bank.maskWriteWord(1999, 0x7fff, 0));
+        assertEquals(0x7fff, bank.readWord(1999));
+        assertEquals(0x7fff, bank.toProjectJson().getJSONObject(0).getInt("reg_1999"));
+
+        int unchanged = bank.readWord(10);
+        expectIllegal(() -> bank.maskWriteWord(9, 0, 1));
+        expectIllegal(() -> bank.maskWriteWord(2000, 0, 1));
+        expectIllegal(() -> bank.maskWriteWord(10, -1, 0));
+        expectIllegal(() -> bank.maskWriteWord(10, 0, 0x10000));
+        assertEquals(unchanged, bank.readWord(10));
+    }
+
     @Test public void floatRoundTripsWithAllExplicitByteAndRegisterOrders() throws Exception {
         float value = -123.25f;
         for (boolean swapWord : new boolean[]{false, true}) {
