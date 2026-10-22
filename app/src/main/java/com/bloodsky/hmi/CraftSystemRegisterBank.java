@@ -31,6 +31,24 @@ public final class CraftSystemRegisterBank {
         words[address] = value;
     }
 
+    /**
+     * Atomic Modbus FC22 mask-write of the low 16-bit holding register.
+     * The bank also stores Craft 32-bit values, but Modbus exposes one 16-bit
+     * word; FC22 follows the same unsigned-word write convention as FC06.
+     *
+     * <p>Result = (current AND andMask) OR (orMask AND NOT andMask).</p>
+     */
+    public synchronized int maskWriteWord(int address, int andMask, int orMask) {
+        requireUserRegister(address);
+        requireWord(andMask);
+        requireWord(orMask);
+        int current = words[address] & 0xffff;
+        int result = ((current & andMask) | (orMask & ~andMask)) & 0xffff;
+        words[address] = result;
+        return result;
+    }
+
+
     public synchronized boolean readBit(int address, int bit) {
         requireUserRegister(address);
         requireBit(bit);
