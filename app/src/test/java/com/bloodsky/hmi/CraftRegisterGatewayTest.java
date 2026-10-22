@@ -71,6 +71,27 @@ public class CraftRegisterGatewayTest {
                 () -> CraftRegisterGateway.readSystemSource(config.destination, 1, project));
     }
 
+    @Test public void bluetoothRtuRegisterEndpointsRetainAddressAndFunctionSemantics() throws Exception {
+        CraftRegisterGateway.Config config = CraftRegisterGateway.validate(true, 0, 2,
+                "bt://AA:BB:CC:DD:EE:FF/7/30001",
+                "bt://AA:BB:CC:DD:EE:FF/7/40001", "", 0);
+        assertEquals("AA:BB:CC:DD:EE:FF", config.source.bluetoothAddress);
+        assertEquals(4, config.source.readFunction);
+        assertEquals(0, config.source.address);
+        assertEquals(3, config.destination.readFunction);
+        assertEquals(0, config.destination.address);
+        FakeTransport transport = new FakeTransport();
+        assertTrue(CraftRegisterGateway.transfer(config, new CraftRegisterGateway.State(), transport).transferred);
+        assertArrayEquals(new int[]{7, 8}, transport.writes.get(0));
+
+        JSONObject imported = new JSONObject().put("craftGatewayEnabled", false)
+                .put("craftGatewaySource", "bt://AA:BB:CC:DD:EE:FF/7/40001")
+                .put("craftGatewayDestination", "bt://AA:BB:CC:DD:EE:FF/7/40002");
+        assertNull(CraftRegisterGateway.from(imported));
+        assertNull(CraftRegisterGateway.parseBinding(
+                "bt://AA:BB:CC:DD:EE:FF/7/30001", 1, true));
+    }
+
     @Test public void continuousModeTransfersEverySuccessfulPoll() throws Exception {
         CraftRegisterGateway.Config config = config(0, 2);
         CraftRegisterGateway.State state = new CraftRegisterGateway.State();

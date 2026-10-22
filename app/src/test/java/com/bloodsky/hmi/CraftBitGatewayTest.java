@@ -46,6 +46,26 @@ public class CraftBitGatewayTest {
         assertNull(CraftBitGateway.parse("tcp://u:p@host:502/1/0", 1));
     }
 
+    @Test public void bluetoothRtuBitEndpointsSupportFc01Fc02AndExplicitTriggers() throws Exception {
+        CraftBitGateway.Config config = CraftBitGateway.validate(true, 1, 2, 2,
+                "bt://AA:BB:CC:DD:EE:FF/4/20",
+                "bt://AA:BB:CC:DD:EE:FF/5/40",
+                "bt://11:22:33:44:55:66/8/40010", 3);
+        assertEquals("AA:BB:CC:DD:EE:FF", config.source.bluetoothAddress);
+        assertEquals(2, config.source.function);
+        assertEquals(20, config.source.address);
+        assertEquals("AA:BB:CC:DD:EE:FF", config.destination.bluetoothAddress);
+        assertEquals("11:22:33:44:55:66", config.trigger.bluetoothAddress);
+        assertEquals(3, config.trigger.function);
+        assertEquals(9, config.trigger.address);
+        FakeTransport io = new FakeTransport();
+        CraftBitGateway.State state = new CraftBitGateway.State();
+        assertFalse(CraftBitGateway.transfer(config, state, io).transferred);
+        io.trigger = 8;
+        assertTrue(CraftBitGateway.transfer(config, state, io).transferred);
+        assertArrayEquals(new int[]{1, 0}, io.writes.get(0));
+    }
+
     @Test public void continuousModeTransfersPackedBitsOnEveryPoll() throws Exception {
         CraftBitGateway.Config config = config(0, 3);
         CraftBitGateway.State state = new CraftBitGateway.State();

@@ -1588,12 +1588,24 @@ public class MainActivity extends Activity {
 
     private boolean hasBluetoothRegisterBinding() {
         for (Widget widget : widgets) {
-            if (widget == null || widget.connectionInfo == null
-                    || !widget.connectionInfo.trim().startsWith("bt://")) continue;
-            if (isCraftRegisterSource(widget.type) || isCraftRegisterSink(widget.type)
-                    || "FBD Вход".equals(widget.type)) return true;
+            if (widget == null) continue;
+            if (widget.connectionInfo != null && widget.connectionInfo.trim().startsWith("bt://")
+                    && (isCraftRegisterSource(widget.type) || isCraftRegisterSink(widget.type)
+                    || "FBD Вход".equals(widget.type))) return true;
+            if (widget.extraFields.optBoolean("craftGatewayEnabled", false)
+                    && (isBluetoothEndpoint(widget.extraFields.optString("craftGatewaySource", ""))
+                    || isBluetoothEndpoint(widget.extraFields.optString("craftGatewayDestination", ""))
+                    || isBluetoothEndpoint(widget.extraFields.optString("craftGatewayTrigger", "")))) return true;
+            if (widget.extraFields.optBoolean("craftBitGatewayEnabled", false)
+                    && (isBluetoothEndpoint(widget.extraFields.optString("craftBitGatewaySource", ""))
+                    || isBluetoothEndpoint(widget.extraFields.optString("craftBitGatewayDestination", ""))
+                    || isBluetoothEndpoint(widget.extraFields.optString("craftBitGatewayTrigger", "")))) return true;
         }
         return false;
+    }
+
+    private static boolean isBluetoothEndpoint(String value) {
+        return value != null && value.trim().startsWith("bt://");
     }
 
     private BluetoothModbusConnection bluetoothConnection(String address) throws IOException {
@@ -1892,12 +1904,20 @@ public class MainActivity extends Activity {
                                         if (!pollSession.accepts(sessionToken)) throw new IOException("Сеанс проекта завершён");
                                         if (binding.systemRegister)
                                             return CraftRegisterGateway.readSystemSource(binding, quantity, systemRegisterBank);
+                                        if (binding.bluetoothAddress != null)
+                                            return bluetoothConnection(binding.bluetoothAddress).read(binding.unit,
+                                                    binding.readFunction, binding.address, quantity);
                                         return new ModbusTcpClient(binding.host, binding.port).read(
                                                 binding.unit, binding.address, quantity, binding.readFunction);
                                     }
                                     @Override public void write(CraftRegisterGateway.Binding binding, int[] values) throws IOException {
                                         if (!pollSession.accepts(sessionToken) || !operatorMode || !activityResumed)
                                             throw new IOException("Шлюз остановлен");
+                                        if (binding.bluetoothAddress != null) {
+                                            bluetoothConnection(binding.bluetoothAddress).writeMultiple(
+                                                    binding.unit, binding.address, values);
+                                            return;
+                                        }
                                         new ModbusTcpClient(binding.host, binding.port).writeMultiple(
                                                 binding.unit, binding.address, values);
                                     }
@@ -1924,12 +1944,22 @@ public class MainActivity extends Activity {
                                 new CraftBitGateway.Transport() {
                                     @Override public int[] read(CraftBitGateway.Binding binding, int quantity) throws IOException {
                                         if (!pollSession.accepts(sessionToken)) throw new IOException("Сеанс проекта завершён");
+                                        if (binding.bluetoothAddress != null)
+                                            return bluetoothConnection(binding.bluetoothAddress).read(binding.unit,
+                                                    binding.function, binding.address, quantity);
                                         return new ModbusTcpClient(binding.host, binding.port).read(
                                                 binding.unit, binding.address, quantity, binding.function);
                                     }
                                     @Override public void write(CraftBitGateway.Binding binding, int[] values) throws IOException {
                                         if (!pollSession.accepts(sessionToken) || !operatorMode || !activityResumed)
                                             throw new IOException("Шлюз остановлен");
+                                        if (binding.bluetoothAddress != null) {
+                                            BluetoothModbusConnection connection = bluetoothConnection(binding.bluetoothAddress);
+                                            if (values.length == 1) connection.writeSingleCoil(
+                                                    binding.unit, binding.address, values[0] == 1);
+                                            else connection.writeMultipleCoils(binding.unit, binding.address, values);
+                                            return;
+                                        }
                                         ModbusTcpClient client = new ModbusTcpClient(binding.host, binding.port);
                                         if (values.length == 1) client.writeSingleCoil(binding.unit, binding.address, values[0] == 1);
                                         else client.writeMultipleCoils(binding.unit, binding.address, values);
@@ -2810,6 +2840,7 @@ public class MainActivity extends Activity {
             try (InputStream in = getContentResolver().openInputStream(uri)) {
                 if (in == null) throw new IOException("Input stream unavailable");
                 ProjectMediaService.importProjectBundle(getFilesDir(), in, json -> {
+                    json = ProjectImportSafety.deactivateExternalActions(json);
                     try {
                         json = CraftEmailCredentialMigration.protect(json,
                                 (key, login, password) -> CraftEmailCredentialStore.save(this, key, login, password));
@@ -5661,6 +5692,16 @@ public class MainActivity extends Activity {
         else if ("FBD Вход".equals(w.type))
             connectionField.setHint("TCP: tcp://192.168.1.10:502/1/40001 · USB RTU: usb://1/40001 · Bluetooth SPP RTU: bt://AA:BB:CC:DD:EE:FF/1/40001");
         form.addView(connectionField);
+        String inactiveImportedBinding = w.extraFields.optString(
+                "bloodskyImportedInactiveConnectionInfo", "").trim();
+        if (!inactiveImportedBinding.isEmpty()) {
+            TextView inactiveBindingNotice = new TextView(this);
+            inactiveBindingNotice.setText("Импортированная внешняя привязка отключена. Чтобы переназначить её, введи адрес вручную: "
+                    + inactiveImportedBinding);
+            inactiveBindingNotice.setContentDescription("Импортированная внешняя привязка неактивна");
+            inactiveBindingNotice.setPadding(0, dp(6), 0, dp(2));
+            form.addView(inactiveBindingNotice);
+        }
         String sourceBindingText = CraftNetworkBindingResolver.display(
                 w.extraFields.optJSONObject("craftBindingResolution"));
         if (!sourceBindingText.isEmpty()) {
@@ -5681,6 +5722,15 @@ public class MainActivity extends Activity {
                     InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
             archiveTriggerField.setHint("Необязательный триггер: tcp://host:502/1/40002");
             archiveTriggerField.setContentDescription("Триггер архива"); form.addView(archiveTriggerField);
+            String inactiveArchiveTrigger = w.extraFields.optString(
+                    "bloodskyImportedInactiveArchiveTriggerBinding", "").trim();
+            if (!inactiveArchiveTrigger.isEmpty()) {
+                TextView inactiveTriggerNotice = new TextView(this);
+                inactiveTriggerNotice.setText("Импортированный триггер отключён. Для ручного подключения введи: "
+                        + inactiveArchiveTrigger);
+                inactiveTriggerNotice.setContentDescription("Импортированный триггер отключён");
+                form.addView(inactiveTriggerNotice);
+            }
             archiveChannelCountField = propertyField(Integer.toString(Math.max(1, Math.min(4,
                     w.extraFields.optInt("craftArchiveChannelCount", 1)))), InputType.TYPE_CLASS_NUMBER);
             archiveChannelCountField.setHint("Каналы (1–4)");
@@ -6021,13 +6071,17 @@ public class MainActivity extends Activity {
             gatewayCountField.setHint(craftBitGateway ? "Количество бит (1–16; по изменению — 1)" : "Количество регистров (1–99; по изменению — 1)"); form.addView(gatewayCountField);
             gatewaySourceField = propertyField(w.extraFields.optString(craftBitGateway ? "craftBitGatewaySource" : "craftGatewaySource", ""),
                     InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-            gatewaySourceField.setHint(craftBitGateway ? "Источник: tcp://192.168.1.10:502/1/0 (адрес 0-based)" : "Источник: tcp://192.168.1.10:502/1/40001 (FC03/04) или system://register/10"); form.addView(gatewaySourceField);
+            gatewaySourceField.setHint(craftBitGateway
+                    ? "Источник: tcp://192.168.1.10:502/1/0 или bt://AA:BB:CC:DD:EE:FF/1/0 (адрес 0-based)"
+                    : "Источник: tcp://192.168.1.10:502/1/40001 (FC03/04), bt://AA:BB:CC:DD:EE:FF/1/40001 или system://register/10"); form.addView(gatewaySourceField);
             gatewayDestinationField = propertyField(w.extraFields.optString(craftBitGateway ? "craftBitGatewayDestination" : "craftGatewayDestination", ""),
                     InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-            gatewayDestinationField.setHint(craftBitGateway ? "Coil-приёмник: tcp://192.168.1.11:502/1/0" : "Приёмник: tcp://192.168.1.11:502/1/40001 (holding)"); form.addView(gatewayDestinationField);
+            gatewayDestinationField.setHint(craftBitGateway
+                    ? "Coil-приёмник: tcp://192.168.1.11:502/1/0 или bt://AA:BB:CC:DD:EE:FF/1/0"
+                    : "Приёмник holding: tcp://192.168.1.11:502/1/40001 или bt://AA:BB:CC:DD:EE:FF/1/40001"); form.addView(gatewayDestinationField);
             gatewayTriggerField = propertyField(w.extraFields.optString(craftBitGateway ? "craftBitGatewayTrigger" : "craftGatewayTrigger", ""),
                     InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-            gatewayTriggerField.setHint("Триггер для фронта: tcp://192.168.1.10:502/1/40002"); form.addView(gatewayTriggerField);
+            gatewayTriggerField.setHint("Триггер для фронта: tcp://192.168.1.10:502/1/40002 или bt://AA:BB:CC:DD:EE:FF/1/40002"); form.addView(gatewayTriggerField);
             gatewayTriggerBitField = propertyField(Integer.toString(Math.max(0,
                     Math.min(15, w.extraFields.optInt(craftBitGateway ? "craftBitGatewayTriggerBit" : "craftGatewayTriggerBit",
                             craftBitGateway ? 0 : w.extraFields.optInt("craftGatewayBitMode", 0))))),
@@ -6035,8 +6089,8 @@ public class MainActivity extends Activity {
             gatewayTriggerBitField.setHint("Бит триггера (0–15)"); form.addView(gatewayTriggerBitField);
             TextView gatewayHelp = new TextView(this);
             gatewayHelp.setText(craftBitGateway
-                    ? "У исходного проекта адреса устройств заданы внутренними индексами; укажи TCP-адреса вручную. Источник читает FC01/FC02, приёмник пишет coils через FC05/FC15. Постоянно и по фронту передаётся 1–16 бит, по изменению — один. Адреса TCP здесь нумеруются с нуля. Системные регистры и RTU/Bluetooth пока не поддерживаются. Импортированный шлюз выключен."
-                    : "У исходного проекта адреса устройств заданы внутренними индексами; они не переносятся автоматически. Укажи TCP-адрес приёмника вручную. Источник можно задать как TCP/FC03/04 или как system://register/10 (локальный банк Система, только чтение); режимы 0/1 копируют 1–99 регистров, по изменению — один. Внутренние регистры 0–1999 доступны как источник; приёмник Система, RTU и Bluetooth пока не поддерживаются. Импортированный шлюз изначально выключен.");
+                    ? "У исходного проекта адреса устройств заданы внутренними индексами; укажи endpoint вручную. Источник читает FC01/FC02, приёмник пишет coils через FC05/FC15. Постоянно и по фронту передаётся 1–16 бит, по изменению — один. Для BT SPP укажи уже сопряжённое устройство как bt://MAC/unit/адрес; адреса coils/discrete inputs 0-based. Импортированный шлюз выключен до явного включения."
+                    : "У исходного проекта адреса устройств заданы внутренними индексами; они не переносятся автоматически. Источник: TCP/FC03/04, Bluetooth SPP/FC03/04 или system://register/10 (локальный банк Система, только чтение). Приёмник: TCP или Bluetooth holding-регистр. Режимы 0/1 копируют 1–99 регистров, по изменению — один. Для Bluetooth укажи уже сопряжённое устройство как bt://MAC/unit/адрес. Импортированный шлюз изначально выключен.");
             form.addView(gatewayHelp);
         } else {
             gatewayEnabledField = null; gatewayModeField = null; gatewaySourceFunctionField = null;
@@ -8289,7 +8343,9 @@ public class MainActivity extends Activity {
         String json = new String(projectJsonBytes, StandardCharsets.UTF_8);
         JSONObject parsed = new JSONObject(json);
         if (CraftProjectImporter.isCraftProject(parsed)) {
-            json = CraftProjectImporter.convert(json, projectEntryPath, pendingMedia);        }
+            json = CraftProjectImporter.convert(json, projectEntryPath, pendingMedia);
+        }
+        json = ProjectImportSafety.deactivateExternalActions(json);
         validateImportedProjectStatic(json);
         if (extractedMedia != null) {
             for (String path : pendingMedia.keySet()) {
