@@ -29,4 +29,25 @@ public class CraftHmiNumericSignalTest {
         assertEquals(3.125, CraftHmiNumericSignal.decode("3.125"), 0.0);
         assertTrue(CraftHmiNumericSignal.decode("3.125") != null);
     }
+    @Test public void boundGaugeDoesNotPretendZeroBeforeFirstReply() {
+        assertTrue(CraftHmiNumericSignal.unavailable(null, true, true));
+        assertTrue(CraftHmiNumericSignal.unavailable("", true, true));
+        assertTrue(CraftHmiNumericSignal.unavailable("ERR: timeout", true, true));
+        assertTrue(CraftHmiNumericSignal.unavailable("CFG: bad", true, true));
+        assertTrue(CraftHmiNumericSignal.unavailable("NaN", true, true));
+        assertTrue(CraftHmiNumericSignal.unavailable("Infinity", true, true));
+    }
+
+    @Test public void actualZeroAndOtherFiniteValuesStayAvailable() {
+        for (String value : new String[]{"0", "-0.0", "123.75", "-32768", "1e-4"}) {
+            assertFalse(CraftHmiNumericSignal.unavailable(value, true, true));
+        }
+    }
+
+    @Test public void editorAndUnboundLocalPreviewRemainAvailable() {
+        assertFalse(CraftHmiNumericSignal.unavailable(null, false, true));
+        assertFalse(CraftHmiNumericSignal.unavailable(null, true, false));
+        assertFalse(CraftHmiNumericSignal.unavailable("ERR: stale", false, true));
+        assertTrue(CraftHmiNumericSignal.unavailable("ERR: stale", true, false));
+    }
 }
