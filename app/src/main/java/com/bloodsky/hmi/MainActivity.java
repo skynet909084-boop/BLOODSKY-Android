@@ -4975,6 +4975,7 @@ public class MainActivity extends Activity {
         // Preserve the focused widget even if it is not in the multi-selection.
         // A different focused item can change which properties are edited.
         final int menuFocusedIndex = editor.selected;
+        final int menuWidgetCount = widgets.size();
         final ArrayList<Widget> menuSelectionWidgets = new ArrayList<>();
         for (int selectionIndex : menuSelection) {
             if (selectionIndex < 0 || selectionIndex >= widgets.size()) return;
@@ -5015,6 +5016,7 @@ public class MainActivity extends Activity {
                         || editor.selected < 0 || editor.selected >= widgets.size()
                         || widgets.get(editor.selected) != selectedWidget
                         || editor.selected != menuFocusedIndex
+                        || widgets.size() != menuWidgetCount
                         || !editor.selectedWidgets.equals(menuSelection)
                         || !sameSelectedWidgetObjects(menuSelection, menuSelectionWidgets)) {
                     Toast.makeText(this, "Элемент изменён: выбери его заново",
@@ -5121,6 +5123,7 @@ public class MainActivity extends Activity {
                         || editor.selected < 0 || editor.selected >= widgets.size()
                         || widgets.get(editor.selected) != selectedWidget
                         || editor.selected != menuFocusedIndex
+                        || widgets.size() != menuWidgetCount
                         || !editor.selectedWidgets.equals(menuSelection)
                         || !sameSelectedWidgetObjects(menuSelection, menuSelectionWidgets)) {
                     Toast.makeText(this, "Элемент изменён: выбери его заново", Toast.LENGTH_SHORT).show();
