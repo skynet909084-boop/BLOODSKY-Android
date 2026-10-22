@@ -214,8 +214,9 @@ public class PortableZipMediaTest {
                 .getJSONObject("jsTableComponent_other").getString("pathSound_0"));
         for (int i = 0; i < selectedPaths.length; i++) {
             String entry = selectedPaths[i];
-            assertTrue("Craft ZIP must include " + entry, bundled.containsKey(entry));
-            assertArrayEquals(bytes[i], bundled.get(entry));
+            String importedEntry = entry.startsWith("media/") ? entry.substring("media/".length()) : entry;
+            assertTrue("Craft ZIP must include " + entry, bundled.containsKey(importedEntry));
+            assertArrayEquals(bytes[i], bundled.get(importedEntry));
         }
     }
 
