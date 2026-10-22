@@ -69,18 +69,18 @@ public final class FbdCraftMacroDefinition {
             throw new JSONException("Invalid macro child list");
         validateChildren(children, name, root.optLong("uniqueId", -1));
 
-        int count = root.optInt("countIn", -1);
+        int count = CraftExactInteger.read(root, "countIn", -1);
         if (count < 0 || count > 4) throw new JSONException("Macro input count must be 0 to 4");
         List<Port> inputs = new ArrayList<>();
         for (int i = 1; i <= count; i++) {
             String inputName = root.optString("nameIn" + i, "I" + i).trim();
-            int type = root.optInt("typeIn" + i, -1);
+            int type = CraftExactInteger.read(root, "typeIn" + i, -1);
             if (!isValidPortName(inputName) || !isValidType(type))
                 throw new JSONException("Invalid macro input port " + i);
             inputs.add(new Port(inputName, type, false));
         }
         String outputName = root.optString("nameOut", "Q").trim();
-        int outputType = root.optInt("typeOut", -1);
+        int outputType = CraftExactInteger.read(root, "typeOut", -1);
         if (!isValidPortName(outputName) || !isValidType(outputType))
             throw new JSONException("Invalid macro output port");
         if (root.has("bloodskyGraph") && !(root.opt("bloodskyGraph") instanceof JSONObject))
@@ -104,7 +104,7 @@ public final class FbdCraftMacroDefinition {
         if (widgets == null || widgets.length() == 0 || widgets.length() > MAX_CHILD_COMPONENTS
                 || connections == null || connections.length() > MAX_GRAPH_CONNECTIONS)
             throw new JSONException("Invalid nested macro graph size");
-        int outputNode = graph.optInt("outputNode", -1);
+        int outputNode = CraftExactInteger.read(graph, "outputNode", -1);
         String outputPin = graph.optString("outputPin", "").trim();
         if (outputNode < 0 || outputNode >= widgets.length() || outputPin.isEmpty()
                 || outputPin.length() > 32 || !outputPortName.equals(graph.optString("outputPort", outputPortName)))
@@ -130,7 +130,7 @@ public final class FbdCraftMacroDefinition {
             }
             if ("FBD CRAFT MACRO IN".equals(type)) {
                 String portName = widget.optString("craftMacroPortName", "").trim();
-                int portType = widget.optInt("craftMacroPortType", -1);
+                int portType = CraftExactInteger.read(widget, "craftMacroPortType", -1);
                 boolean found = false;
                 for (Port input : inputs)
                     if (input.name.equals(portName) && input.type == portType) found = true;
@@ -155,7 +155,7 @@ public final class FbdCraftMacroDefinition {
         for (int i = 0; i < connections.length(); i++) {
             JSONObject edge = connections.optJSONObject(i);
             if (edge == null) throw new JSONException("Nested macro connection must be an object");
-            int source = edge.optInt("source", -1), target = edge.optInt("target", -1);
+            int source = CraftExactInteger.read(edge, "source", -1), target = CraftExactInteger.read(edge, "target", -1);
             String sourcePin = edge.optString("sourcePin", "").trim();
             String targetPin = edge.optString("targetPin", "").trim();
             if (source < 0 || target < 0 || source >= widgets.length() || target >= widgets.length()
@@ -201,7 +201,7 @@ public final class FbdCraftMacroDefinition {
         for (int i = 0; i < children.length(); i++) {
             JSONObject child = children.optJSONObject(i);
             if (child == null) throw new JSONException("Macro child must be an object");
-            int componentId = child.optInt("componentId", -1);
+            int componentId = CraftExactInteger.read(child, "componentId", -1);
             if (componentId < 0 || componentId > 10000)
                 throw new JSONException("Invalid macro child componentId");
             double x = child.optDouble("x", Double.NaN);
