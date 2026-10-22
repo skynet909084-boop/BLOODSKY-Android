@@ -170,6 +170,89 @@ class CraftEditorVisualContractTests(unittest.TestCase):
         self.assertIn('"Выравнивание", "Копировать", "Вставить", "Удалить"', menu)
         self.assertIn("i == 5 ? Color.rgb(235, 105, 90)", menu)
 
+    def test_delayed_editor_actions_require_original_screen_canvas_and_order(self):
+        helper = self.source.split("private boolean isEditorDialogContextCurrent(", 1)[1].split(
+            "private boolean sameSelectedWidgetObjects(", 1)[0]
+        for required in (
+            "!operatorMode", "editor != null", "editor == originalCanvas",
+            "originalScreenIndex >= 0", "originalScreenIndex == currentScreenIndex",
+            "currentScreenIndex < screens.size()",
+            "screens.get(currentScreenIndex) == originalScreen",
+            "sameWidgetOrder(originalWidgetOrder)",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, helper)
+
+    def test_fbd_wire_inversion_and_disconnection_are_screen_scoped(self):
+        inversion = self.source.split(
+            "private void showFbdInversionDialog(int sourceFilter)", 1)[1].split(
+            "private void showFbdDisconnectDialog()", 1)[0]
+        disconnect = self.source.split(
+            "private void showFbdDisconnectDialog(int sourceFilter)", 1)[1].split(
+            "/** Offer pin-specific wiring", 1)[0]
+        for body in (inversion, disconnect):
+            self.assertIn("operatorMode || editor == null", body)
+            self.assertIn("final Screen screen = screens.get(currentScreenIndex)", body)
+            self.assertIn("final EditorCanvas dialogCanvas = editor", body)
+            self.assertIn("new ArrayList<>(widgets)", body)
+            self.assertIn("isEditorDialogContextCurrent(dialogCanvas, screen, dialogScreenIndex,", body)
+            self.assertIn("screen.connections.contains(edge)", body)
+            self.assertIn("edge.source >= widgets.size()", body)
+            self.assertIn("edge.target >= widgets.size()", body)
+            self.assertIn("Экран FBD изменён: открой меню заново", body)
+        self.assertIn("!isInvertibleFbdBoolWire(edge, from.type, to.type)", inversion)
+        self.assertIn("commitFbdWireEdit(screen,", disconnect)
+
+    def test_two_stage_fbd_pin_picker_checks_context_before_each_stage(self):
+        picker = self.source.split("private void chooseFbdPins(int source, int target)", 1)[1].split(
+            "/** A named terminal's physical Y position", 1)[0]
+        self.assertIn("operatorMode || editor == null", picker)
+        self.assertIn("final Screen screenAtSelectionObject", picker)
+        self.assertIn("final EditorCanvas canvasAtSelection", picker)
+        self.assertIn("final ArrayList<Widget> widgetOrderAtSelection", picker)
+        self.assertEqual(picker.count("isEditorDialogContextCurrent(canvasAtSelection,"), 2)
+        self.assertIn("sourceChoice < 0 || sourceChoice >= sourcePins.length", picker)
+        self.assertIn("targetChoice < 0 || targetChoice >= compatiblePins.length", picker)
+        self.assertIn("widgets.get(source) != sourceAtSelection", picker)
+        self.assertIn("widgets.get(target) != targetAtSelection", picker)
+        self.assertIn("canUseUnpinnedFbdFallback(sourceAtSelection, targetAtSelection)", picker)
+        self.assertIn("hasCompatibleKnownFbdPins", picker)
+
+    def test_alignment_dialog_guards_selection_and_rolls_back_on_save_failure(self):
+        dialog = self.source.split("private void showAlignDialog()", 1)[1].split(
+            "private Button legacyToolbarButton(", 1)[0]
+        self.assertIn("operatorMode || editor == null", dialog)
+        self.assertEqual(dialog.count("isEditorDialogContextCurrent(dialogCanvas,"), 2)
+        self.assertEqual(dialog.count("editor.selected != dialogFocusedIndex"), 2)
+        self.assertEqual(dialog.count("!editor.selectedWidgets.equals(dialogSelection)"), 2)
+        single = self.source.split("private void alignSelectedWidget(String alignMode)", 1)[1].split(
+            "private void alignSelectedWidgets(String alignMode)", 1)[0]
+        group = self.source.split("private void alignSelectedWidgets(String alignMode)", 1)[1].split(
+            "private void showAlignDialog()", 1)[0]
+        self.assertIn("operatorMode || editor == null", single)
+        self.assertIn("operatorMode || editor == null", group)
+        self.assertIn("final float beforeX = w.x, beforeY = w.y", single)
+        self.assertIn("if (!persistProjectNow(true))", single)
+        self.assertIn("w.x = beforeX;", single)
+        self.assertIn("w.y = beforeY;", single)
+        self.assertIn("if (!persistProjectNow(true))", group)
+        for axis in ("x", "y", "w", "h"):
+            self.assertIn("widget." + axis + " = geometry[i][", group)
+        self.assertIn("CanvasGroupAlignment.apply(geometry, alignMode)", group)
+
+    def test_nested_macro_output_dialog_cannot_update_replaced_graph(self):
+        dialog = self.source.split("private void chooseNestedMacroOutput(int blockIndex, Widget block)", 1)[1].split(
+            "private void openNestedMacroGraphEditor(", 1)[0]
+        self.assertIn("operatorMode || editor == null", dialog)
+        self.assertIn("final NestedMacroEditSession sessionAtSelection = nestedMacroEdit", dialog)
+        self.assertIn("isEditorDialogContextCurrent(canvasAtSelection, screenAtSelection,", dialog)
+        self.assertIn("nestedMacroEdit != sessionAtSelection", dialog)
+        self.assertIn("widgets.get(blockIndex) != block", dialog)
+        self.assertIn("!contains(knownFbdPins(block, true), pins[which])", dialog)
+        self.assertIn("sessionAtSelection.outputNode = previousNode", dialog)
+        self.assertIn("sessionAtSelection.outputWidget = previousWidget", dialog)
+        self.assertIn("sessionAtSelection.outputPin = previousPin", dialog)
+
     def test_main_settings_reuse_existing_specialized_dialogs(self):
         editor = self.source.split("private void editSelectedWidget(boolean advanced)", 1)[1]
         for dialog in ("CraftListSettingsDialog", "CraftProgressBarSettingsDialog",
