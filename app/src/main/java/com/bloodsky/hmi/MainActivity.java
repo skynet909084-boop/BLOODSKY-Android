@@ -9514,41 +9514,76 @@ private String archiveProjectKey() {
     private boolean persistNestedMacroEdit(boolean synchronous) {
         NestedMacroEditSession session = nestedMacroEdit;
         if (session == null || currentScreenIndex != session.screenIndex) return false;
+        final JSONObject projectBefore = projectExtraFields;
+        final FbdCraftMacroDefinition definitionBefore = session.definition;
+        final int outputNodeBefore = session.outputNode;
+        final ArrayList<Widget> nestedWidgets = new ArrayList<>(widgets);
+        final ArrayList<Widget> hostWidgetsBefore =
+                new ArrayList<>(session.hostScreen.widgets);
+        final java.util.IdentityHashMap<Screen, ArrayList<Widget>> otherScreensBefore =
+                new java.util.IdentityHashMap<>();
+        boolean committed = false;
         try {
             saveActiveScreen();
             int outputNode = findCraftMacroOutputNode(widgets, session.outputWidget);
             if (outputNode < 0)
                 throw new IllegalArgumentException("Выходной блок удалён. Назначьте новый выход перед сохранением.");
-            session.outputNode = outputNode;
             FbdCraftMacroDefinition updated = updateCraftMacroDefinitionGraph(
                     session.definition, widgets, screens.get(currentScreenIndex).connections,
                     outputNode, session.outputPin);
+
+            // Stage all macro instances on detached widget copies. A failed
+            // project write must not poison unrelated screens or the host graph.
+            ArrayList<Widget> hostStaged = new ArrayList<>();
+            for (Widget widget : hostWidgetsBefore) hostStaged.add(copyWidget(widget));
+            session.hostScreen.widgets.clear();
+            session.hostScreen.widgets.addAll(hostStaged);
+            for (int i = 0; i < screens.size(); i++) {
+                if (i == session.screenIndex) continue;
+                Screen other = screens.get(i);
+                ArrayList<Widget> original = new ArrayList<>(other.widgets);
+                otherScreensBefore.put(other, original);
+                ArrayList<Widget> staged = new ArrayList<>();
+                for (Widget widget : original) staged.add(copyWidget(widget));
+                other.widgets.clear();
+                other.widgets.addAll(staged);
+            }
+            projectExtraFields = projectBefore == null ? new JSONObject()
+                    : new JSONObject(projectBefore.toString());
             FbdCraftMacroCatalog.upsert(projectExtraFields, updated);
             replaceCraftMacroInstances(session.hostScreen.widgets, updated);
-            for (int i = 0; i < screens.size(); i++) {
-                if (i != session.screenIndex) replaceCraftMacroInstances(screens.get(i).widgets, updated);
-            }
-            List<Widget> nestedWidgets = new ArrayList<>(widgets);
+            for (Screen other : otherScreensBefore.keySet())
+                replaceCraftMacroInstances(other.widgets, updated);
+
             session.definition = updated;
+            session.outputNode = outputNode;
             screens.set(session.screenIndex, session.hostScreen);
             widgets.clear();
             for (Widget widget : session.hostScreen.widgets) widgets.add(copyWidget(widget));
             nestedMacroEdit = null;
-            boolean saved;
-            try {
-                saved = persistProjectNow(synchronous);
-            } finally {
-                nestedMacroEdit = session;
-                screens.set(session.screenIndex, session.nestedScreen);
-                widgets.clear();
-                widgets.addAll(nestedWidgets);
-                if (editor != null) editor.invalidate();
-            }
-            return saved;
+            committed = persistProjectNow(synchronous);
+            return committed;
         } catch (Exception failure) {
             Toast.makeText(this, "Вложенный граф не сохранён: " + failure.getMessage(),
                     Toast.LENGTH_LONG).show();
             return false;
+        } finally {
+            nestedMacroEdit = session;
+            screens.set(session.screenIndex, session.nestedScreen);
+            widgets.clear();
+            widgets.addAll(nestedWidgets);
+            if (!committed) {
+                projectExtraFields = projectBefore;
+                session.definition = definitionBefore;
+                session.outputNode = outputNodeBefore;
+                session.hostScreen.widgets.clear();
+                session.hostScreen.widgets.addAll(hostWidgetsBefore);
+                for (Map.Entry<Screen, ArrayList<Widget>> entry : otherScreensBefore.entrySet()) {
+                    entry.getKey().widgets.clear();
+                    entry.getKey().widgets.addAll(entry.getValue());
+                }
+            }
+            if (editor != null) editor.invalidate();
         }
     }
 
