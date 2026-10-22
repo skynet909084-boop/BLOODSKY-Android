@@ -121,14 +121,30 @@ public class ProjectMediaService {
         }
     }
 
+    /** True only for generated directory IDs, never raw project names or user paths. */
+    public static boolean isValidProjectDirectoryId(String id) {
+        // The decimal form supports the legacy fallback for unavailable SHA-256.
+        return id != null && id.matches("proj_(?:[0-9a-f]{16}|-?[0-9]{1,10})");
+    }
+
     /** Remove all private media generations belonging to a project after catalog deletion. */
     public static boolean deleteProjectMedia(File filesDir, String projectJson) throws IOException {
-        if (filesDir == null) throw new IOException("Missing app files directory");
         final String projectId;
         try { projectId = getOrGenerateProjectId(projectJson); }
         catch (RuntimeException invalidProject) {
             throw new IOException("Project has no stable media identity", invalidProject);
         }
+        return deleteProjectMediaById(filesDir, projectId);
+    }
+
+    /**
+     * Retry an already committed deletion using its generated, path-safe ID.
+     * Never accepts arbitrary paths or display names from persisted cleanup data.
+     */
+    public static boolean deleteProjectMediaById(File filesDir, String projectId) throws IOException {
+        if (filesDir == null) throw new IOException("Missing app files directory");
+        if (!isValidProjectDirectoryId(projectId))
+            throw new IOException("Invalid project media directory identity");
         File appRoot = filesDir.getCanonicalFile();
         File projectsPath = new File(appRoot, "projects").getAbsoluteFile();
         File projectsRoot = projectsPath.getCanonicalFile();
