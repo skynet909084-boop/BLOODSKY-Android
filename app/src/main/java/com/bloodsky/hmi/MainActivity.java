@@ -5613,6 +5613,128 @@ public class MainActivity extends Activity {
     }
 
     /**
+     * Compact Craft ID13 linear setpoint editor. The advanced settings retain
+     * explicit TCP FC03/FC06 mapping and write permission controls.
+     */
+    private void showOriginalLinearSetterSettings(Widget widget) {
+        final int panelColor = Color.rgb(36, 36, 36);
+        final int labelColor = Color.rgb(210, 210, 210);
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setGravity(Gravity.CENTER_HORIZONTAL);
+        form.setPadding(dp(24), dp(8), dp(24), dp(12));
+        form.setBackgroundColor(panelColor);
+
+        TextView heading = new TextView(this);
+        heading.setText("Настройки");
+        heading.setGravity(Gravity.CENTER);
+        heading.setTextColor(labelColor);
+        heading.setTextSize(26);
+        form.addView(heading, new LinearLayout.LayoutParams(-1, dp(48)));
+
+        TextView device = new TextView(this);
+        device.setText("Устройство: " + CraftLinearSetter.sourceDeviceLabel(widget.extraFields));
+        device.setTextColor(labelColor);
+        device.setTextSize(21);
+        device.setGravity(Gravity.CENTER);
+        form.addView(device, new LinearLayout.LayoutParams(-1, dp(52)));
+
+        LinearLayout registerRow = new LinearLayout(this);
+        registerRow.setGravity(Gravity.CENTER);
+        TextView registerLabel = new TextView(this);
+        registerLabel.setText("Рег:");
+        registerLabel.setTextColor(labelColor);
+        registerLabel.setTextSize(20);
+        registerRow.addView(registerLabel);
+        EditText registerField = propertyField(
+                Integer.toString(CraftLinearSetter.sourceRegister(widget.extraFields)),
+                InputType.TYPE_CLASS_NUMBER);
+        registerField.setTextColor(labelColor);
+        registerField.setTextSize(21);
+        registerField.setGravity(Gravity.CENTER);
+        registerField.setSingleLine(true);
+        registerField.setContentDescription("Регистр линейного задатчика Craft");
+        registerRow.addView(registerField, new LinearLayout.LayoutParams(dp(90), dp(52)));
+        form.addView(registerRow, new LinearLayout.LayoutParams(-1, dp(60)));
+
+        LinearLayout maximumRow = new LinearLayout(this);
+        maximumRow.setGravity(Gravity.CENTER);
+        TextView maxLabel = new TextView(this);
+        maxLabel.setText("Макс:");
+        maxLabel.setTextColor(labelColor);
+        maxLabel.setTextSize(20);
+        maximumRow.addView(maxLabel);
+        EditText maxField = propertyField(
+                Integer.toString(CraftLinearSetter.maximum(widget.extraFields)),
+                InputType.TYPE_CLASS_NUMBER);
+        maxField.setTextColor(labelColor);
+        maxField.setTextSize(21);
+        maxField.setGravity(Gravity.CENTER);
+        maxField.setSingleLine(true);
+        maxField.setContentDescription("Максимум линейного задатчика Craft");
+        maximumRow.addView(maxField, new LinearLayout.LayoutParams(dp(95), dp(52)));
+        form.addView(maximumRow, new LinearLayout.LayoutParams(-1, dp(60)));
+
+        CheckBox vertical = new CheckBox(this);
+        vertical.setText("Вертикальный");
+        vertical.setTextSize(17);
+        vertical.setTextColor(labelColor);
+        vertical.setChecked(widget.extraFields.optBoolean("craftLinearVertical", false));
+        form.addView(vertical, new LinearLayout.LayoutParams(-1, dp(48)));
+
+        TextView advanced = new TextView(this);
+        advanced.setText("Дополнительно: привязка Modbus");
+        advanced.setTextColor(Color.rgb(173, 173, 173));
+        advanced.setTextSize(13);
+        advanced.setGravity(Gravity.CENTER);
+        advanced.setContentDescription("Расширенные настройки линейного задатчика");
+        form.addView(advanced, new LinearLayout.LayoutParams(-1, dp(46)));
+
+        AlertDialog dialog = new AlertDialog.Builder(this,
+                android.R.style.Theme_Material_Dialog_Alert)
+                .setView(form)
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Сохранить", null)
+                .create();
+        advanced.setOnClickListener(v -> {
+            dialog.dismiss();
+            editSelectedWidget(true);
+        });
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                .setOnClickListener(v -> {
+                    JSONObject previous = widget.extraFields;
+                    try {
+                        int register = Integer.parseInt(registerField.getText().toString().trim());
+                        int maximum = CraftLinearSetter.requireMaximum(maxField.getText().toString());
+                        widget.extraFields = CraftLinearSetter.withSettings(
+                                previous, register, maximum, vertical.isChecked());
+                        if (!persistProjectNow(true)) {
+                            widget.extraFields = previous;
+                            saveActiveScreen();
+                            Toast.makeText(this, "Не удалось сохранить задатчик", Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                        if (editor != null) editor.invalidate();
+                        dialog.dismiss();
+                    } catch (Exception invalid) {
+                        widget.extraFields = previous;
+                        saveActiveScreen();
+                        Toast.makeText(this, invalid instanceof NumberFormatException
+                                ? "Укажи целые регистр (0–65535) и максимум (1–65535)"
+                                : invalid.getMessage(), Toast.LENGTH_LONG).show();
+                    }
+                }));
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(
+                    new android.graphics.drawable.ColorDrawable(panelColor));
+            int maxWidth = (int) (getResources().getDisplayMetrics().widthPixels * 0.78f);
+            dialog.getWindow().setLayout(Math.min(dp(620), maxWidth),
+                    android.view.WindowManager.LayoutParams.WRAP_CONTENT);
+        }
+    }
+
+    /**
      * Craft ID4's compact numeric display inspector. Keep the extended endpoint
      * remapping UI available without turning an imported source on automatically.
      */
@@ -6061,6 +6183,10 @@ public class MainActivity extends Activity {
         }
         if (!advanced && OriginalCraftNumericIndicator.TYPE.equals(w.type)) {
             showOriginalNumericIndicatorSettings(w);
+            return;
+        }
+        if (!advanced && "Линейный задатчик Craft".equals(w.type)) {
+            showOriginalLinearSetterSettings(w);
             return;
         }
         LinearLayout form = new LinearLayout(this);
