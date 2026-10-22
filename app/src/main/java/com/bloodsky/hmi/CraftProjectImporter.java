@@ -454,7 +454,14 @@ public final class CraftProjectImporter {
                 if (other.has("isConstant")) widget.put("craftNamedConstantMode", other.optBoolean("isConstant"));
                 if (other.has("constant")) widget.put("craftNamedConstant", String.valueOf(other.opt("constant")));
             } else if (type.startsWith("FBD CRAFT VAR ")) {
-                widget.put("craftVarBit", other.optInt("bit", 0));
+                int sourceBit = CraftExactInteger.read(other, "bit", 0);
+                // Craft BOOL variables address one bit in a 16-bit word.
+                // An oversize/fractional JSON value must never be coerced
+                // into another original register bit on project import.
+                if ((componentId == 101 || componentId == 102)
+                        && (sourceBit < 0 || sourceBit > 15))
+                    throw new IllegalArgumentException("Invalid original Craft BOOL bit");
+                widget.put("craftVarBit", sourceBit);
                 if (other.has("isConstant")) widget.put("craftVarConstantMode", other.optBoolean("isConstant"));
                 if (other.has("constant")) widget.put("craftVarConstant", String.valueOf(other.opt("constant")));
             }
