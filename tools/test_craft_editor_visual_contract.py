@@ -391,6 +391,42 @@ class CraftEditorVisualContractTests(unittest.TestCase):
             with self.subTest(required=required):
                 self.assertIn(required, branch)
 
+    def test_nested_macro_commit_is_atomic_across_catalog_and_screens(self):
+        method = self.source.split("private boolean persistNestedMacroEdit(boolean synchronous)", 1)[1].split(
+            "private void ", 1)[0]
+        for required in (
+            "final JSONObject projectBefore = projectExtraFields",
+            "final FbdCraftMacroDefinition definitionBefore",
+            "final int outputNodeBefore",
+            "final ArrayList<Widget> nestedWidgets",
+            "final ArrayList<Widget> hostWidgetsBefore",
+            "IdentityHashMap<Screen, ArrayList<Widget>> otherScreensBefore",
+            "hostStaged.add(copyWidget(widget))",
+            "staged.add(copyWidget(widget))",
+            "otherScreensBefore.put(other, original)",
+            "new JSONObject(projectBefore.toString())",
+            "FbdCraftMacroCatalog.upsert(projectExtraFields, updated)",
+            "replaceCraftMacroInstances(session.hostScreen.widgets, updated)",
+            "screens.set(session.screenIndex, session.hostScreen)",
+            "committed = persistProjectNow(synchronous)",
+            "finally {",
+            "nestedMacroEdit = session",
+            "screens.set(session.screenIndex, session.nestedScreen)",
+            "widgets.addAll(nestedWidgets)",
+            "if (!committed)",
+            "projectExtraFields = projectBefore",
+            "session.definition = definitionBefore",
+            "session.outputNode = outputNodeBefore",
+            "session.hostScreen.widgets.addAll(hostWidgetsBefore)",
+            "entry.getKey().widgets.addAll(entry.getValue())",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, method)
+        self.assertLess(method.index("staged.add(copyWidget(widget))"),
+                        method.index("FbdCraftMacroCatalog.upsert"))
+        self.assertLess(method.index("FbdCraftMacroCatalog.upsert"),
+                        method.index("committed = persistProjectNow(synchronous)"))
+
     def test_main_settings_reuse_existing_specialized_dialogs(self):
         editor = self.source.split("private void editSelectedWidget(boolean advanced)", 1)[1]
         for dialog in ("CraftListSettingsDialog", "CraftProgressBarSettingsDialog",
