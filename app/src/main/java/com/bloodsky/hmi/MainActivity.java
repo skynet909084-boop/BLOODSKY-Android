@@ -5702,10 +5702,10 @@ public class MainActivity extends Activity {
 
         dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
                 .setOnClickListener(v -> {
+                    JSONObject old = lamp.extraFields;
                     try {
                         int register = Integer.parseInt(registerField.getText().toString().trim());
                         int bit = Integer.parseInt(bitField.getText().toString().trim());
-                        JSONObject old = lamp.extraFields;
                         JSONObject updated = OriginalCraftLampConnection.withAddress(old, register, bit);
                         lamp.extraFields = updated;
                         if (!persistProjectNow(true)) {
@@ -5717,6 +5717,8 @@ public class MainActivity extends Activity {
                         if (editor != null) editor.invalidate();
                         dialog.dismiss();
                     } catch (Exception invalid) {
+                        lamp.extraFields = old;
+                        saveActiveScreen();
                         Toast.makeText(this, invalid instanceof NumberFormatException
                                 ? "Укажи целые регистр (0–65535) и бит (0–15)"
                                 : invalid.getMessage(), Toast.LENGTH_LONG).show();
@@ -12105,9 +12107,12 @@ public class MainActivity extends Activity {
                     drawCraftTrendGraph(canvas, w, liveValues.get(i), paint);
                 } else if ("Индикатор".equals(w.type) || "Двухпозиционный индикатор".equals(w.type)) {
                     String indicatorValue = liveValues.get(i);
+                    boolean hasBinding = w.connectionInfo != null && !w.connectionInfo.trim().isEmpty();
+                    Boolean state = OriginalCraftLampConnection.isBitRegister(w.extraFields)
+                            ? OriginalCraftLampConnection.decodeBit(indicatorValue, w.extraFields)
+                            : CraftIndicatorSignal.decode(indicatorValue);
                     boolean signalUnavailable = CraftIndicatorSignal.unavailable(indicatorValue, operatorMode,
-                            w.connectionInfo != null && !w.connectionInfo.trim().isEmpty());
-                    Boolean state = CraftIndicatorSignal.decode(indicatorValue);
+                            hasBinding) || (operatorMode && (hasBinding || indicatorValue != null) && state == null);
                     Bitmap lamp = signalUnavailable ? null : originalIndicatorBitmap(w, Boolean.TRUE.equals(state));
                     paint.setAlpha(255);
                     // Original ImageView uses FIT_XY and ten raw pixels of padding.
