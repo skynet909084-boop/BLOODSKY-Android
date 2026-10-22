@@ -201,6 +201,10 @@ class CraftEditorVisualContractTests(unittest.TestCase):
             self.assertIn("edge.target >= widgets.size()", body)
             self.assertIn("Экран FBD изменён: открой меню заново", body)
         self.assertIn("!isInvertibleFbdBoolWire(edge, from.type, to.type)", inversion)
+        self.assertIn("commitFbdWireEdit(screen,", inversion)
+        self.assertNotIn("fbdWireHistory.clear()", inversion)
+        self.assertNotIn("fbdWireHistory.recordBefore(", inversion)
+        self.assertIn("toggleFbdBooleanWireInversion(edge, from.type, to.type)", inversion)
         self.assertIn("commitFbdWireEdit(screen,", disconnect)
 
     def test_two_stage_fbd_pin_picker_checks_context_before_each_stage(self):
