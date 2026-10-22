@@ -6,10 +6,9 @@ import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
 
 public class CraftVoiceRecognitionImportTest {
-    @Test public void importsCraft27AsDisabledPlaceholderAndPreservesVoicePhrases() throws Exception {
+    @Test public void importsCraft27WithRecognitionDisabledAndPreservesVoicePhrases() throws Exception {
         String source = "{\"TableNameProject\":{\"name\":\"Voice project\",\"countScreen\":1},"
                 + "\"TableConnections\":[],\"TableComponent\":[{"
                 + "\"componentId\":27,\"text\":\"Voice control\",\"x\":12,\"y\":24,"
@@ -22,7 +21,7 @@ public class CraftVoiceRecognitionImportTest {
                 .getJSONArray("widgets").getJSONObject(0);
 
         assertEquals("Распознавание речи Craft", voice.getString("type"));
-        assertTrue(voice.getBoolean("craftUnsupportedComponent"));
+        assertFalse(voice.optBoolean("craftUnsupportedComponent", false));
         assertFalse(voice.getBoolean("craftVoiceRecognitionEnabled"));
         assertEquals("", voice.getString("connectionInfo"));
         assertEquals(27, voice.getInt("craftComponentId"));

@@ -26,7 +26,7 @@ public class CraftVoiceRecognitionProjectTest {
         JSONObject project = new JSONObject(CraftProjectImporter.convert(source().toString()));
         JSONObject widget = project.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets").getJSONObject(0);
         assertEquals("Распознавание речи Craft", widget.getString("type"));
-        assertFalse(widget.getBoolean("craftUnsupportedComponent"));
+        assertFalse(widget.optBoolean("craftUnsupportedComponent", false));
         assertFalse(widget.getBoolean("craftVoiceRecognitionEnabled"));
         assertEquals(-1, widget.getInt("craftVoiceRegisterAddress"));
         widget.put("craftVoiceRegisterAddress", 47).put("craftVoiceRecognitionEnabled", true);
