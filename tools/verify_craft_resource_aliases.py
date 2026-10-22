@@ -126,7 +126,7 @@ def verify(decoded_root: Path, app_root: Path, report: Path,
         "|---|---|---|---|",
     ]
     lines.extend(
-        f"| {group} | \`{original}\` | \`{alias}\` | \`{sha}\` |"
+        f"| {group} | `{original}` | `{alias}` | `{sha}` |"
         for group, original, alias, sha in rows
     )
     report.write_text("\n".join(lines) + "\n", encoding="utf-8")
