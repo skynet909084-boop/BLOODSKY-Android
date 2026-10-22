@@ -37,6 +37,44 @@ public class FbdCraftMacroDefinitionTest {
                 .getJSONObject(0).getString("vendorTag"));
     }
 
+    @Test public void macroBooleanInputKeepsUnavailableDistinctFromFalse() throws Exception {
+        String definitionJson = "{\"name\":\"Gate\",\"countIn\":1,"
+                + "\"nameIn1\":\"Enable\",\"typeIn1\":1,"
+                + "\"nameOut\":\"Q\",\"typeOut\":1,"
+                + "\"fbInMacros\":[],\"bloodskyGraph\":{"
+                + "\"widgets\":[{\"type\":\"FBD CRAFT MACRO IN\","
+                + "\"craftMacroPortName\":\"Enable\",\"craftMacroPortType\":1}],"
+                + "\"connections\":[],\"outputNode\":0,"
+                + "\"outputPin\":\"Q\",\"outputPort\":\"Q\"}}";
+        FbdCraftMacroDefinition definition = FbdCraftMacroDefinition.fromJson(definitionJson);
+        MainActivity.Widget source = new MainActivity.Widget();
+        source.type = "FBD CRAFT MQTT SUB BOOL";
+        source.craftMqttValue = null;
+        MainActivity.Widget macro = new MainActivity.Widget();
+        macro.type = "FBD CRAFT MACRO";
+        macro.extraFields.put("craftMacroDefinition", definition.toJson());
+        java.util.List<MainActivity.Widget> widgets = java.util.Arrays.asList(source, macro);
+        java.util.List<MainActivity.FbdConnection> edges = java.util.Collections.singletonList(
+                MainActivity.connectionFromJson(new JSONObject().put("source", 0).put("target", 1)
+                        .put("sourcePin", "Q").put("targetPin", "Enable")));
+        boolean[] visiting = new boolean[2], valid = new boolean[2], values = new boolean[2];
+        double[] numeric = new double[2];
+        assertFalse(MainActivity.evaluateFbdBlock(widgets, edges, 1, visiting, valid, values, numeric));
+        assertTrue("missing MQTT BOOL input must make macro output unavailable",
+                Double.isNaN(MainActivity.evaluateFbdBlockNumeric(widgets, edges, 1,
+                        visiting, valid, values, numeric)));
+        assertFalse(macro.fbdOutputAvailable);
+
+        source.craftMqttValue = 0.0;
+        valid = new boolean[2]; values = new boolean[2]; numeric = new double[2];
+        assertFalse(MainActivity.evaluateFbdBlock(widgets, edges, 1,
+                new boolean[2], valid, values, numeric));
+        assertEquals("valid FALSE remains a known BOOL value", 0.0,
+                MainActivity.evaluateFbdBlockNumeric(widgets, edges, 1,
+                        new boolean[2], valid, values, numeric), 0.0);
+        assertTrue(macro.fbdOutputAvailable);
+    }
+
     @Test public void preservesNestedGraphAcrossMcrAndProjectCatalogRoundTrips() throws Exception {
         String graph = "\"bloodskyGraph\":{" +
                 "\"widgets\":[{\"type\":\"FBD CRAFT MACRO IN\","
