@@ -199,7 +199,17 @@ public final class CraftProjectExporter {
                     }
                     writeEditedMediaPaths(componentId, widget, merged);
                     Object raw = source.opt("jsTableComponent_other");
-                    output.put("jsTableComponent_other", raw instanceof String ? merged.toString() : merged);
+                    if (raw instanceof String) {
+                        String serializedOther = merged.toString();
+                        output.put("jsTableComponent_other", serializedOther);
+                        // Keep the in-memory source row synchronized: the later
+                        // connection writer uses it as its base and must not
+                        // discard edited operator/mode fields on a wired block.
+                        source.put("jsTableComponent_other", serializedOther);
+                    } else {
+                        output.put("jsTableComponent_other", new JSONObject(merged.toString()));
+                        source.put("jsTableComponent_other", new JSONObject(merged.toString()));
+                    }
                 }
             }
             sourceRowsByScreen.add(sourceRowsForScreen);
