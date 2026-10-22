@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 5016)
+Total output lines: 300
+
 package com.bloodsky.hmi;
 
 import android.graphics.Color;
@@ -157,9 +160,7 @@ public final class CraftProjectImporter {
             JSONObject other = objectValue(rawOther);
             JSONObject retained = new JSONObject();
             java.util.Iterator<String> keys = other.keys();
-            while (keys.hasNext()) {
-                String key = keys.next();
-                if (!key.toLowerCase(java.util.Locale.ROOT).contains("cloud"))
+            while (key…16 tokens truncated…         if (!key.toLowerCase(java.util.Locale.ROOT).contains("cloud"))
                     retained.put(key, other.get(key));
             }
             component.put("jsTableComponent_other", rawOther instanceof String ? retained.toString() : retained);
@@ -231,7 +232,7 @@ public final class CraftProjectImporter {
         else if (componentId == 11) type = "Прогресс-бар"; // Craft progress bar
         else if (componentId == 12 || componentId == 24) type = "Шкала / Стрелка"; // Existing editable gauge; original styling remains partial
         else if (componentId == 18) type = "Входящее SMS"; // CustomComponents.x; opt-in runtime only
-        else if (componentId == 27) type = "Распознавание речи Craft"; // visible disabled placeholder; original recognition flow is not yet ported
+        else if (componentId == 27) type = "Распознавание речи Craft"; // guarded one-shot local recognition
         else if (componentId == 135 && craftMacro != null) type = "FBD CRAFT MACRO";
         else {
             String fbdType = FbdCraftMacroGraphAdapter.typeForComponentId(componentId, other);
@@ -298,6 +299,9 @@ public final class CraftProjectImporter {
                 }
                 soundPaths.put(resolvedPath);
             }
+Warning: truncated output (original token count: 5283)
+Total output lines: 300
+
             widget.put("craftSoundPaths", soundPaths);
             widget.put("craftSoundEnabled", false);
         }
@@ -439,24 +443,7 @@ public final class CraftProjectImporter {
                 if (other.has("constant")) widget.put("craftVarConstant", String.valueOf(other.opt("constant")));
             }
             if ("FBD CRAFT VAR OUT FLOAT".equals(type)) {
-                widget.put("craftSwapWord", other.optBoolean("isHighRegister", false));
-                widget.put("craftSwapByte", other.optBoolean("isHighByte", false));
-            }
-            if ("FBD CRAFT SENSOR ORIENTATION".equals(type))
-                widget.put("craftSensorAxis", Math.max(1, Math.min(3, other.optInt("type", 1))));
-            if ("FBD CRAFT SUNRISE".equals(type))
-                widget.put("craftSunriseMode", other.optInt("type", 1) == 2 ? "SS" : "SR");
-            if (type.startsWith("FBD CRAFT MQTT ")) {
-                widget.put("craftMqttTopic", other.optString("topic", ""));
-                widget.put("craftMqttType", other.optInt("typeQ", other.optInt("typeIn", 1)));
-                widget.put("craftMqttServer", other.optInt("numMqttServer", 1));
-                if (other.has("mqttRetain")) widget.put("craftMqttRetain", other.optBoolean("mqttRetain"));
-            }
-        }
-        if (componentId == 8) {
-            JSONObject numericConnection = objectValue(source.opt("jsTableComponent_connectionInfo"));
-            JSONObject numericFields = CraftNumericInput.fromCraft(numericConnection, other);
-            java.util.Iterator<String> numericKeys = numericFields.keys();
+                widget.put("craftSwapWord", other.optBoolean("isHighRegister", false…283 tokens truncated…Fields.keys();
             while (numericKeys.hasNext()) {
                 String key = numericKeys.next();
                 widget.put(key, numericFields.get(key));
@@ -588,7 +575,13 @@ public final class CraftProjectImporter {
             widget.put("craftUnsupportedComponent", true);
             widget.put("text", "Компонент Craft " + componentId + ": " + widget.optString("text"));
         }
-        if (componentId == 27) widget.put("craftVoiceRecognitionEnabled", false);
+        if (componentId == 27) {
+            // Recognition requires explicit local enablement and a manually selected project register.
+            widget.put("craftVoiceRecognitionEnabled", false);
+            int localRegister = integer(other.opt("bloodskyVoiceRegisterAddress"), -1);
+            if (!CraftVoiceRecognitionPolicy.validProjectRegister(localRegister)) localRegister = -1;
+            widget.put("craftVoiceRegisterAddress", localRegister);
+        }
         if (componentId == 5) {
             // OriginalIndicator reads the legacy other object directly.
             widget.put("other", other);
@@ -598,7 +591,7 @@ public final class CraftProjectImporter {
     }
 
     private static boolean isSupportedComponent(int id) {
-        return id == 1 || id == 2 || id == 4 || id == 5 || id == 6 || id == 7 || id == 9 || id == 10 || id == 11 || id == 12 || id == 13 || id == 16 || id == 17 || id == 18 || id == 20 || id == 21 || id == 22 || id == 23 || id == 24 || id == 25 || id == 26 || id == 28;
+        return id == 1 || id == 2 || id == 4 || id == 5 || id == 6 || id == 7 || id == 9 || id == 10 || id == 11 || id == 12 || id == 13 || id == 16 || id == 17 || id == 18 || id == 20 || id == 21 || id == 22 || id == 23 || id == 24 || id == 25 || id == 26 || id == 27 || id == 28;
     }
 
     private static String timerMode(int mode) {

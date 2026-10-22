@@ -159,6 +159,9 @@ public class MainActivity extends Activity {
     private static final int VOICE_ONLINE = 2;
     private int pendingVoiceMode;
     private android.speech.SpeechRecognizer speechRecognizer;
+    private Widget pendingCraftVoiceWidget;
+    private Widget activeCraftVoiceWidget;
+    private boolean pendingCraftVoicePermission;
     private final android.location.LocationListener fbdLocationListener = new android.location.LocationListener() {
         @Override public void onLocationChanged(android.location.Location location) {
             if (location == null || !operatorMode || editor == null) return;
@@ -425,9 +428,15 @@ public class MainActivity extends Activity {
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_VOICE_PERMISSION) {
-            if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED)
-                startVoiceRecognition(pendingVoiceMode);
-            else Toast.makeText(this, "Для голосового управления нужен доступ к микрофону", Toast.LENGTH_LONG).show();
+            Widget requestedCraftVoice = pendingCraftVoiceWidget;
+            pendingCraftVoiceWidget = null;
+            boolean craftRequest = pendingCraftVoicePermission;
+            pendingCraftVoicePermission = false;
+            if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                if (craftRequest) {
+                    if (requestedCraftVoice != null) startCraftVoiceRecognition(requestedCraftVoice);
+                } else startVoiceRecognition(pendingVoiceMode);
+            } else Toast.makeText(this, "Для голосового управления нужен доступ к микрофону", Toast.LENGTH_LONG).show();
             return;
         }
         if (requestCode == REQUEST_SMS_SEND_PERMISSION) {
@@ -483,6 +492,7 @@ public class MainActivity extends Activity {
         stopModbusPolling();
         stopFbdSensors();
         stopCraftMqtt();
+        pendingCraftVoiceWidget = null;
         releaseVoiceRecognizer();
         resetCraftAlarmEdges();
         stopAllCraftAlarmPlayback();
@@ -888,6 +898,9 @@ public class MainActivity extends Activity {
                 if (oldName != null) restore.putString("project_name", oldName);
                 if (!restore.commit()) android.util.Log.e("BLOODSKY", "Could not persist restored catalog");
                 throw new IOException("Не удалось удалить проект");
+Warning: truncated output (original token count: 5249)
+Total output lines: 300
+
             }
             showHome();
             if (deletingActive) { widgets.clear(); screens.clear(); projectExtraFields = new JSONObject(); clipboardWidgets = null; imageCache.clear(); gifCache.clear(); }
@@ -1038,28 +1051,7 @@ public class MainActivity extends Activity {
                 try {
                     report = readModbusRegisters(host, port, unit, startAddress, count, functionCode);
                 } catch (Exception ex) {
-                    report = "Ошибка Modbus TCP: " + (ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage());
-                }
-                final String finalReport = report;
-                runOnUiThread(() -> result.setText(finalReport));
-            }, "bloodsky-modbus-scan").start();
-        }), new LinearLayout.LayoutParams(-1, dp(52)));
-        root.addView(result, new LinearLayout.LayoutParams(-1, 0, 1));
-        setContentView(root);
-    }
-
-    private void showUsbSerialScreen() {
-        final int screenGeneration = ++manualUsbScreenGeneration;
-        manualUsbScreenVisible = true;
-        stopModbusPolling();
-        editor = null;
-        closeManualUsbConnection();
-        root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.rgb(241, 245, 249));
-        root.addView(heading("BLOODSKY • USB Serial RTU"), new LinearLayout.LayoutParams(-1, dp(60)));
-        root.addView(action("‹ Назад", this::showHome), new LinearLayout.LayoutParams(-1, dp(48)));
-        ScrollView scroll = new ScrollView(this);
+                    report = "Ошибка Modbus TCP: " + (ex.getMessage() == null ? ex.getClass().getSimpleNam…249 tokens truncated… new ScrollView(this);
         LinearLayout form = new LinearLayout(this);
         form.setOrientation(LinearLayout.VERTICAL);
         form.setPadding(dp(16), dp(8), dp(16), dp(12));
@@ -1788,6 +1780,9 @@ public class MainActivity extends Activity {
                         }
                     }
                 }
+Warning: truncated output (original token count: 5356)
+Total output lines: 300
+
                 for (int widgetIndex : gatewayIndices) {
                     if (!pollSession.accepts(sessionToken)) return;
                     Widget gatewayWidget = snapshotWidgets.get(widgetIndex);
@@ -1913,26 +1908,7 @@ public class MainActivity extends Activity {
                                 final String sample = entry.getValue();
                                 final int interval = w.extraFields.optInt("craftArchiveIntervalSeconds", 1);
                                 final int maxRows = w.extraFields.optInt("craftArchiveMaxRows", 10000);
-                                modbusExecutor.execute(() -> {
-                                    LocalArchiveStore store = new LocalArchiveStore(MainActivity.this);
-                                    try { store.record(targetProject, targetWidget, System.currentTimeMillis(), sample, interval, maxRows); }
-                                    catch (Exception failure) { android.util.Log.e("BLOODSKY", "Archive sample failed", failure); }
-                                    finally { store.close(); }
-                                });
-                            } catch (Exception failure) {
-                                android.util.Log.e("BLOODSKY", "Archive setup failed", failure);
-                            }
-                        }
-                        if (isCraftRegisterSource(w.type)) {
-                            try {
-                                String[] words = entry.getValue().split(",");
-                                w.craftRegisterWord0 = Integer.parseInt(words[0]);
-                                w.craftRegisterWord1 = words.length > 1 ? Integer.parseInt(words[1]) : 0;
-                                w.craftRegisterValid = true;
-                            } catch (Exception invalid) { w.craftRegisterValid = false; }
-                        }
-                        if (isCraftRegisterSource(w.type) && entry.getValue() != null
-                                && entry.getValue().startsWith("ERR:")) w.craftRegisterValid = false;
+                                modbusExecu…356 tokens truncated…d = false;
                         if ("FBD Вход".equals(w.type)) {
                             w.inputValue = isActiveModbusValue(entry.getValue());
                         } else if ("Звуковой сигнал".equals(w.type)) {
@@ -3357,6 +3333,11 @@ public class MainActivity extends Activity {
     private void toggleOperatorMode() {
         if (nestedMacroEdit != null) return;
         if (!persistProjectNow(true)) return;
+        if (operatorMode) {
+            pendingCraftVoiceWidget = null;
+            pendingCraftVoicePermission = false;
+            releaseVoiceRecognizer();
+        }
         // Editing must not advance timers. Re-entering runtime starts a fresh
         // clock epoch rather than resuming an old saved elapsedRealtime value.
         if (!operatorMode) {
@@ -3583,6 +3564,9 @@ public class MainActivity extends Activity {
     }
 
     private interface TextValueChanged { void changed(String value); }
+Warning: truncated output (original token count: 5963)
+Total output lines: 300
+
     private TextView networkColumnHeading(String text) {
         TextView heading = new TextView(this); heading.setText(text); heading.setTextColor(Color.rgb(237, 176, 59)); heading.setGravity(Gravity.CENTER); heading.setTextSize(13); return heading;
     }
@@ -3719,53 +3703,7 @@ public class MainActivity extends Activity {
         LinearLayout rows = new LinearLayout(this); rows.setOrientation(LinearLayout.VERTICAL);
         ScrollView scroll = new ScrollView(this); scroll.addView(rows); page.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
         try {
-            android.bluetooth.BluetoothAdapter adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
-            if (adapter == null) throw new IllegalStateException("Bluetooth не поддерживается этим устройством");
-            java.util.Set<android.bluetooth.BluetoothDevice> bonded = adapter.getBondedDevices();
-            if (bonded == null || bonded.isEmpty()) throw new IllegalStateException("Нет сопряжённых Bluetooth-устройств");
-            for (android.bluetooth.BluetoothDevice device : bonded) {
-                String deviceName = device.getName(); String address = device.getAddress();
-                LinearLayout row = new LinearLayout(this); row.setOrientation(LinearLayout.VERTICAL); row.setPadding(dp(18), dp(12), dp(12), dp(12));
-                TextView title = new TextView(this); title.setText(deviceName == null || deviceName.trim().isEmpty() ? "Bluetooth" : deviceName); title.setTextColor(Color.WHITE); title.setTextSize(16);
-                TextView mac = new TextView(this); mac.setText(address); mac.setTextColor(Color.LTGRAY); row.addView(title); row.addView(mac);
-                row.setBackgroundResource(android.R.drawable.list_selector_background);
-                row.setOnClickListener(v -> {
-                    JSONArray list = CraftServerConnectionStore.connections(projectExtraFields);
-                    for (int i = 0; i < list.length(); i++) {
-                        JSONObject existing = list.optJSONObject(i);
-                        if (existing != null && existing.optInt("type") == 1 && address.equalsIgnoreCase(existing.optString("endpoint", ""))) {
-                            Toast.makeText(this, "Это Bluetooth-устройство уже добавлено", Toast.LENGTH_LONG).show(); return;
-                        }
-                    }
-                    try {
-                        JSONObject connection = CraftServerConnectionStore.newConnection(1)
-                                .put("name", title.getText().toString()).put("endpoint", address);
-                        list.put(connection); projectExtraFields.put(CraftServerConnectionStore.CONNECTIONS_KEY, list);
-                        if (!persistProjectNow(true)) { Toast.makeText(this, "Не удалось сохранить устройство", Toast.LENGTH_LONG).show(); return; }
-                        showCraftServerList(returnsToDevices, deviceSlot);
-                    } catch (Exception failure) { Toast.makeText(this, "Не удалось сохранить устройство", Toast.LENGTH_LONG).show(); }
-                });
-                rows.addView(row); View divider = new View(this); divider.setBackgroundColor(Color.rgb(76, 76, 76)); rows.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
-            }
-        } catch (Exception unavailable) {
-            TextView message = new TextView(this); message.setText(unavailable.getMessage() == null ? "Список Bluetooth-устройств недоступен" : unavailable.getMessage());
-            message.setTextColor(Color.LTGRAY); message.setPadding(dp(18), dp(18), dp(18), dp(18)); rows.addView(message);
-        }
-        setContentView(page);
-    }
-
-    private void leaveCraftServerList() {
-        saveCraftNetworkDevices();
-        if (craftServerListReturnsToDevices) showCraftNetworkDevices();
-        else { craftNetworkScreen = ""; showEditor(); }
-    }
-
-    private void assignCraftServer(int slot, int serverIndex) {
-        JSONArray devices = CraftServerConnectionStore.devices(projectExtraFields); JSONObject device = devices.optJSONObject(slot);
-        if (device != null) try { device.put("serverIndex", serverIndex).put("craftServerSelectionTouched", true); projectExtraFields.put(CraftServerConnectionStore.DEVICES_KEY, devices); } catch (Exception ignored) {}
-    }
-
-    private void deleteCraftConnection(int index, int deviceSlot) {
+            android.bluetooth.BluetoothAd…963 tokens truncated… deleteCraftConnection(int index, int deviceSlot) {
         JSONArray original = CraftServerConnectionStore.connections(projectExtraFields); JSONArray kept = new JSONArray();
         for (int i = 0; i < original.length(); i++) if (i != index) kept.put(original.opt(i));
         try { projectExtraFields.put(CraftServerConnectionStore.CONNECTIONS_KEY, kept); } catch (Exception ignored) {}
@@ -3883,6 +3821,9 @@ public class MainActivity extends Activity {
                         catch (SecurityException denied) { Toast.makeText(this, "Нет разрешения на Bluetooth", Toast.LENGTH_LONG).show(); }
                     }).show();
         } catch (SecurityException denied) {
+Warning: truncated output (original token count: 5750)
+Total output lines: 300
+
             Toast.makeText(this, "Нет разрешения на список Bluetooth-устройств", Toast.LENGTH_LONG).show();
         }
     }
@@ -3998,49 +3939,7 @@ public class MainActivity extends Activity {
     private void sendSmsNotification(Widget widget,String value) {
         if (!operatorMode || !activityResumed) return;
         String phone = "";
-        try { phone = SmsRecipientStore.read(this, widget.extraFields.optString("smsRecipientId", "")); }
-        catch (Exception ignored) {}
-        if (!SmsNotificationClient.isValidPhone(phone)) {
-            Toast.makeText(this, "У SMS-элемента не настроен номер получателя", Toast.LENGTH_LONG).show(); return;
-        }
-        if(!getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_TELEPHONY)) {
-            Toast.makeText(this,"Это устройство не поддерживает SMS через SIM",Toast.LENGTH_LONG).show();return;
-        }
-        if(checkSelfPermission(android.Manifest.permission.SEND_SMS)!=android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{android.Manifest.permission.SEND_SMS},REQUEST_SMS_SEND_PERMISSION);return;
-        }
-        boolean craftSms = widget.extraFields.optInt("craftComponentId", -1) == 10;
-        boolean optionMode = craftSms && widget.extraFields.optBoolean("craftSmsOption", false);
-        int count = optionMode ? widget.extraFields.optInt("craftSmsOptionCount", 1)
-                : widget.extraFields.optInt("smsRegisterCount", 1);
-        if (count < 1 || count > 8) { Toast.makeText(this, "Количество регистров SMS должно быть 1–8", Toast.LENGTH_LONG).show(); return; }
-        String registerBinding = widget.connectionInfo;
-        if (optionMode) {
-            BindingRequest trigger = parseBinding(-1, widget.connectionInfo);
-            int optionRegister = widget.extraFields.optInt("craftSmsOptionRegister", -1);
-            if (trigger == null || optionRegister < 0 || optionRegister > 65535) {
-                Toast.makeText(this, "Проверь TCP-привязку и адрес SMS-регистра", Toast.LENGTH_LONG).show(); return;
-            }
-            registerBinding = "tcp://" + trigger.host + ":" + trigger.port + "/" + trigger.unit + "/" + optionRegister;
-        }
-        BindingRequest source = parseBinding(-1, registerBinding, optionMode ? count : 1);
-        if (source == null || (source.functionCode != 3 && source.functionCode != 4)) {
-            Toast.makeText(this, "Укажи корректный адрес регистра для SMS", Toast.LENGTH_LONG).show(); return;
-        }
-        final String destination = phone, template = widget.text, triggerValue = value;
-        final String host = source.host;
-        final int port = source.port, unit = source.unit, address = source.address;
-        final int functionCode = source.functionCode;
-        final long sessionToken = pollSession.token();
-        final boolean readOptionRegisters = optionMode;
-        smsExecutor.execute(() -> {
-            String message;
-            boolean readFailed = false;
-            if (!readOptionRegisters) {
-                message = SmsNotificationClient.message(template, triggerValue);
-            } else {
-                try {
-                    int[] registers = new ModbusTcpClient(host, port).read(unit, address, count, functionCode);
+        tr…750 tokens truncated…sters = new ModbusTcpClient(host, port).read(unit, address, count, functionCode);
                     String[] values = new String[registers.length];
                     for (int i = 0; i < registers.length; i++) values[i] = Integer.toString(registers[i]);
                     message = SmsOutgoingTemplate.render(template, values, triggerValue);
@@ -4183,6 +4082,9 @@ public class MainActivity extends Activity {
                     try { entities = HomeAssistantClient.getEntities(baseUrl, finalToken); }
                     catch (Exception failure) { error = failure.getMessage(); }
                     final List<HomeAssistantClient.Entity> found = entities; final String failureText = error;
+Warning: truncated output (original token count: 5274)
+Total output lines: 300
+
                     runOnUiThread(() -> {
                         if (isFinishing() || isDestroyed()) return;
                         if (dialog.isShowing()) dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
@@ -4277,8 +4179,88 @@ public class MainActivity extends Activity {
                 .setNeutralButton("Отмена", null).show();
     }
 
+    private void requestCraftVoiceRecognition(Widget widget) {
+        if (widget == null || !operatorMode || !activityResumed || !widgets.contains(widget)
+                || !widget.extraFields.optBoolean("craftVoiceRecognitionEnabled", false)) {
+            Toast.makeText(this, "Сначала включи распознавание в свойствах компонента", Toast.LENGTH_LONG).show();
+            return;
+        }
+        int register = widget.extraFields.optInt("craftVoiceRegisterAddress", -1);
+        if (!CraftVoiceRecognitionPolicy.validProjectRegister(register)) {
+            Toast.makeText(this, "В компоненте не задан локальный системный регистр 10–1999", Toast.LENGTH_LONG).show();
+            return;
+        }
+        String[] phrases = CraftVoiceRecognitionFields.read(widget.extraFields.optJSONObject("craftOther"));
+        boolean hasLiteralPhrase = false;
+        for (String phrase : phrases) if (phrase != null && !phrase.trim().isEmpty() && phrase.indexOf('#') < 0) hasLiteralPhrase = true;
+        if (!hasLiteralPhrase) {
+            Toast.makeText(this, "Добавь хотя бы одну буквальную фразу без # в свойствах компонента", Toast.LENGTH_LONG).show();
+            return;
+        }
+        new AlertDialog.Builder(this).setTitle("Слушать команду?")
+                .setMessage("Одноразовое локальное распознавание на устройстве. Аудио не отправляется через BLOODSKY. Совпавшая фраза установит бит в локальном регистре " + register + ".")
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Начать", (dialog, which) -> {
+                    if (!operatorMode || !activityResumed || !widgets.contains(widget)) return;
+                    pendingCraftVoiceWidget = widget;
+                    if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                            != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                        pendingCraftVoicePermission = true;
+                        requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQUEST_VOICE_PERMISSION);
+                    } else {
+                        pendingCraftVoiceWidget = null;
+                        pendingCraftVoicePermission = false;
+                        startCraftVoiceRecognition(widget);
+                    }
+                }).show();
+    }
+
+    private void startCraftVoiceRecognition(Widget widget) {
+        if (!operatorMode || !activityResumed || !widgets.contains(widget)
+                || !widget.extraFields.optBoolean("craftVoiceRecognitionEnabled", false)) return;
+        if (android.os.Build.VERSION.SDK_INT < 31
+                || !android.speech.SpeechRecognizer.isOnDeviceRecognitionAvailable(this)) {
+            Toast.makeText(this, "Локальное распознавание недоступно: требуется Android 12+ с установленной офлайн-службой речи", Toast.LENGTH_LONG).show();
+            return;
+        }
+        try {
+            releaseVoiceRecognizer();
+            activeCraftVoiceWidget = widget;
+            speechRecognizer = android.speech.SpeechRecogn…274 tokens truncated…d onResults(Bundle results) {
+                    ArrayList<String> recognized = results == null ? null
+                            : results.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION);
+                    releaseVoiceRecognizer();
+                    if (!activityResumed || !operatorMode || !widgets.contains(widget)) return;
+                    String phrase = recognized == null || recognized.isEmpty() ? "" : recognized.get(0);
+                    int address = widget.extraFields.optInt("craftVoiceRegisterAddress", -1);
+                    String[] configured = CraftVoiceRecognitionFields.read(widget.extraFields.optJSONObject("craftOther"));
+                    int bit = CraftVoiceRecognitionPolicy.match(configured, phrase);
+                    if (bit < 0 || !CraftVoiceRecognitionPolicy.apply(configured, phrase, address, systemRegisterBank, System.currentTimeMillis())) {
+                        Toast.makeText(MainActivity.this, "Фраза не совпала с единственной настроенной командой", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    persistProject();
+                    if (editor != null) editor.invalidate();
+                    Toast.makeText(MainActivity.this, "Команда принята: установлен бит " + bit + " регистра " + address, Toast.LENGTH_LONG).show();
+                }
+                @Override public void onPartialResults(Bundle partialResults) { }
+                @Override public void onEvent(int eventType, Bundle params) { }
+            });
+            android.content.Intent intent = new android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                    android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            intent.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, "ru-RU");
+            intent.putExtra(android.speech.RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+            speechRecognizer.startListening(intent);
+        } catch (Exception failure) {
+            releaseVoiceRecognizer();
+            Toast.makeText(this, "Локальная служба распознавания недоступна", Toast.LENGTH_LONG).show();
+        }
+    }
+
     private void requestVoicePermission(int mode) {
         pendingVoiceMode = mode;
+        pendingCraftVoicePermission = false;
         if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
                 != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQUEST_VOICE_PERMISSION);
@@ -4366,6 +4348,7 @@ public class MainActivity extends Activity {
 
     private void releaseVoiceRecognizer() {
         if (speechRecognizer != null) { try { speechRecognizer.cancel(); speechRecognizer.destroy(); } catch (Exception ignored) {} speechRecognizer = null; }
+        activeCraftVoiceWidget = null;
     }
 
     private void showTelegramSettingsDialog() {
@@ -4568,6 +4551,9 @@ public class MainActivity extends Activity {
     }
 
     private void activateScreen(int index) {
+        pendingCraftVoiceWidget = null;
+        pendingCraftVoicePermission = false;
+        releaseVoiceRecognizer();
         craftWebViewWindow.close();
         closeCraftRtspPlayer();
         fbdWireHistory.clear();
@@ -5273,7 +5259,20 @@ public class MainActivity extends Activity {
                 w.extraFields.put("craftOther", new JSONObject().put("rtsp_url", ""));
             } catch (Exception ignored) { }
         }
+        if ("Распознавание речи Craft".equals(type)) {
+            w.w = dp(180); w.h = dp(72);
+            try {
+                w.extraFields.put("craftComponentId", 27);
+                w.extraFields.put("craftUnsupportedComponent", false);
+                w.extraFields.put("craftVoiceRecognitionEnabled", false);
+                w.extraFields.put("craftVoiceRegisterAddress", -1);
+                w.extraFields.put("craftOther", CraftVoiceRecognitionFields.write(null, new String[16]));
+            } catch (Exception ignored) { }
+        }
         if ("GIF Craft".equals(type)) {
+Warning: truncated output (original token count: 6096)
+Total output lines: 300
+
             w.w = dp(160); w.h = dp(100);
             try { w.extraFields.put("craftGifPath", ""); } catch (Exception ignored) { }
         }
@@ -5435,52 +5434,7 @@ public class MainActivity extends Activity {
             craftIndicatorFontChangeField = null; craftIndicatorFrameField = null;
         }
 
-        TextView connectionLabel = new TextView(this);
-        connectionLabel.setText("Привязка к данным (адрес / регистр / устройство)");
-        connectionLabel.setPadding(0, dp(10), 0, 0);
-        form.addView(connectionLabel);
-        EditText connectionField = propertyField(w.connectionInfo == null ? "" : w.connectionInfo, InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        connectionField.setHint("tcp://192.168.1.10:502/1/40001 (FC03/FC04) или fbd://N (номер блока с 1)");
-        if ("Прогресс-бар".equals(w.type)
-                && w.extraFields.optInt("craftComponentId", -1) == 11)
-            connectionField.setHint("Переназначь вручную: tcp://192.168.1.10:502/1/40001 (исходная связь Craft не активна)");
-        if (isCraftRegisterSource(w.type) || isCraftRegisterSink(w.type))
-            connectionField.setHint("TCP: tcp://192.168.1.10:502/1/40001 · USB RTU: usb://1/40001 (явно подключи адаптер)");
-        else if ("FBD Вход".equals(w.type))
-            connectionField.setHint("TCP: tcp://192.168.1.10:502/1/40001 · USB RTU: usb://1/40001");
-        form.addView(connectionField);
-        String sourceBindingText = CraftNetworkBindingResolver.display(
-                w.extraFields.optJSONObject("craftBindingResolution"));
-        if (!sourceBindingText.isEmpty()) {
-            TextView sourceBindingLabel = new TextView(this);
-            sourceBindingLabel.setText(sourceBindingText);
-            sourceBindingLabel.setContentDescription("Исходная привязка Craft; неактивна");
-            sourceBindingLabel.setPadding(0, dp(6), 0, dp(2));
-            form.addView(sourceBindingLabel);
-        }
-        final EditText archiveIntervalField, archiveMaxRowsField, archiveChannelCountField, archiveTriggerField;
-        final Spinner archiveRecordTypeField;
-        if ("Архив Craft".equals(w.type)) {
-            connectionField.setHint("Локальный канал: tcp://192.168.1.10:502/1/40001 (holding-регистр FC03)");
-            TextView archiveHelp = new TextView(this);
-        archiveHelp.setText("Импортированные связи Craft отключены. Укажи первый локальный TCP holding-регистр; каналы читаются подряд. INT занимает один регистр, FLOAT — два. Необязательный триггер записывает на фронте 0→1; без него действует интервал. Данные остаются на устройстве; удалённая отправка архива отключена.");
-            archiveHelp.setPadding(0, dp(8), 0, dp(4)); form.addView(archiveHelp);
-            archiveTriggerField = propertyField(w.extraFields.optString("craftArchiveTriggerBinding", ""),
-                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-            archiveTriggerField.setHint("Необязательный триггер: tcp://host:502/1/40002");
-            archiveTriggerField.setContentDescription("Триггер архива"); form.addView(archiveTriggerField);
-            archiveChannelCountField = propertyField(Integer.toString(Math.max(1, Math.min(4,
-                    w.extraFields.optInt("craftArchiveChannelCount", 1)))), InputType.TYPE_CLASS_NUMBER);
-            archiveChannelCountField.setHint("Каналы (1–4)");
-            archiveChannelCountField.setContentDescription("Каналы архива"); form.addView(archiveChannelCountField);
-            archiveRecordTypeField = new Spinner(this);
-            archiveRecordTypeField.setContentDescription("Тип записи архива");
-            archiveRecordTypeField.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
-                    new String[]{"INT — 16 бит", "FLOAT — 32 бит"}));
-            archiveRecordTypeField.setSelection("FLOAT".equals(w.extraFields.optString("craftArchiveRecordType", "INT")) ? 1 : 0);
-            form.addView(archiveRecordTypeField);
-            archiveIntervalField = propertyField(Integer.toString(Math.max(1, w.extraFields.optInt("craftArchiveIntervalSeconds", 1))), InputType.TYPE_CLASS_NUMBER);
-            archiveIntervalField.setHint("Интервал записи, секунды (1–86400)");
+        Text…1096 tokens truncated…t("Интервал записи, секунды (1–86400)");
             archiveIntervalField.setContentDescription("Интервал архива"); form.addView(archiveIntervalField);
             archiveMaxRowsField = propertyField(Integer.toString(Math.max(100, w.extraFields.optInt("craftArchiveMaxRows", 10000))), InputType.TYPE_CLASS_NUMBER);
             archiveMaxRowsField.setHint("Максимум записей (100–100000)");
@@ -5574,6 +5528,9 @@ public class MainActivity extends Activity {
             craftNumericMinField = craftNumericMaxField = craftNumericDecimalsField = craftNumericPasswordField = null;
             craftNumericModeField = craftNumericTypeIntField = null;
             craftNumericFrameField = craftNumericSystemFontField = craftNumericPasswordRequiredField = craftNumericEnabledField = null;
+Warning: truncated output (original token count: 7147)
+Total output lines: 300
+
         }
         final boolean craftConstantButton = "Константная кнопка Craft".equals(w.type);
         final boolean craftButtonConfig = "Кнопка".equals(w.type) || craftConstantButton;
@@ -5681,96 +5638,7 @@ public class MainActivity extends Activity {
             form.addView(smsRegisterCountField);
             TextView smsHelp=new TextView(this);smsHelp.setText("Сообщение отправляется один раз при переходе сигнала 0→1. В тексте {value} подставляется значение Modbus. Номер хранится зашифрованно на устройстве и не входит в экспорт проекта.");form.addView(smsHelp);
             TextView smsRegistersHelp = new TextView(this);
-            smsRegistersHelp.setText("Читаются последовательные регистры от адреса привязки. Значения подставляются в %1…%8; если номера %n не указаны и нет {value}, значения добавляются в конец через пробел.");
-            form.addView(smsRegistersHelp);
-        } else { smsPhoneField=null; smsRegisterCountField=null; craftSmsEnabledField=null; craftSmsOptionField=null; craftSmsOptionRegisterField=null; }
-        final android.widget.CheckBox craftSoundEnabledField;
-        final EditText[] craftSoundPathFields = new EditText[CraftSoundBank.CHANNELS];
-        if (w.extraFields.optInt("craftComponentId", -1) == 21
-                || "Звуковой сигнал Craft".equals(w.type)) {
-            TextView soundHeader = new TextView(this);
-            soundHeader.setText("Звуковой банк Craft — 8 дорожек по битам регистра");
-            soundHeader.setPadding(0, dp(10), 0, 0);
-            form.addView(soundHeader);
-            craftSoundEnabledField = new android.widget.CheckBox(this);
-            craftSoundEnabledField.setText("Разрешить воспроизведение аудио в операторском режиме");
-            craftSoundEnabledField.setChecked(w.extraFields.optBoolean("craftSoundEnabled", false));
-            form.addView(craftSoundEnabledField);
-            JSONArray soundPaths = w.extraFields.optJSONArray("craftSoundPaths");
-            for (int channel = 0; channel < CraftSoundBank.CHANNELS; channel++) {
-                craftSoundPathFields[channel] = propertyField(CraftSoundBank.pathAt(soundPaths, channel),
-                        InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-                craftSoundPathFields[channel].setHint("Дорожка " + (channel + 1) + " (путь к файлу)");
-                form.addView(craftSoundPathFields[channel]);
-                addMediaPicker(form, craftSoundPathFields[channel], "audio/*");
-            }
-            TextView soundHelp = new TextView(this);
-            soundHelp.setText("Импортированная привязка Craft отключена. Укажи явную tcp://… привязку регистра в поле выше и включи воспроизведение. Каждая дорожка срабатывает по своему биту 0–7; проигрывается одна дорожка за раз.");
-            form.addView(soundHelp);
-        } else {
-            craftSoundEnabledField = null;
-        }
-        final android.widget.CheckBox craftPushEnabledField;
-        final EditText craftPushBodyField, craftPushTopicField;
-        if (w.extraFields.optInt("craftComponentId", -1) == 25
-                || "Уведомление Craft".equals(w.type)) {
-            craftPushEnabledField = new android.widget.CheckBox(this);
-            craftPushEnabledField.setText("Разрешить локальное уведомление при переходе 0→1");
-            craftPushEnabledField.setChecked(w.extraFields.optBoolean("craftPushEnabled", false));
-            form.addView(craftPushEnabledField);
-            craftPushBodyField = propertyField(w.extraFields.optString("craftPushBody", ""),
-                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
-            craftPushBodyField.setMinLines(2);
-            craftPushBodyField.setHint("Текст уведомления");
-            form.addView(craftPushBodyField);
-            craftPushTopicField = propertyField(w.extraFields.optString("craftPushTopic", ""),
-                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-            craftPushTopicField.setHint("Исходная тема FCM (только для сохранения)");
-            form.addView(craftPushTopicField);
-            TextView pushHelp = new TextView(this);
-            pushHelp.setText("Заголовок берётся из основного поля текста. Оригинал отправляет FCM в удалённую тему с встроенным серверным ключом. BLOODSKY сохраняет тему, но использует только локальное уведомление на этом устройстве. Для отправки удалённым адресатам настрой Telegram отдельно.");
-            form.addView(pushHelp);
-        } else {
-            craftPushEnabledField = null;
-            craftPushBodyField = null;
-            craftPushTopicField = null;
-        }
-        final android.widget.CheckBox incomingSmsEnabledField;
-        final EditText incomingSmsSenderField, incomingSmsCommandField, incomingSmsBitField;
-        final android.widget.Spinner incomingSmsModeField;
-        final android.widget.CheckBox incomingSmsStrobeEnabledField;
-        final EditText incomingSmsStrobeRegisterField, incomingSmsStrobeBitField;
-        if ("Входящее SMS".equals(w.type)) {
-            incomingSmsEnabledField = new android.widget.CheckBox(this);
-            incomingSmsEnabledField.setText("Разрешить управление этим регистром через SMS");
-            incomingSmsEnabledField.setChecked(w.extraFields.optBoolean("smsEnabled", false));
-            form.addView(incomingSmsEnabledField);
-            String savedSender = "";
-            try { savedSender = SmsRecipientStore.read(this, w.extraFields.optString("smsSenderId", "")); }
-            catch (Exception ignored) {}
-            incomingSmsSenderField = propertyField(savedSender, InputType.TYPE_CLASS_PHONE);
-            incomingSmsSenderField.setHint("Разрешённый номер, например +79991234567"); form.addView(incomingSmsSenderField);
-            incomingSmsCommandField = propertyField(w.extraFields.optString("smsCommand", ""),
-                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-            incomingSmsCommandField.setHint("Точная команда: ВКЛ или Уставка"); form.addView(incomingSmsCommandField);
-            incomingSmsModeField = new android.widget.Spinner(this);
-            incomingSmsModeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item, new String[]{"Число в holding-регистр", "Установить бит"}));
-            incomingSmsModeField.setSelection("bit".equals(w.extraFields.optString("smsMode", "number")) ? 1 : 0);
-            form.addView(incomingSmsModeField);
-            incomingSmsBitField = propertyField(Integer.toString(w.extraFields.optInt("smsBit", 0)), InputType.TYPE_CLASS_NUMBER);
-            incomingSmsBitField.setHint("Номер бита 0–15 (для режима бит)"); form.addView(incomingSmsBitField);
-            incomingSmsStrobeEnabledField = new android.widget.CheckBox(this);
-            incomingSmsStrobeEnabledField.setText("Установить бит strobe после числовой команды");
-            incomingSmsStrobeEnabledField.setChecked(w.extraFields.optBoolean("smsStrobeEnabled", false));
-            form.addView(incomingSmsStrobeEnabledField);
-            incomingSmsStrobeRegisterField = propertyField(w.extraFields.has("smsStrobeRegister")
-                    ? Integer.toString(w.extraFields.optInt("smsStrobeRegister")) : "", InputType.TYPE_CLASS_NUMBER);
-            incomingSmsStrobeRegisterField.setHint("Holding-регистр strobe (например 40002)"); form.addView(incomingSmsStrobeRegisterField);
-            incomingSmsStrobeBitField = propertyField(Integer.toString(w.extraFields.optInt("smsStrobeBit", 0)), InputType.TYPE_CLASS_NUMBER);
-            incomingSmsStrobeBitField.setHint("Strobe бит 0–15"); form.addView(incomingSmsStrobeBitField);
-            TextView smsIncomingHelp = new TextView(this);
-            smsIncomingHelp.setText("Адрес задаётся выше как tcp://хост:порт/unit/регистр; допустим только holding-регистр. Числовая команда: «команда пробел число…» (до 16 signed 16-bit значений) записывает последовательные регистры. Битовая команда должна полностью совпасть. Strobe устанавливается после успешной числовой записи и остаётся в 1 до сброса устройством/сценарием. SMS принимаются только пока открыт проект в операторском режиме.");
+            smsRegistersHelp.setText("Читаются последовательные регистры…2147 tokens truncated…ются только пока открыт проект в операторском режиме.");
             form.addView(smsIncomingHelp);
         } else {
             incomingSmsEnabledField = null; incomingSmsSenderField = null;
@@ -5874,6 +5742,9 @@ public class MainActivity extends Activity {
             craftSunriseModeField.setAdapter(new android.widget.ArrayAdapter<String>(this,
                     android.R.layout.simple_spinner_dropdown_item, new String[]{"SR — восход", "SS — закат"}));
             craftSunriseModeField.setSelection("SS".equals(craftSunriseMode(w)) ? 1 : 0);
+Warning: truncated output (original token count: 5518)
+Total output lines: 300
+
             form.addView(craftSunriseModeField);
         } else {
             craftSunriseLatitudeField = null; craftSunriseLongitudeField = null; craftSunriseModeField = null;
@@ -6012,39 +5883,7 @@ public class MainActivity extends Activity {
             bitLabelHeader.setPadding(0, dp(10), 0, 0);
             form.addView(bitLabelHeader);
             for (int k = 0; k < 4; k++) {
-                bitLabelFields[k] = propertyField(w.bitListLabels[k], InputType.TYPE_CLASS_TEXT);
-                bitLabelFields[k].setHint("Подпись бита " + k);
-                form.addView(bitLabelFields[k]);
-            }
-        }
-
-        final EditText soundThresholdField;
-        final EditText soundFilePathField;
-        final android.widget.Spinner soundPresetField;
-        if ("Звуковой сигнал".equals(w.type)) {
-            TextView soundHeader = new TextView(this);
-            soundHeader.setText("Параметры звукового сигнала");
-
-            soundHeader.setPadding(0, dp(10), 0, 0);
-            form.addView(soundHeader);
-            soundThresholdField = propertyField(Double.toString(w.soundThreshold), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-            soundThresholdField.setHint("Порог включения (обычно 1)");
-            form.addView(soundThresholdField);
-            soundPresetField = new android.widget.Spinner(this);
-            soundPresetField.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                    android.R.layout.simple_spinner_dropdown_item,
-                    new String[]{"Пользовательский файл", "Сигнал Craft 1", "Сигнал Craft 2",
-                            "Сигнал Craft 3", "Сигнал Craft 4", "Сигнал Craft 5"}));
-            soundPresetField.setSelection(Math.max(0, Math.min(5, w.craftAlarmSoundIndex)));
-            form.addView(soundPresetField);
-            TextView soundPresetHelp = new TextView(this);
-            soundPresetHelp.setText("Выбери один из пяти сигналов Craft или пользовательский аудиофайл.");
-            form.addView(soundPresetHelp);
-            soundFilePathField = propertyField(w.soundFilePath, InputType.TYPE_CLASS_TEXT);
-            soundFilePathField.setHint("Файл / content URI или 'Аларм'");
-            form.addView(soundFilePathField);
-            addMediaPicker(form, soundFilePathField, "audio/*");
-        } else { soundThresholdField = null; soundFilePathField = null; soundPresetField = null; }
+                bitLabelFields[k] = propertyField(w.bitListLabels[k], InputType.TYPE_CL…518 tokens truncated…ndFilePathField = null; soundPresetField = null; }
 
         final android.widget.Spinner targetScreenIndexField;
         final EditText targetUrlField;
@@ -6125,11 +5964,13 @@ public class MainActivity extends Activity {
         }
 
         final EditText[] craftVoicePhraseFields = new EditText[CraftVoiceRecognitionFields.PHRASE_COUNT];
+        final CheckBox craftVoiceRecognitionEnabledField;
+        final EditText craftVoiceRegisterField;
         if ("Распознавание речи Craft".equals(w.type)) {
             JSONObject sourceOther = w.extraFields.optJSONObject("craftOther");
             String[] phrases = CraftVoiceRecognitionFields.read(sourceOther);
             TextView voiceHeader = new TextView(this);
-            voiceHeader.setText("Исходные фразы Craft (0–15); распознавание пока выключено");
+            voiceHeader.setText("Команды Craft (0–15). Для голосового запуска оператор нажимает сам компонент.");
             voiceHeader.setPadding(0, dp(10), 0, 0);
             form.addView(voiceHeader);
             for (int k = 0; k < craftVoicePhraseFields.length; k++) {
@@ -6137,7 +5978,17 @@ public class MainActivity extends Activity {
                 craftVoicePhraseFields[k].setHint("Фраза Craft " + k);
                 form.addView(craftVoicePhraseFields[k]);
             }
-        }
+            craftVoiceRegisterField = propertyField(Integer.toString(w.extraFields.optInt("craftVoiceRegisterAddress", -1)), InputType.TYPE_CLASS_NUMBER);
+            craftVoiceRegisterField.setHint("Локальный системный регистр (10–1999)");
+            form.addView(craftVoiceRegisterField);
+            TextView voiceHelp = new TextView(this);
+            voiceHelp.setText("Принимаются точные текстовые команды из списка. Фразы с # (подстановка переменных исходной KaScada) пока не исполняются. Результат задаёт соответствующий бит 0–15 в локальном регистре проекта; внешняя сеть не используется. Распознавание одноразовое, только на устройстве Android 12+ и только по нажатию в операторском режиме.");
+            form.addView(voiceHelp);
+            craftVoiceRecognitionEnabledField = new CheckBox(this);
+            craftVoiceRecognitionEnabledField.setText("Разрешить одноразовое локальное распознавание");
+            craftVoiceRecognitionEnabledField.setChecked(w.extraFields.optBoolean("craftVoiceRecognitionEnabled", false));
+            form.addView(craftVoiceRecognitionEnabledField);
+        } else { craftVoiceRegisterField = null; craftVoiceRecognitionEnabledField = null; }
 
         final CheckBox craftWebViewEnabledField = new CheckBox(this);
         final EditText[] craftWebViewLinkFields = new EditText[CraftWebViewLinks.LINK_COUNT];
@@ -6162,6 +6013,9 @@ public class MainActivity extends Activity {
         }
 
         final EditText craftRtspUrlField;
+Warning: truncated output (original token count: 5270)
+Total output lines: 300
+
         final CheckBox craftRtspEnabledField;
         if (w.extraFields.optInt("craftComponentId", -1) == 23 || "Видео RTSP Craft".equals(w.type)) {
             JSONObject sourceOther = w.extraFields.optJSONObject("craftOther");
@@ -6308,17 +6162,7 @@ public class MainActivity extends Activity {
             compareLabel.setText("FBD CRAFT COMPARE".equals(w.type)
                     ? "Craft INT32: оператор >, <, <=, >=, ==, !=; входы IN1/IN2"
                     : "FBD CRAFT COMPARE FLOAT".equals(w.type)
-                    ? "Craft FLOAT32: оператор >, <, <=, >=, ==, !=; входы IN1/IN2"
-                    : ("FBD CRAFT ARITHMETIC INT".equals(w.type)                            || "FBD CRAFT ARITHMETIC FLOAT".equals(w.type))
-                    ? "Craft: оператор +, −, ×, ÷; входы IN1/IN2"
-                    : "Числовое сравнение A / оператор / B");
-            compareLabel.setPadding(0, dp(10), 0, 0);
-            form.addView(compareLabel);
-            compareLeftField = propertyField(Double.toString(w.compareA), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-            compareOperatorField = propertyField(w.compareOperator, InputType.TYPE_CLASS_TEXT);
-            compareRightField = propertyField(Double.toString(w.compareB), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_SIGNED | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-            compareLeftField.setContentDescription("Сравнение A");
-            compareOperatorField.setContentDescription("Оператор сравнения");
+                 …270 tokens truncated…ор сравнения");
             compareRightField.setContentDescription("Сравнение B");
             form.addView(compareLeftField);
             form.addView(compareOperatorField);
@@ -6462,6 +6306,9 @@ public class MainActivity extends Activity {
             gaugeFirstColorPointField = propertyField(Integer.toString(
                     w.extraFields.optInt("craftGaugeFirstColorPoint", 0)), InputType.TYPE_CLASS_NUMBER);
             gaugeFirstColorPointField.setHint("Первая граница цветовой зоны"); form.addView(gaugeFirstColorPointField);
+Warning: truncated output (original token count: 5455)
+Total output lines: 300
+
             gaugeSecondColorPointField = propertyField(Integer.toString(
                     w.extraFields.optInt("craftGaugeSecondColorPoint", 0)), InputType.TYPE_CLASS_NUMBER);
             gaugeSecondColorPointField.setHint("Вторая граница цветовой зоны"); form.addView(gaugeSecondColorPointField);
@@ -6596,37 +6443,7 @@ public class MainActivity extends Activity {
             progressColorField.setContentDescription("Цвет заполнения индикатора прогресса");
             form.addView(progressColorField);
             progressBackgroundColorField = propertyField(String.format(java.util.Locale.ROOT, "#%06X",
-                    0xFFFFFF & w.extraFields.optInt("craftProgressBackgroundColor", Color.rgb(156, 156, 155))), InputType.TYPE_CLASS_TEXT);
-            progressBackgroundColorField.setHint("Цвет дорожки: #RRGGBB");
-            progressBackgroundColorField.setContentDescription("Цвет фона индикатора прогресса");
-            form.addView(progressBackgroundColorField);
-        } else {
-            progressShowTextField = null;
-            progressTextSizeField = null;
-            progressTextColorField = null;
-            progressShowScaleField = null;
-            progressColorField = null;
-            progressBackgroundColorField = null;
-        }
-
-        TextView geometryLabel = new TextView(this);
-        geometryLabel.setText("Положение и размер (пиксели)");
-        geometryLabel.setPadding(0, dp(10), 0, 0);
-        form.addView(geometryLabel);
-
-        EditText xField = propertyField(Float.toString(w.x), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
-        xField.setHint("X");
-        xField.setContentDescription("Положение X");
-        form.addView(xField);
-        EditText yField = propertyField(Float.toString(w.y), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
-        yField.setHint("Y");
-        yField.setContentDescription("Положение Y");
-        form.addView(yField);
-        EditText widthField = propertyField(Float.toString(w.w), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
-        widthField.setHint("Ширина");
-        widthField.setContentDescription("Ширина элемента");
-        form.addView(widthField);
-        EditText heightField = propertyField(Float.toString(w.h), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
+                    0xFFFFFF & w.extraFields.optInt("craftProgressBackgroundColor", Color…455 tokens truncated…nputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
         heightField.setHint("Высота");
         heightField.setContentDescription("Высота элемента");
         form.addView(heightField);
@@ -6762,6 +6579,9 @@ public class MainActivity extends Activity {
                         BindingRequest listBinding = parseBinding(-1, connectionField.getText().toString().trim());
                         if (listBinding != null && listBinding.functionCode != 3) {
                             Toast.makeText(this, "Список записывает битовую маску в holding-регистр FC03/FC06", Toast.LENGTH_LONG).show(); return;
+Warning: truncated output (original token count: 6122)
+Total output lines: 300
+
                         }
                         if (craftBitListVisibleField.isChecked() && CraftBitList.availableMask(labels) == 0) {
                             Toast.makeText(this, "Добавь подпись хотя бы одному пункту", Toast.LENGTH_LONG).show(); return;
@@ -6876,66 +6696,7 @@ public class MainActivity extends Activity {
                             w.extraFields.put("craftButtonConstantType", valueType);
                             w.extraFields.put("craftButtonConstant", constant);
                             w.extraFields.put("craftButtonConstantEnabled", mode == 2 && buttonBinding != null);
-                            w.extraFields.put("craftButtonVisibleInWork", craftButtonVisibleField.isChecked());
-                            w.type = mode == 2 ? "Константная кнопка Craft" : "Кнопка";
-                        } catch (Exception ignored) { }
-                    }
-                    if (craftSwitchConfig) {
-                        int bit;
-                        try {
-                            bit = Integer.parseInt(craftSwitchBitField.getText().toString().trim());
-                            CraftMomentaryButton.masks(bit, true);
-                        } catch (Exception invalid) {
-                            Toast.makeText(this, "Бит переключателя должен быть целым числом от 0 до 15", Toast.LENGTH_LONG).show(); return;
-                        }
-                        BindingRequest switchBinding = parseBinding(-1, connectionField.getText().toString().trim());
-                        if (craftSwitchBitEnabledField.isChecked()
-                                && (connectionField.getText().toString().trim().isEmpty()
-                                || switchBinding == null || switchBinding.functionCode != 3)) {
-                            Toast.makeText(this, "Для записи бита нужен TCP holding-регистр FC03/FC22", Toast.LENGTH_LONG).show(); return;
-                        }
-                        try {
-                            int skin = craftSwitchSkinField.getSelectedItemPosition() + 1;
-                            w.extraFields.put("craftSwitchSkin", skin);
-                            w.extraFields.put("craftSwitchBit", bit);
-                            w.extraFields.put("craftSwitchBitEnabled", craftSwitchBitEnabledField.isChecked());
-                            w.extraFields.put("craftSwitchVisibleInWork", craftSwitchVisibleField.isChecked());
-                            w.extraFields = OriginalCraftSwitch.withImagePosition(w.extraFields, skin);
-                            w.extraFields = OriginalCraftSwitch.withVisibility(w.extraFields, craftSwitchVisibleField.isChecked());
-                        } catch (Exception ignored) { }
-                    }
-                    if (craftConstantModeField != null) {
-                        String constant = craftConstantValueField.getText().toString().trim();
-                        try {
-                            double numeric = Double.parseDouble(constant);
-                            if (!Double.isFinite(numeric)) throw new NumberFormatException();
-                            if (isCraftRegisterBoolean(w.type) && numeric != 0.0 && numeric != 1.0)
-                                throw new NumberFormatException();
-                            if ("FBD CRAFT VAR INT".equals(canonicalFbdBlockType(w.type))
-                                    && (numeric < 0 || numeric > 65535 || numeric != Math.rint(numeric)))
-                                throw new NumberFormatException();
-                            w.extraFields.put("craftVarConstant", constant);
-                            w.extraFields.put("craftVarConstantMode", craftConstantModeField.isChecked());
-                        } catch (Exception invalid) {
-                            Toast.makeText(this, "Укажи конечное значение BOOL (0/1), UINT16 или FLOAT32", Toast.LENGTH_LONG).show(); return;
-                        }
-                    }
-                    if (craftSwapWordField != null) {
-                        try {
-                            w.extraFields.put("craftSwapWord", craftSwapWordField.isChecked());
-                            w.extraFields.put("craftSwapByte", craftSwapByteField.isChecked());
-                        } catch (Exception ignored) {}
-                    }
-                    if (craftVariableNameField != null) {
-                        String variableName = craftVariableNameField.getText().toString().trim();
-                        int variableKind = craftVariableTypeField.getSelectedItemPosition() + 1;
-                        boolean useConstant = craftNamedConstantModeField != null && craftNamedConstantModeField.isChecked();
-                        if (variableName.isEmpty() && !useConstant) {
-                            Toast.makeText(this, "Укажи имя общей переменной", Toast.LENGTH_LONG).show(); return;
-                        }
-                        if (craftNamedConstantValueField != null) {
-                            try {
-                                double numeric = Double.parseDouble(craftNamedConstantValueField.getText().toString().trim());
+                            w.extraFields.put("craftButtonVisibleInWork", craftButtonVisibl…1122 tokens truncated…medConstantValueField.getText().toString().trim());
                                 if (!Double.isFinite(numeric)
                                         || (variableKind == 1 && numeric != 0.0 && numeric != 1.0)
                                         || (variableKind == 2 && (numeric < Integer.MIN_VALUE || numeric > Integer.MAX_VALUE || numeric != Math.rint(numeric)))
@@ -7062,6 +6823,9 @@ public class MainActivity extends Activity {
                             maxRows = Integer.parseInt(archiveMaxRowsField.getText().toString().trim());
                             channelCount = Integer.parseInt(archiveChannelCountField.getText().toString().trim());
                         } catch (NumberFormatException invalid) {
+Warning: truncated output (original token count: 5552)
+Total output lines: 300
+
                             Toast.makeText(this, "Укажи число каналов, интервал и лимит архива", Toast.LENGTH_LONG).show(); return;
                         }
                         if (channelCount < 1 || channelCount > 4 || interval < 1 || interval > 86400
@@ -7185,40 +6949,7 @@ public class MainActivity extends Activity {
                             for (int k = 0; k < CraftDynamicTextProperties.STATE_COUNT; k++)
                                 stateColors[k] = CraftDynamicTextProperties.parseColor(
                                         dynColorFields[k].getText().toString());
-                        } catch (IllegalArgumentException invalidColor) {
-                            Toast.makeText(this, invalidColor.getMessage(), Toast.LENGTH_LONG).show();
-                            return;
-                        }
-                        for (int k = 0; k < CraftDynamicTextProperties.STATE_COUNT; k++) {
-                            if (dynStateFields[k] != null) {
-                                w.dynTextStates[k] = dynStateFields[k].getText().toString();
-                                w.dynTextColors[k] = stateColors[k];
-                            }
-                        }
-                    }
-                    if ("Битовый список".equals(w.type)) {
-                        for (int k = 0; k < 4; k++) {
-                            if (bitLabelFields[k] != null) {                                w.bitListLabels[k] = bitLabelFields[k].getText().toString();
-                            }
-                        }
-                    }
-                    if (soundThresholdField != null) {
-                        w.soundThreshold = readDouble(soundThresholdField, w.soundThreshold);
-                        w.soundFilePath = soundFilePathField.getText().toString();
-                        w.craftAlarmSoundIndex = soundPresetField.getSelectedItemPosition();
-                    }
-                    if (craftSoundEnabledField != null) {
-                        String[] paths = new String[CraftSoundBank.CHANNELS];
-                        for (int channel = 0; channel < paths.length; channel++)
-                            paths[channel] = craftSoundPathFields[channel] == null ? ""
-                                    : craftSoundPathFields[channel].getText().toString();
-                        try {
-                            CraftSoundBank.storeProperties(w.extraFields, craftSoundEnabledField.isChecked(), paths);
-                            w.craftSoundPlayedMask = 0;
-                        } catch (org.json.JSONException failure) {
-                            Toast.makeText(this, "Не удалось сохранить настройки звукового банка", Toast.LENGTH_LONG).show();
-                            return;
-                        }
+     …552 tokens truncated…                 }
                     }
                     if (targetScreenIndexField != null) {
                         int selectedTarget = targetScreenIndexField.getSelectedItemPosition();
@@ -7258,10 +6989,25 @@ public class MainActivity extends Activity {
                         String[] phrases = new String[craftVoicePhraseFields.length];
                         for (int k = 0; k < craftVoicePhraseFields.length; k++)
                             phrases[k] = craftVoicePhraseFields[k].getText().toString();
+                        int registerAddress;
+                        try { registerAddress = Integer.parseInt(craftVoiceRegisterField.getText().toString().trim()); }
+                        catch (Exception invalid) { registerAddress = -1; }
+                        if (craftVoiceRecognitionEnabledField.isChecked()
+                                && !CraftVoiceRecognitionPolicy.validProjectRegister(registerAddress)) {
+                            Toast.makeText(MainActivity.this, "Укажи локальный системный регистр 10–1999", Toast.LENGTH_LONG).show();
+                            return;
+                        }
                         try {
                             JSONObject sourceOther = CraftVoiceRecognitionFields.write(
                                     w.extraFields.optJSONObject("craftOther"), phrases);
                             w.extraFields.put("craftOther", sourceOther);
+                            w.extraFields.put("craftVoiceRegisterAddress", registerAddress);
+                            w.extraFields.put("craftVoiceRecognitionEnabled", craftVoiceRecognitionEnabledField.isChecked());
+                            JSONObject sourceConnection = w.extraFields.optJSONObject("craftConnectionInfo");
+                            if (sourceConnection == null) sourceConnection = new JSONObject();
+                            sourceConnection.put("addressRegister", registerAddress);
+                            w.extraFields.put("craftConnectionInfo", sourceConnection);
+                            w.extraFields.put("craftUnsupportedComponent", false);
                         } catch (Exception invalid) {
                             Toast.makeText(MainActivity.this, invalid.getMessage(), Toast.LENGTH_LONG).show();
                             return;
@@ -7347,6 +7093,9 @@ public class MainActivity extends Activity {
                                 w.extraFields.put("craftTimerUnit", unit);
                                 w.craftTimerState = FbdCraftNativeTimer.State.initial();
                             }
+Warning: truncated output (original token count: 5201)
+Total output lines: 300
+
                             // An untouched old MS project must not acquire an extra field.
                             if (!"MS".equals(unit) || w.extraFields.has("bloodskyFbdTimeUnit"))
                                 w.extraFields.put("bloodskyFbdTimeUnit", unit);
@@ -7479,20 +7228,7 @@ public class MainActivity extends Activity {
                     }
                     w.x = geometry.x; w.y = geometry.y;
                     w.w = geometry.width; w.h = geometry.height;
-                    w.backgroundColor = parseOptionalColor(backgroundColorField.getText().toString(), 0);
-                    w.textColor = parseOptionalColor(textColorField.getText().toString(), w.textColor);
-                    w.textSizeSp = Math.max(8, Math.min(48, readPositiveInt(textSizeField, w.textSizeSp, false)));
-                    w.visible = visibleField.isChecked(); w.showFrame = frameField.isChecked(); w.autoResizeText = autoResizeField.isChecked();
-                    persistProject();
-                    editor.invalidate();
-                    refreshIncomingSmsReceiver();
-                    properties.dismiss();
-                }));
-        properties.show();
-    }
-
-    private int parseOptionalColor(String text, int fallback) {
-        String value = text == null ? "" : text.trim();
+   …201 tokens truncated…xt.trim();
         if (value.isEmpty()) return fallback == 0 ? 0 : fallback;
         if (!value.startsWith("#")) value = "#" + value;
         if (value.matches("#[0-9a-fA-F]{6}")) {
@@ -7805,6 +7541,12 @@ public class MainActivity extends Activity {
                 : screens.get(currentScreenIndex).connections;
         ArrayList<Integer> selection = new ArrayList<>(editor.selectedWidgets);
         if (selection.isEmpty()) selection.add(editor.selected);
+        if (activeCraftVoiceWidget != null) for (int index : selection) {
+            if (index >= 0 && index < widgets.size() && widgets.get(index) == activeCraftVoiceWidget) {
+                releaseVoiceRecognizer();
+                break;
+            }
+        }
         if (WidgetClipboard.deleteSelection(widgets, edges, selection) == 0) return;
         editor.selected = -1;
         editor.selectedWidgets.clear();
@@ -11241,6 +10983,9 @@ public class MainActivity extends Activity {
                     float y1 = from.y + from.h * fbdTerminalFraction(from,
                             connection.extraFields.optString("sourcePin", ""), true);
                     float x2 = to.x;
+Warning: truncated output (original token count: 5420)
+Total output lines: 300
+
                     float y2 = to.y + to.h * fbdTerminalFraction(to,
                             connection.extraFields.optString("targetPin", ""), false);
                     paint.setColor(isFbdBooleanWireInverted(connection, from.type, to.type)
@@ -11382,29 +11127,7 @@ public class MainActivity extends Activity {
                         canvas.drawLine(w.x + w.w - dp(14), py, w.x + w.w, py, paint);
                         canvas.drawCircle(w.x + w.w - dp(4), py, dp(4), paint);
                     }
-                    paint.setStyle(Paint.Style.FILL);
-                    }
-                } else if (OriginalCraftNumericIndicator.TYPE.equals(w.type)) {
-                    String value = liveValues.get(i);
-                    if (value == null) value = "0";
-                    boolean failed = value.startsWith("ERR") || value.startsWith("CFG");
-                    android.graphics.Typeface previousTypeface = paint.getTypeface();
-                    android.graphics.Paint.Align previousAlign = paint.getTextAlign();
-                    if (!w.extraFields.optBoolean("craftNumericIndicatorFontChange", false)) {
-                        try { paint.setTypeface(android.graphics.Typeface.createFromAsset(
-                                MainActivity.this.getAssets(), "fonts/sf_digital_readout_heavy.ttf")); }
-                        catch (Exception missingFont) { /* Use the platform font if the source font is unavailable. */ }
-                    }
-                    if (w.extraFields.optBoolean("craftNumericIndicatorFrame", false)) {
-                        paint.setStyle(Paint.Style.STROKE);
-                        paint.setStrokeWidth(dp(1)); paint.setColor(w.textColor);
-                        canvas.drawRect(rect, paint); paint.setStyle(Paint.Style.FILL);
-                    }
-                    paint.setColor(failed ? Color.rgb(185, 28, 28) : w.textColor);
-                    paint.setTextSize(dp(w.textSizeSp)); paint.setTextAlign(Paint.Align.CENTER);
-                    canvas.drawText(value, w.x + w.w / 2f, w.y + w.h / 2f + dp(5), paint);
-                    paint.setTextAlign(previousAlign); paint.setTypeface(previousTypeface);
-                } else if ("Динамический текст".equals(w.type)) {
+                    paint.se…420 tokens truncated…кий текст".equals(w.type)) {
                     int stateIdx = 0;
                     if (liveValues.containsKey(i)) {
                         try { stateIdx = (int) Math.round(Double.parseDouble(liveValues.get(i))); } catch (Exception ignored) {}
@@ -11541,6 +11264,9 @@ public class MainActivity extends Activity {
                         float spacing = Math.max(0f, track.height() / 20f);
                         float center = w.x + w.w / 2f;
                         for (int tick = 1; tick < 20; tick++) {
+Warning: truncated output (original token count: 5352)
+Total output lines: 300
+
                             float length = tick == 10 ? w.w / 6f : (tick % 2 == 0 ? w.w / 8f : w.w / 16f);
                             float y = track.top + tick * spacing;
                             canvas.drawLine(center - length, y, center + length, y, paint);
@@ -11672,30 +11398,7 @@ public class MainActivity extends Activity {
                 } else if ("GIF Craft".equals(w.type)) {
                     android.graphics.Movie movie = loadCachedMovie(w.extraFields.optString("craftGifPath", ""));
                     if (movie != null) {
-                        int duration = Math.max(1, movie.duration());
-                        movie.setTime((int) (SystemClock.uptimeMillis() % duration));
-                        int save = canvas.save();
-                        canvas.clipRect(rect);
-                        canvas.translate(rect.left, rect.top);
-                        canvas.scale(rect.width() / movie.width(), rect.height() / movie.height());
-                        movie.draw(canvas, 0, 0);
-                        canvas.restoreToCount(save);
-                        postInvalidateDelayed(33L);
-                    } else {
-                        paint.setColor(Color.rgb(241, 245, 249));
-                        canvas.drawRect(rect, paint);
-                        paint.setColor(Color.rgb(71, 85, 105));
-                        paint.setTextSize(dp(12));
-                        String label = w.extraFields.optString("craftGifPath", "").isEmpty()
-                                ? "Выбери GIF" : "GIF недоступен";
-                        canvas.drawText(label, w.x + dp(8), w.y + w.h / 2 + dp(4), paint);
-                    }
-                } else if ("Многопозиционное фото".equals(w.type)) {
-                    int imgIdx = 0;
-                    if (liveValues.containsKey(i)) {
-                        try {
-                            int registerValue = (int) Math.round(Double.parseDouble(liveValues.get(i)));
-                            JSONObject craftOther = w.extraFields.optJSONObject("craftOther");
+                        int duration …352 tokens truncated…                     JSONObject craftOther = w.extraFields.optJSONObject("craftOther");
                             int typeCommand = craftOther == null ? 0 : craftOther.optInt("typeCommand", 0);
                             imgIdx = CraftMultiStateImage.selectIndex(typeCommand, registerValue);
                         } catch (Exception ignored) { imgIdx = -1; }
@@ -11720,13 +11423,15 @@ public class MainActivity extends Activity {
                     paint.setColor(Color.rgb(203, 213, 225));
                     paint.setTextSize(dp(11));
                     canvas.drawText(w.text, w.x + dp(12), w.y + dp(19), paint);
-                    paint.setColor(Color.rgb(248, 113, 113));
+                    boolean voiceEnabled = w.extraFields.optBoolean("craftVoiceRecognitionEnabled", false);
+                    paint.setColor(voiceEnabled ? Color.rgb(134, 239, 172) : Color.rgb(248, 113, 113));
                     paint.setTextSize(dp(10));
-                    canvas.drawText("Распознавание речи не подключено",
+                    canvas.drawText(voiceEnabled ? "Локально • нажми для команды" : "Голосовое управление выключено",
                             w.x + dp(12), w.y + w.h / 2 + dp(4), paint);
                     paint.setColor(Color.rgb(148, 163, 184));
                     paint.setTextSize(dp(9));
-                    canvas.drawText("16 исходных фраз сохранены",
+                    canvas.drawText("16 фраз • локальный регистр "
+                                    + w.extraFields.optInt("craftVoiceRegisterAddress", -1),
                             w.x + dp(12), w.y + w.h - dp(10), paint);
                 } else if ("Видео RTSP Craft".equals(w.type)) {
                     paint.setColor(Color.rgb(30, 41, 59));
@@ -11839,6 +11544,9 @@ public class MainActivity extends Activity {
         private Widget pressedCraftButton;
         private BindingRequest pressedCraftButtonBinding;
         private int pressedCraftButtonIndex = -1;
+Warning: truncated output (original token count: 5079)
+Total output lines: 300
+
         private int pressedCraftButtonBit;
         private int operatorMomentaryCandidate = -1;
 
@@ -12010,11 +11718,7 @@ public class MainActivity extends Activity {
             }
             if (widget.extraFields.optBoolean("craftListCheckNoChange", false)) {
                 int shownMask = widget.extraFields.optInt("craftListInitialMask", 0) & 0xffff;
-                String liveValue = liveValues.get(widgetIndex);
-                if (liveValue != null) try { shownMask = CraftBitList.fromRegister(Integer.parseInt(liveValue)); } catch (Exception ignored) { }
-                String[] readOnlyChoices = new String[choices.size()];
-                for (int i = 0; i < choices.size(); i++)
-                    readOnlyChoices[i] = ((shownMask & (1 << bits.get(i))) != 0 ? "✓  " : "○  ") + choices.get(i);
+                String liveValue = liveValues.…79 tokens truncated…nlyChoices[i] = ((shownMask & (1 << bits.get(i))) != 0 ? "✓  " : "○  ") + choices.get(i);
                 new AlertDialog.Builder(MainActivity.this).setTitle(widget.text == null ? "Список" : widget.text)
                         .setItems(readOnlyChoices, null)
                         .setMessage("Значения доступны только для просмотра в рабочем режиме")
@@ -12139,6 +11843,9 @@ public class MainActivity extends Activity {
                                 if (result == null) {
                                     try { widget.extraFields.put("craftLinearValue", next); } catch (Exception ignored) { }
                                     liveValues.put(widgetIndex, Integer.toString(next)); persistProject();
+Warning: truncated output (original token count: 5163)
+Total output lines: 300
+
                                 } else Toast.makeText(MainActivity.this, "Не удалось записать значение: " + describeModbusError(result), Toast.LENGTH_LONG).show();
                                 invalidate();
                             });
@@ -12267,15 +11974,7 @@ public class MainActivity extends Activity {
                     }).show();
         }
 
-        private void showCraftRtspPlayer(String title, CraftRtspConfig config) {
-            closeCraftRtspPlayer();
-            LinearLayout content = new LinearLayout(MainActivity.this);
-            content.setOrientation(LinearLayout.VERTICAL);
-            content.setPadding(dp(12), dp(8), dp(12), dp(8));
-            TextView status = new TextView(MainActivity.this);
-            status.setText("Подключение к RTSP. Поддержка зависит от формата потока и Android-устройства.");
-            content.addView(status, new LinearLayout.LayoutParams(-1, -2));
-            VideoView video = new VideoView(MainActivity.this);
+        private void showC…163 tokens truncated…
             video.setKeepScreenOn(true);
             LinearLayout.LayoutParams videoParams = new LinearLayout.LayoutParams(-1, dp(230));
             videoParams.topMargin = dp(8);
@@ -12369,6 +12068,8 @@ public class MainActivity extends Activity {
                 openCraftRtsp(picked);
             } else if ("WebView Craft".equals(picked.type)) {
                 openCraftWebView(picked, index);
+            } else if ("Распознавание речи Craft".equals(picked.type)) {
+                requestCraftVoiceRecognition(picked);
             } else if ("Архив Craft".equals(picked.type)) {
                 showLocalArchive(picked);
             } else if ("Числовой ввод Craft".equals(picked.type)) {

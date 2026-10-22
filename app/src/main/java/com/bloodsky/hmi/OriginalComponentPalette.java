@@ -23,7 +23,7 @@ public final class OriginalComponentPalette {
                 () -> add.add(OriginalCraftSwitch.TYPE, "Переключатель"));
         bind(dialog, R.id.kc_picker_tab_list, "Список Craft", "Список", add);
         bind(dialog, R.id.kc_picker_tab_line_setter, "Линейный задатчик Craft", "Линейный задатчик", add);
-        unavailable(dialog, R.id.kc_picker_tab_voice_recognition, "Распознавание речи");
+        bind(dialog, R.id.kc_picker_tab_voice_recognition, "Распознавание речи Craft", "Голосовая команда", add);
         action(dialog, R.id.kc_picker_tab_digital_indicator, "Добавить: Цифровой индикатор",
                 () -> add.add(OriginalCraftNumericIndicator.TYPE, "0"));
         action(dialog, R.id.kc_picker_tab_alarm, "Добавить: Сигнализатор Craft",
