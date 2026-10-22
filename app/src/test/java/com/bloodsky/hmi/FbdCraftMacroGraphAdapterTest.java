@@ -20,6 +20,39 @@ public class FbdCraftMacroGraphAdapterTest {
                 .put("fbInMacros", new JSONArray().put(child));
     }
 
+    @Test public void resolvesNestedDefinitionOnlyOnceAndPreservesGraph() throws Exception {
+        FbdCraftMacroDefinition inner = FbdCraftMacroGraphAdapter.expandIfSupported(
+                FbdCraftMacroDefinition.fromJson(validMacro().toString()));
+        JSONObject outer = validMacro();
+        outer.getJSONArray("fbInMacros").getJSONObject(0).put("componentId", 135);
+        int[] calls = {0};
+        FbdCraftMacroDefinition expanded = FbdCraftMacroGraphAdapter.expandIfSupported(
+                FbdCraftMacroDefinition.fromJson(outer.toString()), child -> {
+                    calls[0]++;
+                    return inner;
+                });
+        assertEquals("one resolution per child, including recursive expansion", 1, calls[0]);
+        JSONObject nested = expanded.toJson().getJSONObject("bloodskyGraph")
+                .getJSONArray("widgets").getJSONObject(2);
+        assertEquals(inner.toJson().toString(), nested.getJSONObject("craftMacroDefinition").toString());
+        assertEquals(135, expanded.toJson().getJSONArray("fbInMacros")
+                .getJSONObject(0).getInt("componentId"));
+    }
+
+    @Test public void unresolvedNestedDefinitionsRemainOpaque() throws Exception {
+        JSONObject outer = validMacro();
+        outer.getJSONArray("fbInMacros").getJSONObject(0).put("componentId", 135);
+        FbdCraftMacroDefinition original = FbdCraftMacroDefinition.fromJson(outer.toString());
+        assertNull(FbdCraftMacroGraphAdapter.expandIfSupported(original, child -> null)
+                .toJson().optJSONObject("bloodskyGraph"));
+        assertNull(FbdCraftMacroGraphAdapter.expandIfSupported(original,
+                child -> FbdCraftMacroDefinition.fromJson(validMacro().toString()))
+                .toJson().optJSONObject("bloodskyGraph"));
+        assertNull(FbdCraftMacroGraphAdapter.expandIfSupported(original, child -> {
+            throw new IllegalArgumentException("invalid sidecar");
+        }).toJson().optJSONObject("bloodskyGraph"));
+    }
+
     @Test public void mapsOriginalCraftTimerContactAndRetainsLegacyPtAlias() {
         assertArrayEquals(new String[]{"IN", "MS"},
                 MainActivity.knownFbdPins("FBD CRAFT TIMER", false));

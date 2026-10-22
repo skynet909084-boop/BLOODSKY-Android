@@ -26,33 +26,10 @@ final class FbdCraftMacroGraphAdapter {
         if (root.optJSONObject("bloodskyGraph") != null) return definition;
         JSONArray children = root.optJSONArray("fbInMacros");
         if (children == null || children.length() == 0) return definition;
-        if (!supportsNestedExecution(children, nestedMacros)) return definition;
         JSONObject graph = translate(root, children, nestedMacros);
         if (graph == null) return definition;
         root.put("bloodskyGraph", graph);
         return FbdCraftMacroDefinition.fromJson(root.toString());
-    }
-
-    private static boolean supportsNestedExecution(JSONArray children,
-            NestedMacroResolver nestedMacros) {
-        for (int i = 0; i < children.length(); i++) {
-            JSONObject child = children.optJSONObject(i);
-            if (child == null) return false;
-            int id = child.optInt("componentId", -1);
-            if (id == 135) {
-                if (nestedMacros == null) return false;
-                try {
-                    FbdCraftMacroDefinition nested = nestedMacros.resolve(child);
-                    if (nested == null || nested.toJson().optJSONObject("bloodskyGraph") == null)
-                        return false;
-                } catch (Exception unresolved) { return false; }
-            }
-            // ODTEMP uses the operator's bounded HTTP poller. MQTT subscribers
-            // share the operator subscription lifecycle and publishers are scanned
-            // from each validated graph with their original EN rising-edge behavior.
-            // Phone sensors (120/131/132) use the same listeners at either depth.
-        }
-        return true;
     }
 
     static JSONObject translate(JSONObject root, JSONArray children) throws Exception {
@@ -83,8 +60,18 @@ final class FbdCraftMacroGraphAdapter {
             JSONObject child = children.optJSONObject(i);
             if (child == null) return null;
             int componentId = child.optInt("componentId", -1);
-            FbdCraftMacroDefinition nestedDefinition = componentId == 135 && nestedMacros != null
-                    ? nestedMacros.resolve(child) : null;
+            FbdCraftMacroDefinition nestedDefinition = null;
+            if (componentId == 135) {
+                if (nestedMacros == null) return null;
+                try {
+                    // Resolve once: resolving recursively in a separate preflight doubles
+                    // sidecar parsing and graph validation at every nesting level.
+                    nestedDefinition = nestedMacros.resolve(child);
+                    if (nestedDefinition == null
+                            || nestedDefinition.toJson().optJSONObject("bloodskyGraph") == null)
+                        return null;
+                } catch (Exception unresolved) { return null; }
+            }
             String type = componentId == 135
                     ? (nestedDefinition == null ? null : "FBD CRAFT MACRO")
                     : typeForComponentId(componentId, child);
