@@ -11746,16 +11746,17 @@ public class MainActivity extends Activity {
                     if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(20)) / Math.max(4f, stateText.length() * 0.58f))));
                     canvas.drawText(stateText, w.x + dp(10), w.y + w.h / 2 + dp(5), paint);
                 } else if ("Числовой ввод Craft".equals(w.type)) {
-                    String value = liveValues.get(i);
-                    if (value == null || value.startsWith("ERR") || value.startsWith("CFG")) value = w.text;
-                    if (value == null) value = "0";
+                    String value = CraftNumericInputDisplay.value(liveValues.get(i), w.text, operatorMode,
+                            w.connectionInfo != null && !w.connectionInfo.trim().isEmpty());
+                    boolean valueUnavailable = CraftNumericInputDisplay.unavailable(value);
                     android.graphics.Typeface previousTypeface = paint.getTypeface();
                     if (!w.extraFields.optBoolean("craftNumericSystemFont", false)) {
                         try { paint.setTypeface(android.graphics.Typeface.createFromAsset(
                                 MainActivity.this.getAssets(), "fonts/sf_digital_readout_heavy.ttf")); }
                         catch (Exception missingFont) { /* Keep the platform fallback if the asset is unavailable. */ }
                     }
-                    paint.setColor(w.textColor); paint.setTextSize(dp(w.textSizeSp));
+                    paint.setColor(valueUnavailable ? Color.rgb(185, 28, 28) : w.textColor);
+                    paint.setTextSize(dp(w.textSizeSp));
                     paint.setTextAlign(Paint.Align.CENTER);
                     canvas.drawText(value, w.x + w.w / 2f, w.y + w.h / 2f + dp(5), paint);
                     paint.setTextAlign(Paint.Align.LEFT);
