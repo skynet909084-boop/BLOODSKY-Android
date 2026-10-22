@@ -88,6 +88,82 @@ public class FbdWireEditTransactionTest {
         assertEquals(before, FbdWireHistory.snapshot(edges));
     }
 
+    @Test public void failedUndoSaveRestoresOriginalEdgesAndUndoTimeline() throws Exception {
+        Object screen = new Object();
+        List<MainActivity.FbdConnection> edges = new ArrayList<>();
+        FbdWireHistory history = new FbdWireHistory();
+        history.recordBefore(screen, edges);
+        edges.add(edge(0, 1));
+        String before = FbdWireHistory.snapshot(edges);
+
+        assertFalse(FbdWireEditTransaction.replay(screen, edges, history, false, () -> false));
+        assertEquals(before, FbdWireHistory.snapshot(edges));
+        assertTrue(history.canUndo(screen));
+        assertFalse(history.canRedo(screen));
+
+        assertTrue(FbdWireEditTransaction.replay(screen, edges, history, false, () -> true));
+        assertTrue(edges.isEmpty());
+        assertFalse(history.canUndo(screen));
+        assertTrue(history.canRedo(screen));
+    }
+
+    @Test public void failedRedoSaveLeavesRedoAndTypedGraphUnchanged() throws Exception {
+        Object screen = new Object();
+        List<MainActivity.FbdConnection> edges = new ArrayList<>();
+        FbdWireHistory history = new FbdWireHistory();
+        history.recordBefore(screen, edges);
+        edges.add(edge(2, 3));
+        assertTrue(history.undo(screen, edges));
+        assertTrue(edges.isEmpty());
+
+        assertFalse(FbdWireEditTransaction.replay(screen, edges, history, true, () -> false));
+        assertTrue(edges.isEmpty());
+        assertTrue(history.canRedo(screen));
+        assertFalse(history.canUndo(screen));
+
+        assertTrue(FbdWireEditTransaction.replay(screen, edges, history, true, () -> true));
+        assertEquals(1, edges.size());
+        assertEquals("BOOL", MainActivity.connectionToJson(edges.get(0))
+                .getString("targetSignalType"));
+        assertTrue(history.canUndo(screen));
+        assertFalse(history.canRedo(screen));
+    }
+
+    @Test public void saveExceptionRollsBackReplayWithoutLosingOtherScreensHistory()
+            throws Exception {
+        Object first = new Object(), second = new Object();
+        List<MainActivity.FbdConnection> firstEdges = new ArrayList<>();
+        List<MainActivity.FbdConnection> secondEdges = new ArrayList<>();
+        FbdWireHistory history = new FbdWireHistory();
+        history.recordBefore(first, firstEdges);
+        firstEdges.add(edge(0, 1));
+        history.recordBefore(second, secondEdges);
+        secondEdges.add(edge(3, 4));
+        String before = FbdWireHistory.snapshot(firstEdges);
+
+        try {
+            FbdWireEditTransaction.replay(first, firstEdges, history, false,
+                    () -> { throw new IOException("disk full"); });
+            fail("Expected storage failure");
+        } catch (IOException expected) {
+            assertEquals("disk full", expected.getMessage());
+        }
+        assertEquals(before, FbdWireHistory.snapshot(firstEdges));
+        assertTrue(history.canUndo(first));
+        assertTrue(history.canUndo(second));
+        assertEquals(1, secondEdges.size());
+    }
+
+    @Test public void noReplayHistoryNeverCallsPersistence() throws Exception {
+        Object screen = new Object();
+        FbdWireHistory history = new FbdWireHistory();
+        List<MainActivity.FbdConnection> edges = new ArrayList<>();
+        final int[] writes = {0};
+        assertFalse(FbdWireEditTransaction.replay(screen, edges, history, false,
+                () -> { writes[0]++; return true; }));
+        assertEquals(0, writes[0]);
+    }
+
     private static MainActivity.FbdConnection edgeUnchecked(int source, int target) {
         try { return edge(source, target); }
         catch (Exception failure) { throw new IllegalStateException(failure); }
