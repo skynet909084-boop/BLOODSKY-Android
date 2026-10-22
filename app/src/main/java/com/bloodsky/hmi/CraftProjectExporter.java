@@ -30,24 +30,31 @@ public final class CraftProjectExporter {
         JSONObject imported = new JSONObject(CraftProjectImporter.convert(baselineSource.toString()));
         JSONArray sourceRows = baselineSource.getJSONArray("TableComponent");
         JSONArray importedScreens = imported.getJSONArray("screens");
-        // Craft stores screen membership as one-based numScreen, rather than a
-        // separate screen table. Appending screens leaves every existing number
-        // intact. Removing screens is safe only at the end: deleting an earlier
-        // screen would renumber every later component and navigation target.
-        // Real projects may have stale countScreen below their highest numScreen,
-        // so importedScreens is the inferred source count.
-        if (screens.length() < importedScreens.length()) {
-            for (int screenIndex = 0; screenIndex < screens.length(); screenIndex++) {
-                JSONObject screen = screens.optJSONObject(screenIndex);
-                if (screen == null || screen.optInt("craftScreenNumber", screenIndex + 1) != screenIndex + 1)
-                    throw new IOException("Удаление не последних экранов требует переназначения ссылок KaScada");
-            }
+        // Original Craft screen numbers survive project save/reopen in each
+        // screen's extra fields. Build an explicit source-to-output map so a
+        // removed middle screen cannot silently attach rows or links to a neighbor.
+        int[] sourceScreenByOutput = new int[screens.length()];
+        int[] outputScreenBySource = new int[importedScreens.length() + 1];
+        for (int i = 0; i < screens.length(); i++) {
+            JSONObject screen = screens.optJSONObject(i);
+            if (screen == null) throw new IOException("Экран проекта повреждён");
+            int sourceNumber = screen.has("craftScreenNumber")
+                    ? screen.optInt("craftScreenNumber", -1) : -1;
+            if (sourceNumber == -1) sourceNumber = i < importedScreens.length() ? i + 1 : 0;
+            if (sourceNumber < 0 || sourceNumber > importedScreens.length())
+                throw new IOException("Исходный номер экрана KaScada повреждён");
+            if (sourceNumber > 0 && outputScreenBySource[sourceNumber] != 0)
+                throw new IOException("Исходный экран KaScada используется повторно");
+            sourceScreenByOutput[i] = sourceNumber;
+            if (sourceNumber > 0) outputScreenBySource[sourceNumber] = i + 1;
         }
-        while (importedScreens.length() < screens.length()) {
-            int number = importedScreens.length() + 1;
-            importedScreens.put(new JSONObject().put("name", "Экран " + number)
-                    .put("craftScreenNumber", number).put("widgets", new JSONArray())
-                    .put("connections", new JSONArray()));
+        JSONArray alignedImportedScreens = new JSONArray();
+        for (int i = 0; i < screens.length(); i++) {
+            int sourceNumber = sourceScreenByOutput[i];
+            JSONObject baseline = sourceNumber > 0
+                    ? importedScreens.getJSONObject(sourceNumber - 1)
+                    : new JSONObject().put("widgets", new JSONArray()).put("connections", new JSONArray());
+            alignedImportedScreens.put(baseline);
         }
         int rowCapacity = sourceRows.length();
         for (int screenIndex = 0; screenIndex < screens.length(); screenIndex++) {
@@ -63,16 +70,21 @@ public final class CraftProjectExporter {
         meta.put("name", project.optString("projectName", meta.optString("name", "Проект")));
         JSONObject backgrounds = meta.optJSONObject("jsTableNameProject_screenBackground");
         if (backgrounds == null) backgrounds = new JSONObject();
+        JSONObject sourceBackgrounds = original.getJSONObject("TableNameProject")
+                .optJSONObject("jsTableNameProject_screenBackground");
+        remapScreenBackgrounds(backgrounds, sourceBackgrounds, sourceScreenByOutput,
+                importedScreens.length());
 
         for (int s = 0; s < screens.length(); s++) {
             JSONObject screen = screens.optJSONObject(s);
-            JSONObject baselineScreen = importedScreens.optJSONObject(s);
+            JSONObject baselineScreen = alignedImportedScreens.optJSONObject(s);
             if (screen == null || baselineScreen == null)
                 throw new IOException("Экран проекта повреждён");
             String prefix = "screen" + (s + 1);
-            JSONObject baselineBackgrounds = original.getJSONObject("TableNameProject")
-                    .optJSONObject("jsTableNameProject_screenBackground");
-            int originalColor = baselineBackgrounds == null ? 0 : baselineBackgrounds.optInt(prefix + "Color", 0);
+            int sourceNumber = sourceScreenByOutput[s];
+            String sourcePrefix = sourceNumber > 0 ? "screen" + sourceNumber : "";
+            int originalColor = sourceBackgrounds == null || sourceNumber == 0
+                    ? 0 : sourceBackgrounds.optInt(sourcePrefix + "Color", 0);
             if (screen.optInt("backgroundColor", originalColor) != originalColor)
                 backgrounds.put(prefix + "Color", screen.optInt("backgroundColor", originalColor));
             String imagePath = screen.optString("backgroundImagePath", "").trim();
@@ -119,7 +131,9 @@ public final class CraftProjectExporter {
                 JSONObject output = outputRows.getJSONObject(row);
                 JSONObject source = sourceRows.getJSONObject(row);
                 JSONObject sourceOther = objectValue(source.opt("jsTableComponent_other"));
-                if (sourceOther.optInt("numScreen", 1) != s + 1)
+                int expectedSourceNumber = sourceNumber > 0 && widget.has("craftSourceRow")
+                        ? sourceNumber : s + 1;
+                if (sourceOther.optInt("numScreen", 1) != expectedSourceNumber)
                     throw new IOException("Перемещение компонентов между экранами пока нельзя экспортировать в KaScada");
                 if (widget.optInt("craftComponentId", -1) != source.optInt("componentId", -1))
                     throw new IOException("Изменение типа исходного компонента не поддерживается");
@@ -247,6 +261,7 @@ public final class CraftProjectExporter {
                         }
                     }
                     writeEditedMediaPaths(componentId, widget, merged);
+                    merged.put("numScreen", s + 1);
                     Object raw = source.opt("jsTableComponent_other");
                     if (raw instanceof String) {
                         String serializedOther = merged.toString();
@@ -259,25 +274,30 @@ public final class CraftProjectExporter {
                         output.put("jsTableComponent_other", new JSONObject(merged.toString()));
                         source.put("jsTableComponent_other", new JSONObject(merged.toString()));
                     }
+                } else if (sourceNumber > 0) {
+                    sourceOther.put("numScreen", s + 1);
+                    source.put("jsTableComponent_other", sourceOther);
+                    Object raw = output.opt("jsTableComponent_other");
+                    if (raw instanceof String) output.put("jsTableComponent_other", sourceOther.toString());
+                    else output.put("jsTableComponent_other", new JSONObject(sourceOther.toString()));
                 }
             }
             sourceRowsByScreen.add(sourceRowsForScreen);
         }
-        rejectNavigationToDeletedScreens(outputRows, seen, screens.length());
-        writeFbdConnections(screens, importedScreens, sourceRowsByScreen, sourceRows, outputRows);
+        remapNavigationTargets(outputRows, seen, outputScreenBySource);
+        writeFbdConnections(screens, alignedImportedScreens, sourceRowsByScreen, sourceRows, outputRows);
         JSONArray retainedRows = new JSONArray();
         for (int row = 0; row < outputRows.length(); row++)
             if (seen[row]) retainedRows.put(outputRows.get(row));
         result.put("TableComponent", retainedRows);
         meta.put("countScreen", screens.length());
-        removeDeletedTrailingScreenBackgrounds(backgrounds, screens.length(), importedScreens.length());
         if (meta.has("jsTableNameProject_screenBackground"))
             meta.put("jsTableNameProject_screenBackground", backgrounds);
         return result.toString();
     }
 
-    private static void rejectNavigationToDeletedScreens(JSONArray rows, boolean[] retained,
-                                                          int remainingScreens) throws Exception {
+    private static void remapNavigationTargets(JSONArray rows, boolean[] retained,
+                                               int[] outputScreenBySource) throws Exception {
         for (int row = 0; row < rows.length(); row++) {
             if (row >= retained.length || !retained[row]) continue;
             JSONObject component = rows.optJSONObject(row);
@@ -285,19 +305,34 @@ public final class CraftProjectExporter {
             int componentId = component.optInt("componentId", -1);
             if (componentId != 6) continue; // CustomComponents.e screen link / constant button
             JSONObject other = objectValue(component.opt("jsTableComponent_other"));
+            if (other.optInt("mode", 0) != 1) continue;
             int target = other.optInt("changeScreen", 0);
-            if (target > remainingScreens)
-                throw new IOException("Переход Craft ссылается на удалённый экран " + target);
+            if (target <= 0 || target >= outputScreenBySource.length) continue;
+            int mapped = outputScreenBySource[target];
+            if (mapped == 0) throw new IOException("Переход Craft ссылается на удалённый экран " + target);
+            other.put("changeScreen", mapped);
+            Object raw = component.opt("jsTableComponent_other");
+            component.put("jsTableComponent_other", raw instanceof String ? other.toString() : other);
         }
     }
 
-    private static void removeDeletedTrailingScreenBackgrounds(JSONObject backgrounds,
-            int remainingScreens, int originalScreens) {
-        for (int screen = remainingScreens + 1; screen <= originalScreens; screen++) {
+    private static void remapScreenBackgrounds(JSONObject backgrounds, JSONObject sourceBackgrounds,
+            int[] sourceScreenByOutput, int originalScreens) throws Exception {
+        if (sourceBackgrounds == null) sourceBackgrounds = new JSONObject();
+        for (int screen = 1; screen <= Math.max(128, originalScreens); screen++) {
             String prefix = "screen" + screen;
             backgrounds.remove(prefix + "Color");
             backgrounds.remove(prefix + "IsColor");
             backgrounds.remove(prefix + "PathImage");
+        }
+        for (int i = 0; i < sourceScreenByOutput.length; i++) {
+            int source = sourceScreenByOutput[i];
+            if (source <= 0) continue;
+            String sourcePrefix = "screen" + source;
+            String outputPrefix = "screen" + (i + 1);
+            for (String suffix : new String[]{"Color", "IsColor", "PathImage"})
+                if (sourceBackgrounds.has(sourcePrefix + suffix))
+                    backgrounds.put(outputPrefix + suffix, sourceBackgrounds.get(sourcePrefix + suffix));
         }
     }
 
@@ -560,6 +595,14 @@ public final class CraftProjectExporter {
 
             int[] rows = sourceRowsByScreen.get(screenIndex);
             JSONArray widgets = screen.getJSONArray("widgets");
+            JSONArray baselineWidgets = baseline.optJSONArray("widgets");
+            if (baselineWidgets == null)
+                throw new IOException("Исходная FBD-связь не имеет однозначного представления для экспорта");
+            java.util.Set<Integer> originalRowsOnScreen = new java.util.HashSet<>();
+            for (int i = 0; i < baselineWidgets.length(); i++) {
+                int originalRow = baselineWidgets.getJSONObject(i).optInt("craftSourceRow", -1);
+                if (originalRow >= 0) originalRowsOnScreen.add(originalRow);
+            }
             java.util.Set<Integer> retained = new java.util.HashSet<>();
             for (int row : rows) retained.add(row);
             int originalMappedOutgoing = 0;
@@ -576,7 +619,7 @@ public final class CraftProjectExporter {
                     if (candidateRow.optInt("componentId", -1) < 101
                             || candidateRow.optInt("componentId", -1) > 140) continue;
                     JSONObject candidateOther = objectValue(candidateRow.opt("jsTableComponent_other"));
-                    if (candidateOther.optInt("numScreen", 1) != screenIndex + 1
+                    if (!originalRowsOnScreen.contains(candidate)
                             || candidateOther.optInt("saveKey", Integer.MIN_VALUE) != targetKey) continue;
                     if (targetRow >= 0)
                         throw new IOException("Ключ saveKey исходной связи неоднозначен на экране");
@@ -588,7 +631,6 @@ public final class CraftProjectExporter {
             }
             JSONArray baselineEdges = baseline.optJSONArray("connections");
             int survivingBaselineEdges = 0;
-            JSONArray baselineWidgets = baseline.optJSONArray("widgets");
             if (baselineEdges == null || baselineWidgets == null)
                 throw new IOException("Исходная FBD-связь не имеет однозначного представления для экспорта");
             for (int i = 0; i < baselineEdges.length(); i++) {
