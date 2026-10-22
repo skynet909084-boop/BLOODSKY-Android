@@ -49,6 +49,35 @@ public final class CraftSystemRegisterBank {
     }
 
 
+    /**
+     * Atomic FC23: write the complete validated register range before reading,
+     * with no interleaving from another Modbus connection or FBD scan.
+     *
+     * Both address ranges must be project user registers; service addresses
+     * 0..9 can never be touched by this operation.
+     */
+    public synchronized int[] readWriteWords(int readAddress, int readCount,
+                                             int writeAddress, int[] values) {
+        if (readCount < 1 || readCount > 125 || values == null
+                || values.length < 1 || values.length > 121) {
+            throw new IllegalArgumentException("Invalid FC23 register quantity");
+        }
+        requireWordRange(readAddress, readCount);
+        requireWordRange(writeAddress, values.length);
+        for (int value : values) requireWord(value);
+
+        for (int i = 0; i < values.length; i++) words[writeAddress + i] = values[i];
+        int[] response = new int[readCount];
+        for (int i = 0; i < readCount; i++) response[i] = words[readAddress + i] & 0xffff;
+        return response;
+    }
+
+    private static void requireWordRange(int start, int count) {
+        if (!isUserRegister(start) || count < 1 || (long) start + count > SIZE) {
+            throw new IllegalArgumentException("Range is not entirely in user registers");
+        }
+    }
+
     public synchronized boolean readBit(int address, int bit) {
         requireUserRegister(address);
         requireBit(bit);

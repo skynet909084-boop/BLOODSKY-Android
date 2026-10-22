@@ -63,6 +63,33 @@ public class CraftSystemRegisterBankTest {
         assertEquals(unchanged, bank.readWord(10));
     }
 
+    @Test public void fc23WritesBeforeReadsAndRejectsInvalidRangesWithoutMutation() {
+        CraftSystemRegisterBank bank = new CraftSystemRegisterBank();
+        bank.writeWord(10, 0x1111);
+        bank.writeWord(11, 0x2222);
+        bank.writeWord(12, 0x3333);
+        assertArrayEquals(new int[]{0xabcd, 0xeffe, 0x3333},
+                bank.readWriteWords(10, 3, 10, new int[]{0xabcd, 0xeffe}));
+        assertEquals(0xabcd, bank.readWord(10));
+        assertEquals(0xeffe, bank.readWord(11));
+        assertEquals(0x3333, bank.readWord(12));
+
+        int unchanged = bank.readWord(10);
+        expectIllegal(() -> bank.readWriteWords(9, 1, 10, new int[]{7}));
+        expectIllegal(() -> bank.readWriteWords(10, 1, 9, new int[]{7}));
+        expectIllegal(() -> bank.readWriteWords(1999, 2, 10, new int[]{7}));
+        expectIllegal(() -> bank.readWriteWords(10, 1, 1999, new int[]{7, 8}));
+        expectIllegal(() -> bank.readWriteWords(10, 0, 10, new int[]{7}));
+        expectIllegal(() -> bank.readWriteWords(10, 126, 10, new int[]{7}));
+        expectIllegal(() -> bank.readWriteWords(10, 1, 10, new int[]{}));
+        expectIllegal(() -> bank.readWriteWords(10, 1, 10, null));
+        expectIllegal(() -> bank.readWriteWords(10, 1, 10, new int[]{-1}));
+        expectIllegal(() -> bank.readWriteWords(10, 1, 10, new int[]{65536}));
+        expectIllegal(() -> bank.readWriteWords(10, 1, 10, new int[]{7, -1}));
+        assertEquals(unchanged, bank.readWord(10));
+        assertEquals(0xeffe, bank.readWord(11));
+    }
+
     @Test public void floatRoundTripsWithAllExplicitByteAndRegisterOrders() throws Exception {
         float value = -123.25f;
         for (boolean swapWord : new boolean[]{false, true}) {
