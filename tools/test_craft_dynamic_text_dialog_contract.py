@@ -15,7 +15,8 @@ class DynamicTextSourceContract(unittest.TestCase):
         self.assertIn("System.arraycopy(previousLabels", editor)
         self.assertIn("System.arraycopy(previousColors", editor)
         self.assertIn("if (!persistProjectNow(true))", editor)
-        self.assertIn("editSelectedWidget(true)", editor)
+        self.assertIn("dialogGuard::advanced", editor)
+        self.assertIn("if (!dialogGuard.require()) return false;", editor)
         self.assertIn("CraftDynamicTextProperties.STATE_COUNT", form)
         for label in ["Настройки", "Устройство: ", "Рег:", "Состояния 0–15",
                       "Показывать рамку", "Подбирать размер текста",
