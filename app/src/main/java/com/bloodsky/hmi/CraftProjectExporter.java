@@ -38,8 +38,7 @@ public final class CraftProjectExporter {
         for (int i = 0; i < screens.length(); i++) {
             JSONObject screen = screens.optJSONObject(i);
             if (screen == null) throw new IOException("Экран проекта повреждён");
-            int sourceNumber = screen.has("craftScreenNumber")
-                    ? screen.optInt("craftScreenNumber", -1) : -1;
+            int sourceNumber = CraftExactInteger.read(screen, "craftScreenNumber", -1);
             if (sourceNumber == -1) sourceNumber = i < importedScreens.length() ? i + 1 : 0;
             if (sourceNumber < 0 || sourceNumber > importedScreens.length())
                 throw new IOException("Исходный номер экрана KaScada повреждён");
@@ -108,9 +107,9 @@ public final class CraftProjectExporter {
             for (int w = 0; w < widgets.length(); w++) {
                 JSONObject widget = widgets.optJSONObject(w);
                 if (widget == null) throw new IOException("Компонент проекта повреждён");
-                int row = widget.optInt("craftSourceRow", -1);
+                int row = CraftExactInteger.read(widget, "craftSourceRow", -1);
                 if (row < 0) {
-                    int copiedRow = widget.optInt("craftCopySourceRow", -1);
+                    int copiedRow = CraftExactInteger.read(widget, "craftCopySourceRow", -1);
                     if (copiedRow >= 0) {
                         row = appendCopiedComponentRow(widget, copiedRow, s, sourceRows, outputRows);
                     } else {
@@ -133,9 +132,10 @@ public final class CraftProjectExporter {
                 JSONObject sourceOther = objectValue(source.opt("jsTableComponent_other"));
                 int expectedSourceNumber = sourceNumber > 0 && widget.has("craftSourceRow")
                         ? sourceNumber : s + 1;
-                if (sourceOther.optInt("numScreen", 1) != expectedSourceNumber)
+                if (CraftExactInteger.read(sourceOther, "numScreen", 1) != expectedSourceNumber)
                     throw new IOException("Перемещение компонентов между экранами пока нельзя экспортировать в KaScada");
-                if (widget.optInt("craftComponentId", -1) != source.optInt("componentId", -1))
+                if (CraftExactInteger.read(widget, "craftComponentId", -1)
+                        != CraftExactInteger.read(source, "componentId", -1))
                     throw new IOException("Изменение типа исходного компонента не поддерживается");
 
                 output.put("text", widget.optString("text", source.optString("text", "")));
@@ -178,7 +178,7 @@ public final class CraftProjectExporter {
                             if (timeUnit > 0) merged.put("typeTime", timeUnit);
                         }
                     }
-                    int componentId = widget.optInt("craftComponentId", -1);
+                    int componentId = CraftExactInteger.read(widget, "craftComponentId", -1);
                     if (componentId == 7) {
                         JSONArray states = widget.optJSONArray("dynTextStates");
                         JSONArray colors = widget.optJSONArray("dynTextColors");
@@ -508,11 +508,11 @@ public final class CraftProjectExporter {
         return max + 1;
     }
 
-    private static int addedCraftFbdBlockId(JSONObject widget) {
+    private static int addedCraftFbdBlockId(JSONObject widget) throws org.json.JSONException {
         if (widget == null) return -1;
         if ("WebView Craft".equals(widget.optString("type", ""))) return 26;
         if ("Распознавание речи Craft".equals(widget.optString("type", ""))) return 27;
-        int declared = widget.optInt("craftComponentId", -1);
+        int declared = CraftExactInteger.read(widget, "craftComponentId", -1);
         if (declared >= 101 && declared <= 140 && declared != 135)
             return declared;
         String type = MainActivity.canonicalFbdBlockType(widget.optString("type", ""));
