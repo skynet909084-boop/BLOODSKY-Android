@@ -110,19 +110,41 @@ final class FbdCraftMacroGraphAdapter {
             }
             if (nestedDefinition != null)
                 widget.put("craftMacroDefinition", nestedDefinition.toJson());
-            int action = child.optInt("compareAction", 0);
-            if (type.contains("ARITHMETIC")) widget.put("compareOperator", arithmeticOperator(action));
-            else if (type.contains("COMPARE")) widget.put("compareOperator", comparisonOperator(action));
-            if ("FBD CRAFT TIMER".equals(type)) {
-                widget.put("craftTimerMode", timerMode(child.optInt("type", 1)));
-                widget.put("craftTimerUnit", timerUnit(child.optInt("typeTime", 1)));
+            // The original factory stores these choices as enumerated source
+            // int values. JSONObject.optInt can wrap/truncate malformed JSON,
+            // and the old default branches could execute an unsupported mode
+            // as if it were TON, R, +, >, sunrise or the X sensor axis.
+            if (componentId == 107 || componentId == 112
+                    || componentId == 110 || componentId == 111) {
+                int action = CraftExactInteger.read(child, "compareAction", 1);
+                int maxAction = (componentId == 110 || componentId == 111) ? 4 : 6;
+                if (action < 1 || action > maxAction) return null;
+                widget.put("compareOperator", maxAction == 4
+                        ? arithmeticOperator(action) : comparisonOperator(action));
             }
-            if ("FBD CRAFT T".equals(type))
-                widget.put("craftTriggerMode", triggerMode(child.optInt("type", 1)));
-            if ("FBD CRAFT SENSOR ORIENTATION".equals(type))
-                widget.put("craftSensorAxis", Math.max(1, Math.min(3, child.optInt("type", 1))));
-            if ("FBD CRAFT SUNRISE".equals(type))
-                widget.put("craftSunriseMode", child.optInt("type", 1) == 2 ? "SS" : "SR");
+            if (componentId == 115) {
+                int timerType = CraftExactInteger.read(child, "type", 1);
+                int timerUnits = CraftExactInteger.read(child, "typeTime", 1);
+                if (timerType < 1 || timerType > 4 || timerUnits < 1 || timerUnits > 3)
+                    return null;
+                widget.put("craftTimerMode", timerMode(timerType));
+                widget.put("craftTimerUnit", timerUnit(timerUnits));
+            }
+            if (componentId == 114) {
+                int triggerType = CraftExactInteger.read(child, "type", 1);
+                if (triggerType < 1 || triggerType > 3) return null;
+                widget.put("craftTriggerMode", triggerMode(triggerType));
+            }
+            if (componentId == 120) {
+                int axis = CraftExactInteger.read(child, "type", 1);
+                if (axis < 1 || axis > 3) return null;
+                widget.put("craftSensorAxis", axis);
+            }
+            if (componentId == 127) {
+                int sunriseMode = CraftExactInteger.read(child, "type", 1);
+                if (sunriseMode < 1 || sunriseMode > 2) return null;
+                widget.put("craftSunriseMode", sunriseMode == 2 ? "SS" : "SR");
+            }
             if (type.startsWith("FBD CRAFT MQTT ")) {
                 widget.put("craftMqttTopic", child.optString("topic", ""));
                 widget.put("craftMqttType", CraftExactInteger.read(child,
