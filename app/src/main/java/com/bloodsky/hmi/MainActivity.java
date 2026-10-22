@@ -6320,6 +6320,7 @@ public class MainActivity extends Activity {
         }
 
         final EditText craftEmailBodyField, craftEmailToField;
+        final CheckBox craftEmailEnabledField;
         if (w.extraFields.optInt("craftComponentId", -1) == 28 || "Email Craft".equals(w.type)) {
             craftEmailBodyField = propertyField(w.extraFields.optString("craftEmailBody", ""),
                     InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
@@ -6330,12 +6331,17 @@ public class MainActivity extends Activity {
                     InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
             craftEmailToField.setHint("Получатель");
             form.addView(craftEmailToField);
+            craftEmailEnabledField = new CheckBox(this);
+            craftEmailEnabledField.setText("Разрешить подготовку письма в рабочем режиме");
+            craftEmailEnabledField.setChecked(w.extraFields.optBoolean("craftEmailEnabled", false));
+            form.addView(craftEmailEnabledField);
             TextView emailHelp = new TextView(this);
-            emailHelp.setText("Тема и текст сохраняются. Отправка email не подключена. Импортированные логин и пароль зашифрованы Android Keystore и не включаются в JSON проекта.");
+            emailHelp.setText("В рабочем режиме откроется приложение почты после подтверждения оператора. BLOODSKY не отправляет письмо автоматически. Импортированные логин и пароль не используются и хранятся вне JSON проекта.");
             form.addView(emailHelp);
         } else {
             craftEmailBodyField = null;
             craftEmailToField = null;
+            craftEmailEnabledField = null;
         }
 
         final EditText timerPresetField;
@@ -7455,9 +7461,11 @@ public class MainActivity extends Activity {
                         String title = textField.getText().toString();
                         String body = craftEmailBodyField.getText().toString();
                         String recipient = craftEmailToField.getText().toString().trim();
-                        if (title.length() > 120 || body.length() > 2000 || recipient.length() > 320) {
+                        if (title.length() > 120 || body.length() > 2000 || recipient.length() > 320
+                                || (craftEmailEnabledField.isChecked()
+                                && CraftEmailPolicy.validationError(recipient, title, body) != null)) {
                             Toast.makeText(MainActivity.this,
-                                    "Тема: до 120, текст: до 2000, адрес: до 320 символов", Toast.LENGTH_LONG).show();
+                                    "Проверь тему, текст и один корректный адрес получателя", Toast.LENGTH_LONG).show();
                             return;
                         }
                         try {
@@ -7472,7 +7480,7 @@ public class MainActivity extends Activity {
                             w.extraFields.put("craftEmailTitle", title);
                             w.extraFields.put("craftEmailBody", body);
                             w.extraFields.put("craftEmailTo", recipient);
-                            w.extraFields.put("craftEmailEnabled", false);
+                            w.extraFields.put("craftEmailEnabled", craftEmailEnabledField.isChecked());
                         } catch (org.json.JSONException failure) {
                             Toast.makeText(MainActivity.this, "Не удалось сохранить настройки email", Toast.LENGTH_LONG).show();
                             return;
@@ -11927,11 +11935,12 @@ public class MainActivity extends Activity {
                     canvas.drawText(w.text, w.x + dp(12), w.y + dp(19), paint);
                     paint.setColor(Color.rgb(248, 113, 113));
                     paint.setTextSize(dp(10));
-                    canvas.drawText("Отправка email не подключена",
+                    canvas.drawText(w.extraFields.optBoolean("craftEmailEnabled", false)
+                                    ? "Email • нажмите для подтверждения" : "Email выключен",
                             w.x + dp(12), w.y + w.h / 2 + dp(4), paint);
                     paint.setColor(Color.rgb(148, 163, 184));
                     paint.setTextSize(dp(9));
-                    canvas.drawText("Учётные данные защищены", w.x + dp(12), w.y + w.h - dp(10), paint);
+                    canvas.drawText(w.extraFields.optString("craftEmailTo", ""), w.x + dp(12), w.y + w.h - dp(10), paint);
                 } else if ("Голосовое сообщение".equals(w.type)) {
                     int voiceIdx = 0;
                     if (liveValues.containsKey(i)) {
@@ -12522,6 +12531,38 @@ public class MainActivity extends Activity {
                     }).show();
         }
 
+        private void requestCraftEmail(Widget widget) {
+            if (!operatorMode || !activityResumed || !widgets.contains(widget)
+                    || !widget.extraFields.optBoolean("craftEmailEnabled", false)) {
+                Toast.makeText(MainActivity.this, "Email Craft выключен в свойствах компонента", Toast.LENGTH_LONG).show();
+                return;
+            }
+            String recipient = widget.extraFields.optString("craftEmailTo", "").trim();
+            String subject = widget.extraFields.optString("craftEmailTitle", widget.text);
+            String body = widget.extraFields.optString("craftEmailBody", "");
+            String validationError = CraftEmailPolicy.validationError(recipient, subject, body);
+            if (validationError != null) {
+                Toast.makeText(MainActivity.this, validationError, Toast.LENGTH_LONG).show();
+                return;
+            }
+            new AlertDialog.Builder(MainActivity.this).setTitle("Подготовить письмо?")
+                    .setMessage("Получатель: " + recipient + "\nТема: " + subject
+                            + "\n\nОткроется приложение почты с черновиком. Письмо отправится только после отдельного нажатия «Отправить» в нём.")
+                    .setNegativeButton("Отмена", null)
+                    .setPositiveButton("Открыть почту", (dialog, which) -> {
+                        if (!operatorMode || !activityResumed || !widgets.contains(widget)
+                                || !widget.extraFields.optBoolean("craftEmailEnabled", false)) return;
+                        Intent compose = new Intent(Intent.ACTION_SENDTO,
+                                Uri.fromParts("mailto", recipient, null));
+                        compose.putExtra(Intent.EXTRA_SUBJECT, subject);
+                        compose.putExtra(Intent.EXTRA_TEXT, body);
+                        try { startActivity(Intent.createChooser(compose, "Подготовить email")); }
+                        catch (android.content.ActivityNotFoundException unavailable) {
+                            Toast.makeText(MainActivity.this, "На устройстве нет приложения для email", Toast.LENGTH_LONG).show();
+                        }
+                    }).show();
+        }
+
         private void activateRuntimeWidget(int index, float x, float y) {
             Widget picked = widgets.get(index);
             if ("Видео RTSP Craft".equals(picked.type)) {
@@ -12530,6 +12571,8 @@ public class MainActivity extends Activity {
                 openCraftWebView(picked, index);
             } else if ("Распознавание речи Craft".equals(picked.type)) {
                 requestCraftVoiceRecognition(picked);
+            } else if ("Email Craft".equals(picked.type)) {
+                requestCraftEmail(picked);
             } else if ("Архив Craft".equals(picked.type)) {
                 showLocalArchive(picked);
             } else if ("Числовой ввод Craft".equals(picked.type)) {

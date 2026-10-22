@@ -159,6 +159,13 @@
           "audit_note": "Craft ID 27 now has editable textVoice0–15, one-shot operator-confirmed on-device recognition, exact unique literal matching, and a local register-bit output. Import is disabled and export round-trips phrases/register data. Original always-listening wake-word mode, # variable interpolation, external command transport, and Android-device acceptance remain open."
         },
         {
+          "id": "widget.email_craft",
+          "name": "Email (CustomComponents.j)",
+          "status": "partial",
+          "criteria": "Craft ID 28 edits and round-trips subject/body/recipient, then prepares an email only after a local opt-in and operator confirmation.",
+          "audit_note": "Imported ID28 stays disabled. When explicitly enabled, BLOODSKY validates one recipient and launches a mailto draft after a confirmation; sending still requires the user's mail app. Craft SMTP/device-bit sending and Android mail-client acceptance remain open."
+        },
+        {
           "id": "widget.sms_in",
           "name": "Incoming SMS register/bit control",
           "status": "partial",
