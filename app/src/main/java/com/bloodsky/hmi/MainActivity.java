@@ -6003,6 +6003,7 @@ private String archiveProjectKey() {
      * explicit TCP FC03/FC06 mapping and write permission controls.
      */
     private void showOriginalLinearSetterSettings(Widget widget) {
+        final CraftWidgetDialogGuard dialogGuard = new CraftWidgetDialogGuard(widget);
         final int panelColor = Color.rgb(36, 36, 36);
         final int labelColor = Color.rgb(210, 210, 210);
         LinearLayout form = new LinearLayout(this);
@@ -6084,10 +6085,11 @@ private String archiveProjectKey() {
                 .create();
         advanced.setOnClickListener(v -> {
             dialog.dismiss();
-            editSelectedWidget(true);
+            dialogGuard.advanced();
         });
         dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
                 .setOnClickListener(v -> {
+                    if (!dialogGuard.require()) return;
                     JSONObject previous = widget.extraFields;
                     try {
                         int register = Integer.parseInt(registerField.getText().toString().trim());
@@ -6125,6 +6127,7 @@ private String archiveProjectKey() {
      * remapping UI available without turning an imported source on automatically.
      */
     private void showOriginalNumericIndicatorSettings(Widget widget) {
+        final CraftWidgetDialogGuard dialogGuard = new CraftWidgetDialogGuard(widget);
         final int panelColor = Color.rgb(36, 36, 36);
         final int labelColor = Color.rgb(210, 210, 210);
         LinearLayout form = new LinearLayout(this);
@@ -6229,10 +6232,11 @@ private String archiveProjectKey() {
                 .create();
         advanced.setOnClickListener(v -> {
             dialog.dismiss();
-            editSelectedWidget(true);
+            dialogGuard.advanced();
         });
         dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
                 .setOnClickListener(v -> {
+                    if (!dialogGuard.require()) return;
                     JSONObject old = widget.extraFields;
                     try {
                         int register = Integer.parseInt(registerField.getText().toString().trim());
@@ -6274,6 +6278,7 @@ private String archiveProjectKey() {
      * operator visibility. Keep advanced network write opt-in separate.
      */
     private void showOriginalSwitchSettings(Widget widget) {
+        final CraftWidgetDialogGuard dialogGuard = new CraftWidgetDialogGuard(widget);
         final int panelColor = Color.rgb(36, 36, 36);
         final int labelColor = Color.rgb(210, 210, 210);
         final int[] selectedImage = {OriginalCraftSwitch.imagePosition(widget.extraFields)};
@@ -6390,10 +6395,11 @@ private String archiveProjectKey() {
                 .create();
         advanced.setOnClickListener(v -> {
             dialog.dismiss();
-            editSelectedWidget(true);
+            dialogGuard.advanced();
         });
         dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
                 .setOnClickListener(v -> {
+                    if (!dialogGuard.require()) return;
                     JSONObject old = widget.extraFields;
                     try {
                         int register = Integer.parseInt(registerField.getText().toString().trim());
@@ -6432,6 +6438,7 @@ private String archiveProjectKey() {
      * The extended BLOODSKY inspector remains available for endpoint mapping.
      */
     private void showOriginalLampSettings(Widget lamp) {
+        final CraftWidgetDialogGuard dialogGuard = new CraftWidgetDialogGuard(lamp);
         final int panelColor = Color.rgb(36, 36, 36);
         final int labelColor = Color.rgb(210, 210, 210);
         LinearLayout form = new LinearLayout(this);
@@ -6502,7 +6509,7 @@ private String archiveProjectKey() {
         images.setTextColor(labelColor);
         images.setBackgroundColor(Color.TRANSPARENT);
         images.setContentDescription("Сменить изображение лампы Craft");
-        images.setOnClickListener(v -> { dialog.dismiss(); showIndicatorImages(lamp); });
+        images.setOnClickListener(v -> { if (!dialogGuard.require()) return; dialog.dismiss(); showIndicatorImages(lamp); });
         form.addView(images, new LinearLayout.LayoutParams(-1, dp(56)));
 
         Button advanced = new Button(this);
@@ -6512,11 +6519,12 @@ private String archiveProjectKey() {
         advanced.setTextColor(Color.rgb(173, 173, 173));
         advanced.setBackgroundColor(Color.TRANSPARENT);
         advanced.setContentDescription("Открыть расширенные настройки и привязку Modbus");
-        advanced.setOnClickListener(v -> { dialog.dismiss(); editSelectedWidget(true); });
+        advanced.setOnClickListener(v -> { dialog.dismiss(); dialogGuard.advanced(); });
         form.addView(advanced, new LinearLayout.LayoutParams(-1, dp(40)));
 
         dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
                 .setOnClickListener(v -> {
+                    if (!dialogGuard.require()) return;
                     JSONObject old = lamp.extraFields;
                     try {
                         int register = Integer.parseInt(registerField.getText().toString().trim());
