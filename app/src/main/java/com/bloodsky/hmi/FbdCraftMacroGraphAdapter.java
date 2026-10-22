@@ -38,17 +38,27 @@ final class FbdCraftMacroGraphAdapter {
 
     static JSONObject translate(JSONObject root, JSONArray children,
             NestedMacroResolver nestedMacros) throws Exception {
+        try {
+            return translateExact(root, children, nestedMacros);
+        } catch (JSONException invalidIdentity) {
+            // Unsupported source topology remains opaque and non-executable.
+            return null;
+        }
+    }
+
+    private static JSONObject translateExact(JSONObject root, JSONArray children,
+            NestedMacroResolver nestedMacros) throws Exception {
         if (root == null || children == null || children.length() == 0
                 || children.length() > FbdCraftMacroDefinition.MAX_CHILD_COMPONENTS) return null;
         JSONArray widgets = new JSONArray();
         JSONArray edges = new JSONArray();
         Map<Integer, Integer> bySaveKey = new HashMap<>();
-        int countIn = root.optInt("countIn", -1);
+        int countIn = CraftExactInteger.read(root, "countIn", -1);
         if (countIn < 0 || countIn > 4) return null;
 
         for (int i = 1; i <= countIn; i++) {
             String port = root.optString("nameIn" + i, "I" + i);
-            int type = root.optInt("typeIn" + i, -1);
+            int type = CraftExactInteger.read(root, "typeIn" + i, -1);
             if (type < 1 || type > 3) return null;
             JSONObject input = new JSONObject().put("type", "FBD CRAFT MACRO IN")
                     .put("text", port).put("craftMacroPortName", port)
@@ -59,7 +69,7 @@ final class FbdCraftMacroGraphAdapter {
         for (int i = 0; i < children.length(); i++) {
             JSONObject child = children.optJSONObject(i);
             if (child == null) return null;
-            int componentId = child.optInt("componentId", -1);
+            int componentId = CraftExactInteger.read(child, "componentId", -1);
             FbdCraftMacroDefinition nestedDefinition = null;
             if (componentId == 135) {
                 if (nestedMacros == null) return null;
@@ -81,7 +91,7 @@ final class FbdCraftMacroGraphAdapter {
                 String suffix = payloadType == 1 ? "BOOL" : payloadType == 2 ? "INT" : "FLOAT";
                 type = "FBD CRAFT MQTT " + (componentId == 139 ? "SUB " : "PUB ") + suffix;
             }
-            int saveKey = child.optInt("saveKey", Integer.MIN_VALUE);
+            int saveKey = CraftExactInteger.read(child, "saveKey", Integer.MIN_VALUE);
             if (type == null || saveKey == Integer.MIN_VALUE || bySaveKey.containsKey(saveKey)) return null;
             JSONObject widget = new JSONObject().put("type", type)
                     .put("text", child.optString("name", type.replace("FBD CRAFT ", "")))
@@ -139,13 +149,13 @@ final class FbdCraftMacroGraphAdapter {
         }
 
         int childBase = countIn;
-        int saveKeyOut = root.optInt("saveKeyOut", -1);
+        int saveKeyOut = CraftExactInteger.read(root, "saveKeyOut", -1);
         int outputNode = -1;
         String outputPin = "";
         for (int i = 0; i < children.length(); i++) {
             JSONObject child = children.getJSONObject(i);
             int source = childBase + i;
-            int keyOut = child.optInt("keyOut", -1);
+            int keyOut = CraftExactInteger.read(child, "keyOut", -1);
             if (keyOut < 0) continue;
             if (keyOut == saveKeyOut) {
                 if (outputNode >= 0) return null;
@@ -158,7 +168,7 @@ final class FbdCraftMacroGraphAdapter {
             }
             Integer target = bySaveKey.get(keyOut);
             if (target == null) return null;
-            int inputNumber = child.optInt("numOnIn", -1);
+            int inputNumber = CraftExactInteger.read(child, "numOnIn", -1);
             JSONObject targetWidget = widgets.getJSONObject(target);
             String[] inputs = MainActivity.knownFbdPins(MainActivity.widgetFromJson(targetWidget), false);
             if (inputNumber < 1 || inputNumber > inputs.length) return null;
@@ -169,11 +179,11 @@ final class FbdCraftMacroGraphAdapter {
         }
 
         for (int i = 1; i <= countIn; i++) {
-            int keyOut = root.optInt("keyOutIn" + i, -1);
+            int keyOut = CraftExactInteger.read(root, "keyOutIn" + i, -1);
             if (keyOut < 0) continue; // Unconnected interface input is valid.
             Integer target = bySaveKey.get(keyOut);
             if (target == null) return null;
-            int inputNumber = root.optInt("numOnIn" + i, -1);
+            int inputNumber = CraftExactInteger.read(root, "numOnIn" + i, -1);
             String[] inputs = MainActivity.knownFbdPins(
                     MainActivity.widgetFromJson(widgets.getJSONObject(target)), false);
             if (inputNumber < 1 || inputNumber > inputs.length) return null;
@@ -284,16 +294,16 @@ final class FbdCraftMacroGraphAdapter {
         for (int i = 0; i < children.length(); i++) {
             JSONObject child = children.optJSONObject(i);
             if (child == null || !child.has("saveKey")) continue;
-            int saveKey = child.optInt("saveKey", Integer.MIN_VALUE);
+            int saveKey = CraftExactInteger.read(child, "saveKey", Integer.MIN_VALUE);
             if (childBySaveKey.put(saveKey, child) != null) duplicateKeys.add(saveKey);
         }
         for (int i = 0; i < widgets.length(); i++) {
             JSONObject widget = widgets.optJSONObject(i);
             if (widget == null) continue;
-            int saveKey = widget.optInt("saveKey", Integer.MIN_VALUE);
+            int saveKey = CraftExactInteger.read(widget, "saveKey", Integer.MIN_VALUE);
             JSONObject child = duplicateKeys.contains(saveKey) ? null : childBySaveKey.get(saveKey);
             if (child == null) continue;
-            int componentId = widget.optInt("craftComponentId", -1);
+            int componentId = CraftExactInteger.read(widget, "craftComponentId", -1);
             if (componentId == 114 && widget.has("craftTriggerMode")) {
                 int mode = triggerType(widget.optString("craftTriggerMode", ""));
                 if (mode > 0) child.put("type", mode);
