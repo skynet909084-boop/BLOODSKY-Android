@@ -13,7 +13,7 @@ The current prototype includes:
 - Craft ID23 RTSP video: editable original `rtsp_url`, foreground playback after explicit opt-in and per-launch operator confirmation; imported streams remain disabled and stop on pause or screen changes;
 - compact original toolbar and a separate foreground operator mode with guarded runtime gestures;
 - local project persistence plus portable ZIP image/audio import/export and JSON export;
-- Craft export retains appended screens (up to 128), their supported components/FBD wiring/backgrounds and opaque source fields; original screen deletion or renumbering still requires explicit remapping;
+- Craft export retains appended screens (up to 128), their supported components/FBD wiring/backgrounds and opaque source fields; deleting trailing screens drops their components/backgrounds, while deleting an earlier screen or one still targeted by a Craft navigation link is rejected until references can be remapped safely;
 - picker-selected image and audio files are copied into private project media storage and referenced by project-relative paths, so new selections remain available if the provider grant is revoked;
 - original APK home background/buttons, calculator, supported five-category palette and selection-action icons, with recorded source provenance;
 - the original 40-preview FBD catalogue with source-backed native logic, math/conversion, timer, trigger, register, MX/ARRAY and selected sensor/MQTT integrations; unsupported previews remain disabled;

@@ -31,11 +31,18 @@ public final class CraftProjectExporter {
         JSONArray sourceRows = baselineSource.getJSONArray("TableComponent");
         JSONArray importedScreens = imported.getJSONArray("screens");
         // Craft stores screen membership as one-based numScreen, rather than a
-        // separate screen table. Appending screens leaves every existing number,
-        // device link and opaque field intact. Use the inferred source count:
-        // real projects may have a stale countScreen below their highest numScreen.
-        if (screens.length() < importedScreens.length())
-            throw new IOException("Удаление исходных экранов требует переназначения ссылок KaScada");
+        // separate screen table. Appending screens leaves every existing number
+        // intact. Removing screens is safe only at the end: deleting an earlier
+        // screen would renumber every later component and navigation target.
+        // Real projects may have stale countScreen below their highest numScreen,
+        // so importedScreens is the inferred source count.
+        if (screens.length() < importedScreens.length()) {
+            for (int screenIndex = 0; screenIndex < screens.length(); screenIndex++) {
+                JSONObject screen = screens.optJSONObject(screenIndex);
+                if (screen == null || screen.optInt("craftScreenNumber", screenIndex + 1) != screenIndex + 1)
+                    throw new IOException("Удаление не последних экранов требует переназначения ссылок KaScada");
+            }
+        }
         while (importedScreens.length() < screens.length()) {
             int number = importedScreens.length() + 1;
             importedScreens.put(new JSONObject().put("name", "Экран " + number)
@@ -256,15 +263,42 @@ public final class CraftProjectExporter {
             }
             sourceRowsByScreen.add(sourceRowsForScreen);
         }
+        rejectNavigationToDeletedScreens(outputRows, seen, screens.length());
         writeFbdConnections(screens, importedScreens, sourceRowsByScreen, sourceRows, outputRows);
         JSONArray retainedRows = new JSONArray();
         for (int row = 0; row < outputRows.length(); row++)
             if (seen[row]) retainedRows.put(outputRows.get(row));
         result.put("TableComponent", retainedRows);
         meta.put("countScreen", screens.length());
+        removeDeletedTrailingScreenBackgrounds(backgrounds, screens.length(), importedScreens.length());
         if (meta.has("jsTableNameProject_screenBackground"))
             meta.put("jsTableNameProject_screenBackground", backgrounds);
         return result.toString();
+    }
+
+    private static void rejectNavigationToDeletedScreens(JSONArray rows, boolean[] retained,
+                                                          int remainingScreens) throws Exception {
+        for (int row = 0; row < rows.length(); row++) {
+            if (row >= retained.length || !retained[row]) continue;
+            JSONObject component = rows.optJSONObject(row);
+            if (component == null) continue;
+            int componentId = component.optInt("componentId", -1);
+            if (componentId != 6) continue; // CustomComponents.e screen link / constant button
+            JSONObject other = objectValue(component.opt("jsTableComponent_other"));
+            int target = other.optInt("changeScreen", 0);
+            if (target > remainingScreens)
+                throw new IOException("Переход Craft ссылается на удалённый экран " + target);
+        }
+    }
+
+    private static void removeDeletedTrailingScreenBackgrounds(JSONObject backgrounds,
+            int remainingScreens, int originalScreens) {
+        for (int screen = remainingScreens + 1; screen <= originalScreens; screen++) {
+            String prefix = "screen" + screen;
+            backgrounds.remove(prefix + "Color");
+            backgrounds.remove(prefix + "IsColor");
+            backgrounds.remove(prefix + "PathImage");
+        }
     }
 
     /** ID26 has no FBD saveKey or output pins; retain its native HMI fields. */
