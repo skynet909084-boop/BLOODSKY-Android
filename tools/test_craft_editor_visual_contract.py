@@ -41,8 +41,17 @@ class CraftEditorVisualContractTests(unittest.TestCase):
     def test_standard_widget_menu_opens_properties(self):
         menu = self.source.split("private void showStandardWidgetContextMenu()", 1)[1].split(
             "private void ", 1)[0]
-        self.assertIn('"Свойства"', menu)
+        self.assertIn('primaryLabel = "Настройки индикатора"', menu)
+        self.assertIn('primaryLabel = "Настройки переключателя"', menu)
+        self.assertIn('primaryLabel = "Настройки кнопки"', menu)
+        self.assertIn('primaryLabel = "Настройки числа"', menu)
+        self.assertIn('primaryLabel = "Настройки шкалы"', menu)
+        self.assertIn('"Расширенные свойства"', menu)
         self.assertIn("editSelectedWidget()", menu)
+        self.assertIn("editSelectedWidget(true)", menu)
+        self.assertIn("showAlignDialog()", menu)
+        self.assertIn("copySelectedWidget()", menu)
+        self.assertIn("deleteSelectedWidget()", menu)
 
 
 if __name__ == "__main__":
