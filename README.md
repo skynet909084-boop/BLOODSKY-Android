@@ -9,6 +9,7 @@ The current prototype includes:
 - a multi-screen editor with screen naming and background color controls;
 - canvas widgets, selection, dragging, resize grip, cut/copy/paste and delete;
 - widget property editing and preservation of unknown JSON metadata;
+- Craft ID26 WebView: 16 editable links, first-set-bit register selection, explicit operator approval and a foreground HTTPS page with bounded same-origin requests; imported links stay disabled;
 - compact original toolbar and a separate foreground operator mode with guarded runtime gestures;
 - local project persistence plus portable ZIP image/audio import/export and JSON export;
 - picker-selected image and audio files are copied into private project media storage and referenced by project-relative paths, so new selections remain available if the provider grant is revoked;

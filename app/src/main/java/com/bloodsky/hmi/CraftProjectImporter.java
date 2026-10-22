@@ -308,7 +308,7 @@ public final class CraftProjectImporter {
             widget.put("craftPushEnabled", false);
         }
         if (componentId == 26) {
-            widget.put("craftUnsupportedComponent", true);
+            widget.put("craftUnsupportedComponent", false);
             widget.put("craftWebViewEnabled", false);
             String[] links = CraftWebViewLinks.read(other);
             widget.put("craftOther", CraftWebViewLinks.write(other, links));

@@ -1013,7 +1013,7 @@ public class CraftProjectImporterTest {
         assertEquals("WebView Craft", widget.getString("type"));
         assertEquals("WebView Craft", widget.getString("text"));
         assertEquals("", widget.getString("connectionInfo"));
-        assertTrue(widget.getBoolean("craftUnsupportedComponent"));
+        assertFalse(widget.getBoolean("craftUnsupportedComponent"));
         assertFalse(widget.getBoolean("craftWebViewEnabled"));
         assertEquals(16, widget.getJSONArray("craftWebViewLinks").length());
         assertEquals("https://example.test/a", widget.getJSONArray("craftWebViewLinks").getString(0));
