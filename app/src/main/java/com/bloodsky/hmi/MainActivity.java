@@ -3123,11 +3123,13 @@ public class MainActivity extends Activity {
     }
 
     private void alignSelectedWidget(String alignMode) {
-        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
+        if (operatorMode || editor == null || editor.selected < 0
+                || editor.selected >= widgets.size()) {
             Toast.makeText(this, "Выбери элемент для выравнивания", Toast.LENGTH_SHORT).show();
             return;
         }
         Widget w = widgets.get(editor.selected);
+        final float beforeX = w.x, beforeY = w.y;
         float canvasWidth = editor.getWidth() > 0 ? editor.getWidth() : dp(360);
         float canvasHeight = editor.getHeight() > 0 ? editor.getHeight() : dp(640);
         switch (alignMode) {
@@ -3137,14 +3139,22 @@ public class MainActivity extends Activity {
             case "bottom": w.y = Math.max(0, canvasHeight - w.h); break;
             case "center_h": w.x = Math.max(0, snapToGrid((canvasWidth - w.w) / 2f)); break;
             case "center_v": w.y = Math.max(0, snapToGrid((canvasHeight - w.h) / 2f)); break;
+            default: return;
         }
-        persistProject();
-        if (editor != null) editor.invalidate();
+        if (!persistProjectNow(true)) {
+            w.x = beforeX;
+            w.y = beforeY;
+            saveActiveScreen();
+            editor.invalidate();
+            Toast.makeText(this, "Не удалось сохранить выравнивание", Toast.LENGTH_LONG).show();
+            return;
+        }
+        editor.invalidate();
         Toast.makeText(this, "Элемент выровнен", Toast.LENGTH_SHORT).show();
     }
 
     private void alignSelectedWidgets(String alignMode) {
-        if (editor == null || editor.selectedWidgets.size() < 2) return;
+        if (operatorMode || editor == null || editor.selectedWidgets.size() < 2) return;
         ArrayList<Integer> indexes = new ArrayList<>();
         java.util.HashSet<Integer> seen = new java.util.HashSet<>();
         for (int index : editor.selectedWidgets) {
@@ -3170,16 +3180,37 @@ public class MainActivity extends Activity {
             widget.w = aligned[i][2];
             widget.h = aligned[i][3];
         }
-        persistProject();
+        if (!persistProjectNow(true)) {
+            for (int i = 0; i < indexes.size(); i++) {
+                Widget widget = widgets.get(indexes.get(i));
+                widget.x = geometry[i][0];
+                widget.y = geometry[i][1];
+                widget.w = geometry[i][2];
+                widget.h = geometry[i][3];
+            }
+            saveActiveScreen();
+            editor.invalidate();
+            Toast.makeText(this, "Не удалось сохранить выравнивание группы",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
         editor.invalidate();
         Toast.makeText(this, "Элементы выровнены", Toast.LENGTH_SHORT).show();
     }
 
     private void showAlignDialog() {
-        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
+        if (operatorMode || editor == null || currentScreenIndex < 0
+                || currentScreenIndex >= screens.size() || editor.selected < 0
+                || editor.selected >= widgets.size()) {
             Toast.makeText(this, "Выбери элемент на экране", Toast.LENGTH_SHORT).show();
             return;
         }
+        final EditorCanvas dialogCanvas = editor;
+        final Screen dialogScreen = screens.get(currentScreenIndex);
+        final int dialogScreenIndex = currentScreenIndex;
+        final ArrayList<Widget> dialogWidgetOrder = new ArrayList<>(widgets);
+        final int dialogFocusedIndex = editor.selected;
+        final ArrayList<Integer> dialogSelection = new ArrayList<>(editor.selectedWidgets);
         if (editor.selectedWidgets.size() > 1) {
             ArrayList<String> options = new ArrayList<>(java.util.Arrays.asList(
                     "По левому краю группы", "По правому краю группы",
@@ -3199,7 +3230,18 @@ public class MainActivity extends Activity {
             modes.add("max_height");
             new AlertDialog.Builder(this)
                     .setTitle("Выравнивание выбранных элементов")
-                    .setItems(options.toArray(new String[0]), (dialog, which) -> alignSelectedWidgets(modes.get(which)))
+                    .setItems(options.toArray(new String[0]), (dialog, which) -> {
+                        if (!isEditorDialogContextCurrent(dialogCanvas, dialogScreen,
+                                dialogScreenIndex, dialogWidgetOrder)
+                                || editor.selected != dialogFocusedIndex
+                                || !editor.selectedWidgets.equals(dialogSelection)
+                                || which < 0 || which >= modes.size()) {
+                            Toast.makeText(this, "Выделение изменилось: выбери элементы заново",
+                                    Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                        alignSelectedWidgets(modes.get(which));
+                    })
                     .setNegativeButton("Отмена", null)
                     .show();
             return;
@@ -3208,7 +3250,18 @@ public class MainActivity extends Activity {
         String[] modes = {"left", "right", "top", "bottom", "center_h", "center_v"};
         new AlertDialog.Builder(this)
                 .setTitle("Выравнивание элемента")
-                .setItems(options, (dialog, which) -> alignSelectedWidget(modes[which]))
+                .setItems(options, (dialog, which) -> {
+                    if (!isEditorDialogContextCurrent(dialogCanvas, dialogScreen,
+                            dialogScreenIndex, dialogWidgetOrder)
+                            || editor.selected != dialogFocusedIndex
+                            || !editor.selectedWidgets.equals(dialogSelection)
+                            || which < 0 || which >= modes.length) {
+                        Toast.makeText(this, "Выделение изменилось: выбери элемент заново",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    alignSelectedWidget(modes[which]);
+                })
                 .setNegativeButton("Отмена", null)
                 .show();
     }
@@ -9330,7 +9383,15 @@ private String archiveProjectKey() {
     }
 
     private void chooseNestedMacroOutput(int blockIndex, Widget block) {
-        if (nestedMacroEdit == null || blockIndex < 0 || blockIndex >= widgets.size()) return;
+        if (operatorMode || editor == null || nestedMacroEdit == null
+                || currentScreenIndex < 0 || currentScreenIndex >= screens.size()
+                || blockIndex < 0 || blockIndex >= widgets.size()
+                || widgets.get(blockIndex) != block) return;
+        final NestedMacroEditSession sessionAtSelection = nestedMacroEdit;
+        final EditorCanvas canvasAtSelection = editor;
+        final Screen screenAtSelection = screens.get(currentScreenIndex);
+        final int screenIndexAtSelection = currentScreenIndex;
+        final ArrayList<Widget> widgetOrderAtSelection = new ArrayList<>(widgets);
         String[] pins = knownFbdPins(block, true);
         if (pins.length == 0) {
             Toast.makeText(this, "У блока нет проверенного выхода", Toast.LENGTH_SHORT).show();
@@ -9338,19 +9399,28 @@ private String archiveProjectKey() {
         }
         new AlertDialog.Builder(this).setTitle("Выход макроса")
                 .setItems(pins, (dialog, which) -> {
-                    NestedMacroEditSession session = nestedMacroEdit;
-                    int previousNode = session.outputNode;
-                    Widget previousWidget = session.outputWidget;
-                    String previousPin = session.outputPin;
-                    session.outputNode = blockIndex;
-                    session.outputWidget = widgets.get(blockIndex);
-                    session.outputPin = pins[which];
+                    if (!isEditorDialogContextCurrent(canvasAtSelection, screenAtSelection,
+                            screenIndexAtSelection, widgetOrderAtSelection)
+                            || nestedMacroEdit != sessionAtSelection
+                            || blockIndex >= widgets.size() || widgets.get(blockIndex) != block
+                            || which < 0 || which >= pins.length
+                            || !contains(knownFbdPins(block, true), pins[which])) {
+                        Toast.makeText(this, "Граф макроса изменён: выбери выход заново",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    int previousNode = sessionAtSelection.outputNode;
+                    Widget previousWidget = sessionAtSelection.outputWidget;
+                    String previousPin = sessionAtSelection.outputPin;
+                    sessionAtSelection.outputNode = blockIndex;
+                    sessionAtSelection.outputWidget = block;
+                    sessionAtSelection.outputPin = pins[which];
                     if (persistProjectNow(true)) {
                         Toast.makeText(this, "Выход макроса обновлён", Toast.LENGTH_SHORT).show();
                     } else {
-                        session.outputNode = previousNode;
-                        session.outputWidget = previousWidget;
-                        session.outputPin = previousPin;
+                        sessionAtSelection.outputNode = previousNode;
+                        sessionAtSelection.outputWidget = previousWidget;
+                        sessionAtSelection.outputPin = previousPin;
                     }
                 }).setNegativeButton("Отмена", null).show();
     }
