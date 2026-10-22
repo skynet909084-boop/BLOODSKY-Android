@@ -1071,4 +1071,38 @@ public class CraftProjectImporterTest {
         assertEquals(0, secondSave[0]);
     }
 
+    @Test public void craftEmailDraftExportsWithoutPersistingLocalOperatorOptIn() throws Exception {
+        String source = "{\"TableNameProject\":{\"name\":\"Email draft\",\"countScreen\":1},"
+                + "\"TableConnections\":[],\"TableComponent\":[{\"componentId\":28,"
+                + "\"text\":\"Original subject\",\"x\":12,\"y\":24,\"width\":240,\"height\":96,"
+                + "\"jsTableComponent_connectionInfo\":{\"legacyDevice\":5},"
+                + "\"jsTableComponent_other\":{\"numScreen\":1,\"title\":\"Original subject\","
+                + "\"body\":\"Original body\",\"emailTo\":\"ops@example.test\",\"futureField\":\"keep\"}}]}";
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(source));
+        JSONObject widget = project.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets").getJSONObject(0);
+        assertFalse(widget.getBoolean("craftEmailEnabled"));
+        widget.put("text", "Edited subject").put("craftEmailTitle", "Edited subject")
+                .put("craftEmailBody", "Edited body").put("craftEmailTo", "alerts@example.test")
+                .put("craftEmailEnabled", true);
+        JSONObject other = widget.getJSONObject("craftOther");
+        other.put("title", "Edited subject").put("body", "Edited body")
+                .put("emailTo", "alerts@example.test");
+
+        JSONObject exported = new JSONObject(CraftProjectExporter.export(project.toString()));
+        JSONObject row = exported.getJSONArray("TableComponent").getJSONObject(0);
+        assertEquals("Edited subject", row.getString("text"));
+        assertEquals("Edited body", row.getJSONObject("jsTableComponent_other").getString("body"));
+        assertEquals("alerts@example.test", row.getJSONObject("jsTableComponent_other").getString("emailTo"));
+        assertEquals("keep", row.getJSONObject("jsTableComponent_other").getString("futureField"));
+        assertEquals(5, row.getJSONObject("jsTableComponent_connectionInfo").getInt("legacyDevice"));
+        assertFalse(row.getJSONObject("jsTableComponent_other").has("craftEmailEnabled"));
+
+        JSONObject reopened = new JSONObject(CraftProjectImporter.convert(exported.toString()))
+                .getJSONArray("screens").getJSONObject(0).getJSONArray("widgets").getJSONObject(0);
+        assertFalse(reopened.getBoolean("craftEmailEnabled"));
+        assertEquals("Edited subject", reopened.getString("craftEmailTitle"));
+        assertEquals("Edited body", reopened.getString("craftEmailBody"));
+        assertEquals("alerts@example.test", reopened.getString("craftEmailTo"));
+    }
+
 }
