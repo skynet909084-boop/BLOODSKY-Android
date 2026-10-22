@@ -2129,10 +2129,13 @@ public class MainActivity extends Activity {
     }
 
     private void recordTrendSample(Widget widget, String rawValue) {
-        if (rawValue == null || rawValue.startsWith("ERR") || rawValue.startsWith("CFG")) return;
-        String[] encoded = rawValue.split("\\|", -1);
-        int channels = Math.min(encoded.length, Math.max(1, Math.min(4,
-                widget.extraFields.optInt("craftTrendChannelCount", 1))));
+        int channels = Math.max(1, Math.min(4,
+                widget.extraFields.optInt("craftTrendChannelCount", 1)));
+        // A truncated poll must never reconfigure the number of channels and
+        // discard previously collected trends. Per-channel unavailable values
+        // are skipped, while valid sibling channels can still be sampled.
+        double[] values = CraftTrendSampleFrame.decode(rawValue, channels);
+        if (values == null) return;
         CraftTrendHistory[] histories = trendHistories.get(widget);
         if (histories == null || histories.length != channels) {
             CraftTrendHistory[] created = new CraftTrendHistory[channels];
@@ -2142,11 +2145,8 @@ public class MainActivity extends Activity {
         }
         long now = android.os.SystemClock.elapsedRealtime();
         for (int i = 0; i < channels; i++) {
-            final double value;
-            try { value = Double.parseDouble(encoded[i].trim()); }
-            catch (NumberFormatException invalid) { continue; }
-            if (!Double.isFinite(value)) continue;
-            histories[i].append(value, now,
+            if (!Double.isFinite(values[i])) continue;
+            histories[i].append(values[i], now,
                     widget.extraFields.optLong("craftTrendIntervalMs", 500),
                     widget.extraFields.optInt("craftTrendMaxPoints", 300));
         }
