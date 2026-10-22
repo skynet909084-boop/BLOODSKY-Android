@@ -21,7 +21,7 @@ public final class BluetoothRtuBinding {
 
     /** Parses bt://AA:BB:CC:DD:EE:FF/<unit>/<register>, including 3xxxx/4xxxx addresses. */
     public static BluetoothRtuBinding parse(String value, int quantity) {
-        if (value == null || !value.startsWith("bt://") || quantity < 1 || quantity > 8) return null;
+        if (value == null || !value.startsWith("bt://") || quantity < 1 || quantity > 99) return null;
         String[] fields = value.substring(5).split("/", -1);
         if (fields.length != 3 || !isMacAddress(fields[0])) return null;
         try {
@@ -39,6 +39,24 @@ public final class BluetoothRtuBinding {
             if (address + quantity > 65536) return null;
             return new BluetoothRtuBinding(fields[0].toUpperCase(Locale.ROOT), unit,
                     address, function, quantity);
+        } catch (NumberFormatException invalid) {
+            return null;
+        }
+    }
+
+    /** Parses explicit FC01/02 coils or discrete-input bindings with a zero-based address. */
+    public static BluetoothRtuBinding parseBits(String value, int functionCode, int quantity) {
+        if (value == null || !value.startsWith("bt://") || (functionCode != 1 && functionCode != 2)
+                || quantity < 1 || quantity > 16) return null;
+        String[] fields = value.substring(5).split("/", -1);
+        if (fields.length != 3 || !isMacAddress(fields[0])) return null;
+        try {
+            int unit = Integer.parseInt(fields[1]);
+            int address = Integer.parseInt(fields[2]);
+            if (unit < 1 || unit > 247 || address < 0 || address > 65535
+                    || (long) address + quantity > 65536L) return null;
+            return new BluetoothRtuBinding(fields[0].toUpperCase(Locale.ROOT), unit,
+                    address, functionCode, quantity);
         } catch (NumberFormatException invalid) {
             return null;
         }

@@ -65,6 +65,21 @@ class AndroidSourceContractTests(unittest.TestCase):
     def test_modbus_rtu_transport(self):
         self.assertIn("ModbusRtuTransport", self.source)
 
+    def test_paired_bluetooth_rtu_routes_register_and_craft_gateways(self):
+        self.assertIn('BluetoothRtuBinding.parse(binding, quantity)', self.source)
+        self.assertIn('BluetoothModbusConnection.connect(this, address, 3000)', self.source)
+        self.assertIn('optBoolean("craftGatewayEnabled", false)', self.source)
+        self.assertIn('optBoolean("craftBitGatewayEnabled", false)', self.source)
+        self.assertIn('bluetoothConnection(binding.bluetoothAddress).read(binding.unit,', self.source)
+        self.assertIn('bluetoothConnection(binding.bluetoothAddress).writeMultiple(', self.source)
+        self.assertIn('connection.writeMultipleCoils(binding.unit, binding.address, values)', self.source)
+        self.assertIn('operatorMode && hasBluetoothRegisterBinding()', self.source)
+
+    def test_project_archive_import_disarms_preserved_external_actions(self):
+        self.assertIn("ProjectImportSafety.deactivateExternalActions(json)", self.source)
+        self.assertIn("bloodskyImportedInactiveConnectionInfo", self.source)
+        self.assertIn("bloodskyImportedInactiveArchiveTriggerBinding", self.source)
+
     def test_import_is_validated_before_persisting(self):
         validate_at = self.source.index("validateImportedProject(json);")
         store_at = self.source.index('storeActiveProject(json, true)', validate_at)

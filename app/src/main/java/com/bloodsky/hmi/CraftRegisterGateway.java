@@ -19,20 +19,25 @@ public final class CraftRegisterGateway {
 
     public static final class Binding {
         public final String host;
+        public final String bluetoothAddress;
         public final int port, unit, address, readFunction;
         public final boolean systemRegister;
         private Binding(String host, int port, int unit, int address, int readFunction,
-                        boolean systemRegister) {
+                        boolean systemRegister, String bluetoothAddress) {
             this.host = host; this.port = port; this.unit = unit; this.address = address;
             this.readFunction = readFunction; this.systemRegister = systemRegister;
+            this.bluetoothAddress = bluetoothAddress;
         }
         private static Binding system(int address) {
-            return new Binding("", 0, 0, address, 3, true);
+            return new Binding("", 0, 0, address, 3, true, null);
         }
         public boolean sameDevice(Binding other) {
             if (other == null || systemRegister != other.systemRegister) return false;
-            return systemRegister ? true
-                    : host.equalsIgnoreCase(other.host) && port == other.port && unit == other.unit;
+            if (systemRegister) return true;
+            if (bluetoothAddress != null || other.bluetoothAddress != null)
+                return bluetoothAddress != null && bluetoothAddress.equalsIgnoreCase(other.bluetoothAddress)
+                        && unit == other.unit;
+            return host.equalsIgnoreCase(other.host) && port == other.port && unit == other.unit;
         }
     }
 
@@ -56,6 +61,8 @@ public final class CraftRegisterGateway {
         private String id(Binding binding) {
             if (binding == null) return "";
             if (binding.systemRegister) return "system/" + binding.address;
+            if (binding.bluetoothAddress != null) return "bt/" + binding.bluetoothAddress + "/"
+                    + binding.unit + "/" + binding.address + "/" + binding.readFunction;
             return binding.host + ":" + binding.port + "/" + binding.unit + "/"
                     + binding.address + "/" + binding.readFunction;
         }
@@ -119,6 +126,12 @@ public final class CraftRegisterGateway {
                         || (long) address + quantity > CraftSystemRegisterBank.SIZE) return null;
                 return Binding.system(address);
             }
+            if ("bt".equals(uri.getScheme())) {
+                BluetoothRtuBinding bluetooth = BluetoothRtuBinding.parse(value.trim(), quantity);
+                if (bluetooth == null || (destination && bluetooth.functionCode != 3)) return null;
+                return new Binding("", 0, bluetooth.unit, bluetooth.registerAddress,
+                        bluetooth.functionCode, false, bluetooth.address);
+            }
             if (!"tcp".equals(uri.getScheme())) return null;
             String[] path = uri.getPath().split("/", -1);
             if (uri.getHost() == null || uri.getPort() < 1 || uri.getPort() > 65535
@@ -135,7 +148,7 @@ public final class CraftRegisterGateway {
             }
             if ((destination && function != 3) || quantity < 1 || quantity > (destination ? 99 : 99)
                     || (long)address + quantity > 65536L) return null;
-            return new Binding(uri.getHost(), uri.getPort(), unit, address, function, false);
+            return new Binding(uri.getHost(), uri.getPort(), unit, address, function, false, null);
         } catch (Exception ignored) { return null; }
     }
 

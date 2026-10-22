@@ -21,12 +21,24 @@ public class BluetoothRtuBindingTest {
         assertEquals(4, binding.functionCode);
     }
 
+    @Test public void bitBindingsUseExplicitFunctionAndZeroBasedAddress() {
+        BluetoothRtuBinding coils = BluetoothRtuBinding.parseBits(
+                "bt://00:11:22:33:44:55/4/65520", 1, 16);
+        assertEquals(4, coils.unit);
+        assertEquals(65520, coils.registerAddress);
+        assertEquals(1, coils.functionCode);
+        assertNull(BluetoothRtuBinding.parseBits(
+                "bt://00:11:22:33:44:55/4/65535", 2, 2));
+        assertNull(BluetoothRtuBinding.parseBits(
+                "bt://00:11:22:33:44:55/4/0", 3, 1));
+    }
+
     @Test public void rejectsUnpairedOrMalformedBindingRanges() {
         assertNull(BluetoothRtuBinding.parse("bt://host/1/40001", 1));
         assertNull(BluetoothRtuBinding.parse("bt://00:11:22:33:44:55/0/40001", 1));
         assertNull(BluetoothRtuBinding.parse("bt://00:11:22:33:44:55/248/40001", 1));
         assertNull(BluetoothRtuBinding.parse("bt://00:11:22:33:44:55/1/40001/extra", 1));
-        assertNull(BluetoothRtuBinding.parse("bt://00:11:22:33:44:55/1/40001", 9));
+        assertNull(BluetoothRtuBinding.parse("bt://00:11:22:33:44:55/1/40001", 100));
         assertNull(BluetoothRtuBinding.parse("bt://00:11:22:33:44:55/1/65535", 2));
     }
 }
