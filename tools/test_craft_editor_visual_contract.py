@@ -157,7 +157,7 @@ class CraftEditorVisualContractTests(unittest.TestCase):
         delete = self.source.split("private void deleteSelectedWidget()", 1)[1].split(
             "public static JSONObject widgetToJson(", 1)[0]
         self.assertIn("if (operatorMode) return false;", copy)
-        self.assertIn("if (operatorMode) return;", delete)
+        self.assertIn("if (operatorMode || editor == null", delete)
 
     def test_runtime_never_opens_editor_context_actions(self):
         menu = self.source.split("private void showStandardWidgetContextMenu()", 1)[1].split(
@@ -256,6 +256,61 @@ class CraftEditorVisualContractTests(unittest.TestCase):
         self.assertIn("sessionAtSelection.outputNode = previousNode", dialog)
         self.assertIn("sessionAtSelection.outputWidget = previousWidget", dialog)
         self.assertIn("sessionAtSelection.outputPin = previousPin", dialog)
+
+    def test_clipboard_paste_is_atomic_before_history_invalidation(self):
+        paste = self.source.split("private void pasteWidget()", 1)[1].split(
+            "private void deleteSelectedWidget()", 1)[0]
+        self.assertIn("operatorMode || editor == null", paste)
+        self.assertIn("final Screen screen = screens.get(currentScreenIndex)", paste)
+        self.assertIn("new ArrayList<>(widgets)", paste)
+        self.assertIn("new ArrayList<>(screen.connections)", paste)
+        self.assertIn("WidgetClipboard.place(", paste)
+        self.assertIn("WidgetClipboard.placedConnections(", paste)
+        self.assertIn("screen.connections.addAll(copiedEdges)", paste)
+        self.assertIn("if (!persistProjectNow(true))", paste)
+        self.assertLess(paste.index("if (!persistProjectNow(true))"),
+                        paste.index("committed = true"))
+        self.assertLess(paste.index("committed = true"),
+                        paste.index("fbdWireHistory.clear()"))
+        self.assertIn("finally {", paste)
+        self.assertIn("if (!committed)", paste)
+        self.assertIn("widgets.addAll(originalWidgets)", paste)
+        self.assertIn("screen.connections.addAll(originalEdges)", paste)
+        self.assertIn("projectExtraFields = originalProjectFields", paste)
+        self.assertIn("saveActiveScreen()", paste)
+
+    def test_clipboard_delete_rolls_back_renumbered_graph_and_selection(self):
+        deletion = self.source.split("private void deleteSelectedWidget()", 1)[1].split(
+            "public static JSONObject widgetToJson(", 1)[0]
+        for required in (
+            "operatorMode || editor == null",
+            "final Screen screen = screens.get(currentScreenIndex)",
+            "final ArrayList<Integer> originalSelection",
+            "final ArrayList<Widget> originalWidgets",
+            "final ArrayList<String> originalBindings",
+            "final ArrayList<FbdConnection> originalEdges",
+            "final ArrayList<Integer> originalSources",
+            "final ArrayList<Integer> originalTargets",
+            "WidgetClipboard.deleteSelection(widgets, screen.connections, selection)",
+            "if (!persistProjectNow(true))",
+            "if (!committed)",
+            "originalWidgets.get(i).connectionInfo = originalBindings.get(i)",
+            "originalEdges.get(i).source = originalSources.get(i)",
+            "originalEdges.get(i).target = originalTargets.get(i)",
+            "editor.selectedWidgets.addAll(originalSelection)",
+            "projectExtraFields = originalProjectFields",
+            "saveActiveScreen()",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, deletion)
+        self.assertLess(deletion.index("if (!persistProjectNow(true))"),
+                        deletion.index("fbdWireHistory.clear()"))
+        self.assertLess(deletion.index("if (!persistProjectNow(true))"),
+                        deletion.index("releaseVoiceRecognizer()"))
+        self.assertLess(deletion.index("if (!persistProjectNow(true))"),
+                        deletion.index("liveValues.clear()"))
+        self.assertIn("fbdWireMode = false", deletion)
+        self.assertIn("wireSource = -1", deletion)
 
     def test_main_settings_reuse_existing_specialized_dialogs(self):
         editor = self.source.split("private void editSelectedWidget(boolean advanced)", 1)[1]
