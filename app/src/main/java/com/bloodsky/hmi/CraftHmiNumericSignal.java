@@ -17,4 +17,12 @@ public final class CraftHmiNumericSignal {
             return null;
         }
     }
+
+    /**
+     * Operator mode must not display a fake zero before the first response
+     * from a configured source. Unbound widgets retain their local preview.
+     */
+    public static boolean unavailable(String raw, boolean operatorMode, boolean hasBinding) {
+        return operatorMode && (hasBinding || raw != null) && decode(raw) == null;
+    }
 }
