@@ -221,9 +221,9 @@ public final class CraftProjectImporter {
         else if (componentId == 16) type = "GIF Craft"; // CustomComponents.n, animated image
         else if (componentId == 17) type = "Многопозиционное фото"; // Craft 16-state image; keep legacy register inactive
         else if (componentId == 20) type = "Список Craft"; // CustomList, 16 selectable bit labels
-        else if (componentId == 6 && integer(other.opt("mode"), 0) == 1)
+        else if (componentId == 6 && sourceButtonMode(other) == 1)
             type = "Переход на экран"; // CustomComponents.e mode 1 calls the original screen-switch handler
-        else if (componentId == 6 && integer(other.opt("mode"), 0) == 2)
+        else if (componentId == 6 && sourceButtonMode(other) == 2)
             type = "Константная кнопка Craft"; // CustomComponents.e mode 2 writes a configured constant
         else if (componentId == 6) type = "Кнопка"; // CustomComponents.e, interactive button
         else if (componentId == 7) type = "Динамический текст";
@@ -512,8 +512,8 @@ public final class CraftProjectImporter {
         } else if (componentId == 6) {
             widget.put("autoResizeText", other.optBoolean("autoResizeText", false));
             widget.put("craftButtonVisibleInWork", other.optBoolean("visibleInWork", true));
-            if (integer(other.opt("mode"), 0) == 1) {
-                int targetScreen = integer(other.opt("changeScreen"), -1);
+            if (sourceButtonMode(other) == 1) {
+                int targetScreen = CraftExactInteger.read(other, "changeScreen", -1);
                 if (targetScreen >= 1 && targetScreen <= screenCount) {
                     widget.put("targetScreenIndex", targetScreen - 1);
                 } else {
@@ -566,7 +566,7 @@ public final class CraftProjectImporter {
             widget.put("craftLinearProgressColor", color(other.opt("colorProgress"), Color.rgb(46, 236, 0)));
             widget.put("craftLinearBackgroundColor", color(other.opt("colorBackground"), Color.rgb(156, 156, 155)));
             widget.put("craftLinearEnabled", false);
-        } else if (componentId == 6 && integer(other.opt("mode"), 0) == 0) {
+        } else if (componentId == 6 && sourceButtonMode(other) == 0) {
             // Mode 0 is a momentary write: set the configured bit on touch-down and
             // clear it on touch-up. Keep the source bit as a hint, but require a new
             // explicit TCP holding-register mapping before any write can run.
@@ -575,7 +575,7 @@ public final class CraftProjectImporter {
             widget.put("craftButtonBit", boundedInt(legacyButtonConnection.opt("addressBit"), 0, 0, 15));
             widget.put("craftButtonBitEnabled", false);
             widget.put("craftButtonVisibleInWork", other.optBoolean("visibleInWork", true));
-        } else if (componentId == 6 && integer(other.opt("mode"), 0) == 2) {
+        } else if (componentId == 6 && sourceButtonMode(other) == 2) {
             // Mode 2 writes a value when pressed. Keep the source options, but require
             // a new explicit TCP target because Craft device IDs are installation-specific.
             widget.put("craftButtonMode", 2);
@@ -725,6 +725,14 @@ public final class CraftProjectImporter {
             try { return (int) Long.decode(text).longValue(); }
             catch (Exception alsoIgnored) { return fallback; }
         }
+    }
+
+    /** Native Craft CustomComponents.e mode: 0 momentary, 1 screen, 2 value. */
+    private static int sourceButtonMode(JSONObject other) throws org.json.JSONException {
+        int mode = CraftExactInteger.read(other, "mode", 0);
+        if (mode < 0 || mode > 2)
+            throw new org.json.JSONException("Unsupported original Craft button mode");
+        return mode;
     }
 
     private static int exactFbdMode(JSONObject source, String key,

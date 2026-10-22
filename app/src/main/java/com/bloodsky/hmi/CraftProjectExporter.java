@@ -302,11 +302,11 @@ public final class CraftProjectExporter {
             if (row >= retained.length || !retained[row]) continue;
             JSONObject component = rows.optJSONObject(row);
             if (component == null) continue;
-            int componentId = component.optInt("componentId", -1);
+            int componentId = CraftExactInteger.read(component, "componentId", -1);
             if (componentId != 6) continue; // CustomComponents.e screen link / constant button
             JSONObject other = objectValue(component.opt("jsTableComponent_other"));
-            if (other.optInt("mode", 0) != 1) continue;
-            int target = other.optInt("changeScreen", 0);
+            if (CraftExactInteger.read(other, "mode", 0) != 1) continue;
+            int target = CraftExactInteger.read(other, "changeScreen", 0);
             if (target <= 0 || target >= outputScreenBySource.length) continue;
             int mapped = outputScreenBySource[target];
             if (mapped == 0) throw new IOException("Переход Craft ссылается на удалённый экран " + target);
