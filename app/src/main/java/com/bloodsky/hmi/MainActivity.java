@@ -1,1 +1,1 @@
-/home/workdir/artifacts/MainActivity_patched.java
+PLACEHOLDER_WILL_REPLACE
