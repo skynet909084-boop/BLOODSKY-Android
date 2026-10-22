@@ -39,6 +39,29 @@ class CraftEditorVisualContractTests(unittest.TestCase):
         self.assertIn("showFbdBlockContextMenu(editor.selected)", dispatch)
         self.assertIn("showStandardWidgetContextMenu()", dispatch)
 
+    def test_fbd_menu_rejects_stale_screen_mode_and_selection(self):
+        fbd = self.source.split("private void showFbdBlockContextMenu(", 1)[1].split(
+            "private void showStandardWidgetContextMenu()", 1)[0]
+        for required in (
+            "operatorMode || editor == null",
+            "currentScreenIndex < 0",
+            "final EditorCanvas menuCanvas = editor",
+            "final int menuScreenIndex = currentScreenIndex",
+            "final Screen menuScreen = screens.get(currentScreenIndex)",
+            "new ArrayList<>(widgets)",
+            "new ArrayList<>(editor.selectedWidgets)",
+            "operatorMode || editor != menuCanvas",
+            "currentScreenIndex != menuScreenIndex",
+            "screens.get(currentScreenIndex) != menuScreen",
+            "!sameWidgetOrder(menuWidgetOrder)",
+            "editor.selected != menuFocusedIndex",
+            "!editor.selectedWidgets.equals(menuSelection)",
+            "widgets.get(blockIndex) != widget",
+            "FBD изменён: выбери блок заново",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, fbd)
+
     def test_standard_widget_menu_opens_properties(self):
         menu = self.source.split("private void showStandardWidgetContextMenu()", 1)[1].split(
             "private void ", 1)[0]
