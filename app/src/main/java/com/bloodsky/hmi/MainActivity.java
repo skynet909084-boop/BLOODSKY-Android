@@ -4888,8 +4888,16 @@ public class MainActivity extends Activity {
 
     /** Source-ordered FBD actions with existing typed graph guards. */
     private void showFbdBlockContextMenu(final int blockIndex) {
-        if (operatorMode || blockIndex < 0 || blockIndex >= widgets.size()) return;
+        if (operatorMode || editor == null || currentScreenIndex < 0
+                || currentScreenIndex >= screens.size()
+                || blockIndex < 0 || blockIndex >= widgets.size()) return;
         final Widget widget = widgets.get(blockIndex);
+        final EditorCanvas menuCanvas = editor;
+        final int menuScreenIndex = currentScreenIndex;
+        final Screen menuScreen = screens.get(currentScreenIndex);
+        final ArrayList<Widget> menuWidgetOrder = new ArrayList<>(widgets);
+        final int menuFocusedIndex = editor.selected;
+        final ArrayList<Integer> menuSelection = new ArrayList<>(editor.selectedWidgets);
         final boolean timer = "FBD Таймер".equals(widget.type)
                 || "FBD TOF".equals(widget.type) || "FBD TP".equals(widget.type)
                 || "FBD CRAFT TIMER".equals(widget.type);
@@ -4915,8 +4923,18 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
                 .setTitle(widget.text == null ? widget.type : widget.text)
                 .setItems(labels.toArray(new String[0]), (dialog, choice) -> {
-                    if (blockIndex >= widgets.size() || widgets.get(blockIndex) != widget) {
-                        Toast.makeText(this, "FBD изменён: выбери блок заново", Toast.LENGTH_LONG).show();
+                    // Reject delayed actions after switching canvas, screen, mode,
+                    // focused widget, selection, or block ordering.
+                    if (operatorMode || editor != menuCanvas
+                            || currentScreenIndex != menuScreenIndex
+                            || currentScreenIndex < 0 || currentScreenIndex >= screens.size()
+                            || screens.get(currentScreenIndex) != menuScreen
+                            || blockIndex >= widgets.size() || widgets.get(blockIndex) != widget
+                            || !sameWidgetOrder(menuWidgetOrder)
+                            || editor.selected != menuFocusedIndex
+                            || !editor.selectedWidgets.equals(menuSelection)) {
+                        Toast.makeText(this, "FBD изменён: выбери блок заново",
+                                Toast.LENGTH_LONG).show();
                         return;
                     }
                     String label = labels.get(choice);
