@@ -84,6 +84,17 @@ class CraftEditorVisualContractTests(unittest.TestCase):
         self.assertIn("@drawable/kc_action_copy", layout)
         self.assertIn("@drawable/kc_align_open_menu", layout)
 
+    def test_indicator_artwork_is_accessible_without_advanced_inspector(self):
+        menu = self.source.split("private void showStandardWidgetContextMenu()", 1)[1].split(
+            "private void ", 1)[0]
+        self.assertIn("OriginalIndicator.supports(selectedWidget.type)", menu)
+        self.assertIn('"Изображения ВКЛ / ВЫКЛ"', menu)
+        self.assertIn("showIndicatorImages(selectedWidget)", menu)
+        self.assertIn("currentScreenIndex < 0", menu)
+        self.assertIn("editor != menuCanvas", menu)
+        self.assertIn("screens.get(currentScreenIndex) != menuScreen", menu)
+        self.assertIn("widgets.get(editor.selected) != selectedWidget", menu)
+
     def test_runtime_never_opens_editor_context_actions(self):
         menu = self.source.split("private void showStandardWidgetContextMenu()", 1)[1].split(
             "private void ", 1)[0]
