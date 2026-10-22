@@ -92,6 +92,28 @@ class CraftResourceAliasIntegrityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Required original icons missing"):
             verify(self.decoded, self.app, self.report, min_images=1, min_sounds=1)
 
+    def test_android_editor_really_binds_original_action_bar_and_toolbar(self):
+        root = Path(__file__).resolve().parents[1]
+        activity = (root / "app/src/main/java/com/bloodsky/hmi/MainActivity.java").read_text(
+            encoding="utf-8")
+        selection = (root / "app/src/main/java/com/bloodsky/hmi/OriginalSelectionActions.java").read_text(
+            encoding="utf-8")
+        toolbar = (root / "app/src/main/java/com/bloodsky/hmi/OriginalEditorToolbar.java").read_text(
+            encoding="utf-8")
+        self.assertIn("OriginalSelectionActions.create(root, this::cutSelectedWidget,", activity)
+        self.assertIn("this::copySelectedWidget, this::pasteWidget, this::showAlignDialog", activity)
+        self.assertIn("R.layout.kc_selection_actions", selection)
+        for view_id, label in (
+            ("kc_action_selectActionCut", "Вырезать"),
+            ("kc_action_selectActionCopy", "Копировать"),
+            ("kc_action_selectActionPaste", "Вставить"),
+            ("kc_action_openDialogAlignComponents", "Выравнивание"),
+        ):
+            self.assertIn("R.id." + view_id, selection)
+            self.assertIn('"' + label + '"', selection)
+        self.assertIn("R.layout.kc_editor_toolbar", toolbar)
+        self.assertIn("R.drawable.kc_stop : R.drawable.kc_start", toolbar)
+
     def test_truncated_catalogue_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "Incomplete original aliases"):
             self.run_verifier_with_production_thresholds()
