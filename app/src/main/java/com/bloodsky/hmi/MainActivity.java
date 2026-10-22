@@ -11856,15 +11856,9 @@ public class MainActivity extends Activity {
                         canvas.drawText(label, w.x + dp(8), w.y + w.h / 2 + dp(4), paint);
                     }
                 } else if ("Многопозиционное фото".equals(w.type)) {
-                    int imgIdx = 0;
-                    if (liveValues.containsKey(i)) {
-                        try {
-                            int registerValue = (int) Math.round(Double.parseDouble(liveValues.get(i)));
-                            JSONObject craftOther = w.extraFields.optJSONObject("craftOther");
-                            int typeCommand = craftOther == null ? 0 : craftOther.optInt("typeCommand", 0);
-                            imgIdx = CraftMultiStateImage.selectIndex(typeCommand, registerValue);
-                        } catch (Exception ignored) { imgIdx = -1; }
-                    }
+                    JSONObject craftOther = w.extraFields.optJSONObject("craftOther");
+                    int typeCommand = craftOther == null ? 0 : craftOther.optInt("typeCommand", 0);
+                    int imgIdx = CraftMultiStateImage.selectLiveValue(typeCommand, liveValues.get(i));
                     if (imgIdx >= 0) {
                         String imgPath = w.imagePathStates[imgIdx];
                         Bitmap bitmap = loadCachedBitmap(imgPath);

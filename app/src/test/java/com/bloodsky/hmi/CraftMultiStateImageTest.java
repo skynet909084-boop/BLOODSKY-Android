@@ -25,6 +25,21 @@ public class CraftMultiStateImageTest {
         assertEquals(-1, CraftMultiStateImage.selectIndex(1, 0));
     }
 
+    @Test public void unavailableRuntimeSignalsNeverMasqueradeAsImageZero() {
+        assertEquals(-1, CraftMultiStateImage.selectLiveValue(0, null));
+        assertEquals(-1, CraftMultiStateImage.selectLiveValue(0, ""));
+        assertEquals(-1, CraftMultiStateImage.selectLiveValue(0, "ERR: timeout"));
+        assertEquals(-1, CraftMultiStateImage.selectLiveValue(0, "NaN"));
+        assertEquals(-1, CraftMultiStateImage.selectLiveValue(1, "Infinity"));
+        assertEquals(-1, CraftMultiStateImage.selectLiveValue(0, "2147483648"));
+    }
+
+    @Test public void validRuntimeZeroRemainsARealImageState() {
+        assertEquals(0, CraftMultiStateImage.selectLiveValue(0, "0"));
+        assertEquals(0, CraftMultiStateImage.selectLiveValue(1, "1"));
+        assertEquals(-1, CraftMultiStateImage.selectLiveValue(1, "0"));
+    }
+
     @Test public void missingSelectedPictureUsesCraftPlaceholderButHiddenStateStaysHidden() {
         assertEquals(true, CraftMultiStateImage.shouldShowNoPicture(0, false));
         assertEquals(true, CraftMultiStateImage.shouldShowNoPicture(15, false));

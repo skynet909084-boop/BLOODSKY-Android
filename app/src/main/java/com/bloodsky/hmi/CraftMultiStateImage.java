@@ -23,6 +23,22 @@ public final class CraftMultiStateImage {
         return -1;
     }
 
+    /**
+     * Selects a state from a runtime value. Missing, malformed, NaN, and infinite values are
+     * unavailable signals, not register value zero, so they must not show image state 0.
+     */
+    public static int selectLiveValue(int typeCommand, String liveValue) {
+        if (liveValue == null) return -1;
+        try {
+            double parsed = Double.parseDouble(liveValue);
+            if (Double.isNaN(parsed) || Double.isInfinite(parsed)
+                    || parsed < Integer.MIN_VALUE || parsed > Integer.MAX_VALUE) return -1;
+            return selectIndex(typeCommand, (int) Math.round(parsed));
+        } catch (NumberFormatException invalidSignal) {
+            return -1;
+        }
+    }
+
     /** Craft displays its no-picture resource when a selected state has no decoded image. */
     public static boolean shouldShowNoPicture(int selectedIndex, boolean imageLoaded) {
         return selectedIndex >= 0 && selectedIndex < STATE_COUNT && !imageLoaded;
