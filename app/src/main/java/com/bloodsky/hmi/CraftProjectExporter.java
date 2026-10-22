@@ -30,7 +30,13 @@ public final class CraftProjectExporter {
         JSONObject imported = new JSONObject(CraftProjectImporter.convert(baselineSource.toString()));
         JSONArray sourceRows = baselineSource.getJSONArray("TableComponent");
         JSONArray importedScreens = imported.getJSONArray("screens");
-        boolean[] seen = new boolean[sourceRows.length()];
+        int rowCapacity = sourceRows.length();
+        for (int screenIndex = 0; screenIndex < screens.length(); screenIndex++) {
+            JSONObject screen = screens.optJSONObject(screenIndex);
+            JSONArray widgets = screen == null ? null : screen.optJSONArray("widgets");
+            if (widgets != null) rowCapacity += widgets.length();
+        }
+        boolean[] seen = new boolean[rowCapacity];
         List<int[]> sourceRowsByScreen = new ArrayList<>();
         JSONObject result = new JSONObject(baselineSource.toString());
         JSONArray outputRows = result.getJSONArray("TableComponent");
@@ -72,8 +78,14 @@ public final class CraftProjectExporter {
                 JSONObject widget = widgets.optJSONObject(w);
                 if (widget == null) throw new IOException("Компонент проекта повреждён");
                 int row = widget.optInt("craftSourceRow", -1);
-                if (row < 0 || row >= sourceRows.length() || seen[row])
-                    throw new IOException("Добавление, удаление или копирование компонентов пока нельзя экспортировать в KaScada");
+                if (row < 0) {
+                    int addedComponentId = addedCraftLogicGateId(widget);
+                    if (addedComponentId < 0)
+                        throw new IOException("Экспорт новых компонентов KaScada поддерживает проверенные блоки AND, OR, XOR и RS");
+                    row = appendCraftLogicGate(widget, addedComponentId, s, sourceRows, outputRows);
+                }
+                if (row >= sourceRows.length() || seen[row])
+                    throw new IOException("Компонент KaScada повторно используется или имеет повреждённую исходную строку");
                 seen[row] = true;
                 sourceRowsForScreen[w] = row;
                 JSONObject output = outputRows.getJSONObject(row);
@@ -201,6 +213,66 @@ public final class CraftProjectExporter {
         if (meta.has("jsTableNameProject_screenBackground"))
             meta.put("jsTableNameProject_screenBackground", backgrounds);
         return result.toString();
+    }
+
+    /** Add a verified original boolean gate to a Craft project with a unique screen-local saveKey. */
+    private static int appendCraftLogicGate(JSONObject widget, int componentId, int screenIndex,
+                                            JSONArray sourceRows, JSONArray outputRows) throws Exception {
+        int saveKey = nextCraftSaveKey(sourceRows, screenIndex + 1);
+        JSONObject other = new JSONObject().put("numScreen", screenIndex + 1)
+                .put("saveKey", saveKey).put("keyOut", -1).put("numOnIn", -1)
+                .put("invertOut", widget.optBoolean("invertOut", false));
+        JSONObject custom = widget.optJSONObject("craftOther");
+        if (custom != null) {
+            java.util.Iterator<String> keys = custom.keys();
+            while (keys.hasNext()) {
+                String key = keys.next();
+                if (!"numScreen".equals(key) && !"saveKey".equals(key)
+                        && !"keyOut".equals(key) && !"numOnIn".equals(key))
+                    other.put(key, custom.get(key));
+            }
+        }
+        JSONObject row = new JSONObject().put("componentId", componentId)
+                .put("text", widget.optString("text", ""))
+                .put("x", widget.optDouble("x", 40)).put("y", widget.optDouble("y", 50))
+                .put("width", widget.optDouble("w", 120)).put("height", widget.optDouble("h", 76))
+                .put("textSize", String.valueOf(widget.optInt("textSizeSp", 14)))
+                .put("colorText", String.valueOf(widget.optInt("textColor", 0xff1f2937)))
+                .put("colorBackground", String.valueOf(widget.optInt("backgroundColor", 0)))
+                .put("jsTableComponent_other", other);
+        int rowIndex = sourceRows.length();
+        sourceRows.put(row);
+        outputRows.put(new JSONObject(row.toString()));
+        widget.put("craftComponentId", componentId).put("craftSourceRow", rowIndex)
+                .put("craftOther", new JSONObject(other.toString()));
+        return rowIndex;
+    }
+
+    private static int nextCraftSaveKey(JSONArray sourceRows, int screenNumber) throws Exception {
+        int max = 0;
+        for (int i = 0; i < sourceRows.length(); i++) {
+            JSONObject row = sourceRows.optJSONObject(i);
+            if (row == null || row.optInt("componentId", -1) < 101
+                    || row.optInt("componentId", -1) > 140) continue;
+            JSONObject other = objectValue(row.opt("jsTableComponent_other"));
+            if (other.optInt("numScreen", 1) == screenNumber)
+                max = Math.max(max, other.optInt("saveKey", -1));
+        }
+        if (max == Integer.MAX_VALUE) throw new IOException("Нет свободного ключа FBD для нового блока");
+        return max + 1;
+    }
+
+    private static int addedCraftLogicGateId(JSONObject widget) {
+        if (widget == null) return -1;
+        int declared = widget.optInt("craftComponentId", -1);
+        if (declared == 103 || declared == 104 || declared == 113 || declared == 125)
+            return declared;
+        String type = MainActivity.canonicalFbdBlockType(widget.optString("type", ""));
+        if ("FBD AND".equals(type)) return 103;
+        if ("FBD OR".equals(type)) return 104;
+        if ("FBD RS".equals(type)) return 113;
+        if ("FBD XOR".equals(type)) return 125;
+        return -1;
     }
 
     /** Persist newly selected assets into Craft's own media fields before building its ZIP. */
