@@ -4974,14 +4974,28 @@ public class MainActivity extends Activity {
         scroll.addView(list);
 
         final AlertDialog[] menu = new AlertDialog[1];
-        final String[] labels = {"Свойства", "Выравнивание", "Копировать", "Удалить"};
+        // Route the primary action to the existing type-specific property editor.
+        // Its original dialog is chosen by editSelectedWidget(), not a generic form.
+        final String primaryLabel;
+        if (OriginalIndicator.supports(selectedWidget.type)) primaryLabel = "Настройки индикатора";
+        else if (OriginalCraftSwitch.supports(selectedWidget.type)) primaryLabel = "Настройки переключателя";
+        else if (OriginalCraftNumericIndicator.TYPE.equals(selectedWidget.type)) primaryLabel = "Настройки числа";
+        else if ("Линейный задатчик Craft".equals(selectedWidget.type)) primaryLabel = "Настройки задатчика";
+        else if ("Список Craft".equals(selectedWidget.type)) primaryLabel = "Настройки списка";
+        else if ("Прогресс-бар".equals(selectedWidget.type)) primaryLabel = "Настройки шкалы";
+        else if ("Кнопка".equals(selectedWidget.type)
+                || "Константная кнопка Craft".equals(selectedWidget.type)) primaryLabel = "Настройки кнопки";
+        else if ("Числовой ввод Craft".equals(selectedWidget.type)) primaryLabel = "Настройки ввода";
+        else primaryLabel = "Свойства";
+        final String[] labels = {primaryLabel, "Расширенные свойства", "Выравнивание", "Копировать", "Удалить"};
         final String[] details = {
-                "Настроить элемент и привязку",
+                "Параметры выбранного типа элемента",
+                "Геометрия, привязка и дополнительные поля",
                 "Выровнять на холсте",
                 "Создать копию элемента",
                 "Удалить элемент с экрана"
         };
-        final int[] symbols = {0x2699, 0x21D4, 0x29C9, 0x2715};
+        final int[] symbols = {0x2699, 0x2637, 0x21D4, 0x29C9, 0x2715};
 
         for (int i = 0; i < labels.length; i++) {
             final int index = i;
@@ -5020,8 +5034,9 @@ public class MainActivity extends Activity {
             row.setOnClickListener(v -> {
                 if (menu[0] != null) menu[0].dismiss();
                 if (index == 0) editSelectedWidget();
-                else if (index == 1) showAlignDialog();
-                else if (index == 2) copySelectedWidget();
+                else if (index == 1) editSelectedWidget(true);
+                else if (index == 2) showAlignDialog();
+                else if (index == 3) copySelectedWidget();
                 else deleteSelectedWidget();
             });
             list.addView(row, new LinearLayout.LayoutParams(-1, -2));
