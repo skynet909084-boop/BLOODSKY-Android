@@ -5030,9 +5030,10 @@ public class MainActivity extends Activity {
                 android.widget.ImageView sourceIcon = new android.widget.ImageView(this);
                 sourceIcon.setImageResource(i == 2
                         ? R.drawable.kc_align_open_menu : R.drawable.kc_action_copy);
-                sourceIcon.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+                // The original selection-action XML specifies fitXY and 40dp icons.
+                sourceIcon.setScaleType(android.widget.ImageView.ScaleType.FIT_XY);
                 sourceIcon.setContentDescription(null); // The clickable row owns the label.
-                row.addView(sourceIcon, new LinearLayout.LayoutParams(dp(38), dp(38)));
+                row.addView(sourceIcon, new LinearLayout.LayoutParams(dp(40), dp(40)));
             } else {
                 // Other actions retain their previous symbol until their original
                 // drawable is identified; don't invent an unverified resource.
