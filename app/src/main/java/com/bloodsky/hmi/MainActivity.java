@@ -118,6 +118,9 @@ public class MainActivity extends Activity {
     };
     private final ExecutorService modbusExecutor = Executors.newSingleThreadExecutor();
     private volatile UsbSerialModbusConnection manualUsbConnection;
+    private final java.util.concurrent.ConcurrentHashMap<String, BluetoothModbusConnection> bluetoothModbusConnections =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private volatile long bluetoothSessionGeneration;
     private UsbSerialConnector manualUsbConnector;
     private int manualUsbScreenGeneration;
     private boolean manualUsbScreenVisible;
@@ -149,6 +152,7 @@ public class MainActivity extends Activity {
     private static final int REQUEST_SMS_RECEIVE_PERMISSION = 6203;
     private static final int REQUEST_CRAFT_BLUETOOTH_PERMISSION = 6204;
     private static final int REQUEST_CRAFT_PUSH_NOTIFICATION_PERMISSION = 6205;
+    private static final int REQUEST_OPERATOR_BLUETOOTH_PERMISSION = 6206;
     private int pendingCraftBluetoothSlot = -1;
     private boolean pendingCraftBluetoothReturnsToDevices;
     private String pendingCraftNotificationTitle, pendingCraftNotificationBody;
@@ -458,6 +462,12 @@ public class MainActivity extends Activity {
             if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED)
                 showCraftBluetoothPicker(pendingCraftBluetoothReturnsToDevices, pendingCraftBluetoothSlot);
             else Toast.makeText(this, "Список Bluetooth-устройств недоступен без разрешения", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (requestCode == REQUEST_OPERATOR_BLUETOOTH_PERMISSION) {
+            if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED)
+                startModbusPolling();
+            else Toast.makeText(this, "Modbus RTU по Bluetooth выключен без разрешения BLUETOOTH_CONNECT", Toast.LENGTH_LONG).show();
             return;
         }
         if (requestCode == REQUEST_CRAFT_PUSH_NOTIFICATION_PERMISSION) {
@@ -1527,6 +1537,10 @@ public class MainActivity extends Activity {
     }
 
     private BindingRequest parseProjectBinding(int widgetIndex, String binding, int quantity) {
+        BluetoothRtuBinding bluetooth = BluetoothRtuBinding.parse(binding, quantity);
+        if (bluetooth != null)
+            return new BindingRequest(widgetIndex, "", 0, bluetooth.unit, bluetooth.registerAddress,
+                    bluetooth.functionCode, bluetooth.quantity, false, bluetooth.address);
         UsbSerialBinding usb = UsbSerialBinding.parse(binding, quantity);
         if (usb != null)
             return new BindingRequest(widgetIndex, "", 0, usb.unit, usb.address,
@@ -1536,7 +1550,10 @@ public class MainActivity extends Activity {
 
     private int[] readBoundRegisters(BindingRequest request) throws IOException {
         if (!request.usb)
-            return new ModbusTcpClient(request.host, request.port).read(
+            if (request.bluetoothAddress != null)
+                return bluetoothConnection(request.bluetoothAddress).read(
+                        request.unit, request.functionCode, request.address, request.quantity);
+            else return new ModbusTcpClient(request.host, request.port).read(
                     request.unit, request.address, request.quantity, request.functionCode);
         UsbSerialModbusConnection connection = manualUsbConnection;
         if (connection == null || !connection.isOpen()) throw new IOException("USB RTU не подключён");
@@ -1546,6 +1563,13 @@ public class MainActivity extends Activity {
     private void startModbusPolling() {
         stopModbusPolling();
         if (!activityResumed || editor == null) return;
+        if (operatorMode && hasBluetoothRegisterBinding() && android.os.Build.VERSION.SDK_INT >= 31
+                && checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.BLUETOOTH_CONNECT},
+                    REQUEST_OPERATOR_BLUETOOTH_PERMISSION);
+            return;
+        }
         pollSession.start();
         modbusPollingActive = true;
         mainHandler.postDelayed(modbusPollRunnable, 1000L);
@@ -1558,7 +1582,49 @@ public class MainActivity extends Activity {
         craftBitGatewayStates.clear();
         craftArchiveTriggerHigh.clear();
         craftArchiveTriggerEdges.clear();
+        closeBluetoothModbusConnections();
         mainHandler.removeCallbacks(modbusPollRunnable);
+    }
+
+    private boolean hasBluetoothRegisterBinding() {
+        for (Widget widget : widgets) {
+            if (widget == null || widget.connectionInfo == null
+                    || !widget.connectionInfo.trim().startsWith("bt://")) continue;
+            if (isCraftRegisterSource(widget.type) || isCraftRegisterSink(widget.type)
+                    || "FBD Вход".equals(widget.type)) return true;
+        }
+        return false;
+    }
+
+    private BluetoothModbusConnection bluetoothConnection(String address) throws IOException {
+        final long session = bluetoothSessionGeneration;
+        BluetoothModbusConnection existing = bluetoothModbusConnections.get(address);
+        if (existing != null && existing.isOpen()) return existing;
+        if (existing != null) bluetoothModbusConnections.remove(address, existing);
+        BluetoothModbusConnection opened = BluetoothModbusConnection.connect(this, address, 3000);
+        if (session != bluetoothSessionGeneration || !modbusPollingActive) {
+            try { opened.close(); } catch (IOException ignored) { }
+            throw new IOException("Bluetooth RTU operator session ended while connecting");
+        }
+        BluetoothModbusConnection prior = bluetoothModbusConnections.putIfAbsent(address, opened);
+        if (prior != null) {
+            try { opened.close(); } catch (IOException ignored) { }
+            if (prior.isOpen()) return prior;
+            bluetoothModbusConnections.replace(address, prior, opened);
+        }
+        return opened;
+    }
+
+    private void closeBluetoothModbusConnections() {
+        bluetoothSessionGeneration++;
+        for (java.util.Map.Entry<String, BluetoothModbusConnection> entry
+                : bluetoothModbusConnections.entrySet()) {
+            BluetoothModbusConnection connection = entry.getValue();
+            if (bluetoothModbusConnections.remove(entry.getKey(), connection)) {
+                try { connection.close(); }
+                catch (IOException failure) { android.util.Log.w("BLOODSKY", "Bluetooth RTU close failed", failure); }
+            }
+        }
     }
 
     private int archiveReadQuantity(Widget widget) {
@@ -1726,8 +1792,8 @@ public class MainActivity extends Activity {
                 quantity = OriginalCraftNumericIndicator.readQuantity(sourceType);
             }
             if ("Архив Craft".equals(widget.type)) quantity = archiveReadQuantity(widget);
-            boolean usbProjectBindingAllowed = craftSource || "FBD Вход".equals(widget.type);
-            BindingRequest request = usbProjectBindingAllowed
+            boolean projectRtuBindingAllowed = craftSource || "FBD Вход".equals(widget.type);
+            BindingRequest request = projectRtuBindingAllowed
                     ? parseProjectBinding(i, widget.connectionInfo, quantity)
                     : parseBinding(i, widget.connectionInfo, quantity);
             if (request == null) continue;
@@ -1763,6 +1829,13 @@ public class MainActivity extends Activity {
                             && snapshotWidgets.get(i).extraFields.optInt("craftComponentId", -1) == 14
                             ? trendReadQuantity(snapshotWidgets.get(i))
                             : isCraftRegisterFloat(snapshotWidgets.get(i).type) ? 2 : 1) == null) invalidBindings.put(i, "CFG");
+            else if (usbProjectBindingAllowed && binding != null && binding.startsWith("bt://")
+                    && parseProjectBinding(i, binding,
+                    "График / Тренд".equals(snapshotWidgets.get(i).type)
+                            && snapshotWidgets.get(i).extraFields.optInt("craftComponentId", -1) == 14
+                            ? trendReadQuantity(snapshotWidgets.get(i))
+                            : isCraftRegisterFloat(snapshotWidgets.get(i).type) ? 2 : 1) == null)
+                invalidBindings.put(i, "CFG — ожидается bt://MAC/Unit/Регистр");
         }
         if (requests.isEmpty() && invalidBindings.isEmpty() && craftSystemTextUpdates.isEmpty()
                 && craftSystemNumericUpdates.isEmpty()
@@ -2142,17 +2215,25 @@ public class MainActivity extends Activity {
         final int port, unit, address, functionCode, quantity;
         final String host;
         final boolean usb;
+        final String bluetoothAddress;
         BindingRequest(int widgetIndex, String host, int port, int unit, int address, int functionCode, int quantity) {
-            this(widgetIndex, host, port, unit, address, functionCode, quantity, false);
+            this(widgetIndex, host, port, unit, address, functionCode, quantity, false, null);
         }
         BindingRequest(int widgetIndex, String host, int port, int unit, int address, int functionCode,
                        int quantity, boolean usb) {
+            this(widgetIndex, host, port, unit, address, functionCode, quantity, usb, null);
+        }
+        BindingRequest(int widgetIndex, String host, int port, int unit, int address, int functionCode,
+                       int quantity, boolean usb, String bluetoothAddress) {
             this.widgetIndices.add(widgetIndex);
             this.host = host; this.port = port; this.unit = unit;
-            this.address = address; this.functionCode = functionCode; this.quantity = quantity; this.usb = usb;
+            this.address = address; this.functionCode = functionCode; this.quantity = quantity;
+            this.usb = usb; this.bluetoothAddress = bluetoothAddress;
         }
         String registerKey() {
             if (usb) return "usb/" + unit + "/" + address + "/FC" + functionCode + "/" + quantity;
+            if (bluetoothAddress != null) return "bt/" + bluetoothAddress + "/" + unit + "/"
+                    + address + "/FC" + functionCode + "/" + quantity;
             return host.toLowerCase(java.util.Locale.ROOT) + ":" + port + "/" + unit + "/" + address + "/FC" + functionCode + "/" + quantity;
         }
     }
@@ -5102,6 +5183,13 @@ public class MainActivity extends Activity {
                 state = "CFG — неверный USB RTU адрес";
             else if (binding.startsWith("usb://") && (manualUsbConnection == null || !manualUsbConnection.isOpen()))
                 state = "ERR: USB RTU не подключён";
+            else if (binding.startsWith("bt://")
+                    && !(isCraftRegisterSource(widget.type) || isCraftRegisterSink(widget.type)
+                    || "FBD Вход".equals(widget.type)))
+                state = "CFG — Bluetooth RTU доступен для FBD register variables и FBD Вход";
+            else if (binding.startsWith("bt://")
+                    && parseProjectBinding(i, binding, isCraftRegisterFloat(widget.type) ? 2 : 1) == null)
+                state = "CFG — неверный Bluetooth RTU адрес";
             else if (state == null) state = "Ожидание ответа";
             if ((state != null && state.startsWith("ERR")) || (state != null && state.startsWith("CFG"))) errorCount++;
             else if ("Ожидание ответа".equals(state)) pendingCount++;
@@ -5569,9 +5657,9 @@ public class MainActivity extends Activity {
                 && w.extraFields.optInt("craftComponentId", -1) == 11)
             connectionField.setHint("Переназначь вручную: tcp://192.168.1.10:502/1/40001 (исходная связь Craft не активна)");
         if (isCraftRegisterSource(w.type) || isCraftRegisterSink(w.type))
-            connectionField.setHint("TCP: tcp://192.168.1.10:502/1/40001 · USB RTU: usb://1/40001 (явно подключи адаптер)");
+            connectionField.setHint("TCP: tcp://192.168.1.10:502/1/40001 · USB RTU: usb://1/40001 · Bluetooth SPP RTU: bt://AA:BB:CC:DD:EE:FF/1/40001");
         else if ("FBD Вход".equals(w.type))
-            connectionField.setHint("TCP: tcp://192.168.1.10:502/1/40001 · USB RTU: usb://1/40001");
+            connectionField.setHint("TCP: tcp://192.168.1.10:502/1/40001 · USB RTU: usb://1/40001 · Bluetooth SPP RTU: bt://AA:BB:CC:DD:EE:FF/1/40001");
         form.addView(connectionField);
         String sourceBindingText = CraftNetworkBindingResolver.display(
                 w.extraFields.optJSONObject("craftBindingResolution"));
@@ -10578,10 +10666,12 @@ public class MainActivity extends Activity {
                 isCraftRegisterFloat(widget.type) ? 2 : 1);
         if (request == null || request.functionCode != 3) return;
         final UsbSerialModbusConnection selectedUsbConnection = request.usb ? manualUsbConnection : null;
+        final long selectedBluetoothGeneration = bluetoothSessionGeneration;
         String key = widget.connectionInfo + "|" + value + "|" + widget.extraFields.optInt("craftVarBit", 0)
                 + "|" + widget.extraFields.optBoolean("craftSwapWord", false)
                 + "|" + widget.extraFields.optBoolean("craftSwapByte", false)
-                + (request.usb ? "|usbSession=" + System.identityHashCode(selectedUsbConnection) : "");
+                + (request.usb ? "|usbSession=" + System.identityHashCode(selectedUsbConnection) : "")
+                + (request.bluetoothAddress != null ? "|btSession=" + selectedBluetoothGeneration : "");
         if (key.equals(widget.craftRegisterLastWriteKey)
                 || android.os.SystemClock.elapsedRealtime() < widget.craftRegisterRetryAt) return;
         boolean bool = isCraftRegisterBoolean(widget.type), floating = isCraftRegisterFloat(widget.type);
@@ -10612,6 +10702,13 @@ public class MainActivity extends Activity {
                     if (request.usb) {
                         UsbSerialModbusConnection connection = selectedUsbConnection;
                         if (connection == null || !connection.isOpen()) throw new IOException("USB RTU не подключён");
+                        if (writeBool) connection.writeMask(unit, address,
+                                FbdCraftRegisterCodec.bitWriteAndMask(bit),
+                                FbdCraftRegisterCodec.bitWriteOrMask(bit, value != 0.0));
+                        else if (writeFloat) connection.writeMultiple(unit, address, writeWords);
+                        else connection.writeSingle(unit, address, writeInt);
+                    } else if (request.bluetoothAddress != null) {
+                        BluetoothModbusConnection connection = bluetoothConnection(request.bluetoothAddress);
                         if (writeBool) connection.writeMask(unit, address,
                                 FbdCraftRegisterCodec.bitWriteAndMask(bit),
                                 FbdCraftRegisterCodec.bitWriteOrMask(bit, value != 0.0));
