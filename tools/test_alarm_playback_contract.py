@@ -49,7 +49,9 @@ class CraftAlarmPlaybackContractTests(unittest.TestCase):
         screen_stop = self.source.split("private void stopCurrentScreenAlarms()", 1)[1].split(
             "private void resetCraftAlarmEdges()", 1
         )[0]
-        self.assertIn('stopCraftAlarmAlert(currentScreenIndex + ":" + index)', screen_stop)
+        self.assertIn("stopScreenAlarms(currentScreenIndex, widgets)", screen_stop)
+        self.assertIn('stopCraftAlarmAlert(screenIndex + ":" + index)', screen_stop)
+        self.assertIn("stopScreenAlarms(previousScreenIndex, previousCanvasWidgets)", self.source)
 
     def test_lifecycle_cleanup_releases_all_players_and_tones(self):
         stop_all = self.source.split("private void stopAllCraftAlarmPlayback()", 1)[1].split(
