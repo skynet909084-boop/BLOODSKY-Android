@@ -20,6 +20,15 @@ public final class FbdDurationUnits {
         return accepts(unit) ? unit : "MS";
     }
 
+    /**
+     * Craft FB_TIMER stores its display/entry unit in its own `typeTime` field.
+     * Other timer widgets use BLOODSKY's optional editor preference instead.
+     */
+    public static String editorUnit(boolean originalCraftTimer, String craftUnit,
+                                    String projectUnit) {
+        return normalize(originalCraftTimer ? craftUnit : projectUnit);
+    }
+
     private static long factor(String unit) {
         switch (normalize(unit)) {
             case "SEK": return 1000L;
