@@ -12132,10 +12132,14 @@ private String archiveProjectKey() {
                 // A BOOL evaluator returns false both for a valid false signal and for
                 // unavailable sources. Preserve availability separately across the port.
                 boolean sourceAvailable = widgetsList.get(edge.source).fbdOutputAvailable;
-                if (!sourceAvailable || (input.type != 1 && !Double.isFinite(sourceNumber)))
+                // FB_MACRO's typed interface transports Java Integer and
+                // Float, never unbounded double values from the graph cache.
+                Double typedInput = input.type == 1 ? null
+                        : FbdCraftMacroValueCodec.normalize(input.type, sourceNumber);
+                if (!sourceAvailable || (input.type != 1 && typedInput == null))
                     continue;
                 inputNode.craftMacroInputValue = input.type == 1
-                        ? (sourceBool ? 1.0 : 0.0) : sourceNumber;
+                        ? (sourceBool ? 1.0 : 0.0) : typedInput;
                 inputNode.craftMacroInputValid = true;
             }
             boolean[] nestedVisiting = new boolean[nested.size()];
@@ -12158,6 +12162,16 @@ private String archiveProjectKey() {
             boolean outputAvailable = outputWidget != null && outputWidget.fbdOutputAvailable;
             if (!outputAvailable) value = Double.NaN;
             else if (output.type == 1) value = outputBool ? 1.0 : 0.0;
+            else {
+                // Even a generic numeric child cannot emit a DOUBLE as
+                // an original Float32 macro port, or a fractional/out-of-
+                // range value as its signed Integer macro output.
+                Double typedOutput = FbdCraftMacroValueCodec.normalize(output.type, value);
+                if (typedOutput == null) {
+                    outputAvailable = false;
+                    value = Double.NaN;
+                } else value = typedOutput;
+            }
             macro.fbdOutputAvailable = outputAvailable;
             macro.fbdOutputAvailabilityExplicit = true;
             cacheNumeric[index] = value;
