@@ -31,6 +31,7 @@ class OriginalComponentPaletteTests(unittest.TestCase):
                 self.assertEqual(source.read_bytes(), matches[0].read_bytes())
         self.assertIn('view.setEnabled(false)', code)
         self.assertIn('this::showFbdPalette', (ROOT / 'app/src/main/java/com/bloodsky/hmi/MainActivity.java').read_text())
+        self.assertIn('bind(dialog, R.id.kc_picker_tab_camera, "Видео RTSP Craft", "Видео", add)', code)
 
     def test_bound_components_are_existing_types_and_background_has_own_action(self):
         code = (ROOT / 'app/src/main/java/com/bloodsky/hmi/OriginalComponentPalette.java').read_text()

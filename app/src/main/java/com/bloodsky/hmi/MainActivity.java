@@ -2,6 +2,7 @@ package com.bloodsky.hmi;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
@@ -36,6 +37,7 @@ import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.ArrayAdapter;
 import android.widget.Toast;
+import android.widget.VideoView;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.ByteArrayOutputStream;
@@ -79,6 +81,8 @@ public class MainActivity extends Activity {
     private EditText pendingMediaField;
     private AlertDialog activePropertiesDialog;
     private final CraftWebViewWindow craftWebViewWindow = new CraftWebViewWindow();
+    private Dialog craftRtspDialog;
+    private VideoView craftRtspVideoView;
     private LinearLayout activePropertiesForm;
     private int pendingMediaWidgetIndex = -1;
     private String pendingMediaFieldPath;
@@ -467,6 +471,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onPause() {
         craftWebViewWindow.close();
+        closeCraftRtspPlayer();
         if (editor != null) {
             editor.endCraftBitButton();
             editor.operatorMomentaryCandidate = -1;
@@ -485,8 +490,24 @@ public class MainActivity extends Activity {
         super.onPause();
     }
 
+    private void closeCraftRtspPlayer() {
+        Dialog dialog = craftRtspDialog;
+        if (dialog != null && dialog.isShowing()) {
+            dialog.dismiss();
+            return;
+        }
+        VideoView video = craftRtspVideoView;
+        craftRtspVideoView = null;
+        craftRtspDialog = null;
+        if (video != null) {
+            video.setKeepScreenOn(false);
+            try { video.stopPlayback(); } catch (RuntimeException ignored) { }
+        }
+    }
+
     @Override protected void onDestroy() {
         craftWebViewWindow.close();
+        closeCraftRtspPlayer();
         manualUsbScreenGeneration++;
         stopModbusTcpSlave();
         closeManualUsbConnection();
@@ -3348,6 +3369,7 @@ public class MainActivity extends Activity {
             }
         }
         craftWebViewWindow.close();
+        closeCraftRtspPlayer();
         operatorMode = !operatorMode; fbdWireMode = false; wireSource = -1;
         if (!operatorMode) for (Widget value : fbdRuntimeWidgetsIncludingMacros(widgets))
             if (isCraftOdTempSource(value.type)) {
@@ -4212,7 +4234,7 @@ public class MainActivity extends Activity {
         list.setOnItemClickListener((parent, view, position, id) -> {
             HomeAssistantClient.Entity selected = shown.get(position);
             if (!selected.canTogglePower()) {
-                Toast.makeText(this, "Для этой сущности доступен только просмотр", Toast.LENGTH_SHORT).show(); return;
+                Toast.makeText(this, "Для этой сущности доступен ��олько просмотр", Toast.LENGTH_SHORT).show(); return;
             }
             boolean turnOn = "off".equalsIgnoreCase(selected.state);
             String action = turnOn ? "включить" : "выключить";
@@ -4547,6 +4569,7 @@ public class MainActivity extends Activity {
 
     private void activateScreen(int index) {
         craftWebViewWindow.close();
+        closeCraftRtspPlayer();
         fbdWireHistory.clear();
         stopCurrentScreenAlarms();
         saveActiveScreen();
@@ -5239,6 +5262,15 @@ public class MainActivity extends Activity {
                 w.extraFields.put("craftComponentId", 26);
                 w.extraFields.put("craftWebViewEnabled", false);
                 w.extraFields.put("craftOther", CraftWebViewLinks.write(null, new String[16]));
+            } catch (Exception ignored) { }
+        }
+        if ("Видео RTSP Craft".equals(type)) {
+            w.w = dp(240); w.h = dp(140);
+            try {
+                w.extraFields.put("craftComponentId", 23);
+                w.extraFields.put("craftUnsupportedComponent", false);
+                w.extraFields.put("craftRtspEnabled", false);
+                w.extraFields.put("craftOther", new JSONObject().put("rtsp_url", ""));
             } catch (Exception ignored) { }
         }
         if ("GIF Craft".equals(type)) {
@@ -6127,6 +6159,28 @@ public class MainActivity extends Activity {
             TextView webHelp = new TextView(this);
             webHelp.setText("При TCP-привязке выбирается первая установленная позиция битовой маски 0–15. Без привязки можно выбрать ссылку вручную. Каждый переход требует подтверждения. Только HTTPS и ресурсы выбранного сервера; JavaScript, cookies, файлы и отправка форм выключены. HTTP сохраняется для Craft, но не загружается.");
             form.addView(webHelp);
+        }
+
+        final EditText craftRtspUrlField;
+        final CheckBox craftRtspEnabledField;
+        if (w.extraFields.optInt("craftComponentId", -1) == 23 || "Видео RTSP Craft".equals(w.type)) {
+            JSONObject sourceOther = w.extraFields.optJSONObject("craftOther");
+            String rtspUrl = sourceOther == null ? "" : sourceOther.optString("rtsp_url", "");
+            craftRtspUrlField = propertyField(rtspUrl,
+                    InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS | InputType.TYPE_TEXT_VARIATION_URI);
+            craftRtspUrlField.setHint("rtsp://camera.local:554/live");
+            craftRtspUrlField.setContentDescription("Адрес потока RTSP Craft");
+            form.addView(craftRtspUrlField);
+            craftRtspEnabledField = new CheckBox(this);
+            craftRtspEnabledField.setText("Разрешить запуск RTSP в рабочем режиме");
+            craftRtspEnabledField.setChecked(w.extraFields.optBoolean("craftRtspEnabled", false));
+            form.addView(craftRtspEnabledField);
+            TextView rtspHelp = new TextView(this);
+            rtspHelp.setText("Импортированный поток выключен. Каждый запуск требует подтверждения оператора. Видеопоток работает только на переднем плане и останавливается при сворачивании приложения или смене экрана. Совместимость кодеков и RTSPS зависит от Android-устройства.");
+            form.addView(rtspHelp);
+        } else {
+            craftRtspUrlField = null;
+            craftRtspEnabledField = null;
         }
 
         final EditText craftEmailBodyField, craftEmailToField;
@@ -7227,6 +7281,24 @@ public class MainActivity extends Activity {
                             Toast.makeText(MainActivity.this, invalid.getMessage(), Toast.LENGTH_LONG).show();
                             return;
                         }
+                    }
+                    if (craftRtspUrlField != null) {
+                        String rtspUrl = craftRtspUrlField.getText().toString();
+                        if (craftRtspEnabledField.isChecked()) {
+                            try { CraftRtspConfig.parse(rtspUrl); }
+                            catch (IllegalArgumentException invalid) {
+                                Toast.makeText(MainActivity.this, invalid.getMessage(), Toast.LENGTH_LONG).show();
+                                return;
+                            }
+                        }
+                        try {
+                            JSONObject sourceOther = w.extraFields.optJSONObject("craftOther");
+                            if (sourceOther == null) sourceOther = new JSONObject();
+                            sourceOther.put("rtsp_url", rtspUrl);
+                            w.extraFields.put("craftOther", sourceOther);
+                            w.extraFields.put("craftRtspEnabled", craftRtspEnabledField.isChecked());
+                            w.extraFields.put("craftUnsupportedComponent", false);
+                        } catch (Exception ignored) { }
                     }
                     if (craftEmailBodyField != null) {
                         String title = textField.getText().toString();
@@ -11594,7 +11666,7 @@ public class MainActivity extends Activity {
                             w.x + dp(8), w.y + w.h - dp(9), paint);
                 } else if ("Переход на экран".equals(w.type)) {
                     paint.setColor(w.textColor);
-                    String navLabel = "🔗 " + w.text + " (Экран " + (w.targetScreenIndex + 1) + ")";
+                    String navLabel = "🔗 " + w.text + " (��кран " + (w.targetScreenIndex + 1) + ")";
                     if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(16)) / Math.max(4f, navLabel.length() * 0.58f))));
                     canvas.drawText(navLabel, w.x + dp(8), w.y + w.h / 2 + dp(5), paint);
                 } else if ("GIF Craft".equals(w.type)) {
@@ -11665,11 +11737,12 @@ public class MainActivity extends Activity {
                     canvas.drawText(w.text, w.x + dp(12), w.y + dp(19), paint);
                     paint.setColor(Color.rgb(248, 113, 113));
                     paint.setTextSize(dp(10));
-                    canvas.drawText("RTSP • воспроизведение не подключено",
+                    canvas.drawText(w.extraFields.optBoolean("craftRtspEnabled", false)
+                                    ? "RTSP • нажмите для просмотра" : "RTSP • поток выключен",
                             w.x + dp(12), w.y + w.h / 2 + dp(4), paint);
                     paint.setColor(Color.rgb(148, 163, 184));
                     paint.setTextSize(dp(9));
-                    canvas.drawText("Источник сохранён; поток выключен",
+                    canvas.drawText("Источник сохранён; запуск требует подтверждения",
                             w.x + dp(12), w.y + w.h - dp(10), paint);
                 } else if ("WebView Craft".equals(w.type)) {
                     paint.setColor(Color.rgb(30, 41, 59));
@@ -12162,6 +12235,92 @@ public class MainActivity extends Activity {
             dialog.show(); value.requestFocus();
         }
 
+        private void openCraftRtsp(Widget widget) {
+            if (!operatorMode || !activityResumed
+                    || !widget.extraFields.optBoolean("craftRtspEnabled", false)) {
+                Toast.makeText(MainActivity.this, "Разрешите RTSP в свойствах и запустите рабочий режи��", Toast.LENGTH_LONG).show();
+                return;
+            }
+            JSONObject sourceOther = widget.extraFields.optJSONObject("craftOther");
+            String candidate = sourceOther == null ? "" : sourceOther.optString("rtsp_url", "");
+            final CraftRtspConfig config;
+            try { config = CraftRtspConfig.parse(candidate); }
+            catch (IllegalArgumentException invalid) {
+                Toast.makeText(MainActivity.this, invalid.getMessage(), Toast.LENGTH_LONG).show(); return;
+            }
+            URI uri = URI.create(config.getUrl());
+            String endpoint = uri.getScheme().toLowerCase(Locale.ROOT) + "://" + uri.getHost()
+                    + (uri.getPort() < 0 ? "" : ":" + uri.getPort());
+            new AlertDialog.Builder(MainActivity.this).setTitle("Запустить видеопоток?")
+                    .setMessage(endpoint + "\nБудет открыто сетевое RTSP-соединение. Остановите поток, если устройство или сеть не доверенные.")
+                    .setNegativeButton("Отмена", null)
+                    .setPositiveButton("Запустить", (dialog, which) -> {
+                        if (!widgets.contains(widget)) return;
+                        try {
+                            CraftRtspConfig authorized = CraftRtspPlaybackPolicy.authorize(operatorMode,
+                                    activityResumed, widget.extraFields.optBoolean("craftRtspEnabled", false),
+                                    true, candidate);
+                            showCraftRtspPlayer(widget.text, authorized);
+                        } catch (IllegalArgumentException | IllegalStateException invalid) {
+                            Toast.makeText(MainActivity.this, invalid.getMessage(), Toast.LENGTH_LONG).show();
+                        }
+                    }).show();
+        }
+
+        private void showCraftRtspPlayer(String title, CraftRtspConfig config) {
+            closeCraftRtspPlayer();
+            LinearLayout content = new LinearLayout(MainActivity.this);
+            content.setOrientation(LinearLayout.VERTICAL);
+            content.setPadding(dp(12), dp(8), dp(12), dp(8));
+            TextView status = new TextView(MainActivity.this);
+            status.setText("Подключение к RTSP. Поддержка зависит от формата потока и Android-устройства.");
+            content.addView(status, new LinearLayout.LayoutParams(-1, -2));
+            VideoView video = new VideoView(MainActivity.this);
+            video.setKeepScreenOn(true);
+            LinearLayout.LayoutParams videoParams = new LinearLayout.LayoutParams(-1, dp(230));
+            videoParams.topMargin = dp(8);
+            content.addView(video, videoParams);
+            LinearLayout controls = new LinearLayout(MainActivity.this);
+            controls.setGravity(Gravity.CENTER);
+            Button pause = new Button(MainActivity.this);
+            pause.setText("Пауза");
+            pause.setAllCaps(false);
+            Button stop = new Button(MainActivity.this);
+            stop.setText("Остановить");
+            stop.setAllCaps(false);
+            controls.addView(pause, new LinearLayout.LayoutParams(0, -2, 1f));
+            controls.addView(stop, new LinearLayout.LayoutParams(0, -2, 1f));
+            content.addView(controls, new LinearLayout.LayoutParams(-1, -2));
+            Dialog dialog = new Dialog(MainActivity.this);
+            dialog.setTitle(title == null || title.trim().isEmpty() ? "Видео RTSP Craft" : title);
+            dialog.setContentView(content);
+            dialog.setOnDismissListener(dismissed -> {
+                video.setKeepScreenOn(false);
+                try { video.stopPlayback(); } catch (RuntimeException ignored) { }
+                if (craftRtspVideoView == video) craftRtspVideoView = null;
+                if (craftRtspDialog == dialog) craftRtspDialog = null;
+            });
+            craftRtspDialog = dialog;
+            craftRtspVideoView = video;
+            video.setOnPreparedListener(player -> status.setText("Поток воспроизводится"));
+            video.setOnErrorListener((player, what, extra) -> {
+                status.setText("Не удалось воспроизвести поток на этом устройстве");
+                return true;
+            });
+            pause.setOnClickListener(v -> {
+                try {
+                    if (video.isPlaying()) { video.pause(); pause.setText("Продолжить"); }
+                    else { video.start(); pause.setText("Пауза"); }
+                } catch (RuntimeException failure) {
+                    status.setText("Поток недоступен");
+                }
+            });
+            stop.setOnClickListener(v -> closeCraftRtspPlayer());
+            dialog.show();
+            video.setVideoURI(Uri.parse(config.getUrl()));
+            video.start();
+        }
+
         private void openCraftWebView(Widget widget, int index) {
             if (!operatorMode || !activityResumed || !widget.extraFields.optBoolean("craftWebViewEnabled", false)) {
                 Toast.makeText(MainActivity.this, "Разрешите WebView в свойствах компонента", Toast.LENGTH_LONG).show();
@@ -12206,7 +12365,9 @@ public class MainActivity extends Activity {
 
         private void activateRuntimeWidget(int index, float x, float y) {
             Widget picked = widgets.get(index);
-            if ("WebView Craft".equals(picked.type)) {
+            if ("Видео RTSP Craft".equals(picked.type)) {
+                openCraftRtsp(picked);
+            } else if ("WebView Craft".equals(picked.type)) {
                 openCraftWebView(picked, index);
             } else if ("Архив Craft".equals(picked.type)) {
                 showLocalArchive(picked);

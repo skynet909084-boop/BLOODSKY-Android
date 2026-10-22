@@ -5,7 +5,7 @@ import java.net.URISyntaxException;
 import java.util.Locale;
 
 /**
- * Validated endpoint boundary for the future Craft ID 23 RTSP widget.
+ * Validated endpoint boundary for the Craft ID 23 RTSP widget.
  * This parser intentionally rejects URI user-info so passwords are not
  * silently copied into ordinary project JSON or exported project archives.
  */
