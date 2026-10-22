@@ -7,6 +7,41 @@ import org.json.JSONObject;
 public final class CraftThresholdGaugeProperties {
     private CraftThresholdGaugeProperties() {}
 
+    public static int sourceRegister(JSONObject fields) {
+        return OriginalCraftLampConnection.register(fields);
+    }
+
+    public static String sourceDeviceLabel(JSONObject fields) {
+        return OriginalCraftLampConnection.deviceLabel(fields);
+    }
+
+    /** Source-style ID12 settings; never silently activate imported device endpoints. */
+    public static JSONObject withSettings(JSONObject fields, int register, int max,
+                                          boolean showText, int textSize,
+                                          int textColor, int inColor, int outColor,
+                                          int centerColor, int first, int second)
+            throws JSONException {
+        if (register < 0 || register > 65535)
+            throw new IllegalArgumentException("Регистр должен быть от 0 до 65535");
+        JSONObject updated = fields == null ? new JSONObject() : new JSONObject(fields.toString());
+        Object sourceRaw = updated.opt("craftConnectionInfo");
+        JSONObject source;
+        try {
+            source = sourceRaw instanceof JSONObject ? new JSONObject(sourceRaw.toString())
+                    : sourceRaw instanceof String ? new JSONObject((String) sourceRaw)
+                    : new JSONObject();
+        } catch (JSONException malformed) {
+            throw new IllegalArgumentException("Повреждена привязка шкалы Craft", malformed);
+        }
+        // Validate all gauge values before returning the edited project.
+        apply(updated, max, showText, textSize, textColor, inColor,
+                outColor, centerColor, first, second);
+        source.put("addressRegister", register);
+        updated.put("craftConnectionInfo", sourceRaw instanceof String
+                ? source.toString() : source);
+        return updated;
+    }
+
     public static void apply(JSONObject fields, int max, boolean showText, int textSize,
                              int textColor, int inColor, int outColor, int centerColor,
                              int firstColorPoint, int secondColorPoint) throws JSONException {
@@ -19,8 +54,15 @@ public final class CraftThresholdGaugeProperties {
                     && firstColorPoint >= secondColorPoint))
             throw new IllegalArgumentException("Границы цветовых зон должны идти по возрастанию внутри шкалы");
 
-        JSONObject other = fields.optJSONObject("craftOther");
-        if (other == null) other = new JSONObject();
+        Object oldOther = fields.opt("craftOther");
+        JSONObject other;
+        try {
+            other = oldOther instanceof JSONObject ? new JSONObject(oldOther.toString())
+                    : oldOther instanceof String ? new JSONObject((String) oldOther)
+                    : new JSONObject();
+        } catch (JSONException malformed) {
+            throw new IllegalArgumentException("Повреждены исходные свойства шкалы Craft", malformed);
+        }
         other.put("max", max);
         other.put("showText", showText);
         other.put("sizeText", textSize);
@@ -41,6 +83,6 @@ public final class CraftThresholdGaugeProperties {
         fields.put("craftGaugeCenterColor", centerColor);
         fields.put("craftGaugeFirstColorPoint", firstColorPoint);
         fields.put("craftGaugeSecondColorPoint", secondColorPoint);
-        fields.put("craftOther", other);
+        fields.put("craftOther", oldOther instanceof String ? other.toString() : other);
     }
 }
