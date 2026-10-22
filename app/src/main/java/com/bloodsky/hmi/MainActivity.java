@@ -6189,6 +6189,21 @@ public class MainActivity extends Activity {
             showOriginalLinearSetterSettings(w);
             return;
         }
+        if (!advanced && "Список Craft".equals(w.type)) {
+            CraftListSettingsDialog.show(this, w.extraFields, updated -> {
+                JSONObject previous = w.extraFields;
+                w.extraFields = updated;
+                if (!persistProjectNow(true)) {
+                    w.extraFields = previous;
+                    saveActiveScreen();
+                    Toast.makeText(this, "Не удалось сохранить список", Toast.LENGTH_LONG).show();
+                    return false;
+                }
+                if (editor != null) editor.invalidate();
+                return true;
+            }, () -> editSelectedWidget(true));
+            return;
+        }
         LinearLayout form = new LinearLayout(this);
         form.setOrientation(LinearLayout.VERTICAL);
         int pad = dp(16);
