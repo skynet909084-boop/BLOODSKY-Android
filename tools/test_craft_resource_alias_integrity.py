@@ -114,6 +114,24 @@ class CraftResourceAliasIntegrityTests(unittest.TestCase):
         self.assertIn("R.layout.kc_editor_toolbar", toolbar)
         self.assertIn("R.drawable.kc_stop : R.drawable.kc_start", toolbar)
 
+    def test_ci_checks_pinned_origin_before_build_and_keeps_report(self):
+        root = Path(__file__).resolve().parents[1]
+        workflow = (root / ".github/workflows/android-apk.yml").read_text(encoding="utf-8")
+        prep = (root / "tools/prepare_craft_resources.py").read_text(encoding="utf-8")
+        bundle = (root / "tools/bundle_craft_resources.py").read_text(encoding="utf-8")
+        self.assertIn("EXPECTED_SHA256 =", prep)
+        self.assertIn("Craft reference checksum mismatch", prep)
+        self.assertIn('"sha256": hashlib.sha256(item.read_bytes()).hexdigest()', bundle)
+        preparation = workflow.index("python tools/prepare_craft_resources.py")
+        verification = workflow.index("python tools/verify_craft_resource_aliases.py")
+        testing = workflow.index("python -m unittest discover")
+        building = workflow.index("gradle assembleDebug")
+        self.assertLess(preparation, verification)
+        self.assertLess(verification, testing)
+        self.assertLess(testing, building)
+        self.assertIn("build-reports/kascada-original-alias-integrity.md", workflow)
+        self.assertIn("build-reports/*.md", workflow)
+
     def test_truncated_catalogue_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "Incomplete original aliases"):
             self.run_verifier_with_production_thresholds()
