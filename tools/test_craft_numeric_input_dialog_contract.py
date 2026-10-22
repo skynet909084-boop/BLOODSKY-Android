@@ -13,7 +13,8 @@ class NumericInputDialogContract(unittest.TestCase):
         self.assertIn("CraftNumericInputSettingsDialog.show(this, w.extraFields, updated ->",editor)
         self.assertIn("if (!persistProjectNow(true))",editor)
         self.assertIn("w.extraFields = previous;",editor)
-        self.assertIn("editSelectedWidget(true)",editor)
+        self.assertIn("dialogGuard::advanced",editor)
+        self.assertIn("if (!dialogGuard.require()) return false;",editor)
         for phrase in ["Настройки", "Устройство: ", "Рег:", "Мин:", "Макс:",
                        "Float32", "UINT16", "INT16", "Дробная:",
                        "Системный шрифт", "Рамка",

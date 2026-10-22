@@ -15,7 +15,8 @@ class GraduatedGaugeContract(unittest.TestCase):
         self.assertIn("if (!persistProjectNow(true))", editor)
         self.assertIn("w.maxValue = previousMax;", editor)
         self.assertIn("w.minValue = previousMin;", editor)
-        self.assertIn("editSelectedWidget(true)", editor)
+        self.assertIn("dialogGuard::advanced", editor)
+        self.assertIn("if (!dialogGuard.require()) return false;", editor)
         for field in ["Настройки", "Устройство: ", "Рег:", "Минимум:",
                       "Максимум:", "Деления:", "Цвет стрелки:", "Зона низкая %:",
                       "Зона средняя %:", "Скрыть фон шкалы",

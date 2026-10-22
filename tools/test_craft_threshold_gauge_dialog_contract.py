@@ -14,7 +14,8 @@ class ThresholdGaugeDialogContract(unittest.TestCase):
         self.assertIn("CraftThresholdGaugeSettingsDialog.show(this, w.extraFields, w.maxValue,", editor)
         self.assertIn("if (!persistProjectNow(true))", editor)
         self.assertIn("w.maxValue = previousMax;", editor)
-        self.assertIn("editSelectedWidget(true)", editor)
+        self.assertIn("dialogGuard::advanced", editor)
+        self.assertIn("if (!dialogGuard.require()) return false;", editor)
         for label in ["Настройки", "Устройство: ", "Рег:", "Максимум:",
                       "Показывать подписи делений", "Внутренняя:", "Внешняя:",
                       "Первая зона:", "Вторая зона:", "Дополнительно: привязка Modbus"]:

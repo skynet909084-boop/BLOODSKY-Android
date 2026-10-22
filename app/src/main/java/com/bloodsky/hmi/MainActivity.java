@@ -660,11 +660,15 @@ public class MainActivity extends Activity {
     }
 
     private void stopCurrentScreenAlarms() {
-        for (int index = 0; index < widgets.size(); index++) {
-            Widget widget = widgets.get(index);
+        stopScreenAlarms(currentScreenIndex, widgets);
+    }
+
+    private void stopScreenAlarms(int screenIndex, List<Widget> screenWidgets) {
+        for (int index = 0; index < screenWidgets.size(); index++) {
+            Widget widget = screenWidgets.get(index);
             if ("Звуковой сигнал".equals(widget.type)) {
                 widget.lastSoundState = false;
-                stopCraftAlarmAlert(currentScreenIndex + ":" + index);
+                stopCraftAlarmAlert(screenIndex + ":" + index);
             }
         }
     }
@@ -3123,11 +3127,13 @@ public class MainActivity extends Activity {
     }
 
     private void alignSelectedWidget(String alignMode) {
-        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
+        if (operatorMode || editor == null || editor.selected < 0
+                || editor.selected >= widgets.size()) {
             Toast.makeText(this, "Выбери элемент для выравнивания", Toast.LENGTH_SHORT).show();
             return;
         }
         Widget w = widgets.get(editor.selected);
+        final float beforeX = w.x, beforeY = w.y;
         float canvasWidth = editor.getWidth() > 0 ? editor.getWidth() : dp(360);
         float canvasHeight = editor.getHeight() > 0 ? editor.getHeight() : dp(640);
         switch (alignMode) {
@@ -3137,14 +3143,22 @@ public class MainActivity extends Activity {
             case "bottom": w.y = Math.max(0, canvasHeight - w.h); break;
             case "center_h": w.x = Math.max(0, snapToGrid((canvasWidth - w.w) / 2f)); break;
             case "center_v": w.y = Math.max(0, snapToGrid((canvasHeight - w.h) / 2f)); break;
+            default: return;
         }
-        persistProject();
-        if (editor != null) editor.invalidate();
+        if (!persistProjectNow(true)) {
+            w.x = beforeX;
+            w.y = beforeY;
+            saveActiveScreen();
+            editor.invalidate();
+            Toast.makeText(this, "Не удалось сохранить выравнивание", Toast.LENGTH_LONG).show();
+            return;
+        }
+        editor.invalidate();
         Toast.makeText(this, "Элемент выровнен", Toast.LENGTH_SHORT).show();
     }
 
     private void alignSelectedWidgets(String alignMode) {
-        if (editor == null || editor.selectedWidgets.size() < 2) return;
+        if (operatorMode || editor == null || editor.selectedWidgets.size() < 2) return;
         ArrayList<Integer> indexes = new ArrayList<>();
         java.util.HashSet<Integer> seen = new java.util.HashSet<>();
         for (int index : editor.selectedWidgets) {
@@ -3170,16 +3184,37 @@ public class MainActivity extends Activity {
             widget.w = aligned[i][2];
             widget.h = aligned[i][3];
         }
-        persistProject();
+        if (!persistProjectNow(true)) {
+            for (int i = 0; i < indexes.size(); i++) {
+                Widget widget = widgets.get(indexes.get(i));
+                widget.x = geometry[i][0];
+                widget.y = geometry[i][1];
+                widget.w = geometry[i][2];
+                widget.h = geometry[i][3];
+            }
+            saveActiveScreen();
+            editor.invalidate();
+            Toast.makeText(this, "Не удалось сохранить выравнивание группы",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
         editor.invalidate();
         Toast.makeText(this, "Элементы выровнены", Toast.LENGTH_SHORT).show();
     }
 
     private void showAlignDialog() {
-        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
+        if (operatorMode || editor == null || currentScreenIndex < 0
+                || currentScreenIndex >= screens.size() || editor.selected < 0
+                || editor.selected >= widgets.size()) {
             Toast.makeText(this, "Выбери элемент на экране", Toast.LENGTH_SHORT).show();
             return;
         }
+        final EditorCanvas dialogCanvas = editor;
+        final Screen dialogScreen = screens.get(currentScreenIndex);
+        final int dialogScreenIndex = currentScreenIndex;
+        final ArrayList<Widget> dialogWidgetOrder = new ArrayList<>(widgets);
+        final int dialogFocusedIndex = editor.selected;
+        final ArrayList<Integer> dialogSelection = new ArrayList<>(editor.selectedWidgets);
         if (editor.selectedWidgets.size() > 1) {
             ArrayList<String> options = new ArrayList<>(java.util.Arrays.asList(
                     "По левому краю группы", "По правому краю группы",
@@ -3199,7 +3234,18 @@ public class MainActivity extends Activity {
             modes.add("max_height");
             new AlertDialog.Builder(this)
                     .setTitle("Выравнивание выбранных элементов")
-                    .setItems(options.toArray(new String[0]), (dialog, which) -> alignSelectedWidgets(modes.get(which)))
+                    .setItems(options.toArray(new String[0]), (dialog, which) -> {
+                        if (!isEditorDialogContextCurrent(dialogCanvas, dialogScreen,
+                                dialogScreenIndex, dialogWidgetOrder)
+                                || editor.selected != dialogFocusedIndex
+                                || !editor.selectedWidgets.equals(dialogSelection)
+                                || which < 0 || which >= modes.size()) {
+                            Toast.makeText(this, "Выделение изменилось: выбери элементы заново",
+                                    Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                        alignSelectedWidgets(modes.get(which));
+                    })
                     .setNegativeButton("Отмена", null)
                     .show();
             return;
@@ -3208,7 +3254,18 @@ public class MainActivity extends Activity {
         String[] modes = {"left", "right", "top", "bottom", "center_h", "center_v"};
         new AlertDialog.Builder(this)
                 .setTitle("Выравнивание элемента")
-                .setItems(options, (dialog, which) -> alignSelectedWidget(modes[which]))
+                .setItems(options, (dialog, which) -> {
+                    if (!isEditorDialogContextCurrent(dialogCanvas, dialogScreen,
+                            dialogScreenIndex, dialogWidgetOrder)
+                            || editor.selected != dialogFocusedIndex
+                            || !editor.selectedWidgets.equals(dialogSelection)
+                            || which < 0 || which >= modes.length) {
+                        Toast.makeText(this, "Выделение изменилось: выбери элемент заново",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    alignSelectedWidget(modes[which]);
+                })
                 .setNegativeButton("Отмена", null)
                 .show();
     }
@@ -4779,23 +4836,83 @@ public class MainActivity extends Activity {
         copy.x = source.x; copy.y = source.y; copy.w = source.w; copy.h = source.h;
         return copy;
     }
+    /** Restore persisted Craft widget properties without breaking its editor identity. */
+    private static void restoreWidgetFromSnapshot(Widget target, Widget source) {
+        target.type = source.type; target.text = source.text; target.connectionInfo = source.connectionInfo; target.inputValue = source.inputValue; target.buttonState = source.buttonState; target.rsState = source.rsState; target.counterPreset = source.counterPreset; target.counterValue = source.counterValue; target.counterLastInput = source.counterLastInput; target.timerPresetMs = source.timerPresetMs; target.timerStartedAt = source.timerStartedAt; target.compareA = source.compareA; target.compareB = source.compareB; target.compareOperator = source.compareOperator;
+        target.minValue = source.minValue; target.maxValue = source.maxValue;
+        target.backgroundColor = source.backgroundColor; target.textColor = source.textColor; target.textSizeSp = source.textSizeSp;
+        target.visible = source.visible; target.showFrame = source.showFrame; target.autoResizeText = source.autoResizeText;
+        for (int i = 0; i < 16; i++) {
+            target.dynTextStates[i] = source.dynTextStates[i];            target.dynTextColors[i] = source.dynTextColors[i];
+            target.bitListLabels[i] = source.bitListLabels[i];
+            target.voiceMessages[i] = source.voiceMessages[i];
+            target.imagePathStates[i] = source.imagePathStates[i];
+        }
+        target.soundThreshold = source.soundThreshold;
+        target.soundActive = source.soundActive;
+        target.soundFilePath = source.soundFilePath;
+        target.craftAlarmSoundIndex = source.craftAlarmSoundIndex;
+        target.craftAlarmLoop = source.craftAlarmLoop;
+        target.targetScreenIndex = source.targetScreenIndex;
+        target.targetUrl = source.targetUrl;
+        target.lastVoiceState = source.lastVoiceState;
+        target.lastSoundState = source.lastSoundState;
+        target.lastTelegramState = source.lastTelegramState;
+        target.craftVariableNamespace = source.craftVariableNamespace;
+        try { target.extraFields = new JSONObject(source.extraFields.toString()); } catch (Exception ignored) { target.extraFields = new JSONObject(); }
+        target.x = source.x; target.y = source.y; target.w = source.w; target.h = source.h;
+    }
+
 
     private void activateScreen(int index) {
+        if (nestedMacroEdit != null || screens.isEmpty() || currentScreenIndex < 0
+                || currentScreenIndex >= screens.size() || index < 0 || index >= screens.size())
+            return;
+        if (index == currentScreenIndex) return;
+        final int previousScreenIndex = currentScreenIndex;
+        final Screen previousScreen = screens.get(currentScreenIndex);
+        final ArrayList<Widget> previousScreenWidgets = new ArrayList<>(previousScreen.widgets);
+        final ArrayList<Widget> previousCanvasWidgets = new ArrayList<>(widgets);
+        final JSONObject previousProjectFields = projectExtraFields;
+        boolean committed = false;
+        try {
+            // Save the departing screen and the target index together.
+            // A failed write must not navigate away from the live editor.
+            saveActiveScreen();
+            currentScreenIndex = index;
+            widgets.clear();
+            for (Widget source : screens.get(index).widgets) widgets.add(copyWidget(source));
+            if (!persistProjectNow(true)) {
+                Toast.makeText(this, "Не удалось сохранить переключение экрана",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+            committed = true;
+        } catch (Exception failure) {
+            Toast.makeText(this, "Не удалось переключить экран", Toast.LENGTH_LONG).show();
+        } finally {
+            if (!committed) {
+                currentScreenIndex = previousScreenIndex;
+                previousScreen.widgets.clear();
+                previousScreen.widgets.addAll(previousScreenWidgets);
+                widgets.clear();
+                widgets.addAll(previousCanvasWidgets);
+                projectExtraFields = previousProjectFields;
+                if (editor != null) editor.invalidate();
+            }
+        }
+        if (!committed) return;
+        // Keep screen-local FBD wire Undo/Redo across navigation. Tear down
+        // outgoing runtime resources only after navigation is durably saved.
         pendingCraftVoiceWidget = null;
         pendingCraftVoicePermission = false;
         releaseVoiceRecognizer();
         craftWebViewWindow.close();
         closeCraftRtspPlayer();
-        // Keep screen-local FBD wire Undo/Redo across navigation. Histories are
-        // cleared on project load and on graph structure changes, not page flips.
-        stopCurrentScreenAlarms();
-        saveActiveScreen();
-        if (screens.isEmpty()) screens.add(new Screen("Экран 1"));
-        currentScreenIndex = Math.max(0, Math.min(index, screens.size() - 1));
+        stopScreenAlarms(previousScreenIndex, previousCanvasWidgets);
         liveValues.clear();
-        widgets.clear();
-        for (Widget source : screens.get(currentScreenIndex).widgets) widgets.add(copyWidget(source));
-        persistProject();
+        fbdWireMode = false;
+        wireSource = -1;
         showEditor();
     }
 
@@ -4812,68 +4929,186 @@ public class MainActivity extends Activity {
     }
 
     private void addScreen() {
-        if (nestedMacroEdit != null) return;
-        fbdWireHistory.clear();
-        saveActiveScreen();
-        screens.add(new Screen("Экран " + (screens.size() + 1)));
-        currentScreenIndex = screens.size() - 1;
-        widgets.clear();
-        persistProject();
-        showEditor();
+        if (operatorMode || nestedMacroEdit != null || editor == null
+                || currentScreenIndex < 0 || currentScreenIndex >= screens.size()) return;
+        final ArrayList<Screen> originalScreens = new ArrayList<>(screens);
+        final ArrayList<Widget> originalWidgets = new ArrayList<>(widgets);
+        final int originalScreenIndex = currentScreenIndex;
+        final JSONObject originalProjectFields = projectExtraFields;
+        boolean committed = false;
+        try {
+            saveActiveScreen();
+            screens.add(new Screen("Экран " + (screens.size() + 1)));
+            currentScreenIndex = screens.size() - 1;
+            widgets.clear();
+            if (!persistProjectNow(true)) {
+                Toast.makeText(this, "Не удалось сохранить новый экран",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+            committed = true;
+            fbdWireMode = false;
+            wireSource = -1;
+        } catch (Exception failure) {
+            Toast.makeText(this, "Не удалось добавить экран", Toast.LENGTH_LONG).show();
+        } finally {
+            if (!committed) {
+                screens.clear();
+                screens.addAll(originalScreens);
+                currentScreenIndex = originalScreenIndex;
+                widgets.clear();
+                widgets.addAll(originalWidgets);
+                projectExtraFields = originalProjectFields;
+                saveActiveScreen();
+                if (editor != null) editor.invalidate();
+            }
+        }
+        if (committed) showEditor();
     }
 
     private void removeCurrentScreen() {
-        if (nestedMacroEdit != null) return;
+        if (operatorMode || nestedMacroEdit != null || editor == null
+                || currentScreenIndex < 0 || currentScreenIndex >= screens.size()) return;
         if (screens.size() <= 1) {
-            Toast.makeText(this, "В проекте должен остаться хотя бы один экран", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "В проекте должен остаться хотя бы один экран",
+                    Toast.LENGTH_SHORT).show();
             return;
         }
+        final EditorCanvas dialogCanvas = editor;
+        final int dialogScreenIndex = currentScreenIndex;
+        final Screen dialogScreen = screens.get(currentScreenIndex);
         new AlertDialog.Builder(this)
                 .setTitle("Удалить экран?")
                 .setMessage("Экран «" + currentScreenName() + "» и все его элементы будут удалены.")
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Удалить", (dialog, which) -> {
-                    fbdWireHistory.clear();
-                    saveActiveScreen();
-                    screens.remove(currentScreenIndex);
-                    currentScreenIndex = Math.max(0, Math.min(currentScreenIndex, screens.size() - 1));
-                    widgets.clear();
-                    for (Widget widget : screens.get(currentScreenIndex).widgets) widgets.add(copyWidget(widget));
-                    editor = null;
-                    persistProject();
-                    showEditor();
+                    if (operatorMode || nestedMacroEdit != null || editor != dialogCanvas
+                            || currentScreenIndex != dialogScreenIndex || screens.size() <= 1
+                            || currentScreenIndex < 0 || currentScreenIndex >= screens.size()
+                            || screens.get(currentScreenIndex) != dialogScreen) {
+                        Toast.makeText(this, "Экран изменился: открой удаление заново",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    final ArrayList<Screen> originalScreens = new ArrayList<>(screens);
+                    final ArrayList<Widget> originalWidgets = new ArrayList<>(widgets);
+                    final JSONObject originalProjectFields = projectExtraFields;
+                    boolean committed = false;
+                    try {
+                        saveActiveScreen();
+                        screens.remove(dialogScreenIndex);
+                        currentScreenIndex = Math.min(dialogScreenIndex, screens.size() - 1);
+                        widgets.clear();
+                        for (Widget widget : screens.get(currentScreenIndex).widgets)
+                            widgets.add(copyWidget(widget));
+                        if (!persistProjectNow(true)) {
+                            Toast.makeText(this, "Не удалось сохранить удаление экрана",
+                                    Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                        committed = true;
+                        fbdWireHistory.clear();
+                        fbdWireMode = false;
+                        wireSource = -1;
+                    } catch (Exception failure) {
+                        Toast.makeText(this, "Не удалось удалить экран",
+                                Toast.LENGTH_LONG).show();
+                    } finally {
+                        if (!committed) {
+                            screens.clear();
+                            screens.addAll(originalScreens);
+                            currentScreenIndex = dialogScreenIndex;
+                            widgets.clear();
+                            widgets.addAll(originalWidgets);
+                            projectExtraFields = originalProjectFields;
+                            saveActiveScreen();
+                            if (editor != null) editor.invalidate();
+                        }
+                    }
+                    if (committed) {
+                        editor = null;
+                        showEditor();
+                    }
                 }).show();
     }
 
     private void editScreenBackground() {
-        if (nestedMacroEdit != null) return;
-        if (screens.isEmpty()) return;
-        Screen screen = screens.get(currentScreenIndex);
-        EditText input = propertyField(String.format(java.util.Locale.ROOT, "#%06X", (0xFFFFFF & screen.backgroundColor)), InputType.TYPE_CLASS_TEXT);
+        if (operatorMode || nestedMacroEdit != null || editor == null
+                || currentScreenIndex < 0 || currentScreenIndex >= screens.size()) return;
+        final Screen screen = screens.get(currentScreenIndex);
+        final EditorCanvas dialogCanvas = editor;
+        final int dialogScreenIndex = currentScreenIndex;
+        EditText input = propertyField(String.format(java.util.Locale.ROOT, "#%06X",
+                (0xFFFFFF & screen.backgroundColor)), InputType.TYPE_CLASS_TEXT);
         input.setHint("#RRGGBB");
         new AlertDialog.Builder(this).setTitle("Цвет фона экрана").setView(input)
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Применить", (dialog, which) -> {
+                    if (operatorMode || nestedMacroEdit != null || editor != dialogCanvas
+                            || currentScreenIndex != dialogScreenIndex
+                            || currentScreenIndex < 0 || currentScreenIndex >= screens.size()
+                            || screens.get(currentScreenIndex) != screen) {
+                        Toast.makeText(this, "Экран изменился: выбери цвет заново",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
                     String value = input.getText().toString().trim();
                     if (!value.startsWith("#")) value = "#" + value;
                     if (!value.matches("#[0-9a-fA-F]{6}")) {
                         Toast.makeText(this, "Укажи цвет в формате #RRGGBB", Toast.LENGTH_SHORT).show();
                         return;
                     }
-                    try { screen.backgroundColor = Color.parseColor(value); }
-                    catch (IllegalArgumentException ignored) { return; }
-                    persistProject(); if (editor != null) editor.invalidate();
+                    final int oldColor = screen.backgroundColor;
+                    try {
+                        screen.backgroundColor = Color.parseColor(value);
+                        if (!persistProjectNow(true)) {
+                            screen.backgroundColor = oldColor;
+                            Toast.makeText(this, "Не удалось сохранить цвет фона",
+                                    Toast.LENGTH_LONG).show();
+                        }
+                    } catch (Exception failure) {
+                        screen.backgroundColor = oldColor;
+                        Toast.makeText(this, "Не удалось изменить цвет фона",
+                                Toast.LENGTH_LONG).show();
+                    }
+                    editor.invalidate();
                 }).show();
     }
 
     private void renameCurrentScreen() {
-        EditText input = propertyField(currentScreenName(), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        if (operatorMode || nestedMacroEdit != null || editor == null
+                || currentScreenIndex < 0 || currentScreenIndex >= screens.size()) return;
+        final Screen screen = screens.get(currentScreenIndex);
+        final EditorCanvas dialogCanvas = editor;
+        final int dialogScreenIndex = currentScreenIndex;
+        EditText input = propertyField(currentScreenName(),
+                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         new AlertDialog.Builder(this).setTitle("Имя экрана").setView(input)
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Сохранить", (dialog, which) -> {
+                    if (operatorMode || nestedMacroEdit != null || editor != dialogCanvas
+                            || currentScreenIndex != dialogScreenIndex
+                            || currentScreenIndex < 0 || currentScreenIndex >= screens.size()
+                            || screens.get(currentScreenIndex) != screen) {
+                        Toast.makeText(this, "Экран изменился: открой имя заново",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
                     String name = input.getText().toString().trim();
-                    if (!name.isEmpty()) screens.get(currentScreenIndex).name = name;
-                    persistProject(); showEditor();
+                    if (name.isEmpty()) {
+                        Toast.makeText(this, "Имя экрана не может быть пустым",
+                                Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    String previousName = screen.name;
+                    screen.name = name;
+                    if (!persistProjectNow(true)) {
+                        screen.name = previousName;
+                        Toast.makeText(this, "Не удалось сохранить имя экрана",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    showEditor();
                 }).show();
     }
 
@@ -4888,8 +5123,16 @@ public class MainActivity extends Activity {
 
     /** Source-ordered FBD actions with existing typed graph guards. */
     private void showFbdBlockContextMenu(final int blockIndex) {
-        if (operatorMode || blockIndex < 0 || blockIndex >= widgets.size()) return;
+        if (operatorMode || editor == null || currentScreenIndex < 0
+                || currentScreenIndex >= screens.size()
+                || blockIndex < 0 || blockIndex >= widgets.size()) return;
         final Widget widget = widgets.get(blockIndex);
+        final EditorCanvas menuCanvas = editor;
+        final int menuScreenIndex = currentScreenIndex;
+        final Screen menuScreen = screens.get(currentScreenIndex);
+        final ArrayList<Widget> menuWidgetOrder = new ArrayList<>(widgets);
+        final int menuFocusedIndex = editor.selected;
+        final ArrayList<Integer> menuSelection = new ArrayList<>(editor.selectedWidgets);
         final boolean timer = "FBD Таймер".equals(widget.type)
                 || "FBD TOF".equals(widget.type) || "FBD TP".equals(widget.type)
                 || "FBD CRAFT TIMER".equals(widget.type);
@@ -4915,8 +5158,18 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
                 .setTitle(widget.text == null ? widget.type : widget.text)
                 .setItems(labels.toArray(new String[0]), (dialog, choice) -> {
-                    if (blockIndex >= widgets.size() || widgets.get(blockIndex) != widget) {
-                        Toast.makeText(this, "FBD изменён: выбери блок заново", Toast.LENGTH_LONG).show();
+                    // Reject delayed actions after switching canvas, screen, mode,
+                    // focused widget, selection, or block ordering.
+                    if (operatorMode || editor != menuCanvas
+                            || currentScreenIndex != menuScreenIndex
+                            || currentScreenIndex < 0 || currentScreenIndex >= screens.size()
+                            || screens.get(currentScreenIndex) != menuScreen
+                            || blockIndex >= widgets.size() || widgets.get(blockIndex) != widget
+                            || !sameWidgetOrder(menuWidgetOrder)
+                            || editor.selected != menuFocusedIndex
+                            || !editor.selectedWidgets.equals(menuSelection)) {
+                        Toast.makeText(this, "FBD изменён: выбери блок заново",
+                                Toast.LENGTH_LONG).show();
                         return;
                     }
                     String label = labels.get(choice);
@@ -4931,18 +5184,31 @@ public class MainActivity extends Activity {
                     } else if ("Инвертировать связь BOOL…".equals(label)) {
                         showFbdInversionDialog(blockIndex);
                     } else if ("Инвертировать выход BOOL".equals(label)) {
+                        // Commit the complete metadata change or restore it, including
+                        // the case where serialization throws after the toggle.
+                        JSONObject before = null;
+                        JSONObject beforeProjectFields = projectExtraFields;
+                        boolean committed = false;
                         try {
-                            Object previous = widget.extraFields.opt("invertOut");
-                            boolean existed = widget.extraFields.has("invertOut");
+                            before = widget.extraFields == null ? null
+                                    : new JSONObject(widget.extraFields.toString());
                             if (!toggleFbdBlockOutputInversion(widget)) return;
-                            if (!persistProjectNow(true)) {
-                                if (existed) widget.extraFields.put("invertOut", previous);
-                                else widget.extraFields.remove("invertOut");
-                                Toast.makeText(this, "Не удалось сохранить инверсию выхода", Toast.LENGTH_LONG).show();
+                            if (persistProjectNow(true)) {
+                                committed = true;
+                            } else {
+                                Toast.makeText(this, "Не удалось сохранить инверсию выхода",
+                                        Toast.LENGTH_LONG).show();
+                            }
+                        } catch (Exception error) {
+                            Toast.makeText(this, "Не удалось сохранить инверсию выхода",
+                                    Toast.LENGTH_LONG).show();
+                        } finally {
+                            if (!committed) {
+                                widget.extraFields = before;
+                                projectExtraFields = beforeProjectFields;
+                                saveActiveScreen();
                             }
                             if (editor != null) editor.invalidate();
-                        } catch (Exception error) {
-                            Toast.makeText(this, "Не удалось сохранить инверсию выхода", Toast.LENGTH_LONG).show();
                         }
                     } else if ("Отсоединить выход".equals(label)) {
                         showFbdDisconnectDialog(blockIndex);
@@ -4959,9 +5225,31 @@ public class MainActivity extends Activity {
     }
 
     private void showStandardWidgetContextMenu() {
-        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) return;
+        // The editor context menu must never be usable in operator/runtime mode.
+        if (operatorMode || editor == null || currentScreenIndex < 0
+                || currentScreenIndex >= screens.size() || editor.selected < 0
+                || editor.selected >= widgets.size()) return;
 
         Widget selectedWidget = widgets.get(editor.selected);
+        final EditorCanvas menuCanvas = editor;
+        final int menuScreenIndex = currentScreenIndex;
+        final Screen menuScreen = screens.get(currentScreenIndex);
+        // Copy/delete operate on the full selection, not just editor.selected.
+        // A stale menu must never act on a newly selected group.
+        final ArrayList<Integer> menuSelection =
+                new ArrayList<>(editor.selectedWidgets);
+        // Preserve the focused widget even if it is not in the multi-selection.
+        // A different focused item can change which properties are edited.
+        final int menuFocusedIndex = editor.selected;
+        final int menuWidgetCount = widgets.size();
+        // Detect replacements/reordering anywhere in the canvas, including
+        // positions outside the current multi-selection.
+        final ArrayList<Widget> menuWidgetOrder = new ArrayList<>(widgets);
+        final ArrayList<Widget> menuSelectionWidgets = new ArrayList<>();
+        for (int selectionIndex : menuSelection) {
+            if (selectionIndex < 0 || selectionIndex >= widgets.size()) return;
+            menuSelectionWidgets.add(widgets.get(selectionIndex));
+        }
         String titleText = selectedWidget.text == null || selectedWidget.text.trim().isEmpty()
                 ? selectedWidget.type : selectedWidget.text;
 
@@ -4974,14 +5262,72 @@ public class MainActivity extends Activity {
         scroll.addView(list);
 
         final AlertDialog[] menu = new AlertDialog[1];
-        final String[] labels = {"Свойства", "Выравнивание", "Копировать", "Удалить"};
+        // Indicators have their own original two-state artwork selector.
+        // Expose it directly without discarding the normal type-specific settings.
+        if (OriginalIndicator.supports(selectedWidget.type)) {
+            TextView imagesAction = new TextView(this);
+            imagesAction.setText("Изображения ВКЛ / ВЫКЛ");
+            imagesAction.setTextSize(16);
+            imagesAction.setTextColor(Color.rgb(237, 176, 59));
+            imagesAction.setGravity(Gravity.CENTER_VERTICAL);
+            imagesAction.setPadding(dp(18), dp(10), dp(10), dp(10));
+            imagesAction.setMinimumHeight(dp(54));
+            imagesAction.setFocusable(true);
+            imagesAction.setClickable(true);
+            imagesAction.setContentDescription(selectedWidget.type + ": Изображения ВКЛ / ВЫКЛ");
+            imagesAction.setBackgroundColor(Color.rgb(48, 48, 48));
+            imagesAction.setOnClickListener(v -> {
+                if (menu[0] != null) menu[0].dismiss();
+                if (operatorMode || editor != menuCanvas
+                        || currentScreenIndex != menuScreenIndex
+                        || currentScreenIndex >= screens.size()
+                        || screens.get(currentScreenIndex) != menuScreen
+                        || editor.selected < 0 || editor.selected >= widgets.size()
+                        || widgets.get(editor.selected) != selectedWidget
+                        || editor.selected != menuFocusedIndex
+                        || widgets.size() != menuWidgetCount
+                        || !sameWidgetOrder(menuWidgetOrder)
+                        || !editor.selectedWidgets.equals(menuSelection)
+                        || !sameSelectedWidgetObjects(menuSelection, menuSelectionWidgets)) {
+                    Toast.makeText(this, "Элемент изменён: выбери его заново",
+                            Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                showIndicatorImages(selectedWidget);
+            });
+            list.addView(imagesAction, new LinearLayout.LayoutParams(-1, -2));
+        }
+        // Route the primary action to the existing type-specific property editor.
+        // Its original dialog is chosen by editSelectedWidget(), not a generic form.
+        final String primaryLabel;
+        if (OriginalIndicator.supports(selectedWidget.type)) primaryLabel = "Настройки индикатора";
+        else if (OriginalCraftSwitch.supports(selectedWidget.type)) primaryLabel = "Настройки переключателя";
+        else if (OriginalCraftNumericIndicator.TYPE.equals(selectedWidget.type)) primaryLabel = "Настройки числа";
+        else if ("Линейный задатчик Craft".equals(selectedWidget.type)) primaryLabel = "Настройки задатчика";
+        else if ("Список Craft".equals(selectedWidget.type)) primaryLabel = "Настройки списка";
+        else if ("Прогресс-бар".equals(selectedWidget.type)) primaryLabel = "Настройки шкалы";
+        else if ("Кнопка".equals(selectedWidget.type)
+                || "Константная кнопка Craft".equals(selectedWidget.type)) primaryLabel = "Настройки кнопки";
+        else if ("Числовой ввод Craft".equals(selectedWidget.type)) primaryLabel = "Настройки ввода";
+        else if (CraftLabelAppearance.isLabel(selectedWidget.type)) primaryLabel = "Настройки надписи";
+        else if ("Динамический текст".equals(selectedWidget.type)) primaryLabel = "Настройки динамического текста";
+        else if ("Шкала / Стрелка".equals(selectedWidget.type)
+                && selectedWidget.extraFields.optInt("craftComponentId", -1) == 12)
+            primaryLabel = "Настройки пороговой шкалы";
+        else if ("Шкала / Стрелка".equals(selectedWidget.type)
+                && selectedWidget.extraFields.optInt("craftComponentId", -1) == 24)
+            primaryLabel = "Настройки градуированной шкалы";
+        else primaryLabel = "Свойства";
+        final String[] labels = {primaryLabel, "Расширенные свойства", "Выравнивание", "Копировать", "Вставить", "Удалить"};
         final String[] details = {
-                "Настроить элемент и привязку",
+                "Параметры выбранного типа элемента",
+                "Геометрия, привязка и дополнительные поля",
                 "Выровнять на холсте",
                 "Создать копию элемента",
+                "Вставить скопированные компоненты",
                 "Удалить элемент с экрана"
         };
-        final int[] symbols = {0x2699, 0x21D4, 0x29C9, 0x2715};
+        final int[] symbols = {0x2699, 0x2637, 0x21D4, 0x29C9, 0x29C9, 0x2715};
 
         for (int i = 0; i < labels.length; i++) {
             final int index = i;
@@ -4990,15 +5336,37 @@ public class MainActivity extends Activity {
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(dp(10), dp(8), dp(10), dp(8));
             row.setMinimumHeight(dp(54));
+            // A single actionable accessibility node lets TalkBack and UI smoke
+            // tests identify the correct component action without icon guessing.
+            row.setFocusable(true);
+            row.setClickable(true);
+            row.setContentDescription(selectedWidget.type + ": " + labels[i]);
+            // Preserve the action name in the accessibility tree while keeping
+            // the same visual row and icon layout as the existing editor menu.
+            row.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
             row.setBackgroundColor(i % 2 == 0
                     ? Color.rgb(48, 48, 48) : Color.rgb(40, 40, 40));
 
-            TextView symbol = new TextView(this);
-            symbol.setText(new String(Character.toChars(symbols[i])));
-            symbol.setTextSize(21);
-            symbol.setGravity(Gravity.CENTER);
-            symbol.setTextColor(i == 3 ? Color.rgb(235, 105, 90) : Color.rgb(237, 176, 59));
-            row.addView(symbol, new LinearLayout.LayoutParams(dp(38), -2));
+            if (i == 2 || i == 3 || i == 4) {
+                // Reuse verified icons from the original kc_selection_actions layout.
+                android.widget.ImageView sourceIcon = new android.widget.ImageView(this);
+                sourceIcon.setImageResource(i == 2
+                        ? R.drawable.kc_align_open_menu
+                        : i == 3 ? R.drawable.kc_action_copy : R.drawable.kc_action_paste);
+                // The original selection-action XML specifies fitXY and 40dp icons.
+                sourceIcon.setScaleType(android.widget.ImageView.ScaleType.FIT_XY);
+                sourceIcon.setContentDescription(null); // The clickable row owns the label.
+                row.addView(sourceIcon, new LinearLayout.LayoutParams(dp(40), dp(40)));
+            } else {
+                // Other actions retain their previous symbol until their original
+                // drawable is identified; don't invent an unverified resource.
+                TextView symbol = new TextView(this);
+                symbol.setText(new String(Character.toChars(symbols[i])));
+                symbol.setTextSize(21);
+                symbol.setGravity(Gravity.CENTER);
+                symbol.setTextColor(i == 5 ? Color.rgb(235, 105, 90) : Color.rgb(237, 176, 59));
+                row.addView(symbol, new LinearLayout.LayoutParams(dp(38), -2));
+            }
 
             LinearLayout textColumn = new LinearLayout(this);
             textColumn.setOrientation(LinearLayout.VERTICAL);
@@ -5007,7 +5375,7 @@ public class MainActivity extends Activity {
             label.setText(labels[i]);
             label.setTextSize(16);
             label.setTypeface(null, android.graphics.Typeface.BOLD);
-            label.setTextColor(i == 3 ? Color.rgb(235, 105, 90) : Color.rgb(237, 176, 59));
+            label.setTextColor(i == 5 ? Color.rgb(235, 105, 90) : Color.rgb(237, 176, 59));
             textColumn.addView(label, new LinearLayout.LayoutParams(-1, -2));
 
             TextView detail = new TextView(this);
@@ -5019,9 +5387,26 @@ public class MainActivity extends Activity {
 
             row.setOnClickListener(v -> {
                 if (menu[0] != null) menu[0].dismiss();
+                // A dialog can outlive a canvas selection or screen change.
+                // Never apply a stale menu action to a different widget.
+                if (operatorMode || editor != menuCanvas || currentScreenIndex != menuScreenIndex
+                        || currentScreenIndex >= screens.size()
+                        || screens.get(currentScreenIndex) != menuScreen
+                        || editor.selected < 0 || editor.selected >= widgets.size()
+                        || widgets.get(editor.selected) != selectedWidget
+                        || editor.selected != menuFocusedIndex
+                        || widgets.size() != menuWidgetCount
+                        || !sameWidgetOrder(menuWidgetOrder)
+                        || !editor.selectedWidgets.equals(menuSelection)
+                        || !sameSelectedWidgetObjects(menuSelection, menuSelectionWidgets)) {
+                    Toast.makeText(this, "Элемент изменён: выбери его заново", Toast.LENGTH_SHORT).show();
+                    return;
+                }
                 if (index == 0) editSelectedWidget();
-                else if (index == 1) showAlignDialog();
-                else if (index == 2) copySelectedWidget();
+                else if (index == 1) editSelectedWidget(true);
+                else if (index == 2) showAlignDialog();
+                else if (index == 3) copySelectedWidget();
+                else if (index == 4) pasteWidget();
                 else deleteSelectedWidget();
             });
             list.addView(row, new LinearLayout.LayoutParams(-1, -2));
@@ -5042,7 +5427,72 @@ public class MainActivity extends Activity {
         if (dialogTitle != null) dialogTitle.setTextColor(Color.rgb(237, 176, 59));
     }
 
-    private String archiveProjectKey() {
+        private boolean sameWidgetOrder(ArrayList<Widget> originals) {
+        if (widgets.size() != originals.size()) return false;
+        for (int i = 0; i < originals.size(); i++)
+            if (widgets.get(i) != originals.get(i)) return false;
+        return true;
+    }
+
+    /** A delayed edit dialog may only mutate the same editable canvas and widget order. */
+    private boolean isEditorDialogContextCurrent(EditorCanvas originalCanvas, Screen originalScreen,
+            int originalScreenIndex, ArrayList<Widget> originalWidgetOrder) {
+        return !operatorMode && editor != null && editor == originalCanvas
+                && originalScreenIndex >= 0 && originalScreenIndex == currentScreenIndex
+                && currentScreenIndex < screens.size()
+                && screens.get(currentScreenIndex) == originalScreen
+                && sameWidgetOrder(originalWidgetOrder);
+    }
+
+    /** Retain the exact widget, screen, and canvas targeted by an open settings dialog. */
+    private final class CraftWidgetDialogGuard {
+        private final EditorCanvas canvas;
+        private final Screen screen;
+        private final int screenIndex;
+        private final int widgetIndex;
+        private final Widget widget;
+        private final ArrayList<Widget> order;
+
+        CraftWidgetDialogGuard(Widget widget) {
+            this.canvas = editor;
+            this.screenIndex = currentScreenIndex;
+            this.screen = screenIndex >= 0 && screenIndex < screens.size()
+                    ? screens.get(screenIndex) : null;
+            this.widgetIndex = widgets.indexOf(widget);
+            this.widget = widget;
+            this.order = new ArrayList<>(widgets);
+        }
+
+        boolean valid() {
+            return screen != null && widgetIndex >= 0 && widgetIndex < widgets.size()
+                    && isEditorDialogContextCurrent(canvas, screen, screenIndex, order)
+                    && widgets.get(widgetIndex) == widget && editor.selected == widgetIndex;
+        }
+
+        boolean require() {
+            if (valid()) return true;
+            Toast.makeText(MainActivity.this, "Элемент изменён: открой настройки заново",
+                    Toast.LENGTH_LONG).show();
+            return false;
+        }
+
+        void advanced() {
+            if (require()) editSelectedWidget(true);
+        }
+    }
+
+    private boolean sameSelectedWidgetObjects(ArrayList<Integer> indices,
+            ArrayList<Widget> originals) {
+        if (indices.size() != originals.size()) return false;
+        for (int i = 0; i < indices.size(); i++) {
+            int index = indices.get(i);
+            if (index < 0 || index >= widgets.size()
+                    || widgets.get(index) != originals.get(i)) return false;
+        }
+        return true;
+    }
+
+private String archiveProjectKey() {
         String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
         return ProjectMediaService.getOrGenerateProjectId(json);
     }
@@ -5567,7 +6017,8 @@ public class MainActivity extends Activity {
     }
 
     private boolean selectIndicatorImage(Widget widget, boolean active, boolean user, String value) {
-        if (!widgets.contains(widget) || !OriginalIndicator.supports(widget.type)) return false;
+        if (!new CraftWidgetDialogGuard(widget).require()
+                || !OriginalIndicator.supports(widget.type)) return false;
         JSONObject old = widget.extraFields;
         JSONObject oldProject = projectExtraFields;
         try {
@@ -5587,12 +6038,15 @@ public class MainActivity extends Activity {
     }
 
     private void showIndicatorImages(Widget widget) {
+        final CraftWidgetDialogGuard imageGuard = new CraftWidgetDialogGuard(widget);
+        if (!imageGuard.require() || !OriginalIndicator.supports(widget.type)) return;
         OriginalIndicatorImages.show(this, new OriginalIndicatorImages.Host() {
             public Bitmap preview(boolean active) { return originalIndicatorBitmap(widget, active); }
             public boolean select(boolean active, boolean user, String value) {
-                return selectIndicatorImage(widget, active, user, value);
+                return imageGuard.require() && selectIndicatorImage(widget, active, user, value);
             }
             public void chooseCustom(boolean active, Runnable changed) {
+                if (!imageGuard.require()) return;
                 LinearLayout form = new LinearLayout(MainActivity.this); form.setOrientation(LinearLayout.VERTICAL);
                 EditText path = propertyField("", InputType.TYPE_CLASS_TEXT);
                 path.setHint("Файл / content URI"); path.setContentDescription("Своё изображение индикатора");
@@ -5600,6 +6054,7 @@ public class MainActivity extends Activity {
                 AlertDialog custom = new AlertDialog.Builder(MainActivity.this).setTitle("Своё изображение")
                         .setView(form).setNegativeButton("Отмена", null).setPositiveButton("Применить", null).create();
                 custom.setOnShowListener(shown -> custom.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                    if (!imageGuard.require()) return;
                     String selected = path.getText().toString().trim();
                     imageCache.remove(selected);
                     if (selected.isEmpty() || loadCachedBitmap(selected) == null) {
@@ -5617,6 +6072,7 @@ public class MainActivity extends Activity {
      * explicit TCP FC03/FC06 mapping and write permission controls.
      */
     private void showOriginalLinearSetterSettings(Widget widget) {
+        final CraftWidgetDialogGuard dialogGuard = new CraftWidgetDialogGuard(widget);
         final int panelColor = Color.rgb(36, 36, 36);
         final int labelColor = Color.rgb(210, 210, 210);
         LinearLayout form = new LinearLayout(this);
@@ -5698,10 +6154,11 @@ public class MainActivity extends Activity {
                 .create();
         advanced.setOnClickListener(v -> {
             dialog.dismiss();
-            editSelectedWidget(true);
+            dialogGuard.advanced();
         });
         dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
                 .setOnClickListener(v -> {
+                    if (!dialogGuard.require()) return;
                     JSONObject previous = widget.extraFields;
                     try {
                         int register = Integer.parseInt(registerField.getText().toString().trim());
@@ -5739,6 +6196,7 @@ public class MainActivity extends Activity {
      * remapping UI available without turning an imported source on automatically.
      */
     private void showOriginalNumericIndicatorSettings(Widget widget) {
+        final CraftWidgetDialogGuard dialogGuard = new CraftWidgetDialogGuard(widget);
         final int panelColor = Color.rgb(36, 36, 36);
         final int labelColor = Color.rgb(210, 210, 210);
         LinearLayout form = new LinearLayout(this);
@@ -5843,10 +6301,11 @@ public class MainActivity extends Activity {
                 .create();
         advanced.setOnClickListener(v -> {
             dialog.dismiss();
-            editSelectedWidget(true);
+            dialogGuard.advanced();
         });
         dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
                 .setOnClickListener(v -> {
+                    if (!dialogGuard.require()) return;
                     JSONObject old = widget.extraFields;
                     try {
                         int register = Integer.parseInt(registerField.getText().toString().trim());
@@ -5888,6 +6347,7 @@ public class MainActivity extends Activity {
      * operator visibility. Keep advanced network write opt-in separate.
      */
     private void showOriginalSwitchSettings(Widget widget) {
+        final CraftWidgetDialogGuard dialogGuard = new CraftWidgetDialogGuard(widget);
         final int panelColor = Color.rgb(36, 36, 36);
         final int labelColor = Color.rgb(210, 210, 210);
         final int[] selectedImage = {OriginalCraftSwitch.imagePosition(widget.extraFields)};
@@ -5966,12 +6426,14 @@ public class MainActivity extends Activity {
         changeImage.setBackgroundColor(Color.TRANSPARENT);
         changeImage.setContentDescription("Выбрать одно из восьми изображений переключателя Craft");
         changeImage.setOnClickListener(v -> {
+            if (!dialogGuard.require()) return;
             String[] choices = new String[8];
             for (int i = 0; i < choices.length; i++)
                 choices[i] = "Переключатель " + (i + 1);
             new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
                     .setTitle("Сменить изображение")
                     .setSingleChoiceItems(choices, selectedImage[0] - 1, (picker, chosen) -> {
+                        if (!dialogGuard.require()) { picker.dismiss(); return; }
                         selectedImage[0] = chosen + 1;
                         refreshPreview.run();
                         picker.dismiss();
@@ -6004,10 +6466,11 @@ public class MainActivity extends Activity {
                 .create();
         advanced.setOnClickListener(v -> {
             dialog.dismiss();
-            editSelectedWidget(true);
+            dialogGuard.advanced();
         });
         dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
                 .setOnClickListener(v -> {
+                    if (!dialogGuard.require()) return;
                     JSONObject old = widget.extraFields;
                     try {
                         int register = Integer.parseInt(registerField.getText().toString().trim());
@@ -6046,6 +6509,7 @@ public class MainActivity extends Activity {
      * The extended BLOODSKY inspector remains available for endpoint mapping.
      */
     private void showOriginalLampSettings(Widget lamp) {
+        final CraftWidgetDialogGuard dialogGuard = new CraftWidgetDialogGuard(lamp);
         final int panelColor = Color.rgb(36, 36, 36);
         final int labelColor = Color.rgb(210, 210, 210);
         LinearLayout form = new LinearLayout(this);
@@ -6116,7 +6580,7 @@ public class MainActivity extends Activity {
         images.setTextColor(labelColor);
         images.setBackgroundColor(Color.TRANSPARENT);
         images.setContentDescription("Сменить изображение лампы Craft");
-        images.setOnClickListener(v -> { dialog.dismiss(); showIndicatorImages(lamp); });
+        images.setOnClickListener(v -> { if (!dialogGuard.require()) return; dialog.dismiss(); showIndicatorImages(lamp); });
         form.addView(images, new LinearLayout.LayoutParams(-1, dp(56)));
 
         Button advanced = new Button(this);
@@ -6126,11 +6590,12 @@ public class MainActivity extends Activity {
         advanced.setTextColor(Color.rgb(173, 173, 173));
         advanced.setBackgroundColor(Color.TRANSPARENT);
         advanced.setContentDescription("Открыть расширенные настройки и привязку Modbus");
-        advanced.setOnClickListener(v -> { dialog.dismiss(); editSelectedWidget(true); });
+        advanced.setOnClickListener(v -> { dialog.dismiss(); dialogGuard.advanced(); });
         form.addView(advanced, new LinearLayout.LayoutParams(-1, dp(40)));
 
         dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
                 .setOnClickListener(v -> {
+                    if (!dialogGuard.require()) return;
                     JSONObject old = lamp.extraFields;
                     try {
                         int register = Integer.parseInt(registerField.getText().toString().trim());
@@ -6168,11 +6633,13 @@ public class MainActivity extends Activity {
     }
 
     private void editSelectedWidget(boolean advanced) {
-        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
+        if (operatorMode || currentScreenIndex < 0 || currentScreenIndex >= screens.size()
+                || editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
             Toast.makeText(this, "Сначала выбери элемент на экране", Toast.LENGTH_SHORT).show();
             return;
         }
         Widget w = widgets.get(editor.selected);
+        final CraftWidgetDialogGuard dialogGuard = new CraftWidgetDialogGuard(w);
         if (!advanced && OriginalIndicator.supports(w.type)) {
             showOriginalLampSettings(w);
             return;
@@ -6191,6 +6658,7 @@ public class MainActivity extends Activity {
         }
         if (!advanced && "Список Craft".equals(w.type)) {
             CraftListSettingsDialog.show(this, w.extraFields, updated -> {
+                if (!dialogGuard.require()) return false;
                 JSONObject previous = w.extraFields;
                 w.extraFields = updated;
                 if (!persistProjectNow(true)) {
@@ -6201,12 +6669,13 @@ public class MainActivity extends Activity {
                 }
                 if (editor != null) editor.invalidate();
                 return true;
-            }, () -> editSelectedWidget(true));
+            }, dialogGuard::advanced);
             return;
         }
         if (!advanced && "Прогресс-бар".equals(w.type)) {
             CraftProgressBarSettingsDialog.show(this, w.extraFields,
                     w.minValue, w.maxValue, (updated, min, max) -> {
+                if (!dialogGuard.require()) return false;
                 JSONObject previousFields = w.extraFields;
                 double previousMin = w.minValue, previousMax = w.maxValue;
                 w.extraFields = updated;
@@ -6222,13 +6691,14 @@ public class MainActivity extends Activity {
                 }
                 if (editor != null) editor.invalidate();
                 return true;
-            }, () -> editSelectedWidget(true));
+            }, dialogGuard::advanced);
             return;
         }
         if (!advanced && ("Кнопка".equals(w.type)
                 || "Константная кнопка Craft".equals(w.type))) {
             CraftButtonSettingsDialog.show(this, w.extraFields, w.text,
                     "Константная кнопка Craft".equals(w.type), (updated, caption) -> {
+                if (!dialogGuard.require()) return false;
                 JSONObject previousFields = w.extraFields;
                 String previousCaption = w.text;
                 w.extraFields = updated;
@@ -6242,11 +6712,12 @@ public class MainActivity extends Activity {
                 }
                 if (editor != null) editor.invalidate();
                 return true;
-            }, () -> editSelectedWidget(true));
+            }, dialogGuard::advanced);
             return;
         }
         if (!advanced && "Числовой ввод Craft".equals(w.type)) {
             CraftNumericInputSettingsDialog.show(this, w.extraFields, updated -> {
+                if (!dialogGuard.require()) return false;
                 JSONObject previous = w.extraFields;
                 w.extraFields = updated;
                 if (!persistProjectNow(true)) {
@@ -6258,13 +6729,14 @@ public class MainActivity extends Activity {
                 }
                 if (editor != null) editor.invalidate();
                 return true;
-            }, () -> editSelectedWidget(true));
+            }, dialogGuard::advanced);
             return;
         }
         if (!advanced && CraftLabelAppearance.isLabel(w.type)) {
             CraftLabelSettingsDialog.show(this, w.extraFields, w.text, w.textColor,
                     w.textSizeSp, w.backgroundColor, w.showFrame, w.autoResizeText,
                     (changed, caption, textColor, textSize, background, frame, fitText) -> {
+                if (!dialogGuard.require()) return false;
                 JSONObject previousFields = w.extraFields;
                 String previousText = w.text;
                 int previousTextColor = w.textColor, previousSize = w.textSizeSp;
@@ -6291,13 +6763,14 @@ public class MainActivity extends Activity {
                 }
                 if (editor != null) editor.invalidate();
                 return true;
-            }, () -> editSelectedWidget(true));
+            }, dialogGuard::advanced);
             return;
         }
         if (!advanced && "Динамический текст".equals(w.type)) {
             CraftDynamicTextSettingsDialog.show(this, w.extraFields,
                     w.dynTextStates, w.dynTextColors, w.showFrame, w.autoResizeText,
                     (updated, labels, colors, frame, fitText) -> {
+                if (!dialogGuard.require()) return false;
                 JSONObject previousFields = w.extraFields;
                 String[] previousLabels = w.dynTextStates.clone();
                 int[] previousColors = w.dynTextColors.clone();
@@ -6320,13 +6793,14 @@ public class MainActivity extends Activity {
                 }
                 if (editor != null) editor.invalidate();
                 return true;
-            }, () -> editSelectedWidget(true));
+            }, dialogGuard::advanced);
             return;
         }
         if (!advanced && "Шкала / Стрелка".equals(w.type)
                 && w.extraFields.optInt("craftComponentId", -1) == 12) {
             CraftThresholdGaugeSettingsDialog.show(this, w.extraFields, w.maxValue,
                     (updated, maximum) -> {
+                if (!dialogGuard.require()) return false;
                 JSONObject previousFields = w.extraFields;
                 double previousMin = w.minValue, previousMax = w.maxValue;
                 w.extraFields = updated;
@@ -6343,13 +6817,14 @@ public class MainActivity extends Activity {
                 }
                 if (editor != null) editor.invalidate();
                 return true;
-            }, () -> editSelectedWidget(true));
+            }, dialogGuard::advanced);
             return;
         }
         if (!advanced && "Шкала / Стрелка".equals(w.type)
                 && w.extraFields.optInt("craftComponentId", -1) == 24) {
             CraftGraduatedGaugeSettingsDialog.show(this, w.extraFields, w.minValue, w.maxValue,
                     (updated, minimum, maximum) -> {
+                if (!dialogGuard.require()) return false;
                 JSONObject previousFields = w.extraFields;
                 double previousMin = w.minValue, previousMax = w.maxValue;
                 w.extraFields = updated;
@@ -6366,7 +6841,7 @@ public class MainActivity extends Activity {
                 }
                 if (editor != null) editor.invalidate();
                 return true;
-            }, () -> editSelectedWidget(true));
+            }, dialogGuard::advanced);
             return;
         }
         LinearLayout form = new LinearLayout(this);
@@ -6376,7 +6851,9 @@ public class MainActivity extends Activity {
 
         if (OriginalIndicator.supports(w.type)) {
             Button images = new Button(this); images.setText("Сменить изображение"); images.setAllCaps(false);
-            images.setOnClickListener(v -> showIndicatorImages(w)); form.addView(images);
+            images.setOnClickListener(v -> {
+                if (dialogGuard.require()) showIndicatorImages(w);
+            }); form.addView(images);
         }
 
         TextView textLabel = new TextView(this);
@@ -7704,6 +8181,22 @@ public class MainActivity extends Activity {
             cleanupPendingMediaCopies(properties);
         });
         properties.setOnShowListener(shown -> properties.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(clicked -> {
+                    if (!dialogGuard.require()) {
+                        properties.dismiss();
+                        return;
+                    }
+                    final Widget original = copyWidget(w);
+                    final JSONObject originalProjectFields;
+                    try {
+                        originalProjectFields = projectExtraFields == null
+                                ? null : new JSONObject(projectExtraFields.toString());
+                    } catch (Exception failure) {
+                        Toast.makeText(this, "Не удалось подготовить сохранение элемента",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    boolean committed = false;
+                    try {
                     final WidgetGeometryEdits geometry;
                     final FbdPropertyEdits fbd;
                     try {
@@ -8526,10 +9019,23 @@ public class MainActivity extends Activity {
                     w.textColor = parseOptionalColor(textColorField.getText().toString(), w.textColor);
                     w.textSizeSp = Math.max(8, Math.min(48, readPositiveInt(textSizeField, w.textSizeSp, false)));
                     w.visible = visibleField.isChecked(); w.showFrame = frameField.isChecked(); w.autoResizeText = autoResizeField.isChecked();
-                    persistProject();
+                    if (!persistProjectNow(true)) {
+                        Toast.makeText(this, "Не удалось сохранить расширенные свойства",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    committed = true;
                     editor.invalidate();
                     refreshIncomingSmsReceiver();
                     properties.dismiss();
+                    } finally {
+                        if (!committed) {
+                            restoreWidgetFromSnapshot(w, original);
+                            projectExtraFields = originalProjectFields;
+                            saveActiveScreen();
+                            if (editor != null) editor.invalidate();
+                        }
+                    }
                 }));
         properties.show();
     }
@@ -8747,6 +9253,7 @@ public class MainActivity extends Activity {
     }
 
     private boolean copySelectedWidgetToClipboard() {
+        if (operatorMode) return false;
         if (editor == null || (editor.selectedWidgets.isEmpty()
                 && (editor.selected < 0 || editor.selected >= widgets.size()))) {
             Toast.makeText(this, "Сначала выбери элемент на экране", Toast.LENGTH_SHORT).show();
@@ -8772,94 +9279,138 @@ public class MainActivity extends Activity {
     }
 
     private void pasteWidget() {
+        // Stage the entire clipboard before changing the current canvas.
+        if (operatorMode || editor == null || currentScreenIndex < 0
+                || currentScreenIndex >= screens.size()) return;
         if (clipboardWidgets == null || clipboardWidgets.widgets.isEmpty()) {
             Toast.makeText(this, "Сначала скопируй элемент", Toast.LENGTH_SHORT).show();
             return;
         }
+        final Screen screen = screens.get(currentScreenIndex);
+        final ArrayList<Widget> originalWidgets = new ArrayList<>(widgets);
+        final ArrayList<FbdConnection> originalEdges = new ArrayList<>(screen.connections);
+        final JSONObject originalProjectFields = projectExtraFields;
+        boolean committed = false;
         try {
-            float width = editor == null ? Math.max(0, clipboardWidgets.maxX + dp(24)) : editor.getWidth();
-            float height = editor == null ? Math.max(0, clipboardWidgets.maxY + dp(24)) : editor.getHeight();
-            fbdWireHistory.clear();
+            float width = editor.getWidth();
+            float height = editor.getHeight();
             int first = widgets.size();
-            ArrayList<Widget> copies = WidgetClipboard.place(clipboardWidgets, width, height, dp(24), first);
+            ArrayList<Widget> copies = WidgetClipboard.place(
+                    clipboardWidgets, width, height, dp(24), first);
+            ArrayList<FbdConnection> copiedEdges =
+                    WidgetClipboard.placedConnections(clipboardWidgets, first);
             widgets.addAll(copies);
-            if (!screens.isEmpty() && currentScreenIndex >= 0 && currentScreenIndex < screens.size())
-                screens.get(currentScreenIndex).connections.addAll(
-                        WidgetClipboard.placedConnections(clipboardWidgets, first));
-            if (editor != null) {
-                editor.selectedWidgets.clear();
-                for (int index = first; index < widgets.size(); index++) editor.selectedWidgets.add(index);
-                editor.selected = widgets.size() - 1;
-                editor.invalidate();
+            screen.connections.addAll(copiedEdges);
+            if (!persistProjectNow(true)) {
+                Toast.makeText(this, "Не удалось сохранить вставленные элементы",
+                        Toast.LENGTH_LONG).show();
+                return;
             }
-            persistProject();
+            committed = true;
+            // The prior wire undo chain refers to old widget indexes.
+            fbdWireHistory.clear();
+            fbdWireMode = false;
+            wireSource = -1;
+            editor.selectedWidgets.clear();
+            for (int index = first; index < widgets.size(); index++)
+                editor.selectedWidgets.add(index);
+            editor.selected = widgets.size() - 1;
+            editor.invalidate();
             Toast.makeText(this, copies.size() == 1 ? "Копия добавлена на экран"
-                    : "Группа из " + copies.size() + " элементов добавлена", Toast.LENGTH_SHORT).show();
+                    : "Группа из " + copies.size() + " элементов добавлена",
+                    Toast.LENGTH_SHORT).show();
         } catch (Exception error) {
-            Toast.makeText(this, "Не удалось вставить элемент", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Не удалось вставить элемент", Toast.LENGTH_LONG).show();
+        } finally {
+            if (!committed) {
+                widgets.clear();
+                widgets.addAll(originalWidgets);
+                screen.connections.clear();
+                screen.connections.addAll(originalEdges);
+                projectExtraFields = originalProjectFields;
+                saveActiveScreen();
+                if (editor != null) editor.invalidate();
+            }
         }
-    }
-
-    private void adjustSetpoint(Widget widget, int delta) {
-        String current = widget.text == null ? "Задатчик: 0" : widget.text;
-        int split = current.lastIndexOf(':');
-        String prefix = split >= 0 ? current.substring(0, split + 1) + " " : "Задатчик: ";
-        String valueText = split >= 0 ? current.substring(split + 1).trim() : current.trim();
-        double newValue = delta;
-        try {
-            double value = Double.parseDouble(valueText.replace(',', '.'));
-            newValue = value + delta;
-            widget.text = prefix + newValue;
-        } catch (NumberFormatException ignored) {
-            widget.text = prefix + delta;
-        }
-        persistProject();
-        BindingRequest request = parseBinding(-1, widget.connectionInfo);
-        if (request != null && request.functionCode == 3) {
-            final double valToWrite = newValue;
-            final String oldText = current;
-            modbusExecutor.execute(() -> {
-                try {
-                    boolean ok = writeModbusRegisterStatic(request.host, request.port, request.unit, request.address, (int) valToWrite);
-                    if (!ok) throw new IOException("Устройство отклонило запись регистра");
-                } catch (Exception ex) {
-                    android.util.Log.e("BLOODSKY", "Modbus write failed", ex);
-                    runOnUiThread(() -> {
-                        widget.text = oldText;
-                        persistProject();
-                        if (editor != null) editor.invalidate();
-                        Toast.makeText(MainActivity.this, "Ошибка записи Modbus: " + (ex.getMessage() != null ? ex.getMessage() : "ошибка связи"), Toast.LENGTH_LONG).show();
-                    });
-                }
-            });
-        }
-        Toast.makeText(MainActivity.this, "Значение: " + widget.text, Toast.LENGTH_SHORT).show();
     }
 
     private void deleteSelectedWidget() {
-        if (editor == null || (editor.selectedWidgets.isEmpty()
-                && (editor.selected < 0 || editor.selected >= widgets.size()))) {
+        if (operatorMode || editor == null || currentScreenIndex < 0
+                || currentScreenIndex >= screens.size()) return;
+        if (editor.selectedWidgets.isEmpty()
+                && (editor.selected < 0 || editor.selected >= widgets.size())) {
             Toast.makeText(this, "Сначала выбери элемент на экране", Toast.LENGTH_SHORT).show();
             return;
         }
-        fbdWireHistory.clear();
-        List<FbdConnection> edges = screens.isEmpty() || currentScreenIndex < 0
-                || currentScreenIndex >= screens.size() ? null
-                : screens.get(currentScreenIndex).connections;
-        ArrayList<Integer> selection = new ArrayList<>(editor.selectedWidgets);
+        final Screen screen = screens.get(currentScreenIndex);
+        final ArrayList<Integer> originalSelection = new ArrayList<>(editor.selectedWidgets);
+        final ArrayList<Integer> selection = new ArrayList<>(originalSelection);
         if (selection.isEmpty()) selection.add(editor.selected);
-        if (activeCraftVoiceWidget != null) for (int index : selection) {
-            if (index >= 0 && index < widgets.size() && widgets.get(index) == activeCraftVoiceWidget) {
-                releaseVoiceRecognizer();
+        // WidgetClipboard.deleteSelection renumbers edges and positional
+        // result bindings in place. Snapshot their original identities and
+        // mutable fields, not just the list order.
+        final ArrayList<Widget> originalWidgets = new ArrayList<>(widgets);
+        final ArrayList<String> originalBindings = new ArrayList<>();
+        for (Widget widget : originalWidgets) originalBindings.add(widget.connectionInfo);
+        final ArrayList<FbdConnection> originalEdges = new ArrayList<>(screen.connections);
+        final ArrayList<Integer> originalSources = new ArrayList<>();
+        final ArrayList<Integer> originalTargets = new ArrayList<>();
+        for (FbdConnection edge : originalEdges) {
+            originalSources.add(edge.source);
+            originalTargets.add(edge.target);
+        }
+        final JSONObject originalProjectFields = projectExtraFields;
+        final int originalFocused = editor.selected;
+        boolean releaseVoice = false;
+        for (int index : selection) {
+            if (index >= 0 && index < widgets.size()
+                    && widgets.get(index) == activeCraftVoiceWidget) {
+                releaseVoice = true;
                 break;
             }
         }
-        if (WidgetClipboard.deleteSelection(widgets, edges, selection) == 0) return;
-        editor.selected = -1;
-        editor.selectedWidgets.clear();
-        liveValues.clear();
-        persistProject();
-        editor.invalidate();
+        boolean committed = false;
+        try {
+            if (WidgetClipboard.deleteSelection(widgets, screen.connections, selection) == 0)
+                return;
+            if (!persistProjectNow(true)) {
+                Toast.makeText(this, "Не удалось сохранить удаление элементов",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+            committed = true;
+            if (releaseVoice) releaseVoiceRecognizer();
+            // Topology changes invalidate FBD undo references; only clear
+            // history once this deletion is durably saved.
+            fbdWireHistory.clear();
+            fbdWireMode = false;
+            wireSource = -1;
+            editor.selected = -1;
+            editor.selectedWidgets.clear();
+            liveValues.clear();
+            editor.invalidate();
+        } catch (Exception failure) {
+            Toast.makeText(this, "Не удалось удалить элементы", Toast.LENGTH_LONG).show();
+        } finally {
+            if (!committed) {
+                widgets.clear();
+                widgets.addAll(originalWidgets);
+                for (int i = 0; i < originalWidgets.size(); i++)
+                    originalWidgets.get(i).connectionInfo = originalBindings.get(i);
+                screen.connections.clear();
+                screen.connections.addAll(originalEdges);
+                for (int i = 0; i < originalEdges.size(); i++) {
+                    originalEdges.get(i).source = originalSources.get(i);
+                    originalEdges.get(i).target = originalTargets.get(i);
+                }
+                projectExtraFields = originalProjectFields;
+                editor.selected = originalFocused;
+                editor.selectedWidgets.clear();
+                editor.selectedWidgets.addAll(originalSelection);
+                saveActiveScreen();
+                editor.invalidate();
+            }
+        }
     }
 
     public static JSONObject widgetToJson(Widget w) throws Exception {
@@ -9120,46 +9671,89 @@ public class MainActivity extends Activity {
     private boolean persistNestedMacroEdit(boolean synchronous) {
         NestedMacroEditSession session = nestedMacroEdit;
         if (session == null || currentScreenIndex != session.screenIndex) return false;
+        final JSONObject projectBefore = projectExtraFields;
+        final FbdCraftMacroDefinition definitionBefore = session.definition;
+        final int outputNodeBefore = session.outputNode;
+        final ArrayList<Widget> nestedWidgets = new ArrayList<>(widgets);
+        final ArrayList<Widget> hostWidgetsBefore =
+                new ArrayList<>(session.hostScreen.widgets);
+        final java.util.IdentityHashMap<Screen, ArrayList<Widget>> otherScreensBefore =
+                new java.util.IdentityHashMap<>();
+        boolean committed = false;
         try {
             saveActiveScreen();
             int outputNode = findCraftMacroOutputNode(widgets, session.outputWidget);
             if (outputNode < 0)
                 throw new IllegalArgumentException("Выходной блок удалён. Назначьте новый выход перед сохранением.");
-            session.outputNode = outputNode;
             FbdCraftMacroDefinition updated = updateCraftMacroDefinitionGraph(
                     session.definition, widgets, screens.get(currentScreenIndex).connections,
                     outputNode, session.outputPin);
+
+            // Stage all macro instances on detached widget copies. A failed
+            // project write must not poison unrelated screens or the host graph.
+            ArrayList<Widget> hostStaged = new ArrayList<>();
+            for (Widget widget : hostWidgetsBefore) hostStaged.add(copyWidget(widget));
+            session.hostScreen.widgets.clear();
+            session.hostScreen.widgets.addAll(hostStaged);
+            for (int i = 0; i < screens.size(); i++) {
+                if (i == session.screenIndex) continue;
+                Screen other = screens.get(i);
+                ArrayList<Widget> original = new ArrayList<>(other.widgets);
+                otherScreensBefore.put(other, original);
+                ArrayList<Widget> staged = new ArrayList<>();
+                for (Widget widget : original) staged.add(copyWidget(widget));
+                other.widgets.clear();
+                other.widgets.addAll(staged);
+            }
+            projectExtraFields = projectBefore == null ? new JSONObject()
+                    : new JSONObject(projectBefore.toString());
             FbdCraftMacroCatalog.upsert(projectExtraFields, updated);
             replaceCraftMacroInstances(session.hostScreen.widgets, updated);
-            for (int i = 0; i < screens.size(); i++) {
-                if (i != session.screenIndex) replaceCraftMacroInstances(screens.get(i).widgets, updated);
-            }
-            List<Widget> nestedWidgets = new ArrayList<>(widgets);
+            for (Screen other : otherScreensBefore.keySet())
+                replaceCraftMacroInstances(other.widgets, updated);
+
             session.definition = updated;
+            session.outputNode = outputNode;
             screens.set(session.screenIndex, session.hostScreen);
             widgets.clear();
             for (Widget widget : session.hostScreen.widgets) widgets.add(copyWidget(widget));
             nestedMacroEdit = null;
-            boolean saved;
-            try {
-                saved = persistProjectNow(synchronous);
-            } finally {
-                nestedMacroEdit = session;
-                screens.set(session.screenIndex, session.nestedScreen);
-                widgets.clear();
-                widgets.addAll(nestedWidgets);
-                if (editor != null) editor.invalidate();
-            }
-            return saved;
+            committed = persistProjectNow(synchronous);
+            return committed;
         } catch (Exception failure) {
             Toast.makeText(this, "Вложенный граф не сохранён: " + failure.getMessage(),
                     Toast.LENGTH_LONG).show();
             return false;
+        } finally {
+            nestedMacroEdit = session;
+            screens.set(session.screenIndex, session.nestedScreen);
+            widgets.clear();
+            widgets.addAll(nestedWidgets);
+            if (!committed) {
+                projectExtraFields = projectBefore;
+                session.definition = definitionBefore;
+                session.outputNode = outputNodeBefore;
+                session.hostScreen.widgets.clear();
+                session.hostScreen.widgets.addAll(hostWidgetsBefore);
+                for (Map.Entry<Screen, ArrayList<Widget>> entry : otherScreensBefore.entrySet()) {
+                    entry.getKey().widgets.clear();
+                    entry.getKey().widgets.addAll(entry.getValue());
+                }
+            }
+            if (editor != null) editor.invalidate();
         }
     }
 
     private void chooseNestedMacroOutput(int blockIndex, Widget block) {
-        if (nestedMacroEdit == null || blockIndex < 0 || blockIndex >= widgets.size()) return;
+        if (operatorMode || editor == null || nestedMacroEdit == null
+                || currentScreenIndex < 0 || currentScreenIndex >= screens.size()
+                || blockIndex < 0 || blockIndex >= widgets.size()
+                || widgets.get(blockIndex) != block) return;
+        final NestedMacroEditSession sessionAtSelection = nestedMacroEdit;
+        final EditorCanvas canvasAtSelection = editor;
+        final Screen screenAtSelection = screens.get(currentScreenIndex);
+        final int screenIndexAtSelection = currentScreenIndex;
+        final ArrayList<Widget> widgetOrderAtSelection = new ArrayList<>(widgets);
         String[] pins = knownFbdPins(block, true);
         if (pins.length == 0) {
             Toast.makeText(this, "У блока нет проверенного выхода", Toast.LENGTH_SHORT).show();
@@ -9167,19 +9761,28 @@ public class MainActivity extends Activity {
         }
         new AlertDialog.Builder(this).setTitle("Выход макроса")
                 .setItems(pins, (dialog, which) -> {
-                    NestedMacroEditSession session = nestedMacroEdit;
-                    int previousNode = session.outputNode;
-                    Widget previousWidget = session.outputWidget;
-                    String previousPin = session.outputPin;
-                    session.outputNode = blockIndex;
-                    session.outputWidget = widgets.get(blockIndex);
-                    session.outputPin = pins[which];
+                    if (!isEditorDialogContextCurrent(canvasAtSelection, screenAtSelection,
+                            screenIndexAtSelection, widgetOrderAtSelection)
+                            || nestedMacroEdit != sessionAtSelection
+                            || blockIndex >= widgets.size() || widgets.get(blockIndex) != block
+                            || which < 0 || which >= pins.length
+                            || !contains(knownFbdPins(block, true), pins[which])) {
+                        Toast.makeText(this, "Граф макроса изменён: выбери выход заново",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    int previousNode = sessionAtSelection.outputNode;
+                    Widget previousWidget = sessionAtSelection.outputWidget;
+                    String previousPin = sessionAtSelection.outputPin;
+                    sessionAtSelection.outputNode = blockIndex;
+                    sessionAtSelection.outputWidget = block;
+                    sessionAtSelection.outputPin = pins[which];
                     if (persistProjectNow(true)) {
                         Toast.makeText(this, "Выход макроса обновлён", Toast.LENGTH_SHORT).show();
                     } else {
-                        session.outputNode = previousNode;
-                        session.outputWidget = previousWidget;
-                        session.outputPin = previousPin;
+                        sessionAtSelection.outputNode = previousNode;
+                        sessionAtSelection.outputWidget = previousWidget;
+                        sessionAtSelection.outputPin = previousPin;
                     }
                 }).setNegativeButton("Отмена", null).show();
     }
@@ -11605,9 +12208,12 @@ public class MainActivity extends Activity {
     private void showFbdInversionDialog() { showFbdInversionDialog(-1); }
 
     private void showFbdInversionDialog(int sourceFilter) {
-        if (operatorMode || screens.isEmpty() || currentScreenIndex < 0
+        if (operatorMode || editor == null || screens.isEmpty() || currentScreenIndex < 0
                 || currentScreenIndex >= screens.size()) return;
-        Screen screen = screens.get(currentScreenIndex);
+        final Screen screen = screens.get(currentScreenIndex);
+        final EditorCanvas dialogCanvas = editor;
+        final int dialogScreenIndex = currentScreenIndex;
+        final ArrayList<Widget> dialogWidgetOrder = new ArrayList<>(widgets);
         final List<FbdConnection> choices = new ArrayList<>();
         final List<String> labels = new ArrayList<>();
         for (FbdConnection edge : screen.connections) {
@@ -11628,39 +12234,40 @@ public class MainActivity extends Activity {
         }
         new AlertDialog.Builder(this).setTitle("Инверсия связи FBD (BOOL)")
                 .setItems(labels.toArray(new String[0]), (dialog, index) -> {
+                    if (!isEditorDialogContextCurrent(dialogCanvas, screen, dialogScreenIndex,
+                            dialogWidgetOrder) || index < 0 || index >= choices.size()) {
+                        Toast.makeText(this, "Экран FBD изменён: открой меню заново",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
                     FbdConnection edge = choices.get(index);
-                    if (!screen.connections.contains(edge)) return;
+                    if (!screen.connections.contains(edge)
+                            || edge.source < 0 || edge.target < 0
+                            || edge.source >= widgets.size() || edge.target >= widgets.size()) return;
                     Widget from = widgets.get(edge.source), to = widgets.get(edge.target);
                     if (!isInvertibleFbdBoolWire(edge, from.type, to.type)) return;
-                    Object previous = edge.extraFields.opt("inverted");
-                    boolean existed = edge.extraFields.has("inverted");
-                    try {
-                        fbdWireHistory.recordBefore(screen, screen.connections);
-                        if (!toggleFbdBooleanWireInversion(edge, from.type, to.type)) return;
-                        if (!persistProjectNow(true)) {
-                            if (existed) edge.extraFields.put("inverted", previous);
-                            else edge.extraFields.remove("inverted");
-                            fbdWireHistory.clear();
-                            Toast.makeText(this, "Инверсия не сохранена", Toast.LENGTH_LONG).show();
-                            return;
-                        }
-                        if (editor != null) editor.invalidate();
-                    } catch (Exception failure) {
+                    // Use the same serialized-edge transaction as connect/disconnect.
+                    // A failed save must not erase the prior undo/redo timeline.
+                    commitFbdWireEdit(screen, () -> {
                         try {
-                            if (existed) edge.extraFields.put("inverted", previous);
-                            else edge.extraFields.remove("inverted");
-                        } catch (Exception ignored) {}
-                        fbdWireHistory.clear();
-                        Toast.makeText(this, "Ошибка изменения BOOL-связи", Toast.LENGTH_LONG).show();
-                    }
+                            if (!toggleFbdBooleanWireInversion(edge, from.type, to.type))
+                                throw new IllegalStateException("Связь больше не BOOL");
+                        } catch (Exception failure) {
+                            throw new IllegalStateException("Ошибка инверсии BOOL-связи", failure);
+                        }
+                    }, "Инверсия BOOL-связи изменена");
                 }).setNegativeButton("Отмена", null).show();
     }
 
-    private void showFbdDisconnectDialog() { showFbdDisconnectDialog(-1); }
+        private void showFbdDisconnectDialog() { showFbdDisconnectDialog(-1); }
 
     private void showFbdDisconnectDialog(int sourceFilter) {
-        if (screens.isEmpty() || currentScreenIndex < 0 || currentScreenIndex >= screens.size()) return;
-        Screen screen = screens.get(currentScreenIndex);
+        if (operatorMode || editor == null || screens.isEmpty() || currentScreenIndex < 0
+                || currentScreenIndex >= screens.size()) return;
+        final Screen screen = screens.get(currentScreenIndex);
+        final EditorCanvas dialogCanvas = editor;
+        final int dialogScreenIndex = currentScreenIndex;
+        final ArrayList<Widget> dialogWidgetOrder = new ArrayList<>(widgets);
         if (screen.connections.isEmpty()) {
             Toast.makeText(this, "Нет связей FBD для удаления", Toast.LENGTH_SHORT).show();
             return;
@@ -11684,9 +12291,16 @@ public class MainActivity extends Activity {
         }
         new AlertDialog.Builder(this).setTitle("Удалить связь FBD")
                 .setItems(labels.toArray(new String[0]), (dialog, selected) -> {
+                    if (!isEditorDialogContextCurrent(dialogCanvas, screen, dialogScreenIndex,
+                            dialogWidgetOrder) || selected < 0 || selected >= candidates.size()) {
+                        Toast.makeText(this, "Экран FBD изменён: открой меню заново",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
                     FbdConnection edge = candidates.get(selected);
-                    if (!screen.connections.contains(edge)) return;
-                    if (screen.connections.contains(edge)) {
+                    if (screen.connections.contains(edge)
+                            && edge.source >= 0 && edge.target >= 0
+                            && edge.source < widgets.size() && edge.target < widgets.size()) {
                         commitFbdWireEdit(screen, () -> disconnectFbdEdge(screen.connections, edge),
                                 "Связь FBD удалена");
                     }
@@ -11695,15 +12309,21 @@ public class MainActivity extends Activity {
 
     /** Offer pin-specific wiring for blocks whose pin names are confirmed in this build. */
     private void chooseFbdPins(int source, int target) {
+        if (operatorMode || editor == null || currentScreenIndex < 0
+                || currentScreenIndex >= screens.size() || source < 0 || target < 0
+                || source >= widgets.size() || target >= widgets.size()
+                || source == target) return;
         final int screenAtSelection = currentScreenIndex;
+        final Screen screenAtSelectionObject = screens.get(currentScreenIndex);
+        final EditorCanvas canvasAtSelection = editor;
+        final ArrayList<Widget> widgetOrderAtSelection = new ArrayList<>(widgets);
         final Widget sourceAtSelection = widgets.get(source);
         final Widget targetAtSelection = widgets.get(target);
-        String sourceType = widgets.get(source).type;
-        String targetType = widgets.get(target).type;
+        final String sourceType = sourceAtSelection.type;
+        final String targetType = targetAtSelection.type;
         String[] sourcePins = knownFbdPins(sourceAtSelection, true);
         String[] targetPins = knownFbdPins(targetAtSelection, false);
         if (sourcePins.length == 0 || targetPins.length == 0) {
-            // A known input-only or output-only block must not fall back to an untyped wire.
             if (!canUseUnpinnedFbdFallback(sourceAtSelection, targetAtSelection)) {
                 Toast.makeText(this, "Для этого FBD-блока не определены контакты", Toast.LENGTH_LONG).show();
                 return;
@@ -11713,6 +12333,15 @@ public class MainActivity extends Activity {
         }
         new AlertDialog.Builder(this).setTitle("Выход FBD")
                 .setItems(sourcePins, (dialog, sourceChoice) -> {
+                    if (!isEditorDialogContextCurrent(canvasAtSelection, screenAtSelectionObject,
+                            screenAtSelection, widgetOrderAtSelection)
+                            || sourceChoice < 0 || sourceChoice >= sourcePins.length
+                            || !sourceType.equals(sourceAtSelection.type)
+                            || !targetType.equals(targetAtSelection.type)) {
+                        Toast.makeText(this, "FBD-блоки изменились: выбери их заново",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
                     String chosenSourcePin = sourcePins[sourceChoice];
                     String[] compatiblePins = compatibleFbdTargetPins(
                             sourceAtSelection, chosenSourcePin, targetAtSelection);
@@ -11723,13 +12352,17 @@ public class MainActivity extends Activity {
                     new AlertDialog.Builder(this).setTitle("Вход FBD")
                             .setItems(compatiblePins, (targetDialog, targetChoice) -> {
                                 try {
-                                    if (screenAtSelection != currentScreenIndex || source >= widgets.size()
-                                            || target >= widgets.size()
+                                    if (!isEditorDialogContextCurrent(canvasAtSelection,
+                                            screenAtSelectionObject, screenAtSelection,
+                                            widgetOrderAtSelection)
+                                            || source >= widgets.size() || target >= widgets.size()
                                             || widgets.get(source) != sourceAtSelection
                                             || widgets.get(target) != targetAtSelection
                                             || !sourceType.equals(widgets.get(source).type)
-                                            || !targetType.equals(widgets.get(target).type)) {
-                                        Toast.makeText(this, "FBD-блоки изменились: выбери их заново", Toast.LENGTH_LONG).show();
+                                            || !targetType.equals(widgets.get(target).type)
+                                            || targetChoice < 0 || targetChoice >= compatiblePins.length) {
+                                        Toast.makeText(this, "FBD-блоки изменились: выбери их заново",
+                                                Toast.LENGTH_LONG).show();
                                         return;
                                     }
                                     String chosenTargetPin = compatiblePins[targetChoice];
@@ -12087,6 +12720,7 @@ public class MainActivity extends Activity {
         public String connectionInfo = "";
         public boolean inputValue = false;
         public boolean buttonState = false;
+        transient boolean craftSwitchWritePending;
         public boolean rsState = false;
         // Runtime-only distinction between a missing native output and a valid
         // Float NaN/Infinity produced by Craft IEEE-754 arithmetic.
@@ -13031,56 +13665,107 @@ public class MainActivity extends Activity {
         }
 
         private void activateCraftSwitch(Widget widget, int index) {
-            boolean previous = widget.buttonState;
-            boolean next = !previous;
-            widget.buttonState = next;
-            persistProject();
-            invalidate();
+            final int originalScreenIndex = currentScreenIndex;
+            final Screen originalScreen = originalScreenIndex >= 0
+                    && originalScreenIndex < screens.size()
+                    ? screens.get(originalScreenIndex) : null;
+            if (!isRuntimeWidgetCurrent(widget, index, originalScreen, originalScreenIndex))
+                return;
+            final boolean previous = widget.buttonState;
+            final boolean next = !previous;
             if (!widget.extraFields.optBoolean("craftSwitchBitEnabled", false)) {
-                Toast.makeText(MainActivity.this, "Переключатель: " + (next ? "ВКЛ" : "ВЫКЛ"), Toast.LENGTH_SHORT).show();
+                JSONObject oldProject = projectExtraFields;
+                widget.buttonState = next;
+                if (!persistProjectNow(true)) {
+                    widget.buttonState = previous;
+                    projectExtraFields = oldProject;
+                    saveActiveScreen();
+                    Toast.makeText(MainActivity.this, "Не удалось сохранить переключатель",
+                            Toast.LENGTH_LONG).show();
+                } else {
+                    Toast.makeText(MainActivity.this,
+                            "Переключатель: " + (next ? "ВКЛ" : "ВЫКЛ"),
+                            Toast.LENGTH_SHORT).show();
+                }
+                invalidate();
                 return;
             }
-            BindingRequest binding = parseBinding(-1, widget.connectionInfo);
+            final BindingRequest binding = parseBinding(-1, widget.connectionInfo);
             if (binding == null || binding.functionCode != 3) {
-                widget.buttonState = previous;
-                persistProject();
-                invalidate();
-                Toast.makeText(MainActivity.this, "Для записи бита нужен TCP holding-регистр FC03/FC22", Toast.LENGTH_LONG).show();
+                Toast.makeText(MainActivity.this,
+                        "Для записи бита нужен TCP holding-регистр FC03/FC22",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+            if (widget.craftSwitchWritePending) {
+                Toast.makeText(MainActivity.this, "Запись переключателя ещё выполняется",
+                        Toast.LENGTH_SHORT).show();
                 return;
             }
             final int bit = widget.extraFields.optInt("craftSwitchBit", -1);
             final int[] masks;
             try { masks = OriginalCraftSwitch.writeMasks(bit, next); }
             catch (IllegalArgumentException invalid) {
-                widget.buttonState = previous;
-                persistProject();
-                invalidate();
-                Toast.makeText(MainActivity.this, invalid.getMessage(), Toast.LENGTH_LONG).show();
+                Toast.makeText(MainActivity.this, invalid.getMessage(),
+                        Toast.LENGTH_LONG).show();
                 return;
             }
-            final String requestedState = next ? "ВКЛ" : "ВЫКЛ";
-            final int requestSequence = widget.extraFields.optInt("craftSwitchWriteSequence", 0) + 1;
-            try { widget.extraFields.put("craftSwitchWriteSequence", requestSequence); } catch (Exception ignored) { }
-            persistProject();
+            final JSONObject oldFields = widget.extraFields;
+            final int requestSequence =
+                    widget.extraFields.optInt("craftSwitchWriteSequence", 0) + 1;
+            try {
+                widget.extraFields = new JSONObject(oldFields.toString());
+                widget.extraFields.put("craftSwitchWriteSequence", requestSequence);
+            } catch (Exception error) {
+                widget.extraFields = oldFields;
+                Toast.makeText(MainActivity.this, "Не удалось подготовить запись бита",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+            widget.craftSwitchWritePending = true;
             modbusExecutor.execute(() -> {
                 Exception failure = null;
                 try {
-                    if (!activityResumed || !operatorMode || !widgets.contains(widget))
+                    if (!isRuntimeWidgetCurrent(widget, index, originalScreen,
+                            originalScreenIndex))
                         throw new IOException("Рабочий режим остановлен");
-                    new ModbusTcpClient(binding.host, binding.port).writeMask(binding.unit, binding.address, masks[0], masks[1]);
+                    new ModbusTcpClient(binding.host, binding.port).writeMask(
+                            binding.unit, binding.address, masks[0], masks[1]);
                 } catch (Exception error) { failure = error; }
                 final Exception result = failure;
-                if (result != null) runOnUiThread(() -> {
-                    if (!widgets.contains(widget) || widgets.indexOf(widget) != index
-                            || widget.extraFields.optInt("craftSwitchWriteSequence", 0) != requestSequence
-                            || widget.buttonState != next) return;
-                    widget.buttonState = previous;
-                    persistProject();
-                    if (editor != null) editor.invalidate();
-                    Toast.makeText(MainActivity.this, "Ошибка записи бита переключателя: " + describeModbusError(result), Toast.LENGTH_LONG).show();
+                runOnUiThread(() -> {
+                    widget.craftSwitchWritePending = false;
+                    if (!isRuntimeWidgetCurrent(widget, index, originalScreen,
+                            originalScreenIndex)
+                            || widget.extraFields.optInt("craftSwitchWriteSequence", 0)
+                                    != requestSequence
+                            || widget.buttonState != previous) return;
+                    if (result != null) {
+                        widget.extraFields = oldFields;
+                        Toast.makeText(MainActivity.this,
+                                "Ошибка записи бита переключателя: "
+                                        + describeModbusError(result), Toast.LENGTH_LONG).show();
+                        invalidate();
+                        return;
+                    }
+                    JSONObject oldProject = projectExtraFields;
+                    widget.buttonState = next;
+                    if (!persistProjectNow(true)) {
+                        widget.buttonState = previous;
+                        widget.extraFields = oldFields;
+                        projectExtraFields = oldProject;
+                        saveActiveScreen();
+                        Toast.makeText(MainActivity.this,
+                                "Бит записан, но проект не сохранён",
+                                Toast.LENGTH_LONG).show();
+                    } else {
+                        Toast.makeText(MainActivity.this,
+                                "Переключатель: " + (next ? "ВКЛ" : "ВЫКЛ"),
+                                Toast.LENGTH_SHORT).show();
+                    }
+                    invalidate();
                 });
             });
-            Toast.makeText(MainActivity.this, "Переключатель: " + requestedState, Toast.LENGTH_SHORT).show();
         }
 
         private void queueCraftBitButtonWrite(Widget widget, BindingRequest binding, int index, int bit, boolean pressed) {
@@ -13143,25 +13828,49 @@ public class MainActivity extends Activity {
             return true;
         }
 
+        private void restoreCraftBitListChecks(android.content.DialogInterface dialog,
+                java.util.List<Integer> bits, int mask) {
+            if (!(dialog instanceof AlertDialog)) return;
+            android.widget.ListView list = ((AlertDialog) dialog).getListView();
+            if (list == null) return;
+            for (int i = 0; i < bits.size(); i++)
+                list.setItemChecked(i, (mask & (1 << bits.get(i))) != 0);
+        }
+
         private void openCraftBitList(Widget widget, int widgetIndex) {
-            String[] allLabels = CraftBitList.fromJson(widget.extraFields.optJSONArray("craftListLabels"));
+            final int openingScreenIndex = currentScreenIndex;
+            final Screen openingScreen = openingScreenIndex >= 0
+                    && openingScreenIndex < screens.size()
+                    ? screens.get(openingScreenIndex) : null;
+            if (!isRuntimeWidgetCurrent(widget, widgetIndex, openingScreen, openingScreenIndex))
+                return;
+            String[] allLabels = CraftBitList.fromJson(
+                    widget.extraFields.optJSONArray("craftListLabels"));
             java.util.ArrayList<String> choices = new java.util.ArrayList<>();
             java.util.ArrayList<Integer> bits = new java.util.ArrayList<>();
-            for (int bit = 0; bit < 16; bit++) if (allLabels[bit] != null && !allLabels[bit].trim().isEmpty()) {
-                choices.add(allLabels[bit]); bits.add(bit);
-            }
+            for (int bit = 0; bit < 16; bit++)
+                if (allLabels[bit] != null && !allLabels[bit].trim().isEmpty()) {
+                    choices.add(allLabels[bit]);
+                    bits.add(bit);
+                }
             if (choices.isEmpty()) {
-                Toast.makeText(MainActivity.this, "У списка нет подписанных пунктов. Настрой его в редакторе.", Toast.LENGTH_LONG).show();
+                Toast.makeText(MainActivity.this,
+                        "У списка нет подписанных пунктов. Настрой его в редакторе.",
+                        Toast.LENGTH_LONG).show();
                 return;
             }
             if (widget.extraFields.optBoolean("craftListCheckNoChange", false)) {
                 int shownMask = widget.extraFields.optInt("craftListInitialMask", 0) & 0xffff;
                 String liveValue = liveValues.get(widgetIndex);
-                if (liveValue != null) try { shownMask = CraftBitList.fromRegister(Integer.parseInt(liveValue)); } catch (Exception ignored) { }
+                if (liveValue != null) try {
+                    shownMask = CraftBitList.fromRegister(Integer.parseInt(liveValue));
+                } catch (Exception ignored) {}
                 String[] readOnlyChoices = new String[choices.size()];
-                for (int i = 0; i < choices.size(); i++)
-                    readOnlyChoices[i] = ((shownMask & (1 << bits.get(i))) != 0 ? "✓  " : "○  ") + choices.get(i);
-                new AlertDialog.Builder(MainActivity.this).setTitle(widget.text == null ? "Список" : widget.text)
+                for (int k = 0; k < choices.size(); k++)
+                    readOnlyChoices[k] = ((shownMask & (1 << bits.get(k))) != 0
+                            ? "✓  " : "○  ") + choices.get(k);
+                new AlertDialog.Builder(MainActivity.this)
+                        .setTitle(widget.text == null ? "Список" : widget.text)
                         .setItems(readOnlyChoices, null)
                         .setMessage("Значения доступны только для просмотра в рабочем режиме")
                         .setPositiveButton("Закрыть", null).show();
@@ -13169,52 +13878,113 @@ public class MainActivity extends Activity {
             }
             int initialMask = widget.extraFields.optInt("craftListInitialMask", 0) & 0xffff;
             String current = liveValues.get(widgetIndex);
-            if (current != null) try { initialMask = CraftBitList.fromRegister(Integer.parseInt(current)); } catch (Exception ignored) { }
+            if (current != null) try {
+                initialMask = CraftBitList.fromRegister(Integer.parseInt(current));
+            } catch (Exception ignored) {}
             final int[] mask = {initialMask};
+            final int[] confirmedMask = {initialMask};
+            final int[] changeSequence = {0};
             boolean[] checked = new boolean[bits.size()];
-            for (int i = 0; i < bits.size(); i++) checked[i] = (mask[0] & (1 << bits.get(i))) != 0;
-            final BindingRequest binding = parseBinding(-1, widget.connectionInfo);
-            if (widget.connectionInfo != null && !widget.connectionInfo.trim().isEmpty() && binding == null) {
-                Toast.makeText(MainActivity.this, "Проверь TCP привязку битового списка", Toast.LENGTH_LONG).show(); return;
+            for (int k = 0; k < bits.size(); k++)
+                checked[k] = (mask[0] & (1 << bits.get(k))) != 0;
+            final String connection = widget.connectionInfo == null
+                    ? "" : widget.connectionInfo.trim();
+            final BindingRequest binding = connection.isEmpty()
+                    ? null : parseBinding(-1, connection);
+            if (!connection.isEmpty() && binding == null) {
+                Toast.makeText(MainActivity.this, "Проверь TCP привязку битового списка",
+                        Toast.LENGTH_LONG).show();
+                return;
             }
             if (binding != null && binding.functionCode != 3) {
-                Toast.makeText(MainActivity.this, "Битовый список использует holding-регистр FC03/FC06", Toast.LENGTH_LONG).show(); return;
+                Toast.makeText(MainActivity.this,
+                        "Битовый список использует holding-регистр FC03/FC06",
+                        Toast.LENGTH_LONG).show();
+                return;
             }
             AlertDialog dialog = new AlertDialog.Builder(MainActivity.this)
-                    .setTitle(widget.text == null || widget.text.isEmpty() ? "Выбери пункты" : widget.text)
-                    .setMultiChoiceItems(choices.toArray(new String[0]), checked, (d, position, isChecked) -> {
-                        int bit = bits.get(position);
-                        int next = isChecked ? mask[0] | (1 << bit) : mask[0] & ~(1 << bit);
-                        next &= 0xffff;
-                        mask[0] = next;
-                        liveValues.put(widgetIndex, Integer.toString(next));
-                        if (binding == null) {
-                            try { widget.extraFields.put("craftListInitialMask", next); } catch (Exception ignored) { }
-                            persistProject();
-                            invalidate();
+                    .setTitle(widget.text == null || widget.text.isEmpty()
+                            ? "Выбери пункты" : widget.text)
+                    .setMultiChoiceItems(choices.toArray(new String[0]), checked,
+                            (d, position, isChecked) -> {
+                        if (!isRuntimeWidgetCurrent(widget, widgetIndex,
+                                openingScreen, openingScreenIndex)) {
+                            d.dismiss();
                             return;
                         }
-                        final int committedMask = next;
-                        modbusExecutor.execute(() -> {
+                        if (position < 0 || position >= bits.size()) return;
+                        int bit = bits.get(position);
+                        final int previousMask = mask[0];
+                        final int next = (isChecked
+                                ? mask[0] | (1 << bit) : mask[0] & ~(1 << bit)) & 0xffff;
+                        if (next == previousMask) return;
+                        if (binding == null) {
+                            JSONObject previous = widget.extraFields;
+                            JSONObject previousProject = projectExtraFields;
+                            boolean committed = false;
                             try {
-                                if (!operatorMode || !activityResumed || !widgets.contains(widget)) throw new IOException("Рабочий режим остановлен");
-                                new ModbusTcpClient(binding.host, binding.port).writeSingle(binding.unit, binding.address, committedMask);
+                                widget.extraFields = new JSONObject(previous.toString());
+                                widget.extraFields.put("craftListInitialMask", next);
+                                if (!persistProjectNow(true))
+                                    throw new IOException("Проект не сохранён");
+                                committed = true;
+                                mask[0] = next;
+                                confirmedMask[0] = next;
+                                liveValues.put(widgetIndex, Integer.toString(next));
                             } catch (Exception failure) {
-                                runOnUiThread(() -> {
-                                    if (!widgets.contains(widget) || !operatorMode || widgets.indexOf(widget) != widgetIndex) return;
-                                    if (mask[0] == committedMask) {
-                                        mask[0] = committedMask ^ (1 << bit);
-                                        liveValues.put(widgetIndex, Integer.toString(mask[0]));
-                                    }
-                                    invalidate();
-                                    Toast.makeText(MainActivity.this, "Не удалось записать маску списка: " + describeModbusError(failure), Toast.LENGTH_LONG).show();
-                                });
+                                Toast.makeText(MainActivity.this,
+                                        "Не удалось сохранить список: " + failure.getMessage(),
+                                        Toast.LENGTH_LONG).show();
+                            } finally {
+                                if (!committed) {
+                                    widget.extraFields = previous;
+                                    projectExtraFields = previousProject;
+                                    mask[0] = previousMask;
+                                    restoreCraftBitListChecks(d, bits, previousMask);
+                                    saveActiveScreen();
+                                }
+                                invalidate();
                             }
+                            return;
+                        }
+                        mask[0] = next;
+                        final int requestedMask = next;
+                        final int sequence = ++changeSequence[0];
+                        modbusExecutor.execute(() -> {
+                            Exception failure = null;
+                            try {
+                                if (!isRuntimeWidgetCurrent(widget, widgetIndex,
+                                        openingScreen, openingScreenIndex))
+                                    throw new IOException("Рабочий режим остановлен");
+                                new ModbusTcpClient(binding.host, binding.port).writeSingle(
+                                        binding.unit, binding.address, requestedMask);
+                            } catch (Exception error) { failure = error; }
+                            final Exception result = failure;
+                            runOnUiThread(() -> {
+                                if (!isRuntimeWidgetCurrent(widget, widgetIndex,
+                                        openingScreen, openingScreenIndex)) return;
+                                if (result == null) confirmedMask[0] = requestedMask;
+                                if (sequence == changeSequence[0]) {
+                                    if (result != null) {
+                                        mask[0] = confirmedMask[0];
+                                        restoreCraftBitListChecks(d, bits, mask[0]);
+                                        Toast.makeText(MainActivity.this,
+                                                "Не удалось записать маску списка: "
+                                                        + describeModbusError(result),
+                                                Toast.LENGTH_LONG).show();
+                                    }
+                                    liveValues.put(widgetIndex, Integer.toString(
+                                            result == null ? requestedMask : confirmedMask[0]));
+                                    invalidate();
+                                }
+                            });
                         });
-                        invalidate();                    })
-                    .setPositiveButton("Готово", null).setNegativeButton("Закрыть", null).create();
+                    })
+                    .setPositiveButton("Готово", null)
+                    .setNegativeButton("Закрыть", null).create();
             dialog.show();
         }
+
 
         private void activateCraftConstantButton(Widget widget, int index) {
             BindingRequest binding = parseBinding(-1, widget.connectionInfo);
@@ -13247,45 +14017,215 @@ public class MainActivity extends Activity {
             });
         }
 
+        /** Legacy two-button setpoint: safe local step or FC06 holding-register write. */
+        private void adjustSetpoint(Widget widget, int direction) {
+            if (!operatorMode || !activityResumed || editor != this
+                    || widget == null || direction == 0) return;
+            final int index = widgets.indexOf(widget);
+            if (index < 0 || !"Задатчик".equals(widget.type)) return;
+            final double min = Math.min(widget.minValue, widget.maxValue);
+            final double max = Math.max(widget.minValue, widget.maxValue);
+            if (!Double.isFinite(min) || !Double.isFinite(max)
+                    || min < Integer.MIN_VALUE || max > Integer.MAX_VALUE) {
+                Toast.makeText(MainActivity.this, "Некорректный диапазон задатчика",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+            final int lower = (int) Math.ceil(min), upper = (int) Math.floor(max);
+            if (lower > upper) return;
+            final int oldValue = widget.extraFields.optInt("bloodskySetpointValue", lower);
+            final int step = Math.max(1, Math.min(65535,
+                    widget.extraFields.optInt("bloodskySetpointStep", 1)));
+            final long requested = (long) oldValue + (direction < 0 ? -(long) step : step);
+            final int next = (int) Math.max(lower, Math.min(upper, requested));
+            if (next == oldValue) return;
+            final String connection = widget.connectionInfo == null ? "" : widget.connectionInfo.trim();
+            final BindingRequest binding = connection.isEmpty() ? null : parseBinding(-1, connection);
+            if (!connection.isEmpty() && (binding == null || binding.functionCode != 3
+                    || next < 0 || next > 65535)) {
+                Toast.makeText(MainActivity.this,
+                        "Для задатчика нужен TCP holding-регистр FC03/FC06 (0–65535)",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+            final EditorCanvas originalCanvas = this;
+            final Screen originalScreen = currentScreenIndex >= 0
+                    && currentScreenIndex < screens.size() ? screens.get(currentScreenIndex) : null;
+            final int originalScreenIndex = currentScreenIndex;
+            final Runnable apply = () -> {
+                if (!operatorMode || !activityResumed || editor != originalCanvas
+                        || originalScreen == null || currentScreenIndex != originalScreenIndex
+                        || currentScreenIndex < 0 || currentScreenIndex >= screens.size()
+                        || screens.get(currentScreenIndex) != originalScreen
+                        || index >= widgets.size() || widgets.get(index) != widget) return;
+                JSONObject previous = widget.extraFields;
+                try {
+                    widget.extraFields = new JSONObject(previous.toString());
+                    widget.extraFields.put("bloodskySetpointValue", next);
+                    if (!persistProjectNow(true)) {
+                        widget.extraFields = previous;
+                        saveActiveScreen();
+                        Toast.makeText(MainActivity.this, "Не удалось сохранить уставку",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    liveValues.put(index, Integer.toString(next));
+                    invalidate();
+                    Toast.makeText(MainActivity.this, "Уставка: " + next, Toast.LENGTH_SHORT).show();
+                } catch (Exception failure) {
+                    widget.extraFields = previous;
+                    saveActiveScreen();
+                    Toast.makeText(MainActivity.this, "Не удалось изменить уставку",
+                            Toast.LENGTH_LONG).show();
+                }
+            };
+            if (binding == null) {
+                apply.run();
+                return;
+            }
+            modbusExecutor.execute(() -> {
+                Exception failure = null;
+                try {
+                    if (!operatorMode || !activityResumed || editor != originalCanvas
+                            || !widgets.contains(widget)) throw new IOException("Рабочий режим остановлен");
+                    new ModbusTcpClient(binding.host, binding.port)
+                            .writeSingle(binding.unit, binding.address, next);
+                } catch (Exception error) { failure = error; }
+                final Exception result = failure;
+                runOnUiThread(() -> {
+                    if (result == null) apply.run();
+                    else if (editor == originalCanvas && widgets.contains(widget))
+                        Toast.makeText(MainActivity.this,
+                                "Ошибка записи уставки: " + describeModbusError(result),
+                                Toast.LENGTH_LONG).show();
+                });
+            });
+        }
+
+        /** Delayed operator dialogs must never commit into a replaced canvas/page. */
+        private boolean isRuntimeWidgetCurrent(Widget widget, int index,
+                Screen originalScreen, int originalScreenIndex) {
+            return activityResumed && operatorMode && editor == this
+                    && originalScreen != null && originalScreenIndex >= 0
+                    && currentScreenIndex == originalScreenIndex
+                    && currentScreenIndex < screens.size()
+                    && screens.get(currentScreenIndex) == originalScreen
+                    && index >= 0 && index < widgets.size()
+                    && widgets.get(index) == widget;
+        }
+
+        /** Apply an operator value only when its project snapshot persists. */
+        private boolean saveRuntimeLinearSetpoint(Widget widget, int index, int next,
+                Screen originalScreen, int originalScreenIndex) {
+            if (!isRuntimeWidgetCurrent(widget, index, originalScreen, originalScreenIndex))
+                return false;
+            JSONObject oldFields = widget.extraFields;
+            JSONObject oldProject = projectExtraFields;
+            try {
+                widget.extraFields = new JSONObject(oldFields.toString());
+                widget.extraFields.put("craftLinearValue", next);
+                if (!persistProjectNow(true)) {
+                    widget.extraFields = oldFields;
+                    projectExtraFields = oldProject;
+                    saveActiveScreen();
+                    Toast.makeText(MainActivity.this, "Не удалось сохранить уставку",
+                            Toast.LENGTH_LONG).show();
+                    return false;
+                }
+                liveValues.put(index, Integer.toString(next));
+                invalidate();
+                return true;
+            } catch (Exception error) {
+                widget.extraFields = oldFields;
+                projectExtraFields = oldProject;
+                saveActiveScreen();
+                Toast.makeText(MainActivity.this, "Не удалось сохранить уставку",
+                        Toast.LENGTH_LONG).show();
+                return false;
+            }
+        }
+
         private void openCraftLinearSetter(Widget widget, int widgetIndex) {
+            final int openingScreenIndex = currentScreenIndex;
+            final Screen openingScreen = openingScreenIndex >= 0
+                    && openingScreenIndex < screens.size()
+                    ? screens.get(openingScreenIndex) : null;
+            if (!isRuntimeWidgetCurrent(widget, widgetIndex, openingScreen, openingScreenIndex))
+                return;
             final int maximum = CraftLinearSetter.maximum(widget.extraFields);
             final int initial = CraftLinearSetter.value(widget.extraFields, liveValues.get(widgetIndex));
-            final BindingRequest binding = parseBinding(-1, widget.connectionInfo);
-            if (widget.connectionInfo != null && !widget.connectionInfo.trim().isEmpty() && (binding == null || binding.functionCode != 3)) {
-                Toast.makeText(MainActivity.this, "Проверь TCP holding-регистр FC03/FC06", Toast.LENGTH_LONG).show(); return;
+            final String connection = widget.connectionInfo == null ? ""
+                    : widget.connectionInfo.trim();
+            final BindingRequest binding = connection.isEmpty() ? null
+                    : parseBinding(-1, connection);
+            if (!connection.isEmpty() && (binding == null || binding.functionCode != 3)) {
+                Toast.makeText(MainActivity.this, "Проверь TCP holding-регистр FC03/FC06",
+                        Toast.LENGTH_LONG).show();
+                return;
             }
             android.widget.LinearLayout form = new android.widget.LinearLayout(MainActivity.this);
-            form.setOrientation(android.widget.LinearLayout.VERTICAL); form.setPadding(dp(22), dp(14), dp(22), dp(4));
-            TextView current = new TextView(MainActivity.this); current.setText(initial + " / " + maximum); form.addView(current);
-            android.widget.SeekBar slider = new android.widget.SeekBar(MainActivity.this); slider.setMax(maximum); slider.setProgress(initial);
-            if (widget.extraFields.optBoolean("craftLinearVertical", false)) slider.setRotation(270f);
+            form.setOrientation(android.widget.LinearLayout.VERTICAL);
+            form.setPadding(dp(22), dp(14), dp(22), dp(4));
+            TextView current = new TextView(MainActivity.this);
+            current.setText(initial + " / " + maximum);
+            form.addView(current);
+            android.widget.SeekBar slider = new android.widget.SeekBar(MainActivity.this);
+            slider.setMax(maximum);
+            slider.setProgress(initial);
+            if (widget.extraFields.optBoolean("craftLinearVertical", false))
+                slider.setRotation(270f);
             form.addView(slider);
             slider.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
-                @Override public void onProgressChanged(android.widget.SeekBar seekBar, int progress, boolean fromUser) { current.setText(progress + " / " + maximum); }
-                @Override public void onStartTrackingTouch(android.widget.SeekBar seekBar) { }
-                @Override public void onStopTrackingTouch(android.widget.SeekBar seekBar) { }
+                @Override public void onProgressChanged(android.widget.SeekBar seekBar,
+                        int progress, boolean fromUser) {
+                    current.setText(progress + " / " + maximum);
+                }
+                @Override public void onStartTrackingTouch(android.widget.SeekBar seekBar) {}
+                @Override public void onStopTrackingTouch(android.widget.SeekBar seekBar) {}
             });
-            new AlertDialog.Builder(MainActivity.this).setTitle(widget.text == null || widget.text.isEmpty() ? "Линейный задатчик" : widget.text)
+            new AlertDialog.Builder(MainActivity.this)
+                    .setTitle(widget.text == null || widget.text.isEmpty()
+                            ? "Линейный задатчик" : widget.text)
                     .setView(form).setNegativeButton("Отмена", null)
-                    .setPositiveButton("Задать", (d, which) -> {
-                        int next = slider.getProgress();
+                    .setPositiveButton("Задать", (dialog, which) -> {
+                        if (!isRuntimeWidgetCurrent(widget, widgetIndex,
+                                openingScreen, openingScreenIndex)) {
+                            Toast.makeText(MainActivity.this,
+                                    "Экран изменился: повторно открой задатчик",
+                                    Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                        final int next = slider.getProgress();
                         if (binding == null) {
-                            try { widget.extraFields.put("craftLinearValue", next); } catch (Exception ignored) { }
-                            liveValues.put(widgetIndex, Integer.toString(next)); persistProject(); invalidate(); return;
+                            saveRuntimeLinearSetpoint(widget, widgetIndex, next,
+                                    openingScreen, openingScreenIndex);
+                            return;
                         }
                         modbusExecutor.execute(() -> {
                             Exception failure = null;
                             try {
-                                if (!operatorMode || !activityResumed || !widgets.contains(widget)) throw new IOException("Рабочий режим остановлен");
-                                new ModbusTcpClient(binding.host, binding.port).writeSingle(binding.unit, binding.address, next);
+                                if (!isRuntimeWidgetCurrent(widget, widgetIndex,
+                                        openingScreen, openingScreenIndex))
+                                    throw new IOException("Рабочий режим остановлен");
+                                new ModbusTcpClient(binding.host, binding.port)
+                                        .writeSingle(binding.unit, binding.address, next);
                             } catch (Exception error) { failure = error; }
                             final Exception result = failure;
                             runOnUiThread(() -> {
-                                if (!widgets.contains(widget) || !operatorMode || widgets.indexOf(widget) != widgetIndex) return;
+                                if (!isRuntimeWidgetCurrent(widget, widgetIndex,
+                                        openingScreen, openingScreenIndex)) return;
                                 if (result == null) {
-                                    try { widget.extraFields.put("craftLinearValue", next); } catch (Exception ignored) { }
-                                    liveValues.put(widgetIndex, Integer.toString(next)); persistProject();
-                                } else Toast.makeText(MainActivity.this, "Не удалось записать значение: " + describeModbusError(result), Toast.LENGTH_LONG).show();
+                                    if (!saveRuntimeLinearSetpoint(widget, widgetIndex, next,
+                                            openingScreen, openingScreenIndex))
+                                        Toast.makeText(MainActivity.this,
+                                                "Регистр записан, но проект не сохранён",
+                                                Toast.LENGTH_LONG).show();
+                                } else {
+                                    Toast.makeText(MainActivity.this,
+                                            "Не удалось записать значение: "
+                                                    + describeModbusError(result),
+                                            Toast.LENGTH_LONG).show();
+                                }
                                 invalidate();
                             });
                         });
@@ -13293,6 +14233,12 @@ public class MainActivity extends Activity {
         }
 
         private void openCraftNumericInput(Widget widget, int widgetIndex) {
+            final int openingScreenIndex = currentScreenIndex;
+            final Screen openingScreen = openingScreenIndex >= 0
+                    && openingScreenIndex < screens.size()
+                    ? screens.get(openingScreenIndex) : null;
+            if (!isRuntimeWidgetCurrent(widget, widgetIndex, openingScreen, openingScreenIndex))
+                return;
             if (!widget.extraFields.optBoolean("craftNumericEnabled", false)) {
                 Toast.makeText(MainActivity.this, "Открой свойства ID 8 и явно разреши ввод", Toast.LENGTH_LONG).show(); return;
             }
@@ -13341,6 +14287,13 @@ public class MainActivity extends Activity {
                     .setTitle(widget.text == null || widget.text.isEmpty() ? "Числовой ввод" : widget.text)
                     .setView(form).setNegativeButton("Отмена", null).setPositiveButton("Задать", null).create();
             dialog.setOnShowListener(shown -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                if (!isRuntimeWidgetCurrent(widget, widgetIndex,
+                        openingScreen, openingScreenIndex)) {
+                    Toast.makeText(MainActivity.this, "Экран изменился: открой ввод заново",
+                            Toast.LENGTH_LONG).show();
+                    dialog.dismiss();
+                    return;
+                }
                 if (passwordRequired && (passwordField == null || !expectedPassword.equals(passwordField.getText().toString()))) {
                     Toast.makeText(MainActivity.this, "Неверный пароль", Toast.LENGTH_LONG).show(); return;
                 }
@@ -13350,30 +14303,89 @@ public class MainActivity extends Activity {
                 final String formatted = widget.extraFields.optInt("craftNumericMode", CraftNumericInput.INTEGER) == CraftNumericInput.FLOAT32
                         ? CraftNumericInput.truncateFloatDisplay((float) next, widget.extraFields) : Integer.toString((int) next);
                 if (binding == null) {
-                    if (craftSystemBinding) {
-                        if (!operatorMode || !activityResumed || !widgets.contains(widget)
-                                || !CraftSystemNumericWidgetBinding.writeValue(widget.extraFields, next, systemRegisterBank)) {
-                            Toast.makeText(MainActivity.this, "Не удалось записать системный регистр", Toast.LENGTH_LONG).show(); return;
+                    final String oldText = widget.text;
+                    final String oldLiveValue = liveValues.get(widgetIndex);
+                    final JSONObject oldProject = projectExtraFields;
+                    org.json.JSONArray oldSystemRegisters = null;
+                    boolean committed = false;
+                    try {
+                        if (craftSystemBinding) {
+                            oldSystemRegisters = systemRegisterBank.toProjectJson();
+                            if (!CraftSystemNumericWidgetBinding.writeValue(
+                                    widget.extraFields, next, systemRegisterBank))
+                                throw new IllegalStateException("Системный регистр недоступен");
+                        }
+                        widget.text = formatted;
+                        if (!persistProjectNow(true))
+                            throw new IllegalStateException("Проект не сохранён");
+                        committed = true;
+                        liveValues.put(widgetIndex, formatted);
+                        invalidate();
+                        dialog.dismiss();
+                    } catch (Exception failure) {
+                        Toast.makeText(MainActivity.this,
+                                "Не удалось записать значение: " + failure.getMessage(),
+                                Toast.LENGTH_LONG).show();
+                    } finally {
+                        if (!committed) {
+                            widget.text = oldText;
+                            projectExtraFields = oldProject;
+                            if (oldSystemRegisters != null)
+                                systemRegisterBank.restoreProjectJson(oldSystemRegisters);
+                            if (oldLiveValue == null) liveValues.remove(widgetIndex);
+                            else liveValues.put(widgetIndex, oldLiveValue);
+                            saveActiveScreen();
+                            invalidate();
                         }
                     }
-                    widget.text = formatted; liveValues.put(widgetIndex, formatted);
-                    persistProject(); invalidate(); dialog.dismiss(); return;
+                    return;
+                }
+                final int registerCount = CraftNumericInput.registerCount(widget.extraFields);
+                final int[] encoded;
+                try {
+                    encoded = registerCount == 2
+                            ? FbdCraftRegisterCodec.floatRegisters((float) next)
+                            : new int[]{CraftNumericInput.integerRegister(next, widget.extraFields)};
+                } catch (Exception invalid) {
+                    Toast.makeText(MainActivity.this, "Неверное значение регистра",
+                            Toast.LENGTH_LONG).show();
+                    return;
                 }
                 modbusExecutor.execute(() -> {
                     Exception failure = null;
                     try {
-                        if (!operatorMode || !activityResumed || !widgets.contains(widget)) throw new IOException("Рабочий режим остановлен");
+                        if (!isRuntimeWidgetCurrent(widget, widgetIndex,
+                                openingScreen, openingScreenIndex))
+                            throw new IOException("Рабочий режим остановлен");
                         ModbusTcpClient client = new ModbusTcpClient(binding.host, binding.port);
-                        if (CraftNumericInput.registerCount(widget.extraFields) == 2)
-                            client.writeMultiple(binding.unit, binding.address, FbdCraftRegisterCodec.floatRegisters((float) next));
-                        else client.writeSingle(binding.unit, binding.address, CraftNumericInput.integerRegister(next, widget.extraFields));
+                        if (registerCount == 2)
+                            client.writeMultiple(binding.unit, binding.address, encoded);
+                        else client.writeSingle(binding.unit, binding.address, encoded[0]);
                     } catch (Exception error) { failure = error; }
                     final Exception result = failure;
                     runOnUiThread(() -> {
-                        if (!widgets.contains(widget) || !operatorMode || widgets.indexOf(widget) != widgetIndex) return;
+                        if (!isRuntimeWidgetCurrent(widget, widgetIndex,
+                                openingScreen, openingScreenIndex)) return;
                         if (result == null) {
-                            widget.text = formatted; liveValues.put(widgetIndex, formatted); persistProject(); dialog.dismiss();
-                        } else Toast.makeText(MainActivity.this, "Не удалось записать значение: " + describeModbusError(result), Toast.LENGTH_LONG).show();
+                            String oldText = widget.text;
+                            JSONObject oldProject = projectExtraFields;
+                            widget.text = formatted;
+                            if (persistProjectNow(true)) {
+                                liveValues.put(widgetIndex, formatted);
+                                dialog.dismiss();
+                            } else {
+                                widget.text = oldText;
+                                projectExtraFields = oldProject;
+                                saveActiveScreen();
+                                Toast.makeText(MainActivity.this,
+                                        "Регистр записан, но проект не сохранён",
+                                        Toast.LENGTH_LONG).show();
+                            }
+                        } else {
+                            Toast.makeText(MainActivity.this,
+                                    "Не удалось записать значение: " + describeModbusError(result),
+                                    Toast.LENGTH_LONG).show();
+                        }
                         invalidate();
                     });
                 });

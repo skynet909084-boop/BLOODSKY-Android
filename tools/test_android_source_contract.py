@@ -193,7 +193,11 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn('edge.extraFields.put("targetSignalType", targetSignal)', self.source)
 
     def test_deleting_widget_removes_and_reindexes_fbd_edges(self):
-        self.assertIn("WidgetClipboard.deleteSelection(widgets, edges, selection)", self.source)
+        self.assertIn("WidgetClipboard.deleteSelection(widgets, screen.connections, selection)", self.source)
+        self.assertIn("final ArrayList<FbdConnection> originalEdges", self.source)
+        self.assertIn("originalEdges.get(i).source = originalSources.get(i)", self.source)
+        self.assertIn("originalEdges.get(i).target = originalTargets.get(i)", self.source)
+        self.assertIn("if (!persistProjectNow(true))", self.source)
         self.assertIn("edge.source == index || edge.target == index", self.widget_clipboard)
         self.assertIn("if (edge.source > index) edge.source--;", self.widget_clipboard)
         self.assertIn("if (edge.target > index) edge.target--;", self.widget_clipboard)

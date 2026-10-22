@@ -18,7 +18,8 @@ class LinearSetterDialogContract(unittest.TestCase):
                       "Вертикальный", "Дополнительно: привязка Modbus"]:
             self.assertIn(value, dialog)
         self.assertIn("CraftLinearSetter.withSettings(", dialog)
-        self.assertIn("editSelectedWidget(true)", dialog)
+        self.assertIn("dialogGuard.advanced();", dialog)
+        self.assertIn("if (!dialogGuard.require()) return;", dialog)
         self.assertIn("if (!persistProjectNow(true))", dialog)
         self.assertIn("widget.extraFields = previous;", dialog)
         self.assertNotIn("writeMask(", dialog)
