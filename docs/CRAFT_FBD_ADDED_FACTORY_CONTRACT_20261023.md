@@ -1,26 +1,27 @@
-# Added Craft FBD component factory identity — 23 October 2026
+# Exact factory identity for newly added Craft FBD blocks
 
-Original KaScada 1.0.7 .pro TableComponent rows store native
-componentId (101–140). New BLOODSKY FBD blocks are mapped
-back to those factories when exporting an edited .pro.
+Original Craft .pro rows use componentId 101–140. The BLOODSKY
+exporter previously trusted an explicit craftComponentId ahead
+of the actual editor block type, allowing FBD AND (ID103) to be
+serialized as OR (ID104). It also used prefix matches for
+named-variable and MQTT types, treating unsupported DOUBLE/NUMBER
+variants as known Craft blocks.
 
-Previously an explicit craftComponentId (e.g. 104) was accepted
-ahead of the actual editor block type (e.g. FBD AND, ID103).
-This could emit an OR source row while the BLOODSKY editor
-still displayed AND. The factory mapping also used startsWith
-for named variable and MQTT block types, treating unknown
-numeric suffixes (such as DOUBLE) as executable originals.
+New blocks must now agree exactly with their source factory ID,
+or infer a verified ID from a recognized block type. Typed
+named variables and MQTT sources are limited to BOOL/INT/FLOAT.
+This covers omitted Craft ID metadata on newly drawn blocks
+without changing imported original source rows.
 
-Native IDs on newly authored widgets must now agree exactly
-with the inferred original factory from the canonical block
-type. Named variable and MQTT types require BOOL/INT/FLOAT
-rather than accepting arbitrary suffixes. Valid unannotated
-widgets still infer their native IDs; macros ID135 remain
-unavailable for unsupported new .pro output. Original
-imported source rows are not remapped by this check.
+New publisher/subscriber source rows also derive their original
+typeIn/typeQ default from the typed block's name: a newly
+created MQTT PUB FLOAT cannot silently export BOOL. If explicit
+craftMqttType disagrees with the block type or is an invalid
+numeric JSON value, export fails rather than rewriting it.
+The MQTT server ID is read without lossy integer coercion.
 
-JVM regression covers new AND/OR round trips, mismatched
-factory IDs, MQTT publisher/subscriber mix-ups, unsupported
-numeric types, source saveKey allocation and implicit ID
-inference. Source references and unknown original fields
-continue to be preserved. Device/pixel parity not claimed.
+JVM regressions cover source .pro roundtrip of new gates,
+native factory spoofing, invalid typed names, source ID
+inference and MQTT INT/FLOAT field consistency. Existing
+original artwork/metadata remain unchanged; hardware/device
+parity is still outstanding.

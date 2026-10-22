@@ -67,9 +67,22 @@ public final class CraftAddedFbdFactoryIdentityTest {
         JSONObject valid = add(project(), "FBD CRAFT MQTT PUB FLOAT", 140);
         // A new typed native MQTT block must keep its source typeIn.
         JSONObject rows = new JSONObject(CraftProjectExporter.export(valid.toString()));
-        JSONObject mqtt = rows.getJSONArray("TableComponent").getJSONObject(2);
+        JSONObject mqtt = rows.getJSONArray("TableComponent").getJSONObject(1);
         assertEquals(140, mqtt.getInt("componentId"));
-        assertEquals(1, mqtt.getJSONObject("jsTableComponent_other").getInt("typeIn"));
+        assertEquals(3, mqtt.getJSONObject("jsTableComponent_other").getInt("typeIn"));
+    }
+
+    @Test public void explicitNativeMqttTypeMustAgreeWithBlockType() throws Exception {
+        JSONObject wrong = add(project(), "FBD CRAFT MQTT SUB INT", 139);
+        wrong.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets")
+                .getJSONObject(1).put("craftMqttType", 3);
+        assertThrows(Exception.class,
+                () -> CraftProjectExporter.export(wrong.toString()));
+        JSONObject large = add(project(), "FBD CRAFT MQTT PUB FLOAT", 140);
+        large.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets")
+                .getJSONObject(1).put("craftMqttType", 4294967299L);
+        assertThrows(Exception.class,
+                () -> CraftProjectExporter.export(large.toString()));
     }
 
     @Test public void invalidTypedSuffixesAreNotAValidFactory() throws Exception {

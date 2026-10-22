@@ -475,9 +475,14 @@ public final class CraftProjectExporter {
         } else if (componentId == 139 || componentId == 140) {
             String topic = widget.optString("craftMqttTopic", "");
             if (!topic.isEmpty()) other.put("topic", topic);
-            other.put("numMqttServer", widget.optInt("craftMqttServer", 1));
-            int mqttType = widget.optInt("craftMqttType", 1);
-            if (mqttType < 1 || mqttType > 3) throw new IOException("Неизвестный тип Craft MQTT");
+            other.put("numMqttServer", CraftExactInteger.read(widget, "craftMqttServer", 1));
+            // The native 1/2/3 enum is part of the block's factory type,
+            // not just an optional field that defaults to BOOL on export.
+            int expectedType = craftNamedVariableType(
+                    MainActivity.canonicalFbdBlockType(widget.optString("type", "")));
+            int mqttType = CraftExactInteger.read(widget, "craftMqttType", expectedType);
+            if (mqttType < 1 || mqttType > 3 || mqttType != expectedType)
+                throw new IOException("Тип исходного Craft MQTT не совпадает с блоком");
             other.put(componentId == 139 ? "typeQ" : "typeIn", mqttType);
             if (componentId == 140) other.put("mqttRetain", widget.optBoolean("craftMqttRetain", false));
         }
