@@ -5380,6 +5380,43 @@ public class MainActivity extends Activity {
                 && sameWidgetOrder(originalWidgetOrder);
     }
 
+    /** Retain the exact widget, screen, and canvas targeted by an open settings dialog. */
+    private final class CraftWidgetDialogGuard {
+        private final EditorCanvas canvas;
+        private final Screen screen;
+        private final int screenIndex;
+        private final int widgetIndex;
+        private final Widget widget;
+        private final ArrayList<Widget> order;
+
+        CraftWidgetDialogGuard(Widget widget) {
+            this.canvas = editor;
+            this.screenIndex = currentScreenIndex;
+            this.screen = screenIndex >= 0 && screenIndex < screens.size()
+                    ? screens.get(screenIndex) : null;
+            this.widgetIndex = widgets.indexOf(widget);
+            this.widget = widget;
+            this.order = new ArrayList<>(widgets);
+        }
+
+        boolean valid() {
+            return screen != null && widgetIndex >= 0 && widgetIndex < widgets.size()
+                    && isEditorDialogContextCurrent(canvas, screen, screenIndex, order)
+                    && widgets.get(widgetIndex) == widget && editor.selected == widgetIndex;
+        }
+
+        boolean require() {
+            if (valid()) return true;
+            Toast.makeText(MainActivity.this, "Элемент изменён: открой настройки заново",
+                    Toast.LENGTH_LONG).show();
+            return false;
+        }
+
+        void advanced() {
+            if (require()) editSelectedWidget(true);
+        }
+    }
+
     private boolean sameSelectedWidgetObjects(ArrayList<Integer> indices,
             ArrayList<Widget> originals) {
         if (indices.size() != originals.size()) return false;
@@ -6517,11 +6554,13 @@ private String archiveProjectKey() {
     }
 
     private void editSelectedWidget(boolean advanced) {
-        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
+        if (operatorMode || currentScreenIndex < 0 || currentScreenIndex >= screens.size()
+                || editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
             Toast.makeText(this, "Сначала выбери элемент на экране", Toast.LENGTH_SHORT).show();
             return;
         }
         Widget w = widgets.get(editor.selected);
+        final CraftWidgetDialogGuard dialogGuard = new CraftWidgetDialogGuard(w);
         if (!advanced && OriginalIndicator.supports(w.type)) {
             showOriginalLampSettings(w);
             return;
@@ -6540,6 +6579,7 @@ private String archiveProjectKey() {
         }
         if (!advanced && "Список Craft".equals(w.type)) {
             CraftListSettingsDialog.show(this, w.extraFields, updated -> {
+                if (!dialogGuard.require()) return false;
                 JSONObject previous = w.extraFields;
                 w.extraFields = updated;
                 if (!persistProjectNow(true)) {
@@ -6550,12 +6590,13 @@ private String archiveProjectKey() {
                 }
                 if (editor != null) editor.invalidate();
                 return true;
-            }, () -> editSelectedWidget(true));
+            }, dialogGuard::advanced);
             return;
         }
         if (!advanced && "Прогресс-бар".equals(w.type)) {
             CraftProgressBarSettingsDialog.show(this, w.extraFields,
                     w.minValue, w.maxValue, (updated, min, max) -> {
+                if (!dialogGuard.require()) return false;
                 JSONObject previousFields = w.extraFields;
                 double previousMin = w.minValue, previousMax = w.maxValue;
                 w.extraFields = updated;
@@ -6571,13 +6612,14 @@ private String archiveProjectKey() {
                 }
                 if (editor != null) editor.invalidate();
                 return true;
-            }, () -> editSelectedWidget(true));
+            }, dialogGuard::advanced);
             return;
         }
         if (!advanced && ("Кнопка".equals(w.type)
                 || "Константная кнопка Craft".equals(w.type))) {
             CraftButtonSettingsDialog.show(this, w.extraFields, w.text,
                     "Константная кнопка Craft".equals(w.type), (updated, caption) -> {
+                if (!dialogGuard.require()) return false;
                 JSONObject previousFields = w.extraFields;
                 String previousCaption = w.text;
                 w.extraFields = updated;
@@ -6591,11 +6633,12 @@ private String archiveProjectKey() {
                 }
                 if (editor != null) editor.invalidate();
                 return true;
-            }, () -> editSelectedWidget(true));
+            }, dialogGuard::advanced);
             return;
         }
         if (!advanced && "Числовой ввод Craft".equals(w.type)) {
             CraftNumericInputSettingsDialog.show(this, w.extraFields, updated -> {
+                if (!dialogGuard.require()) return false;
                 JSONObject previous = w.extraFields;
                 w.extraFields = updated;
                 if (!persistProjectNow(true)) {
@@ -6607,13 +6650,14 @@ private String archiveProjectKey() {
                 }
                 if (editor != null) editor.invalidate();
                 return true;
-            }, () -> editSelectedWidget(true));
+            }, dialogGuard::advanced);
             return;
         }
         if (!advanced && CraftLabelAppearance.isLabel(w.type)) {
             CraftLabelSettingsDialog.show(this, w.extraFields, w.text, w.textColor,
                     w.textSizeSp, w.backgroundColor, w.showFrame, w.autoResizeText,
                     (changed, caption, textColor, textSize, background, frame, fitText) -> {
+                if (!dialogGuard.require()) return false;
                 JSONObject previousFields = w.extraFields;
                 String previousText = w.text;
                 int previousTextColor = w.textColor, previousSize = w.textSizeSp;
@@ -6640,13 +6684,14 @@ private String archiveProjectKey() {
                 }
                 if (editor != null) editor.invalidate();
                 return true;
-            }, () -> editSelectedWidget(true));
+            }, dialogGuard::advanced);
             return;
         }
         if (!advanced && "Динамический текст".equals(w.type)) {
             CraftDynamicTextSettingsDialog.show(this, w.extraFields,
                     w.dynTextStates, w.dynTextColors, w.showFrame, w.autoResizeText,
                     (updated, labels, colors, frame, fitText) -> {
+                if (!dialogGuard.require()) return false;
                 JSONObject previousFields = w.extraFields;
                 String[] previousLabels = w.dynTextStates.clone();
                 int[] previousColors = w.dynTextColors.clone();
@@ -6669,13 +6714,14 @@ private String archiveProjectKey() {
                 }
                 if (editor != null) editor.invalidate();
                 return true;
-            }, () -> editSelectedWidget(true));
+            }, dialogGuard::advanced);
             return;
         }
         if (!advanced && "Шкала / Стрелка".equals(w.type)
                 && w.extraFields.optInt("craftComponentId", -1) == 12) {
             CraftThresholdGaugeSettingsDialog.show(this, w.extraFields, w.maxValue,
                     (updated, maximum) -> {
+                if (!dialogGuard.require()) return false;
                 JSONObject previousFields = w.extraFields;
                 double previousMin = w.minValue, previousMax = w.maxValue;
                 w.extraFields = updated;
@@ -6692,13 +6738,14 @@ private String archiveProjectKey() {
                 }
                 if (editor != null) editor.invalidate();
                 return true;
-            }, () -> editSelectedWidget(true));
+            }, dialogGuard::advanced);
             return;
         }
         if (!advanced && "Шкала / Стрелка".equals(w.type)
                 && w.extraFields.optInt("craftComponentId", -1) == 24) {
             CraftGraduatedGaugeSettingsDialog.show(this, w.extraFields, w.minValue, w.maxValue,
                     (updated, minimum, maximum) -> {
+                if (!dialogGuard.require()) return false;
                 JSONObject previousFields = w.extraFields;
                 double previousMin = w.minValue, previousMax = w.maxValue;
                 w.extraFields = updated;
@@ -6715,7 +6762,7 @@ private String archiveProjectKey() {
                 }
                 if (editor != null) editor.invalidate();
                 return true;
-            }, () -> editSelectedWidget(true));
+            }, dialogGuard::advanced);
             return;
         }
         LinearLayout form = new LinearLayout(this);
