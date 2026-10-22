@@ -396,9 +396,12 @@ public final class CraftProjectExporter {
             throw new IOException("Исходная строка копии компонента отсутствует");
         JSONObject original = sourceRows.optJSONObject(originalRow);
         if (original == null) throw new IOException("Исходная строка копии компонента повреждена");
-        int componentId = original.optInt("componentId", -1);
+        int componentId = CraftExactInteger.read(original, "componentId", -1);
+        if (widget.has("craftComponentId")
+                && CraftExactInteger.read(widget, "craftComponentId", -1) != componentId)
+            throw new IOException("Тип копии компонента не совпадает с исходным Craft");
         JSONObject originalOther = objectValue(original.opt("jsTableComponent_other"));
-        if (originalOther.optInt("numScreen", 1) != screenIndex + 1)
+        if (CraftExactInteger.read(originalOther, "numScreen", 1) != screenIndex + 1)
             throw new IOException("Копию компонента нельзя переместить на другой экран при экспорте");
 
         JSONObject clone = new JSONObject(original.toString());
@@ -496,15 +499,27 @@ public final class CraftProjectExporter {
 
     private static int nextCraftSaveKey(JSONArray sourceRows, int screenNumber) throws Exception {
         int max = 0;
+        java.util.HashSet<Integer> usedKeys = new java.util.HashSet<>();
         for (int i = 0; i < sourceRows.length(); i++) {
             JSONObject row = sourceRows.optJSONObject(i);
-            if (row == null || row.optInt("componentId", -1) < 101
-                    || row.optInt("componentId", -1) > 140) continue;
+            if (row == null) continue;
+            int factoryId = CraftExactInteger.read(row, "componentId", -1);
+            if (factoryId < 101 || factoryId > 140) continue;
             JSONObject other = objectValue(row.opt("jsTableComponent_other"));
-            if (other.optInt("numScreen", 1) == screenNumber)
-                max = Math.max(max, other.optInt("saveKey", -1));
+            int sourceScreen = CraftExactInteger.read(other, "numScreen", 1);
+            if (sourceScreen != screenNumber) continue;
+            int key = CraftExactInteger.read(other, "saveKey", -1);
+            if (key < -1)
+                throw new IOException("Некорректный ключ исходного Craft FBD");
+            // -1 is the native unassigned sentinel; never reinterpret it as
+            // a real destination. Two real saveKeys on one screen cannot be
+            // disambiguated when exporting a new FBD component or copy.
+            if (key >= 0 && !usedKeys.add(key))
+                throw new IOException("Неоднозначный исходный ключ FBD на экране");
+            max = Math.max(max, key);
         }
-        if (max == Integer.MAX_VALUE) throw new IOException("Нет свободного ключа FBD для нового блока");
+        if (max == Integer.MAX_VALUE)
+            throw new IOException("Нет свободного ключа FBD для нового блока");
         return max + 1;
     }
 
