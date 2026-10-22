@@ -5612,12 +5612,142 @@ public class MainActivity extends Activity {
         });
     }
 
+    /**
+     * Craft ID5 opens a compact in-place settings panel on a short editor tap.
+     * The extended BLOODSKY inspector remains available for endpoint mapping.
+     */
+    private void showOriginalLampSettings(Widget lamp) {
+        final int panelColor = Color.rgb(36, 36, 36);
+        final int labelColor = Color.rgb(210, 210, 210);
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setGravity(Gravity.CENTER_HORIZONTAL);
+        form.setPadding(dp(24), dp(8), dp(24), dp(12));
+        form.setBackgroundColor(panelColor);
+
+        TextView title = new TextView(this);
+        title.setText("Настройки");
+        title.setTextColor(labelColor);
+        title.setTextSize(26);
+        title.setGravity(Gravity.CENTER);
+        form.addView(title, new LinearLayout.LayoutParams(-1, dp(50)));
+
+        TextView device = new TextView(this);
+        device.setText("Устройство: " + OriginalCraftLampConnection.deviceLabel(lamp.extraFields));
+        device.setTextColor(labelColor);
+        device.setTextSize(22);
+        device.setGravity(Gravity.CENTER);
+        form.addView(device, new LinearLayout.LayoutParams(-1, dp(56)));
+
+        LinearLayout addressRow = new LinearLayout(this);
+        addressRow.setGravity(Gravity.CENTER);
+        TextView registerLabel = new TextView(this);
+        registerLabel.setText("Рег:");
+        registerLabel.setTextColor(labelColor);
+        registerLabel.setTextSize(21);
+        addressRow.addView(registerLabel);
+        EditText registerField = propertyField(
+                Integer.toString(OriginalCraftLampConnection.register(lamp.extraFields)),
+                InputType.TYPE_CLASS_NUMBER);
+        registerField.setTextColor(labelColor);
+        registerField.setTextSize(22);
+        registerField.setGravity(Gravity.CENTER);
+        registerField.setSingleLine(true);
+        registerField.setSelectAllOnFocus(true);
+        registerField.setContentDescription("Регистр лампы Craft");
+        addressRow.addView(registerField, new LinearLayout.LayoutParams(dp(78), dp(55)));
+
+        TextView bitLabel = new TextView(this);
+        bitLabel.setText("  Бит:");
+        bitLabel.setTextColor(labelColor);
+        bitLabel.setTextSize(21);
+        addressRow.addView(bitLabel);
+        EditText bitField = propertyField(
+                Integer.toString(OriginalCraftLampConnection.bit(lamp.extraFields)),
+                InputType.TYPE_CLASS_NUMBER);
+        bitField.setTextColor(labelColor);
+        bitField.setTextSize(22);
+        bitField.setGravity(Gravity.CENTER);
+        bitField.setSingleLine(true);
+        bitField.setSelectAllOnFocus(true);
+        bitField.setContentDescription("Бит лампы Craft");
+        addressRow.addView(bitField, new LinearLayout.LayoutParams(dp(60), dp(55)));
+        form.addView(addressRow, new LinearLayout.LayoutParams(-1, dp(64)));
+
+        final AlertDialog dialog = new AlertDialog.Builder(this,
+                android.R.style.Theme_Material_Dialog_Alert)
+                .setView(form)
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Сохранить", null)
+                .create();
+        Button images = new Button(this);
+        images.setText("Сменить изображение");
+        images.setAllCaps(false);
+        images.setTextSize(21);
+        images.setTextColor(labelColor);
+        images.setBackgroundColor(Color.TRANSPARENT);
+        images.setContentDescription("Сменить изображение лампы Craft");
+        images.setOnClickListener(v -> { dialog.dismiss(); showIndicatorImages(lamp); });
+        form.addView(images, new LinearLayout.LayoutParams(-1, dp(56)));
+
+        Button advanced = new Button(this);
+        advanced.setText("Дополнительно: привязка Modbus");
+        advanced.setAllCaps(false);
+        advanced.setTextSize(13);
+        advanced.setTextColor(Color.rgb(173, 173, 173));
+        advanced.setBackgroundColor(Color.TRANSPARENT);
+        advanced.setContentDescription("Открыть расширенные настройки и привязку Modbus");
+        advanced.setOnClickListener(v -> { dialog.dismiss(); editSelectedWidget(true); });
+        form.addView(advanced, new LinearLayout.LayoutParams(-1, dp(40)));
+
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                .setOnClickListener(v -> {
+                    JSONObject old = lamp.extraFields;
+                    try {
+                        int register = Integer.parseInt(registerField.getText().toString().trim());
+                        int bit = Integer.parseInt(bitField.getText().toString().trim());
+                        JSONObject updated = OriginalCraftLampConnection.withAddress(old, register, bit);
+                        lamp.extraFields = updated;
+                        if (!persistProjectNow(true)) {
+                            lamp.extraFields = old;
+                            saveActiveScreen();
+                            Toast.makeText(this, "Не удалось сохранить настройки лампы", Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                        if (editor != null) editor.invalidate();
+                        dialog.dismiss();
+                    } catch (Exception invalid) {
+                        lamp.extraFields = old;
+                        saveActiveScreen();
+                        Toast.makeText(this, invalid instanceof NumberFormatException
+                                ? "Укажи целые регистр (0–65535) и бит (0–15)"
+                                : invalid.getMessage(), Toast.LENGTH_LONG).show();
+                    }
+                }));
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(
+                    new android.graphics.drawable.ColorDrawable(panelColor));
+            int maxWidth = (int) (getResources().getDisplayMetrics().widthPixels * 0.78f);
+            dialog.getWindow().setLayout(Math.min(dp(620), maxWidth),
+                    android.view.WindowManager.LayoutParams.WRAP_CONTENT);
+        }
+    }
+
     private void editSelectedWidget() {
+        editSelectedWidget(false);
+    }
+
+    private void editSelectedWidget(boolean advanced) {
         if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) {
             Toast.makeText(this, "Сначала выбери элемент на экране", Toast.LENGTH_SHORT).show();
             return;
         }
         Widget w = widgets.get(editor.selected);
+        if (!advanced && OriginalIndicator.supports(w.type)) {
+            showOriginalLampSettings(w);
+            return;
+        }
         LinearLayout form = new LinearLayout(this);
         form.setOrientation(LinearLayout.VERTICAL);
         int pad = dp(16);
@@ -11977,9 +12107,12 @@ public class MainActivity extends Activity {
                     drawCraftTrendGraph(canvas, w, liveValues.get(i), paint);
                 } else if ("Индикатор".equals(w.type) || "Двухпозиционный индикатор".equals(w.type)) {
                     String indicatorValue = liveValues.get(i);
+                    boolean hasBinding = w.connectionInfo != null && !w.connectionInfo.trim().isEmpty();
+                    Boolean state = OriginalCraftLampConnection.isBitRegister(w.extraFields)
+                            ? OriginalCraftLampConnection.decodeBit(indicatorValue, w.extraFields)
+                            : CraftIndicatorSignal.decode(indicatorValue);
                     boolean signalUnavailable = CraftIndicatorSignal.unavailable(indicatorValue, operatorMode,
-                            w.connectionInfo != null && !w.connectionInfo.trim().isEmpty());
-                    Boolean state = CraftIndicatorSignal.decode(indicatorValue);
+                            hasBinding) || (operatorMode && (hasBinding || indicatorValue != null) && state == null);
                     Bitmap lamp = signalUnavailable ? null : originalIndicatorBitmap(w, Boolean.TRUE.equals(state));
                     paint.setAlpha(255);
                     // Original ImageView uses FIT_XY and ten raw pixels of padding.
