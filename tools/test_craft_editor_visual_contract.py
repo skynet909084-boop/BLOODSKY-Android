@@ -427,6 +427,34 @@ class CraftEditorVisualContractTests(unittest.TestCase):
         self.assertLess(method.index("FbdCraftMacroCatalog.upsert"),
                         method.index("committed = persistProjectNow(synchronous)"))
 
+    def test_legacy_setpoint_has_safe_runtime_handler_and_fc06_write(self):
+        canvas = self.source.split("private class EditorCanvas extends View", 1)[1]
+        self.assertIn('adjustSetpoint(picked, x < picked.x + picked.w / 2 ? -1 : 1)', canvas)
+        method = canvas.split("private void adjustSetpoint(Widget widget, int direction)", 1)[1].split(
+            "private void openCraftLinearSetter(", 1)[0]
+        for required in (
+            "!operatorMode || !activityResumed || editor != this",
+            '"Задатчик".equals(widget.type)',
+            "Math.min(widget.minValue, widget.maxValue)",
+            "Math.max(widget.minValue, widget.maxValue)",
+            "bloodskySetpointStep",
+            "bloodskySetpointValue",
+            "next == oldValue",
+            "binding.functionCode != 3",
+            "next < 0 || next > 65535",
+            "originalScreen == null",
+            "editor != originalCanvas",
+            "widgets.get(index) != widget",
+            "widget.extraFields = new JSONObject(previous.toString())",
+            "if (!persistProjectNow(true))",
+            "widget.extraFields = previous",
+            "new ModbusTcpClient(binding.host, binding.port)",
+            "writeSingle(binding.unit, binding.address, next)",
+            "modbusExecutor.execute(",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, method)
+
     def test_main_settings_reuse_existing_specialized_dialogs(self):
         editor = self.source.split("private void editSelectedWidget(boolean advanced)", 1)[1]
         for dialog in ("CraftListSettingsDialog", "CraftProgressBarSettingsDialog",
