@@ -4865,68 +4865,186 @@ public class MainActivity extends Activity {
     }
 
     private void addScreen() {
-        if (nestedMacroEdit != null) return;
-        fbdWireHistory.clear();
-        saveActiveScreen();
-        screens.add(new Screen("Экран " + (screens.size() + 1)));
-        currentScreenIndex = screens.size() - 1;
-        widgets.clear();
-        persistProject();
-        showEditor();
+        if (operatorMode || nestedMacroEdit != null || editor == null
+                || currentScreenIndex < 0 || currentScreenIndex >= screens.size()) return;
+        final ArrayList<Screen> originalScreens = new ArrayList<>(screens);
+        final ArrayList<Widget> originalWidgets = new ArrayList<>(widgets);
+        final int originalScreenIndex = currentScreenIndex;
+        final JSONObject originalProjectFields = projectExtraFields;
+        boolean committed = false;
+        try {
+            saveActiveScreen();
+            screens.add(new Screen("Экран " + (screens.size() + 1)));
+            currentScreenIndex = screens.size() - 1;
+            widgets.clear();
+            if (!persistProjectNow(true)) {
+                Toast.makeText(this, "Не удалось сохранить новый экран",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+            committed = true;
+            fbdWireMode = false;
+            wireSource = -1;
+        } catch (Exception failure) {
+            Toast.makeText(this, "Не удалось добавить экран", Toast.LENGTH_LONG).show();
+        } finally {
+            if (!committed) {
+                screens.clear();
+                screens.addAll(originalScreens);
+                currentScreenIndex = originalScreenIndex;
+                widgets.clear();
+                widgets.addAll(originalWidgets);
+                projectExtraFields = originalProjectFields;
+                saveActiveScreen();
+                if (editor != null) editor.invalidate();
+            }
+        }
+        if (committed) showEditor();
     }
 
     private void removeCurrentScreen() {
-        if (nestedMacroEdit != null) return;
+        if (operatorMode || nestedMacroEdit != null || editor == null
+                || currentScreenIndex < 0 || currentScreenIndex >= screens.size()) return;
         if (screens.size() <= 1) {
-            Toast.makeText(this, "В проекте должен остаться хотя бы один экран", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "В проекте должен остаться хотя бы один экран",
+                    Toast.LENGTH_SHORT).show();
             return;
         }
+        final EditorCanvas dialogCanvas = editor;
+        final int dialogScreenIndex = currentScreenIndex;
+        final Screen dialogScreen = screens.get(currentScreenIndex);
         new AlertDialog.Builder(this)
                 .setTitle("Удалить экран?")
                 .setMessage("Экран «" + currentScreenName() + "» и все его элементы будут удалены.")
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Удалить", (dialog, which) -> {
-                    fbdWireHistory.clear();
-                    saveActiveScreen();
-                    screens.remove(currentScreenIndex);
-                    currentScreenIndex = Math.max(0, Math.min(currentScreenIndex, screens.size() - 1));
-                    widgets.clear();
-                    for (Widget widget : screens.get(currentScreenIndex).widgets) widgets.add(copyWidget(widget));
-                    editor = null;
-                    persistProject();
-                    showEditor();
+                    if (operatorMode || nestedMacroEdit != null || editor != dialogCanvas
+                            || currentScreenIndex != dialogScreenIndex || screens.size() <= 1
+                            || currentScreenIndex < 0 || currentScreenIndex >= screens.size()
+                            || screens.get(currentScreenIndex) != dialogScreen) {
+                        Toast.makeText(this, "Экран изменился: открой удаление заново",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    final ArrayList<Screen> originalScreens = new ArrayList<>(screens);
+                    final ArrayList<Widget> originalWidgets = new ArrayList<>(widgets);
+                    final JSONObject originalProjectFields = projectExtraFields;
+                    boolean committed = false;
+                    try {
+                        saveActiveScreen();
+                        screens.remove(dialogScreenIndex);
+                        currentScreenIndex = Math.min(dialogScreenIndex, screens.size() - 1);
+                        widgets.clear();
+                        for (Widget widget : screens.get(currentScreenIndex).widgets)
+                            widgets.add(copyWidget(widget));
+                        if (!persistProjectNow(true)) {
+                            Toast.makeText(this, "Не удалось сохранить удаление экрана",
+                                    Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                        committed = true;
+                        fbdWireHistory.clear();
+                        fbdWireMode = false;
+                        wireSource = -1;
+                    } catch (Exception failure) {
+                        Toast.makeText(this, "Не удалось удалить экран",
+                                Toast.LENGTH_LONG).show();
+                    } finally {
+                        if (!committed) {
+                            screens.clear();
+                            screens.addAll(originalScreens);
+                            currentScreenIndex = dialogScreenIndex;
+                            widgets.clear();
+                            widgets.addAll(originalWidgets);
+                            projectExtraFields = originalProjectFields;
+                            saveActiveScreen();
+                            if (editor != null) editor.invalidate();
+                        }
+                    }
+                    if (committed) {
+                        editor = null;
+                        showEditor();
+                    }
                 }).show();
     }
 
     private void editScreenBackground() {
-        if (nestedMacroEdit != null) return;
-        if (screens.isEmpty()) return;
-        Screen screen = screens.get(currentScreenIndex);
-        EditText input = propertyField(String.format(java.util.Locale.ROOT, "#%06X", (0xFFFFFF & screen.backgroundColor)), InputType.TYPE_CLASS_TEXT);
+        if (operatorMode || nestedMacroEdit != null || editor == null
+                || currentScreenIndex < 0 || currentScreenIndex >= screens.size()) return;
+        final Screen screen = screens.get(currentScreenIndex);
+        final EditorCanvas dialogCanvas = editor;
+        final int dialogScreenIndex = currentScreenIndex;
+        EditText input = propertyField(String.format(java.util.Locale.ROOT, "#%06X",
+                (0xFFFFFF & screen.backgroundColor)), InputType.TYPE_CLASS_TEXT);
         input.setHint("#RRGGBB");
         new AlertDialog.Builder(this).setTitle("Цвет фона экрана").setView(input)
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Применить", (dialog, which) -> {
+                    if (operatorMode || nestedMacroEdit != null || editor != dialogCanvas
+                            || currentScreenIndex != dialogScreenIndex
+                            || currentScreenIndex < 0 || currentScreenIndex >= screens.size()
+                            || screens.get(currentScreenIndex) != screen) {
+                        Toast.makeText(this, "Экран изменился: выбери цвет заново",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
                     String value = input.getText().toString().trim();
                     if (!value.startsWith("#")) value = "#" + value;
                     if (!value.matches("#[0-9a-fA-F]{6}")) {
                         Toast.makeText(this, "Укажи цвет в формате #RRGGBB", Toast.LENGTH_SHORT).show();
                         return;
                     }
-                    try { screen.backgroundColor = Color.parseColor(value); }
-                    catch (IllegalArgumentException ignored) { return; }
-                    persistProject(); if (editor != null) editor.invalidate();
+                    final int oldColor = screen.backgroundColor;
+                    try {
+                        screen.backgroundColor = Color.parseColor(value);
+                        if (!persistProjectNow(true)) {
+                            screen.backgroundColor = oldColor;
+                            Toast.makeText(this, "Не удалось сохранить цвет фона",
+                                    Toast.LENGTH_LONG).show();
+                        }
+                    } catch (Exception failure) {
+                        screen.backgroundColor = oldColor;
+                        Toast.makeText(this, "Не удалось изменить цвет фона",
+                                Toast.LENGTH_LONG).show();
+                    }
+                    editor.invalidate();
                 }).show();
     }
 
     private void renameCurrentScreen() {
-        EditText input = propertyField(currentScreenName(), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        if (operatorMode || nestedMacroEdit != null || editor == null
+                || currentScreenIndex < 0 || currentScreenIndex >= screens.size()) return;
+        final Screen screen = screens.get(currentScreenIndex);
+        final EditorCanvas dialogCanvas = editor;
+        final int dialogScreenIndex = currentScreenIndex;
+        EditText input = propertyField(currentScreenName(),
+                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         new AlertDialog.Builder(this).setTitle("Имя экрана").setView(input)
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Сохранить", (dialog, which) -> {
+                    if (operatorMode || nestedMacroEdit != null || editor != dialogCanvas
+                            || currentScreenIndex != dialogScreenIndex
+                            || currentScreenIndex < 0 || currentScreenIndex >= screens.size()
+                            || screens.get(currentScreenIndex) != screen) {
+                        Toast.makeText(this, "Экран изменился: открой имя заново",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
                     String name = input.getText().toString().trim();
-                    if (!name.isEmpty()) screens.get(currentScreenIndex).name = name;
-                    persistProject(); showEditor();
+                    if (name.isEmpty()) {
+                        Toast.makeText(this, "Имя экрана не может быть пустым",
+                                Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    String previousName = screen.name;
+                    screen.name = name;
+                    if (!persistProjectNow(true)) {
+                        screen.name = previousName;
+                        Toast.makeText(this, "Не удалось сохранить имя экрана",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    showEditor();
                 }).show();
     }
 
