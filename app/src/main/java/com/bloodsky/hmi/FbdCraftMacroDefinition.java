@@ -67,7 +67,7 @@ public final class FbdCraftMacroDefinition {
         JSONArray children = root.optJSONArray("fbInMacros");
         if (children == null || children.length() > MAX_CHILD_COMPONENTS)
             throw new JSONException("Invalid macro child list");
-        validateChildren(children, name, root.optLong("uniqueId", -1));
+        validateChildren(children, name, CraftExactLong.read(root, "uniqueId", -1));
 
         int count = CraftExactInteger.read(root, "countIn", -1);
         if (count < 0 || count > 4) throw new JSONException("Macro input count must be 0 to 4");
@@ -225,7 +225,7 @@ public final class FbdCraftMacroDefinition {
                     || Math.abs(y) > 100000)
                 throw new JSONException("Macro child position out of range");
             String childMacroName = child.optString("nMcr", macroName);
-            long childMacroId = child.optLong("unIdMcr", macroId);
+            long childMacroId = CraftExactLong.read(child, "unIdMcr", macroId);
             if (!macroName.equals(childMacroName) || (macroId >= 0 && childMacroId != macroId))
                 throw new JSONException("Macro child belongs to a different definition");
         }
