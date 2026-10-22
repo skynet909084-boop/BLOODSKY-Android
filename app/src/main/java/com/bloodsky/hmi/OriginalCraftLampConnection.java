@@ -47,7 +47,7 @@ final class OriginalCraftLampConnection {
             throw new IllegalArgumentException("Бит должен быть от 0 до 15");
         JSONObject result = fields == null ? new JSONObject() : new JSONObject(fields.toString());
         Object old = result.opt("craftConnectionInfo");
-        JSONObject source = new JSONObject(source(result).toString());
+        JSONObject source = CraftPropertyRecord.copy(result, "craftConnectionInfo");
         source.put("addressRegister", register);
         source.put("addressBit", bit);
         // Do not infer a device or activate a legacy imported endpoint.

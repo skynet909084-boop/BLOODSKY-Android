@@ -19,13 +19,7 @@ final class CraftLabelAppearance {
             throws Exception {
         JSONObject edited = fields == null ? new JSONObject() : new JSONObject(fields.toString());
         Object raw = edited.opt("craftOther");
-        JSONObject other;
-        try {
-            other = raw instanceof JSONObject ? new JSONObject(raw.toString())
-                    : raw instanceof String ? new JSONObject((String) raw) : new JSONObject();
-        } catch (Exception invalid) {
-            throw new IllegalArgumentException("Не удалось прочитать свойства Craft", invalid);
-        }
+        JSONObject other = CraftPropertyRecord.copy(edited, "craftOther");
         other.put("enableFrameLabel", frame);
         other.put("autoResizeText", autoResize);
         edited.put("craftOther", raw instanceof String ? other.toString() : other);
