@@ -5011,7 +5011,7 @@ public class MainActivity extends Activity {
             symbol.setText(new String(Character.toChars(symbols[i])));
             symbol.setTextSize(21);
             symbol.setGravity(Gravity.CENTER);
-            symbol.setTextColor(i == 3 ? Color.rgb(235, 105, 90) : Color.rgb(237, 176, 59));
+            symbol.setTextColor(i == 4 ? Color.rgb(235, 105, 90) : Color.rgb(237, 176, 59));
             row.addView(symbol, new LinearLayout.LayoutParams(dp(38), -2));
 
             LinearLayout textColumn = new LinearLayout(this);
@@ -5021,7 +5021,7 @@ public class MainActivity extends Activity {
             label.setText(labels[i]);
             label.setTextSize(16);
             label.setTypeface(null, android.graphics.Typeface.BOLD);
-            label.setTextColor(i == 3 ? Color.rgb(235, 105, 90) : Color.rgb(237, 176, 59));
+            label.setTextColor(i == 4 ? Color.rgb(235, 105, 90) : Color.rgb(237, 176, 59));
             textColumn.addView(label, new LinearLayout.LayoutParams(-1, -2));
 
             TextView detail = new TextView(this);
