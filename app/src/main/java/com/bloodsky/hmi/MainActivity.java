@@ -11952,16 +11952,25 @@ public class MainActivity extends Activity {
                     drawCraftTrendGraph(canvas, w, liveValues.get(i), paint);
                 } else if ("Индикатор".equals(w.type) || "Двухпозиционный индикатор".equals(w.type)) {
                     String indicatorValue = liveValues.get(i);
-                    Bitmap lamp = originalIndicatorBitmap(w, isActiveModbusValue(indicatorValue));
+                    boolean signalUnavailable = CraftIndicatorSignal.unavailable(indicatorValue, operatorMode,
+                            w.connectionInfo != null && !w.connectionInfo.trim().isEmpty());
+                    Boolean state = CraftIndicatorSignal.decode(indicatorValue);
+                    Bitmap lamp = signalUnavailable ? null : originalIndicatorBitmap(w, Boolean.TRUE.equals(state));
                     paint.setAlpha(255);
                     // Original ImageView uses FIT_XY and ten raw pixels of padding.
+                    // Never show a normal OFF image when the bound source has failed.
                     if (lamp != null && rect.width() > 20 && rect.height() > 20) {
                         canvas.drawBitmap(lamp, null, new RectF(rect.left + 10, rect.top + 10,
                                 rect.right - 10, rect.bottom - 10), paint);
                     }
-                    boolean failed = lamp == null || (indicatorValue != null
-                            && (indicatorValue.startsWith("ERR") || indicatorValue.startsWith("CFG")));
-                    if (failed) {
+                    if (signalUnavailable) {
+                        paint.setColor(Color.rgb(185, 28, 28));
+                        paint.setTextSize(dp(11));
+                        paint.setTextAlign(Paint.Align.CENTER);
+                        canvas.drawText("Нет связи", w.x + w.w / 2f, w.y + w.h / 2f, paint);
+                        paint.setTextAlign(Paint.Align.LEFT);
+                    }
+                    if (lamp == null) {
                         Bitmap warning = originalBitmap(R.drawable.kc_warning_32);
                         if (warning != null) canvas.drawBitmap(warning, rect.right - warning.getWidth(),
                                 rect.bottom - warning.getHeight(), paint);
