@@ -58,6 +58,8 @@ class CraftEditorVisualContractTests(unittest.TestCase):
         self.assertIn('primaryLabel = "Настройки пороговой шкалы"', menu)
         self.assertIn('primaryLabel = "Настройки градуированной шкалы"', menu)
         self.assertIn("widgets.get(editor.selected) != selectedWidget", menu)
+        self.assertIn("final int menuScreenIndex = currentScreenIndex", menu)
+        self.assertIn("currentScreenIndex != menuScreenIndex", menu)
         self.assertIn("operatorMode || editor == null", menu)
         self.assertIn('"Элемент изменён: выбери его заново"', menu)
         self.assertIn("row.setFocusable(true)", menu)
