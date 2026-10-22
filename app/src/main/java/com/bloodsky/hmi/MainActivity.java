@@ -5074,6 +5074,11 @@ public class MainActivity extends Activity {
                 .setView(scroll)
                 .setNegativeButton("Отмена", null)
                 .create();
+        // A menu can remain onscreen while another UI action changes the editor.
+        // Dismissal does not alter selection, project data, or widget metadata.
+        menu[0].setOnDismissListener(dialog -> {
+            // Nothing to commit: only explicit component actions may mutate data.
+        });
         menu[0].show();
         int titleId = getResources().getIdentifier("alertTitle", "id", "android");
         TextView dialogTitle = menu[0].findViewById(titleId);
