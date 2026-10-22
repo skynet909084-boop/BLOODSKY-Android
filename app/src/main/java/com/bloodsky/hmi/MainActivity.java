@@ -6261,6 +6261,39 @@ public class MainActivity extends Activity {
             }, () -> editSelectedWidget(true));
             return;
         }
+        if (!advanced && CraftLabelAppearance.isLabel(w.type)) {
+            CraftLabelSettingsDialog.show(this, w.extraFields, w.text, w.textColor,
+                    w.textSizeSp, w.backgroundColor, w.showFrame, w.autoResizeText,
+                    (changed, caption, textColor, textSize, background, frame, fitText) -> {
+                JSONObject previousFields = w.extraFields;
+                String previousText = w.text;
+                int previousTextColor = w.textColor, previousSize = w.textSizeSp;
+                int previousBackground = w.backgroundColor;
+                boolean previousFrame = w.showFrame, previousFitText = w.autoResizeText;
+                w.extraFields = changed;
+                w.text = caption;
+                w.textColor = textColor;
+                w.textSizeSp = textSize;
+                w.backgroundColor = background;
+                w.showFrame = frame;
+                w.autoResizeText = fitText;
+                if (!persistProjectNow(true)) {
+                    w.extraFields = previousFields;
+                    w.text = previousText;
+                    w.textColor = previousTextColor;
+                    w.textSizeSp = previousSize;
+                    w.backgroundColor = previousBackground;
+                    w.showFrame = previousFrame;
+                    w.autoResizeText = previousFitText;
+                    saveActiveScreen();
+                    Toast.makeText(this, "Не удалось сохранить надпись", Toast.LENGTH_LONG).show();
+                    return false;
+                }
+                if (editor != null) editor.invalidate();
+                return true;
+            }, () -> editSelectedWidget(true));
+            return;
+        }
         LinearLayout form = new LinearLayout(this);
         form.setOrientation(LinearLayout.VERTICAL);
         int pad = dp(16);
@@ -12300,7 +12333,8 @@ public class MainActivity extends Activity {
                 if (sourceCraftSwitch) {
                     OriginalCraftSwitchRenderer.draw(canvas, getResources(), rect, w.extraFields, w.buttonState, paint);
                 }
-                if (!OriginalIndicator.supports(w.type) && !sourceFbdSkin && !sourceCraftSwitch)
+                if (!OriginalIndicator.supports(w.type) && !sourceFbdSkin && !sourceCraftSwitch
+                        && CraftLabelAppearance.drawBackground(w.type, w.backgroundColor))
                     canvas.drawRoundRect(rect, dp(6), dp(6), paint);
                 if ((!OriginalIndicator.supports(w.type) && w.showFrame
                         && !sourceFbdSkin && !sourceCraftSwitch) || i == selected || selectedWidgets.contains(i)) {
