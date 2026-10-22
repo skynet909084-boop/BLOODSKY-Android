@@ -10684,8 +10684,16 @@ private String archiveProjectKey() {
             return null;
         }
         if ("FBD CRAFT MACRO IN".equals(kind) && output && "Q".equals(canonicalPin)) {
-            int type = widget.extraFields.optInt("craftMacroPortType", -1);
-            return type == 1 ? "BOOL" : (type == 2 || type == 3 ? "NUMBER" : null);
+            // The legacy coarse pin API is used for project/wire loading.
+            // Keep it consistent with the exact typed-pin validator: the
+            // original 1/2/3 enum cannot be truncated or wrapped on import.
+            try {
+                int type = CraftExactInteger.read(widget.extraFields,
+                        "craftMacroPortType", -1);
+                return type == 1 ? "BOOL" : (type == 2 || type == 3 ? "NUMBER" : null);
+            } catch (org.json.JSONException invalid) {
+                return null;
+            }
         }
         return knownFbdPinType(widget.type, pin, output);
     }

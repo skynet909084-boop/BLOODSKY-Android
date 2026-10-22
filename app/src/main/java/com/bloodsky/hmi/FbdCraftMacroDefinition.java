@@ -99,6 +99,15 @@ public final class FbdCraftMacroDefinition {
     private static void validateBloodskyGraph(JSONObject graph, List<Port> inputs,
             String outputPortName, int outputPortType, int nestingDepth) throws JSONException {
         if (graph == null) return;
+        // Opaque original Craft .mcr files may carry arbitrary input labels.
+        // Only an executable BLOODSKY graph requires unambiguous names.
+        // Runtime and wire editor compare pins case-insensitively, so "A"
+        // and "a" must never select two distinct original input ports.
+        java.util.HashSet<String> portNames = new java.util.HashSet<>();
+        for (Port input : inputs) {
+            if (!portNames.add(MainActivity.canonicalFbdPinName(input.name)))
+                throw new JSONException("Executable macro has duplicate input port names");
+        }
         JSONArray widgets = graph.optJSONArray("widgets");
         JSONArray connections = graph.optJSONArray("connections");
         if (widgets == null || widgets.length() == 0 || widgets.length() > MAX_CHILD_COMPONENTS
