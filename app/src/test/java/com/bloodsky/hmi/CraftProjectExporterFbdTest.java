@@ -147,7 +147,7 @@ public class CraftProjectExporterFbdTest {
         JSONObject mqttPub = rows.getJSONObject(22).getJSONObject("jsTableComponent_other");
         assertEquals(3, mqttPub.getInt("typeIn"));
         assertEquals(true, mqttPub.getBoolean("mqttRetain"));
-        assertEquals(2, exported.getJSONArray("TableComponent").getJSONObject(0)
+        assertEquals(3, exported.getJSONArray("TableComponent").getJSONObject(0)
                 .getJSONObject("jsTableComponent_other").getInt("keyOut"));
         assertEquals(3, exported.getJSONArray("TableComponent").getJSONObject(1)
                 .getJSONObject("jsTableComponent_other").getInt("keyOut"));
