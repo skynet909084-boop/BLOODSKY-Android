@@ -8185,6 +8185,18 @@ private String archiveProjectKey() {
                         properties.dismiss();
                         return;
                     }
+                    final Widget original = copyWidget(w);
+                    final JSONObject originalProjectFields;
+                    try {
+                        originalProjectFields = projectExtraFields == null
+                                ? null : new JSONObject(projectExtraFields.toString());
+                    } catch (Exception failure) {
+                        Toast.makeText(this, "Не удалось подготовить сохранение элемента",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    boolean committed = false;
+                    try {
                     final WidgetGeometryEdits geometry;
                     final FbdPropertyEdits fbd;
                     try {
@@ -9007,10 +9019,23 @@ private String archiveProjectKey() {
                     w.textColor = parseOptionalColor(textColorField.getText().toString(), w.textColor);
                     w.textSizeSp = Math.max(8, Math.min(48, readPositiveInt(textSizeField, w.textSizeSp, false)));
                     w.visible = visibleField.isChecked(); w.showFrame = frameField.isChecked(); w.autoResizeText = autoResizeField.isChecked();
-                    persistProject();
+                    if (!persistProjectNow(true)) {
+                        Toast.makeText(this, "Не удалось сохранить расширенные свойства",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    committed = true;
                     editor.invalidate();
                     refreshIncomingSmsReceiver();
                     properties.dismiss();
+                    } finally {
+                        if (!committed) {
+                            restoreWidgetFromSnapshot(w, original);
+                            projectExtraFields = originalProjectFields;
+                            saveActiveScreen();
+                            if (editor != null) editor.invalidate();
+                        }
+                    }
                 }));
         properties.show();
     }
