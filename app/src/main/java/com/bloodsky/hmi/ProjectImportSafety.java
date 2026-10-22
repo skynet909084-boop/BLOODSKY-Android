@@ -4,6 +4,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.util.ArrayDeque;
 import java.util.Iterator;
 import java.util.Locale;
 
@@ -20,6 +21,10 @@ public final class ProjectImportSafety {
             "craftSoundEnabled", "smsStrobeEnabled"
     };
 
+    // Reject hostile/container-heavy projects before they can exhaust memory
+    // while traversing inactive connections. Real Craft projects are far smaller.
+    private static final int MAX_CONTAINERS = 100_000;
+
     private ProjectImportSafety() { }
 
     public static String deactivateExternalActions(String json) throws JSONException {
@@ -28,21 +33,46 @@ public final class ProjectImportSafety {
         return root.toString();
     }
 
-    private static void deactivate(Object value) throws JSONException {
-        if (value instanceof JSONObject) {
-            JSONObject object = (JSONObject) value;
-            preserveAndClearEndpoint(object, "connectionInfo", "bloodskyImportedInactiveConnectionInfo",
-                    "tcp://", "usb://", "bt://");
-            preserveAndClearEndpoint(object, "craftArchiveTriggerBinding",
-                    "bloodskyImportedInactiveArchiveTriggerBinding", "tcp://");
-            for (String flag : OPT_IN_FLAGS) {
-                if (object.optBoolean(flag, false)) object.put(flag, false);
+    private static void deactivate(Object root) throws JSONException {
+        // A project can contain opaque JSON in widgets, macros and vendor fields.
+        // Traverse containers iteratively, so we never consume one Java stack
+        // frame per nested object. Preserve all unknown scalar metadata intact.
+        ArrayDeque<Object> pending = new ArrayDeque<>();
+        if (root instanceof JSONObject || root instanceof JSONArray) pending.push(root);
+        int visited = 0;
+        while (!pending.isEmpty()) {
+            if (++visited > MAX_CONTAINERS)
+                throw new JSONException("Imported project has too many nested containers");
+            Object value = pending.pop();
+            if (value instanceof JSONObject) {
+                JSONObject object = (JSONObject) value;
+                preserveAndClearEndpoint(object, "connectionInfo",
+                        "bloodskyImportedInactiveConnectionInfo", "tcp://", "usb://", "bt://");
+                preserveAndClearEndpoint(object, "craftArchiveTriggerBinding",
+                        "bloodskyImportedInactiveArchiveTriggerBinding", "tcp://");
+                for (String flag : OPT_IN_FLAGS) {
+                    if (object.optBoolean(flag, false)) object.put(flag, false);
+                }
+                Iterator<String> keys = object.keys();
+                while (keys.hasNext()) {
+                    Object child = object.opt(keys.next());
+                    if (child instanceof JSONObject || child instanceof JSONArray) {
+                        if (visited + pending.size() >= MAX_CONTAINERS)
+                            throw new JSONException("Imported project has too many nested containers");
+                        pending.push(child);
+                    }
+                }
+            } else {
+                JSONArray array = (JSONArray) value;
+                for (int i = 0; i < array.length(); i++) {
+                    Object child = array.opt(i);
+                    if (child instanceof JSONObject || child instanceof JSONArray) {
+                        if (visited + pending.size() >= MAX_CONTAINERS)
+                            throw new JSONException("Imported project has too many nested containers");
+                        pending.push(child);
+                    }
+                }
             }
-            Iterator<String> keys = object.keys();
-            while (keys.hasNext()) deactivate(object.opt(keys.next()));
-        } else if (value instanceof JSONArray) {
-            JSONArray array = (JSONArray) value;
-            for (int i = 0; i < array.length(); i++) deactivate(array.opt(i));
         }
     }
 
