@@ -61,6 +61,7 @@ class CraftEditorVisualContractTests(unittest.TestCase):
         self.assertIn('"Элемент изменён: выбери его заново"', menu)
         self.assertIn("row.setFocusable(true)", menu)
         self.assertIn("row.setClickable(true)", menu)
+        self.assertIn("row.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES)", menu)
         self.assertIn('row.setContentDescription(selectedWidget.type + ": " + labels[i])', menu)
 
     def test_runtime_never_opens_editor_context_actions(self):
