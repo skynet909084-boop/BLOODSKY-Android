@@ -79,10 +79,10 @@ public final class CraftProjectExporter {
                 if (widget == null) throw new IOException("Компонент проекта повреждён");
                 int row = widget.optInt("craftSourceRow", -1);
                 if (row < 0) {
-                    int addedComponentId = addedCraftLogicGateId(widget);
+                    int addedComponentId = addedCraftFbdBlockId(widget);
                     if (addedComponentId < 0)
-                        throw new IOException("Экспорт новых компонентов KaScada поддерживает проверенные блоки AND, OR, XOR и RS");
-                    row = appendCraftLogicGate(widget, addedComponentId, s, sourceRows, outputRows);
+                        throw new IOException("Экспорт новых компонентов KaScada поддерживает проверенные блоки AND, OR, XOR, RS, счётчик CTU, триггер и таймер");
+                    row = appendCraftFbdBlock(widget, addedComponentId, s, sourceRows, outputRows);
                 }
                 if (row >= sourceRows.length() || seen[row])
                     throw new IOException("Компонент KaScada повторно используется или имеет повреждённую исходную строку");
@@ -215,9 +215,9 @@ public final class CraftProjectExporter {
         return result.toString();
     }
 
-    /** Add a verified original boolean gate to a Craft project with a unique screen-local saveKey. */
-    private static int appendCraftLogicGate(JSONObject widget, int componentId, int screenIndex,
-                                            JSONArray sourceRows, JSONArray outputRows) throws Exception {
+    /** Add a verified Craft FBD block with a unique screen-local saveKey. */
+    private static int appendCraftFbdBlock(JSONObject widget, int componentId, int screenIndex,
+                                           JSONArray sourceRows, JSONArray outputRows) throws Exception {
         int saveKey = nextCraftSaveKey(sourceRows, screenIndex + 1);
         JSONObject other = new JSONObject().put("numScreen", screenIndex + 1)
                 .put("saveKey", saveKey).put("keyOut", -1).put("numOnIn", -1)
@@ -228,9 +228,21 @@ public final class CraftProjectExporter {
             while (keys.hasNext()) {
                 String key = keys.next();
                 if (!"numScreen".equals(key) && !"saveKey".equals(key)
-                        && !"keyOut".equals(key) && !"numOnIn".equals(key))
+                        && !"keyOut".equals(key) && !"numOnIn".equals(key)
+                        && !"type".equals(key) && !"typeTime".equals(key))
                     other.put(key, custom.get(key));
             }
+        }
+        if (componentId == 114) {
+            int triggerType = craftTriggerType(widget.optString("craftTriggerMode", "T"));
+            if (triggerType == 0) throw new IOException("Неизвестный режим нового Craft-триггера");
+            other.put("type", triggerType);
+        } else if (componentId == 115) {
+            int timerType = craftTimerType(widget.optString("craftTimerMode", "TON"));
+            int timeUnit = craftTimerUnit(widget.optString("craftTimerUnit", "MS"));
+            if (timerType == 0 || timeUnit == 0)
+                throw new IOException("Неизвестный режим или единица времени нового Craft-таймера");
+            other.put("type", timerType).put("typeTime", timeUnit);
         }
         JSONObject row = new JSONObject().put("componentId", componentId)
                 .put("text", widget.optString("text", ""))
@@ -262,16 +274,20 @@ public final class CraftProjectExporter {
         return max + 1;
     }
 
-    private static int addedCraftLogicGateId(JSONObject widget) {
+    private static int addedCraftFbdBlockId(JSONObject widget) {
         if (widget == null) return -1;
         int declared = widget.optInt("craftComponentId", -1);
-        if (declared == 103 || declared == 104 || declared == 113 || declared == 125)
+        if (declared == 103 || declared == 104 || declared == 113 || declared == 125
+                || declared == 114 || declared == 115 || declared == 116)
             return declared;
         String type = MainActivity.canonicalFbdBlockType(widget.optString("type", ""));
         if ("FBD AND".equals(type)) return 103;
         if ("FBD OR".equals(type)) return 104;
         if ("FBD RS".equals(type)) return 113;
         if ("FBD XOR".equals(type)) return 125;
+        if ("FBD CRAFT T".equals(type)) return 114;
+        if ("FBD CRAFT TIMER".equals(type)) return 115;
+        if ("FBD CRAFT CTU".equals(type)) return 116;
         return -1;
     }
 

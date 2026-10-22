@@ -176,4 +176,73 @@ public class CraftProjectExporterFbdTest {
         assertEquals(2, restoredEdges.getJSONObject(0).getInt("target"));
         assertEquals("IN2", restoredEdges.getJSONObject(0).getString("targetPin"));
     }
+
+    @Test public void exportsNewCraftCounterTriggerAndTimerWithTypedWiresAndModes() throws Exception {
+        JSONObject and = new JSONObject().put("componentId", 103).put("text", "AND")
+                .put("x", 10).put("y", 10).put("width", 80).put("height", 50)
+                .put("jsTableComponent_other", new JSONObject().put("numScreen", 1)
+                        .put("saveKey", 7).put("keyOut", -1).put("numOnIn", -1));
+        JSONObject or = new JSONObject().put("componentId", 104).put("text", "OR")
+                .put("x", 100).put("y", 10).put("width", 80).put("height", 50)
+                .put("jsTableComponent_other", new JSONObject().put("numScreen", 1)
+                        .put("saveKey", 12).put("keyOut", -1).put("numOnIn", -1));
+        JSONObject source = new JSONObject()
+                .put("TableNameProject", new JSONObject().put("name", "New Craft FBD blocks")
+                        .put("countScreen", 1))
+                .put("TableComponent", new JSONArray().put(and).put(or))
+                .put("TableConnections", new JSONArray());
+        JSONObject project = new JSONObject(CraftProjectImporter.convert(source.toString()));
+        JSONObject screen = project.getJSONArray("screens").getJSONObject(0);
+        JSONArray widgets = screen.getJSONArray("widgets");
+        widgets.put(new JSONObject().put("type", "FBD CRAFT CTU").put("text", "Counter")
+                .put("x", 200).put("y", 10).put("w", 90).put("h", 50)
+                .put("craftOther", new JSONObject().put("vendorCounter", "preserve")));
+        widgets.put(new JSONObject().put("type", "FBD CRAFT T").put("text", "Trigger")
+                .put("x", 300).put("y", 10).put("w", 90).put("h", 50)
+                .put("craftTriggerMode", "F"));
+        widgets.put(new JSONObject().put("type", "FBD CRAFT TIMER").put("text", "Timer")
+                .put("x", 400).put("y", 10).put("w", 90).put("h", 50)
+                .put("craftTimerMode", "TP").put("craftTimerUnit", "MIN"));
+
+        screen.getJSONArray("connections")
+                .put(MainActivity.connectionToJson(MainActivity.pinnedFbdConnection(0, "Q", 2, "+")))
+                .put(MainActivity.connectionToJson(MainActivity.pinnedFbdConnection(1, "Q", 3, "IN")))
+                .put(MainActivity.connectionToJson(MainActivity.pinnedFbdConnection(3, "Q", 4, "IN")));
+
+        JSONObject exported = new JSONObject(CraftProjectExporter.export(project.toString()));
+        JSONArray rows = exported.getJSONArray("TableComponent");
+        assertEquals(5, rows.length());
+        assertEquals(116, rows.getJSONObject(2).getInt("componentId"));
+        assertEquals(114, rows.getJSONObject(3).getInt("componentId"));
+        assertEquals(115, rows.getJSONObject(4).getInt("componentId"));
+        JSONObject counterOther = rows.getJSONObject(2).getJSONObject("jsTableComponent_other");
+        JSONObject triggerOther = rows.getJSONObject(3).getJSONObject("jsTableComponent_other");
+        JSONObject timerOther = rows.getJSONObject(4).getJSONObject("jsTableComponent_other");
+        assertEquals("preserve", counterOther.getString("vendorCounter"));
+        assertEquals(3, triggerOther.getInt("type"));
+        assertEquals(3, timerOther.getInt("type"));
+        assertEquals(3, timerOther.getInt("typeTime"));
+        assertEquals(counterOther.getInt("saveKey"), rows.getJSONObject(0)
+                .getJSONObject("jsTableComponent_other").getInt("keyOut"));
+        assertEquals(triggerOther.getInt("saveKey"), rows.getJSONObject(1)
+                .getJSONObject("jsTableComponent_other").getInt("keyOut"));
+        assertEquals(timerOther.getInt("saveKey"), triggerOther.getInt("keyOut"));
+        assertEquals(1, triggerOther.getInt("numOnIn"));
+
+        JSONObject restored = new JSONObject(CraftProjectImporter.convert(exported.toString()));
+        JSONObject restoredScreen = restored.getJSONArray("screens").getJSONObject(0);
+        JSONArray restoredEdges = restoredScreen.getJSONArray("connections");
+        assertEquals(3, restoredEdges.length());
+        assertEquals("+", restoredEdges.getJSONObject(0).getString("targetPin"));
+        assertEquals("IN", restoredEdges.getJSONObject(1).getString("targetPin"));
+        assertEquals("IN", restoredEdges.getJSONObject(2).getString("targetPin"));
+        assertEquals(116, restoredScreen.getJSONArray("widgets").getJSONObject(2)
+                .getInt("craftComponentId"));
+        assertEquals("F", restoredScreen.getJSONArray("widgets").getJSONObject(3)
+                .getString("craftTriggerMode"));
+        JSONObject restoredTimer = restoredScreen.getJSONArray("widgets").getJSONObject(4);
+        assertEquals("TP", restoredTimer.getString("craftTimerMode"));
+        assertEquals("MIN", restoredTimer.getString("craftTimerUnit"));
+    }
+
 }
