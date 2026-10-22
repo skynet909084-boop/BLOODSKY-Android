@@ -6225,6 +6225,26 @@ public class MainActivity extends Activity {
             }, () -> editSelectedWidget(true));
             return;
         }
+        if (!advanced && ("Кнопка".equals(w.type)
+                || "Константная кнопка Craft".equals(w.type))) {
+            CraftButtonSettingsDialog.show(this, w.extraFields, w.text,
+                    "Константная кнопка Craft".equals(w.type), (updated, caption) -> {
+                JSONObject previousFields = w.extraFields;
+                String previousCaption = w.text;
+                w.extraFields = updated;
+                w.text = caption;
+                if (!persistProjectNow(true)) {
+                    w.extraFields = previousFields;
+                    w.text = previousCaption;
+                    saveActiveScreen();
+                    Toast.makeText(this, "Не удалось сохранить кнопку", Toast.LENGTH_LONG).show();
+                    return false;
+                }
+                if (editor != null) editor.invalidate();
+                return true;
+            }, () -> editSelectedWidget(true));
+            return;
+        }
         LinearLayout form = new LinearLayout(this);
         form.setOrientation(LinearLayout.VERTICAL);
         int pad = dp(16);
