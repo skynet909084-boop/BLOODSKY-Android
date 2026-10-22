@@ -5025,12 +5025,24 @@ public class MainActivity extends Activity {
             row.setBackgroundColor(i % 2 == 0
                     ? Color.rgb(48, 48, 48) : Color.rgb(40, 40, 40));
 
-            TextView symbol = new TextView(this);
-            symbol.setText(new String(Character.toChars(symbols[i])));
-            symbol.setTextSize(21);
-            symbol.setGravity(Gravity.CENTER);
-            symbol.setTextColor(i == 4 ? Color.rgb(235, 105, 90) : Color.rgb(237, 176, 59));
-            row.addView(symbol, new LinearLayout.LayoutParams(dp(38), -2));
+            if (i == 2 || i == 3) {
+                // Reuse verified icons from the original kc_selection_actions layout.
+                android.widget.ImageView sourceIcon = new android.widget.ImageView(this);
+                sourceIcon.setImageResource(i == 2
+                        ? R.drawable.kc_align_open_menu : R.drawable.kc_action_copy);
+                sourceIcon.setScaleType(android.widget.ImageView.ScaleType.FIT_CENTER);
+                sourceIcon.setContentDescription(null); // The clickable row owns the label.
+                row.addView(sourceIcon, new LinearLayout.LayoutParams(dp(38), dp(38)));
+            } else {
+                // Other actions retain their previous symbol until their original
+                // drawable is identified; don't invent an unverified resource.
+                TextView symbol = new TextView(this);
+                symbol.setText(new String(Character.toChars(symbols[i])));
+                symbol.setTextSize(21);
+                symbol.setGravity(Gravity.CENTER);
+                symbol.setTextColor(i == 4 ? Color.rgb(235, 105, 90) : Color.rgb(237, 176, 59));
+                row.addView(symbol, new LinearLayout.LayoutParams(dp(38), -2));
+            }
 
             LinearLayout textColumn = new LinearLayout(this);
             textColumn.setOrientation(LinearLayout.VERTICAL);
