@@ -113,6 +113,57 @@ public class ProjectImportSafetyTest {
                 second.getString("bloodskyImportedInactiveArchiveTriggerBinding"));
     }
 
+    @Test public void deeplyNestedMacrosAreDisarmedWithoutChangingUnknownMetadata()
+            throws Exception {
+        JSONObject leaf = new JSONObject().put("connectionInfo",
+                "USB://serial/adapter/40001").put("craftGatewayEnabled", true)
+                .put("vendor", new JSONArray().put(11).put("untouched"));
+        Object nested = leaf;
+        // Macro/opaque arrays may alternate with object wrappers. A single
+        // iterative traversal disarms the innermost endpoint exactly once.
+        for (int i = 0; i < 96; i++)
+            nested = new JSONObject().put("unknown_" + i,
+                    new JSONArray().put(nested));
+        JSONObject root = new JSONObject().put("craftMacroDefinitions",
+                new JSONArray().put(nested));
+        JSONObject processed = new JSONObject(
+                ProjectImportSafety.deactivateExternalActions(root.toString()));
+        JSONObject cursor = processed.getJSONArray("craftMacroDefinitions").getJSONObject(0);
+        for (int i = 95; i >= 0; i--)
+            cursor = cursor.getJSONArray("unknown_" + i).getJSONObject(0);
+        assertFalse(cursor.getBoolean("craftGatewayEnabled"));
+        assertEquals("", cursor.getString("connectionInfo"));
+        assertEquals("USB://serial/adapter/40001",
+                cursor.getString("bloodskyImportedInactiveConnectionInfo"));
+        assertEquals("untouched", cursor.getJSONArray("vendor").getString(1));
+    }
+
+    @Test public void thousandIndependentMacroEntriesAreDisarmedAndRepeatable()
+            throws Exception {
+        JSONArray widgets = new JSONArray();
+        for (int i = 0; i < 1200; i++)
+            widgets.put(new JSONObject().put("connectionInfo",
+                    "tCp://192.0.2.8:502/1/" + (40001 + i))
+                    .put("craftNumericEnabled", true)
+                    .put("unknown", new JSONObject().put("index", i)));
+        String result = ProjectImportSafety.deactivateExternalActions(
+                new JSONObject().put("widgets", widgets).toString());
+        JSONArray after = new JSONObject(result).getJSONArray("widgets");
+        assertEquals(1200, after.length());
+        for (int i : new int[]{0, 1, 400, 1199}) {
+            JSONObject widget = after.getJSONObject(i);
+            assertFalse(widget.getBoolean("craftNumericEnabled"));
+            assertEquals("", widget.getString("connectionInfo"));
+            assertEquals("tCp://192.0.2.8:502/1/" + (40001 + i),
+                    widget.getString("bloodskyImportedInactiveConnectionInfo"));
+            assertEquals(i, widget.getJSONObject("unknown").getInt("index"));
+        }
+        JSONArray repeated = new JSONObject(
+                ProjectImportSafety.deactivateExternalActions(result)).getJSONArray("widgets");
+        assertEquals(after.getJSONObject(1199).toString(),
+                repeated.getJSONObject(1199).toString());
+    }
+
     @Test public void leavesInternalSystemBindingsAndAlreadyDisabledValuesAlone() throws Exception {
         JSONObject imported = new JSONObject(ProjectImportSafety.deactivateExternalActions(
                 new JSONObject().put("connectionInfo", "system://register/10")
