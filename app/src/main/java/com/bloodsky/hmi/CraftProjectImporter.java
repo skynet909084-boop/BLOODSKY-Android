@@ -95,7 +95,9 @@ public final class CraftProjectImporter {
             componentIsFbd[index] = widget.optString("type", "").startsWith("FBD ");
             screen.getJSONArray("widgets").put(widget);
             if (componentIsFbd[index]) {
-                int saveKey = integer(other.opt("saveKey"), Integer.MIN_VALUE);
+                // Native Craft topology key: never allow a 64-bit/decimal
+                // source value to alias a different original FBD endpoint.
+                int saveKey = CraftExactInteger.read(other, "saveKey", Integer.MIN_VALUE);
                 if (saveKey != Integer.MIN_VALUE) {
                     Map<Integer, Integer> saveKeys = fbdSaveKeysByScreen.get(screenNumber - 1);
                     if (saveKeys == null) {
@@ -120,7 +122,7 @@ public final class CraftProjectImporter {
             if (!componentIsFbd[row]) continue;
             JSONObject other = componentOthers[row];
             int screenIndex = componentScreens[row];
-            int targetKey = integer(other.opt("keyOut"), -1);
+            int targetKey = CraftExactInteger.read(other, "keyOut", -1);
             if (targetKey < 0) continue;
             Map<Integer, Integer> fbdBySaveKey = fbdSaveKeysByScreen.get(screenIndex);
             Integer targetIndex = fbdBySaveKey == null ? null : fbdBySaveKey.get(targetKey);
@@ -131,7 +133,7 @@ public final class CraftProjectImporter {
             JSONObject targetWidgetJson = screen.getJSONArray("widgets").getJSONObject(targetIndex);
             String[] sourcePins = MainActivity.knownFbdPins(MainActivity.widgetFromJson(sourceWidgetJson), true);
             String[] targetPins = MainActivity.knownFbdPins(MainActivity.widgetFromJson(targetWidgetJson), false);
-            int inputNumber = integer(other.opt("numOnIn"), -1);
+            int inputNumber = CraftExactInteger.read(other, "numOnIn", -1);
             if (sourcePins.length == 0 || inputNumber < 1 || inputNumber > targetPins.length
                     || sourceIndex == targetIndex || isTargetPinOccupied(screen.getJSONArray("connections"), targetIndex,
                     targetPins[inputNumber - 1]) || wouldCreateCycle(screen.getJSONArray("connections"),
