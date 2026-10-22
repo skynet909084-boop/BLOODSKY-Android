@@ -50,6 +50,7 @@ jobs:
           python tools/map_craft_xml_references.py build/craft-reference/apktool/res build-reports/kascada-original-xml-map.md
           python tools/audit_craft_drawable_wiring.py build/craft-reference/apktool/res/drawable app/src/main/java build-reports/kascada-drawable-wiring.md
           python tools/audit_picker_resource_candidates.py build/craft-reference/apktool/res/drawable build-reports/kascada-picker-resource-candidates.md
+          python tools/verify_craft_resource_aliases.py --decoded build/craft-reference --app app --report build-reports/kascada-original-alias-integrity.md
       - name: Run archive inspector tests
         run: python -m unittest discover -s tools -p 'test_*.py' -v
       - name: Set up Java 17
