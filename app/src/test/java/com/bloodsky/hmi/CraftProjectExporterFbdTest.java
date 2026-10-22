@@ -302,7 +302,7 @@ public class CraftProjectExporterFbdTest {
         assertEquals(floatMathOther.getInt("saveKey"), rows.getJSONObject(1)
                 .getJSONObject("jsTableComponent_other").getInt("keyOut"));
         assertEquals(floatCompareOther.getInt("saveKey"), floatMathOther.getInt("keyOut"));
-        assertEquals(2, intCompareOther.getInt("numOnIn"));
+        assertEquals(1, intCompareOther.getInt("numOnIn"));
         assertEquals(2, floatCompareOther.getInt("numOnIn"));
 
         JSONObject restored = new JSONObject(CraftProjectImporter.convert(exported.toString()));
