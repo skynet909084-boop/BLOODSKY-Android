@@ -51,6 +51,44 @@ public final class OriginalCraftSwitch {
         return result;
     }
 
+
+    /** Round-trip Craft's register/bit metadata and the active FC22 bit as one edit. */
+    public static JSONObject withSettings(JSONObject widgetFields, int register, int bit,
+                                          int imagePosition, boolean visible) throws JSONException {
+        if (bit < 0 || bit > 15)
+            throw new IllegalArgumentException("Бит должен быть от 0 до 15");
+        if (imagePosition < 1 || imagePosition > 8)
+            throw new IllegalArgumentException("Изображение должно быть от 1 до 8");
+        // This does not configure any network endpoint or enable remote bit writes.
+        final JSONObject result;
+        try {
+            result = OriginalCraftLampConnection.withAddress(widgetFields, register, bit);
+        } catch (IllegalArgumentException invalid) {
+            throw invalid;
+        } catch (Exception invalid) {
+            throw new IllegalArgumentException("Не удалось сохранить адрес переключателя", invalid);
+        }
+        JSONObject updated = withVisibility(withImagePosition(result, imagePosition), visible);
+        updated.put("craftSwitchSkin", imagePosition);
+        updated.put("craftSwitchBit", bit);
+        updated.put("craftSwitchVisibleInWork", visible);
+        return updated;
+    }
+
+    public static int sourceRegister(JSONObject fields) {
+        return OriginalCraftLampConnection.register(fields);
+    }
+
+    public static int configuredBit(JSONObject fields) {
+        if (fields != null && fields.has("craftSwitchBit"))
+            return Math.max(0, Math.min(15, fields.optInt("craftSwitchBit", 0)));
+        return OriginalCraftLampConnection.bit(fields);
+    }
+
+    public static String sourceDeviceLabel(JSONObject fields) {
+        return OriginalCraftLampConnection.deviceLabel(fields);
+    }
+
     private static JSONObject other(JSONObject fields) {
         if (fields == null) return new JSONObject();
         Object value = fields.opt("craftOther");

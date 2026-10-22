@@ -5613,6 +5613,164 @@ public class MainActivity extends Activity {
     }
 
     /**
+     * Craft ID1 switch settings: source register/bit, original 8 skins and
+     * operator visibility. Keep advanced network write opt-in separate.
+     */
+    private void showOriginalSwitchSettings(Widget widget) {
+        final int panelColor = Color.rgb(36, 36, 36);
+        final int labelColor = Color.rgb(210, 210, 210);
+        final int[] selectedImage = {OriginalCraftSwitch.imagePosition(widget.extraFields)};
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setGravity(Gravity.CENTER_HORIZONTAL);
+        form.setPadding(dp(24), dp(8), dp(24), dp(12));
+        form.setBackgroundColor(panelColor);
+
+        TextView title = new TextView(this);
+        title.setText("Настройки");
+        title.setTextColor(labelColor);
+        title.setTextSize(26);
+        title.setGravity(Gravity.CENTER);
+        form.addView(title, new LinearLayout.LayoutParams(-1, dp(50)));
+
+        TextView device = new TextView(this);
+        device.setText("Устройство: " + OriginalCraftSwitch.sourceDeviceLabel(widget.extraFields));
+        device.setTextColor(labelColor);
+        device.setTextSize(22);
+        device.setGravity(Gravity.CENTER);
+        form.addView(device, new LinearLayout.LayoutParams(-1, dp(52)));
+
+        LinearLayout addressRow = new LinearLayout(this);
+        addressRow.setGravity(Gravity.CENTER);
+        TextView registerLabel = new TextView(this);
+        registerLabel.setText("Рег:");
+        registerLabel.setTextColor(labelColor);
+        registerLabel.setTextSize(21);
+        addressRow.addView(registerLabel);
+        EditText registerField = propertyField(
+                Integer.toString(OriginalCraftSwitch.sourceRegister(widget.extraFields)),
+                InputType.TYPE_CLASS_NUMBER);
+        registerField.setTextColor(labelColor);
+        registerField.setTextSize(22);
+        registerField.setGravity(Gravity.CENTER);
+        registerField.setSingleLine(true);
+        registerField.setSelectAllOnFocus(true);
+        registerField.setContentDescription("Регистр переключателя Craft");
+        addressRow.addView(registerField, new LinearLayout.LayoutParams(dp(80), dp(55)));
+
+        TextView bitLabel = new TextView(this);
+        bitLabel.setText("  Бит:");
+        bitLabel.setTextColor(labelColor);
+        bitLabel.setTextSize(21);
+        addressRow.addView(bitLabel);
+        EditText bitField = propertyField(
+                Integer.toString(OriginalCraftSwitch.configuredBit(widget.extraFields)),
+                InputType.TYPE_CLASS_NUMBER);
+        bitField.setTextColor(labelColor);
+        bitField.setTextSize(22);
+        bitField.setGravity(Gravity.CENTER);
+        bitField.setSingleLine(true);
+        bitField.setSelectAllOnFocus(true);
+        bitField.setContentDescription("Бит переключателя Craft");
+        addressRow.addView(bitField, new LinearLayout.LayoutParams(dp(62), dp(55)));
+        form.addView(addressRow, new LinearLayout.LayoutParams(-1, dp(64)));
+
+        ImageView preview = new ImageView(this);
+        preview.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        preview.setContentDescription("Выбранное изображение переключателя Craft");
+        Runnable refreshPreview = () -> {
+            String image = "kc_switch" + selectedImage[0]
+                    + (widget.buttonState ? "_on" : "_off");
+            int id = getResources().getIdentifier(image, "drawable", getPackageName());
+            if (id != 0) preview.setImageResource(id);
+        };
+        refreshPreview.run();
+        form.addView(preview, new LinearLayout.LayoutParams(dp(155), dp(76)));
+
+        Button changeImage = new Button(this);
+        changeImage.setText("Сменить изображение");
+        changeImage.setAllCaps(false);
+        changeImage.setTextSize(21);
+        changeImage.setTextColor(labelColor);
+        changeImage.setBackgroundColor(Color.TRANSPARENT);
+        changeImage.setContentDescription("Выбрать одно из восьми изображений переключателя Craft");
+        changeImage.setOnClickListener(v -> {
+            String[] choices = new String[8];
+            for (int i = 0; i < choices.length; i++)
+                choices[i] = "Переключатель " + (i + 1);
+            new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                    .setTitle("Сменить изображение")
+                    .setSingleChoiceItems(choices, selectedImage[0] - 1, (picker, chosen) -> {
+                        selectedImage[0] = chosen + 1;
+                        refreshPreview.run();
+                        picker.dismiss();
+                    })
+                    .setNegativeButton("Отмена", null).show();
+        });
+        form.addView(changeImage, new LinearLayout.LayoutParams(-1, dp(54)));
+
+        CheckBox visible = new CheckBox(this);
+        visible.setText("Показывать в рабочем режиме");
+        visible.setTextColor(labelColor);
+        visible.setTextSize(15);
+        visible.setChecked(widget.extraFields.optBoolean("craftSwitchVisibleInWork",
+                OriginalCraftSwitch.visibleInWork(widget.extraFields)));
+        form.addView(visible, new LinearLayout.LayoutParams(-1, dp(44)));
+
+        TextView advanced = new TextView(this);
+        advanced.setText("Дополнительно: привязка Modbus");
+        advanced.setTextColor(Color.rgb(173, 173, 173));
+        advanced.setTextSize(13);
+        advanced.setGravity(Gravity.CENTER);
+        advanced.setContentDescription("Открыть расширенные настройки переключателя и разрешения записи");
+        form.addView(advanced, new LinearLayout.LayoutParams(-1, dp(42)));
+
+        final AlertDialog dialog = new AlertDialog.Builder(this,
+                android.R.style.Theme_Material_Dialog_Alert)
+                .setView(form)
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Сохранить", null)
+                .create();
+        advanced.setOnClickListener(v -> {
+            dialog.dismiss();
+            editSelectedWidget(true);
+        });
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                .setOnClickListener(v -> {
+                    JSONObject old = widget.extraFields;
+                    try {
+                        int register = Integer.parseInt(registerField.getText().toString().trim());
+                        int bit = Integer.parseInt(bitField.getText().toString().trim());
+                        widget.extraFields = OriginalCraftSwitch.withSettings(
+                                old, register, bit, selectedImage[0], visible.isChecked());
+                        if (!persistProjectNow(true)) {
+                            widget.extraFields = old;
+                            saveActiveScreen();
+                            Toast.makeText(this, "Не удалось сохранить настройки переключателя",
+                                    Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                        if (editor != null) editor.invalidate();
+                        dialog.dismiss();
+                    } catch (Exception invalid) {
+                        widget.extraFields = old;
+                        saveActiveScreen();
+                        Toast.makeText(this, invalid instanceof NumberFormatException
+                                ? "Укажи целые регистр (0–65535) и бит (0–15)"
+                                : invalid.getMessage(), Toast.LENGTH_LONG).show();
+                    }
+                }));
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(
+                    new android.graphics.drawable.ColorDrawable(panelColor));
+            int maxWidth = (int) (getResources().getDisplayMetrics().widthPixels * 0.78f);
+            dialog.getWindow().setLayout(Math.min(dp(620), maxWidth),
+                    android.view.WindowManager.LayoutParams.WRAP_CONTENT);
+        }
+    }
+
+    /**
      * Craft ID5 opens a compact in-place settings panel on a short editor tap.
      * The extended BLOODSKY inspector remains available for endpoint mapping.
      */
@@ -5746,6 +5904,10 @@ public class MainActivity extends Activity {
         Widget w = widgets.get(editor.selected);
         if (!advanced && OriginalIndicator.supports(w.type)) {
             showOriginalLampSettings(w);
+            return;
+        }
+        if (!advanced && OriginalCraftSwitch.supports(w.type)) {
+            showOriginalSwitchSettings(w);
             return;
         }
         LinearLayout form = new LinearLayout(this);
