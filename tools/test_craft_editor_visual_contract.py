@@ -6,7 +6,8 @@ Visual parity still requires original-reference screenshots and emulator evidenc
 from pathlib import Path
 import unittest
 
-SOURCE = (Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[1]
+SOURCE = (ROOT
           / "app/src/main/java/com/bloodsky/hmi/MainActivity.java")
 
 
@@ -63,6 +64,17 @@ class CraftEditorVisualContractTests(unittest.TestCase):
         self.assertIn("row.setClickable(true)", menu)
         self.assertIn("row.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES)", menu)
         self.assertIn('row.setContentDescription(selectedWidget.type + ": " + labels[i])', menu)
+
+    def test_original_copy_and_align_assets_in_context_menu(self):
+        menu = self.source.split("private void showStandardWidgetContextMenu()", 1)[1].split(
+            "private void ", 1)[0]
+        self.assertIn("R.drawable.kc_align_open_menu", menu)
+        self.assertIn("R.drawable.kc_action_copy", menu)
+        self.assertIn("sourceIcon.setContentDescription(null)", menu)
+        layout = (ROOT / "app/src/main/res/layout/kc_selection_actions.xml").read_text(
+            encoding="utf-8")
+        self.assertIn("@drawable/kc_action_copy", layout)
+        self.assertIn("@drawable/kc_align_open_menu", layout)
 
     def test_runtime_never_opens_editor_context_actions(self):
         menu = self.source.split("private void showStandardWidgetContextMenu()", 1)[1].split(
