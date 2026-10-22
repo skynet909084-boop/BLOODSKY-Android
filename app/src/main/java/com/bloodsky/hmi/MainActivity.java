@@ -11833,13 +11833,12 @@ public class MainActivity extends Activity {
                         lineY += dp(14);
                     }
                 } else if ("Прогресс-бар".equals(w.type)) {
-                    double val = 0.0;
-                    if (liveValues.containsKey(i)) {
-                        try { val = Double.parseDouble(liveValues.get(i)); } catch (Exception ignored) {}
-                    }
+                    Double polled = CraftHmiNumericSignal.decode(liveValues.get(i));
+                    boolean signalUnavailable = operatorMode && liveValues.containsKey(i) && polled == null;
+                    double val = polled == null ? 0.0 : polled;
                     paint.setShader(null);
                     paint.setStyle(Paint.Style.FILL);
-                    float ratio = CraftProgressBar.ratio(val, w.minValue, w.maxValue);
+                    float ratio = signalUnavailable ? 0f : CraftProgressBar.ratio(val, w.minValue, w.maxValue);
                     float inset = dp(4);
                     RectF track = new RectF(w.x + inset, w.y + inset,
                             w.x + w.w - inset, w.y + w.h - inset);
@@ -11860,7 +11859,7 @@ public class MainActivity extends Activity {
                     }
                     RectF fill = new RectF(track.left, track.top,
                             track.left + track.width() * ratio, track.bottom);
-                    if (fill.width() > 0) {
+                    if (!signalUnavailable && fill.width() > 0) {
                         paint.setShader(new android.graphics.LinearGradient(fill.left, fill.top,
                                 fill.left, fill.bottom,
                                 new int[]{CraftProgressBar.shade(progress, 0.7f), progress,
@@ -11880,33 +11879,49 @@ public class MainActivity extends Activity {
                             canvas.drawLine(center - length, y, center + length, y, paint);
                         }
                     }
-                    if (w.extraFields.optBoolean("craftProgressShowText", true)) {
-                        paint.setColor(w.extraFields.optInt("craftProgressTextColor", w.textColor));
+                    if (signalUnavailable || w.extraFields.optBoolean("craftProgressShowText", true)) {
+                        paint.setColor(signalUnavailable ? Color.rgb(185, 28, 28)
+                                : w.extraFields.optInt("craftProgressTextColor", w.textColor));
                         paint.setTextSize(w.extraFields.optInt("craftProgressTextSize", dp(12)));
-                        String valueText = Long.toString(Math.round(val));
+                        String valueText = signalUnavailable ? "Нет связи" : Long.toString(Math.round(val));
                         canvas.drawText(valueText, w.x + (w.w - paint.measureText(valueText)) / 2f,
                                 w.y + w.h - inset, paint);
                     }
                     paint.setStrokeWidth(dp(1));
                 } else if ("Шкала / Стрелка".equals(w.type)
                         && w.extraFields.optInt("craftComponentId", -1) == 12) {
-                    double val = 0.0;
-                    if (liveValues.containsKey(i)) {
-                        try { val = Double.parseDouble(liveValues.get(i)); } catch (Exception ignored) {}
+                    Double polled = CraftHmiNumericSignal.decode(liveValues.get(i));
+                    boolean signalUnavailable = operatorMode && liveValues.containsKey(i) && polled == null;
+                    if (signalUnavailable) {
+                        paint.setStyle(Paint.Style.FILL);
+                        paint.setColor(Color.rgb(185, 28, 28));
+                        paint.setTextSize(dp(11));
+                        canvas.drawText("Нет связи", w.x + dp(8), w.y + dp(16), paint);
+                    } else {
+                        drawCraftThresholdGauge(canvas, w, polled == null ? 0.0 : polled, paint);
                     }
-                    drawCraftThresholdGauge(canvas, w, val, paint);
                 } else if ("Шкала / Стрелка".equals(w.type)
                         && w.extraFields.optInt("craftComponentId", -1) == 24) {
-                    double val = 0.0;
-                    if (liveValues.containsKey(i)) {
-                        try { val = Double.parseDouble(liveValues.get(i)); } catch (Exception ignored) {}
+                    Double polled = CraftHmiNumericSignal.decode(liveValues.get(i));
+                    boolean signalUnavailable = operatorMode && liveValues.containsKey(i) && polled == null;
+                    if (signalUnavailable) {
+                        paint.setStyle(Paint.Style.FILL);
+                        paint.setColor(Color.rgb(185, 28, 28));
+                        paint.setTextSize(dp(11));
+                        canvas.drawText("Нет связи", w.x + dp(8), w.y + dp(16), paint);
+                    } else {
+                        drawCraftGraduatedGauge(canvas, w, polled == null ? 0.0 : polled, paint);
                     }
-                    drawCraftGraduatedGauge(canvas, w, val, paint);
                 } else if ("Шкала / Стрелка".equals(w.type)) {
-                    double val = 0.0;
-                    if (liveValues.containsKey(i)) {
-                        try { val = Double.parseDouble(liveValues.get(i)); } catch (Exception ignored) {}
-                    }
+                    Double polled = CraftHmiNumericSignal.decode(liveValues.get(i));
+                    boolean signalUnavailable = operatorMode && liveValues.containsKey(i) && polled == null;
+                    if (signalUnavailable) {
+                        paint.setStyle(Paint.Style.FILL);
+                        paint.setColor(Color.rgb(185, 28, 28));
+                        paint.setTextSize(dp(11));
+                        canvas.drawText("Нет связи", w.x + dp(8), w.y + dp(16), paint);
+                    } else {
+                        double val = polled == null ? 0.0 : polled;
                     double ratio = Math.max(0.0, Math.min(1.0, (val - w.minValue) / Math.max(0.001, w.maxValue - w.minValue)));
                     float cx = w.x + w.w / 2f, cy = w.y + w.h - dp(15);
                     float radius = Math.min(w.w, w.h * 1.6f) * 0.42f;
@@ -11925,6 +11940,7 @@ public class MainActivity extends Activity {
                     paint.setColor(w.textColor);
                     paint.setTextSize(dp(11));
                     canvas.drawText(w.text + " " + String.format(java.util.Locale.ROOT, "%.1f", val), w.x + dp(8), w.y + dp(16), paint);
+                    }
                 } else if ("График / Тренд".equals(w.type)) {
                     drawCraftTrendGraph(canvas, w, liveValues.get(i), paint);
                 } else if ("Индикатор".equals(w.type) || "Двухпозиционный индикатор".equals(w.type)) {
