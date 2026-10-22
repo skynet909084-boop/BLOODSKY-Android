@@ -21,7 +21,7 @@ public class CraftWebViewFetchTest {
         public int getResponseCode() { return status; }
         public String getHeaderField(String key) { return "Location".equals(key) ? location : null; }
         public String getContentType() { return contentType; }
-        public long getContentLengthLong() { return -1; }
+        public int getContentLength() { return -1; }
         public InputStream getInputStream() { return new ByteArrayInputStream(body); }
     }
 

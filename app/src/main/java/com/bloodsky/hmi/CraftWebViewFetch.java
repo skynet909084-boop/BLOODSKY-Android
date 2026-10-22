@@ -5,11 +5,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
-import java.util.function.BooleanSupplier;
 
 /** Fetch each page/resource ourselves: WebView interception alone does not check resource redirects. */
 final class CraftWebViewFetch {
     static final int MAX_BYTES = 4 * 1024 * 1024;
+    interface Active { boolean getAsBoolean(); }
     interface Connections { HttpURLConnection open(String url) throws IOException; }
     static final class Result {
         final byte[] body;
@@ -19,7 +19,7 @@ final class CraftWebViewFetch {
         }
     }
 
-    static Result get(String approved, String target, String method, BooleanSupplier active,
+    static Result get(String approved, String target, String method, Active active,
                        Connections connections) throws IOException {
         if (!"GET".equals(method) && !"HEAD".equals(method)) throw new IOException("WebView request method blocked");
         String current = target;
@@ -44,7 +44,7 @@ final class CraftWebViewFetch {
                     continue;
                 }
                 if (status < 200 || status >= 300) throw new IOException("WebView HTTP " + status);
-                if (connection.getContentLengthLong() > MAX_BYTES) throw new IOException("WebView resource too large");
+                if (connection.getContentLength() > MAX_BYTES) throw new IOException("WebView resource too large");
                 ByteArrayOutputStream output = new ByteArrayOutputStream();
                 if (!"HEAD".equals(method)) try (InputStream input = connection.getInputStream()) {
                     byte[] buffer = new byte[8192];

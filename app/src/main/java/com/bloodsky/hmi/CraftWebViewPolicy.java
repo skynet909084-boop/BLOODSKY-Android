@@ -13,7 +13,7 @@ public final class CraftWebViewPolicy {
         if (registerValue == null) return -1;
         try {
             double value = Double.parseDouble(registerValue.trim());
-            if (!Double.isFinite(value) || value != Math.rint(value)
+            if ((Double.isNaN(value) || Double.isInfinite(value)) || value != Math.rint(value)
                     || value < -32768 || value > 65535) return -1;
             int word = ((int) value) & 0xffff;
             return word == 0 ? -1 : Integer.numberOfTrailingZeros(word);
