@@ -53,6 +53,7 @@ class CraftEditorVisualContractTests(unittest.TestCase):
         self.assertIn("showAlignDialog()", menu)
         self.assertIn("copySelectedWidget()", menu)
         self.assertIn("deleteSelectedWidget()", menu)
+        self.assertIn("pasteWidget()", menu)
         self.assertIn('primaryLabel = "Настройки надписи"', menu)
         self.assertIn('primaryLabel = "Настройки динамического текста"', menu)
         self.assertIn('primaryLabel = "Настройки пороговой шкалы"', menu)
@@ -76,12 +77,14 @@ class CraftEditorVisualContractTests(unittest.TestCase):
             "private void ", 1)[0]
         self.assertIn("R.drawable.kc_align_open_menu", menu)
         self.assertIn("R.drawable.kc_action_copy", menu)
+        self.assertIn("R.drawable.kc_action_paste", menu)
         self.assertIn("sourceIcon.setContentDescription(null)", menu)
         self.assertIn("sourceIcon.setScaleType(android.widget.ImageView.ScaleType.FIT_XY)", menu)
         self.assertIn("new LinearLayout.LayoutParams(dp(40), dp(40))", menu)
         layout = (ROOT / "app/src/main/res/layout/kc_selection_actions.xml").read_text(
             encoding="utf-8")
         self.assertIn("@drawable/kc_action_copy", layout)
+        self.assertIn("@drawable/kc_action_paste", layout)
         self.assertIn("@drawable/kc_align_open_menu", layout)
 
     def test_indicator_artwork_is_accessible_without_advanced_inspector(self):
@@ -114,6 +117,7 @@ class CraftEditorVisualContractTests(unittest.TestCase):
         self.assertIn("widgets.get(index) != originals.get(i)", self.source)
         self.assertIn("copySelectedWidget()", menu)
         self.assertIn("deleteSelectedWidget()", menu)
+        self.assertIn("pasteWidget()", menu)
 
     def test_runtime_never_opens_editor_context_actions(self):
         menu = self.source.split("private void showStandardWidgetContextMenu()", 1)[1].split(
@@ -123,8 +127,8 @@ class CraftEditorVisualContractTests(unittest.TestCase):
     def test_destructive_action_is_still_last_and_red(self):
         menu = self.source.split("private void showStandardWidgetContextMenu()", 1)[1].split(
             "private void ", 1)[0]
-        self.assertIn('"Выравнивание", "Копировать", "Удалить"', menu)
-        self.assertIn("i == 4 ? Color.rgb(235, 105, 90)", menu)
+        self.assertIn('"Выравнивание", "Копировать", "Вставить", "Удалить"', menu)
+        self.assertIn("i == 5 ? Color.rgb(235, 105, 90)", menu)
 
     def test_main_settings_reuse_existing_specialized_dialogs(self):
         editor = self.source.split("private void editSelectedWidget(boolean advanced)", 1)[1]
