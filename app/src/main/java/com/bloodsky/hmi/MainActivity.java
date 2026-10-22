@@ -5186,6 +5186,16 @@ public class MainActivity extends Activity {
         return true;
     }
 
+    /** A delayed edit dialog may only mutate the same editable canvas and widget order. */
+    private boolean isEditorDialogContextCurrent(EditorCanvas originalCanvas, Screen originalScreen,
+            int originalScreenIndex, ArrayList<Widget> originalWidgetOrder) {
+        return !operatorMode && editor != null && editor == originalCanvas
+                && originalScreenIndex >= 0 && originalScreenIndex == currentScreenIndex
+                && currentScreenIndex < screens.size()
+                && screens.get(currentScreenIndex) == originalScreen
+                && sameWidgetOrder(originalWidgetOrder);
+    }
+
     private boolean sameSelectedWidgetObjects(ArrayList<Integer> indices,
             ArrayList<Widget> originals) {
         if (indices.size() != originals.size()) return false;
@@ -11766,9 +11776,12 @@ private String archiveProjectKey() {
     private void showFbdInversionDialog() { showFbdInversionDialog(-1); }
 
     private void showFbdInversionDialog(int sourceFilter) {
-        if (operatorMode || screens.isEmpty() || currentScreenIndex < 0
+        if (operatorMode || editor == null || screens.isEmpty() || currentScreenIndex < 0
                 || currentScreenIndex >= screens.size()) return;
-        Screen screen = screens.get(currentScreenIndex);
+        final Screen screen = screens.get(currentScreenIndex);
+        final EditorCanvas dialogCanvas = editor;
+        final int dialogScreenIndex = currentScreenIndex;
+        final ArrayList<Widget> dialogWidgetOrder = new ArrayList<>(widgets);
         final List<FbdConnection> choices = new ArrayList<>();
         final List<String> labels = new ArrayList<>();
         for (FbdConnection edge : screen.connections) {
@@ -11789,8 +11802,16 @@ private String archiveProjectKey() {
         }
         new AlertDialog.Builder(this).setTitle("Инверсия связи FBD (BOOL)")
                 .setItems(labels.toArray(new String[0]), (dialog, index) -> {
+                    if (!isEditorDialogContextCurrent(dialogCanvas, screen, dialogScreenIndex,
+                            dialogWidgetOrder) || index < 0 || index >= choices.size()) {
+                        Toast.makeText(this, "Экран FBD изменён: открой меню заново",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
                     FbdConnection edge = choices.get(index);
-                    if (!screen.connections.contains(edge)) return;
+                    if (!screen.connections.contains(edge)
+                            || edge.source < 0 || edge.target < 0
+                            || edge.source >= widgets.size() || edge.target >= widgets.size()) return;
                     Widget from = widgets.get(edge.source), to = widgets.get(edge.target);
                     if (!isInvertibleFbdBoolWire(edge, from.type, to.type)) return;
                     Object previous = edge.extraFields.opt("inverted");
@@ -11805,7 +11826,7 @@ private String archiveProjectKey() {
                             Toast.makeText(this, "Инверсия не сохранена", Toast.LENGTH_LONG).show();
                             return;
                         }
-                        if (editor != null) editor.invalidate();
+                        editor.invalidate();
                     } catch (Exception failure) {
                         try {
                             if (existed) edge.extraFields.put("inverted", previous);
@@ -11817,11 +11838,15 @@ private String archiveProjectKey() {
                 }).setNegativeButton("Отмена", null).show();
     }
 
-    private void showFbdDisconnectDialog() { showFbdDisconnectDialog(-1); }
+        private void showFbdDisconnectDialog() { showFbdDisconnectDialog(-1); }
 
     private void showFbdDisconnectDialog(int sourceFilter) {
-        if (screens.isEmpty() || currentScreenIndex < 0 || currentScreenIndex >= screens.size()) return;
-        Screen screen = screens.get(currentScreenIndex);
+        if (operatorMode || editor == null || screens.isEmpty() || currentScreenIndex < 0
+                || currentScreenIndex >= screens.size()) return;
+        final Screen screen = screens.get(currentScreenIndex);
+        final EditorCanvas dialogCanvas = editor;
+        final int dialogScreenIndex = currentScreenIndex;
+        final ArrayList<Widget> dialogWidgetOrder = new ArrayList<>(widgets);
         if (screen.connections.isEmpty()) {
             Toast.makeText(this, "Нет связей FBD для удаления", Toast.LENGTH_SHORT).show();
             return;
@@ -11845,9 +11870,16 @@ private String archiveProjectKey() {
         }
         new AlertDialog.Builder(this).setTitle("Удалить связь FBD")
                 .setItems(labels.toArray(new String[0]), (dialog, selected) -> {
+                    if (!isEditorDialogContextCurrent(dialogCanvas, screen, dialogScreenIndex,
+                            dialogWidgetOrder) || selected < 0 || selected >= candidates.size()) {
+                        Toast.makeText(this, "Экран FBD изменён: открой меню заново",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
                     FbdConnection edge = candidates.get(selected);
-                    if (!screen.connections.contains(edge)) return;
-                    if (screen.connections.contains(edge)) {
+                    if (screen.connections.contains(edge)
+                            && edge.source >= 0 && edge.target >= 0
+                            && edge.source < widgets.size() && edge.target < widgets.size()) {
                         commitFbdWireEdit(screen, () -> disconnectFbdEdge(screen.connections, edge),
                                 "Связь FBD удалена");
                     }
@@ -11856,15 +11888,21 @@ private String archiveProjectKey() {
 
     /** Offer pin-specific wiring for blocks whose pin names are confirmed in this build. */
     private void chooseFbdPins(int source, int target) {
+        if (operatorMode || editor == null || currentScreenIndex < 0
+                || currentScreenIndex >= screens.size() || source < 0 || target < 0
+                || source >= widgets.size() || target >= widgets.size()
+                || source == target) return;
         final int screenAtSelection = currentScreenIndex;
+        final Screen screenAtSelectionObject = screens.get(currentScreenIndex);
+        final EditorCanvas canvasAtSelection = editor;
+        final ArrayList<Widget> widgetOrderAtSelection = new ArrayList<>(widgets);
         final Widget sourceAtSelection = widgets.get(source);
         final Widget targetAtSelection = widgets.get(target);
-        String sourceType = widgets.get(source).type;
-        String targetType = widgets.get(target).type;
+        final String sourceType = sourceAtSelection.type;
+        final String targetType = targetAtSelection.type;
         String[] sourcePins = knownFbdPins(sourceAtSelection, true);
         String[] targetPins = knownFbdPins(targetAtSelection, false);
         if (sourcePins.length == 0 || targetPins.length == 0) {
-            // A known input-only or output-only block must not fall back to an untyped wire.
             if (!canUseUnpinnedFbdFallback(sourceAtSelection, targetAtSelection)) {
                 Toast.makeText(this, "Для этого FBD-блока не определены контакты", Toast.LENGTH_LONG).show();
                 return;
@@ -11874,6 +11912,15 @@ private String archiveProjectKey() {
         }
         new AlertDialog.Builder(this).setTitle("Выход FBD")
                 .setItems(sourcePins, (dialog, sourceChoice) -> {
+                    if (!isEditorDialogContextCurrent(canvasAtSelection, screenAtSelectionObject,
+                            screenAtSelection, widgetOrderAtSelection)
+                            || sourceChoice < 0 || sourceChoice >= sourcePins.length
+                            || !sourceType.equals(sourceAtSelection.type)
+                            || !targetType.equals(targetAtSelection.type)) {
+                        Toast.makeText(this, "FBD-блоки изменились: выбери их заново",
+                                Toast.LENGTH_LONG).show();
+                        return;
+                    }
                     String chosenSourcePin = sourcePins[sourceChoice];
                     String[] compatiblePins = compatibleFbdTargetPins(
                             sourceAtSelection, chosenSourcePin, targetAtSelection);
@@ -11884,13 +11931,17 @@ private String archiveProjectKey() {
                     new AlertDialog.Builder(this).setTitle("Вход FBD")
                             .setItems(compatiblePins, (targetDialog, targetChoice) -> {
                                 try {
-                                    if (screenAtSelection != currentScreenIndex || source >= widgets.size()
-                                            || target >= widgets.size()
+                                    if (!isEditorDialogContextCurrent(canvasAtSelection,
+                                            screenAtSelectionObject, screenAtSelection,
+                                            widgetOrderAtSelection)
+                                            || source >= widgets.size() || target >= widgets.size()
                                             || widgets.get(source) != sourceAtSelection
                                             || widgets.get(target) != targetAtSelection
                                             || !sourceType.equals(widgets.get(source).type)
-                                            || !targetType.equals(widgets.get(target).type)) {
-                                        Toast.makeText(this, "FBD-блоки изменились: выбери их заново", Toast.LENGTH_LONG).show();
+                                            || !targetType.equals(widgets.get(target).type)
+                                            || targetChoice < 0 || targetChoice >= compatiblePins.length) {
+                                        Toast.makeText(this, "FBD-блоки изменились: выбери их заново",
+                                                Toast.LENGTH_LONG).show();
                                         return;
                                     }
                                     String chosenTargetPin = compatiblePins[targetChoice];
