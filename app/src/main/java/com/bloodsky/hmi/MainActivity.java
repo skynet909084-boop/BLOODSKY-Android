@@ -5120,18 +5120,31 @@ public class MainActivity extends Activity {
                     } else if ("Инвертировать связь BOOL…".equals(label)) {
                         showFbdInversionDialog(blockIndex);
                     } else if ("Инвертировать выход BOOL".equals(label)) {
+                        // Commit the complete metadata change or restore it, including
+                        // the case where serialization throws after the toggle.
+                        JSONObject before = null;
+                        JSONObject beforeProjectFields = projectExtraFields;
+                        boolean committed = false;
                         try {
-                            Object previous = widget.extraFields.opt("invertOut");
-                            boolean existed = widget.extraFields.has("invertOut");
+                            before = widget.extraFields == null ? null
+                                    : new JSONObject(widget.extraFields.toString());
                             if (!toggleFbdBlockOutputInversion(widget)) return;
-                            if (!persistProjectNow(true)) {
-                                if (existed) widget.extraFields.put("invertOut", previous);
-                                else widget.extraFields.remove("invertOut");
-                                Toast.makeText(this, "Не удалось сохранить инверсию выхода", Toast.LENGTH_LONG).show();
+                            if (persistProjectNow(true)) {
+                                committed = true;
+                            } else {
+                                Toast.makeText(this, "Не удалось сохранить инверсию выхода",
+                                        Toast.LENGTH_LONG).show();
+                            }
+                        } catch (Exception error) {
+                            Toast.makeText(this, "Не удалось сохранить инверсию выхода",
+                                    Toast.LENGTH_LONG).show();
+                        } finally {
+                            if (!committed) {
+                                widget.extraFields = before;
+                                projectExtraFields = beforeProjectFields;
+                                saveActiveScreen();
                             }
                             if (editor != null) editor.invalidate();
-                        } catch (Exception error) {
-                            Toast.makeText(this, "Не удалось сохранить инверсию выхода", Toast.LENGTH_LONG).show();
                         }
                     } else if ("Отсоединить выход".equals(label)) {
                         showFbdDisconnectDialog(blockIndex);
