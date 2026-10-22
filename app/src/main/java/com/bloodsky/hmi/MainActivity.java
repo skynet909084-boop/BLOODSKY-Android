@@ -11785,26 +11785,30 @@ public class MainActivity extends Activity {
                     }
                 } else if ("Линейный задатчик Craft".equals(w.type)) {
                     int maximum = CraftLinearSetter.maximum(w.extraFields);
-                    int value = CraftLinearSetter.value(w.extraFields, liveValues.get(i));
+                    String linearStatus = liveValues.get(i);
+                    boolean signalUnavailable = CraftLinearSetter.unavailable(linearStatus, operatorMode,
+                            w.connectionInfo != null && !w.connectionInfo.trim().isEmpty());
+                    int value = CraftLinearSetter.value(w.extraFields, linearStatus);
                     float ratio = value / (float) maximum;
                     boolean vertical = w.extraFields.optBoolean("craftLinearVertical", false);
-                    paint.setColor(w.textColor); paint.setTextSize(dp(11));
-                    canvas.drawText(w.text + ": " + value + " / " + maximum, w.x + dp(7), w.y + dp(14), paint);
+                    paint.setColor(signalUnavailable ? Color.rgb(185, 28, 28) : w.textColor);
+                    paint.setTextSize(dp(11));
+                    canvas.drawText(signalUnavailable ? w.text + ": Нет связи"
+                            : w.text + ": " + value + " / " + maximum, w.x + dp(7), w.y + dp(14), paint);
                     paint.setColor(w.extraFields.optInt("craftLinearBackgroundColor", Color.rgb(156, 156, 155)));
                     if (vertical) {
                         float center = w.x + w.w / 2f;
                         canvas.drawRoundRect(center - dp(4), w.y + dp(20), center + dp(4), w.y + w.h - dp(5), dp(4), dp(4), paint);
                         paint.setColor(w.extraFields.optInt("craftLinearProgressColor", Color.rgb(46, 236, 0)));
                         float bottom = w.y + w.h - dp(5), top = bottom - ((w.h - dp(25)) * ratio);
-                        canvas.drawRoundRect(center - dp(4), top, center + dp(4), bottom, dp(4), dp(4), paint);
+                        if (!signalUnavailable) canvas.drawRoundRect(center - dp(4), top, center + dp(4), bottom, dp(4), dp(4), paint);
                     } else {
                         RectF track = new RectF(w.x + dp(7), w.y + dp(25), w.x + w.w - dp(7), w.y + w.h - dp(8));
                         canvas.drawRoundRect(track, dp(5), dp(5), paint);
                         paint.setColor(w.extraFields.optInt("craftLinearProgressColor", Color.rgb(46, 236, 0)));
-                        canvas.drawRoundRect(track.left, track.top, track.left + track.width() * ratio, track.bottom, dp(5), dp(5), paint);
+                        if (!signalUnavailable) canvas.drawRoundRect(track.left, track.top, track.left + track.width() * ratio, track.bottom, dp(5), dp(5), paint);
                     }
-                    String linearStatus = liveValues.get(i);
-                    if (linearStatus != null && linearStatus.startsWith("ERR:")) {
+                    if (signalUnavailable) {
                         paint.setColor(Color.rgb(185, 28, 28)); paint.setTextSize(dp(9));
                         canvas.drawText("Нет связи", w.x + dp(7), w.y + w.h - dp(3), paint);
                     }
