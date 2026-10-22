@@ -11765,7 +11765,8 @@ public class MainActivity extends Activity {
                     int mask = w.extraFields.optInt("craftListInitialMask", 0) & 0xffff;
                     String liveMask = liveValues.get(i);
                     int decodedMask = CraftHmiStateSignal.decodeWord(liveMask);
-                    boolean signalUnavailable = liveMask != null && decodedMask < 0;
+                    boolean signalUnavailable = CraftHmiStateSignal.unavailableWord(liveMask, operatorMode,
+                            w.connectionInfo != null && !w.connectionInfo.trim().isEmpty());
                     if (decodedMask >= 0) mask = decodedMask;
                     String[] labels = CraftBitList.fromJson(w.extraFields.optJSONArray("craftListLabels"));
                     paint.setColor(w.textColor); paint.setTextSize(dp(12));
@@ -11810,7 +11811,8 @@ public class MainActivity extends Activity {
                     }
                 } else if ("Битовый список".equals(w.type)) {
                     int decodedMask = CraftHmiStateSignal.decodeWord(liveValues.get(i));
-                    boolean signalUnavailable = liveValues.containsKey(i) && decodedMask < 0;
+                    boolean signalUnavailable = CraftHmiStateSignal.unavailableWord(liveValues.get(i), operatorMode,
+                            w.connectionInfo != null && !w.connectionInfo.trim().isEmpty());
                     int bitmask = decodedMask >= 0 ? decodedMask : 0;
                     paint.setColor(w.textColor);
                     paint.setTextSize(dp(11));

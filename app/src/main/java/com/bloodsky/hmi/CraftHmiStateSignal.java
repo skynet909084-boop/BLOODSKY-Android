@@ -29,6 +29,14 @@ public final class CraftHmiStateSignal {
         }
     }
 
+    /**
+     * A configured remote source with no first response is unavailable, not
+     * the project's initial 0x0000 bit mask. Keep editor/local preview intact.
+     */
+    public static boolean unavailableWord(String raw, boolean operatorMode, boolean hasBinding) {
+        return operatorMode && (hasBinding || raw != null) && decodeWord(raw) < 0;
+    }
+
     public static int decode(String raw) {
         if (raw == null) return -1;
         String text = raw.trim();
