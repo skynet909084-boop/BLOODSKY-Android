@@ -6346,6 +6346,29 @@ public class MainActivity extends Activity {
             }, () -> editSelectedWidget(true));
             return;
         }
+        if (!advanced && "Шкала / Стрелка".equals(w.type)
+                && w.extraFields.optInt("craftComponentId", -1) == 24) {
+            CraftGraduatedGaugeSettingsDialog.show(this, w.extraFields, w.minValue, w.maxValue,
+                    (updated, minimum, maximum) -> {
+                JSONObject previousFields = w.extraFields;
+                double previousMin = w.minValue, previousMax = w.maxValue;
+                w.extraFields = updated;
+                w.minValue = minimum;
+                w.maxValue = maximum;
+                if (!persistProjectNow(true)) {
+                    w.extraFields = previousFields;
+                    w.minValue = previousMin;
+                    w.maxValue = previousMax;
+                    saveActiveScreen();
+                    Toast.makeText(this, "Не удалось сохранить градуированную шкалу",
+                            Toast.LENGTH_LONG).show();
+                    return false;
+                }
+                if (editor != null) editor.invalidate();
+                return true;
+            }, () -> editSelectedWidget(true));
+            return;
+        }
         LinearLayout form = new LinearLayout(this);
         form.setOrientation(LinearLayout.VERTICAL);
         int pad = dp(16);
