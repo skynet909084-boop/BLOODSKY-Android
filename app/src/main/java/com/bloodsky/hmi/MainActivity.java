@@ -6785,7 +6785,9 @@ private String archiveProjectKey() {
 
         if (OriginalIndicator.supports(w.type)) {
             Button images = new Button(this); images.setText("Сменить изображение"); images.setAllCaps(false);
-            images.setOnClickListener(v -> showIndicatorImages(w)); form.addView(images);
+            images.setOnClickListener(v -> {
+                if (dialogGuard.require()) showIndicatorImages(w);
+            }); form.addView(images);
         }
 
         TextView textLabel = new TextView(this);
@@ -8113,6 +8115,10 @@ private String archiveProjectKey() {
             cleanupPendingMediaCopies(properties);
         });
         properties.setOnShowListener(shown -> properties.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(clicked -> {
+                    if (!dialogGuard.require()) {
+                        properties.dismiss();
+                        return;
+                    }
                     final WidgetGeometryEdits geometry;
                     final FbdPropertyEdits fbd;
                     try {
