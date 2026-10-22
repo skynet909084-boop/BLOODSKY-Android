@@ -4966,6 +4966,7 @@ public class MainActivity extends Activity {
         Widget selectedWidget = widgets.get(editor.selected);
         final EditorCanvas menuCanvas = editor;
         final int menuScreenIndex = currentScreenIndex;
+        final Screen menuScreen = screens.get(currentScreenIndex);
         String titleText = selectedWidget.text == null || selectedWidget.text.trim().isEmpty()
                 ? selectedWidget.type : selectedWidget.text;
 
@@ -5069,6 +5070,8 @@ public class MainActivity extends Activity {
                 // A dialog can outlive a canvas selection or screen change.
                 // Never apply a stale menu action to a different widget.
                 if (operatorMode || editor != menuCanvas || currentScreenIndex != menuScreenIndex
+                        || currentScreenIndex >= screens.size()
+                        || screens.get(currentScreenIndex) != menuScreen
                         || editor.selected < 0 || editor.selected >= widgets.size()
                         || widgets.get(editor.selected) != selectedWidget) {
                     Toast.makeText(this, "Элемент изменён: выбери его заново", Toast.LENGTH_SHORT).show();
