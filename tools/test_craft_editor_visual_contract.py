@@ -593,7 +593,7 @@ class CraftEditorVisualContractTests(unittest.TestCase):
         self.assertLess(commit.index("if (!persistProjectNow(true))"),
                         commit.index("committed = true"))
         self.assertLess(commit.index("committed = true"),
-                        commit.index("properties.dismiss()"))
+                        commit.rindex("properties.dismiss()"))
         restore = self.source.split("private static void restoreWidgetFromSnapshot(", 1)[1].split(
             "private void ", 1)[0]
         for field in (
