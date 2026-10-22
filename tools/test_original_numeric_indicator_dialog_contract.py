@@ -21,7 +21,8 @@ class NumericIndicatorDialogContract(unittest.TestCase):
                      "Рамка по регистру", "Системный шрифт",
                      "Дополнительно: привязка Modbus", "FLOAT32", "INT32"]:
             self.assertIn(part, form)
-        self.assertIn("editSelectedWidget(true)", form)
+        self.assertIn("dialogGuard.advanced();", form)
+        self.assertIn("if (!dialogGuard.require()) return;", form)
         self.assertIn("OriginalCraftNumericIndicator.withSettings(", form)
         self.assertIn("if (!persistProjectNow(true))", form)
         self.assertIn("widget.extraFields = old;", form)
