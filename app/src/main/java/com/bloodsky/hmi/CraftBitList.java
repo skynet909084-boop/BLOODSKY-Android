@@ -83,7 +83,11 @@ public final class CraftBitList {
         result.put("craftListLabels", toJson(labels));
         result.put("craftListVisibleInWork", visible);
         result.put("craftListCheckNoChange", readOnly);
-        // Never set craftListEnabled or create a connectionInfo endpoint here.
+        // The register shown in the Craft dialog is part of the operator's
+        // mapping decision. Once it changes, an old explicit TCP mapping must
+        // not stay approved for bit writes or reads without reconfirmation.
+        if (register != sourceRegister(fields)) result.put("craftListEnabled", false);
+        // Never turn on craftListEnabled or create a connectionInfo endpoint here.
         return result;
     }
 

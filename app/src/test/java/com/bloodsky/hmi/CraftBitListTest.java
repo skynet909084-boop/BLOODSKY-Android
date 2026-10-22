@@ -79,6 +79,27 @@ public class CraftBitListTest {
         assertTrue(new JSONObject(other.getString("textBit")).getBoolean("vendor"));
     }
 
+    @Test public void changingListRegisterRequiresFreshExplicitTcpPermission() throws Exception {
+        String[] labels = CraftBitList.parseEditorLines("Output 0\nOutput 1");
+        JSONObject source = new JSONObject().put("craftListEnabled", true)
+                .put("craftConnectionInfo", "{\"addressRegister\":40011,\"vendor\":99}")
+                .put("craftOther", "{\"vendor\":{\"keep\":true}}")
+                .put("connectionInfo", "tcp://192.0.2.1:502/1/40011");
+        JSONObject cosmetic = CraftBitList.withSettings(source, 40011, labels, true, false);
+        assertTrue(cosmetic.getBoolean("craftListEnabled"));
+        JSONObject changed = CraftBitList.withSettings(source, 40012, labels, true, false);
+        assertFalse(changed.getBoolean("craftListEnabled"));
+        assertEquals("tcp://192.0.2.1:502/1/40011",
+                changed.getString("connectionInfo"));
+        assertTrue(changed.get("craftConnectionInfo") instanceof String);
+        assertTrue(changed.get("craftOther") instanceof String);
+        assertEquals(99, new JSONObject(changed.getString("craftConnectionInfo")).getInt("vendor"));
+        assertTrue(new JSONObject(changed.getString("craftOther")).getJSONObject("vendor")
+                .getBoolean("keep"));
+        assertTrue(source.getBoolean("craftListEnabled"));
+        assertEquals(40011, CraftBitList.sourceRegister(source));
+    }
+
     @Test public void invalidBitListPropertiesDoNotMutateProjectData() throws Exception {
         JSONObject fields = new JSONObject().put("original", 99);
         String[] labels = new String[16];
