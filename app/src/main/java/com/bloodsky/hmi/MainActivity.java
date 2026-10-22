@@ -4972,6 +4972,11 @@ public class MainActivity extends Activity {
         // A stale menu must never act on a newly selected group.
         final ArrayList<Integer> menuSelection =
                 new ArrayList<>(editor.selectedWidgets);
+        final ArrayList<Widget> menuSelectionWidgets = new ArrayList<>();
+        for (int selectionIndex : menuSelection) {
+            if (selectionIndex < 0 || selectionIndex >= widgets.size()) return;
+            menuSelectionWidgets.add(widgets.get(selectionIndex));
+        }
         String titleText = selectedWidget.text == null || selectedWidget.text.trim().isEmpty()
                 ? selectedWidget.type : selectedWidget.text;
 
@@ -5006,7 +5011,8 @@ public class MainActivity extends Activity {
                         || screens.get(currentScreenIndex) != menuScreen
                         || editor.selected < 0 || editor.selected >= widgets.size()
                         || widgets.get(editor.selected) != selectedWidget
-                        || !editor.selectedWidgets.equals(menuSelection)) {
+                        || !editor.selectedWidgets.equals(menuSelection)
+                        || !sameSelectedWidgetObjects(menuSelection, menuSelectionWidgets)) {
                     Toast.makeText(this, "Элемент изменён: выбери его заново",
                             Toast.LENGTH_SHORT).show();
                     return;
@@ -5110,7 +5116,8 @@ public class MainActivity extends Activity {
                         || screens.get(currentScreenIndex) != menuScreen
                         || editor.selected < 0 || editor.selected >= widgets.size()
                         || widgets.get(editor.selected) != selectedWidget
-                        || !editor.selectedWidgets.equals(menuSelection)) {
+                        || !editor.selectedWidgets.equals(menuSelection)
+                        || !sameSelectedWidgetObjects(menuSelection, menuSelectionWidgets)) {
                     Toast.makeText(this, "Элемент изменён: выбери его заново", Toast.LENGTH_SHORT).show();
                     return;
                 }
@@ -5138,7 +5145,18 @@ public class MainActivity extends Activity {
         if (dialogTitle != null) dialogTitle.setTextColor(Color.rgb(237, 176, 59));
     }
 
-    private String archiveProjectKey() {
+        private boolean sameSelectedWidgetObjects(ArrayList<Integer> indices,
+            ArrayList<Widget> originals) {
+        if (indices.size() != originals.size()) return false;
+        for (int i = 0; i < indices.size(); i++) {
+            int index = indices.get(i);
+            if (index < 0 || index >= widgets.size()
+                    || widgets.get(index) != originals.get(i)) return false;
+        }
+        return true;
+    }
+
+private String archiveProjectKey() {
         String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(ACTIVE_PROJECT, "{}");
         return ProjectMediaService.getOrGenerateProjectId(json);
     }
