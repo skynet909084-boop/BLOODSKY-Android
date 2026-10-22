@@ -1378,17 +1378,7 @@ public class MainActivity extends Activity {
     }
 
     private boolean isActiveModbusValue(String value) {
-        if (value == null) return false;
-        String normalized = value.trim().toLowerCase(java.util.Locale.ROOT);
-        if (normalized.isEmpty() || normalized.startsWith("err") || normalized.startsWith("cfg")
-                || "false".equals(normalized) || "off".equals(normalized)
-                || "no".equals(normalized)) return false;
-        if ("true".equals(normalized) || "on".equals(normalized) || "yes".equals(normalized)) return true;
-        try {
-            return Double.parseDouble(normalized) != 0.0d;
-        } catch (NumberFormatException ignored) {
-            return false;
-        }
+        return CraftModbusActiveValue.isActive(value);
     }
 
     private BindingRequest parseBinding(int widgetIndex, String binding) {
