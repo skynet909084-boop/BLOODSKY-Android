@@ -21,7 +21,8 @@ class OriginalCraftSwitchDialogContractTest(unittest.TestCase):
         for label in ["Настройки", "Устройство: ", "Рег:", "Бит:",
                       "Сменить изображение", "Дополнительно: привязка Modbus"]:
             self.assertIn(label, compact)
-        self.assertIn("editSelectedWidget(true)", compact)
+        self.assertIn("dialogGuard.advanced();", compact)
+        self.assertIn("if (!dialogGuard.require()) return;", compact)
         self.assertIn("android.R.style.Theme_Material_Dialog_Alert", compact)
 
     def test_palette_skin_selector_and_safe_persistence(self):
