@@ -29,6 +29,70 @@ public final class CraftDynamicTextProperties {
         return String.format(Locale.ROOT, "#%08X", color);
     }
 
+    /** Avoid the standard white HMI card behind an original transparent label. */
+    public static boolean drawBackground(String type, int background) {
+        return background != 0 || !"Динамический текст".equals(type);
+    }
+
+    public static int sourceRegister(JSONObject fields) {
+        return OriginalCraftLampConnection.register(fields);
+    }
+
+    public static String sourceDeviceLabel(JSONObject fields) {
+        return OriginalCraftLampConnection.deviceLabel(fields);
+    }
+
+    /**
+     * Round-trip all sixteen source-backed states without changing the active
+     * TCP mapping, enabling a legacy endpoint, or losing future Craft keys.
+     */
+    public static JSONObject withSettings(JSONObject fields, int register,
+                                          String[] captions, int[] backgrounds,
+                                          boolean frame, boolean autoResize) throws Exception {
+        if (register < 0 || register > 65535)
+            throw new IllegalArgumentException("Регистр должен быть от 0 до 65535");
+        if (captions == null || captions.length != STATE_COUNT
+                || backgrounds == null || backgrounds.length != STATE_COUNT)
+            throw new IllegalArgumentException("Нужно 16 состояний и цветов");
+        for (int i = 0; i < STATE_COUNT; i++) {
+            if (captions[i] == null || captions[i].length() > 2000)
+                throw new IllegalArgumentException("Подпись состояния " + i + " не длиннее 2000 символов");
+        }
+        JSONObject result = fields == null ? new JSONObject() : new JSONObject(fields.toString());
+        Object sourceRaw = result.opt("craftConnectionInfo");
+        JSONObject source;
+        try {
+            source = sourceRaw instanceof JSONObject ? new JSONObject(sourceRaw.toString())
+                    : sourceRaw instanceof String ? new JSONObject((String) sourceRaw)
+                    : new JSONObject();
+        } catch (Exception malformed) {
+            throw new IllegalArgumentException("Повреждена привязка динамического текста Craft", malformed);
+        }
+        source.put("addressRegister", register);
+        result.put("craftConnectionInfo", sourceRaw instanceof String ? source.toString() : source);
+
+        Object rawOther = result.opt("craftOther");
+        JSONObject other;
+        try {
+            other = rawOther instanceof JSONObject ? new JSONObject(rawOther.toString())
+                    : rawOther instanceof String ? new JSONObject((String) rawOther)
+                    : new JSONObject();
+        } catch (Exception malformed) {
+            throw new IllegalArgumentException("Повреждены исходные свойства динамического текста", malformed);
+        }
+        JSONArray labels = new JSONArray();
+        JSONArray colors = new JSONArray();
+        for (int i = 0; i < STATE_COUNT; i++) {
+            labels.put(captions[i]);
+            colors.put(backgrounds[i]);
+        }
+        writeCraftFields(other, labels, colors);
+        other.put("enableFrameDynText", frame);
+        other.put("autoResizeText", autoResize);
+        result.put("craftOther", rawOther instanceof String ? other.toString() : other);
+        return result;
+    }
+
     public static void writeCraftFields(JSONObject other, JSONArray states, JSONArray colors) throws Exception {
         if (states == null || states.length() != STATE_COUNT
                 || colors == null || colors.length() != STATE_COUNT)

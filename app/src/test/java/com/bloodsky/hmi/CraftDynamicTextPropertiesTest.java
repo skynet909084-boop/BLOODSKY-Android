@@ -73,4 +73,78 @@ public class CraftDynamicTextPropertiesTest {
         assertFalse(restored.getBoolean("autoResizeText"));
         assertTrue(restored.getBoolean("showFrame"));
     }
+    @Test public void stateEditorKeepsOpaqueCraftKeysAndAllSixteenStateValues() throws Exception {
+        String[] captions = new String[16];
+        int[] colors = new int[16];
+        for (int i = 0; i < 16; i++) {
+            captions[i] = "State " + i;
+            colors[i] = i == 15 ? 0x00112233 : 0xff440000 + i;
+        }
+        JSONObject original = new JSONObject()
+                .put("connectionInfo", "")
+                .put("craftComponentId", 7)
+                .put("craftConnectionInfo", new JSONObject()
+                        .put("addressRegister", 3).put("vendorSource", 42))
+                .put("craftOther", new JSONObject()
+                        .put("vendorOther", "keep").put("sizeText", 17)
+                        .put("text0", "Original"));
+        JSONObject updated = CraftDynamicTextProperties.withSettings(
+                original, 100, captions, colors, false, true);
+        assertEquals(100, CraftDynamicTextProperties.sourceRegister(updated));
+        assertEquals(42, updated.getJSONObject("craftConnectionInfo").getInt("vendorSource"));
+        JSONObject other = updated.getJSONObject("craftOther");
+        assertEquals("keep", other.getString("vendorOther"));
+        assertEquals(17, other.getInt("sizeText"));
+        for (int i = 0; i < 16; i++) {
+            assertEquals(captions[i], other.getString("text" + i));
+            assertEquals(colors[i], other.getInt("colorBackground" + i));
+        }
+        assertFalse(other.getBoolean("enableFrameDynText"));
+        assertTrue(other.getBoolean("autoResizeText"));
+        assertEquals("", updated.getString("connectionInfo"));
+        assertEquals(3, CraftDynamicTextProperties.sourceRegister(original));
+        assertEquals("Original", original.getJSONObject("craftOther").getString("text0"));
+    }
+
+    @Test public void stateEditorPreservesCraftStringEncodedFragments() throws Exception {
+        JSONObject source = new JSONObject()
+                .put("craftOther", new JSONObject().put("sourceKey", 5).toString())
+                .put("craftConnectionInfo", new JSONObject()
+                        .put("addressRegister", 6).put("manufacturer", true).toString());
+                String[] captions = new String[16];
+        int[] colors = new int[16];
+        java.util.Arrays.fill(captions, "Running");
+        JSONObject updated = CraftDynamicTextProperties.withSettings(
+                source, 7, captions, colors, true, false);
+        assertTrue(updated.get("craftOther") instanceof String);
+        assertTrue(updated.get("craftConnectionInfo") instanceof String);
+        assertEquals(5, new JSONObject(updated.getString("craftOther")).getInt("sourceKey"));
+        assertTrue(new JSONObject(updated.getString("craftConnectionInfo"))
+                .getBoolean("manufacturer"));
+    }
+
+    @Test public void transparentStateLabelsDoNotGetGenericWhitePanels() {
+        assertFalse(CraftDynamicTextProperties.drawBackground("Динамический текст", 0));
+        assertTrue(CraftDynamicTextProperties.drawBackground("Динамический текст", 0xffeeeeee));
+        assertTrue(CraftDynamicTextProperties.drawBackground("Индикатор", 0));
+    }
+
+    @Test public void rejectsInvalidStateCountCaptionsOrSourceWithoutMutatingOriginal() throws Exception {
+        JSONObject original = new JSONObject().put("vendor", "safe");
+        String[] validText = new String[16];
+        java.util.Arrays.fill(validText, "OK");
+        int[] colors = new int[16];
+        org.junit.Assert.assertThrows(IllegalArgumentException.class,
+                () -> CraftDynamicTextProperties.withSettings(
+                        original, -1, validText, colors, true, false));
+        org.junit.Assert.assertThrows(IllegalArgumentException.class,
+                () -> CraftDynamicTextProperties.withSettings(
+                        original, 2, new String[15], colors, true, false));
+        validText[4] = null;
+        org.junit.Assert.assertThrows(IllegalArgumentException.class,
+                () -> CraftDynamicTextProperties.withSettings(
+                        original, 2, validText, colors, true, false));
+        assertEquals("safe", original.getString("vendor"));
+        assertFalse(original.has("craftOther"));
+    }
 }
