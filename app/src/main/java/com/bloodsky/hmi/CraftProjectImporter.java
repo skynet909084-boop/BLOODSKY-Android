@@ -604,7 +604,17 @@ public final class CraftProjectImporter {
     }
 
     private static boolean isSupportedComponent(int id) {
-        return id == 1 || id == 2 || id == 4 || id == 5 || id == 6 || id == 7 || id == 9 || id == 10 || id == 11 || id == 12 || id == 13 || id == 16 || id == 17 || id == 18 || id == 20 || id == 21 || id == 22 || id == 23 || id == 24 || id == 25 || id == 26 || id == 27 || id == 28;
+        // Keep this list aligned with the concrete factory mappings above.
+        // IDs 8, 14 and 15 are implemented as inert imported components,
+        // not unsupported placeholders. ID19 remains intentionally marked
+        // unsupported in its explicit write-capable gateway branch until
+        // the user approves a fresh transport/endpoint.
+        return id == 1 || id == 2 || id == 4 || id == 5 || id == 6
+                || id == 7 || id == 8 || id == 9 || id == 10 || id == 11
+                || id == 12 || id == 13 || id == 14 || id == 15 || id == 16
+                || id == 17 || id == 18 || id == 20 || id == 21 || id == 22
+                || id == 23 || id == 24 || id == 25 || id == 26 || id == 27
+                || id == 28;
     }
 
     private static String timerMode(int mode) {
