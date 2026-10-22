@@ -5953,7 +5953,8 @@ private String archiveProjectKey() {
     }
 
     private boolean selectIndicatorImage(Widget widget, boolean active, boolean user, String value) {
-        if (!widgets.contains(widget) || !OriginalIndicator.supports(widget.type)) return false;
+        if (!new CraftWidgetDialogGuard(widget).require()
+                || !OriginalIndicator.supports(widget.type)) return false;
         JSONObject old = widget.extraFields;
         JSONObject oldProject = projectExtraFields;
         try {
@@ -5973,12 +5974,15 @@ private String archiveProjectKey() {
     }
 
     private void showIndicatorImages(Widget widget) {
+        final CraftWidgetDialogGuard imageGuard = new CraftWidgetDialogGuard(widget);
+        if (!imageGuard.require() || !OriginalIndicator.supports(widget.type)) return;
         OriginalIndicatorImages.show(this, new OriginalIndicatorImages.Host() {
             public Bitmap preview(boolean active) { return originalIndicatorBitmap(widget, active); }
             public boolean select(boolean active, boolean user, String value) {
-                return selectIndicatorImage(widget, active, user, value);
+                return imageGuard.require() && selectIndicatorImage(widget, active, user, value);
             }
             public void chooseCustom(boolean active, Runnable changed) {
+                if (!imageGuard.require()) return;
                 LinearLayout form = new LinearLayout(MainActivity.this); form.setOrientation(LinearLayout.VERTICAL);
                 EditText path = propertyField("", InputType.TYPE_CLASS_TEXT);
                 path.setHint("Файл / content URI"); path.setContentDescription("Своё изображение индикатора");
@@ -5986,6 +5990,7 @@ private String archiveProjectKey() {
                 AlertDialog custom = new AlertDialog.Builder(MainActivity.this).setTitle("Своё изображение")
                         .setView(form).setNegativeButton("Отмена", null).setPositiveButton("Применить", null).create();
                 custom.setOnShowListener(shown -> custom.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                    if (!imageGuard.require()) return;
                     String selected = path.getText().toString().trim();
                     imageCache.remove(selected);
                     if (selected.isEmpty() || loadCachedBitmap(selected) == null) {
