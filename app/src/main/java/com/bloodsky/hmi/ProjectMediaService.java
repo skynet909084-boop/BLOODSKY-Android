@@ -94,9 +94,31 @@ public class ProjectMediaService {
     }
 
     public static File getProjectMediaDir(File filesDir, String projectJson) {
+        if (filesDir == null) throw new IllegalArgumentException("Missing app files directory");
         File mediaDir = resolveProjectMediaDir(filesDir, projectJson);
-        if (!mediaDir.exists()) mediaDir.mkdirs();
-        return mediaDir;
+        try {
+            File appRoot = filesDir.getCanonicalFile();
+            File projectsPath = new File(appRoot, "projects").getAbsoluteFile();
+            File projectsRoot = projectsPath.getCanonicalFile();
+            File projectPath = new File(projectsRoot, getOrGenerateProjectId(projectJson)).getAbsoluteFile();
+            File projectRoot = projectPath.getCanonicalFile();
+            File resolved = mediaDir.getCanonicalFile();
+            // Reject symbolic-link escapes and unexpected path aliases before any file is written.
+            if (!projectsRoot.equals(projectsPath)
+                    || !projectsRoot.getPath().startsWith(appRoot.getPath() + File.separator)
+                    || !projectRoot.equals(projectPath)
+                    || !projectRoot.getPath().startsWith(projectsRoot.getPath() + File.separator)
+                    || !resolved.equals(mediaDir.getAbsoluteFile())
+                    || !resolved.getPath().startsWith(projectRoot.getPath() + File.separator)) {
+                throw new IllegalStateException("Unsafe project media directory");
+            }
+            if (!resolved.isDirectory() && (!resolved.mkdirs() || !resolved.isDirectory())) {
+                throw new IllegalStateException("Cannot create project media directory");
+            }
+            return resolved;
+        } catch (IOException invalidPath) {
+            throw new IllegalStateException("Cannot resolve project media directory", invalidPath);
+        }
     }
 
     /** Remove all private media generations belonging to a project after catalog deletion. */
