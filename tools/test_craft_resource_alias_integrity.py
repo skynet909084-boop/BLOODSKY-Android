@@ -131,6 +131,8 @@ class CraftResourceAliasIntegrityTests(unittest.TestCase):
         self.assertLess(testing, building)
         self.assertIn("build-reports/kascada-original-alias-integrity.md", workflow)
         self.assertIn("build-reports/*.md", workflow)
+        # Old PR heads must not starve the latest APK build in a long patch batch.
+        self.assertIn("cancel-in-progress: true", workflow)
 
     def test_truncated_catalogue_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "Incomplete original aliases"):
