@@ -2082,12 +2082,11 @@ public class MainActivity extends Activity {
                                 }
                             }
                         } else if ("Голосовое сообщение".equals(w.type)) {
-                            int voiceIdx = 0;
-                            if (entry.getValue() != null) {
-                                try { voiceIdx = (int) Math.round(Double.parseDouble(entry.getValue())); } catch (Exception ignored) {}
-                            }
-                            if (voiceIdx < 0 || voiceIdx >= 16) voiceIdx = 0;
-                            if (voiceIdx != w.lastVoiceState) {
+                            int voiceIdx = CraftHmiStateSignal.decode(entry.getValue());
+                            // An invalid or lost signal is not state zero, and
+                            // must never enqueue speech. Keep the last valid
+                            // state so a reconnect does not replay the same message.
+                            if (voiceIdx >= 0 && voiceIdx != w.lastVoiceState) {
                                 w.lastVoiceState = voiceIdx;
                                 speakVoiceAnnouncement(w.voiceMessages[voiceIdx]);
                             }
@@ -11729,17 +11728,22 @@ public class MainActivity extends Activity {
                     canvas.drawText(value, w.x + w.w / 2f, w.y + w.h / 2f + dp(5), paint);
                     paint.setTextAlign(previousAlign); paint.setTypeface(previousTypeface);
                 } else if ("Динамический текст".equals(w.type)) {
-                    int stateIdx = 0;
-                    if (liveValues.containsKey(i)) {
-                        try { stateIdx = (int) Math.round(Double.parseDouble(liveValues.get(i))); } catch (Exception ignored) {}
-                    }
-                    if (stateIdx < 0 || stateIdx >= 16) stateIdx = 0;
-                    String stateText = w.dynTextStates[stateIdx];
-                    if (stateText == null || stateText.isEmpty()) stateText = w.text + " [" + stateIdx + "]";
-                    int bgColor = w.dynTextColors[stateIdx];
-                    if (bgColor != 0) {
-                        paint.setColor(bgColor);
-                        canvas.drawRoundRect(rect, dp(6), dp(6), paint);
+                    int stateIdx = operatorMode
+                            ? CraftHmiStateSignal.decode(liveValues.get(i)) : 0;
+                    // Editor preview defaults to state zero; operator mode
+                    // shows an unavailable status rather than a false state.
+                    String stateText;
+                    if (stateIdx < 0) {
+                        stateText = "Нет связи";
+                    } else {
+                        stateText = w.dynTextStates[stateIdx];
+                        if (stateText == null || stateText.isEmpty())
+                            stateText = w.text + " [" + stateIdx + "]";
+                        int bgColor = w.dynTextColors[stateIdx];
+                        if (bgColor != 0) {
+                            paint.setColor(bgColor);
+                            canvas.drawRoundRect(rect, dp(6), dp(6), paint);
+                        }
                     }
                     paint.setColor(w.textColor);
                     if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(20)) / Math.max(4f, stateText.length() * 0.58f))));
@@ -12095,12 +12099,11 @@ public class MainActivity extends Activity {
                     paint.setTextSize(dp(9));
                     canvas.drawText(w.extraFields.optString("craftEmailTo", ""), w.x + dp(12), w.y + w.h - dp(10), paint);
                 } else if ("Голосовое сообщение".equals(w.type)) {
-                    int voiceIdx = 0;
-                    if (liveValues.containsKey(i)) {
-                        try { voiceIdx = (int) Math.round(Double.parseDouble(liveValues.get(i))); } catch (Exception ignored) {}
-                    }
-                    if (voiceIdx < 0 || voiceIdx >= 16) voiceIdx = 0;
-                    String voiceLabel = "🗣 " + w.text + " [" + voiceIdx + "]: " + w.voiceMessages[voiceIdx];
+                    int voiceIdx = operatorMode
+                            ? CraftHmiStateSignal.decode(liveValues.get(i)) : 0;
+                    String voiceLabel = voiceIdx < 0
+                            ? "🗣 " + w.text + ": Нет связи"
+                            : "🗣 " + w.text + " [" + voiceIdx + "]: " + w.voiceMessages[voiceIdx];
                     paint.setColor(w.textColor);
                     if (w.autoResizeText) paint.setTextSize(Math.min(paint.getTextSize(), Math.max(dp(8), (w.w - dp(16)) / Math.max(4f, voiceLabel.length() * 0.58f))));
                     canvas.drawText(voiceLabel, w.x + dp(8), w.y + w.h / 2 + dp(5), paint);
