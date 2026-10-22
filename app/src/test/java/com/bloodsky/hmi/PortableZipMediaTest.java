@@ -165,6 +165,66 @@ public class PortableZipMediaTest {
         assertArrayEquals(gifBytes, importedMedia.get(path.substring("media/".length())));
     }
 
+    @Test public void newlySelectedCraftMediaIsWrittenToProAndBundled() throws Exception {
+        JSONObject source = new JSONObject()
+                .put("TableNameProject", new JSONObject().put("name", "New media")
+                        .put("countScreen", 1))
+                .put("TableConnections", new JSONArray());
+        JSONArray rows = new JSONArray();
+        rows.put(craftMediaRow(16, new JSONObject().put("numScreen", 1).put("pathGif", "")));
+        rows.put(craftMediaRow(17, new JSONObject().put("numScreen", 1).put("typeCommand", 0)));
+        rows.put(craftMediaRow(21, new JSONObject().put("numScreen", 1)));
+        source.put("TableComponent", rows);
+
+        final String[] saved = new String[1];
+        ProjectMediaService.importProjectBundle(rootDir,
+                new ByteArrayInputStream(createCraftProjectZip(source.toString(), "placeholder.bin",
+                        new byte[0])), json -> { saved[0] = json; return true; });
+        JSONObject edited = new JSONObject(saved[0]);
+        JSONArray widgets = edited.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets");
+        String[] selectedPaths = new String[3];
+        byte[][] bytes = {
+                "new-gif".getBytes(StandardCharsets.UTF_8),
+                "new-state-image".getBytes(StandardCharsets.UTF_8),
+                "new-sound".getBytes(StandardCharsets.UTF_8)
+        };
+        String[] names = {"animation.gif", "state.png", "alarm.wav"};
+        for (int i = 0; i < names.length; i++) {
+            selectedPaths[i] = ProjectMediaService.storeSelectedMedia(rootDir, edited.toString(),
+                    names[i], new ByteArrayInputStream(bytes[i]));
+        }
+        widgets.getJSONObject(0).put("craftGifPath", selectedPaths[0]);
+        widgets.getJSONObject(1).getJSONArray("imagePathStates").put(0, selectedPaths[1]);
+        widgets.getJSONObject(2).put("craftSoundPaths", new JSONArray().put(selectedPaths[2]));
+
+        String editedJson = edited.toString();
+        ByteArrayOutputStream exported = new ByteArrayOutputStream();
+        ProjectMediaService.exportCraftProjectZipBundle(exported, editedJson, path ->
+                java.nio.file.Files.readAllBytes(ProjectMediaService.resolveMediaFile(
+                        rootDir, editedJson, path).toPath()));
+        Map<String, byte[]> bundled = new HashMap<>();
+        JSONObject reopened = new JSONObject(MainActivity.importProjectFromZip(
+                new ByteArrayInputStream(exported.toByteArray()), bundled));
+        JSONArray exportedRows = reopened.getJSONObject("craftSource").getJSONArray("TableComponent");
+        assertEquals(selectedPaths[0], exportedRows.getJSONObject(0)
+                .getJSONObject("jsTableComponent_other").getString("pathGif"));
+        assertEquals(selectedPaths[1], exportedRows.getJSONObject(1)
+                .getJSONObject("jsTableComponent_other").getString("pathPic_0"));
+        assertEquals(selectedPaths[2], exportedRows.getJSONObject(2)
+                .getJSONObject("jsTableComponent_other").getString("pathSound_0"));
+        for (int i = 0; i < selectedPaths.length; i++) {
+            String entry = selectedPaths[i];
+            assertTrue("Craft ZIP must include " + entry, bundled.containsKey(entry));
+            assertArrayEquals(bytes[i], bundled.get(entry));
+        }
+    }
+
+    private static JSONObject craftMediaRow(int componentId, JSONObject other) throws Exception {
+        return new JSONObject().put("componentId", componentId).put("text", "Media " + componentId)
+                .put("x", "1").put("y", "2").put("width", "40").put("height", "40")
+                .put("jsTableComponent_other", other);
+    }
+
     @Test
     public void testTwoCyrillicOrUnnamedProjectsIsolated() throws Exception {
         JSONObject projA = createTestProjectJson(null, "Проект 1", null, null, null);

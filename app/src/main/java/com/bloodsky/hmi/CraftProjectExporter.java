@@ -185,6 +185,7 @@ public final class CraftProjectExporter {
                             if (indicator.has(key)) merged.put(key, indicator.get(key));
                         }
                     }
+                    writeEditedMediaPaths(componentId, widget, merged);
                     Object raw = source.opt("jsTableComponent_other");
                     output.put("jsTableComponent_other", raw instanceof String ? merged.toString() : merged);
                 }
@@ -200,6 +201,31 @@ public final class CraftProjectExporter {
         if (meta.has("jsTableNameProject_screenBackground"))
             meta.put("jsTableNameProject_screenBackground", backgrounds);
         return result.toString();
+    }
+
+    /** Persist newly selected assets into Craft's own media fields before building its ZIP. */
+    private static void writeEditedMediaPaths(int componentId, JSONObject widget,
+                                               JSONObject other) throws Exception {
+        if (componentId == 16) {
+            putNonEmptyPath(other, "pathGif", widget.optString("craftGifPath", ""));
+        } else if (componentId == 17) {
+            JSONArray images = widget.optJSONArray("imagePathStates");
+            if (images == null) return;
+            for (int i = 0; i < 16; i++)
+                putNonEmptyPath(other, "pathPic_" + i, images.optString(i, ""));
+        } else if (componentId == 21) {
+            JSONArray sounds = widget.optJSONArray("craftSoundPaths");
+            if (sounds == null) return;
+            for (int i = 0; i < CraftSoundBank.CHANNELS; i++)
+                putNonEmptyPath(other, "pathSound_" + i, sounds.optString(i, ""));
+        }
+    }
+
+    private static void putNonEmptyPath(JSONObject other, String key, String path) throws Exception {
+        String normalized = path == null ? "" : path.trim().replace('\\', '/');
+        // An empty imported path can also mean its referenced asset was unavailable.
+        // Keep that opaque source value; only an explicitly selected non-empty path replaces it.
+        if (!normalized.isEmpty() && !"0".equals(normalized)) other.put(key, normalized);
     }
 
     private static void writeFbdConnections(JSONArray screens, JSONArray importedScreens,
