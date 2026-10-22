@@ -128,6 +128,14 @@ class CraftEditorVisualContractTests(unittest.TestCase):
         self.assertIn("float height = editor.getHeight()", source)
         self.assertIn("WidgetClipboard.place(", source)
 
+    def test_operator_mode_blocks_copy_and_delete(self):
+        copy = self.source.split("private boolean copySelectedWidgetToClipboard()", 1)[1].split(
+            "private ", 1)[0]
+        delete = self.source.split("private void deleteSelectedWidget()", 1)[1].split(
+            "public static JSONObject widgetToJson(", 1)[0]
+        self.assertIn("if (operatorMode) return false;", copy)
+        self.assertIn("if (operatorMode) return;", delete)
+
     def test_runtime_never_opens_editor_context_actions(self):
         menu = self.source.split("private void showStandardWidgetContextMenu()", 1)[1].split(
             "private void ", 1)[0]
