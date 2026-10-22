@@ -532,6 +532,42 @@ class CraftEditorVisualContractTests(unittest.TestCase):
         self.assertIn("if (!imageGuard.require()) return;", images)
         self.assertIn("R.drawable.kc_align_open_menu", self.source)
 
+    def test_screen_navigation_is_durable_and_rolls_back_before_runtime_cleanup(self):
+        navigate = self.source.split("private void activateScreen(int index)", 1)[1].split(
+            "private void previousScreen()", 1)[0]
+        for required in (
+            "nestedMacroEdit != null || screens.isEmpty()",
+            "index < 0 || index >= screens.size()",
+            "final int previousScreenIndex = currentScreenIndex",
+            "final ArrayList<Widget> previousScreenWidgets",
+            "final ArrayList<Widget> previousCanvasWidgets",
+            "final JSONObject previousProjectFields",
+            "saveActiveScreen()",
+            "currentScreenIndex = index",
+            "if (!persistProjectNow(true))",
+            "if (!committed)",
+            "currentScreenIndex = previousScreenIndex",
+            "previousScreen.widgets.addAll(previousScreenWidgets)",
+            "widgets.addAll(previousCanvasWidgets)",
+            "projectExtraFields = previousProjectFields",
+            "if (!committed) return;",
+            "stopScreenAlarms(previousScreenIndex, previousCanvasWidgets)",
+            "releaseVoiceRecognizer()",
+            "craftWebViewWindow.close()",
+            "closeCraftRtspPlayer()",
+            "fbdWireMode = false",
+            "wireSource = -1",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, navigate)
+        self.assertLess(navigate.index("if (!persistProjectNow(true))"),
+                        navigate.index("releaseVoiceRecognizer()"))
+        self.assertLess(navigate.index("if (!committed) return;"),
+                        navigate.index("showEditor()"))
+        alarm = self.source.split("private void stopScreenAlarms(", 1)[1].split(
+            "private void ", 1)[0]
+        self.assertIn("stopCraftAlarmAlert(screenIndex + \":\" + index)", alarm)
+
     def test_main_settings_reuse_existing_specialized_dialogs(self):
         editor = self.source.split("private void editSelectedWidget(boolean advanced)", 1)[1]
         for dialog in ("CraftListSettingsDialog", "CraftProgressBarSettingsDialog",
