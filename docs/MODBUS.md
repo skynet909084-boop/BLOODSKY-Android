@@ -5,34 +5,31 @@
 | Layer | Status | Evidence |
 |---|---|---|
 | Modbus TCP master | **Implemented** | `ModbusTcpClient`, unit fixtures |
-| RTU framing helpers | **Implemented** | `ModbusRtu` on main |
-| RTU stream client | **Porting** | `ModbusRtuClient` from `feat/bluetooth-spp-modbus-rtu-20261022` |
-| USB serial (FTDI/CP210x/…) | **Porting** | `UsbSerialConnector` + mik3y usb-serial-for-android 3.11.0 |
-| Bluetooth Classic SPP | **Porting** | `BluetoothModbusConnection` / `BluetoothRtuBinding` |
-| Hardware / physical device | **Not verified** | Explicit release gate |
+| RTU framing helpers | **Implemented** | `ModbusRtu` |
+| RTU stream client | **Implemented (code)** | `ModbusRtuClient` + unit tests |
+| USB serial | **Implemented (code)** | `UsbSerialConnector` / Session / Connection + mik3y 3.11.0 |
+| Bluetooth Classic SPP | **Implemented (code)** | `BluetoothModbusConnection` / `BluetoothRtuBinding` |
+| Operator polling for usb:// and bt:// | **Not wired** | Explicit next step |
+| Hardware / physical device | **Not verified** | Release gate |
 
 Do **not** claim production RTU support until a physical adapter/device acceptance pass is recorded.
 
-## Binding URIs (explicit, project-stored)
+## Binding URIs
 
-- `tcp://host:port/...` — existing TCP path
-- `usb://<unit>/<register>` — USB RTU after user selects adapter (`UsbSerialBinding`)
+- `usb://<unit>/<register>` — after user selects adapter (`UsbSerialBinding`)
 - `bt://AA:BB:CC:DD:EE:FF/<unit>/<register>` — paired SPP only (`BluetoothRtuBinding`)
+- 3xxxx → FC04, 4xxxx → FC03
 
-3xxxx/4xxxx register prefixes map to FC04/FC03 as in Craft-style addressing.
+## Permissions
 
-## Permissions / features
-
-- `BLUETOOTH` / `BLUETOOTH_ADMIN` (≤ API 30), `BLUETOOTH_CONNECT`
-- `android.hardware.usb.host` optional
-- `android.hardware.bluetooth` optional
+- Bluetooth Classic + `BLUETOOTH_CONNECT`
+- USB host optional feature
 
 ## Remaining gates
 
-1. Finish landing `ModbusRtuClient`, `UsbSerialSession`, `UsbSerialConnector`, `UsbSerialModbusConnection`, `BluetoothModbusConnection` on this branch
-2. Wire operator polling for `usb://` and `bt://` (off UI thread)
-3. Physical USB + SPP acceptance (no emulator)
-4. Inter-frame timing on real UARTs
-5. Reconnect after detach/drop
+1. Wire operator polling for `usb://` / `bt://` (off UI thread)
+2. Physical USB + SPP acceptance (no emulator)
+3. Inter-frame timing on real UARTs
+4. Reconnect after detach/drop
 
-Source of the serial stack: branch `feat/bluetooth-spp-modbus-rtu-20261022` (already implemented there; not yet fully on main).
+Source: ported from `feat/bluetooth-spp-modbus-rtu-20261022` onto main line.
