@@ -16,8 +16,12 @@ public final class FbdCraftNamedVariableStore {
         String scope = namespace == null ? "" : namespace.trim();
         if (scope.length() > 128 || scope.indexOf('\u0000') >= 0) return null;
         String variable = name.trim();
-        return scope.isEmpty() ? type + ":" + variable
-                : type + ":" + scope.length() + ":" + scope + ":" + variable;
+        // Always encode an explicit scope length, including empty/global scope.
+        // Previously the global key was "type:name", so a global variable
+        // named "3:abc:state" collided with the scoped key for namespace
+        // "abc" and variable "state". An explicit zero-length segment makes
+        // the two encodings disjoint without changing scoped keys.
+        return type + ":" + scope.length() + ":" + scope + ":" + variable;
     }
 
     public static double read(String name, int type) {
