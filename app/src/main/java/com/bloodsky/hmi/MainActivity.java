@@ -4959,7 +4959,9 @@ public class MainActivity extends Activity {
     }
 
     private void showStandardWidgetContextMenu() {
-        if (editor == null || editor.selected < 0 || editor.selected >= widgets.size()) return;
+        // The editor context menu must never be usable in operator/runtime mode.
+        if (operatorMode || editor == null || editor.selected < 0
+                || editor.selected >= widgets.size()) return;
 
         Widget selectedWidget = widgets.get(editor.selected);
         String titleText = selectedWidget.text == null || selectedWidget.text.trim().isEmpty()
