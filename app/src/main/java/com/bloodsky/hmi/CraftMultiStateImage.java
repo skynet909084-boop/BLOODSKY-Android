@@ -31,9 +31,11 @@ public final class CraftMultiStateImage {
         if (liveValue == null) return -1;
         try {
             double parsed = Double.parseDouble(liveValue);
-            if (Double.isNaN(parsed) || Double.isInfinite(parsed)
-                    || parsed < Integer.MIN_VALUE || parsed > Integer.MAX_VALUE) return -1;
-            return selectIndex(typeCommand, (int) Math.round(parsed));
+            if (!Double.isFinite(parsed) || parsed < Integer.MIN_VALUE
+                    || parsed > Integer.MAX_VALUE || parsed != Math.rint(parsed)) return -1;
+            // The source is a discrete register value, not a floating point
+            // measurement. Rounding could display state zero on an error.
+            return selectIndex(typeCommand, (int) parsed);
         } catch (NumberFormatException invalidSignal) {
             return -1;
         }

@@ -36,6 +36,22 @@ public class CraftHmiStateSignalTest {
         assertEquals(-1, CraftHmiStateSignal.decode("0|1"));
     }
 
+    @Test public void bitListWordSignalsPreserveValidZeroAndAllSixteenBits() {
+        assertEquals(0, CraftHmiStateSignal.decodeWord("0"));
+        assertEquals(1, CraftHmiStateSignal.decodeWord("1"));
+        assertEquals(32768, CraftHmiStateSignal.decodeWord("32768"));
+        assertEquals(65535, CraftHmiStateSignal.decodeWord(" 65535 "));
+    }
+
+    @Test public void invalidOrMissingBitListMasksAreNotFalseAllOffStates() {
+        for (String value : new String[]{"", " ", "ERR: timeout", "CFG: binding",
+                "NaN", "Infinity", "-1", "65536", "1.2", "0|1", "99999999999999999999"}) {
+            assertEquals("Must be unavailable: " + value, -1,
+                    CraftHmiStateSignal.decodeWord(value));
+        }
+        assertEquals(-1, CraftHmiStateSignal.decodeWord(null));
+    }
+
     @Test public void zeroIsStillAValidAndDistinctCraftState() {
         assertEquals(0, CraftHmiStateSignal.decode("0"));
         assertEquals(0, CraftHmiStateSignal.decode("0.0"));

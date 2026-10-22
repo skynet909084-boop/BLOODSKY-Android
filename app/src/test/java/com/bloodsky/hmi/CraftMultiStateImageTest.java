@@ -34,6 +34,18 @@ public class CraftMultiStateImageTest {
         assertEquals(-1, CraftMultiStateImage.selectLiveValue(0, "2147483648"));
     }
 
+    @Test public void fractionalPollValuesNeverSelectAnUnrelatedPicture() {
+        for (int mode : new int[]{0, 1}) {
+            assertEquals(-1, CraftMultiStateImage.selectLiveValue(mode, "0.49"));
+            assertEquals(-1, CraftMultiStateImage.selectLiveValue(mode, "-0.49"));
+            assertEquals(-1, CraftMultiStateImage.selectLiveValue(mode, "1.5"));
+            assertEquals(-1, CraftMultiStateImage.selectLiveValue(mode, "15.9"));
+            assertEquals(-1, CraftMultiStateImage.selectLiveValue(mode, "NaN"));
+        }
+        assertEquals(1, CraftMultiStateImage.selectLiveValue(0, "1.0"));
+        assertEquals(2, CraftMultiStateImage.selectLiveValue(1, "4.0"));
+    }
+
     @Test public void validRuntimeZeroRemainsARealImageState() {
         assertEquals(0, CraftMultiStateImage.selectLiveValue(0, "0"));
         assertEquals(0, CraftMultiStateImage.selectLiveValue(1, "1"));

@@ -13,6 +13,22 @@ public final class CraftHmiStateSignal {
      * @return 0..15 for a valid integer-valued signal or -1 if unavailable.
      *         Never round fractional or malformed values into a valid state.
      */
+    /**
+     * Parse a full UINT16 Modbus register mask for bit-list widgets. A malformed
+     * live value must not become a fabricated all-off 0x0000 mask.
+     *
+     * @return 0..65535 or -1 when the live register is unavailable
+     */
+    public static int decodeWord(String raw) {
+        if (raw == null) return -1;
+        try {
+            long value = Long.parseLong(raw.trim());
+            return value >= 0 && value <= 0xffffL ? (int) value : -1;
+        } catch (NumberFormatException unavailable) {
+            return -1;
+        }
+    }
+
     public static int decode(String raw) {
         if (raw == null) return -1;
         String text = raw.trim();
