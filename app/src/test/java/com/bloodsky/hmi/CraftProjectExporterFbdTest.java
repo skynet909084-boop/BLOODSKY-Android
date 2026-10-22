@@ -79,4 +79,60 @@ public class CraftProjectExporterFbdTest {
         assertEquals(1, restored.getJSONArray("widgets").length());
         assertEquals(0, restored.getJSONArray("connections").length());
     }
+    @Test public void multiScreenCraftProjectRoundTripsFbdWiresTimerEditsAndOpaqueTables() throws Exception {
+        JSONObject and = new JSONObject().put("componentId", 103).put("text", "AND")
+                .put("x", 10).put("y", 20).put("width", 80).put("height", 40)
+                .put("jsTableComponent_other", new JSONObject().put("numScreen", 1)
+                        .put("saveKey", 10).put("keyOut", 20).put("numOnIn", 1)
+                        .put("vendorBlock", "and-data"));
+        JSONObject or = new JSONObject().put("componentId", 104).put("text", "OR")
+                .put("x", 100).put("y", 20).put("width", 80).put("height", 40)
+                .put("jsTableComponent_other", new JSONObject().put("numScreen", 1)
+                        .put("saveKey", 20).put("keyOut", -1).put("numOnIn", -1)
+                        .put("vendorBlock", "or-data"));
+        JSONObject timer = new JSONObject().put("componentId", 115).put("text", "Timer")
+                .put("x", 10).put("y", 20).put("width", 100).put("height", 60)
+                .put("jsTableComponent_other", new JSONObject().put("numScreen", 2)
+                        .put("saveKey", 30).put("keyOut", -1).put("numOnIn", -1)
+                        .put("type", 1).put("typeTime", 3).put("vendorTimer", "keep"));
+        JSONObject source = new JSONObject()
+                .put("TableNameProject", new JSONObject().put("name", "FBD round trip")
+                        .put("countScreen", 2).put("vendorProjectField", 17))
+                .put("TableComponent", new JSONArray().put(and).put(or).put(timer))
+                .put("TableConnections", new JSONArray().put(new JSONObject()
+                        .put("vendorConnection", "keep")));
+
+        JSONObject imported = new JSONObject(CraftProjectImporter.convert(source.toString()));
+        JSONArray screens = imported.getJSONArray("screens");
+        assertEquals(2, screens.length());
+        JSONArray firstEdges = screens.getJSONObject(0).getJSONArray("connections");
+        assertEquals(1, firstEdges.length());
+        firstEdges.getJSONObject(0).put("targetPin", "IN2");
+        JSONObject timerWidget = screens.getJSONObject(1).getJSONArray("widgets").getJSONObject(0);
+        timerWidget.put("craftTimerMode", "TOF").put("craftTimerUnit", "SEK");
+
+        JSONObject exported = new JSONObject(CraftProjectExporter.export(imported.toString()));
+        JSONArray rows = exported.getJSONArray("TableComponent");
+        assertEquals(3, rows.length());
+        JSONObject andOther = rows.getJSONObject(0).getJSONObject("jsTableComponent_other");
+        JSONObject timerOther = rows.getJSONObject(2).getJSONObject("jsTableComponent_other");
+        assertEquals(20, andOther.getInt("keyOut"));
+        assertEquals(2, andOther.getInt("numOnIn"));
+        assertEquals("and-data", andOther.getString("vendorBlock"));
+        assertEquals(2, timerOther.getInt("numScreen"));
+        assertEquals(2, timerOther.getInt("type"));
+        assertEquals(2, timerOther.getInt("typeTime"));
+        assertEquals("keep", timerOther.getString("vendorTimer"));
+        assertEquals("keep", exported.getJSONArray("TableConnections").getJSONObject(0)
+                .getString("vendorConnection"));
+
+        JSONObject restored = new JSONObject(CraftProjectImporter.convert(exported.toString()));
+        assertEquals(2, restored.getJSONArray("screens").length());
+        assertEquals("IN2", restored.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("connections").getJSONObject(0).getString("targetPin"));
+        JSONObject restoredTimer = restored.getJSONArray("screens").getJSONObject(1)
+                .getJSONArray("widgets").getJSONObject(0);
+        assertEquals("TOF", restoredTimer.getString("craftTimerMode"));
+        assertEquals("SEK", restoredTimer.getString("craftTimerUnit"));
+    }
 }
