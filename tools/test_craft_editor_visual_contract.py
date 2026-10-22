@@ -371,6 +371,26 @@ class CraftEditorVisualContractTests(unittest.TestCase):
         self.assertIn("screen.name = previousName", rename)
         self.assertIn("Имя экрана не может быть пустым", rename)
 
+    def test_fbd_block_output_inversion_restores_metadata_after_save_or_exception(self):
+        menu = self.source.split("private void showFbdBlockContextMenu(", 1)[1].split(
+            "private void showStandardWidgetContextMenu()", 1)[0]
+        branch = menu.split('} else if ("Инвертировать выход BOOL".equals(label)) {', 1)[1].split(
+            '} else if ("Отсоединить выход".equals(label)) {', 1)[0]
+        for required in (
+            "new JSONObject(widget.extraFields.toString())",
+            "toggleFbdBlockOutputInversion(widget)",
+            "if (persistProjectNow(true))",
+            "committed = true",
+            "} catch (Exception error)",
+            "} finally {",
+            "if (!committed)",
+            "widget.extraFields = before",
+            "projectExtraFields = beforeProjectFields",
+            "saveActiveScreen()",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, branch)
+
     def test_main_settings_reuse_existing_specialized_dialogs(self):
         editor = self.source.split("private void editSelectedWidget(boolean advanced)", 1)[1]
         for dialog in ("CraftListSettingsDialog", "CraftProgressBarSettingsDialog",
