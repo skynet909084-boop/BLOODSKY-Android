@@ -588,6 +588,7 @@ Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39
 ## Original project fixture batch — 23 Oct 2026
 
 - Added privacy-scrubbed, source-derived `home2` and `дом 2025` JSON fixtures to the project ZIP regression catalog. Archive and normalized-fixture checksums, source record counts, sanitization rules and precise acceptance limits are recorded in `PROJECT_SOURCE_FIXTURE_AUDIT_20261023.md`.
+- Extended the same source-driven import checks to all existing FBD rows: 0/5/76/5/200 nodes across `home`/`gitH`/`пож`/`home2`/`дом 2025`, with typed Craft FBD widgets and valid graph edges for each project containing FBD nodes. These are import/topology checks, not FBD execution or visual acceptance.
 - Extended the production ZIP import → atomic edit/save/reopen → export → re-import regression to five projects. The two new cases verify 16 device slots, 3/2 connection rows, 46/122 legacy bindings retained but inactive, declared device counts, screen/component totals, exact opaque `craftSource` preservation and fixture media bytes.
 - Original binary media, live network endpoints and `.mcr` sidecars are not included. These checks prove structural archive handling only; original-media mapping, active runtime bindings, visual parity and physical-device acceptance remain open.
 - Local validation: `prepare_craft_resources.py` passed; Python archive/tool suite passed (271 tests); fixture privacy scan and `git diff --check` passed. Exact-head Android unit tests/debug APK are pending for this batch.
