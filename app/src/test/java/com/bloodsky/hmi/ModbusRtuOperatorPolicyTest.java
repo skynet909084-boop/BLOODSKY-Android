@@ -29,4 +29,21 @@ public class ModbusRtuOperatorPolicyTest {
         assertFalse(ModbusRtuOperatorPolicy.shouldPrompt(true, false, false));
         assertFalse(ModbusRtuOperatorPolicy.shouldPrompt(true, true, true));
     }
+    @Test public void configuredGatewayRtuEndpointsJoinTheSessionConsentPrompt() {
+        assertTrue(ModbusRtuOperatorPolicy.hasGatewayRtuBinding(true,
+                "tcp://host:502/1/40001", "bt://AA:BB:CC:DD:EE:FF/1/40002", ""));
+        assertTrue(ModbusRtuOperatorPolicy.hasGatewayRtuBinding(true,
+                "", "", "usb://serial/1/40003"));
+        assertFalse(ModbusRtuOperatorPolicy.hasGatewayRtuBinding(false,
+                "bt://AA:BB:CC:DD:EE:FF/1/40001", "", ""));
+        assertFalse(ModbusRtuOperatorPolicy.hasGatewayRtuBinding(true,
+                "tcp://host:502/1/40001", "system://register/10", ""));
+    }
+
+    @Test public void bluetoothGatewayNeedsOperatorModeSessionConsentAndAndroidPermission() {
+        assertFalse(ModbusRtuOperatorPolicy.mayAccessBluetoothGateway(false, true, true));
+        assertFalse(ModbusRtuOperatorPolicy.mayAccessBluetoothGateway(true, false, true));
+        assertFalse(ModbusRtuOperatorPolicy.mayAccessBluetoothGateway(true, true, false));
+        assertTrue(ModbusRtuOperatorPolicy.mayAccessBluetoothGateway(true, true, true));
+    }
 }
