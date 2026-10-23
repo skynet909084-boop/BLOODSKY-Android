@@ -536,7 +536,7 @@ public class CraftSourceProjectFbdRuntimeTest {
 
     private static int[] findSourceTogglePath(List<MainActivity.Widget> widgets,
                                              List<MainActivity.FbdConnection> edges,
-                                             int inputRegister, int outputRegister) {
+                                             int inputRegister, int outputRegister) throws Exception {
         for (int trigger = 0; trigger < widgets.size(); trigger++) {
             MainActivity.Widget triggerWidget = widgets.get(trigger);
             if (triggerWidget.extraFields.optInt("craftComponentId", -1) != 114
