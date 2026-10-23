@@ -320,6 +320,67 @@ public class CraftSourceProjectFbdRuntimeTest {
         assertFalse(registers.readBit(92, 1));
     }
 
+    @Test public void importedHouseProjectExecutesSourceGreaterAndLessComparatorsAtBoundaries() throws Exception {
+        JSONObject craftSource = new JSONObject(sourceFixture("дом 2025"));
+        JSONObject imported = new JSONObject(CraftProjectImporter.convert(craftSource.toString()));
+        JSONObject screen = imported.getJSONArray("screens").getJSONObject(2);
+        JSONArray widgetJson = screen.getJSONArray("widgets");
+        List<MainActivity.Widget> widgets = new ArrayList<>();
+        for (int i = 0; i < widgetJson.length(); i++)
+            widgets.add(MainActivity.widgetFromJson(widgetJson.getJSONObject(i)));
+        JSONArray edgeJson = screen.getJSONArray("connections");
+        List<MainActivity.FbdConnection> edges = new ArrayList<>();
+        for (int i = 0; i < edgeJson.length(); i++)
+            edges.add(MainActivity.connectionFromJson(edgeJson.getJSONObject(i)));
+
+        int greaterIndex = findSourceComparator(widgets, edges, ">", 29, "230");
+        int lessIndex = findSourceComparator(widgets, edges, "<", 29, "210");
+        assertTrue("Source action 1 comparator should import register 29 > 230", greaterIndex >= 0);
+        assertTrue("Source action 2 comparator should import register 29 < 210", lessIndex >= 0);
+
+        CraftSystemRegisterBank registers = new CraftSystemRegisterBank();
+        registers.writeWord(29, 230);
+        assertFalse("Strict greater-than is false at equality",
+                evaluate(widgets, edges, greaterIndex, registers, false));
+        registers.writeWord(29, 231);
+        assertTrue("Strict greater-than is true above the threshold",
+                evaluate(widgets, edges, greaterIndex, registers, false));
+
+        registers.writeWord(29, 210);
+        assertFalse("Strict less-than is false at equality",
+                evaluate(widgets, edges, lessIndex, registers, false));
+        registers.writeWord(29, 209);
+        assertTrue("Strict less-than is true below the threshold",
+                evaluate(widgets, edges, lessIndex, registers, false));
+    }
+
+    private static int findSourceComparator(List<MainActivity.Widget> widgets,
+                                            List<MainActivity.FbdConnection> edges,
+                                            String operator, int register, String threshold) throws Exception {
+        for (int candidate = 0; candidate < widgets.size(); candidate++) {
+            MainActivity.Widget compare = widgets.get(candidate);
+            if (compare.extraFields.optInt("craftComponentId", -1) != 107
+                    || !operator.equals(compare.compareOperator)) continue;
+            boolean registerOnIn1 = false;
+            boolean constantOnIn2 = false;
+            for (MainActivity.FbdConnection edge : edges) {
+                if (edge.target != candidate) continue;
+                MainActivity.Widget source = widgets.get(edge.source);
+                if (source.extraFields.optInt("craftComponentId", -1) != 105) continue;
+                String pin = MainActivity.connectionToJson(edge).optString("targetPin", "");
+                if ("IN1".equals(pin)
+                        && !source.extraFields.optBoolean("craftVarConstantMode", false)
+                        && source.extraFields.optInt("reg", -1) == register) registerOnIn1 = true;
+                if ("IN2".equals(pin)
+                        && source.extraFields.optBoolean("craftVarConstantMode", false)
+                        && threshold.equals(source.extraFields.optString("craftVarConstant", "")))
+                    constantOnIn2 = true;
+            }
+            if (registerOnIn1 && constantOnIn2) return candidate;
+        }
+        return -1;
+    }
+
     @Test public void importedHouseProjectRunsSourceToggleIntoIntegerSelectorAndVarOut() throws Exception {
         JSONObject craftSource = new JSONObject(sourceFixture("дом 2025"));
         JSONObject imported = new JSONObject(CraftProjectImporter.convert(craftSource.toString()));
