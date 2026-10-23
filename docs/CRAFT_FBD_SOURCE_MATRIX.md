@@ -13,7 +13,7 @@ Source-driven project evidence is tracked separately in [the project fixture aud
 | FB_XOR | Yes | Same with header and vertical divider | XOR header, conditional M/O/Q text and port lines, conditional inversion circle | Partial |
 | FB_RS | Yes | Same with header and vertical divider | RS header, conditional M/O/Q text and port lines, conditional inversion circle | Partial |
 | FB_TIMER | Yes | Same with header and vertical divider | TON/TOF/TP/BLINK mode; configurable time unit MS/SEK/MIN; conditional labels | Partial |
-| FB_TRIGGER | Yes | Same with header and vertical divider | T/F/R mode, conditional labels and pins | Runtime integrated; imported source-project T→SEL scan sequence tested (#401); visual partial |
+| FB_TRIGGER | Yes | Same with header and vertical divider | T/F/R mode, conditional labels and pins | Runtime integrated; imported source-project T→SEL scans and independent state for register 94→output 90 / register 95→output 91 tested (#401/#407, exact-head APK/JUnit #1698/#1703); other trigger modes and visual parity remain partial |
 | FB_COMPARE | Yes | Same | Comparison operator >, <, <=, >=, =, <>; quarter-height input pins | Runtime integrated; source `дом 2025` `>`, `<`, `>=`, and `==` graph cases exercised (#391, #403, #405); other modes and visual parity remain partial |
 | FB_COMPARE_FLOAT | Yes | Same | Compare layout | Runtime integrated; visual partial |
 | FB_ARITHMETIC_INT | Yes | Same | Arithmetic layout | Runtime integrated; visual partial |
@@ -31,7 +31,7 @@ Source-driven project evidence is tracked separately in [the project fixture aud
 | FB_ARRAY | No local onDraw | Inherited | EN, DT, ID inputs and Q output; shared Integer register store | Runtime integrated; inherited visual approximation |
 | FB_CTU | No local onDraw | Inherited | Inspect base class | Not matched |
 | FB_MACRO | No local onDraw | Inherited | `.mcr` sidecar stores child graph and typed input/output interface | Imports a matching `<name>.mcr`, executes when every child block and edge maps to verified BLOODSKY semantics; unsupported graphs remain visible and non-executable |
-| FB_SEL | No local onDraw | Inherited | Integer select with typed inputs | Runtime integrated; inherited visual approximation |
+| FB_SEL | No local onDraw | Inherited | Integer select with typed inputs | Runtime integrated; source `дом 2025` T→SEL(I1=109,I2=24) feeds VarOutInt registers 90/91, including interleaved independent toggle scans (#401/#407, exact-head APK/JUnit #1698/#1703); inherited visual approximation |
 | Var | Yes, draw0 | Gray rectangle, black stroke | Register/bit or constant label; Q output with optional invert bubble | Runtime integrated; default source drawing added, parity partial |
 | VarOut | Yes, draw1 | Gray rectangle, black stroke | S# address label; IN contact | Runtime integrated; default source drawing added, parity partial |
 | VarInt | Yes, draw2 | Gray rounded rectangle, black stroke | Register or constant label; Q output | Runtime integrated; default source drawing added, parity partial |
