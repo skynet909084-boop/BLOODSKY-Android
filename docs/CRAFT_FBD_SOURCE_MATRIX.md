@@ -14,7 +14,7 @@ Source-driven project evidence is tracked separately in [the project fixture aud
 | FB_RS | Yes | Same with header and vertical divider | RS header, conditional M/O/Q text and port lines, conditional inversion circle | Partial |
 | FB_TIMER | Yes | Same with header and vertical divider | TON/TOF/TP/BLINK mode; configurable time unit MS/SEK/MIN; conditional labels | Partial |
 | FB_TRIGGER | Yes | Same with header and vertical divider | T/F/R mode, conditional labels and pins | Runtime integrated; imported source-project T→SEL scan sequence tested (#401); visual partial |
-| FB_COMPARE | Yes | Same | Comparison operator >, <, <=, >=, =, <>; quarter-height input pins | Runtime integrated; source `дом 2025` `>=` and `==` graph cases exercised (#391, #403); visual partial |
+| FB_COMPARE | Yes | Same | Comparison operator >, <, <=, >=, =, <>; quarter-height input pins | Runtime integrated; source `дом 2025` `>`, `<`, `>=`, and `==` graph cases exercised (#391, #403, #405); other modes and visual parity remain partial |
 | FB_COMPARE_FLOAT | Yes | Same | Compare layout | Runtime integrated; visual partial |
 | FB_ARITHMETIC_INT | Yes | Same | Arithmetic layout | Runtime integrated; visual partial |
 | FB_ARITHMETIC_FLOAT | Yes | Same | Arithmetic layout | Runtime integrated; visual partial |
