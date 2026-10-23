@@ -253,7 +253,7 @@ public class CraftSourceProjectFbdRuntimeTest {
         return null;
     }
 
-    @Test public void importedHouseProjectExecutesSourceEqualityIntoBoolVarOut() throws Exception {
+    @Test public void importedHouseProjectExecutesAllSourceEqualityPathsIntoBoolVarOut() throws Exception {
         JSONObject craftSource = new JSONObject(sourceFixture("дом 2025"));
         JSONObject imported = new JSONObject(CraftProjectImporter.convert(craftSource.toString()));
         JSONObject screen = imported.getJSONArray("screens").getJSONObject(3);
@@ -266,16 +266,58 @@ public class CraftSourceProjectFbdRuntimeTest {
         for (int i = 0; i < edgeJson.length(); i++)
             edges.add(MainActivity.connectionFromJson(edgeJson.getJSONObject(i)));
 
-        int compareIndex = -1;
-        int outputIndex = -1;
-        boolean registerOnIn1 = false;
-        boolean constantOnIn2 = false;
+        // Source screen-4 equality paths: input register, constant, VarOutInt/BOOL register and bit.
+        int[][] paths = {
+                {92, 6395, 92, 1},
+                {93, 6395, 93, 1},
+                {93, 1017, 97, 1},
+                {92, 1017, 96, 1},
+                {118, 20731, 121, 1},
+                {119, 20731, 121, 2},
+                {120, 20731, 121, 3}
+        };
+        CraftSystemRegisterBank registers = new CraftSystemRegisterBank();
+        int count = widgets.size();
+        for (int[] path : paths) {
+            int inputRegister = path[0];
+            int threshold = path[1];
+            int outputRegister = path[2];
+            int outputBit = path[3];
+            int[] indexes = findSourceEqualityPath(widgets, edges,
+                    inputRegister, threshold, outputRegister, outputBit);
+            assertNotNull("Source reg " + inputRegister + " == " + threshold
+                    + " must feed VarOut reg " + outputRegister + " bit " + outputBit, indexes);
+
+            int compareIndex = indexes[0];
+            int outputIndex = indexes[1];
+            registers.writeWord(inputRegister, threshold - 1);
+            assertFalse("A neighboring value must not satisfy source equality",
+                    MainActivity.evaluateFbdBlock(widgets, edges, compareIndex,
+                            new boolean[count], new boolean[count], new boolean[count],
+                            new double[count], registers, false));
+            assertFalse(evaluate(widgets, edges, outputIndex, registers, true));
+            assertFalse(registers.readBit(outputRegister, outputBit));
+
+            registers.writeWord(inputRegister, threshold);
+            assertTrue("Source equality includes its exact threshold",
+                    MainActivity.evaluateFbdBlock(widgets, edges, compareIndex,
+                            new boolean[count], new boolean[count], new boolean[count],
+                            new double[count], registers, false));
+            assertTrue(evaluate(widgets, edges, outputIndex, registers, true));
+            assertTrue(registers.readBit(outputRegister, outputBit));
+        }
+    }
+
+    private static int[] findSourceEqualityPath(List<MainActivity.Widget> widgets,
+                                                List<MainActivity.FbdConnection> edges,
+                                                int inputRegister, int threshold,
+                                                int outputRegister, int outputBit) throws Exception {
         for (int candidate = 0; candidate < widgets.size(); candidate++) {
             MainActivity.Widget compare = widgets.get(candidate);
             if (compare.extraFields.optInt("craftComponentId", -1) != 107
                     || !"==".equals(compare.compareOperator)) continue;
-            boolean hasRegister = false;
-            boolean hasThreshold = false;
+            boolean registerOnIn1 = false;
+            boolean constantOnIn2 = false;
             for (MainActivity.FbdConnection edge : edges) {
                 if (edge.target != candidate) continue;
                 MainActivity.Widget source = widgets.get(edge.source);
@@ -283,45 +325,24 @@ public class CraftSourceProjectFbdRuntimeTest {
                 String pin = MainActivity.connectionToJson(edge).optString("targetPin", "");
                 if ("IN1".equals(pin)
                         && !source.extraFields.optBoolean("craftVarConstantMode", false)
-                        && source.extraFields.optInt("reg", -1) == 92) hasRegister = true;
+                        && source.extraFields.optInt("reg", -1) == inputRegister) registerOnIn1 = true;
                 if ("IN2".equals(pin)
                         && source.extraFields.optBoolean("craftVarConstantMode", false)
-                        && "6395".equals(source.extraFields.optString("craftVarConstant", "")))
-                    hasThreshold = true;
+                        && Integer.toString(threshold).equals(
+                                source.extraFields.optString("craftVarConstant", ""))) constantOnIn2 = true;
             }
-            if (!hasRegister || !hasThreshold) continue;
+            if (!registerOnIn1 || !constantOnIn2) continue;
             for (MainActivity.FbdConnection edge : edges) {
-                if (edge.source != candidate) continue;
+                if (edge.source != candidate
+                        || !"Q".equals(MainActivity.connectionToJson(edge).optString("sourcePin", ""))) continue;
                 MainActivity.Widget sink = widgets.get(edge.target);
                 if (sink.extraFields.optInt("craftComponentId", -1) == 102
-                        && sink.extraFields.optInt("reg", -1) == 92
-                        && sink.extraFields.optInt("bit", -1) == 1) {
-                    compareIndex = candidate;
-                    outputIndex = edge.target;
-                    registerOnIn1 = true;
-                    constantOnIn2 = true;
-                    break;
-                }
+                        && sink.extraFields.optInt("reg", -1) == outputRegister
+                        && sink.extraFields.optInt("bit", -1) == outputBit)
+                    return new int[]{candidate, edge.target};
             }
-            if (outputIndex >= 0) break;
         }
-        assertTrue("Source screen 4 should contain register 92 == 6395 → VarOut register 92 bit 1",
-                compareIndex >= 0 && outputIndex >= 0);
-        assertTrue(registerOnIn1);
-        assertTrue(constantOnIn2);
-
-        CraftSystemRegisterBank registers = new CraftSystemRegisterBank();
-        registers.writeWord(92, 6395);
-        assertTrue("Craft source equality includes the exact threshold",
-                evaluate(widgets, edges, compareIndex, registers, false));
-        assertTrue(evaluate(widgets, edges, outputIndex, registers, true));
-        assertTrue(registers.readBit(92, 1));
-
-        registers.writeWord(92, 6392);
-        assertFalse("A distinct source register value must not satisfy == 6395",
-                evaluate(widgets, edges, compareIndex, registers, false));
-        assertFalse(evaluate(widgets, edges, outputIndex, registers, true));
-        assertFalse(registers.readBit(92, 1));
+        return null;
     }
 
     @Test public void importedHouseProjectExecutesSourceGreaterAndLessComparatorsAtBoundaries() throws Exception {
