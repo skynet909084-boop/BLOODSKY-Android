@@ -356,7 +356,7 @@ public class CraftSourceProjectFbdRuntimeTest {
 
     private static int findSourceComparator(List<MainActivity.Widget> widgets,
                                             List<MainActivity.FbdConnection> edges,
-                                            String operator, int register, String threshold) {
+                                            String operator, int register, String threshold) throws Exception {
         for (int candidate = 0; candidate < widgets.size(); candidate++) {
             MainActivity.Widget compare = widgets.get(candidate);
             if (compare.extraFields.optInt("craftComponentId", -1) != 107
