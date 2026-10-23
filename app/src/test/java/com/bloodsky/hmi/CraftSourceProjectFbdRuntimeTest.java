@@ -339,7 +339,7 @@ public class CraftSourceProjectFbdRuntimeTest {
         assertEquals("Held input does not toggle a second time", 24,
                 scanSourceSelector(widgets, edges, triggerIndex, outputIndex, registers, true));
         registers.writeWord(94, 0);
-        assertEquals("Falling input leaves the toggle output set", 109,
+        assertEquals("Falling input leaves the toggle output set", 24,
                 scanSourceSelector(widgets, edges, triggerIndex, outputIndex, registers, true));
         registers.writeWord(94, 1);
         assertEquals("Next rising edge toggles back to I1=109", 109,
