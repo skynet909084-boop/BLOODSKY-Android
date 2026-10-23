@@ -57,6 +57,7 @@ public class CraftSourceProjectFbdRuntimeTest {
             edges.add(MainActivity.connectionFromJson(edgeJson.getJSONObject(i)));
 
         int compareIndex = -1;
+        int outputIndex = -1;
         boolean registerFeedsIn1 = false;
         boolean constantFeedsIn2 = false;
         for (int target = 0; target < widgets.size(); target++) {
@@ -89,18 +90,35 @@ public class CraftSourceProjectFbdRuntimeTest {
                 break;
             }
         }
+        for (MainActivity.FbdConnection edge : edges) {
+            if (edge.source != compareIndex
+                    || !"Q".equals(MainActivity.connectionToJson(edge).optString("sourcePin", ""))) continue;
+            MainActivity.Widget sink = widgets.get(edge.target);
+            if (sink.extraFields.optInt("craftComponentId", -1) == 102
+                    && sink.extraFields.optInt("reg", -1) == 11
+                    && sink.extraFields.optInt("bit", -1) == 2) {
+                outputIndex = edge.target;
+                break;
+            }
+        }
 
         assertTrue("Source FBD compare should be imported with IN1/IN2 wiring", compareIndex >= 0);
         assertTrue(registerFeedsIn1);
         assertTrue(constantFeedsIn2);
+        assertTrue("Source compare should feed its imported BOOL register output", outputIndex >= 0);
 
         CraftSystemRegisterBank registers = new CraftSystemRegisterBank();
         registers.writeWord(10, 2600);
         assertTrue("Craft compare action 4 is >=, including equality",
                 evaluate(widgets, edges, compareIndex, registers));
+        assertTrue(evaluate(widgets, edges, outputIndex, registers));
+        assertTrue("The imported VarOut must write the comparison to register 11 bit 2",
+                registers.readBit(11, 2));
 
         registers.writeWord(10, 2599);
         assertFalse("A register value below the source threshold must compare false",
                 evaluate(widgets, edges, compareIndex, registers));
+        assertFalse(evaluate(widgets, edges, outputIndex, registers));
+        assertFalse(registers.readBit(11, 2));
     }
 }
