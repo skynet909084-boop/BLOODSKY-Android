@@ -302,8 +302,8 @@ public class CraftSourceProjectFbdRuntimeTest {
                             || !value.extraFields.optBoolean("craftVarConstantMode", false)) continue;
                     String pin = MainActivity.connectionToJson(inputEdge).optString("targetPin", "");
                     String constant = value.extraFields.optString("craftVarConstant", "");
-                    if ("I1".equals(pin) && "24".equals(constant)) has24 = true;
-                    if ("I2".equals(pin) && "109".equals(constant)) has109 = true;
+                    if ("I1".equals(pin) && "109".equals(constant)) has109 = true;
+                    if ("I2".equals(pin) && "24".equals(constant)) has24 = true;
                 }
                 if (!has24 || !has109) continue;
                 for (MainActivity.FbdConnection outputEdge : edges) {
@@ -331,18 +331,18 @@ public class CraftSourceProjectFbdRuntimeTest {
         assertTrue(selectorInputsFrom24And109);
 
         CraftSystemRegisterBank registers = new CraftSystemRegisterBank();
-        assertEquals("Initial false selects source I1=24", 24, scanSourceSelector(
+        assertEquals("Initial false selects source I1=109", 109, scanSourceSelector(
                 widgets, edges, triggerIndex, outputIndex, registers, false));
         registers.writeWord(94, 1);
-        assertEquals("Rising input toggles Craft T high; true selects I2=109", 109,
+        assertEquals("Rising input toggles Craft T high; true selects I2=24", 24,
                 scanSourceSelector(widgets, edges, triggerIndex, outputIndex, registers, true));
-        assertEquals("Held input does not toggle a second time", 109,
+        assertEquals("Held input does not toggle a second time", 24,
                 scanSourceSelector(widgets, edges, triggerIndex, outputIndex, registers, true));
         registers.writeWord(94, 0);
         assertEquals("Falling input leaves the toggle output set", 109,
                 scanSourceSelector(widgets, edges, triggerIndex, outputIndex, registers, true));
         registers.writeWord(94, 1);
-        assertEquals("Next rising edge toggles back to I1=24", 24,
+        assertEquals("Next rising edge toggles back to I1=109", 109,
                 scanSourceSelector(widgets, edges, triggerIndex, outputIndex, registers, false));
     }
 
