@@ -175,4 +175,77 @@ public class CraftSourceProjectFbdRuntimeTest {
         }
         assertTrue("Edited source comparator should survive export and re-import", restoredEditedCompare);
     }
+
+    @Test public void importedHouseProjectExecutesCraftIntegerDivisionIntoVarOut() throws Exception {
+        JSONObject craftSource = new JSONObject(sourceFixture("дом 2025"));
+        JSONObject imported = new JSONObject(CraftProjectImporter.convert(craftSource.toString()));
+        JSONObject screen = imported.getJSONArray("screens").getJSONObject(3);
+        JSONArray widgetJson = screen.getJSONArray("widgets");
+        List<MainActivity.Widget> widgets = new ArrayList<>();
+        for (int i = 0; i < widgetJson.length(); i++)
+            widgets.add(MainActivity.widgetFromJson(widgetJson.getJSONObject(i)));
+        JSONArray edgeJson = screen.getJSONArray("connections");
+        List<MainActivity.FbdConnection> edges = new ArrayList<>();
+        for (int i = 0; i < edgeJson.length(); i++)
+            edges.add(MainActivity.connectionFromJson(edgeJson.getJSONObject(i)));
+
+        int divisionIndex = -1;
+        boolean registerOnIn1 = false;
+        boolean constantOnIn2 = false;
+        for (int target = 0; target < widgets.size(); target++) {
+            MainActivity.Widget candidate = widgets.get(target);
+            if (candidate.extraFields.optInt("craftComponentId", -1) != 110
+                    || !"/".equals(candidate.compareOperator)) continue;
+            boolean registerInput = false;
+            boolean constantInput = false;
+            for (MainActivity.FbdConnection edge : edges) {
+                if (edge.target != target) continue;
+                MainActivity.Widget source = widgets.get(edge.source);
+                int sourceId = source.extraFields.optInt("craftComponentId", -1);
+                String targetPin = MainActivity.connectionToJson(edge).optString("targetPin", "");
+                if (sourceId != 105) continue;
+                if ("IN1".equals(targetPin)
+                        && !source.extraFields.optBoolean("craftVarConstantMode", false)
+                        && source.extraFields.optInt("reg", -1) == 110) registerInput = true;
+                if ("IN2".equals(targetPin)
+                        && source.extraFields.optBoolean("craftVarConstantMode", false)
+                        && "256".equals(source.extraFields.optString("craftVarConstant", ""))) constantInput = true;
+            }
+            if (registerInput && constantInput) {
+                divisionIndex = target;
+                registerOnIn1 = true;
+                constantOnIn2 = true;
+                break;
+            }
+        }
+        assertTrue("Source integer division with register 110 / 256 should import", divisionIndex >= 0);
+        assertTrue(registerOnIn1);
+        assertTrue(constantOnIn2);
+
+        int outputIndex = -1;
+        for (MainActivity.FbdConnection edge : edges) {
+            if (edge.source != divisionIndex) continue;
+            MainActivity.Widget sink = widgets.get(edge.target);
+            if (sink.extraFields.optInt("craftComponentId", -1) == 106
+                    && sink.extraFields.optInt("reg", -1) == 114) {
+                outputIndex = edge.target;
+                break;
+            }
+        }
+        assertTrue("Source integer division should feed VarOut register 114", outputIndex >= 0);
+
+        CraftSystemRegisterBank registers = new CraftSystemRegisterBank();
+        int count = widgets.size();
+        registers.writeWord(110, 512);
+        assertEquals(2.0, MainActivity.evaluateFbdBlockNumeric(widgets, edges, divisionIndex,
+                new boolean[count], new boolean[count], new boolean[count], new double[count], registers), 0.0);
+        assertTrue(evaluate(widgets, edges, outputIndex, registers, true));
+        assertEquals(2, registers.readWord(114));
+
+        registers.writeWord(110, 768);
+        assertEquals(3.0, MainActivity.evaluateFbdBlockNumeric(widgets, edges, divisionIndex,
+                new boolean[count], new boolean[count], new boolean[count], new double[count], registers), 0.0);
+        assertTrue(evaluate(widgets, edges, outputIndex, registers, true));
+        assertEquals(3, registers.readWord(114));
+    }
 }
