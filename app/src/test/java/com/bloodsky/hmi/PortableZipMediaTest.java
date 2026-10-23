@@ -808,6 +808,7 @@ public class PortableZipMediaTest {
         int[] connectionCounts = new int[]{0, 0, 0, 3, 2};
         int[] bindingCounts = new int[]{24, 46, 43, 46, 122};
         int[] fbdNodeCounts = new int[]{0, 5, 76, 5, 200};
+        int[] fbdMacroCounts = new int[]{0, 0, 0, 0, 0};
 
         for (int fixture = 0; fixture < names.length; fixture++) {
             String name = names[fixture];
@@ -816,8 +817,10 @@ public class PortableZipMediaTest {
             assertEquals(componentCounts[fixture], source.getJSONArray("TableComponent").length());
             assertEquals(connectionCounts[fixture], source.getJSONArray("TableConnections").length());
             int bindingCount = 0;
+            int fbdMacroCount = 0;
             for (int i = 0; i < source.getJSONArray("TableComponent").length(); i++) {
                 JSONObject component = source.getJSONArray("TableComponent").getJSONObject(i);
+                if (component.optInt("componentId", -1) == 135) fbdMacroCount++;
                 Object binding = component.opt("jsTableComponent_connectionInfo");
                 if (binding != null && !JSONObject.NULL.equals(binding)
                         && (!(binding instanceof JSONObject) || ((JSONObject) binding).length() > 0)
@@ -826,6 +829,7 @@ public class PortableZipMediaTest {
                 }
             }
             assertEquals(bindingCounts[fixture], bindingCount);
+            assertEquals(fbdMacroCounts[fixture], fbdMacroCount);
 
             byte[] inputZip = createCraftProjectZip(sourceJson, "fixture.png", fixtureImage);
             final String[] importedJson = new String[1];
