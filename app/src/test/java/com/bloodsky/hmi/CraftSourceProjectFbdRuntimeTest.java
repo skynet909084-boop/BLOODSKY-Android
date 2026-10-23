@@ -464,27 +464,132 @@ public class CraftSourceProjectFbdRuntimeTest {
 
         CraftSystemRegisterBank registers = new CraftSystemRegisterBank();
         assertEquals("Initial false selects source I1=109", 109, scanSourceSelector(
-                widgets, edges, triggerIndex, outputIndex, registers, false));
+                widgets, edges, triggerIndex, outputIndex, 90, registers, false));
         registers.writeWord(94, 1);
         assertEquals("Rising input toggles Craft T high; true selects I2=24", 24,
-                scanSourceSelector(widgets, edges, triggerIndex, outputIndex, registers, true));
+                scanSourceSelector(widgets, edges, triggerIndex, outputIndex, 90, registers, true));
         assertEquals("Held input does not toggle a second time", 24,
-                scanSourceSelector(widgets, edges, triggerIndex, outputIndex, registers, true));
+                scanSourceSelector(widgets, edges, triggerIndex, outputIndex, 90, registers, true));
         registers.writeWord(94, 0);
         assertEquals("Falling input leaves the toggle output set", 24,
-                scanSourceSelector(widgets, edges, triggerIndex, outputIndex, registers, true));
+                scanSourceSelector(widgets, edges, triggerIndex, outputIndex, 90, registers, true));
         registers.writeWord(94, 1);
         assertEquals("Next rising edge toggles back to I1=109", 109,
-                scanSourceSelector(widgets, edges, triggerIndex, outputIndex, registers, false));
+                scanSourceSelector(widgets, edges, triggerIndex, outputIndex, 90, registers, false));
+    }
+
+    @Test public void importedHouseProjectKeepsTwoSourceToggleSelectorChainsIndependent() throws Exception {
+        JSONObject craftSource = new JSONObject(sourceFixture("дом 2025"));
+        JSONObject imported = new JSONObject(CraftProjectImporter.convert(craftSource.toString()));
+        JSONObject screen = imported.getJSONArray("screens").getJSONObject(3);
+        JSONArray widgetJson = screen.getJSONArray("widgets");
+        List<MainActivity.Widget> widgets = new ArrayList<>();
+        for (int i = 0; i < widgetJson.length(); i++)
+            widgets.add(MainActivity.widgetFromJson(widgetJson.getJSONObject(i)));
+        JSONArray edgeJson = screen.getJSONArray("connections");
+        List<MainActivity.FbdConnection> edges = new ArrayList<>();
+        for (int i = 0; i < edgeJson.length(); i++)
+            edges.add(MainActivity.connectionFromJson(edgeJson.getJSONObject(i)));
+
+        int[] first = findSourceTogglePath(widgets, edges, 94, 90);
+        int[] second = findSourceTogglePath(widgets, edges, 95, 91);
+        assertNotNull("Source register 94 must drive its own selector and VarOut", first);
+        assertNotNull("Source register 95 must drive its own selector and VarOut", second);
+        assertTrue("The source chains must have distinct trigger state", first[0] != second[0]);
+
+        CraftSystemRegisterBank registers = new CraftSystemRegisterBank();
+        assertEquals(109, scanSourceSelector(widgets, edges, first[0], first[2], 90, registers, false));
+        assertEquals(109, scanSourceSelector(widgets, edges, second[0], second[2], 91, registers, false));
+
+        registers.writeWord(94, 1);
+        assertEquals("Register 94's rising edge selects value 24 on register 90", 24,
+                scanSourceSelector(widgets, edges, first[0], first[2], 90, registers, true));
+        assertEquals("Register 95's chain stays at value 109", 109,
+                scanSourceSelector(widgets, edges, second[0], second[2], 91, registers, false));
+
+        registers.writeWord(95, 1);
+        assertEquals("Register 95 toggles its own selector to value 24", 24,
+                scanSourceSelector(widgets, edges, second[0], second[2], 91, registers, true));
+        assertEquals("Register 94's trigger state remains set", 24,
+                scanSourceSelector(widgets, edges, first[0], first[2], 90, registers, true));
+
+        registers.writeWord(94, 0);
+        assertEquals("A falling edge does not clear register 94's toggle", 24,
+                scanSourceSelector(widgets, edges, first[0], first[2], 90, registers, true));
+        assertEquals("Register 95 remains independently set", 24,
+                scanSourceSelector(widgets, edges, second[0], second[2], 91, registers, true));
+
+        registers.writeWord(94, 1);
+        assertEquals("The next rising edge toggles only register 94's chain back", 109,
+                scanSourceSelector(widgets, edges, first[0], first[2], 90, registers, false));
+        assertEquals("Register 95 keeps its selected value", 24,
+                scanSourceSelector(widgets, edges, second[0], second[2], 91, registers, true));
+
+        registers.writeWord(95, 0);
+        scanSourceSelector(widgets, edges, second[0], second[2], 91, registers, true);
+        registers.writeWord(95, 1);
+        assertEquals("Register 95's next rising edge toggles only its chain back", 109,
+                scanSourceSelector(widgets, edges, second[0], second[2], 91, registers, false));
+        assertEquals("Register 94 remains independently reset", 109,
+                scanSourceSelector(widgets, edges, first[0], first[2], 90, registers, false));
+    }
+
+    private static int[] findSourceTogglePath(List<MainActivity.Widget> widgets,
+                                             List<MainActivity.FbdConnection> edges,
+                                             int inputRegister, int outputRegister) throws Exception {
+        for (int trigger = 0; trigger < widgets.size(); trigger++) {
+            MainActivity.Widget triggerWidget = widgets.get(trigger);
+            if (triggerWidget.extraFields.optInt("craftComponentId", -1) != 114
+                    || !"T".equals(triggerWidget.extraFields.optString("craftTriggerMode", ""))) continue;
+            boolean sourceInput = false;
+            for (MainActivity.FbdConnection edge : edges) {
+                if (edge.target != trigger
+                        || !"IN".equals(MainActivity.connectionToJson(edge).optString("targetPin", ""))) continue;
+                MainActivity.Widget source = widgets.get(edge.source);
+                sourceInput = source.extraFields.optInt("craftComponentId", -1) == 101
+                        && source.extraFields.optInt("reg", -1) == inputRegister
+                        && source.extraFields.optInt("bit", -1) == 0;
+                if (sourceInput) break;
+            }
+            if (!sourceInput) continue;
+
+            for (MainActivity.FbdConnection triggerEdge : edges) {
+                if (triggerEdge.source != trigger
+                        || !"IN".equals(MainActivity.connectionToJson(triggerEdge).optString("targetPin", ""))) continue;
+                int selector = triggerEdge.target;
+                if (widgets.get(selector).extraFields.optInt("craftComponentId", -1) != 126) continue;
+                boolean firstValue = false;
+                boolean secondValue = false;
+                for (MainActivity.FbdConnection inputEdge : edges) {
+                    if (inputEdge.target != selector) continue;
+                    MainActivity.Widget value = widgets.get(inputEdge.source);
+                    if (value.extraFields.optInt("craftComponentId", -1) != 105
+                            || !value.extraFields.optBoolean("craftVarConstantMode", false)) continue;
+                    String pin = MainActivity.connectionToJson(inputEdge).optString("targetPin", "");
+                    String constant = value.extraFields.optString("craftVarConstant", "");
+                    if ("I1".equals(pin) && "109".equals(constant)) firstValue = true;
+                    if ("I2".equals(pin) && "24".equals(constant)) secondValue = true;
+                }
+                if (!firstValue || !secondValue) continue;
+                for (MainActivity.FbdConnection outputEdge : edges) {
+                    if (outputEdge.source != selector) continue;
+                    MainActivity.Widget output = widgets.get(outputEdge.target);
+                    if (output.extraFields.optInt("craftComponentId", -1) == 106
+                            && output.extraFields.optInt("reg", -1) == outputRegister)
+                        return new int[]{trigger, selector, outputEdge.target};
+                }
+            }
+        }
+        return null;
     }
 
     private static int scanSourceSelector(List<MainActivity.Widget> widgets,
                                           List<MainActivity.FbdConnection> edges,
-                                          int triggerIndex, int outputIndex,
+                                          int triggerIndex, int outputIndex, int outputRegister,
                                           CraftSystemRegisterBank registers,
                                           boolean expectedTriggerOutput) {
         evaluate(widgets, edges, outputIndex, registers, true);
         assertEquals(expectedTriggerOutput, widgets.get(triggerIndex).craftToggleOutput);
-        return registers.readWord(90);
+        return registers.readWord(outputRegister);
     }
 }
