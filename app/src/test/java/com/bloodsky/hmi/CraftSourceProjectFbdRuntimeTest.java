@@ -202,16 +202,16 @@ public class CraftSourceProjectFbdRuntimeTest {
             int outputIndex = indexes[1];
             int firstInput = 512 + path * 256;
             registers.writeWord(inputRegister, firstInput);
-            assertEquals(2.0, MainActivity.evaluateFbdBlockNumeric(widgets, edges, divisionIndex,
+            assertEquals(2.0 + path, MainActivity.evaluateFbdBlockNumeric(widgets, edges, divisionIndex,
                     new boolean[count], new boolean[count], new boolean[count], new double[count], registers), 0.0);
             assertTrue(evaluate(widgets, edges, outputIndex, registers, true));
-            assertEquals(2, registers.readWord(outputRegister));
+            assertEquals(2 + path, registers.readWord(outputRegister));
 
             registers.writeWord(inputRegister, firstInput + 256);
-            assertEquals(3.0, MainActivity.evaluateFbdBlockNumeric(widgets, edges, divisionIndex,
+            assertEquals(3.0 + path, MainActivity.evaluateFbdBlockNumeric(widgets, edges, divisionIndex,
                     new boolean[count], new boolean[count], new boolean[count], new double[count], registers), 0.0);
             assertTrue(evaluate(widgets, edges, outputIndex, registers, true));
-            assertEquals(3, registers.readWord(outputRegister));
+            assertEquals(3 + path, registers.readWord(outputRegister));
         }
     }
 
