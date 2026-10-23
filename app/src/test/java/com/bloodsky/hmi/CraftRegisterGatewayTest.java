@@ -55,7 +55,7 @@ public class CraftRegisterGatewayTest {
         assertNotNull(system);
         assertTrue(system.systemRegister);
         assertEquals(10, system.address);
-        assertNull(CraftRegisterGateway.parseBinding("system://register/10", 1, true));
+        assertTrue(CraftRegisterGateway.parseBinding("system://register/10", 1, true).systemWritable);
         assertNull(CraftRegisterGateway.parseBinding("system://register/1999", 2, false));
         assertNull(CraftRegisterGateway.parseBinding("system://register/10?x=1", 1, false));
         CraftRegisterGateway.Config config = CraftRegisterGateway.validate(true, 0, 2,
@@ -69,6 +69,33 @@ public class CraftRegisterGatewayTest {
                 CraftRegisterGateway.readSystemSource(config.source, 2, project));
         assertThrows(IllegalArgumentException.class,
                 () -> CraftRegisterGateway.readSystemSource(config.destination, 1, project));
+    }
+
+    @Test public void systemUserRegistersCanBeGatewayDestinationsWithoutTouchingServiceRegisters() {
+        CraftRegisterGateway.Binding destination = CraftRegisterGateway.parseBinding(
+                "system://register/10", 2, true);
+        assertNotNull(destination);
+        assertTrue(destination.systemRegister);
+        assertTrue(destination.systemWritable);
+        assertNull(CraftRegisterGateway.parseBinding("system://register/9", 1, true));
+        assertNull(CraftRegisterGateway.parseBinding("system://register/1999", 2, true));
+
+        CraftSystemRegisterBank project = new CraftSystemRegisterBank();
+        CraftRegisterGateway.writeSystemDestination(destination, new int[]{123, 456}, project);
+        assertArrayEquals(new int[]{123, 456}, project.readWords(10, 2));
+        assertThrows(IllegalArgumentException.class, () ->
+                CraftRegisterGateway.writeSystemDestination(
+                        CraftRegisterGateway.parseBinding("system://register/10", 1, false),
+                        new int[]{1}, project));
+        assertThrows(IllegalArgumentException.class, () ->
+                CraftRegisterGateway.writeSystemDestination(destination, new int[]{65536, 1}, project));
+        assertArrayEquals("Invalid batch must not partially update the bank", new int[]{123, 456},
+                project.readWords(10, 2));
+
+        CraftRegisterGateway.Config config = CraftRegisterGateway.validate(true, 0, 2,
+                "tcp://a.local:502/1/30001", "system://register/20", "", 0);
+        assertEquals(20, config.destination.address);
+        assertTrue(config.destination.systemWritable);
     }
 
     @Test public void bluetoothRtuRegisterEndpointsRetainAddressAndFunctionSemantics() throws Exception {
@@ -90,6 +117,33 @@ public class CraftRegisterGatewayTest {
         assertNull(CraftRegisterGateway.from(imported));
         assertNull(CraftRegisterGateway.parseBinding(
                 "bt://AA:BB:CC:DD:EE:FF/7/30001", 1, true));
+    }
+
+    @Test public void usbEndpointsUseManualRtuSessionAndSupportBoundedRegisterRanges() throws Exception {
+        CraftRegisterGateway.Config config = CraftRegisterGateway.validate(true, 0, 99,
+                "usb://7/30001", "usb://7/40001", "", 0);
+        assertTrue(config.source.usb);
+        assertTrue(config.destination.usb);
+        assertEquals(7, config.source.unit);
+        assertEquals(4, config.source.readFunction);
+        assertEquals(0, config.source.address);
+        assertEquals(99, config.count);
+        assertEquals(3, config.destination.readFunction);
+        assertTrue(config.source.sameDevice(config.destination));
+
+        FakeTransport transport = new FakeTransport();
+        CraftRegisterGateway.Outcome outcome = CraftRegisterGateway.transfer(
+                config, new CraftRegisterGateway.State(), transport);
+        assertTrue(outcome.transferred);
+        assertEquals(99, outcome.count);
+        assertEquals(1, transport.writes.size());
+        assertEquals(99, transport.writes.get(0).length);
+
+        assertThrows(IllegalArgumentException.class, () -> CraftRegisterGateway.validate(true, 0, 1,
+                "usb://7/40001", "usb://7/30001", "", 0));
+        assertNull(CraftRegisterGateway.parseBinding("usb://7/65535", 2, false));
+        assertNull(CraftRegisterGateway.parseBinding("usb://7:502/40001", 1, false));
+        assertNull(CraftRegisterGateway.parseBinding("usb://7/40001?x=1", 1, false));
     }
 
     @Test public void continuousModeTransfersEverySuccessfulPoll() throws Exception {

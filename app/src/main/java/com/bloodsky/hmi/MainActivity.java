@@ -1730,6 +1730,16 @@ public class MainActivity extends Activity {
             throw new IOException("Bluetooth-шлюз требует разрешения RTU на текущий сеанс");
     }
 
+    private UsbSerialModbusConnection requireGatewayUsbSessionAccess() throws IOException {
+        if (!ModbusRtuOperatorPolicy.mayPollRtu("usb://", operatorMode,
+                externalRtuApprovedForSession))
+            throw new IOException("USB-шлюз требует разрешения RTU на текущий сеанс");
+        UsbSerialModbusConnection connection = manualUsbConnection;
+        if (connection == null || !connection.isOpen())
+            throw new IOException("Выберите и подключите USB-адаптер в ручном режиме RTU");
+        return connection;
+    }
+
     private void stopModbusPolling() {
         pollSession.stop();
         modbusPollingActive = false;
@@ -2059,6 +2069,8 @@ public class MainActivity extends Activity {
                                         if (!pollSession.accepts(sessionToken)) throw new IOException("Сеанс проекта завершён");
                                         if (binding.systemRegister)
                                             return CraftRegisterGateway.readSystemSource(binding, quantity, systemRegisterBank);
+                                        if (binding.usb) return requireGatewayUsbSessionAccess().read(
+                                                binding.unit, binding.readFunction, binding.address, quantity);
                                         if (binding.bluetoothAddress != null) {
                                             requireGatewayBluetoothSessionAccess();
                                             return bluetoothConnection(binding.bluetoothAddress).read(binding.unit,
@@ -2070,6 +2082,16 @@ public class MainActivity extends Activity {
                                     @Override public void write(CraftRegisterGateway.Binding binding, int[] values) throws IOException {
                                         if (!pollSession.accepts(sessionToken) || !operatorMode || !activityResumed)
                                             throw new IOException("Шлюз остановлен");
+                                        if (binding.systemRegister) {
+                                            CraftRegisterGateway.writeSystemDestination(
+                                                    binding, values, systemRegisterBank);
+                                            return;
+                                        }
+                                        if (binding.usb) {
+                                            requireGatewayUsbSessionAccess().writeMultiple(
+                                                    binding.unit, binding.address, values);
+                                            return;
+                                        }
                                         if (binding.bluetoothAddress != null) {
                                             requireGatewayBluetoothSessionAccess();
                                             bluetoothConnection(binding.bluetoothAddress).writeMultiple(
@@ -7465,12 +7487,12 @@ private String archiveProjectKey() {
                     InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
             gatewaySourceField.setHint(craftBitGateway
                     ? "Источник: tcp://192.168.1.10:502/1/0 или bt://AA:BB:CC:DD:EE:FF/1/0 (адрес 0-based)"
-                    : "Источник: tcp://192.168.1.10:502/1/40001 (FC03/04), bt://AA:BB:CC:DD:EE:FF/1/40001 или system://register/10"); form.addView(gatewaySourceField);
+                    : "Источник: tcp://192.168.1.10:502/1/40001, bt://AA:BB:CC:DD:EE:FF/1/40001, usb://1/40001 или system://register/10"); form.addView(gatewaySourceField);
             gatewayDestinationField = propertyField(w.extraFields.optString(craftBitGateway ? "craftBitGatewayDestination" : "craftGatewayDestination", ""),
                     InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
             gatewayDestinationField.setHint(craftBitGateway
                     ? "Coil-приёмник: tcp://192.168.1.11:502/1/0 или bt://AA:BB:CC:DD:EE:FF/1/0"
-                    : "Приёмник holding: tcp://192.168.1.11:502/1/40001 или bt://AA:BB:CC:DD:EE:FF/1/40001"); form.addView(gatewayDestinationField);
+                    : "Приёмник holding: tcp://192.168.1.11:502/1/40001, bt://AA:BB:CC:DD:EE:FF/1/40001, usb://1/40001 или system://register/10"); form.addView(gatewayDestinationField);
             gatewayTriggerField = propertyField(w.extraFields.optString(craftBitGateway ? "craftBitGatewayTrigger" : "craftGatewayTrigger", ""),
                     InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
             gatewayTriggerField.setHint("Триггер для фронта: tcp://192.168.1.10:502/1/40002 или bt://AA:BB:CC:DD:EE:FF/1/40002"); form.addView(gatewayTriggerField);
