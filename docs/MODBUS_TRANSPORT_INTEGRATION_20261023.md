@@ -43,3 +43,20 @@ binding as disabled. FBD writes are subject to the same session gate.
 
 This is code-level support only. Exact-head CI and physical USB/Bluetooth acceptance
 remain open; parser and transport tests do not establish hardware compatibility.
+
+## Shared gateway wiring
+
+The compatible `ModbusPollGateway` layer from the main-branch Modbus work is now
+connected to the integration branch's existing poller. `MainActivity` keeps the
+already validated `BindingRequest` parsing, read quantities, register codecs and
+widget lifecycle checks, then passes the normalized endpoint to the gateway.
+TCP reads continue through `ModbusTcpClient`; SPP sessions are cached only for the
+active polling session and closed when polling stops. USB project reads borrow the
+connection that the operator explicitly selected and opened in the USB screen, so
+the gateway does not silently pick an adapter or create a competing serial session.
+
+Bluetooth permission denial now suppresses repeated connection attempts and is
+reported in widget diagnostics. The gateway does not add RTU write support: existing
+explicit TCP write paths remain separate, and project RTU writes still require the
+per-session consent guard where supported. Android CI is the build gate; the
+physical adapter/PLC gate remains open.
