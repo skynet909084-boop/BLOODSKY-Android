@@ -806,7 +806,7 @@ public class PortableZipMediaTest {
         int[] componentCounts = new int[]{24, 65, 124, 65, 346};
         int[] screenCounts = new int[]{16, 16, 20, 16, 16};
         int[] connectionCounts = new int[]{0, 0, 0, 3, 2};
-        int[] bindingCounts = new int[]{0, 0, 0, 46, 122};
+        int[] bindingCounts = new int[]{24, 46, 43, 46, 122};
 
         for (int fixture = 0; fixture < names.length; fixture++) {
             String name = names[fixture];
