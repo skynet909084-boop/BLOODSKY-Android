@@ -30,6 +30,11 @@ public final class ModbusRtuOperatorPolicy {
                 || isRtuBinding(trigger));
     }
 
+    /** Gateway transfers, including reads, are operator actions rather than editor previews. */
+    public static boolean mayRunGateway(boolean enabled, boolean operatorMode) {
+        return enabled && operatorMode;
+    }
+
     /** Bluetooth gateway reads and writes need both session consent and Android permission. */
     public static boolean mayAccessBluetoothGateway(boolean operatorMode,
             boolean consentGranted, boolean bluetoothConnectGranted) {

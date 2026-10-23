@@ -46,4 +46,9 @@ public class ModbusRtuOperatorPolicyTest {
         assertFalse(ModbusRtuOperatorPolicy.mayAccessBluetoothGateway(true, true, false));
         assertTrue(ModbusRtuOperatorPolicy.mayAccessBluetoothGateway(true, true, true));
     }
+    @Test public void gatewayTransfersIncludingTcpReadsAreOperatorOnly() {
+        assertFalse(ModbusRtuOperatorPolicy.mayRunGateway(true, false));
+        assertFalse(ModbusRtuOperatorPolicy.mayRunGateway(false, true));
+        assertTrue(ModbusRtuOperatorPolicy.mayRunGateway(true, true));
+    }
 }

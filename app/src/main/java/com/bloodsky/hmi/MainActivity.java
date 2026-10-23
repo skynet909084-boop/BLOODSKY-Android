@@ -1923,11 +1923,15 @@ public class MainActivity extends Activity {
         for (int i = 0; i < snapshotWidgets.size(); i++) {
             Widget widget = snapshotWidgets.get(i);
             if ("Шлюз битовый".equals(widget.type)) {
-                if (snapshotExtras.get(i).optBoolean("craftBitGatewayEnabled", false)) bitGatewayIndices.add(i);
+                if (ModbusRtuOperatorPolicy.mayRunGateway(
+                        snapshotExtras.get(i).optBoolean("craftBitGatewayEnabled", false), operatorMode))
+                    bitGatewayIndices.add(i);
                 continue;
             }
             if ("Шлюз Craft".equals(widget.type)) {
-                if (snapshotExtras.get(i).optBoolean("craftGatewayEnabled", false)) gatewayIndices.add(i);
+                if (ModbusRtuOperatorPolicy.mayRunGateway(
+                        snapshotExtras.get(i).optBoolean("craftGatewayEnabled", false), operatorMode))
+                    gatewayIndices.add(i);
                 continue;
             }
             if ("Архив Craft".equals(widget.type)
