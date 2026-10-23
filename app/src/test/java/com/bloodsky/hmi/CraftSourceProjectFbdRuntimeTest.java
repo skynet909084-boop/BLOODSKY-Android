@@ -31,11 +31,12 @@ public class CraftSourceProjectFbdRuntimeTest {
 
     private static boolean evaluate(List<MainActivity.Widget> widgets,
                                     List<MainActivity.FbdConnection> edges,
-                                    int index, CraftSystemRegisterBank registers) {
+                                    int index, CraftSystemRegisterBank registers,
+                                    boolean allowSystemRegisterWrites) {
         int count = widgets.size();
         return MainActivity.evaluateFbdBlock(widgets, edges, index,
                 new boolean[count], new boolean[count], new boolean[count],
-                new double[count], registers);
+                new double[count], registers, allowSystemRegisterWrites);
     }
 
     @Test public void importedHouseProjectExecutesSourceCompareAtAndBelowThreshold() throws Exception {
@@ -110,15 +111,15 @@ public class CraftSourceProjectFbdRuntimeTest {
         CraftSystemRegisterBank registers = new CraftSystemRegisterBank();
         registers.writeWord(10, 2600);
         assertTrue("Craft compare action 4 is >=, including equality",
-                evaluate(widgets, edges, compareIndex, registers));
-        assertTrue(evaluate(widgets, edges, outputIndex, registers));
+                evaluate(widgets, edges, compareIndex, registers, false));
+        assertTrue(evaluate(widgets, edges, outputIndex, registers, true));
         assertTrue("The imported VarOut must write the comparison to register 11 bit 2",
                 registers.readBit(11, 2));
 
         registers.writeWord(10, 2599);
         assertFalse("A register value below the source threshold must compare false",
-                evaluate(widgets, edges, compareIndex, registers));
-        assertFalse(evaluate(widgets, edges, outputIndex, registers));
+                evaluate(widgets, edges, compareIndex, registers, false));
+        assertFalse(evaluate(widgets, edges, outputIndex, registers, true));
         assertFalse(registers.readBit(11, 2));
     }
 }
