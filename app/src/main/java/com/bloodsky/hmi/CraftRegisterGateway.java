@@ -21,15 +21,17 @@ public final class CraftRegisterGateway {
         public final String host;
         public final String bluetoothAddress;
         public final int port, unit, address, readFunction;
-        public final boolean systemRegister, usb;
+        public final boolean systemRegister, systemWritable, usb;
         private Binding(String host, int port, int unit, int address, int readFunction,
-                        boolean systemRegister, String bluetoothAddress, boolean usb) {
+                        boolean systemRegister, boolean systemWritable,
+                        String bluetoothAddress, boolean usb) {
             this.host = host; this.port = port; this.unit = unit; this.address = address;
             this.readFunction = readFunction; this.systemRegister = systemRegister;
+            this.systemWritable = systemWritable;
             this.bluetoothAddress = bluetoothAddress; this.usb = usb;
         }
-        private static Binding system(int address) {
-            return new Binding("", 0, 0, address, 3, true, null, false);
+        private static Binding system(int address, boolean writable) {
+            return new Binding("", 0, 0, address, 3, true, writable, null, false);
         }
         public boolean sameDevice(Binding other) {
             if (other == null || systemRegister != other.systemRegister) return false;
@@ -120,20 +122,23 @@ public final class CraftRegisterGateway {
             URI uri = URI.create(value.trim());
             if ("system".equals(uri.getScheme())) {
                 String[] systemPath = uri.getPath().split("/", -1);
-                if (destination || !"register".equals(uri.getHost()) || systemPath.length != 2
+                if (!"register".equals(uri.getHost()) || systemPath.length != 2
                         || !systemPath[0].isEmpty() || uri.getRawQuery() != null
                         || uri.getRawFragment() != null || uri.getRawUserInfo() != null) return null;
                 int address = Integer.parseInt(systemPath[1]);
-                if (address < 0 || address >= CraftSystemRegisterBank.SIZE
+                if (address < 0 || (destination
+                        ? address < CraftSystemRegisterBank.FIRST_USER_REGISTER
+                        : address >= CraftSystemRegisterBank.SIZE)
+                        || address >= CraftSystemRegisterBank.SIZE
                         || quantity < 1 || quantity > 99
                         || (long) address + quantity > CraftSystemRegisterBank.SIZE) return null;
-                return Binding.system(address);
+                return Binding.system(address, destination);
             }
             if ("bt".equals(uri.getScheme())) {
                 BluetoothRtuBinding bluetooth = BluetoothRtuBinding.parse(value.trim(), quantity);
                 if (bluetooth == null || (destination && bluetooth.functionCode != 3)) return null;
                 return new Binding("", 0, bluetooth.unit, bluetooth.registerAddress,
-                        bluetooth.functionCode, false, bluetooth.address, false);
+                        bluetooth.functionCode, false, false, bluetooth.address, false);
             }
             if ("usb".equals(uri.getScheme())) {
                 String[] path = uri.getPath().split("/", -1);
@@ -152,7 +157,7 @@ public final class CraftRegisterGateway {
                 }
                 if ((destination && function != 3) || quantity < 1 || quantity > 99
                         || (long) address + quantity > 65536L) return null;
-                return new Binding("", 0, unit, address, function, false, null, true);
+                return new Binding("", 0, unit, address, function, false, false, null, true);
             }
             if (!"tcp".equals(uri.getScheme())) return null;
             String[] path = uri.getPath().split("/", -1);
@@ -170,7 +175,8 @@ public final class CraftRegisterGateway {
             }
             if ((destination && function != 3) || quantity < 1 || quantity > (destination ? 99 : 99)
                     || (long)address + quantity > 65536L) return null;
-            return new Binding(uri.getHost(), uri.getPort(), unit, address, function, false, null, false);
+            return new Binding(uri.getHost(), uri.getPort(), unit, address, function,
+                    false, false, null, false);
         } catch (Exception ignored) { return null; }
     }
 
@@ -184,6 +190,17 @@ public final class CraftRegisterGateway {
         for (int i = 0; i < quantity; i++)
             values[i] = CraftSystemRegisterAccess.readInt(binding.address + i, projectBank);
         return values;
+    }
+
+    /** Writes only the project's user-register bank; Craft service registers 0..9 stay protected. */
+    public static void writeSystemDestination(Binding binding, int[] values,
+                                               CraftSystemRegisterBank projectBank) {
+        if (binding == null || !binding.systemRegister || !binding.systemWritable
+                || values == null || values.length < 1 || values.length > 99
+                || (long) binding.address + values.length > CraftSystemRegisterBank.SIZE)
+            throw new IllegalArgumentException("A bounded Craft user-register destination is required");
+        if (projectBank == null) throw new IllegalArgumentException("Active project register bank required");
+        projectBank.writeWords(binding.address, values.clone());
     }
 
     public static Outcome transfer(Config config, State state, Transport transport) throws IOException {

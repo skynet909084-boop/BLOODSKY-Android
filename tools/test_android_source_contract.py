@@ -81,6 +81,7 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn('requireGatewayUsbSessionAccess().writeMultiple(', self.source)
         self.assertIn('ModbusRtuOperatorPolicy.mayPollRtu("usb://", operatorMode,', self.source)
         self.assertIn('manualUsbConnection.isOpen()', self.source)
+        self.assertIn('CraftRegisterGateway.writeSystemDestination(', self.source)
 
     def test_project_archive_import_disarms_preserved_external_actions(self):
         self.assertIn("ProjectImportSafety.deactivateExternalActions(json)", self.source)
