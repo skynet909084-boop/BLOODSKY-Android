@@ -23,4 +23,6 @@ The five source files contain 0, 5, 76, 5 and 200 FBD nodes respectively (Craft 
 
 The same test edits a source-project comparator from `>=` to `>`, exports it back to Craft JSON (`compareAction=1`), and re-imports it while preserving the source save key and FBD edge count. This covers one deterministic source-property edit; it does not establish parity for every property editor or FBD block.
 
+`importedHouseProjectExecutesCraftIntegerDivisionIntoVarOut` exercises a second original screen-4 path: imported register 110 divided by source constant 256 writes integer output register 114 (512→2 and 768→3). This covers a single source INT arithmetic block, numeric wire path and register sink with test-only write permission.
+
 This is structural import/save/export evidence. It does not verify original media mapping, component appearance, active runtime bindings, device connectivity, macro sidecars, or physical hardware behavior. The two ZIP archives contain no `.mcr` sidecars. Full original-project acceptance remains open.
