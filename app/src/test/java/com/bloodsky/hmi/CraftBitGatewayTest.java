@@ -66,6 +66,59 @@ public class CraftBitGatewayTest {
         assertArrayEquals(new int[]{1, 0}, io.writes.get(0));
     }
 
+    @Test public void usbRtuBitEndpointsReuseManualUnitAndSupportRegisterTrigger() throws Exception {
+        CraftBitGateway.Config config = CraftBitGateway.validate(true, 1, 2, 2,
+                "usb://7/20", "usb://7/40", "usb://7/40010", 3);
+        assertTrue(config.source.usb);
+        assertTrue(config.destination.usb);
+        assertTrue(config.trigger.usb);
+        assertEquals(7, config.source.unit);
+        assertEquals(2, config.source.function);
+        assertEquals(20, config.source.address);
+        assertEquals(3, config.trigger.function);
+        assertEquals(9, config.trigger.address);
+        FakeTransport io = new FakeTransport();
+        CraftBitGateway.State state = new CraftBitGateway.State();
+        assertFalse(CraftBitGateway.transfer(config, state, io).transferred);
+        io.trigger = 8;
+        assertTrue(CraftBitGateway.transfer(config, state, io).transferred);
+        assertArrayEquals(new int[]{1, 0}, io.writes.get(0));
+        assertNull(CraftBitGateway.parse("usb://7:502/0", 1));
+        assertNull(CraftBitGateway.parse("usb://7/65535", 2, 2));
+        assertNull(CraftBitGateway.parse("usb://7/20?x=1", 1));
+    }
+
+    @Test public void localSystemRegisterBitRangesPreserveNeighborBitsAndProtectServiceWords() {
+        CraftBitGateway.Binding source = CraftBitGateway.parse(
+                "system://register/10/bit/15", 2, 2);
+        assertNotNull(source);
+        assertTrue(source.systemRegister);
+        assertFalse(source.systemWritable);
+        assertEquals(10 * 16 + 15, source.address);
+        assertNull(CraftBitGateway.parse("system://register/9/bit/0", 1, 1));
+        assertNull(CraftBitGateway.parse("system://register/10/bit/16", 1, 1));
+        assertNull(CraftBitGateway.parse("system://register/1999/bit/15", 1, 2));
+        assertNull(CraftBitGateway.parse("system://register/10/bit/0?x=1", 1, 1));
+
+        CraftSystemRegisterBank project = new CraftSystemRegisterBank();
+        project.writeCoils(10 * 16 + 15, new boolean[]{true, false});
+        assertArrayEquals(new int[]{1, 0}, CraftBitGateway.readSystemSource(source, 2, project));
+
+        CraftBitGateway.Config config = CraftBitGateway.validate(true, 0, 2, 1,
+                "tcp://a.local:502/1/0", "system://register/11/bit/3", "", 0);
+        assertTrue(config.destination.systemRegister);
+        assertTrue(config.destination.systemWritable);
+        project.writeWord(11, 0xA00F);
+        CraftBitGateway.writeSystemDestination(config.destination, new int[]{0, 1}, project);
+        assertEquals(0xA017, project.readWord(11));
+        assertThrows(IllegalArgumentException.class,
+                () -> CraftBitGateway.writeSystemDestination(source, new int[]{1, 1}, project));
+        assertThrows(IllegalArgumentException.class,
+                () -> CraftBitGateway.writeSystemDestination(config.destination, new int[]{1, 2}, project));
+        assertEquals("Invalid bit batch leaves the complete register unchanged", 0xA017,
+                project.readWord(11));
+    }
+
     @Test public void continuousModeTransfersPackedBitsOnEveryPoll() throws Exception {
         CraftBitGateway.Config config = config(0, 3);
         CraftBitGateway.State state = new CraftBitGateway.State();

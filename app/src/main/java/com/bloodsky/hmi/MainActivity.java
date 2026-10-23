@@ -2124,6 +2124,10 @@ public class MainActivity extends Activity {
                                 new CraftBitGateway.Transport() {
                                     @Override public int[] read(CraftBitGateway.Binding binding, int quantity) throws IOException {
                                         if (!pollSession.accepts(sessionToken)) throw new IOException("Сеанс проекта завершён");
+                                        if (binding.systemRegister) return CraftBitGateway.readSystemSource(
+                                                binding, quantity, systemRegisterBank);
+                                        if (binding.usb) return requireGatewayUsbSessionAccess().read(
+                                                binding.unit, binding.function, binding.address, quantity);
                                         if (binding.bluetoothAddress != null) {
                                             requireGatewayBluetoothSessionAccess();
                                             return bluetoothConnection(binding.bluetoothAddress).read(binding.unit,
@@ -2135,6 +2139,18 @@ public class MainActivity extends Activity {
                                     @Override public void write(CraftBitGateway.Binding binding, int[] values) throws IOException {
                                         if (!pollSession.accepts(sessionToken) || !operatorMode || !activityResumed)
                                             throw new IOException("Шлюз остановлен");
+                                        if (binding.systemRegister) {
+                                            CraftBitGateway.writeSystemDestination(
+                                                    binding, values, systemRegisterBank);
+                                            return;
+                                        }
+                                        if (binding.usb) {
+                                            UsbSerialModbusConnection connection = requireGatewayUsbSessionAccess();
+                                            if (values.length == 1) connection.writeSingleCoil(
+                                                    binding.unit, binding.address, values[0] == 1);
+                                            else connection.writeMultipleCoils(binding.unit, binding.address, values);
+                                            return;
+                                        }
                                         if (binding.bluetoothAddress != null) {
                                             requireGatewayBluetoothSessionAccess();
                                             BluetoothModbusConnection connection = bluetoothConnection(binding.bluetoothAddress);
@@ -7486,12 +7502,12 @@ private String archiveProjectKey() {
             gatewaySourceField = propertyField(w.extraFields.optString(craftBitGateway ? "craftBitGatewaySource" : "craftGatewaySource", ""),
                     InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
             gatewaySourceField.setHint(craftBitGateway
-                    ? "Источник: tcp://192.168.1.10:502/1/0 или bt://AA:BB:CC:DD:EE:FF/1/0 (адрес 0-based)"
+                    ? "Источник: tcp://192.168.1.10:502/1/0, bt://AA:BB:CC:DD:EE:FF/1/0, usb://1/0 или system://register/10/bit/0"
                     : "Источник: tcp://192.168.1.10:502/1/40001, bt://AA:BB:CC:DD:EE:FF/1/40001, usb://1/40001 или system://register/10"); form.addView(gatewaySourceField);
             gatewayDestinationField = propertyField(w.extraFields.optString(craftBitGateway ? "craftBitGatewayDestination" : "craftGatewayDestination", ""),
                     InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
             gatewayDestinationField.setHint(craftBitGateway
-                    ? "Coil-приёмник: tcp://192.168.1.11:502/1/0 или bt://AA:BB:CC:DD:EE:FF/1/0"
+                    ? "Coil-приёмник: tcp://192.168.1.11:502/1/0, bt://AA:BB:CC:DD:EE:FF/1/0, usb://1/0 или system://register/10/bit/0"
                     : "Приёмник holding: tcp://192.168.1.11:502/1/40001, bt://AA:BB:CC:DD:EE:FF/1/40001, usb://1/40001 или system://register/10"); form.addView(gatewayDestinationField);
             gatewayTriggerField = propertyField(w.extraFields.optString(craftBitGateway ? "craftBitGatewayTrigger" : "craftGatewayTrigger", ""),
                     InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
@@ -7503,7 +7519,7 @@ private String archiveProjectKey() {
             gatewayTriggerBitField.setHint("Бит триггера (0–15)"); form.addView(gatewayTriggerBitField);
             TextView gatewayHelp = new TextView(this);
             gatewayHelp.setText(craftBitGateway
-                    ? "У исходного проекта адреса устройств заданы внутренними индексами; укажи endpoint вручную. Источник читает FC01/FC02, приёмник пишет coils через FC05/FC15. Постоянно и по фронту передаётся 1–16 бит, по изменению — один. Для BT SPP укажи уже сопряжённое устройство как bt://MAC/unit/адрес; адреса coils/discrete inputs 0-based. Импортированный шлюз выключен до явного включения."
+                    ? "У исходного проекта адреса устройств заданы внутренними индексами; укажи endpoint вручную. Источник читает FC01/FC02, приёмник пишет coils через FC05/FC15. Для Системы укажи system://register/10/bit/0; доступны только пользовательские регистры 10–1999. USB использует уже выбранный ручной RTU адаптер после согласия на сеанс. Постоянно и по фронту передаётся 1–16 бит, по изменению — один. Импортированный шлюз выключен до явного включения."
                     : "У исходного проекта адреса устройств заданы внутренними индексами; они не переносятся автоматически. Источник: TCP/FC03/04, Bluetooth SPP/FC03/04 или system://register/10 (локальный банк Система, только чтение). Приёмник: TCP или Bluetooth holding-регистр. Режимы 0/1 копируют 1–99 регистров, по изменению — один. Для Bluetooth укажи уже сопряжённое устройство как bt://MAC/unit/адрес. Импортированный шлюз изначально выключен.");
             form.addView(gatewayHelp);
         } else {
