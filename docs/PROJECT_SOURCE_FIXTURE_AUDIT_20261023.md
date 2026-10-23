@@ -21,4 +21,6 @@ The five source files contain 0, 5, 76, 5 and 200 FBD nodes respectively (Craft 
 
 `CraftSourceProjectFbdRuntimeTest` adds a bounded source-runtime check for `дом 2025`: it imports screen 3, locates a Craft integer comparator connected to register 10 on `IN1` and constant 2600 on `IN2`, then checks `>=` at 2600 and below-threshold behavior at 2599 using a seeded in-memory project register bank. It verifies the comparator's imported `VarOut` writes register 11 bit 2 in both cases by explicitly enabling the test-only system-register write gate for that bank. It exercises one known path through import, typed edge conversion and local block evaluation; it is not PLC or field acceptance.
 
+The same test edits a source-project comparator from `>=` to `>`, exports it back to Craft JSON (`compareAction=1`), and re-imports it while preserving the source save key and FBD edge count. This covers one deterministic source-property edit; it does not establish parity for every property editor or FBD block.
+
 This is structural import/save/export evidence. It does not verify original media mapping, component appearance, active runtime bindings, device connectivity, macro sidecars, or physical hardware behavior. The two ZIP archives contain no `.mcr` sidecars. Full original-project acceptance remains open.

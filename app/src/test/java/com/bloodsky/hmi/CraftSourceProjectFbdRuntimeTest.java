@@ -8,7 +8,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -121,5 +123,56 @@ public class CraftSourceProjectFbdRuntimeTest {
                 evaluate(widgets, edges, compareIndex, registers, false));
         assertFalse(evaluate(widgets, edges, outputIndex, registers, true));
         assertFalse(registers.readBit(11, 2));
+    }
+
+    @Test public void editedSourceCompareModeExportsToOriginalCodeAndReimports() throws Exception {
+        JSONObject craftSource = new JSONObject(sourceFixture("дом 2025"));
+        Map<String, byte[]> media = Collections.singletonMap("fixture.png", new byte[]{1, 2, 3, 4});
+        JSONObject imported = new JSONObject(CraftProjectImporter.convert(
+                craftSource.toString(), "", media));
+        JSONObject sourceScreen = imported.getJSONArray("screens").getJSONObject(2);
+        JSONArray widgets = sourceScreen.getJSONArray("widgets");
+        int compareIndex = -1;
+        for (int i = 0; i < widgets.length(); i++) {
+            JSONObject widget = widgets.getJSONObject(i);
+            if (widget.optInt("craftComponentId", -1) == 107
+                    && ">=".equals(widget.optString("compareOperator", ""))) {
+                compareIndex = i;
+                break;
+            }
+        }
+        assertTrue("Source project should contain a >= Craft comparator", compareIndex >= 0);
+        JSONObject selected = widgets.getJSONObject(compareIndex);
+        int sourceRow = selected.getInt("craftSourceRow");
+        int connectionCount = sourceScreen.getJSONArray("connections").length();
+        selected.put("compareOperator", ">");
+
+        JSONObject exported = new JSONObject(CraftProjectExporter.export(imported.toString()));
+        JSONObject editedRow = exported.getJSONArray("TableComponent").getJSONObject(sourceRow);
+        JSONObject editedOther = editedRow.optJSONObject("jsTableComponent_other");
+        if (editedOther == null)
+            editedOther = new JSONObject(editedRow.getString("jsTableComponent_other"));
+        assertEquals(1, editedOther.getInt("compareAction"));
+        JSONObject originalComponent = craftSource.getJSONArray("TableComponent").getJSONObject(sourceRow);
+        JSONObject originalOther = originalComponent.optJSONObject("jsTableComponent_other");
+        if (originalOther == null)
+            originalOther = new JSONObject(originalComponent.getString("jsTableComponent_other"));
+        assertNotNull(originalOther);
+        assertEquals(originalOther.getInt("saveKey"), editedOther.getInt("saveKey"));
+
+        JSONObject reimported = new JSONObject(CraftProjectImporter.convert(exported.toString()));
+        JSONObject restoredScreen = reimported.getJSONArray("screens").getJSONObject(2);
+        assertEquals(connectionCount, restoredScreen.getJSONArray("connections").length());
+        JSONArray restoredWidgets = restoredScreen.getJSONArray("widgets");
+        boolean restoredEditedCompare = false;
+        for (int i = 0; i < restoredWidgets.length(); i++) {
+            JSONObject widget = restoredWidgets.getJSONObject(i);
+            if (widget.optInt("craftSourceRow", -1) == sourceRow) {
+                assertEquals(">", widget.getString("compareOperator"));
+                restoredEditedCompare = true;
+                break;
+            }
+        }
+        assertTrue("Edited source comparator should survive export and re-import", restoredEditedCompare);
     }
 }
