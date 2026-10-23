@@ -802,15 +802,29 @@ public class PortableZipMediaTest {
         }
 
         JSONObject catalog = new JSONObject(catalogJson);
-        String[] names = new String[]{"home", "gitH", "пож"};
-        int[] componentCounts = new int[]{24, 65, 124};
-        int[] screenCounts = new int[]{16, 16, 20};
+        String[] names = new String[]{"home", "gitH", "пож", "home2", "дом 2025"};
+        int[] componentCounts = new int[]{24, 65, 124, 65, 346};
+        int[] screenCounts = new int[]{16, 16, 20, 16, 16};
+        int[] connectionCounts = new int[]{0, 0, 0, 3, 2};
+        int[] bindingCounts = new int[]{24, 46, 43, 46, 122};
 
         for (int fixture = 0; fixture < names.length; fixture++) {
             String name = names[fixture];
             String sourceJson = catalog.getString(name);
             JSONObject source = new JSONObject(sourceJson);
             assertEquals(componentCounts[fixture], source.getJSONArray("TableComponent").length());
+            assertEquals(connectionCounts[fixture], source.getJSONArray("TableConnections").length());
+            int bindingCount = 0;
+            for (int i = 0; i < source.getJSONArray("TableComponent").length(); i++) {
+                JSONObject component = source.getJSONArray("TableComponent").getJSONObject(i);
+                Object binding = component.opt("jsTableComponent_connectionInfo");
+                if (binding != null && !JSONObject.NULL.equals(binding)
+                        && (!(binding instanceof JSONObject) || ((JSONObject) binding).length() > 0)
+                        && (!(binding instanceof String) || !((String) binding).isEmpty())) {
+                    bindingCount++;
+                }
+            }
+            assertEquals(bindingCounts[fixture], bindingCount);
 
             byte[] inputZip = createCraftProjectZip(sourceJson, "fixture.png", fixtureImage);
             final String[] importedJson = new String[1];
@@ -828,7 +842,39 @@ public class PortableZipMediaTest {
             assertEquals(source.getJSONArray("TableConnections").length(),
                     craftSource.getJSONArray("TableConnections").length());
             assertEquals(screenCounts[fixture], imported.getJSONArray("screens").length());
-
+            if (fixture >= 3) {
+                int preservedInactiveBindings = 0;
+                JSONArray importedScreens = imported.getJSONArray("screens");
+                for (int screen = 0; screen < importedScreens.length(); screen++) {
+                    JSONArray widgets = importedScreens.getJSONObject(screen).getJSONArray("widgets");
+                    for (int widgetIndex = 0; widgetIndex < widgets.length(); widgetIndex++) {
+                        JSONObject widget = widgets.getJSONObject(widgetIndex);
+                        if (widget.has("craftConnectionInfo")) {
+                            assertEquals("", widget.optString("connectionInfo", ""));
+                            Object legacyBinding = widget.opt("craftConnectionInfo");
+                            if (legacyBinding != null && !JSONObject.NULL.equals(legacyBinding)
+                                    && (!(legacyBinding instanceof JSONObject)
+                                    || ((JSONObject) legacyBinding).length() > 0)
+                                    && (!(legacyBinding instanceof String)
+                                    || !((String) legacyBinding).isEmpty())) {
+                                preservedInactiveBindings++;
+                            }
+                        }
+                    }
+                }
+                assertEquals(bindingCounts[fixture], preservedInactiveBindings);
+                JSONObject sourceMetadata = craftSource.getJSONObject("TableNameProject");
+                JSONArray deviceSlots = new JSONArray(sourceMetadata.getString("deviceNetwork"));
+                assertEquals(16, deviceSlots.length());
+                assertEquals(sourceMetadata.getInt("countDevice"),
+                        new JSONObject(importedJson[0]).getJSONObject("craftSource")
+                                .getJSONObject("TableNameProject").getInt("countDevice"));
+                for (int slot = 0; slot < deviceSlots.length(); slot++) {
+                    assertEquals(slot, deviceSlots.getJSONObject(slot).getInt("num"));
+                    String endpoint = deviceSlots.getJSONObject(slot).getString("server");
+                    assertTrue(endpoint.isEmpty() || "example.invalid".equals(endpoint));
+                }
+            }
             String firstBackground = imported.getJSONArray("screens").getJSONObject(0)
                     .optString("backgroundImagePath", "");
             if (!firstBackground.isEmpty()) {
