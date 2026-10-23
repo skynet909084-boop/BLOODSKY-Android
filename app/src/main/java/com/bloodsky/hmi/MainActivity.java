@@ -145,6 +145,10 @@ public class MainActivity extends Activity {
             java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
     private boolean modbusPollingActive = false;
     private boolean activityResumed = false;
+    private boolean externalRtuConsentPromptPending;
+    private boolean externalRtuConsentResolved;
+    private boolean externalRtuApprovedForSession;
+    private boolean externalBluetoothPermissionDeniedForSession;
     private android.hardware.SensorManager fbdSensorManager;
     private boolean fbdSensorsRegistered;
     private android.location.LocationManager fbdLocationManager;
@@ -474,7 +478,11 @@ public class MainActivity extends Activity {
         if (requestCode == REQUEST_OPERATOR_BLUETOOTH_PERMISSION) {
             if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED)
                 startModbusPolling();
-            else Toast.makeText(this, "Modbus RTU по Bluetooth выключен без разрешения BLUETOOTH_CONNECT", Toast.LENGTH_LONG).show();
+            else {
+                externalBluetoothPermissionDeniedForSession = true;
+                Toast.makeText(this, "Bluetooth RTU выключен без разрешения BLUETOOTH_CONNECT; TCP и выбранный USB остаются доступны", Toast.LENGTH_LONG).show();
+                startModbusPolling();
+            }
             return;
         }
         if (requestCode == REQUEST_CRAFT_PUSH_NOTIFICATION_PERMISSION) {
@@ -1651,7 +1659,25 @@ public class MainActivity extends Activity {
     private void startModbusPolling() {
         stopModbusPolling();
         if (!activityResumed || editor == null) return;
+        if (ModbusRtuOperatorPolicy.shouldPrompt(operatorMode, hasExternalRtuBinding(),
+                externalRtuConsentResolved)) {
+            if (externalRtuConsentPromptPending) return;
+            externalRtuConsentPromptPending = true;
+            new AlertDialog.Builder(this)
+                    .setTitle("Внешние подключения Modbus RTU")
+                    .setMessage("Проект содержит USB или Bluetooth RTU-привязки. Разрешить их опрос в этом сеансе оператора? USB-адаптер должен быть выбран и подключён вручную. Bluetooth подключается только к указанному в привязке сопряжённому устройству. Импортированные привязки без этого разрешения не опрашиваются.")
+                    .setNegativeButton("Оставить выключенными", (dialog, which) -> resolveExternalRtuConsent(false))
+                    .setPositiveButton("Разрешить на сеанс", (dialog, which) -> resolveExternalRtuConsent(true))
+                    .setOnCancelListener(dialog -> resolveExternalRtuConsent(false))
+                    .show();
+            return;
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 31
+                && checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
+                == android.content.pm.PackageManager.PERMISSION_GRANTED)
+            externalBluetoothPermissionDeniedForSession = false;
         if (operatorMode && hasBluetoothRegisterBinding() && android.os.Build.VERSION.SDK_INT >= 31
+                && !externalBluetoothPermissionDeniedForSession
                 && checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
                 != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{android.Manifest.permission.BLUETOOTH_CONNECT},
@@ -1661,6 +1687,23 @@ public class MainActivity extends Activity {
         pollSession.start();
         modbusPollingActive = true;
         mainHandler.postDelayed(modbusPollRunnable, 1000L);
+    }
+
+    private void resolveExternalRtuConsent(boolean approved) {
+        externalRtuConsentPromptPending = false;
+        externalRtuConsentResolved = true;
+        externalRtuApprovedForSession = approved;
+        if (!approved) Toast.makeText(this,
+                "USB/Bluetooth Modbus RTU оставлен выключенным для этого сеанса",
+                Toast.LENGTH_LONG).show();
+        startModbusPolling();
+    }
+
+    private boolean hasExternalRtuBinding() {
+        for (Widget widget : widgets) {
+            if (widget != null && ModbusRtuOperatorPolicy.isRtuBinding(widget.connectionInfo)) return true;
+        }
+        return false;
     }
 
     private void stopModbusPolling() {
@@ -1677,9 +1720,7 @@ public class MainActivity extends Activity {
     private boolean hasBluetoothRegisterBinding() {
         for (Widget widget : widgets) {
             if (widget == null) continue;
-            if (widget.connectionInfo != null && widget.connectionInfo.trim().startsWith("bt://")
-                    && (isCraftRegisterSource(widget.type) || isCraftRegisterSink(widget.type)
-                    || "FBD Вход".equals(widget.type))) return true;
+            if (isBluetoothEndpoint(widget.connectionInfo)) return true;
             if (widget.extraFields.optBoolean("craftGatewayEnabled", false)
                     && (isBluetoothEndpoint(widget.extraFields.optString("craftGatewaySource", ""))
                     || isBluetoothEndpoint(widget.extraFields.optString("craftGatewayDestination", ""))
@@ -1892,7 +1933,10 @@ public class MainActivity extends Activity {
                 quantity = OriginalCraftNumericIndicator.readQuantity(sourceType);
             }
             if ("Архив Craft".equals(widget.type)) quantity = archiveReadQuantity(widget);
-            boolean projectRtuBindingAllowed = craftSource || "FBD Вход".equals(widget.type);
+            boolean rtuBinding = ModbusRtuOperatorPolicy.isRtuBinding(widget.connectionInfo);
+            if (rtuBinding && !ModbusRtuOperatorPolicy.mayPollRtu(widget.connectionInfo,
+                    operatorMode, externalRtuApprovedForSession)) continue;
+            boolean projectRtuBindingAllowed = rtuBinding || craftSource || "FBD Вход".equals(widget.type);
             BindingRequest request = projectRtuBindingAllowed
                     ? parseProjectBinding(i, widget.connectionInfo, quantity)
                     : parseBinding(i, widget.connectionInfo, quantity);
@@ -1907,8 +1951,7 @@ public class MainActivity extends Activity {
         final Map<Integer, String> invalidBindings = new HashMap<>();
         for (int i = 0; i < snapshotWidgets.size(); i++) {
             String binding = snapshotWidgets.get(i).connectionInfo;
-            boolean usbProjectBindingAllowed = isCraftRegisterSource(snapshotWidgets.get(i).type)
-                    || "FBD Вход".equals(snapshotWidgets.get(i).type);
+            boolean rtuBinding = ModbusRtuOperatorPolicy.isRtuBinding(binding);
             boolean numericIndicator = OriginalCraftNumericIndicator.TYPE.equals(snapshotWidgets.get(i).type);
             int numericIndicatorType = numericIndicator
                     ? snapshotWidgets.get(i).extraFields.optInt("craftNumericIndicatorType", 0) : 0;
@@ -1923,19 +1966,11 @@ public class MainActivity extends Activity {
             else if (binding != null && binding.startsWith("tcp://")
                     && parseBinding(i, binding, numericIndicatorQuantity) == null)
                 invalidBindings.put(i, "CFG");
-            else if (usbProjectBindingAllowed && binding != null && binding.startsWith("usb://")
-                    && parseProjectBinding(i, binding,
-                    "График / Тренд".equals(snapshotWidgets.get(i).type)
-                            && snapshotWidgets.get(i).extraFields.optInt("craftComponentId", -1) == 14
-                            ? trendReadQuantity(snapshotWidgets.get(i))
-                            : isCraftRegisterFloat(snapshotWidgets.get(i).type) ? 2 : 1) == null) invalidBindings.put(i, "CFG");
-            else if (usbProjectBindingAllowed && binding != null && binding.startsWith("bt://")
-                    && parseProjectBinding(i, binding,
-                    "График / Тренд".equals(snapshotWidgets.get(i).type)
-                            && snapshotWidgets.get(i).extraFields.optInt("craftComponentId", -1) == 14
-                            ? trendReadQuantity(snapshotWidgets.get(i))
-                            : isCraftRegisterFloat(snapshotWidgets.get(i).type) ? 2 : 1) == null)
-                invalidBindings.put(i, "CFG — ожидается bt://MAC/Unit/Регистр");
+            else if (rtuBinding && !ModbusRtuOperatorPolicy.mayPollRtu(binding,
+                    operatorMode, externalRtuApprovedForSession))
+                invalidBindings.put(i, "ERR: Внешний Modbus RTU не разрешён");
+            else if (rtuBinding && parseProjectBinding(i, binding, numericIndicatorQuantity) == null)
+                invalidBindings.put(i, "CFG — неверная USB/Bluetooth RTU-привязка");
         }
         if (requests.isEmpty() && invalidBindings.isEmpty() && craftSystemTextUpdates.isEmpty()
                 && craftSystemNumericUpdates.isEmpty()
@@ -3639,6 +3674,10 @@ public class MainActivity extends Activity {
         craftWebViewWindow.close();
         closeCraftRtspPlayer();
         operatorMode = !operatorMode; fbdWireMode = false; wireSource = -1;
+        externalRtuConsentPromptPending = false;
+        externalRtuConsentResolved = false;
+        externalRtuApprovedForSession = false;
+        externalBluetoothPermissionDeniedForSession = false;
         if (!operatorMode) for (Widget value : fbdRuntimeWidgetsIncludingMacros(widgets))
             if (isCraftOdTempSource(value.type)) {
                 value.craftSensorValid = false;
@@ -5741,21 +5780,14 @@ private String archiveProjectKey() {
             boundCount++;
             String state = liveValues.get(i);
             if (binding.startsWith("tcp://") && parseBinding(i, binding) == null) state = "CFG — неверный адрес";
-            else if (binding.startsWith("usb://")
-                    && !(isCraftRegisterSource(widget.type) || isCraftRegisterSink(widget.type) || "FBD Вход".equals(widget.type)))
-                state = "CFG — USB RTU доступен для FBD register variables и FBD Вход";
-            else if (binding.startsWith("usb://")
+            else if (ModbusRtuOperatorPolicy.isRtuBinding(binding)
+                    && !ModbusRtuOperatorPolicy.mayPollRtu(binding, operatorMode, externalRtuApprovedForSession))
+                state = "ERR: Внешний Modbus RTU не разрешён";
+            else if (ModbusRtuOperatorPolicy.isRtuBinding(binding)
                     && parseProjectBinding(i, binding, isCraftRegisterFloat(widget.type) ? 2 : 1) == null)
-                state = "CFG — неверный USB RTU адрес";
+                state = "CFG — неверная USB/Bluetooth RTU-привязка";
             else if (binding.startsWith("usb://") && (manualUsbConnection == null || !manualUsbConnection.isOpen()))
                 state = "ERR: USB RTU не подключён";
-            else if (binding.startsWith("bt://")
-                    && !(isCraftRegisterSource(widget.type) || isCraftRegisterSink(widget.type)
-                    || "FBD Вход".equals(widget.type)))
-                state = "CFG — Bluetooth RTU доступен для FBD register variables и FBD Вход";
-            else if (binding.startsWith("bt://")
-                    && parseProjectBinding(i, binding, isCraftRegisterFloat(widget.type) ? 2 : 1) == null)
-                state = "CFG — неверный Bluetooth RTU адрес";
             else if (state == null) state = "Ожидание ответа";
             if ((state != null && state.startsWith("ERR")) || (state != null && state.startsWith("CFG"))) errorCount++;
             else if ("Ожидание ответа".equals(state)) pendingCount++;
@@ -12187,6 +12219,9 @@ private String archiveProjectKey() {
         BindingRequest request = parseProjectBinding(widgetIndex, widget.connectionInfo,
                 isCraftRegisterFloat(widget.type) ? 2 : 1);
         if (request == null || request.functionCode != 3) return;
+        if (ModbusRtuOperatorPolicy.isRtuBinding(widget.connectionInfo)
+                && !ModbusRtuOperatorPolicy.mayPollRtu(widget.connectionInfo,
+                operatorMode, externalRtuApprovedForSession)) return;
         final UsbSerialModbusConnection selectedUsbConnection = request.usb ? manualUsbConnection : null;
         final long selectedBluetoothGeneration = bluetoothSessionGeneration;
         String key = widget.connectionInfo + "|" + value + "|" + widget.extraFields.optInt("craftVarBit", 0)
