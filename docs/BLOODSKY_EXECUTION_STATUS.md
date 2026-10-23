@@ -1,5 +1,12 @@
 # BLOODSKY execution status — 2026-10-17
 
+## Current Craft gateway integration — 2026-10-23
+
+- PR #396 exact head `1df4a4977c74825957cf4d1d08c9796eabb40cb3` passed APK/JUnit #1691 and merged as `7f40fa9d9c3bf7253b1940112201063e1e02089e`; it applies the operator RTU session consent to enabled Craft gateways and keeps gateway polling out of editor mode.
+- PR #397 adds Craft ID19 manual USB RTU and project user-register word destinations; exact head `a363cd9d5407650a0656645b838b8b4040558229` passed APK/JUnit #1694 and merged as `d542e31c43176753b4171ec86293926e702e4906`.
+- PR #399 adds Craft ID22 manual USB RTU and local `register.bit` routes via `system://register/N/bit/B`; exact head `4c9bb8b5bb6c756d87f508cbc1d898bd3d77e91e` passed APK/JUnit #1695 and merged as `d27b0b200d61da9d1aa327c4dcba11fddd466b33`.
+- Imported endpoints remain disabled. External RTU still requires explicit remapping, manual adapter selection and current operator-session consent. Local gateway destinations are limited to user registers 10–1999. No physical adapter/PLC, Android permission/detach instrumentation or visual parity claim is made.
+
 ## Craft register gateway ID 19 — 2026-10-18
 
 - Added an explicit settings form for source, destination, count, mode, trigger endpoint and trigger bit. Imported device-index bindings are preserved but do not run; gateway enable is opt-in and requires explicit endpoints (TCP destination, TCP or local-system source).
@@ -58,7 +65,7 @@ Target: original KaScada Craft 1.0.7 functionality and appearance with BLOODSKY 
 - Complete original toolbar overlay/settings/menu behavior, FBD picker semantics, unsupported palette components, all property/context dialogs, fonts/drawables and every supported state; corresponding equal-density screenshots. Original home, calculator, supported palette and indicator wiring cover only part of this phase.
 - Original SQLite `Rovki.db`/table and project-archive compatibility, including real-project fixture round trips. The named catalog/JSON ZIP format is BLOODSKY's own layer, not original database compatibility.
 - Complete original component registry/property semantics, macros, pin-specific FBD layout and source-confirmed execution order/timing. Existing generic FBD/math tests do not prove original semantic parity.
-- Source-confirmed system registers/device configuration. ID7 dynamic text reads a global/system bit, and imported ID8 numeric input reads UINT16/INT16 plus source-ordered big-endian Float32 from the system bank. Opt-in writes are limited to user addresses 10–1999 (Float32 starts 10–1998); service writes 0–9, gateway destinations and the other typed UI bindings remain open. Do not accept PR45's unsupported register/timing claims as implementation specifications; see `docs/KASKADA_SYSTEM_REGISTERS_AUDIT_20261019.md`.
+- Source-confirmed system registers/device configuration. ID7 dynamic text reads a global/system bit, and imported ID8 numeric input reads UINT16/INT16 plus source-ordered big-endian Float32 from the system bank. Opt-in writes are limited to user addresses 10–1999 (Float32 starts 10–1998); service writes 0–9 and other typed UI bindings remain open. ID19/22 gateway user-register word/bit destinations are implemented by PRs #397/#399. Do not accept PR45's unsupported register/timing claims as implementation specifications; see `docs/KASKADA_SYSTEM_REGISTERS_AUDIT_20261019.md`.
 - Real Android USB/Bluetooth transport integration and lifecycle/permissions/reconnect checks; current RTU stream helpers and CRC tests are not hardware support.
 - Original operator password/screen-lock/PDF behavior and intentional foreground-service/background behavior remain open after the basic guarded mode in PR65. Network devices/server UI, remote control and other original integrations must be backed by implementations and tests, not only menu items.
 - Legacy PR38/44/46/69 were closed after review: their USB transport lacks serial-driver configuration, their media transaction design is superseded, and their FBD graph model is obsolete. Preserve only source-backed ideas for focused follow-up; do not merge those branches wholesale.
