@@ -249,6 +249,77 @@ public class CraftSourceProjectFbdRuntimeTest {
         assertEquals(3, registers.readWord(114));
     }
 
+    @Test public void importedHouseProjectExecutesSourceEqualityIntoBoolVarOut() throws Exception {
+        JSONObject craftSource = new JSONObject(sourceFixture("дом 2025"));
+        JSONObject imported = new JSONObject(CraftProjectImporter.convert(craftSource.toString()));
+        JSONObject screen = imported.getJSONArray("screens").getJSONObject(3);
+        JSONArray widgetJson = screen.getJSONArray("widgets");
+        List<MainActivity.Widget> widgets = new ArrayList<>();
+        for (int i = 0; i < widgetJson.length(); i++)
+            widgets.add(MainActivity.widgetFromJson(widgetJson.getJSONObject(i)));
+        JSONArray edgeJson = screen.getJSONArray("connections");
+        List<MainActivity.FbdConnection> edges = new ArrayList<>();
+        for (int i = 0; i < edgeJson.length(); i++)
+            edges.add(MainActivity.connectionFromJson(edgeJson.getJSONObject(i)));
+
+        int compareIndex = -1;
+        int outputIndex = -1;
+        boolean registerOnIn1 = false;
+        boolean constantOnIn2 = false;
+        for (int candidate = 0; candidate < widgets.size(); candidate++) {
+            MainActivity.Widget compare = widgets.get(candidate);
+            if (compare.extraFields.optInt("craftComponentId", -1) != 107
+                    || !"==".equals(compare.compareOperator)) continue;
+            boolean hasRegister = false;
+            boolean hasThreshold = false;
+            for (MainActivity.FbdConnection edge : edges) {
+                if (edge.target != candidate) continue;
+                MainActivity.Widget source = widgets.get(edge.source);
+                if (source.extraFields.optInt("craftComponentId", -1) != 105) continue;
+                String pin = MainActivity.connectionToJson(edge).optString("targetPin", "");
+                if ("IN1".equals(pin)
+                        && !source.extraFields.optBoolean("craftVarConstantMode", false)
+                        && source.extraFields.optInt("reg", -1) == 92) hasRegister = true;
+                if ("IN2".equals(pin)
+                        && source.extraFields.optBoolean("craftVarConstantMode", false)
+                        && "6395".equals(source.extraFields.optString("craftVarConstant", "")))
+                    hasThreshold = true;
+            }
+            if (!hasRegister || !hasThreshold) continue;
+            for (MainActivity.FbdConnection edge : edges) {
+                if (edge.source != candidate) continue;
+                MainActivity.Widget sink = widgets.get(edge.target);
+                if (sink.extraFields.optInt("craftComponentId", -1) == 102
+                        && sink.extraFields.optInt("reg", -1) == 92
+                        && sink.extraFields.optInt("bit", -1) == 1) {
+                    compareIndex = candidate;
+                    outputIndex = edge.target;
+                    registerOnIn1 = true;
+                    constantOnIn2 = true;
+                    break;
+                }
+            }
+            if (outputIndex >= 0) break;
+        }
+        assertTrue("Source screen 4 should contain register 92 == 6395 → VarOut register 92 bit 1",
+                compareIndex >= 0 && outputIndex >= 0);
+        assertTrue(registerOnIn1);
+        assertTrue(constantOnIn2);
+
+        CraftSystemRegisterBank registers = new CraftSystemRegisterBank();
+        registers.writeWord(92, 6395);
+        assertTrue("Craft source equality includes the exact threshold",
+                evaluate(widgets, edges, compareIndex, registers, false));
+        assertTrue(evaluate(widgets, edges, outputIndex, registers, true));
+        assertTrue(registers.readBit(92, 1));
+
+        registers.writeWord(92, 6392);
+        assertFalse("A distinct source register value must not satisfy == 6395",
+                evaluate(widgets, edges, compareIndex, registers, false));
+        assertFalse(evaluate(widgets, edges, outputIndex, registers, true));
+        assertFalse(registers.readBit(92, 1));
+    }
+
     @Test public void importedHouseProjectRunsSourceToggleIntoIntegerSelectorAndVarOut() throws Exception {
         JSONObject craftSource = new JSONObject(sourceFixture("дом 2025"));
         JSONObject imported = new JSONObject(CraftProjectImporter.convert(craftSource.toString()));
