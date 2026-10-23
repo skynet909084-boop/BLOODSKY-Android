@@ -19,4 +19,25 @@ public final class ModbusRtuOperatorPolicy {
                                      boolean consentGranted) {
         return isRtuBinding(binding) && operatorMode && consentGranted;
     }
+
+    /**
+     * Craft register gateways carry their endpoints outside Widget.connectionInfo.
+     * Include those configured addresses in the same per-operator-session RTU prompt.
+     */
+    public static boolean hasGatewayRtuBinding(boolean enabled, String source,
+            String destination, String trigger) {
+        return enabled && (isRtuBinding(source) || isRtuBinding(destination)
+                || isRtuBinding(trigger));
+    }
+
+    /** Gateway transfers, including reads, are operator actions rather than editor previews. */
+    public static boolean mayRunGateway(boolean enabled, boolean operatorMode) {
+        return enabled && operatorMode;
+    }
+
+    /** Bluetooth gateway reads and writes need both session consent and Android permission. */
+    public static boolean mayAccessBluetoothGateway(boolean operatorMode,
+            boolean consentGranted, boolean bluetoothConnectGranted) {
+        return operatorMode && consentGranted && bluetoothConnectGranted;
+    }
 }

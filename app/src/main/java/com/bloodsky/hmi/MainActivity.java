@@ -1703,9 +1703,31 @@ public class MainActivity extends Activity {
 
     private boolean hasExternalRtuBinding() {
         for (Widget widget : widgets) {
-            if (widget != null && ModbusRtuOperatorPolicy.isRtuBinding(widget.connectionInfo)) return true;
+            if (widget == null) continue;
+            if (ModbusRtuOperatorPolicy.isRtuBinding(widget.connectionInfo)) return true;
+            JSONObject fields = widget.extraFields;
+            if (ModbusRtuOperatorPolicy.hasGatewayRtuBinding(
+                    fields.optBoolean("craftGatewayEnabled", false),
+                    fields.optString("craftGatewaySource", ""),
+                    fields.optString("craftGatewayDestination", ""),
+                    fields.optString("craftGatewayTrigger", ""))) return true;
+            if (ModbusRtuOperatorPolicy.hasGatewayRtuBinding(
+                    fields.optBoolean("craftBitGatewayEnabled", false),
+                    fields.optString("craftBitGatewaySource", ""),
+                    fields.optString("craftBitGatewayDestination", ""),
+                    fields.optString("craftBitGatewayTrigger", ""))) return true;
         }
         return false;
+    }
+
+    private void requireGatewayBluetoothSessionAccess() throws IOException {
+        boolean permissionGranted = android.os.Build.VERSION.SDK_INT < 31
+                || checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
+                == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        if (!ModbusRtuOperatorPolicy.mayAccessBluetoothGateway(operatorMode,
+                externalRtuApprovedForSession, permissionGranted
+                        && !externalBluetoothPermissionDeniedForSession))
+            throw new IOException("Bluetooth-шлюз требует разрешения RTU на текущий сеанс");
     }
 
     private void stopModbusPolling() {
@@ -1901,11 +1923,15 @@ public class MainActivity extends Activity {
         for (int i = 0; i < snapshotWidgets.size(); i++) {
             Widget widget = snapshotWidgets.get(i);
             if ("Шлюз битовый".equals(widget.type)) {
-                if (snapshotExtras.get(i).optBoolean("craftBitGatewayEnabled", false)) bitGatewayIndices.add(i);
+                if (ModbusRtuOperatorPolicy.mayRunGateway(
+                        snapshotExtras.get(i).optBoolean("craftBitGatewayEnabled", false), operatorMode))
+                    bitGatewayIndices.add(i);
                 continue;
             }
             if ("Шлюз Craft".equals(widget.type)) {
-                if (snapshotExtras.get(i).optBoolean("craftGatewayEnabled", false)) gatewayIndices.add(i);
+                if (ModbusRtuOperatorPolicy.mayRunGateway(
+                        snapshotExtras.get(i).optBoolean("craftGatewayEnabled", false), operatorMode))
+                    gatewayIndices.add(i);
                 continue;
             }
             if ("Архив Craft".equals(widget.type)
@@ -2033,9 +2059,11 @@ public class MainActivity extends Activity {
                                         if (!pollSession.accepts(sessionToken)) throw new IOException("Сеанс проекта завершён");
                                         if (binding.systemRegister)
                                             return CraftRegisterGateway.readSystemSource(binding, quantity, systemRegisterBank);
-                                        if (binding.bluetoothAddress != null)
+                                        if (binding.bluetoothAddress != null) {
+                                            requireGatewayBluetoothSessionAccess();
                                             return bluetoothConnection(binding.bluetoothAddress).read(binding.unit,
                                                     binding.readFunction, binding.address, quantity);
+                                        }
                                         return new ModbusTcpClient(binding.host, binding.port).read(
                                                 binding.unit, binding.address, quantity, binding.readFunction);
                                     }
@@ -2043,6 +2071,7 @@ public class MainActivity extends Activity {
                                         if (!pollSession.accepts(sessionToken) || !operatorMode || !activityResumed)
                                             throw new IOException("Шлюз остановлен");
                                         if (binding.bluetoothAddress != null) {
+                                            requireGatewayBluetoothSessionAccess();
                                             bluetoothConnection(binding.bluetoothAddress).writeMultiple(
                                                     binding.unit, binding.address, values);
                                             return;
@@ -2073,9 +2102,11 @@ public class MainActivity extends Activity {
                                 new CraftBitGateway.Transport() {
                                     @Override public int[] read(CraftBitGateway.Binding binding, int quantity) throws IOException {
                                         if (!pollSession.accepts(sessionToken)) throw new IOException("Сеанс проекта завершён");
-                                        if (binding.bluetoothAddress != null)
+                                        if (binding.bluetoothAddress != null) {
+                                            requireGatewayBluetoothSessionAccess();
                                             return bluetoothConnection(binding.bluetoothAddress).read(binding.unit,
                                                     binding.function, binding.address, quantity);
+                                        }
                                         return new ModbusTcpClient(binding.host, binding.port).read(
                                                 binding.unit, binding.address, quantity, binding.function);
                                     }
@@ -2083,6 +2114,7 @@ public class MainActivity extends Activity {
                                         if (!pollSession.accepts(sessionToken) || !operatorMode || !activityResumed)
                                             throw new IOException("Шлюз остановлен");
                                         if (binding.bluetoothAddress != null) {
+                                            requireGatewayBluetoothSessionAccess();
                                             BluetoothModbusConnection connection = bluetoothConnection(binding.bluetoothAddress);
                                             if (values.length == 1) connection.writeSingleCoil(
                                                     binding.unit, binding.address, values[0] == 1);

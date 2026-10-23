@@ -74,6 +74,9 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn('bluetoothConnection(binding.bluetoothAddress).writeMultiple(', self.source)
         self.assertIn('connection.writeMultipleCoils(binding.unit, binding.address, values)', self.source)
         self.assertIn('operatorMode && hasBluetoothRegisterBinding()', self.source)
+        self.assertIn('ModbusRtuOperatorPolicy.hasGatewayRtuBinding(', self.source)
+        self.assertGreaterEqual(self.source.count('requireGatewayBluetoothSessionAccess();'), 4)
+        self.assertGreaterEqual(self.source.count('ModbusRtuOperatorPolicy.mayRunGateway('), 2)
 
     def test_project_archive_import_disarms_preserved_external_actions(self):
         self.assertIn("ProjectImportSafety.deactivateExternalActions(json)", self.source)
