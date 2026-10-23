@@ -69,7 +69,7 @@ public class CraftSourceProjectFbdRuntimeTest {
                 if (edge.target != target) continue;
                 MainActivity.Widget source = widgets.get(edge.source);
                 int sourceId = source.extraFields.optInt("craftComponentId", -1);
-                String targetPin = edge.extraFields.optString("targetPin", "");
+                String targetPin = MainActivity.connectionToJson(edge).optString("targetPin", "");
                 if (sourceId != 105) continue;
                 if ("IN1".equals(targetPin)
                         && !source.extraFields.optBoolean("craftVarConstantMode", false)
