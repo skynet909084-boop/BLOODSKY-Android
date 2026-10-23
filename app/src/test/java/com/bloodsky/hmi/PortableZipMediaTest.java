@@ -807,6 +807,7 @@ public class PortableZipMediaTest {
         int[] screenCounts = new int[]{16, 16, 20, 16, 16};
         int[] connectionCounts = new int[]{0, 0, 0, 3, 2};
         int[] bindingCounts = new int[]{24, 46, 43, 46, 122};
+        int[] fbdNodeCounts = new int[]{0, 5, 76, 5, 200};
 
         for (int fixture = 0; fixture < names.length; fixture++) {
             String name = names[fixture];
@@ -842,6 +843,32 @@ public class PortableZipMediaTest {
             assertEquals(source.getJSONArray("TableConnections").length(),
                     craftSource.getJSONArray("TableConnections").length());
             assertEquals(screenCounts[fixture], imported.getJSONArray("screens").length());
+            int importedFbdNodes = 0;
+            int importedFbdEdges = 0;
+            JSONArray sourceScreens = imported.getJSONArray("screens");
+            for (int screen = 0; screen < sourceScreens.length(); screen++) {
+                JSONObject importedScreen = sourceScreens.getJSONObject(screen);
+                JSONArray widgets = importedScreen.getJSONArray("widgets");
+                for (int widgetIndex = 0; widgetIndex < widgets.length(); widgetIndex++) {
+                    JSONObject widget = widgets.getJSONObject(widgetIndex);
+                    int componentId = widget.optInt("craftComponentId", -1);
+                    if (componentId >= 101 && componentId <= 140) {
+                        assertTrue(widget.optString("type", "").startsWith("FBD "));
+                        importedFbdNodes++;
+                    }
+                }
+                JSONArray edges = importedScreen.getJSONArray("connections");
+                importedFbdEdges += edges.length();
+                for (int edgeIndex = 0; edgeIndex < edges.length(); edgeIndex++) {
+                    JSONObject edge = edges.getJSONObject(edgeIndex);
+                    assertTrue(edge.getInt("source") >= 0 && edge.getInt("source") < widgets.length());
+                    assertTrue(edge.getInt("target") >= 0 && edge.getInt("target") < widgets.length());
+                    assertFalse(edge.getString("sourcePin").isEmpty());
+                    assertFalse(edge.getString("targetPin").isEmpty());
+                }
+            }
+            assertEquals(fbdNodeCounts[fixture], importedFbdNodes);
+            if (fbdNodeCounts[fixture] > 0) assertTrue("source FBD graph should retain native edges", importedFbdEdges > 0);
             if (fixture >= 3) {
                 int preservedInactiveBindings = 0;
                 JSONArray importedScreens = imported.getJSONArray("screens");

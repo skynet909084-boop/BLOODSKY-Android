@@ -13,8 +13,10 @@ The fixture preserves the JSON object/array layout, field names and types, compo
 
 The catalog now covers five source-derived project JSON examples: `home` (24 components), `gitH` (65), `пож` (124), `home2` (65) and `дом 2025` (346). The `пож.zip` archive itself contains no project or media; its separate `.pro` was already represented by the sanitized fixture.
 
+The five source files contain 0, 5, 76, 5 and 200 FBD nodes respectively (Craft component IDs 101–140). None contains an ID 135 macro instance. The two newly inspected ZIP archives have no `.mcr` sidecars.
+
 ## Regression coverage
 
-`PortableZipMediaTest.sanitizedCraftSampleProjectsPreserveSourceAndMediaAcrossZipRoundTrip` sends all five catalog entries through the production ZIP import path, verifies source records and screen/component counts, edits the project name, atomically saves and reopens, exports and re-imports, then verifies `craftSource` again. For `home2` and `дом 2025`, it also checks all 16 device slots, their zero-based slot indices, declared device count, connection totals, legacy-binding totals, endpoint scrubbing, and that imported legacy bindings remain opaque and disabled (`connectionInfo` is empty).
+`PortableZipMediaTest.sanitizedCraftSampleProjectsPreserveSourceAndMediaAcrossZipRoundTrip` sends all five catalog entries through the production ZIP import path, verifies source records and screen/component counts, edits the project name, atomically saves and reopens, exports and re-imports, then verifies `craftSource` again. It also checks the source FBD node count, typed FBD widget import and valid non-empty graph edges for projects with FBD nodes. For `home2` and `дом 2025`, it checks all 16 device slots, their zero-based slot indices, declared device count, connection totals, legacy-binding totals, endpoint scrubbing, and that imported legacy bindings remain opaque and disabled (`connectionInfo` is empty).
 
 This is structural import/save/export evidence. It does not verify original media mapping, component appearance, active runtime bindings, device connectivity, macro sidecars, or physical hardware behavior. The two ZIP archives contain no `.mcr` sidecars. Full original-project acceptance remains open.
