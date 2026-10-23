@@ -248,4 +248,111 @@ public class CraftSourceProjectFbdRuntimeTest {
         assertTrue(evaluate(widgets, edges, outputIndex, registers, true));
         assertEquals(3, registers.readWord(114));
     }
+
+    @Test public void importedHouseProjectRunsSourceToggleIntoIntegerSelectorAndVarOut() throws Exception {
+        JSONObject craftSource = new JSONObject(sourceFixture("дом 2025"));
+        JSONObject imported = new JSONObject(CraftProjectImporter.convert(craftSource.toString()));
+        JSONObject screen = imported.getJSONArray("screens").getJSONObject(3);
+        JSONArray widgetJson = screen.getJSONArray("widgets");
+        List<MainActivity.Widget> widgets = new ArrayList<>();
+        for (int i = 0; i < widgetJson.length(); i++)
+            widgets.add(MainActivity.widgetFromJson(widgetJson.getJSONObject(i)));
+        JSONArray edgeJson = screen.getJSONArray("connections");
+        List<MainActivity.FbdConnection> edges = new ArrayList<>();
+        for (int i = 0; i < edgeJson.length(); i++)
+            edges.add(MainActivity.connectionFromJson(edgeJson.getJSONObject(i)));
+
+        int triggerIndex = -1;
+        int selectorIndex = -1;
+        int outputIndex = -1;
+        boolean register94OnTrigger = false;
+        boolean triggerOnSelector = false;
+        boolean selectorInputsFrom24And109 = false;
+        for (int candidate = 0; candidate < widgets.size(); candidate++) {
+            MainActivity.Widget trigger = widgets.get(candidate);
+            if (trigger.extraFields.optInt("craftComponentId", -1) != 114
+                    || !"T".equals(trigger.extraFields.optString("craftTriggerMode", ""))) continue;
+            int input = -1;
+            for (MainActivity.FbdConnection edge : edges) {
+                if (edge.target != candidate
+                        || !"IN".equals(MainActivity.connectionToJson(edge).optString("targetPin", ""))) continue;
+                MainActivity.Widget source = widgets.get(edge.source);
+                if (source.extraFields.optInt("craftComponentId", -1) == 101
+                        && source.extraFields.optInt("reg", -1) == 94
+                        && source.extraFields.optInt("bit", -1) == 0
+                        && !source.extraFields.optBoolean("craftVarConstantMode", false)) {
+                    input = edge.source;
+                    register94OnTrigger = true;
+                    break;
+                }
+            }
+            if (input < 0) continue;
+            for (MainActivity.FbdConnection triggerEdge : edges) {
+                if (triggerEdge.source != candidate) continue;
+                MainActivity.Widget sink = widgets.get(triggerEdge.target);
+                if (sink.extraFields.optInt("craftComponentId", -1) != 126
+                        || !"IN".equals(MainActivity.connectionToJson(triggerEdge).optString("targetPin", ""))) continue;
+                int selected = triggerEdge.target;
+                boolean has24 = false;
+                boolean has109 = false;
+                for (MainActivity.FbdConnection inputEdge : edges) {
+                    if (inputEdge.target != selected) continue;
+                    MainActivity.Widget value = widgets.get(inputEdge.source);
+                    if (value.extraFields.optInt("craftComponentId", -1) != 105
+                            || !value.extraFields.optBoolean("craftVarConstantMode", false)) continue;
+                    String pin = MainActivity.connectionToJson(inputEdge).optString("targetPin", "");
+                    String constant = value.extraFields.optString("craftVarConstant", "");
+                    if ("I1".equals(pin) && "24".equals(constant)) has24 = true;
+                    if ("I2".equals(pin) && "109".equals(constant)) has109 = true;
+                }
+                if (!has24 || !has109) continue;
+                for (MainActivity.FbdConnection outputEdge : edges) {
+                    if (outputEdge.source != selected) continue;
+                    MainActivity.Widget output = widgets.get(outputEdge.target);
+                    if (output.extraFields.optInt("craftComponentId", -1) == 106
+                            && output.extraFields.optInt("reg", -1) == 90) {
+                        triggerIndex = candidate;
+                        selectorIndex = selected;
+                        outputIndex = outputEdge.target;
+                        triggerOnSelector = true;
+                        selectorInputsFrom24And109 = true;
+                        break;
+                    }
+                }
+                if (outputIndex >= 0) break;
+            }
+            if (outputIndex >= 0) break;
+        }
+
+        assertTrue("Source screen 4 should contain the register 94 → Craft T → SEL → register 90 graph",
+                triggerIndex >= 0 && selectorIndex >= 0 && outputIndex >= 0);
+        assertTrue(register94OnTrigger);
+        assertTrue(triggerOnSelector);
+        assertTrue(selectorInputsFrom24And109);
+
+        CraftSystemRegisterBank registers = new CraftSystemRegisterBank();
+        assertEquals("Initial false selects source I1=24", 24, scanSourceSelector(
+                widgets, edges, triggerIndex, outputIndex, registers, false));
+        registers.writeWord(94, 1);
+        assertEquals("Rising input toggles Craft T high; true selects I2=109", 109,
+                scanSourceSelector(widgets, edges, triggerIndex, outputIndex, registers, true));
+        assertEquals("Held input does not toggle a second time", 109,
+                scanSourceSelector(widgets, edges, triggerIndex, outputIndex, registers, true));
+        registers.writeWord(94, 0);
+        assertEquals("Falling input leaves the toggle output set", 109,
+                scanSourceSelector(widgets, edges, triggerIndex, outputIndex, registers, true));
+        registers.writeWord(94, 1);
+        assertEquals("Next rising edge toggles back to I1=24", 24,
+                scanSourceSelector(widgets, edges, triggerIndex, outputIndex, registers, false));
+    }
+
+    private static int scanSourceSelector(List<MainActivity.Widget> widgets,
+                                          List<MainActivity.FbdConnection> edges,
+                                          int triggerIndex, int outputIndex,
+                                          CraftSystemRegisterBank registers,
+                                          boolean expectedTriggerOutput) {
+        evaluate(widgets, edges, outputIndex, registers, true);
+        assertEquals(expectedTriggerOutput, widgets.get(triggerIndex).craftToggleOutput);
+        return registers.readWord(90);
+    }
 }
