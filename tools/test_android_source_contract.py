@@ -77,6 +77,10 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn('ModbusRtuOperatorPolicy.hasGatewayRtuBinding(', self.source)
         self.assertGreaterEqual(self.source.count('requireGatewayBluetoothSessionAccess();'), 4)
         self.assertGreaterEqual(self.source.count('ModbusRtuOperatorPolicy.mayRunGateway('), 2)
+        self.assertIn('requireGatewayUsbSessionAccess().read(', self.source)
+        self.assertIn('requireGatewayUsbSessionAccess().writeMultiple(', self.source)
+        self.assertIn('ModbusRtuOperatorPolicy.mayPollRtu("usb://", operatorMode,', self.source)
+        self.assertIn('manualUsbConnection.isOpen()', self.source)
 
     def test_project_archive_import_disarms_preserved_external_actions(self):
         self.assertIn("ProjectImportSafety.deactivateExternalActions(json)", self.source)

@@ -92,6 +92,33 @@ public class CraftRegisterGatewayTest {
                 "bt://AA:BB:CC:DD:EE:FF/7/30001", 1, true));
     }
 
+    @Test public void usbEndpointsUseManualRtuSessionAndSupportBoundedRegisterRanges() throws Exception {
+        CraftRegisterGateway.Config config = CraftRegisterGateway.validate(true, 0, 99,
+                "usb://7/30001", "usb://7/40001", "", 0);
+        assertTrue(config.source.usb);
+        assertTrue(config.destination.usb);
+        assertEquals(7, config.source.unit);
+        assertEquals(4, config.source.readFunction);
+        assertEquals(0, config.source.address);
+        assertEquals(99, config.count);
+        assertEquals(3, config.destination.readFunction);
+        assertTrue(config.source.sameDevice(config.destination));
+
+        FakeTransport transport = new FakeTransport();
+        CraftRegisterGateway.Outcome outcome = CraftRegisterGateway.transfer(
+                config, new CraftRegisterGateway.State(), transport);
+        assertTrue(outcome.transferred);
+        assertEquals(99, outcome.count);
+        assertEquals(1, transport.writes.size());
+        assertEquals(99, transport.writes.get(0).length);
+
+        assertThrows(IllegalArgumentException.class, () -> CraftRegisterGateway.validate(true, 0, 1,
+                "usb://7/40001", "usb://7/30001", "", 0));
+        assertNull(CraftRegisterGateway.parseBinding("usb://7/65535", 2, false));
+        assertNull(CraftRegisterGateway.parseBinding("usb://7:502/40001", 1, false));
+        assertNull(CraftRegisterGateway.parseBinding("usb://7/40001?x=1", 1, false));
+    }
+
     @Test public void continuousModeTransfersEverySuccessfulPoll() throws Exception {
         CraftRegisterGateway.Config config = config(0, 2);
         CraftRegisterGateway.State state = new CraftRegisterGateway.State();
