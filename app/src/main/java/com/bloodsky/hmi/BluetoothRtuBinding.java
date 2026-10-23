@@ -62,7 +62,7 @@ public final class BluetoothRtuBinding {
         }
     }
 
-    private static boolean isMacAddress(String value) {
+    public static boolean isMacAddress(String value) {
         if (value == null || value.length() != 17) return false;
         for (int i = 0; i < value.length(); i++) {
             char c = value.charAt(i);

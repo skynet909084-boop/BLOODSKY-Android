@@ -118,6 +118,7 @@ public class MainActivity extends Activity {
         }
     };
     private final ExecutorService modbusExecutor = Executors.newSingleThreadExecutor();
+    private ModbusPollGateway modbusPollGateway;
     private final ExecutorService projectMediaCleanupExecutor = Executors.newSingleThreadExecutor();
     private final Object projectMediaCleanupLock = new Object();
     private volatile UsbSerialModbusConnection manualUsbConnection;
@@ -287,6 +288,7 @@ public class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        modbusPollGateway = new ModbusPollGateway(getApplicationContext());
         getWindow().setFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN,
                 android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN);
         try {
@@ -552,6 +554,10 @@ public class MainActivity extends Activity {
         stopCraftMqtt();
         releaseVoiceRecognizer();
         editor = null;
+        if (modbusPollGateway != null) {
+            modbusPollGateway.close();
+            modbusPollGateway = null;
+        }
         modbusExecutor.shutdownNow();
         projectMediaCleanupExecutor.shutdownNow();
         craftSensorExecutor.shutdownNow();
@@ -1238,6 +1244,7 @@ public class MainActivity extends Activity {
                     runOnUiThread(() -> {
                         if (screenGeneration != manualUsbScreenGeneration) { try { opened.close(); } catch (IOException ignored) { } return; }
                         closeManualUsbConnection(); manualUsbConnection = opened;
+                        if (modbusPollGateway != null) modbusPollGateway.setSelectedUsbConnection(opened);
                         result.setText("Подключено: " + selected.id + " • " + baud + " " + framing + ". Запросы выполняются только по кнопке.");
                     });
                 } catch (Exception error) {
@@ -1283,6 +1290,7 @@ public class MainActivity extends Activity {
 
     private void closeManualUsbConnection() {
         UsbSerialModbusConnection connection = manualUsbConnection; manualUsbConnection = null;
+        if (modbusPollGateway != null) modbusPollGateway.setSelectedUsbConnection(null);
         if (connection != null) try { connection.close(); } catch (IOException error) { android.util.Log.w("BLOODSKY", "USB serial close failed", error); }
     }
 
@@ -1645,15 +1653,9 @@ public class MainActivity extends Activity {
     }
 
     private int[] readBoundRegisters(BindingRequest request) throws IOException {
-        if (!request.usb)
-            if (request.bluetoothAddress != null)
-                return bluetoothConnection(request.bluetoothAddress).read(
-                        request.unit, request.functionCode, request.address, request.quantity);
-            else return new ModbusTcpClient(request.host, request.port).read(
-                    request.unit, request.address, request.quantity, request.functionCode);
-        UsbSerialModbusConnection connection = manualUsbConnection;
-        if (connection == null || !connection.isOpen()) throw new IOException("USB RTU не подключён");
-        return connection.read(request.unit, request.functionCode, request.address, request.quantity);
+        ModbusPollGateway gateway = modbusPollGateway;
+        if (gateway == null) throw new IOException("Modbus gateway не запущен");
+        return gateway.read(request.toGatewayEndpoint());
     }
 
     private void startModbusPolling() {
@@ -1714,6 +1716,7 @@ public class MainActivity extends Activity {
         craftArchiveTriggerHigh.clear();
         craftArchiveTriggerEdges.clear();
         closeBluetoothModbusConnections();
+        if (modbusPollGateway != null) modbusPollGateway.closeBluetoothConnections();
         mainHandler.removeCallbacks(modbusPollRunnable);
     }
 
@@ -1936,6 +1939,7 @@ public class MainActivity extends Activity {
             boolean rtuBinding = ModbusRtuOperatorPolicy.isRtuBinding(widget.connectionInfo);
             if (rtuBinding && !ModbusRtuOperatorPolicy.mayPollRtu(widget.connectionInfo,
                     operatorMode, externalRtuApprovedForSession)) continue;
+            if (isBluetoothEndpoint(widget.connectionInfo) && externalBluetoothPermissionDeniedForSession) continue;
             boolean projectRtuBindingAllowed = rtuBinding || craftSource || "FBD Вход".equals(widget.type);
             BindingRequest request = projectRtuBindingAllowed
                     ? parseProjectBinding(i, widget.connectionInfo, quantity)
@@ -1969,6 +1973,8 @@ public class MainActivity extends Activity {
             else if (rtuBinding && !ModbusRtuOperatorPolicy.mayPollRtu(binding,
                     operatorMode, externalRtuApprovedForSession))
                 invalidBindings.put(i, "ERR: Внешний Modbus RTU не разрешён");
+            else if (isBluetoothEndpoint(binding) && externalBluetoothPermissionDeniedForSession)
+                invalidBindings.put(i, "ERR: нет разрешения BLUETOOTH_CONNECT");
             else if (rtuBinding && parseProjectBinding(i, binding, numericIndicatorQuantity) == null)
                 invalidBindings.put(i, "CFG — неверная USB/Bluetooth RTU-привязка");
         }
@@ -2387,6 +2393,15 @@ public class MainActivity extends Activity {
             if (bluetoothAddress != null) return "bt/" + bluetoothAddress + "/" + unit + "/"
                     + address + "/FC" + functionCode + "/" + quantity;
             return host.toLowerCase(java.util.Locale.ROOT) + ":" + port + "/" + unit + "/" + address + "/FC" + functionCode + "/" + quantity;
+        }
+        ModbusPollGateway.Endpoint toGatewayEndpoint() {
+            ModbusPollGateway.Endpoint.Scheme scheme = usb
+                    ? ModbusPollGateway.Endpoint.Scheme.USB
+                    : bluetoothAddress != null ? ModbusPollGateway.Endpoint.Scheme.BT
+                    : ModbusPollGateway.Endpoint.Scheme.TCP;
+            String endpointHost = bluetoothAddress != null ? bluetoothAddress : host;
+            return ModbusPollGateway.Endpoint.of(scheme, endpointHost, port, unit, address,
+                    functionCode, quantity);
         }
     }
 
