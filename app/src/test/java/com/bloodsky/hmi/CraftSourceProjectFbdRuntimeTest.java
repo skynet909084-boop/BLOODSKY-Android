@@ -176,7 +176,7 @@ public class CraftSourceProjectFbdRuntimeTest {
         assertTrue("Edited source comparator should survive export and re-import", restoredEditedCompare);
     }
 
-    @Test public void importedHouseProjectExecutesCraftIntegerDivisionIntoVarOut() throws Exception {
+    @Test public void importedHouseProjectExecutesAllSourceIntegerDivisionIntoVarOutPaths() throws Exception {
         JSONObject craftSource = new JSONObject(sourceFixture("дом 2025"));
         JSONObject imported = new JSONObject(CraftProjectImporter.convert(craftSource.toString()));
         JSONObject screen = imported.getJSONArray("screens").getJSONObject(3);
@@ -189,64 +189,68 @@ public class CraftSourceProjectFbdRuntimeTest {
         for (int i = 0; i < edgeJson.length(); i++)
             edges.add(MainActivity.connectionFromJson(edgeJson.getJSONObject(i)));
 
+        CraftSystemRegisterBank registers = new CraftSystemRegisterBank();
+        int count = widgets.size();
+        for (int path = 0; path < 4; path++) {
+            int inputRegister = 110 + path;
+            int outputRegister = 114 + path;
+            int[] indexes = findSourceIntegerDivisionPath(widgets, edges, inputRegister, outputRegister);
+            assertNotNull("Source reg " + inputRegister + " / 256 must feed VarOutInt reg "
+                    + outputRegister, indexes);
+
+            int divisionIndex = indexes[0];
+            int outputIndex = indexes[1];
+            int firstInput = 512 + path * 256;
+            registers.writeWord(inputRegister, firstInput);
+            assertEquals(2.0 + path, MainActivity.evaluateFbdBlockNumeric(widgets, edges, divisionIndex,
+                    new boolean[count], new boolean[count], new boolean[count], new double[count], registers), 0.0);
+            assertTrue(evaluate(widgets, edges, outputIndex, registers, true));
+            assertEquals(2 + path, registers.readWord(outputRegister));
+
+            registers.writeWord(inputRegister, firstInput + 256);
+            assertEquals(3.0 + path, MainActivity.evaluateFbdBlockNumeric(widgets, edges, divisionIndex,
+                    new boolean[count], new boolean[count], new boolean[count], new double[count], registers), 0.0);
+            assertTrue(evaluate(widgets, edges, outputIndex, registers, true));
+            assertEquals(3 + path, registers.readWord(outputRegister));
+        }
+    }
+
+    private static int[] findSourceIntegerDivisionPath(List<MainActivity.Widget> widgets,
+                                                       List<MainActivity.FbdConnection> edges,
+                                                       int inputRegister, int outputRegister) throws Exception {
         int divisionIndex = -1;
-        boolean registerOnIn1 = false;
-        boolean constantOnIn2 = false;
-        for (int target = 0; target < widgets.size(); target++) {
-            MainActivity.Widget candidate = widgets.get(target);
-            if (candidate.extraFields.optInt("craftComponentId", -1) != 110
-                    || !"/".equals(candidate.compareOperator)) continue;
-            boolean registerInput = false;
-            boolean constantInput = false;
+        for (int candidate = 0; candidate < widgets.size(); candidate++) {
+            MainActivity.Widget division = widgets.get(candidate);
+            if (division.extraFields.optInt("craftComponentId", -1) != 110
+                    || !"/".equals(division.compareOperator)) continue;
+            boolean registerOnIn1 = false;
+            boolean constantOnIn2 = false;
             for (MainActivity.FbdConnection edge : edges) {
-                if (edge.target != target) continue;
+                if (edge.target != candidate) continue;
                 MainActivity.Widget source = widgets.get(edge.source);
-                int sourceId = source.extraFields.optInt("craftComponentId", -1);
-                String targetPin = MainActivity.connectionToJson(edge).optString("targetPin", "");
-                if (sourceId != 105) continue;
-                if ("IN1".equals(targetPin)
+                if (source.extraFields.optInt("craftComponentId", -1) != 105) continue;
+                String pin = MainActivity.connectionToJson(edge).optString("targetPin", "");
+                if ("IN1".equals(pin)
                         && !source.extraFields.optBoolean("craftVarConstantMode", false)
-                        && source.extraFields.optInt("reg", -1) == 110) registerInput = true;
-                if ("IN2".equals(targetPin)
+                        && source.extraFields.optInt("reg", -1) == inputRegister) registerOnIn1 = true;
+                if ("IN2".equals(pin)
                         && source.extraFields.optBoolean("craftVarConstantMode", false)
-                        && "256".equals(source.extraFields.optString("craftVarConstant", ""))) constantInput = true;
+                        && "256".equals(source.extraFields.optString("craftVarConstant", ""))) constantOnIn2 = true;
             }
-            if (registerInput && constantInput) {
-                divisionIndex = target;
-                registerOnIn1 = true;
-                constantOnIn2 = true;
+            if (registerOnIn1 && constantOnIn2) {
+                divisionIndex = candidate;
                 break;
             }
         }
-        assertTrue("Source integer division with register 110 / 256 should import", divisionIndex >= 0);
-        assertTrue(registerOnIn1);
-        assertTrue(constantOnIn2);
-
-        int outputIndex = -1;
+        if (divisionIndex < 0) return null;
         for (MainActivity.FbdConnection edge : edges) {
             if (edge.source != divisionIndex) continue;
             MainActivity.Widget sink = widgets.get(edge.target);
             if (sink.extraFields.optInt("craftComponentId", -1) == 106
-                    && sink.extraFields.optInt("reg", -1) == 114) {
-                outputIndex = edge.target;
-                break;
-            }
+                    && sink.extraFields.optInt("reg", -1) == outputRegister)
+                return new int[]{divisionIndex, edge.target};
         }
-        assertTrue("Source integer division should feed VarOut register 114", outputIndex >= 0);
-
-        CraftSystemRegisterBank registers = new CraftSystemRegisterBank();
-        int count = widgets.size();
-        registers.writeWord(110, 512);
-        assertEquals(2.0, MainActivity.evaluateFbdBlockNumeric(widgets, edges, divisionIndex,
-                new boolean[count], new boolean[count], new boolean[count], new double[count], registers), 0.0);
-        assertTrue(evaluate(widgets, edges, outputIndex, registers, true));
-        assertEquals(2, registers.readWord(114));
-
-        registers.writeWord(110, 768);
-        assertEquals(3.0, MainActivity.evaluateFbdBlockNumeric(widgets, edges, divisionIndex,
-                new boolean[count], new boolean[count], new boolean[count], new double[count], registers), 0.0);
-        assertTrue(evaluate(widgets, edges, outputIndex, registers, true));
-        assertEquals(3, registers.readWord(114));
+        return null;
     }
 
     @Test public void importedHouseProjectExecutesSourceEqualityIntoBoolVarOut() throws Exception {
