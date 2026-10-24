@@ -31,7 +31,11 @@ public class FbdCraftFloatConversionTest {
         assertEquals(-2.0, MainActivity.fbdCraftFloatToInt(-2.75), 0.0);
         assertEquals((double) Integer.MAX_VALUE,
                 MainActivity.fbdCraftFloatToInt(1e30), 0.0);
-        assertTrue(Double.isNaN(MainActivity.fbdCraftFloatToInt(Double.POSITIVE_INFINITY)));
+        assertEquals((double) Integer.MAX_VALUE,
+                MainActivity.fbdCraftFloatToInt(Double.POSITIVE_INFINITY), 0.0);
+        assertEquals((double) Integer.MIN_VALUE,
+                MainActivity.fbdCraftFloatToInt(Double.NEGATIVE_INFINITY), 0.0);
+        assertEquals(0.0, MainActivity.fbdCraftFloatToInt(Double.NaN), 0.0);
 
         double x = 1.234567890123;
         assertEquals((double) (float) Math.sin((float) x),
@@ -89,5 +93,29 @@ public class FbdCraftFloatConversionTest {
         assertEquals(9.0, graphOutput(nodes, edges, 2), 0.0);
         assertEquals("FBD CRAFT POW",
                 MainActivity.widgetFromJson(MainActivity.widgetToJson(pow)).type);
+    }
+
+    @Test public void craftFloatToIntGraphPreservesIeeeValuesAndUnavailableInputs() throws Exception {
+        MainActivity.Widget numerator = widget("FBD CRAFT CTU"); numerator.counterValue = 1;
+        MainActivity.Widget zero = widget("FBD CRAFT CTU"); zero.counterValue = 0;
+        MainActivity.Widget divide = widget("FBD CRAFT ARITHMETIC FLOAT");
+        divide.compareOperator = "/";
+        MainActivity.Widget convert = widget("FBD CRAFT FLOAT TO INT");
+        List<MainActivity.Widget> nodes = Arrays.asList(numerator, zero, divide, convert);
+        List<MainActivity.FbdConnection> edges = Arrays.asList(
+                MainActivity.pinnedFbdConnection(0, "Q", 2, "IN1"),
+                MainActivity.pinnedFbdConnection(1, "Q", 2, "IN2"),
+                MainActivity.pinnedFbdConnection(2, "Q", 3, "IN"));
+        assertEquals((double) Integer.MAX_VALUE, graphOutput(nodes, edges, 3), 0.0);
+
+        numerator.counterValue = 0;
+        assertEquals(0.0, graphOutput(nodes, edges, 3), 0.0);
+
+        MainActivity.Widget unresolved = widget("FBD CRAFT ARITHMETIC FLOAT");
+        MainActivity.Widget missing = widget("FBD CRAFT FLOAT TO INT");
+        List<MainActivity.Widget> missingNodes = Arrays.asList(unresolved, missing);
+        List<MainActivity.FbdConnection> missingEdges = Arrays.asList(
+                MainActivity.pinnedFbdConnection(0, "Q", 1, "IN"));
+        assertTrue(Double.isNaN(graphOutput(missingNodes, missingEdges, 1)));
     }
 }
