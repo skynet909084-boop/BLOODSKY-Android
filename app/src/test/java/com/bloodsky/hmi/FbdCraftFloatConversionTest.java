@@ -152,6 +152,17 @@ public class FbdCraftFloatConversionTest {
                 MainActivity.pinnedFbdConnection(3, "Q", 4, "IN"));
         assertEquals((double) Integer.MAX_VALUE, graphOutput(infinityNodes, infinityEdges, 4), 0.0);
 
+        MainActivity.Widget power = widget("FBD CRAFT POW");
+        MainActivity.Widget convertPow = widget("FBD CRAFT FLOAT TO INT");
+        List<MainActivity.Widget> powerNodes = Arrays.asList(one, zero, divide, power, convertPow);
+        List<MainActivity.FbdConnection> powerEdges = Arrays.asList(
+                MainActivity.pinnedFbdConnection(0, "Q", 2, "IN1"),
+                MainActivity.pinnedFbdConnection(1, "Q", 2, "IN2"),
+                MainActivity.pinnedFbdConnection(2, "Q", 3, "X"),
+                MainActivity.pinnedFbdConnection(0, "Q", 3, "Y"),
+                MainActivity.pinnedFbdConnection(3, "Q", 4, "IN"));
+        assertEquals((double) Integer.MAX_VALUE, graphOutput(powerNodes, powerEdges, 4), 0.0);
+
         one.counterValue = 0;
         MainActivity.Widget log = widget("FBD CRAFT LOG");
         MainActivity.Widget convertNan = widget("FBD CRAFT FLOAT TO INT");
