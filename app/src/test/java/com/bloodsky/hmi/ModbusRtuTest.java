@@ -34,6 +34,48 @@ public class ModbusRtuTest {
         assertEquals((byte) ((crc >> 8) & 0xFF), frame[7]);
     }
 
+    @Test
+    public void sharedModbusRtuFramingValidatesRequestsAndCrc() {
+        byte[] read = ModbusRtu.buildReadFrame(1, 3, 0, 1);
+        assertEquals(8, read.length);
+        assertTrue(ModbusRtu.isCrcValid(read));
+        assertArrayEquals(MainActivity.buildModbusRtuFrame(1, 3, 0, 1), read);
+
+        byte[] single = ModbusRtu.buildWriteSingleFrame(1, 10, -32768);
+        assertEquals(8, single.length);
+        assertTrue(ModbusRtu.isCrcValid(single));
+        byte[] multiple = ModbusRtu.buildWriteMultipleFrame(1, 0, new int[] {1, 2, 65535});
+        assertEquals(16, multiple.length);
+        assertTrue(ModbusRtu.isCrcValid(multiple));
+        multiple[multiple.length - 1] ^= 0x01;
+        assertFalse(ModbusRtu.isCrcValid(multiple));
+
+        assertInvalidRequest(248, 3, 0, 1);
+        assertInvalidRequest(1, 3, 0, 126);
+        assertInvalidRequest(1, 1, 0, 2001);
+        assertInvalidRequest(1, 5, 0, 1);
+        assertInvalidRequest(1, 3, 65535, 2);
+    }
+
+    private static void assertInvalidRequest(int unit, int function, int address, int quantity) {
+        try {
+            ModbusRtu.buildReadFrame(unit, function, address, quantity);
+            fail("Expected invalid RTU request parameters to be rejected");
+        } catch (IllegalArgumentException expected) {
+            // expected
+        }
+    }
+
+    @Test
+    public void sharedModbusRtuStreamExchangeWritesAndReadsValidFrame() throws Exception {
+        byte[] request = ModbusRtu.buildReadFrame(1, 3, 0, 1);
+        byte[] response = ModbusRtu.appendCrc(new byte[] {0x01, 0x03, 0x02, 0x12, 0x34});
+        ByteArrayOutputStream sent = new ByteArrayOutputStream();
+        byte[] received = ModbusRtu.exchange(sent, new ByteArrayInputStream(response), request, 2, 1000);
+        assertArrayEquals(request, sent.toByteArray());
+        assertArrayEquals(response, received);
+    }
+
     private static byte[] response(int unit, int functionCode, byte[] payload) {
         byte[] frame = new byte[3 + payload.length + 2];
         frame[0] = (byte) unit;

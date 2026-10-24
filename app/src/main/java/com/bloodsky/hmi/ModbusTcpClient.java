@@ -134,7 +134,6 @@ public final class ModbusTcpClient implements ModbusTransport {
     }
 
     private static void validateUnit(int unit) {
-        // TCP gateways may use 0 and 255; do not impose serial-only 1..247 here.
         if (unit < 0 || unit > 255) throw new IllegalArgumentException("Unit must be 0..255");
     }
 
