@@ -11422,7 +11422,6 @@ private String archiveProjectKey() {
 
     /** Source LOG consumes and returns Float, so preserve its Float32 rounding. */
     public static double fbdCraftLogFloat32(double value) {
-        if (Double.isNaN(value) || Double.isInfinite(value)) return Double.NaN;
         return (float) Math.log((float) value);
     }
 
@@ -11440,24 +11439,49 @@ private String archiveProjectKey() {
 
     /** Original FloatToInt casts a Float to int, truncating toward zero. */
     public static double fbdCraftFloatToInt(double value) {
-        if (!Double.isFinite(value)) return Double.NaN;
         return (int) (float) value;
     }
 
+    /** Resolve a source-backed numeric input without conflating IEEE values with missing outputs. */
+    private static Double fbdCraftAvailableNumericInput(List<Widget> widgets,
+            List<FbdConnection> connections, int targetIndex,
+            List<Double> values, List<String> pins, String targetPin, int legacyIndex) {
+        if (widgets == null || connections == null || values == null || pins == null) return null;
+        int selected = -1;
+        boolean hasNamedPin = false;
+        for (String pin : pins) if (!canonicalFbdPinName(pin).isEmpty()) hasNamedPin = true;
+        if (hasNamedPin) {
+            for (int i = 0; i < pins.size() && i < values.size(); i++) {
+                if (canonicalFbdPinName(targetPin).equals(canonicalFbdPinName(pins.get(i)))) {
+                    selected = i;
+                    break;
+                }
+            }
+        } else if (legacyIndex >= 0 && legacyIndex < values.size()) selected = legacyIndex;
+        if (selected < 0 || selected >= values.size()) return null;
+
+        int inputIndex = 0;
+        for (FbdConnection edge : connections) {
+            if (edge == null || edge.target != targetIndex) continue;
+            if (inputIndex++ != selected) continue;
+            if (edge.source < 0 || edge.source >= widgets.size()) return null;
+            Widget source = widgets.get(edge.source);
+            return source != null && source.fbdOutputAvailable ? values.get(selected) : null;
+        }
+        return null;
+    }
+
     public static double fbdCraftUnaryFloat32(double value, String operation) {
-        if (!Double.isFinite(value)) return Double.NaN;
         float input = (float) value;
         float result;
         if ("ABS".equals(operation)) result = Math.abs(input);
         else if ("SIN".equals(operation)) result = (float) Math.sin(input);
         else return Double.NaN;
-        return Float.isFinite(result) ? result : Double.NaN;
+        return result;
     }
 
     public static double fbdCraftPowFloat32(double x, double y) {
-        if (!Double.isFinite(x) || !Double.isFinite(y)) return Double.NaN;
-        float result = (float) Math.pow((float) x, (float) y);
-        return Float.isFinite(result) ? result : Double.NaN;
+        return (float) Math.pow((float) x, (float) y);
     }
 
     public static boolean evaluateFbdBlockUncached(List<Widget> widgetsList, List<FbdConnection> connectionsList,
@@ -11742,7 +11766,13 @@ private String archiveProjectKey() {
                 || "FBD CRAFT FLOAT TO INT".equals(widget.type)
                 || "FBD CRAFT SIN".equals(widget.type) || "FBD CRAFT ABS".equals(widget.type)) {
             if (!inputPins.contains("IN")) { cacheNumeric[index] = Double.NaN; return false; }
-            double val = fbdNumericPinValue(numInputs, inputPins, "IN", -1, Double.NaN);
+            Double rawInput = fbdCraftAvailableNumericInput(widgetsList, connectionsList,
+                    index, numInputs, inputPins, "IN", -1);
+            if (rawInput == null) {
+                cacheNumeric[index] = Double.NaN;
+                return false;
+            }
+            double val = rawInput;
             double result;
             if ("FBD CRAFT LOG".equals(widget.type)) result = fbdCraftLogFloat32(val);
             else if ("FBD CRAFT WORD TO FLOAT".equals(widget.type)) result = fbdCraftWordToFloat(val);
@@ -11751,6 +11781,12 @@ private String archiveProjectKey() {
             else result = fbdCraftUnaryFloat32(val,
                     "FBD CRAFT ABS".equals(widget.type) ? "ABS" : "SIN");
             cacheNumeric[index] = result;
+            // Source Float-returning blocks keep IEEE results as connected objects.
+            if (!"FBD CRAFT WORD TO FLOAT".equals(widget.type)
+                    && !"FBD CRAFT INT TO FLOAT".equals(widget.type)) {
+                widget.fbdOutputAvailable = true;
+                widget.fbdOutputAvailabilityExplicit = true;
+            }
             return !Double.isNaN(result) && !Double.isInfinite(result) && result != 0.0;
         }
         if ("FBD CRAFT POW".equals(widget.type)) {
@@ -11758,10 +11794,15 @@ private String archiveProjectKey() {
                 cacheNumeric[index] = Double.NaN;
                 return false;
             }
-            double result = fbdCraftPowFloat32(
-                    fbdNumericPinValue(numInputs, inputPins, "X", -1, Double.NaN),
-                    fbdNumericPinValue(numInputs, inputPins, "Y", -1, Double.NaN));
+            Double x = fbdCraftAvailableNumericInput(widgetsList, connectionsList,
+                    index, numInputs, inputPins, "X", -1);
+            Double y = fbdCraftAvailableNumericInput(widgetsList, connectionsList,
+                    index, numInputs, inputPins, "Y", -1);
+            if (x == null || y == null) { cacheNumeric[index] = Double.NaN; return false; }
+            double result = fbdCraftPowFloat32(x, y);
             cacheNumeric[index] = result;
+            widget.fbdOutputAvailable = true;
+            widget.fbdOutputAvailabilityExplicit = true;
             return !Double.isNaN(result) && !Double.isInfinite(result) && result != 0.0;
         }
         if ("FBD MIN_MAX".equals(widget.type)) {
@@ -12038,8 +12079,20 @@ private String archiveProjectKey() {
                 if ("IN2".equals(normalized)) rightConnected = true;
             }
             if (!leftConnected || !rightConnected) return false;
-            double left = fbdNumericPinValue(numInputs, inputPins, "IN1", 0, Double.NaN);
-            double right = fbdNumericPinValue(numInputs, inputPins, "IN2", 1, Double.NaN);
+            boolean floatBlock = "FBD CRAFT ARITHMETIC FLOAT".equals(widget.type)
+                    || "FBD CRAFT COMPARE FLOAT".equals(widget.type);
+            Double rawLeft = floatBlock ? fbdCraftAvailableNumericInput(widgetsList,
+                    connectionsList, index, numInputs, inputPins, "IN1", 0) : null;
+            Double rawRight = floatBlock ? fbdCraftAvailableNumericInput(widgetsList,
+                    connectionsList, index, numInputs, inputPins, "IN2", 1) : null;
+            if (floatBlock && (rawLeft == null || rawRight == null)) {
+                cacheNumeric[index] = Double.NaN;
+                return false;
+            }
+            double left = floatBlock ? rawLeft
+                    : fbdNumericPinValue(numInputs, inputPins, "IN1", 0, Double.NaN);
+            double right = floatBlock ? rawRight
+                    : fbdNumericPinValue(numInputs, inputPins, "IN2", 1, Double.NaN);
             int action = FbdCraftMath.actionForOperator(widget.compareOperator,
                     "FBD CRAFT COMPARE FLOAT".equals(widget.type));
             if ("FBD CRAFT ARITHMETIC INT".equals(widget.type)) {
