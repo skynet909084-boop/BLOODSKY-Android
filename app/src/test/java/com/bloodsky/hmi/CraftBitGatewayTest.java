@@ -20,6 +20,7 @@ public class CraftBitGatewayTest {
         final List<int[]> writes = new ArrayList<>();
         int[] source = new int[]{1};
         int trigger;
+        int failedWrites;
         @Override public int[] read(CraftBitGateway.Binding binding, int quantity) throws IOException {
             if (binding.function == 3) return new int[]{trigger};
             if (source.length != quantity) {
@@ -29,7 +30,13 @@ public class CraftBitGatewayTest {
             }
             return source.clone();
         }
-        @Override public void write(CraftBitGateway.Binding binding, int[] values) { writes.add(values.clone()); }
+        @Override public void write(CraftBitGateway.Binding binding, int[] values) throws IOException {
+            if (failedWrites > 0) {
+                failedWrites--;
+                throw new IOException("temporary write failure");
+            }
+            writes.add(values.clone());
+        }
     }
 
     @Test public void validatesModesBitCountsFunctionsAndEndpoints() {
@@ -147,6 +154,33 @@ public class CraftBitGatewayTest {
         changeIo.source = new int[]{0};
         assertTrue(CraftBitGateway.transfer(change, changeState, changeIo).transferred);
         assertEquals(1, changeIo.writes.size());
+    }
+
+    @Test public void failedOnChangeWriteRetriesUncommittedSourceValue() throws Exception {
+        CraftBitGateway.Config change = config(2, 1);
+        CraftBitGateway.State state = new CraftBitGateway.State();
+        FakeTransport io = new FakeTransport();
+        assertFalse(CraftBitGateway.transfer(change, state, io).transferred);
+        io.source = new int[]{0};
+        io.failedWrites = 1;
+
+        assertThrows(IOException.class, () -> CraftBitGateway.transfer(change, state, io));
+        assertTrue(CraftBitGateway.transfer(change, state, io).transferred);
+        assertArrayEquals(new int[]{0}, io.writes.get(0));
+        assertEquals(1, io.writes.size());
+    }
+
+    @Test public void failedRisingEdgeWriteRetriesWhileTriggerRemainsActive() throws Exception {
+        CraftBitGateway.Config edge = config(1, 1);
+        CraftBitGateway.State state = new CraftBitGateway.State();
+        FakeTransport io = new FakeTransport();
+        assertFalse(CraftBitGateway.transfer(edge, state, io).transferred);
+        io.trigger = 8;
+        io.failedWrites = 1;
+
+        assertThrows(IOException.class, () -> CraftBitGateway.transfer(edge, state, io));
+        assertTrue(CraftBitGateway.transfer(edge, state, io).transferred);
+        assertEquals(1, io.writes.size());
     }
 
     @Test public void failedOrInvalidSourceNeverWritesDestination() {

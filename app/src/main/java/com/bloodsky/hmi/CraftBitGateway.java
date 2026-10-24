@@ -196,24 +196,41 @@ public final class CraftBitGateway {
     public static Outcome transfer(Config c, State state, Transport transport) throws IOException {
         if (c == null || state == null || transport == null) throw new IllegalArgumentException("Gateway config/state/transport required");
         state.resetIfChanged(c);
+        boolean risingEdge = false;
+        boolean activeTrigger = false;
         if (c.mode == MODE_RISING_EDGE) {
             int[] trigger = transport.read(c.trigger, 1);
             if (trigger == null || trigger.length != 1 || trigger[0] < 0 || trigger[0] > 65535)
                 throw new IOException("Некорректный ответ триггера битового шлюза");
-            boolean active = ((trigger[0] >>> c.triggerBit) & 1) != 0;
-            boolean rising = state.triggerBaseline && !state.previousTrigger && active;
-            state.triggerBaseline = true; state.previousTrigger = active;
-            if (!rising) return new Outcome(false, 0);
+            activeTrigger = ((trigger[0] >>> c.triggerBit) & 1) != 0;
+            risingEdge = state.triggerBaseline && !state.previousTrigger && activeTrigger;
+            if (!risingEdge) {
+                state.triggerBaseline = true;
+                state.previousTrigger = activeTrigger;
+                return new Outcome(false, 0);
+            }
         }
         int[] bits = transport.read(c.source, c.count);
         if (bits == null || bits.length != c.count) throw new IOException("Число битов в ответе шлюза не совпадает с настройкой");
         for (int bit : bits) if (bit != 0 && bit != 1) throw new IOException("Источник вернул значение бита вне 0/1");
         if (c.mode == MODE_ON_CHANGE) {
             boolean changed = state.sourceBaseline && !Arrays.equals(state.previousSource, bits);
-            state.sourceBaseline = true; state.previousSource = bits.clone();
+            if (!state.sourceBaseline) {
+                state.sourceBaseline = true;
+                state.previousSource = bits.clone();
+                return new Outcome(false, 0);
+            }
             if (!changed) return new Outcome(false, 0);
         }
         transport.write(c.destination, bits.clone());
+        if (c.mode == MODE_RISING_EDGE) {
+            state.triggerBaseline = true;
+            state.previousTrigger = activeTrigger;
+        }
+        if (c.mode == MODE_ON_CHANGE) {
+            state.sourceBaseline = true;
+            state.previousSource = bits.clone();
+        }
         return new Outcome(true, bits.length);
     }
 }
