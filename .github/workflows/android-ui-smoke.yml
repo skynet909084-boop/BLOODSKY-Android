@@ -9,11 +9,11 @@ on:
         type: choice
         default: full
         options: [full, quick]
-  # Only release PRs targeting stable main start Android automatically.
-  # Feature/integration PRs targeting prototype branches never boot an emulator.
+  # Only release-candidate PRs targeting stable main start Android automatically.
+  # Routine implementation PRs defer emulator/device acceptance until release.
   pull_request:
     branches: [main]
-    types: [opened, reopened, synchronize, ready_for_review]
+    types: [opened, reopened, synchronize, ready_for_review, labeled]
     paths:
       - 'app/**'
       - 'tools/android_ui_smoke.py'
@@ -26,21 +26,6 @@ on:
       - 'gradle.properties'
       - 'settings.gradle'
       - '.github/workflows/android-ui-smoke.yml'
-  push:
-    branches: [main]
-    paths:
-      - 'app/**'
-      - 'tools/android_ui_smoke.py'
-      - 'tools/android_ui_fbd_quick.py'
-      - 'tools/build_ui_input_driver.py'
-      - 'tools/run_android_ui_profile.sh'
-      - 'tools/prepare_craft_resources.py'
-      - 'tools/android/**'
-      - '*.gradle'
-      - 'gradle.properties'
-      - 'settings.gradle'
-      - '.github/workflows/android-ui-smoke.yml'
-
 permissions:
   contents: read
 
@@ -50,8 +35,9 @@ concurrency:
 
 jobs:
   emulator-smoke:
-    # Keep Android out of active development. Only manual dispatch, release
-    # PRs targeting main, and main pushes can run this job.
+    # Manual dispatch remains available; PR automation requires an explicit
+    # release-candidate label so ordinary parity work never boots Android.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'release-candidate')
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
@@ -104,9 +90,9 @@ jobs:
             echo "## BLOODSKY Android UI"
             echo "- Profile: $BLOODSKY_UI_PROFILE"
             echo "- Commit: $GITHUB_SHA"
-            echo "- Feature and prototype integration PRs do NOT automatically boot Android"
-            echo "- Before release, manually run quick/full on a chosen branch: Actions → BLOODSKY Android UI smoke → Run workflow → choose ui_profile"
-            echo "- PRs targeting main and pushes to main automatically run full"
+            echo "- Routine implementation PRs do NOT automatically boot Android"
+            echo "- Release-candidate PRs targeting main run full only when labeled release-candidate"
+            echo "- Manual quick/full profiles remain available: Actions → BLOODSKY Android UI smoke → Run workflow → choose ui_profile"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Save UI screenshots and diagnostics
         if: always()
@@ -115,4 +101,3 @@ jobs:
           name: BLOODSKY-Android-UI-smoke
           path: build-reports/android-ui-smoke/
           if-no-files-found: warn
-          retention-days: 14
