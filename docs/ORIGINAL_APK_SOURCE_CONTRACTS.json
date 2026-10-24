@@ -1,0 +1,665 @@
+{
+  "version": "1.0.2",
+  "target_application": "KaScada Craft 1.0.7",
+  "archive_sha256": "316da0335dc4ea0c8f2d8c14550118ba33bd0e95d7c926f67ed848429c554cdd",
+  "total_original_image_assets": 152,
+  "image_aliases_status": {
+    "total_packaged_in_apk": 152,
+    "directly_referenced_in_bloodsky_app": 59,
+    "packaged_but_unused_in_bloodsky": 93,
+    "verification_note": "Strictly verified against production Java and resource XML by tools/verify_original_source_contracts.py"
+  },
+  "system_registers": {
+    "device_id": 0,
+    "name": "System Device / Системные регистры",
+    "total_registers": 2000,
+    "map": [
+      {
+        "address": 0,
+        "name": "SYS_FLAGS",
+        "type": "BITFIELD",
+        "access": "RO",
+        "default": 0,
+        "semantics": "System state and communication status (Bit 15: Disconnect/Offline flag)"
+      },
+      {
+        "address": 1,
+        "name": "SYS_PROJECT_ID",
+        "type": "UINT16",
+        "access": "RO",
+        "default": 1,
+        "semantics": "Active project identifier (MyApplication.b().c)"
+      },
+      {
+        "address": 2,
+        "name": "SYS_TIME",
+        "type": "UINT16",
+        "access": "RO",
+        "default": 0,
+        "semantics": "Current time formatted as (hour * 100) + minute"
+      },
+      {
+        "address": 3,
+        "name": "SYS_DATE",
+        "type": "UINT16",
+        "access": "RO",
+        "default": 0,
+        "semantics": "Current date formatted as (day * 100) + month"
+      },
+      {
+        "address": 4,
+        "name": "SYS_SCREEN_INDEX",
+        "type": "UINT16",
+        "access": "RW",
+        "default": 1,
+        "semantics": "Active screen number (1..countScreen). Writing triggers active screen jump"
+      },
+      {
+        "address": 5,
+        "name": "SYS_BRIGHTNESS",
+        "type": "UINT16",
+        "access": "RW",
+        "default": 255,
+        "semantics": "Screen brightness level (0..255) bound to Android Settings.System"
+      },
+      {
+        "address": 6,
+        "name": "SYS_BUZZER_SOUND",
+        "type": "UINT16",
+        "access": "RW",
+        "default": 0,
+        "semantics": "Sound trigger index for buzzer/alert playback"
+      },
+      {
+        "address": 7,
+        "name": "SYS_ORIENTATION",
+        "type": "UINT16",
+        "access": "RW",
+        "default": 0,
+        "semantics": "Screen orientation / lock mode (0..16)"
+      },
+      {
+        "address": 8,
+        "name": "SYS_TTS_PHRASE",
+        "type": "UINT16",
+        "access": "RW",
+        "default": 0,
+        "semantics": "Text-To-Speech phrase trigger index"
+      },
+      {
+        "address": 9,
+        "name": "SYS_CONTROL_FLAGS",
+        "type": "BITFIELD",
+        "access": "RW",
+        "default": 0,
+        "semantics": "Control bits (Bits 0-2: operational modes, Bit 8: sync, Bit 9: cloud, Bit 15: trigger)"
+      }
+    ],
+    "user_space_range": {
+      "start": 10,
+      "end": 1999,
+      "access": "RW",
+      "semantics": "General internal system registers for FBD variables and local logic"
+    },
+    "ambiguity_blockers": [
+      "System registers belong exclusively to Device 0 (System Device).",
+      "System registers MUST NOT be routed to external Modbus TCP/RTU slave network calls.",
+      "Reading/writing System Register 4 triggers active screen navigation in the HMI runtime loop."
+    ]
+  },
+  "components": [
+    {
+      "id": "CustomLabel",
+      "source_class": "ru.himik.nightscream.kascada.CustomComponents.CustomLabel",
+      "layout_xml": "res/layout/design_text.xml",
+      "properties": [
+        "text",
+        "autoTextSize",
+        "fontSize",
+        "textColor",
+        "backgroundColor",
+        "visible",
+        "device",
+        "register",
+        "bit"
+      ],
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.addWidget",
+      "status": "partial",
+      "evidence": "Uses Android TextView with sp font size instead of px auto-scaling and original preference row popup."
+    },
+    {
+      "id": "CustomButton",
+      "source_class": "ru.himik.nightscream.kascada.CustomComponents.e",
+      "layout_xml": "res/layout/popup_button.xml",
+      "resources": [
+        "kc_button.png",
+        "kc_button2.png",
+        "kc_button3.png"
+      ],
+      "properties": [
+        "buttonType",
+        "textOff",
+        "textOn",
+        "colorOff",
+        "colorOn",
+        "device",
+        "register",
+        "bit"
+      ],
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.addWidget",
+      "status": "partial",
+      "evidence": "Procedural canvas drawing; missing 3 original button PNG skins and original popup dialog."
+    },
+    {
+      "id": "CustomSwitch",
+      "source_class": "ru.himik.nightscream.kascada.CustomComponents.y",
+      "craft_component_id": 1,
+      "layout_xml": "res/layout/select_image_switch.xml",
+      "properties": [
+        "imagePosition",
+        "visibleInWork",
+        "posDeviceNetworkInList",
+        "addressRegister",
+        "addressBit",
+        "typeRequest"
+      ],
+      "resources": [
+        "kc_switch1_off.png",
+        "kc_switch1_on.png",
+        "kc_switch2_off.png",
+        "kc_switch2_on.png",
+        "kc_switch3_off.png",
+        "kc_switch3_on.png",
+        "kc_switch4_off.png",
+        "kc_switch4_on.png",
+        "kc_switch5_off.png",
+        "kc_switch5_on.png",
+        "kc_switch6_off.png",
+        "kc_switch6_on.png",
+        "kc_switch7_off.png",
+        "kc_switch7_on.png",
+        "kc_switch8_off.png",
+        "kc_switch8_on.png"
+      ],
+      "bloodsky_call_site": "com.bloodsky.hmi.OriginalCraftSwitchRenderer",
+      "status": "partial",
+      "evidence": "Verified against decompilation ZIP SHA-256 92d12206bde746f5a76c89e0c3311119287b14bb26cdc8ca36d515e2fca01f7a. Source image states and properties are ported. Runtime comparison remains pending; imported device links remain inactive until explicit TCP remap."
+    },
+    {
+      "id": "CustomIndicator",
+      "source_class": "ru.himik.nightscream.kascada.CustomComponents.q",
+      "layout_xml": "res/layout/popup_lamp.xml",
+      "resources": [
+        "kc_lamp_off.png",
+        "kc_lamp_green.png",
+        "kc_lamp_red.png",
+        "kc_lamp_yellow.png",
+        "kc_lamp_blue.png"
+      ],
+      "properties": [
+        "indicatorType",
+        "colorOff",
+        "colorOn",
+        "shape",
+        "device",
+        "register",
+        "bit"
+      ],
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.addWidget",
+      "status": "partial",
+      "evidence": "Basic circle canvas draw; missing original lamp PNG drawables and multi-color indicator states."
+    },
+    {
+      "id": "CustomSetpoint",
+      "source_class": "ru.himik.nightscream.kascada.CustomComponents.i",
+      "layout_xml": "res/layout/dialog_set_reg_float.xml",
+      "resources": [
+        "kc_plus.png",
+        "kc_minus.png"
+      ],
+      "properties": [
+        "minValue",
+        "maxValue",
+        "step",
+        "format",
+        "device",
+        "register"
+      ],
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.adjustSetpoint",
+      "status": "partial",
+      "evidence": "Procedural +/- buttons; missing float min/max clamping and original numeric dialog."
+    },
+    {
+      "id": "CustomDynText",
+      "source_class": "ru.himik.nightscream.kascada.CustomComponents.CustomDynText",
+      "layout_xml": "res/layout/dialog_dyn_text.xml",
+      "properties": [
+        "stateCount",
+        "stateValues",
+        "stateTexts",
+        "stateColors",
+        "device",
+        "register"
+      ],
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.addWidget",
+      "status": "partial",
+      "evidence": "Hardcoded 2-state toggle; missing multi-range dynamic text dialog and table mapping."
+    },
+    {
+      "id": "CustomGauge",
+      "source_class": "ru.himik.nightscream.kascada.CustomComponents.m",
+      "resources": [
+        "kc_needle_indicator.png",
+        "kc_spindle_indicator.png"
+      ],
+      "properties": [
+        "minValue",
+        "maxValue",
+        "unitText",
+        "lowColor",
+        "midColor",
+        "highColor",
+        "device",
+        "register"
+      ],
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.addWidget",
+      "status": "partial",
+      "evidence": "Canvas arc draw; missing needle PNG rotation renderer."
+    },
+    {
+      "id": "CustomProgressBar",
+      "source_class": "ru.himik.nightscream.kascada.CustomComponents.r",
+      "resources": [],
+      "properties": [
+        "min",
+        "max",
+        "showText",
+        "sizeText",
+        "colorText",
+        "showScale",
+        "colorProgress",
+        "colorBackground",
+        "device",
+        "register"
+      ],
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.addWidget",
+      "status": "partial",
+      "evidence": "Imports Craft range, text/scale flags, size and colors; runtime renders clamped progress, original gradient track/fill and 20-division center scale. PR #217 adds editing of range, show flags, text size/colors, and progress/background colors, round-tripped through native craftOther while preserving unknown keys. PR #218 adds explicit TCP remap guidance and tests that imported Craft device/register metadata stays inactive until a user-provided BLOODSKY binding is saved. Device/visual acceptance remains open."
+    },
+    {
+      "id": "CustomTrend",
+      "source_class": "ru.himik.nightscream.kascada.CustomComponents.o",
+      "resources": [
+        "kc_graph.png"
+      ],
+      "properties": [
+        "timeWindow",
+        "minValue",
+        "maxValue",
+        "lineColor",
+        "device",
+        "register"
+      ],
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.addWidget",
+      "status": "partial",
+      "evidence": "Basic Canvas polyline; missing multi-point historical trace array."
+    },
+    {
+      "id": "CustomList",
+      "source_class": "ru.himik.nightscream.kascada.CustomComponents.CustomList",
+      "layout_xml": "res/layout/dialog_list.xml",
+      "properties": [
+        "bitMask",
+        "labels",
+        "itemColors",
+        "device",
+        "register"
+      ],
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.addWidget",
+      "status": "partial",
+      "evidence": "Basic ListView; missing original dialog list configuration."
+    },
+    {
+      "id": "CustomSound",
+      "source_class": "ru.himik.nightscream.kascada.CustomComponents.CustomSound",
+      "resources": [
+        "kc_alarm.wav"
+      ],
+      "properties": [
+        "soundIndex",
+        "soundType",
+        "triggerEdge",
+        "device",
+        "register",
+        "bit"
+      ],
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.playCraftAlarmAlert",
+      "status": "partial",
+      "evidence": "ToneGenerator fallback; missing embedded sound asset trigger."
+    },
+    {
+      "id": "CustomScreenLink",
+      "source_class": "ru.himik.nightscream.kascada.CustomComponents.b0",
+      "resources": [
+        "kc_arrow_right.png"
+      ],
+      "properties": [
+        "targetScreenIndex",
+        "buttonText"
+      ],
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.activateScreen",
+      "status": "implemented",
+      "evidence": "Navigates active screen index on tap."
+    },
+    {
+      "id": "CustomMultiStatePhoto",
+      "source_class": "ru.himik.nightscream.kascada.CustomComponents.h",
+      "resources": [
+        "kc_dyn_picture.png",
+        "kc_no_picture.png"
+      ],
+      "properties": [
+        "stateCount",
+        "imagePaths",
+        "device",
+        "register"
+      ],
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.loadCachedBitmap",
+      "status": "partial",
+      "evidence": "Resolves the selected state to a project image and renders original kc_no_picture when that state's path is empty or cannot be decoded; uses the source 10-pixel image inset. Source register/device mapping and visual/device acceptance remain open."
+    },
+    {
+      "id": "CustomVoice",
+      "source_class": "ru.himik.nightscream.kascada.CustomComponents.a0",
+      "layout_xml": "res/layout/dialog_voice.xml",
+      "properties": [
+        "phraseText",
+        "speakOnChange",
+        "device",
+        "register"
+      ],
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.speakVoiceAnnouncement",
+      "status": "partial",
+      "evidence": "TTS initialized; missing rising-edge trigger check."
+    }
+  ],
+  "project_schema": {
+    "table_name": "TableNameProject",
+    "fields": [
+      {
+        "name": "_id",
+        "type": "INTEGER PRIMARY KEY AUTOINCREMENT"
+      },
+      {
+        "name": "name",
+        "type": "TEXT",
+        "default": ""
+      },
+      {
+        "name": "pass",
+        "type": "TEXT",
+        "default": ""
+      },
+      {
+        "name": "stationMode",
+        "type": "INTEGER",
+        "default": 0
+      },
+      {
+        "name": "countScreen",
+        "type": "INTEGER",
+        "default": 1
+      },
+      {
+        "name": "countDevice",
+        "type": "INTEGER",
+        "default": 4
+      },
+      {
+        "name": "screenBackground",
+        "type": "TEXT",
+        "default": ""
+      },
+      {
+        "name": "deviceNetwork",
+        "type": "TEXT",
+        "default": ""
+      },
+      {
+        "name": "createdTime",
+        "type": "TEXT",
+        "default": "00:00:00"
+      },
+      {
+        "name": "createdDate",
+        "type": "TEXT",
+        "default": "2000-01-01"
+      },
+      {
+        "name": "work",
+        "type": "INTEGER",
+        "default": 0
+      },
+      {
+        "name": "pdfDocument",
+        "type": "TEXT",
+        "default": ""
+      },
+      {
+        "name": "showTimeOut",
+        "type": "INTEGER",
+        "default": 0
+      },
+      {
+        "name": "systemRegisters",
+        "type": "TEXT (JSON)",
+        "default": ""
+      },
+      {
+        "name": "modbusSlave",
+        "type": "TEXT (JSON)",
+        "default": ""
+      },
+      {
+        "name": "settings",
+        "type": "TEXT (JSON)",
+        "default": ""
+      }
+    ],
+    "preservation_rule": "JsonObjectCopy.deepCopy and ProjectJsonCodec.mergePreservedFields preserve unknown JSON fields across save/load cycles."
+  },
+  "fbd_contracts": [
+    {
+      "block": "FB_AND",
+      "source_class": "ru.himik.nightscream.kascada.Logic.FB_AND",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlock",
+      "pins_in": 2,
+      "pins_out": 1,
+      "data_type": "BOOL",
+      "status": "implemented"
+    },
+    {
+      "block": "FB_OR",
+      "source_class": "ru.himik.nightscream.kascada.Logic.FB_OR",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlock",
+      "pins_in": 2,
+      "pins_out": 1,
+      "data_type": "BOOL",
+      "status": "implemented"
+    },
+    {
+      "block": "FB_XOR",
+      "source_class": "ru.himik.nightscream.kascada.Logic.FB_XOR",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlock",
+      "pins_in": 2,
+      "pins_out": 1,
+      "data_type": "BOOL",
+      "status": "implemented"
+    },
+    {
+      "block": "FB_RS",
+      "source_class": "ru.himik.nightscream.kascada.Logic.FB_RS",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlock",
+      "pins_in": 2,
+      "pins_out": 1,
+      "data_type": "BOOL",
+      "status": "implemented"
+    },
+    {
+      "block": "FB_TRIGGER",
+      "source_class": "ru.himik.nightscream.kascada.Logic.FB_TRIGGER",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlock",
+      "pins_in": 1,
+      "pins_out": 1,
+      "data_type": "BOOL",
+      "status": "implemented"
+    },
+    {
+      "block": "FB_TIMER",
+      "source_class": "ru.himik.nightscream.kascada.Logic.FB_TIMER",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlock",
+      "pins_in": 2,
+      "pins_out": 2,
+      "time_unit": "MILLISECONDS",
+      "status": "partial",
+      "evidence": "Provisional TON/TOF/TP implementation in 100ms cycle; requires exact original timer state machine validation."
+    },
+    {
+      "block": "FB_CTU",
+      "source_class": "ru.himik.nightscream.kascada.Logic.FB_CTU",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlockNumeric",
+      "pins_in": 3,
+      "pins_out": 2,
+      "data_type": "INT16",
+      "status": "partial",
+      "evidence": "Provisional CU/R/PV counter implementation; original Craft FB_CTU uses C/R/PV pins with numeric output."
+    },
+    {
+      "block": "FB_COMPARE",
+      "source_class": "ru.himik.nightscream.kascada.Logic.FB_COMPARE",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlockNumeric",
+      "pins_in": 2,
+      "pins_out": 1,
+      "data_type": "INT16",
+      "status": "implemented"
+    },
+    {
+      "block": "FB_ARITHMETIC_INT",
+      "source_class": "ru.himik.nightscream.kascada.Logic.FB_ARITHMETIC_INT",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlockNumeric",
+      "pins_in": 2,
+      "pins_out": 1,
+      "data_type": "INT16",
+      "status": "implemented"
+    },
+    {
+      "block": "FB_ARITHMETIC_FLOAT",
+      "source_class": "ru.himik.nightscream.kascada.Logic.FB_ARITHMETIC_FLOAT",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlockNumeric",
+      "pins_in": 2,
+      "pins_out": 1,
+      "data_type": "FLOAT32",
+      "status": "partial",
+      "evidence": "Provisional Float math; requires full IEEE 754 precision parity and NaN/Infinity clamping tests."
+    },
+    {
+      "block": "ABS",
+      "source_class": "ru.himik.nightscream.kascada.Logic.ABS",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlockNumeric",
+      "pins_in": 1,
+      "pins_out": 1,
+      "data_type": "FLOAT32",
+      "status": "implemented"
+    },
+    {
+      "block": "POW",
+      "source_class": "ru.himik.nightscream.kascada.Logic.FB_POW",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlockNumeric",
+      "pins_in": 2,
+      "pins_out": 1,
+      "data_type": "FLOAT32",
+      "status": "implemented"
+    },
+    {
+      "block": "SIN",
+      "source_class": "ru.himik.nightscream.kascada.Logic.SIN",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlockNumeric",
+      "pins_in": 1,
+      "pins_out": 1,
+      "data_type": "FLOAT32",
+      "status": "implemented"
+    },
+    {
+      "block": "FloatToInt",
+      "source_class": "ru.himik.nightscream.kascada.Logic.FloatToInt",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlockNumeric",
+      "pins_in": 1,
+      "pins_out": 1,
+      "conversion": "FLOAT32_TO_INT16",
+      "status": "implemented"
+    },
+    {
+      "block": "IntToFloat",
+      "source_class": "ru.himik.nightscream.kascada.Logic.IntToFloat",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlockNumeric",
+      "pins_in": 1,
+      "pins_out": 1,
+      "conversion": "INT16_TO_FLOAT32",
+      "status": "implemented"
+    },
+    {
+      "block": "WordToFloat",
+      "source_class": "ru.himik.nightscream.kascada.Logic.WordToFloat",
+      "bloodsky_call_site": "com.bloodsky.hmi.MainActivity.evaluateFbdBlockNumeric",
+      "pins_in": 2,
+      "pins_out": 1,
+      "conversion": "TWO_UINT16_TO_FLOAT32",
+      "status": "partial",
+      "evidence": "Provisional 2-register float assembly; requires endianness verification against KaScada Craft WordToFloat."
+    }
+  ],
+  "backlog_stages": [
+    {
+      "stage": 1,
+      "title": "UI & Component Visual Parity",
+      "scenarios": [
+        "Wire 152 original image drawables to widget views and pickers.",
+        "Implement autoTextSize px font scaling for CustomLabel.",
+        "Port 3 metallic button skins and original dialog popups."
+      ]
+    },
+    {
+      "stage": 2,
+      "title": "Project Format & Schema Parity",
+      "scenarios": [
+        "Full TableNameProject SQLite schema import and export.",
+        "Verify metadata preservation for unknown extraFields across edit cycles."
+      ]
+    },
+    {
+      "stage": 3,
+      "title": "Devices, System Registers & Modbus Protocol",
+      "scenarios": [
+        "Implement Device 0 System Registers 0..1999 handling in runtime cycle.",
+        "Implement structured Device-Register-Bit binding in project serialization."
+      ]
+    },
+    {
+      "stage": 4,
+      "title": "FBD Engine & Advanced Blocks",
+      "scenarios": [
+        "TON/TOF/TP timers evaluated accurately in 100ms scan cycle using milliseconds.",
+        "WordToFloat and FLOAT32 math evaluation with division-by-zero protection."
+      ]
+    },
+    {
+      "stage": 5,
+      "title": "Events, Audio & System Integrations",
+      "scenarios": [
+        "Edge-triggered sound playback and TTS voice synthesis.",
+        "Background alarm notification processing."
+      ]
+    }
+  ],
+  "base_commit_sha": "d17e043789ba72041d0784406d3b64366b8ffd0d"
+}

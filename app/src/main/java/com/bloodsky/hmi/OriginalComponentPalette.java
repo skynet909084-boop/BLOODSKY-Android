@@ -18,24 +18,30 @@ public final class OriginalComponentPalette {
         Dialog dialog = new Dialog(activity, android.R.style.Theme_Material_NoActionBar_Fullscreen);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         dialog.setContentView(R.layout.kc_fragment_component_bar);
-        // Every source entry stays visible; unimplemented component semantics stay disabled.
-        unavailable(dialog, R.id.kc_picker_tab_switch, "Переключатель");
-        unavailable(dialog, R.id.kc_picker_tab_list, "Список");
-        unavailable(dialog, R.id.kc_picker_tab_line_setter, "Линейный задатчик");
-        unavailable(dialog, R.id.kc_picker_tab_voice_recognition, "Распознавание речи");
-        unavailable(dialog, R.id.kc_picker_tab_digital_indicator, "Цифровой индикатор");
-        unavailable(dialog, R.id.kc_picker_tab_alarm, "Сигнализатор");
-        unavailable(dialog, R.id.kc_picker_tab_gif, "GIF");
-        unavailable(dialog, R.id.kc_picker_tab_archive, "Архив");
-        unavailable(dialog, R.id.kc_picker_tab_gateway, "Шлюз");
-        unavailable(dialog, R.id.kc_picker_tab_gateway_bit, "Битовый шлюз");
-        unavailable(dialog, R.id.kc_picker_tab_sms_in, "Входящие SMS");
-        unavailable(dialog, R.id.kc_picker_tab_sms_out, "Исходящие SMS");
-        unavailable(dialog, R.id.kc_picker_tab_camera, "Камера");
-        unavailable(dialog, R.id.kc_picker_tab_push_notif, "Push-уведомления");
-        unavailable(dialog, R.id.kc_picker_tab_web_view, "Веб-страница");
+        // Bind source entries to the closest implemented BLOODSKY operator component.
+        action(dialog, R.id.kc_picker_tab_switch, "Добавить: Переключатель Craft",
+                () -> add.add(OriginalCraftSwitch.TYPE, "Переключатель"));
+        bind(dialog, R.id.kc_picker_tab_list, "Список Craft", "Список", add);
+        bind(dialog, R.id.kc_picker_tab_line_setter, "Линейный задатчик Craft", "Линейный задатчик", add);
+        bind(dialog, R.id.kc_picker_tab_voice_recognition, "Распознавание речи Craft", "Голосовая команда", add);
+        action(dialog, R.id.kc_picker_tab_digital_indicator, "Добавить: Цифровой индикатор",
+                () -> add.add(OriginalCraftNumericIndicator.TYPE, "0"));
+        action(dialog, R.id.kc_picker_tab_alarm, "Добавить: Сигнализатор Craft",
+                () -> add.add("Звуковой сигнал", "Аларм"));
+        bind(dialog, R.id.kc_picker_tab_gif, "GIF Craft", "GIF", add);
+        bind(dialog, R.id.kc_picker_tab_archive, "Архив Craft", "Архив", add);
+        bind(dialog, R.id.kc_picker_tab_gif, "GIF Craft", "GIF", add);
+        bind(dialog, R.id.kc_picker_tab_gateway, "Шлюз Craft", "Шлюз", add);
+        bind(dialog, R.id.kc_picker_tab_gateway_bit, "Шлюз битовый", "Битовый шлюз", add);
+        bind(dialog, R.id.kc_picker_tab_sms_in, "Входящее SMS", "SMS: команда", add);
+        bind(dialog, R.id.kc_picker_tab_sms_out, "SMS-уведомление", "SMS: {value}", add);
+        dialog.findViewById(R.id.kc_picker_tab_sms_in).setVisibility(View.VISIBLE);
+        dialog.findViewById(R.id.kc_picker_tab_sms_out).setVisibility(View.VISIBLE);
+        bind(dialog, R.id.kc_picker_tab_camera, "Видео RTSP Craft", "Видео", add);
+        bind(dialog, R.id.kc_picker_tab_push_notif, "Telegram-уведомление", "Событие", add);
+        bind(dialog, R.id.kc_picker_tab_web_view, "WebView Craft", "Веб-страница", add);
         bind(dialog, R.id.kc_picker_tab_button, "Кнопка", "Кнопка", add);
-        bind(dialog, R.id.kc_picker_tab_digital_setters, "Задатчик", "Задатчик: 0", add);
+        bind(dialog, R.id.kc_picker_tab_digital_setters, "Числовой ввод Craft", "0", add);
         bind(dialog, R.id.kc_picker_tab_text, "Текст", "Надпись", add);
         bind(dialog, R.id.kc_picker_tab_dyn_text, "Динамический текст", "Динамический текст", add);
         bind(dialog, R.id.kc_picker_tab_lamp, "Индикатор", "Индикатор", add);

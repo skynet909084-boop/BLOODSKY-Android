@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@+id/craft_network_device_edit_item" android:title="@string/craft_network_device_edit" />
+    <item android:id="@+id/craft_network_device_delete_item" android:title="@string/craft_network_device_delete" />
+</menu>

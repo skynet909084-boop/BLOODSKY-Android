@@ -9,23 +9,30 @@ The current prototype includes:
 - a multi-screen editor with screen naming and background color controls;
 - canvas widgets, selection, dragging, resize grip, cut/copy/paste and delete;
 - widget property editing and preservation of unknown JSON metadata;
+- Craft ID26 WebView: 16 editable links, first-set-bit register selection, explicit operator approval and a foreground HTTPS page with bounded same-origin requests; imported links stay disabled;
+- Craft ID23 RTSP video: editable original `rtsp_url`, foreground playback after explicit opt-in and per-launch operator confirmation; imported streams remain disabled and stop on pause or screen changes;
 - compact original toolbar and a separate foreground operator mode with guarded runtime gestures;
 - local project persistence plus portable ZIP image/audio import/export and JSON export;
+- Craft export retains appended screens (up to 128), their supported components/FBD wiring/backgrounds and opaque source fields; deleting screens remaps retained components, screen navigation, FBD wiring and indexed backgrounds, while deletion is rejected if a retained Craft navigation link targets a removed screen;
+- picker-selected image and audio files are copied into private project media storage and referenced by project-relative paths, so new selections remain available if the provider grant is revoked;
 - original APK home background/buttons, calculator, supported five-category palette and selection-action icons, with recorded source provenance;
-- original 40-preview FBD catalogue with nine existing engine actions and explicit unavailable entries;
+- the original 40-preview FBD catalogue with source-backed native logic, math/conversion, timer, trigger, register, MX/ARRAY and selected sensor/MQTT integrations; unsupported previews remain disabled;
 - original indicator ON/OFF image menus, built-in lamps and custom document-provider images retained after process restart;
 - a Modbus TCP register scanner for FC03/FC04;
-- periodic polling of widgets with `tcp://host:port/unit/address` bindings;
-- an initial set of FBD logic blocks and connections, including cycle checks.
+- a manual USB serial Modbus RTU screen with explicit adapter selection, line settings, connect/disconnect, and FC03/FC04 reads;
+- periodic widget polling routed through `ModbusPollGateway` for `tcp://host:port/unit/address`, `usb://unit/register` and `bt://MAC/unit/register`; multi-register reads retain each widget's value codec, USB and Bluetooth RTU polling requires explicit per-operator-session approval, USB still requires manual adapter selection and connection, and Android Bluetooth permission remains separate;
+- typed FBD pins and graph validation, Craft `.mcr` import/export, graph capture/editing for BLOODSKY-authored macros, including bounded nesting of validated graph-backed macros, and per-instance nested graph execution. Opaque original Craft macro children are preserved but not executed.
 
-This is still a working prototype, not yet a complete Kaskada Craft replacement. The exact original UI has not been verified pixel-for-pixel against the decompiled APK and reference screenshots. Full component/property parity, Modbus RTU, broader protocol compatibility, robust runtime testing and a signed release build remain open work.
+This is still a working prototype, not yet a complete Kaskada Craft replacement. The exact original UI has not been verified pixel-for-pixel against the decompiled APK and reference screenshots. Full component/property parity, execution of opaque original Craft macro children, broader protocol compatibility, physical-device testing and a signed release build remain open work. Project RTU polling is implemented through the shared gateway but awaits physical-device acceptance; imported USB/Bluetooth bindings remain idle until the operator explicitly approves the session, and USB additionally requires a manually selected and connected adapter.
 
 Current accepted milestones, implementation gaps and device/release gates: [execution status](docs/BLOODSKY_EXECUTION_STATUS.md).
+The current source-backed, page-by-page functional audit and remaining implementation plan are in [Kaskada full parity audit](docs/KASCADA_FULL_PARITY_AUDIT_20261018.md); the machine-readable matrix is intentionally conservative and marks source/runtime or device parity as partial until its acceptance gate passes.
 
 ## Editor and operator controls
 
 - Use the bottom-left component icon to open the palette. Tap a component to edit properties; long-press it for the context menu. The bottom strip provides cut/copy/paste/alignment.
-- The component palette page corner opens the FBD catalogue; its next page opens other BLOODSKY elements. Nine supported operations add blocks; dimmed source entries remain unavailable. Back dismisses the wide catalogue.
+- The component palette page corner opens the FBD catalogue; the FBD page corner opens the third page, the macro editor. It creates macros from a selected FBD output and its upstream graph, lists project macros, and adds or imports/exports them. Other BLOODSKY elements remain available from that editor. Supported source-backed entries add native FBD blocks; dimmed entries remain unavailable. Back dismisses the wide catalogue.
+- Long-press an FBD block for wiring, inversion, timer/property actions, and other commands. Long-press a macro with an embedded BLOODSKY graph and choose **Редактировать вложенный граф** to edit it; assign its output pin from a verified block, then save through validation. Opaque original Craft child records are not executed.
 - Timer/counter presets and comparison properties reject invalid input while keeping the form and saved project unchanged. Comparison accepts decimal comma and `=`/`<>` aliases.
 - The original play icon starts operator mode; the stop icon returns to editing. Runtime hides editing tools, grid/selection handles and FBD editor visuals. Short taps operate existing controls; dragging and long-pressing do not edit or activate them.
 - The left toolbar icon hides the toolbar; the floating icon reveals it. The right icon opens project/screen commands. Back stops operator mode first, then returns from editing to the home menu with a save.

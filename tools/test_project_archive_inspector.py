@@ -49,6 +49,61 @@ class ArchiveInspectorTests(unittest.TestCase):
         self.assertEqual(report.project_json_entries, ["project.json"])
         self.assertFalse(any(issue.severity == "error" for issue in report.issues))
 
+    def test_validates_craft_component_other_and_screen_index(self):
+        payload = json.dumps({
+            "TableNameProject": {"name": "Demo", "countScreen": 1},
+            "TableComponent": [
+                {"componentId": "2", "text": "Label", "other": {"numScreen": 1}}
+            ],
+            "TableConnections": []
+        })
+        path = self.make_archive([("project.json", payload)])
+        report = inspect_archive(path)
+        self.assertFalse(any(issue.severity == "error" for issue in report.issues))
+
+    def test_rejects_malformed_craft_tables_and_component_metadata(self):
+        payload = json.dumps({
+            "TableNameProject": {"name": "Demo"},
+            "TableComponent": [
+                {"componentId": "not-an-id", "other": "{broken"},
+                {"componentId": "4", "other": {"numScreen": 0}},
+                {"componentId": 5, "other": {"numScreen": 2}},
+                None
+            ],
+            "TableConnections": {}
+        })
+        path = self.make_archive([("project.json", payload)])
+        report = inspect_archive(path)
+        messages = [issue.message for issue in report.issues if issue.severity == "error"]
+        self.assertTrue(any("TableConnections must be an array" in message for message in messages))
+        self.assertTrue(any("componentId must be an integer or decimal string" in message for message in messages))
+        self.assertTrue(any("Invalid component other JSON" in message for message in messages))
+        self.assertTrue(any("component row must be an object" in message for message in messages))
+        self.assertTrue(any("numScreen must be a positive 1-based integer" in message for message in messages))
+        self.assertTrue(any("numScreen exceeds countScreen" in message for message in messages))
+
+    def test_requires_all_three_craft_tables(self):
+        path = self.make_archive([("project.json", json.dumps({"TableComponent": []}))])
+        report = inspect_archive(path)
+        self.assertTrue(any(issue.severity == "error" and "Missing Craft project table TableNameProject" in issue.message
+                            for issue in report.issues))
+        self.assertTrue(any(issue.severity == "error" and "Missing Craft project table TableConnections" in issue.message
+                            for issue in report.issues))
+
+    def test_recognizes_pro_json_member(self):
+        payload = json.dumps({
+            "TableNameProject": {"name": "Demo", "countScreen": 1},
+            "TableComponent": [
+                {"componentId": "4", "other": {"numScreen": 1}}
+            ],
+            "TableConnections": []
+        })
+        path = self.make_archive([("home/home.pro", payload), ("home/image.png", b"png")])
+        report = inspect_archive(path)
+        self.assertEqual(report.json_entries, 1)
+        self.assertEqual(report.project_json_entries, ["home/home.pro"])
+        self.assertFalse(any(issue.severity == "error" for issue in report.issues))
+
     def test_reports_invalid_json(self):
         path = self.make_archive([("broken.json", "{not json")])
         report = inspect_archive(path)

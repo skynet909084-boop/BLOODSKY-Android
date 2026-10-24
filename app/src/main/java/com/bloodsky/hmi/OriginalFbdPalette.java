@@ -6,6 +6,7 @@ import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Gravity;
 import android.view.Window;
 import android.view.WindowManager;
 
@@ -13,21 +14,62 @@ import android.view.WindowManager;
 public final class OriginalFbdPalette {
     private OriginalFbdPalette() {}
     public static void show(Activity activity, OriginalComponentPalette.Selection add,
-                            Runnable components, Runnable extended) {
+                            Runnable components, Runnable macroEditor, Runnable createMacro, Runnable extended) {
         Dialog dialog=new Dialog(activity,android.R.style.Theme_Material_NoActionBar_Fullscreen);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         dialog.setContentView(R.layout.kc_fragment_component_logic_bar);
+        addExtendedComponentsAction(activity, dialog, extended);
         disablePreviews((ViewGroup)dialog.findViewById(android.R.id.content));
         bind(dialog,R.id.kc_logic_tab_el_and,"FBD И","И",add);
         bind(dialog,R.id.kc_logic_tab_el_or,"FBD ИЛИ","ИЛИ",add);
         bind(dialog,R.id.kc_logic_tab_fb_xor,"FBD XOR","XOR",add);
-        bind(dialog,R.id.kc_logic_tab_fb_timer,"FBD Таймер","TON",add);
-        bind(dialog,R.id.kc_logic_tab_fb_pow,"FBD POW","POW",add);
-        bind(dialog,R.id.kc_logic_tab_fb_sin,"FBD SIN","SIN",add);
-        bind(dialog,R.id.kc_logic_tab_fb_abs,"FBD ABS","ABS",add);
-        bind(dialog,R.id.kc_logic_tab_fb_int_to_float,"FBD IntToFloat","Int->Float",add);
-        bind(dialog,R.id.kc_logic_tab_fb_float_to_int,"FBD FloatToInt","Float->Int",add);
-        action(dialog,R.id.kc_logic_switch_layout,"Другие элементы BLOODSKY",extended);
+        // These original source previews now map to verified BLOODSKY
+        // runtime contracts. Unsupported previews remain disabled.
+        bindNative(dialog,R.id.kc_logic_tab_fb_rs,"FB_RS",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_t_trigger,"FB_TRIGGER",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_ctu,"FB_CTU",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_change_i,"FB_CHANGE_I",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_change_f,"FB_CHANGE_F",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_move,"FB_MOVE",add);
+        bindNative(dialog,R.id.kc_logic_tab_var,"Var",add);
+        bindNative(dialog,R.id.kc_logic_tab_varOut,"VarOut",add);
+        bindNative(dialog,R.id.kc_logic_tab_varInt,"VarInt",add);
+        bindNative(dialog,R.id.kc_logic_tab_varOutInt,"VarOutInt",add);
+        bindNative(dialog,R.id.kc_logic_tab_varFloat,"VarFloat",add);
+        bindNative(dialog,R.id.kc_logic_tab_varOutFloat,"VarOutFloat",add);
+        bindNative(dialog,R.id.kc_logic_tab_var_name_in,"VarNameIn",add);
+        bindNative(dialog,R.id.kc_logic_tab_var_name_out,"VarNameOut",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_sensor_light,"Sensor_Light",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_sensor_orientation,"Sensor_Orientation",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_sensor_speed,"Sensor_Speed",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_sunrise,"Sunrise_GPS",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_dt,"ODTEMP",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_mqtt_subscriber,"MQTT_SUBSCRIBER",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_mqtt_publisher,"MQTT_PUBLISHER",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_mx,"FB_MX",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_array,"FB_ARRAY",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_word_to_float,"WordToFloat",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_log,"LOG",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_sel,"FB_SEL",add);
+        bindNative(dialog,R.id.kc_logic_tab_el_compare_int,"FB_COMPARE",add);
+        bindNative(dialog,R.id.kc_logic_tab_el_arithmetic_int,"FB_ARITHMETIC_INT",add);
+        bindNative(dialog,R.id.kc_logic_tab_el_arithmetic_float,"FB_ARITHMETIC_FLOAT",add);
+        bindNative(dialog,R.id.kc_logic_tab_el_compare_float,"FB_COMPARE_FLOAT",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_timer,"FB_TIMER",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_pow,"FB_POW",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_sin,"SIN",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_abs,"ABS",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_int_to_float,"IntToFloat",add);
+        bindNative(dialog,R.id.kc_logic_tab_fb_float_to_int,"FloatToInt",add);
+        View macroTile=dialog.findViewById(R.id.kc_logic_tab_fb_macro);
+        if(macroTile!=null) {
+            macroTile.setEnabled(true);
+            macroTile.setAlpha(1f);
+            action(dialog,R.id.kc_logic_tab_fb_macro,
+                    "Создать макрос из выбранного FBD-блока",createMacro);
+        }
+        action(dialog,R.id.kc_logic_switch_layout,"Редактор макросов",macroEditor);
+
         View back=dialog.findViewById(R.id.kc_logic_close);
         if(back!=null) action(dialog,R.id.kc_logic_close,"Палитра компонентов",components);
         dialog.show();
@@ -38,6 +80,126 @@ public final class OriginalFbdPalette {
             window.setLayout(WindowManager.LayoutParams.MATCH_PARENT,WindowManager.LayoutParams.MATCH_PARENT);
         }
     }
+    private static void addExtendedComponentsAction(Activity activity, Dialog dialog, Runnable extended) {
+        android.widget.FrameLayout content = dialog.findViewById(android.R.id.content);
+        android.widget.TextView button = new android.widget.TextView(activity);
+        button.setText("Другие элементы");
+        button.setContentDescription("Другие элементы BLOODSKY");
+        button.setTextColor(Color.WHITE);
+        button.setTextSize(14f);
+        button.setGravity(Gravity.CENTER);
+        button.setPadding(dp(activity, 12), 0, dp(activity, 12), 0);
+        button.setBackground(new ColorDrawable(Color.rgb(51, 51, 51)));
+        button.setClickable(true);
+        button.setFocusable(true);
+        button.setOnClickListener(view -> {
+            dialog.dismiss();
+            extended.run();
+        });
+        android.widget.FrameLayout.LayoutParams params = new android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(activity, 60),
+                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        content.addView(button, params);
+    }
+
+    private static int dp(Activity activity, int value) {
+        return (int) (value * activity.getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    /**
+     * Exact original FB preview tag -> a tested BLOODSKY FBD terminal contract.
+     * Never fall back to similarly named but incompatible extended widgets:
+     * native CTU uses +,-,R and numeric Q, not CU/R/PV and Boolean Q.
+     */
+    public static String nativeTypeForOriginalTag(String tag) {
+        if ("FB_RS".equals(tag)) return "FBD RS";
+        if ("FB_TRIGGER".equals(tag)) return "FBD CRAFT T";
+        if ("FB_CTU".equals(tag)) return "FBD CRAFT CTU";
+        if ("FB_TIMER".equals(tag)) return "FBD CRAFT TIMER";
+        if ("FB_CHANGE_I".equals(tag)) return "FBD CRAFT CHANGE I";
+        if ("FB_CHANGE_F".equals(tag)) return "FBD CRAFT CHANGE F";
+        if ("FB_MOVE".equals(tag)) return "FBD CRAFT MOVE";
+        if ("Var".equals(tag)) return "FBD CRAFT VAR BOOL";
+        if ("VarOut".equals(tag)) return "FBD CRAFT VAR OUT BOOL";
+        if ("VarInt".equals(tag)) return "FBD CRAFT VAR INT";
+        if ("VarOutInt".equals(tag)) return "FBD CRAFT VAR OUT INT";
+        if ("VarFloat".equals(tag)) return "FBD CRAFT VAR FLOAT";
+        if ("VarOutFloat".equals(tag)) return "FBD CRAFT VAR OUT FLOAT";
+        if ("VarNameIn".equals(tag)) return "FBD CRAFT VAR NAME IN INT";
+        if ("VarNameOut".equals(tag)) return "FBD CRAFT VAR NAME OUT INT";
+        if ("Sensor_Light".equals(tag)) return "FBD CRAFT SENSOR LIGHT";
+        if ("Sensor_Orientation".equals(tag)) return "FBD CRAFT SENSOR ORIENTATION";
+        if ("Sensor_Speed".equals(tag)) return "FBD CRAFT SENSOR SPEED";
+        if ("Sunrise_GPS".equals(tag)) return "FBD CRAFT SUNRISE";
+        if ("ODTEMP".equals(tag)) return "FBD CRAFT ODTEMP";
+        if ("MQTT_SUBSCRIBER".equals(tag)) return "FBD CRAFT MQTT SUB BOOL";
+        if ("MQTT_PUBLISHER".equals(tag)) return "FBD CRAFT MQTT PUB BOOL";
+        if ("FB_MX".equals(tag)) return "FBD CRAFT MX";
+        if ("FB_ARRAY".equals(tag)) return "FBD CRAFT ARRAY";
+        if ("WordToFloat".equals(tag)) return "FBD CRAFT WORD TO FLOAT";
+        if ("LOG".equals(tag)) return "FBD CRAFT LOG";
+        if ("FB_POW".equals(tag)) return "FBD CRAFT POW";
+        if ("SIN".equals(tag)) return "FBD CRAFT SIN";
+        if ("ABS".equals(tag)) return "FBD CRAFT ABS";
+        if ("IntToFloat".equals(tag)) return "FBD CRAFT INT TO FLOAT";
+        if ("FloatToInt".equals(tag)) return "FBD CRAFT FLOAT TO INT";
+        if ("FB_SEL".equals(tag)) return "FBD CRAFT SEL";
+        if ("FB_COMPARE".equals(tag)) return "FBD CRAFT COMPARE";
+        if ("FB_ARITHMETIC_INT".equals(tag)) return "FBD CRAFT ARITHMETIC INT";
+        if ("FB_ARITHMETIC_FLOAT".equals(tag)) return "FBD CRAFT ARITHMETIC FLOAT";
+        if ("FB_COMPARE_FLOAT".equals(tag)) return "FBD CRAFT COMPARE FLOAT";
+        return null; // Unverified preview remains disabled, no false affordance.
+    }
+
+    public static String nativeLabelForOriginalTag(String tag) {
+        if ("FB_RS".equals(tag)) return "RS";
+        if ("FB_TRIGGER".equals(tag)) return "T";
+        if ("FB_CTU".equals(tag)) return "CTU 16 bit";
+        if ("FB_TIMER".equals(tag)) return "TON";
+        if ("FB_CHANGE_I".equals(tag)) return "CH_I";
+        if ("FB_CHANGE_F".equals(tag)) return "CH_F";
+        if ("FB_MOVE".equals(tag)) return "MOVE";
+        if ("Var".equals(tag)) return "VAR";
+        if ("VarOut".equals(tag) || "VarOutInt".equals(tag) || "VarOutFloat".equals(tag)) return "S#";
+        if ("VarInt".equals(tag)) return "VAR_INT";
+        if ("VarFloat".equals(tag)) return "VAR_FLOAT";
+        if ("VarNameIn".equals(tag) || "VarNameOut".equals(tag)) return "var name";
+        if ("Sensor_Light".equals(tag)) return "LM";
+        if ("Sensor_Orientation".equals(tag)) return "ORIENTATION_X";
+        if ("Sensor_Speed".equals(tag)) return "SM";
+        if ("Sunrise_GPS".equals(tag)) return "SR";
+        if ("ODTEMP".equals(tag)) return "DT";
+        if ("MQTT_SUBSCRIBER".equals(tag)) return "MQTT_S";
+        if ("MQTT_PUBLISHER".equals(tag)) return "MQTT_P";
+        if ("FB_MX".equals(tag)) return "MX";
+        if ("FB_ARRAY".equals(tag)) return "ARRAY";
+        if ("WordToFloat".equals(tag)) return "WORD->FL";
+        if ("LOG".equals(tag)) return "LN";
+        if ("FB_POW".equals(tag)) return "POW";
+        if ("SIN".equals(tag)) return "SIN";
+        if ("ABS".equals(tag)) return "ABS";
+        if ("IntToFloat".equals(tag)) return "INT->FL";
+        if ("FloatToInt".equals(tag)) return "FL->INT";
+        if ("FB_SEL".equals(tag)) return "SEL";
+        if ("FB_COMPARE".equals(tag)) return ">";
+        if ("FB_ARITHMETIC_INT".equals(tag) || "FB_ARITHMETIC_FLOAT".equals(tag)) return "+";
+        if ("FB_COMPARE_FLOAT".equals(tag)) return ">";
+        return null;
+    }
+
+    private static void bindNative(Dialog dialog, int id, String sourceTag,
+                                   OriginalComponentPalette.Selection add) {
+        String type = nativeTypeForOriginalTag(sourceTag);
+        String text = nativeLabelForOriginalTag(sourceTag);
+        if (type == null || text == null)
+            throw new IllegalArgumentException("Unverified original FB preview: " + sourceTag);
+        View view = dialog.findViewById(id);
+        if (!(view instanceof OriginalFbdDrawing)
+                || !sourceTag.equals(String.valueOf(view.getTag())))
+            throw new IllegalStateException("Original FB source XML tag mismatch: " + sourceTag);
+        bind(dialog, id, type, text, add);
+    }
+
     private static void disablePreviews(ViewGroup group) {
         for(int i=0;i<group.getChildCount();i++) {
             View view=group.getChildAt(i);
@@ -50,7 +212,8 @@ public final class OriginalFbdPalette {
     }
     private static void bind(Dialog dialog,int id,String type,String text,OriginalComponentPalette.Selection add) {
         View view=dialog.findViewById(id); view.setEnabled(true); view.setAlpha(1f);
-        action(dialog,id,"Добавить: "+type,()->add.add(type,text));
+        String accessibilityName = "FBD CRAFT TIMER".equals(type) ? "FBD Таймер" : type;
+        action(dialog,id,"Добавить: "+accessibilityName,()->add.add(type,text));
     }
     private static void action(Dialog dialog,int id,String label,Runnable callback) {
         View view=dialog.findViewById(id); view.setContentDescription(label);

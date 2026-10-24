@@ -74,7 +74,8 @@ public class ProjectMediaService {
         }
     }
 
-    private static File resolveProjectMediaDir(File filesDir, String projectJson) {
+    /** Resolve paths without creating directories; used by transactional legacy migration. */
+    static File resolveProjectMediaDir(File filesDir, String projectJson) {
         String projectId = getOrGenerateProjectId(projectJson);
         String directory = "media";
         try {
@@ -93,9 +94,151 @@ public class ProjectMediaService {
     }
 
     public static File getProjectMediaDir(File filesDir, String projectJson) {
+        if (filesDir == null) throw new IllegalArgumentException("Missing app files directory");
         File mediaDir = resolveProjectMediaDir(filesDir, projectJson);
-        if (!mediaDir.exists()) mediaDir.mkdirs();
-        return mediaDir;
+        try {
+            File appRoot = filesDir.getCanonicalFile();
+            File projectsPath = new File(appRoot, "projects").getAbsoluteFile();
+            File projectsRoot = projectsPath.getCanonicalFile();
+            File projectPath = new File(projectsRoot, getOrGenerateProjectId(projectJson)).getAbsoluteFile();
+            File projectRoot = projectPath.getCanonicalFile();
+            File resolved = mediaDir.getCanonicalFile();
+            // Reject symbolic-link escapes and unexpected path aliases before any file is written.
+            if (!projectsRoot.equals(projectsPath)
+                    || !projectsRoot.getPath().startsWith(appRoot.getPath() + File.separator)
+                    || !projectRoot.equals(projectPath)
+                    || !projectRoot.getPath().startsWith(projectsRoot.getPath() + File.separator)
+                    || !resolved.equals(mediaDir.getAbsoluteFile())
+                    || !resolved.getPath().startsWith(projectRoot.getPath() + File.separator)) {
+                throw new IllegalStateException("Unsafe project media directory");
+            }
+            if (!resolved.isDirectory() && (!resolved.mkdirs() || !resolved.isDirectory())) {
+                throw new IllegalStateException("Cannot create project media directory");
+            }
+            return resolved;
+        } catch (IOException invalidPath) {
+            throw new IllegalStateException("Cannot resolve project media directory", invalidPath);
+        }
+    }
+
+    /** True only for generated directory IDs, never raw project names or user paths. */
+    public static boolean isValidProjectDirectoryId(String id) {
+        // The decimal form supports the legacy fallback for unavailable SHA-256.
+        return id != null && id.matches("proj_(?:[0-9a-f]{16}|-?[0-9]{1,10})");
+    }
+
+    /** Remove all private media generations belonging to a project after catalog deletion. */
+    public static boolean deleteProjectMedia(File filesDir, String projectJson) throws IOException {
+        final String projectId;
+        try { projectId = getOrGenerateProjectId(projectJson); }
+        catch (RuntimeException invalidProject) {
+            throw new IOException("Project has no stable media identity", invalidProject);
+        }
+        return deleteProjectMediaById(filesDir, projectId);
+    }
+
+    /**
+     * Retry an already committed deletion using its generated, path-safe ID.
+     * Never accepts arbitrary paths or display names from persisted cleanup data.
+     */
+    public static boolean deleteProjectMediaById(File filesDir, String projectId) throws IOException {
+        if (filesDir == null) throw new IOException("Missing app files directory");
+        if (!isValidProjectDirectoryId(projectId))
+            throw new IOException("Invalid project media directory identity");
+        File appRoot = filesDir.getCanonicalFile();
+        File projectsPath = new File(appRoot, "projects").getAbsoluteFile();
+        File projectsRoot = projectsPath.getCanonicalFile();
+        if (!projectsRoot.equals(projectsPath)
+                || !projectsRoot.getPath().startsWith(appRoot.getPath() + File.separator))
+            throw new IOException("Unsafe private projects directory");
+        File projectPath = new File(projectsRoot, projectId).getAbsoluteFile();
+        File projectDirectory = projectPath.getCanonicalFile();
+        if (!projectDirectory.equals(projectPath)
+                || !projectDirectory.getPath().startsWith(projectsRoot.getPath() + File.separator))
+            throw new IOException("Unsafe project media directory");
+        if (!projectDirectory.exists()) return false;
+        deleteProjectTree(projectDirectory, projectDirectory.getCanonicalPath());
+        return !projectDirectory.exists();
+    }
+
+    /**
+     * Resolve the normal project directory and an isolated pending-deletion
+     * directory. A later re-import may reuse the same project identity, but
+     * cleanup will touch only the quarantined directory, not the new project.
+     */
+    private static File[] verifiedCleanupPaths(File filesDir, String projectId) throws IOException {
+        if (filesDir == null || !isValidProjectDirectoryId(projectId))
+            throw new IOException("Invalid project media cleanup identity");
+        File appRoot = filesDir.getCanonicalFile();
+        File projectsPath = new File(appRoot, "projects").getAbsoluteFile();
+        File projectsRoot = projectsPath.getCanonicalFile();
+        File sourcePath = new File(projectsRoot, projectId).getAbsoluteFile();
+        File source = sourcePath.getCanonicalFile();
+        File quarantinePath = new File(projectsRoot, ".pending_media_cleanup").getAbsoluteFile();
+        File quarantineRoot = quarantinePath.getCanonicalFile();
+        File queuedPath = new File(quarantineRoot, projectId).getAbsoluteFile();
+        File queued = queuedPath.getCanonicalFile();
+        if (!projectsRoot.equals(projectsPath)
+                || !projectsRoot.getPath().startsWith(appRoot.getPath() + File.separator)
+                || !source.equals(sourcePath)
+                || !source.getPath().startsWith(projectsRoot.getPath() + File.separator)
+                || !quarantineRoot.equals(quarantinePath)
+                || !quarantineRoot.getPath().startsWith(projectsRoot.getPath() + File.separator)
+                || !queued.equals(queuedPath)
+                || !queued.getPath().startsWith(quarantineRoot.getPath() + File.separator))
+            throw new IOException("Unsafe project media quarantine path");
+        return new File[]{source, queued, quarantineRoot};
+    }
+
+    /** Rename-only staging on the UI thread; no recursive deletion occurs here. */
+    public static boolean quarantineProjectMediaById(File filesDir, String projectId)
+            throws IOException {
+        File[] paths = verifiedCleanupPaths(filesDir, projectId);
+        File source = paths[0], queued = paths[1], root = paths[2];
+        if (queued.exists()) return true; // Already quarantined; never move a re-import.
+        if (!source.exists()) return false;
+        if (!source.isDirectory()) throw new IOException("Project media path is not a directory");
+        if (!root.isDirectory() && (!root.mkdirs() || !root.isDirectory()))
+            throw new IOException("Cannot create private media quarantine");
+        // Rename inside one app-private filesystem is atomic: a later project
+        // using the same ID can safely create its own fresh media directory.
+        if (!source.renameTo(queued))
+            throw new IOException("Could not quarantine project media directory");
+        return true;
+    }
+
+    public static boolean hasProjectMediaDirectoryById(File filesDir, String projectId)
+            throws IOException {
+        return verifiedCleanupPaths(filesDir, projectId)[0].exists();
+    }
+
+    public static boolean hasQuarantinedMediaById(File filesDir, String projectId)
+            throws IOException {
+        return verifiedCleanupPaths(filesDir, projectId)[1].exists();
+    }
+
+    /** Only delete the quarantined old generation, never the current project ID. */
+    public static boolean deleteQuarantinedMediaById(File filesDir, String projectId)
+            throws IOException {
+        File queued = verifiedCleanupPaths(filesDir, projectId)[1];
+        if (!queued.exists()) return false;
+        deleteProjectTree(queued, queued.getCanonicalPath());
+        return !queued.exists();
+    }
+
+    private static void deleteProjectTree(File entry, String projectRoot) throws IOException {
+        File canonical = entry.getCanonicalFile();
+        if (!canonical.equals(entry.getAbsoluteFile())
+                || !(canonical.getPath().equals(projectRoot)
+                || canonical.getPath().startsWith(projectRoot + File.separator)))
+            throw new IOException("Unsafe path in project media directory");
+        if (canonical.isDirectory()) {
+            File[] children = canonical.listFiles();
+            if (children == null) throw new IOException("Cannot inspect project media directory");
+            for (File child : children) deleteProjectTree(child, projectRoot);
+        }
+        if (!canonical.delete() && canonical.exists())
+            throw new IOException("Could not delete project media entry");
     }
 
     public static boolean isExactImagePlaceholder(String path) {
@@ -132,6 +275,9 @@ public class ProjectMediaService {
                 for (int s = 0; s < screens.length(); s++) {
                     JSONObject screenObj = screens.optJSONObject(s);
                     if (screenObj == null) continue;
+                    String backgroundPath = screenObj.optString("backgroundImagePath", "");
+                    String rewrittenBackground = processMediaReference(backgroundPath, resolver, archiveMedia, mediaPathMap);
+                    if (rewrittenBackground != null) screenObj.put("backgroundImagePath", rewrittenBackground);
                     JSONArray widgets = screenObj.optJSONArray("widgets");
                     if (widgets == null) continue;
                     for (int w = 0; w < widgets.length(); w++) {
@@ -142,6 +288,13 @@ public class ProjectMediaService {
                             String soundPath = widgetObj.optString("soundFilePath", "");
                             String rewrittenSound = processMediaReference(soundPath, resolver, archiveMedia, mediaPathMap);
                             if (rewrittenSound != null) widgetObj.put("soundFilePath", rewrittenSound);
+                        }
+
+                        if ("GIF Craft".equals(widgetObj.optString("type", ""))
+                                && widgetObj.has("craftGifPath")) {
+                            String gifPath = widgetObj.optString("craftGifPath", "");
+                            String rewrittenGif = processMediaReference(gifPath, resolver, archiveMedia, mediaPathMap);
+                            if (rewrittenGif != null) widgetObj.put("craftGifPath", rewrittenGif);
                         }
 
                         if (OriginalIndicator.supports(widgetObj.optString("type", ""))) {
@@ -218,6 +371,84 @@ public class ProjectMediaService {
         }
     }
 
+    /** Exports a source-compatible Craft .pro plus the media at its original relative paths. */
+    public static void exportCraftProjectZipBundle(OutputStream outputStream, String projectJson,
+                                                    MediaResolver resolver) throws IOException {
+        final JSONObject source;
+        final Map<String, byte[]> media = new java.util.LinkedHashMap<>();
+        final byte[] projectBytes;
+        try {
+            String craftJson = CraftProjectExporter.export(projectJson);
+            source = new JSONObject(craftJson);
+            projectBytes = craftJson.getBytes(StandardCharsets.UTF_8);
+            Map<String, String> mediaAliases = CraftProjectExporter.mediaPathAliases(projectJson, source);
+            Map<String, FbdCraftMacroDefinition> editedMacros =
+                    CraftProjectExporter.macroDefinitionsByMediaPath(source);
+            long total = projectBytes.length;
+            for (String path : CraftProjectExporter.referencedMedia(source)) {
+                byte[] bytes = null;
+                IOException directFailure = null;
+                if (resolver != null) try { bytes = resolver.readMedia(path); }
+                catch (IOException missingOriginalPath) { directFailure = missingOriginalPath; }
+                if ((bytes == null || bytes.length == 0) && resolver != null) {
+                    String currentPath = mediaAliases.get(path);
+                    if (currentPath != null) try {
+                        bytes = resolver.readMedia(currentPath);
+                        if (bytes != null && bytes.length == 0) bytes = null;
+                    }
+                    catch (IOException missingCurrentPath) {
+                        if (directFailure == null) directFailure = missingCurrentPath;
+                    }
+                }
+                if (bytes == null || bytes.length == 0)
+                    throw new IOException("Медиа KaScada отсутствует или недоступно: " + path, directFailure);
+                FbdCraftMacroDefinition macro = editedMacros.get(
+                        path.replace('\\', '/').toLowerCase(Locale.ROOT));
+                if (macro != null && macro.toJson().optJSONObject("bloodskyGraph") != null) {
+                    try { bytes = macro.toMcrBytes(); }
+                    catch (org.json.JSONException invalidEditedMacro) {
+                        throw new IOException("Не удалось сохранить граф макроса: " + path,
+                                invalidEditedMacro);
+                    }
+                }
+                if (total > MAX_BUNDLE_BYTES - bytes.length)
+                    throw new IOException("Размер проекта KaScada превышает лимит ZIP");
+                total += bytes.length;
+                media.put(path, bytes);
+            }
+        } catch (IOException error) {
+            throw error;
+        } catch (Exception error) {
+            throw new IOException("Не удалось подготовить исходный проект KaScada", error);
+        }
+
+        OutputStream limitedOutput = new java.io.FilterOutputStream(outputStream) {
+            private long count;
+            @Override public void write(int value) throws IOException {
+                if (++count > MAX_BUNDLE_BYTES) throw new IOException("Compressed ZIP exceeds import limit");
+                out.write(value);
+            }
+            @Override public void write(byte[] bytes, int offset, int length) throws IOException {
+                count += length;
+                if (count > MAX_BUNDLE_BYTES) throw new IOException("Compressed ZIP exceeds import limit");
+                out.write(bytes, offset, length);
+            }
+        };
+        try (java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(limitedOutput)) {
+            zip.putNextEntry(new java.util.zip.ZipEntry("Project.pro"));
+            zip.write(projectBytes);
+            zip.closeEntry();
+            for (Map.Entry<String, byte[]> entry : media.entrySet()) {
+                String path = entry.getKey().replace('\\', '/');
+                if (path.startsWith("/") || path.contains("..")) throw new IOException("Unsafe Craft media path: " + path);
+                zip.putNextEntry(new java.util.zip.ZipEntry(path));
+                zip.write(entry.getValue());
+                zip.closeEntry();
+            }
+            zip.finish();
+        }
+    }
+
     private static String processMediaReference(String origPath, MediaResolver resolver, Map<String, byte[]> archiveMedia, Map<String, String> mediaPathMap) throws IOException {
         if (origPath == null || origPath.trim().isEmpty() || "Аларм".equals(origPath.trim()) || isExactImagePlaceholder(origPath)) return origPath;
         String clean = origPath.trim();
@@ -274,6 +505,136 @@ public class ProjectMediaService {
         return out.toByteArray();
     }
 
+    /** Copies picker-selected bytes and reports whether this call created a new private file. */
+    public static SelectedMediaCopy storeSelectedMediaCopy(File filesDir, String projectJson,
+                                                             String displayName, InputStream input) throws IOException {
+        byte[] bytes = readBoundedMedia(input);
+        if (bytes.length == 0) throw new IOException("Selected media file is empty");
+        File directory;
+        try { directory = getProjectMediaDir(filesDir, projectJson); }
+        catch (RuntimeException invalidProject) {
+            throw new IOException("Project has no stable media identity", invalidProject);
+        }
+        if (!directory.isDirectory()) throw new IOException("Project media directory unavailable");
+
+        String extension = safeMediaExtension(displayName);
+        String name = "asset_" + sha256(bytes) + extension;
+        File destination = new File(directory, name).getCanonicalFile();
+        String base = directory.getCanonicalPath();
+        if (!destination.getPath().startsWith(base + File.separator))
+            throw new IOException("Unsafe selected media path");
+        String projectPath = "media/" + name;
+        if (destination.exists()) {
+            if (!destination.isFile() || !fileMatchesBytes(destination, bytes))
+                throw new IOException("Selected media hash collision");
+            return new SelectedMediaCopy(projectPath, false);
+        }
+
+        long existingBytes = 0;
+        int existingFiles = 0;
+        java.util.ArrayDeque<File> pending = new java.util.ArrayDeque<>();
+        pending.add(directory);
+        while (!pending.isEmpty()) {
+            File current = pending.removeFirst();
+            File[] children = current.listFiles();
+            if (children == null) throw new IOException("Cannot inspect project media directory");
+            for (File child : children) {
+                if (child.isDirectory()) pending.addLast(child);
+                else if (child.isFile()) {
+                    existingFiles++;
+                    long length = child.length();
+                    if (length > MAX_BUNDLE_BYTES || existingBytes > MAX_BUNDLE_BYTES - length)
+                        throw new IOException("Project media exceeds size limit");
+                    existingBytes += length;
+                }
+            }
+        }
+        if (existingFiles >= 2048) throw new IOException("Project media file count limit reached");
+        if (existingBytes + bytes.length > MAX_BUNDLE_BYTES)
+            throw new IOException("Project media exceeds size limit");
+
+        File temporary = File.createTempFile(".selected_media_", ".tmp", directory);
+        boolean published = false;
+        try {
+            try (FileOutputStream output = new FileOutputStream(temporary)) {
+                output.write(bytes);
+                output.getFD().sync();
+            }
+            if (!temporary.renameTo(destination)) {
+                if (destination.isFile() && fileMatchesBytes(destination, bytes))
+                    return new SelectedMediaCopy(projectPath, false);
+                throw new IOException("Could not publish selected media");
+            }
+            published = true;
+            return new SelectedMediaCopy(projectPath, true);
+        } finally {
+            if (!published && temporary.exists()) temporary.delete();
+        }
+    }
+
+    /** Compatibility wrapper for callers that only need the project-relative path. */
+    public static String storeSelectedMedia(File filesDir, String projectJson,
+                                            String displayName, InputStream input) throws IOException {
+        return storeSelectedMediaCopy(filesDir, projectJson, displayName, input).projectPath;
+    }
+
+    /**
+     * Deletes only a newly created picker file when the active saved project does not reference it.
+     * Project-relative paths are generated by this service and are checked again before deletion.
+     */
+    public static boolean deleteUnreferencedSelectedMedia(File filesDir, String projectJson,
+                                                          String projectPath, String savedProjectJson) throws IOException {
+        if (projectPath == null || !projectPath.matches("media/asset_[0-9a-f]{64}\\.[a-z0-9]{1,10}"))
+            throw new IOException("Invalid selected media reference");
+        if (savedProjectJson != null && savedProjectJson.contains("\"" + projectPath + "\"")) return false;
+        File root;
+        try { root = resolveProjectMediaDir(filesDir, projectJson); }
+        catch (RuntimeException invalidProject) {
+            throw new IOException("Project has no stable media identity", invalidProject);
+        }
+        File file = new File(root, projectPath.substring("media/".length())).getCanonicalFile();
+        String base = root.getCanonicalPath();
+        if (!file.getPath().startsWith(base + File.separator))
+            throw new IOException("Unsafe selected media path");
+        return file.isFile() && file.delete();
+    }
+
+    public static final class SelectedMediaCopy {
+        public final String projectPath;
+        public final boolean created;
+        SelectedMediaCopy(String projectPath, boolean created) {
+            this.projectPath = projectPath;
+            this.created = created;
+        }
+    }
+
+    private static String safeMediaExtension(String displayName) {
+        if (displayName == null) return ".bin";
+        String name = displayName.replace('\\', '/');
+        name = name.substring(name.lastIndexOf('/') + 1);
+        int dot = name.lastIndexOf('.');
+        if (dot < 0 || dot == name.length() - 1 || name.length() - dot > 11) return ".bin";
+        String extension = name.substring(dot + 1).toLowerCase(Locale.ROOT);
+        return extension.matches("[a-z0-9]{1,10}") ? "." + extension : ".bin";
+    }
+
+    private static String sha256(byte[] bytes) throws IOException {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(bytes);
+            StringBuilder value = new StringBuilder(64);
+            for (byte item : digest) value.append(String.format(Locale.ROOT, "%02x", item));
+            return value.toString();
+        } catch (java.security.NoSuchAlgorithmException unavailable) {
+            throw new IOException("SHA-256 unavailable", unavailable);
+        }
+    }
+
+    private static boolean fileMatchesBytes(File file, byte[] expected) throws IOException {
+        try (InputStream input = new FileInputStream(file)) {
+            return java.util.Arrays.equals(expected, readBoundedMedia(input));
+        }
+    }
+
     public static File resolveMediaFile(File filesDir, String projectJson, String path) throws IOException {
         if (path == null || path.trim().isEmpty()) throw new java.io.FileNotFoundException("Empty media path");
         File direct = new File(path.trim());
@@ -323,6 +684,13 @@ public class ProjectMediaService {
                 importedFromZip = true;
             } else {
                 importedJson = new String(inputData, StandardCharsets.UTF_8);
+                String trimmed = importedJson.trim();
+                if (trimmed.startsWith("{")) {
+                    JSONObject candidate = new JSONObject(trimmed);
+                    if (CraftProjectImporter.isCraftProject(candidate)) {
+                        importedJson = CraftProjectImporter.convert(trimmed);
+                    }
+                }
                 MainActivity.validateImportedProjectStatic(importedJson);
             }
 

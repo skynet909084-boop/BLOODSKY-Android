@@ -24,7 +24,9 @@ class OriginalFbdPaletteTests(unittest.TestCase):
         self.assertIn('view.setEnabled(false)',code)
         ids={n.get(A+'id').split('/')[-1] for n in previews}
         bound=re.findall(r'bind\(dialog,R.id.(\w+),"([^"]+)"',code)
-        self.assertEqual(9,len(bound))
+        self.assertEqual(3,len(bound))
+        native=re.findall(r'bindNative\(dialog,R.id.(\w+),"([^"]+)"',code)
+        self.assertGreaterEqual(len(native),20)
         main=(ROOT/'app/src/main/java/com/bloodsky/hmi/MainActivity.java').read_text()
         for identifier,kind in bound:
             self.assertIn(identifier,ids); self.assertIn('"'+kind+'"',main)
@@ -32,7 +34,42 @@ class OriginalFbdPaletteTests(unittest.TestCase):
         self.assertNotIn('bind(dialog,R.id.kc_logic_tab_fb_rs',code)
         self.assertNotIn('bind(dialog,R.id.kc_logic_tab_fb_ctu',code)
         self.assertIn('this::showFbdPalette',main)
-        self.assertIn('this::showExtendedWidgetMenu',main)
+        self.assertIn('this::showCraftMacroTools',main)
+        self.assertIn('this::createCraftMacroFromSelection',main)
+        self.assertIn('action(dialog,R.id.kc_logic_tab_fb_macro',code)
+        self.assertIn('macroTile.setAlpha(1f)',code)
+        self.assertIn('menu.getMenu().add("Другие элементы BLOODSKY")',main)
+        self.assertIn('showExtendedWidgetMenu();',main)
+
+    def test_macro_library_uses_source_grid_cards_and_page_switches(self):
+        source = ET.parse(ROOT / 'build/craft-reference/apktool/res/layout/fragment_tile_macros.xml').getroot()
+        source_card = ET.parse(ROOT / 'build/craft-reference/apktool/res/layout/item_tile_add_new_macros.xml').getroot()
+        self.assertIn('androidx.recyclerview.widget.RecyclerView', [n.tag for n in source.iter()])
+        self.assertEqual('100.0dp', source_card.get(A + 'layout_width'))
+        self.assertEqual('100.0dp', source_card.get(A + 'layout_height'))
+        self.assertEqual('FB_MACRO', next(n for n in source_card.iter()
+                                          if n.tag == 'ru.himik.nightscream.kascada.Logic.FB_MACRO').tag.rsplit('.', 1)[-1])
+
+        card = ET.parse(ROOT / 'app/src/main/res/layout/kc_macro_library_card.xml').getroot()
+        self.assertEqual('100dp', card.get(A + 'layout_width'))
+        self.assertEqual('100dp', card.get(A + 'layout_height'))
+        self.assertEqual('FB_MACRO', next(n for n in card.iter()
+                                          if n.tag == 'com.bloodsky.hmi.OriginalFbdDrawing').get(A + 'tag'))
+
+        main = (ROOT / 'app/src/main/java/com/bloodsky/hmi/MainActivity.java').read_text()
+        page = main.split('private void showCraftMacroTools()', 1)[1].split(
+                'private void addCraftMacroFromCatalog()', 1)[0]
+        self.assertIn('android.widget.GridLayout', page)
+        self.assertIn('/ 180f', page)
+        self.assertIn('dp(100)', page)
+        self.assertIn('R.layout.kc_macro_library_card', page)
+        self.assertIn('FbdCraftMacroCatalog.names(projectExtraFields)', page)
+        self.assertIn('R.drawable.kc_tab_page1', page)
+        self.assertIn('showAddWidgetMenu();', page)
+        self.assertIn('setOnLongClickListener', page)
+        self.assertIn('showFbdPalette();', page)
+        self.assertIn('Импорт .mcr', page)
+        self.assertIn('Экспорт .mcr', page)
 
     def test_every_referenced_drawable_exists_and_xml_backgrounds_match_original(self):
         for folder in ['layout','layout-land']:

@@ -35,7 +35,33 @@ public class ModbusPollGatewayTest {
         assertNull(ModbusPollGateway.Endpoint.parse(null));
         assertNull(ModbusPollGateway.Endpoint.parse("http://x"));
         assertNull(ModbusPollGateway.Endpoint.parse("tcp://host/1/40001"));
+        assertNull(ModbusPollGateway.Endpoint.parse("tcp://user:pass@host:502/1/40001"));
         assertNull(ModbusPollGateway.Endpoint.parse("bt://badmac/1/40001"));
         assertNull(ModbusPollGateway.Endpoint.parse("usb://999/0"));
     }
+
+    @Test public void preservesMultiRegisterQuantityAndRejectsOutOfRangeReads() {
+        ModbusPollGateway.Endpoint tcp = ModbusPollGateway.Endpoint.parse(
+                "tcp://127.0.0.1:502/1/40010", 2);
+        assertNotNull(tcp);
+        assertEquals(9, tcp.address);
+        assertEquals(2, tcp.quantity);
+
+        ModbusPollGateway.Endpoint usb = ModbusPollGateway.Endpoint.parse("usb://1/40010", 2);
+        assertNotNull(usb);
+        assertEquals(2, usb.quantity);
+
+        assertNull(ModbusPollGateway.Endpoint.parse("tcp://127.0.0.1:502/1/40010", 0));
+        assertNull(ModbusPollGateway.Endpoint.parse("tcp://127.0.0.1:502/1/65535", 2));
+    }
+
+    @Test public void normalizesRouteKeysSoTransportEndpointsStayDistinct() {
+        ModbusPollGateway.Endpoint tcp = ModbusPollGateway.Endpoint.parse("tcp://Host:502/1/40001");
+        ModbusPollGateway.Endpoint bt = ModbusPollGateway.Endpoint.parse("bt://aa:bb:cc:dd:ee:ff/1/40001");
+        assertNotNull(tcp);
+        assertNotNull(bt);
+        assertEquals("tcp/host:502/1/0/FC3", tcp.registerKey());
+        assertEquals("bt/AA:BB:CC:DD:EE:FF/1/0/FC3", bt.registerKey());
+    }
 }
+

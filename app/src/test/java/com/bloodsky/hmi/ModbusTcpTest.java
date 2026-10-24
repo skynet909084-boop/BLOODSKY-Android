@@ -247,4 +247,70 @@ public class ModbusTcpTest {
             assertTrue(ex.getMessage().contains("Stream closed before reading expected"));
         }
     }
+
+    @Test
+    public void testModbusRtuTransportRejectsWrongUnitId() throws Exception {
+        byte[] response = new byte[] {0x02, 0x03, 0x02, 0x00, 0x0A};
+        int crc = MainActivity.calculateModbusRtuCrc(response, response.length);
+        byte[] full = java.util.Arrays.copyOf(response, response.length + 2);
+        full[response.length] = (byte) crc;
+        full[response.length + 1] = (byte) (crc >> 8);
+        MainActivity.ModbusRtuTransport transport = new MainActivity.ModbusRtuTransport(
+                new ByteArrayInputStream(full), new ByteArrayOutputStream());
+        try {
+            transport.sendAndReceive(1, 3, 0, 1);
+            fail("Expected a mismatched RTU unit ID to be rejected");
+        } catch (IOException ex) {
+            assertTrue(ex.getMessage().contains("Unexpected unit ID"));
+        }
+    }
+
+    @Test
+    public void testModbusRtuTransportRejectsWrongReadByteCount() throws Exception {
+        byte[] response = new byte[] {0x01, 0x03, 0x04, 0x00, 0x0A, 0x00, 0x14};
+        int crc = MainActivity.calculateModbusRtuCrc(response, response.length);
+        byte[] full = java.util.Arrays.copyOf(response, response.length + 2);
+        full[response.length] = (byte) crc;
+        full[response.length + 1] = (byte) (crc >> 8);
+        MainActivity.ModbusRtuTransport transport = new MainActivity.ModbusRtuTransport(
+                new ByteArrayInputStream(full), new ByteArrayOutputStream());
+        try {
+            transport.sendAndReceive(1, 3, 0, 1);
+            fail("Expected an unexpected RTU byte count to be rejected");
+        } catch (IOException ex) {
+            assertTrue(ex.getMessage().contains("Invalid byte count"));
+        }
+    }
+
+    @Test
+    public void testModbusRtuTransportRejectsUnsupportedWritesBeforeIo() throws Exception {
+        ByteArrayOutputStream written = new ByteArrayOutputStream();
+        MainActivity.ModbusRtuTransport transport = new MainActivity.ModbusRtuTransport(
+                new ByteArrayInputStream(new byte[0]), written);
+        try {
+            transport.sendAndReceive(1, 6, 0, 1);
+            fail("Expected the read-only RTU helper to reject FC06");
+        } catch (IllegalArgumentException expected) {
+            assertEquals(0, written.size());
+        }
+    }
+
+    @Test
+    public void testModbusRtuTransportRejectsInvalidRequestBeforeIo() throws Exception {
+        ByteArrayOutputStream written = new ByteArrayOutputStream();
+        MainActivity.ModbusRtuTransport transport = new MainActivity.ModbusRtuTransport(
+                new ByteArrayInputStream(new byte[0]), written);
+        try {
+            transport.sendAndReceive(0, 3, 0, 1);
+            fail("Expected broadcast unit to be rejected for request/response");
+        } catch (IllegalArgumentException expected) {
+            assertEquals(0, written.size());
+        }
+        try {
+            transport.sendAndReceive(1, 3, 65535, 2);
+            fail("Expected an overflowing RTU address range to be rejected");
+        } catch (IllegalArgumentException expected) {
+            assertEquals(0, written.size());
+        }
+    }
 }

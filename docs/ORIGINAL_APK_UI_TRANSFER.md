@@ -40,7 +40,7 @@ Six original screenshots are committed byte-for-byte in reference/user-ui-202610
 - Portrait home: KaScada Smart Craft heading, six large metallic project-action buttons in order create/load/delete/export/import/exit; use original APK backgrounds/button resources. BLOODSKY branding changes must not copy personal license/identifiers.
 - Runtime project: custom background, repeated metallic text controls, round indicator images, seven-segment numeric appearance and configurable numeric widths. Background content and current values are user project data, not defaults for BLOODSKY.
 - Global settings popup: device list editing, password, stationary mode, timeout display, network control, background mode.
-- Server editor/new connection chooser: Wi-Fi/3G/4G, Bluetooth, Usb, KaScada Cloud entries. A visible connection choice does not prove its transport is implemented in BLOODSKY.
+- Server editor/new connection chooser: Wi-Fi/3G/4G, Bluetooth and USB entries. A visible connection choice does not prove its transport is implemented in BLOODSKY.
 - Context menu sequence includes Настройки, Устройство, Адрес and Сменить изображение; another view explicitly separates register and bit.
 - Empty macro library has centered empty-state text and a corner page marker.
 - Android navigation bars, notification overlays, changing clock values and connection toasts must not be built into the app UI.

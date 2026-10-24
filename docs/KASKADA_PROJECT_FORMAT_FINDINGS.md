@@ -49,3 +49,59 @@ The exporter copies referenced images/sounds/PDF into the project directory and 
 - Map each widget tag to its custom view and serialized `other` fields.
 - Confirm archive entry names and exact JSON filename from `ExportPresenter.createZip_` and import extraction routines.
 - Inspect Modbus RTU/TCP data paths and FBD execution semantics before implementing runtime behavior.
+
+
+## Network binding relationships (source-confirmed)
+
+The original app separates the transport kind, the server endpoint/configuration, the device slot, and a widget's register binding:
+
+1. `TableConnections` contains connector rows: `connectionsId`, `name`, and `server`.
+2. `connectionsId` is a connector-kind ID, not a unique endpoint ID. The source creates type 1 for Bluetooth, 2 for Wi-Fi, 3 for USB, and 4 for KaScada Cloud. Multiple server rows can therefore share the same `connectionsId`.
+3. `deviceNetwork` is an ordered array of device slots. A slot carries the device/unit address, the selected endpoint/config string, its connector kind (`idServer`), and mode flags. Its position is meaningful.
+4. A component's `connectionInfo.posDeviceNetworkInList` selects a device slot; register/bit address and request type then select the data within that device. Register and bit gateways have separate source, receive, and optional trigger slot references.
+5. The FBD graph has a separate identity/pin layer (`saveKey`, `keyOut`, `numOnIn`, `macrosOut`). In the inspected project exports, FBD blocks had no device-slot references; the external I/O bindings were on component records. Treating FBD wires as network endpoints would mix two different graphs.
+
+The source constructs the Wi-Fi connector from its host and port fields, while the cloud connector receives a cloud connection string. Keep those opaque strings, passwords, public addresses, and local endpoints private. The `server` value is connector-specific and must not be parsed as one universal host/port format.
+
+For BLOODSKY, preserve the ordered device-slot array, resolve each component's slot index before creating runtime bindings, and keep connector-kind IDs distinct from endpoint row IDs. When importing, retain the original endpoint and flags as source metadata; require an explicit user remap before activating network I/O.
+
+
+## Reserved device-slot value (source-confirmed)
+
+Do not validate `posDeviceNetworkInList` only as an array index. The original app's connection-settings click handler explicitly writes integer `100` to this field for a dedicated control (`r/h0.smali`, click ID `0x7f090141`); the same model field is serialized as `posDeviceNetworkInList` by component JSON writers such as `CustomComponents/w.smali`. This confirms that `100` is an intentional special state exposed by the original UI, not automatically a malformed or stale slot reference. The exact user-facing label of that control has not yet been recovered.
+
+The supplied local archives contain this value in multiple components, so preserving it is required for lossless import/export. BLOODSKY should retain `100` as an opaque/reserved binding state and must not clamp it to the current `deviceNetwork` length, reinterpret it as slot 100, or silently replace it with `-1`. The original runtime path is now source-confirmed: `mbCanvas.F(...)` checks for 100 and routes the binding object to the app's global register manager instead of indexing the network-device list. BLOODSKY already preserves this source binding and maps it to its internal/global register bucket 8 in `CraftNetworkBindingResolver`; `CraftProjectImporterTest.preservesGlobalRegisterBindingWithoutActivatingDeviceSlot100` verifies round-trip preservation and confirms it is not activated as device slot 100. No importer code change is needed for this case.
+
+
+## Проверка двух экспортированных проектов — 2026-10-19
+
+Сопоставлены два предоставленных Craft ZIP-архива. Сетевые адреса, пароли и значения регистров не записывались.
+
+| Структура архива | Проект A | Проект B |
+|---|---:|---:|
+| Экраны | 16 | 16 |
+| Строки `deviceNetwork` | 16 | 16 |
+| `countDevice` | 1 | 7 |
+| Записи `TableComponent` | 65 | 346 |
+| Виджеты с `connectionInfo` | 46 | 75 |
+| Привязки к слоту 0 | 45 | 13 |
+| Привязки со значением 100 | 1 | 62 |
+| Строки `TableConnections` | 3 | 2 |
+
+В обоих ZIP JSON проекта находится во вложенном файле с расширением `.pro` рядом с JPG. В первом проекте отдельный `.pro` совпадает с копией внутри архива. Повторяющийся `connectionsId=2` встречается в разных строках `TableConnections`, поэтому это значение нельзя использовать как уникальный ключ. Число `countDevice` не совпадает с размером массива `deviceNetwork`; оба поля нужно переносить отдельно. Привязки виджетов через `posDeviceNetworkInList` не являются рёбрами FBD из `TableConnections`/графа.
+
+Эти числа — контрольные характеристики двух образцов, а не универсальные ограничения формата. Тест ZIP round-trip дополнительно проверяет сохранение трёх независимых слоёв: упорядоченных слотов устройств, непрозрачной привязки виджета и связей FBD на уровне экрана.
+
+
+## Cross-check with the saved standalone projects
+
+Aggregates below were read from the supplied `.pro` files; transport endpoints, passwords, register values, and phone numbers are deliberately omitted.
+
+| Project file | Declared screens | Component rows | `deviceNetwork` slots | Component binding fields | Binding value 100 | `TableConnections` rows |
+|---|---:|---:|---:|---:|---:|---:|
+| `home2.pro` | 16 | 65 | 16 | 46 | 1 | 3 |
+| `gitH.pro` | 16 | 65 | 16 | 46 | 1 | 3 |
+| `home.pro` | 16 | 24 | 16 | 24 | 0 | 1 |
+| `пож.pro` | 16 | 124 | 16 | 32 | 31 | 1 |
+
+The four projects all keep `countDevice` separate from their 16 serialized network slots; its value in these files is 1. The repeated connector-kind IDs in `home2.pro` and `gitH.pro` are not unique endpoint identifiers. The `100` binding occurrences resolve to the global-register route as described above, so tests must verify that they survive round-trip without becoming device slot 100.

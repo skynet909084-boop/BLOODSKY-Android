@@ -30,7 +30,8 @@ class OriginalComponentPaletteTests(unittest.TestCase):
                 source = ROOT / 'build/craft-reference/apktool/res/drawable' / matches[0].name.removeprefix('kc_')
                 self.assertEqual(source.read_bytes(), matches[0].read_bytes())
         self.assertIn('view.setEnabled(false)', code)
-        self.assertIn('this::showExtendedWidgetMenu', (ROOT / 'app/src/main/java/com/bloodsky/hmi/MainActivity.java').read_text())
+        self.assertIn('this::showFbdPalette', (ROOT / 'app/src/main/java/com/bloodsky/hmi/MainActivity.java').read_text())
+        self.assertIn('bind(dialog, R.id.kc_picker_tab_camera, "Видео RTSP Craft", "Видео", add)', code)
 
     def test_bound_components_are_existing_types_and_background_has_own_action(self):
         code = (ROOT / 'app/src/main/java/com/bloodsky/hmi/OriginalComponentPalette.java').read_text()
@@ -39,6 +40,47 @@ class OriginalComponentPaletteTests(unittest.TestCase):
             self.assertIn('"' + component + '"', main)
         self.assertIn('"Фон экрана", background', code)
         self.assertNotIn('java.util.function', code) # API 23 compatibility.
+
+    def test_supported_original_controls_are_not_dimmed(self):
+        code = (ROOT / 'app/src/main/java/com/bloodsky/hmi/OriginalComponentPalette.java').read_text()
+        for item, widget_type in [
+            ('switch', 'Переключатель Craft'),
+            ('alarm', 'Звуковой сигнал'),
+            ('digital_indicator', 'Цифровой индикатор Craft'),
+            ('gateway', 'Шлюз Craft'),
+            ('gateway_bit', 'Шлюз битовый'),
+        ]:
+            unique_actions = {
+                'switch': ('Добавить: Переключатель Craft', '() -> add.add(OriginalCraftSwitch.TYPE, "Переключатель")'),
+                'alarm': ('Добавить: Сигнализатор Craft', '() -> add.add("Звуковой сигнал", "Аларм")'),
+                'digital_indicator': ('Добавить: Цифровой индикатор', '() -> add.add(OriginalCraftNumericIndicator.TYPE, "0")'),
+            }
+            if item in unique_actions:
+                label, callback = unique_actions[item]
+                self.assertIn(label, code)
+                self.assertIn(callback, code)
+                self.assertNotRegex(code, r'unavailable\(dialog, R.id.kc_picker_tab_' + item + r',')
+                continue
+            self.assertRegex(code, r'bind\(dialog, R.id.kc_picker_tab_' + item
+                             + r'\s*,\s*"' + re.escape(widget_type) + r'"')
+            self.assertNotRegex(code, r'unavailable\(dialog, R.id.kc_picker_tab_' + item + r',')
+
+    def test_sms_directions_are_opt_in_and_push_uses_telegram(self):
+        palette = (ROOT / 'app/src/main/java/com/bloodsky/hmi/OriginalComponentPalette.java').read_text()
+        main = (ROOT / 'app/src/main/java/com/bloodsky/hmi/MainActivity.java').read_text()
+        manifest = (ROOT / 'app/src/main/AndroidManifest.xml').read_text()
+        self.assertIn('bind(dialog, R.id.kc_picker_tab_sms_in, "Входящее SMS", "SMS: команда", add)', palette)
+        self.assertIn('bind(dialog, R.id.kc_picker_tab_sms_out, "SMS-уведомление", "SMS: {value}", add)', palette)
+        self.assertIn('R.id.kc_picker_tab_sms_in).setVisibility(View.VISIBLE)', palette)
+        self.assertIn('R.id.kc_picker_tab_sms_out).setVisibility(View.VISIBLE)', palette)
+        self.assertIn('"Telegram-уведомление", "Событие", add', palette)
+        self.assertIn('"Telegram-уведомление".equals(w.type)', main)
+        self.assertIn('"SMS-уведомление".equals(w.type)', main)
+        self.assertIn('android.permission.SEND_SMS', manifest)
+        self.assertIn('android.permission.RECEIVE_SMS', manifest)
+        self.assertIn('smsEnabled", false', main)
+        self.assertIn('refreshIncomingSmsReceiver()', main)
+        self.assertIn('new SmsIncomingBroadcastReceiver(this::handleIncomingSms)', main)
 
 if __name__ == '__main__':
     unittest.main()

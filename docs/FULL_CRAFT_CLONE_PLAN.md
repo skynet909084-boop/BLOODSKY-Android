@@ -7,7 +7,7 @@
 ## Phase A — Original resource inventory and preservation (implemented in CI; APK verification pending)
 
 - Source of truth: Actions artifact `11912849123`, `apktool/res` and `apktool/assets`.
-- `tools/bundle_craft_resources.py` copies both trees into `app/src/main/assets/kascada_original/`, preserving relative paths and bytes. It writes SHA-256 hashes and byte sizes for every file to `MANIFEST.json`.
+- `tools/bundle_craft_resources.py` preserves both trees under `build/craft-reference/bundled/`, outside the shipped APK. It writes SHA-256 hashes and byte sizes for every file to `MANIFEST.json`.
 - Build additionally compiles 151 original non-nine-patch `drawable/*.png` files as `kc_*.png` resources for existing widgets.
 - The asset library includes drawable variants, layouts, menus, values XML, animations, raw files, fonts, sounds and web files that exist in the decoded source. **Assets are not automatically active UI resources.** XML styles and layouts need deliberate Android integration; images need actual widget bindings.
 - Decompiled `jadx` Java and `smali` are **reference source**, not silently added to the Android runtime. Copying all source verbatim would create conflicts and fail to compile.

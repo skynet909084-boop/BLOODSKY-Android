@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Bundle the *complete* decoded KaScada resource and asset trees as APK assets.
+"""Bundle the *complete* decoded Craft resource trees outside the APK.
 
-Original resource names and paths are preserved for parity work. Android cannot
-compile a second application's resources/values XML into this application's
-R class without resolving its dependencies, so these are kept under assets.
-The existing kc_ PNG aliases remain separately compiled for current widgets.
+Original resource names, paths, and bytes are preserved for parity work under
+build/craft-reference/bundled. Keeping the reference package outside app/src
+prevents legacy service names and unused resources from shipping in BLOODSKY.
+The selected kc_ PNG/audio aliases remain separately compiled for current UI.
 """
 import argparse
 import hashlib
@@ -16,7 +16,7 @@ import sys
 
 def bundle(source_root: Path, app_root: Path) -> dict:
     source = source_root / "apktool"
-    destination = app_root / "src/main/assets/kascada_original"
+    destination = app_root.parent / "build/craft-reference/bundled"
     if not (source / "res").is_dir() or not (source / "assets").is_dir():
         raise ValueError("Missing decoded apktool/res or apktool/assets")
     if destination.exists():

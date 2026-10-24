@@ -1,0 +1,5753 @@
+{
+  "apk_file": "KaScada Smart Craft 1.0.7 (08.02.2026).apk",
+  "apk_sha256": "11464db76f59393ccf698f57e60af1756756ffc78cb315d43052ae92adb50d4f",
+  "package": "ru.kascada.modbus",
+  "version_name": "1.0.7",
+  "version_code": "107",
+  "identical_to_decompiled_source_proof": [
+    "AndroidManifest.xml",
+    "META-INF/CERT.RSA",
+    "META-INF/MANIFEST.MF"
+  ],
+  "apk_entry_count": 4622,
+  "resource_layout_count": 273,
+  "menu_xml_count": 18,
+  "android_activities": [
+    "ru.himik.nightscream.kascada.MainActivity",
+    "ru.himik.nightscream.kascada.mbCanvas",
+    "ru.himik.nightscream.kascada.Preference.PrefActivity",
+    "ru.himik.nightscream.kascada.Utils.ShowQrCode",
+    "ru.himik.nightscream.kascada.Bd.ProjectLoadListActivity",
+    "ru.himik.nightscream.kascada.Bd.ProjectDeleteListActivity",
+    "ru.himik.nightscream.kascada.Preference.ServerList.EditServerList",
+    "ru.himik.nightscream.kascada.Connections.Bluetooth.DeviceBluetoothList",
+    "ru.himik.nightscream.kascada.Preference.Address.PrefActivityAddressConnection",
+    "ru.himik.nightscream.kascada.Bd.Export.ProjectExportActivity",
+    "ru.himik.nightscream.kascada.Bd.Import.ProjectImportActivity",
+    "ru.himik.nightscream.kascada.Preference.NetworkDevicePref.PrefActivityNetworkDevice",
+    "ru.himik.nightscream.kascada.Preference.AlarmSelectSound.PrefActivitySelectAlarmSound",
+    "ru.himik.nightscream.kascada.Preference.BridgeWiFiToUsb.BridgeWiFiToUsb",
+    "com.karumi.dexter.DexterActivity",
+    "com.journeyapps.barcodescanner.CaptureActivity",
+    "com.google.android.gms.common.api.GoogleApiActivity"
+  ],
+  "permissions": [
+    "android.permission.BLUETOOTH",
+    "android.permission.BLUETOOTH_ADMIN",
+    "android.permission.READ_EXTERNAL_STORAGE",
+    "android.permission.WRITE_EXTERNAL_STORAGE",
+    "android.permission.READ_PHONE_STATE",
+    "android.permission.ACCESS_WIFI_STATE",
+    "android.permission.ACCESS_NETWORK_STATE",
+    "android.permission.INTERNET",
+    "android.permission.CHANGE_WIFI_STATE",
+    "android.permission.ACCESS_FINE_LOCATION",
+    "com.android.vending.BILLING",
+    "com.google.android.c2dm.permission.RECEIVE",
+    "android.permission.FOREGROUND_SERVICE",
+    "android.permission.RECORD_AUDIO",
+    "android.permission.MANAGE_EXTERNAL_STORAGE",
+    "android.permission.RECEIVE_SMS",
+    "android.permission.SEND_SMS",
+    "android.permission.POST_NOTIFICATIONS",
+    "android.permission.WAKE_LOCK",
+    "android.permission.CAMERA",
+    "android.permission.USE_FINGERPRINT",
+    "android.permission.USE_BIOMETRIC",
+    "com.google.android.providers.gsf.permission.READ_GSERVICES",
+    "com.google.android.gms.permission.AD_ID",
+    "com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE"
+  ],
+  "main_menu": [
+    {
+      "tag": "Button",
+      "id": "bGoToCanvas",
+      "text": "Create a new project",
+      "onClick": "onStartWork",
+      "hint": ""
+    },
+    {
+      "tag": "Button",
+      "id": "button3",
+      "text": "Upload a project",
+      "onClick": "onLoadProject",
+      "hint": ""
+    },
+    {
+      "tag": "Button",
+      "id": "button4",
+      "text": "Delete a project",
+      "onClick": "onDeleteProject",
+      "hint": ""
+    },
+    {
+      "tag": "Button",
+      "id": "btnExport",
+      "text": "Export a project",
+      "onClick": "onExportProject",
+      "hint": ""
+    },
+    {
+      "tag": "Button",
+      "id": "btnImport",
+      "text": "Import a project",
+      "onClick": "getImportFile",
+      "hint": ""
+    },
+    {
+      "tag": "Button",
+      "id": "button2",
+      "text": "Exit",
+      "onClick": "onExit",
+      "hint": ""
+    }
+  ],
+  "editor_toolbar_callbacks": [
+    {
+      "tag": "ImageView",
+      "id": "menu_app_bar_hide",
+      "text": "",
+      "onClick": "onClickIcoCharging",
+      "hint": ""
+    },
+    {
+      "tag": "ImageView",
+      "id": "ico_charging",
+      "text": "",
+      "onClick": "onClickIcoCharging",
+      "hint": ""
+    },
+    {
+      "tag": "ImageView",
+      "id": "",
+      "text": "",
+      "onClick": "onClickGetCalculator",
+      "hint": ""
+    },
+    {
+      "tag": "ImageView",
+      "id": "",
+      "text": "",
+      "onClick": "onClickGetInfo",
+      "hint": ""
+    },
+    {
+      "tag": "ImageView",
+      "id": "slidingScreenRight",
+      "text": "",
+      "onClick": "clickScreenRight",
+      "hint": ""
+    },
+    {
+      "tag": "TextView",
+      "id": "numScreen",
+      "text": "Screen: 1",
+      "onClick": "onClickSetNameScreen",
+      "hint": ""
+    },
+    {
+      "tag": "ImageView",
+      "id": "slidingScreenLeft",
+      "text": "",
+      "onClick": "clickScreenLeft",
+      "hint": ""
+    },
+    {
+      "tag": "ImageView",
+      "id": "lockScreen",
+      "text": "",
+      "onClick": "lockScreen",
+      "hint": ""
+    },
+    {
+      "tag": "ImageView",
+      "id": "workToolbar",
+      "text": "",
+      "onClick": "onClickWorkToolbar",
+      "hint": ""
+    },
+    {
+      "tag": "ImageButton",
+      "id": "",
+      "text": "",
+      "onClick": "selectActionCut",
+      "hint": ""
+    },
+    {
+      "tag": "ImageButton",
+      "id": "",
+      "text": "",
+      "onClick": "selectActionCopy",
+      "hint": ""
+    },
+    {
+      "tag": "ImageButton",
+      "id": "",
+      "text": "",
+      "onClick": "selectActionPaste",
+      "hint": ""
+    },
+    {
+      "tag": "ImageButton",
+      "id": "dialogAlignComponents",
+      "text": "",
+      "onClick": "openDialogAlignComponents",
+      "hint": ""
+    }
+  ],
+  "hmi_component_toolbar": [
+    {
+      "tag": "ImageView",
+      "id": "tab_switch",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "TextView",
+      "id": "tab_button",
+      "text": "Button",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "ImageView",
+      "id": "tab_digital_setters",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "CustomList",
+      "id": "tab_list",
+      "text": "List",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "ImageView",
+      "id": "tab_line_setter",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "ImageView",
+      "id": "tab_voice_recognition",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "CustomLabel",
+      "id": "tab_text",
+      "text": "Text",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "CustomDynText",
+      "id": "tab_dyn_text",
+      "text": "Dyn. text",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "ImageView",
+      "id": "tab_digital_indicator",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "ImageView",
+      "id": "tab_lamp",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "ImageView",
+      "id": "tab_alarm",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "ImageView",
+      "id": "tab_line_level",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "ImageView",
+      "id": "tab_round_indicator",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "CustomSound",
+      "id": "tab_sound",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "ImageView",
+      "id": "tab_graph",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "TextView",
+      "id": "tab_gif",
+      "text": "GIF",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "ImageView",
+      "id": "tab_dyn_pictures",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "ImageView",
+      "id": "tab_archive",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "TextView",
+      "id": "tab_background",
+      "text": "Background",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "ImageView",
+      "id": "tab_gateway",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "ImageView",
+      "id": "tab_gateway_bit",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "ImageView",
+      "id": "tab_sms_in",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "ImageView",
+      "id": "tab_sms_out",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "ImageView",
+      "id": "tab_camera",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "ImageView",
+      "id": "tab_push_notif",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "ImageView",
+      "id": "tab_web_view",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "ImageView",
+      "id": "tab_email",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    }
+  ],
+  "logic_component_toolbar": [
+    {
+      "tag": "Var",
+      "id": "tab_var",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "VarOut",
+      "id": "tab_varOut",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "VarInt",
+      "id": "tab_varInt",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "VarOutInt",
+      "id": "tab_varOutInt",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "VarFloat",
+      "id": "tab_varFloat",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "VarOutFloat",
+      "id": "tab_varOutFloat",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "VarNameIn",
+      "id": "tab_var_name_in",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "VarNameOut",
+      "id": "tab_var_name_out",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "FB_RS",
+      "id": "tab_fb_rs",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "FB_TRIGGER",
+      "id": "tab_fb_t_trigger",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "FB_TIMER",
+      "id": "tab_fb_timer",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "FB_CTU",
+      "id": "tab_fb_ctu",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "FB_MOVE",
+      "id": "tab_fb_move",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "FB_MX",
+      "id": "tab_fb_mx",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "FB_MACRO",
+      "id": "tab_fb_macro",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "FB_ARRAY",
+      "id": "tab_fb_array",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "WordToFloat",
+      "id": "tab_fb_word_to_float",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "IntToFloat",
+      "id": "tab_fb_int_to_float",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "FloatToInt",
+      "id": "tab_fb_float_to_int",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "Sensor_Orientation",
+      "id": "tab_fb_sensor_orientation",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "ODTEMP",
+      "id": "tab_fb_dt",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "Sensor_Speed",
+      "id": "tab_fb_sensor_speed",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "MQTT_SUBSCRIBER",
+      "id": "tab_fb_mqtt_subscriber",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "MQTT_PUBLISHER",
+      "id": "tab_fb_mqtt_publisher",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "SIN",
+      "id": "tab_fb_sin",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "LOG",
+      "id": "tab_fb_log",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "ABS",
+      "id": "tab_fb_abs",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "FB_POW",
+      "id": "tab_fb_pow",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "FB_XOR",
+      "id": "tab_fb_xor",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "FB_SEL",
+      "id": "tab_fb_sel",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "Sunrise_GPS",
+      "id": "tab_fb_sunrise",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "Sensor_Light",
+      "id": "tab_fb_sensor_light",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "FB_AND",
+      "id": "tab_el_and",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "FB_OR",
+      "id": "tab_el_or",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "FB_COMPARE",
+      "id": "tab_el_compare_int",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "FB_ARITHMETIC_INT",
+      "id": "tab_el_arithmetic_int",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "FB_ARITHMETIC_FLOAT",
+      "id": "tab_el_arithmetic_float",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "FB_COMPARE_FLOAT",
+      "id": "tab_el_compare_float",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "FB_CHANGE_I",
+      "id": "tab_fb_change_i",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    },
+    {
+      "tag": "FB_CHANGE_F",
+      "id": "tab_fb_change_f",
+      "text": "",
+      "onClick": "",
+      "hint": ""
+    }
+  ],
+  "popup_menus": {
+    "actionmenu.xml": [
+      {
+        "id": "edit_list_servers",
+        "title": "Edition of the list of servers"
+      },
+      {
+        "id": "action_set_password",
+        "title": "Set a password"
+      },
+      {
+        "id": "change_mode",
+        "title": "Activate the mobile mode"
+      },
+      {
+        "id": "change_show_timeout",
+        "title": "Activate the timeout displaying"
+      },
+      {
+        "id": "bridge_wifi_to_usb",
+        "title": "Creation of bridge WiFi-USB"
+      }
+    ],
+    "popup_alarm.xml": [
+      {
+        "id": "popup_alarm_setSound",
+        "title": "Sound notification"
+      },
+      {
+        "id": "popup_set_connections_device",
+        "title": "Network device"
+      },
+      {
+        "id": "popup_set_address",
+        "title": "Address"
+      }
+    ],
+    "popup_archive.xml": [
+      {
+        "id": "popup_archive_preference",
+        "title": "Configuration"
+      },
+      {
+        "id": "popup_archive_connections_device",
+        "title": "Network device"
+      },
+      {
+        "id": "popup_archive_address",
+        "title": "Address"
+      },
+      {
+        "id": "popup_archive_graph",
+        "title": "Graphic"
+      },
+      {
+        "id": "popup_archive_export_csv",
+        "title": "Export to csv"
+      }
+    ],
+    "popup_background_screen.xml": [
+      {
+        "id": "popup_set_background_image",
+        "title": "Set an image"
+      },
+      {
+        "id": "popup_set_background_color",
+        "title": "Use solid color"
+      }
+    ],
+    "popup_caller.xml": [
+      {
+        "id": "popup_caller_resize",
+        "title": "Resize"
+      },
+      {
+        "id": "popup_caller_phone_number",
+        "title": "Change the number"
+      }
+    ],
+    "popup_dyn_pic.xml": [
+      {
+        "id": "popup_resize",
+        "title": "Resize"
+      },
+      {
+        "id": "popup_preference",
+        "title": "Configuration"
+      },
+      {
+        "id": "popup_set_connections_device",
+        "title": "Network device"
+      },
+      {
+        "id": "popup_set_address",
+        "title": "Address"
+      }
+    ],
+    "popup_dyn_text.xml": [
+      {
+        "id": "popup_resize",
+        "title": "Resize"
+      },
+      {
+        "id": "popup_preference",
+        "title": "Configuration"
+      },
+      {
+        "id": "popup_set_connections_device",
+        "title": "Network device"
+      },
+      {
+        "id": "popup_set_address",
+        "title": "Address"
+      }
+    ],
+    "popup_gateway.xml": [
+      {
+        "id": "popup_gateway_preference",
+        "title": "Configuration"
+      },
+      {
+        "id": "popup_gateway_choose_source_server",
+        "title": "Source"
+      },
+      {
+        "id": "popup_gateway_set_address_source",
+        "title": "Address"
+      },
+      {
+        "id": "popup_gateway_choose_receiver_server",
+        "title": "Receiver"
+      },
+      {
+        "id": "popup_gateway_set_address_receiver",
+        "title": "Address"
+      }
+    ],
+    "popup_label.xml": [
+      {
+        "id": "popup_label_resize",
+        "title": "Resize"
+      },
+      {
+        "id": "popup_label_preference",
+        "title": "Configuration"
+      }
+    ],
+    "popup_lamp.xml": [
+      {
+        "id": "popup_label_resize",
+        "title": "Resize"
+      },
+      {
+        "id": "popup_preference",
+        "title": "Configuration"
+      },
+      {
+        "id": "popup_set_connections_device",
+        "title": "Network device"
+      },
+      {
+        "id": "popup_set_address",
+        "title": "Address"
+      },
+      {
+        "id": "popup_change_background",
+        "title": "Replace image"
+      }
+    ],
+    "popup_network_device_list.xml": [
+      {
+        "id": "network_device_edit_item",
+        "title": "Edit the network device"
+      },
+      {
+        "id": "network_device_delete_item",
+        "title": "Delete the network device"
+      }
+    ],
+    "popup_pdf_info.xml": [
+      {
+        "id": "popup_set_pdf_path_file",
+        "title": "Select a PDF-file"
+      },
+      {
+        "id": "popup_open_pdf",
+        "title": "Open a file"
+      }
+    ],
+    "popup_seek_bar.xml": [
+      {
+        "id": "popup_resize",
+        "title": "Resize"
+      },
+      {
+        "id": "popup_preference",
+        "title": "Configuration"
+      },
+      {
+        "id": "popup_set_connections_device",
+        "title": "Network device"
+      },
+      {
+        "id": "popup_set_address",
+        "title": "Address"
+      },
+      {
+        "id": "popup_turn",
+        "title": "Rotate"
+      }
+    ],
+    "popup_server_list.xml": [
+      {
+        "id": "delete_item",
+        "title": "Delete"
+      },
+      {
+        "id": "edit_item",
+        "title": "Edit"
+      }
+    ],
+    "popup_sms.xml": [
+      {
+        "id": "popup_sms_preference",
+        "title": "Configuration"
+      },
+      {
+        "id": "popup_set_connections_device",
+        "title": "Network device"
+      },
+      {
+        "id": "popup_set_address",
+        "title": "Address"
+      }
+    ],
+    "popup_sound.xml": [
+      {
+        "id": "popup_sound_preference",
+        "title": "Configuration"
+      },
+      {
+        "id": "popup_set_connections_device",
+        "title": "Network device"
+      },
+      {
+        "id": "popup_set_address",
+        "title": "Address"
+      }
+    ],
+    "popup_switch.xml": [
+      {
+        "id": "popup_resize",
+        "title": "Resize"
+      },
+      {
+        "id": "popup_preference",
+        "title": "Configuration"
+      },
+      {
+        "id": "popup_set_connections_device",
+        "title": "Network device"
+      },
+      {
+        "id": "popup_set_address",
+        "title": "Address"
+      },
+      {
+        "id": "popup_change_background",
+        "title": "Replace image"
+      }
+    ],
+    "popupmenu.xml": [
+      {
+        "id": "popup_resize",
+        "title": "Resize"
+      },
+      {
+        "id": "popup_preference",
+        "title": "Configuration"
+      },
+      {
+        "id": "popup_set_connections_device",
+        "title": "Network device"
+      },
+      {
+        "id": "popup_set_address",
+        "title": "Address"
+      }
+    ]
+  },
+  "dialog_layouts": {
+    "alert_dialog_add_cloud.xml": [
+      {
+        "tag": "EditText",
+        "id": "identifier",
+        "text": "",
+        "onClick": "",
+        "hint": "The device identifier"
+      },
+      {
+        "tag": "CheckBox",
+        "id": "checkBoxRtu",
+        "text": "RTU",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Pause",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "pause",
+        "text": "",
+        "onClick": "",
+        "hint": "0"
+      }
+    ],
+    "alert_dialog_add_usb.xml": [
+      {
+        "tag": "TextView",
+        "id": "textView8",
+        "text": "Speed",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "Spinner",
+        "id": "spinnerBaudRate",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "textView9",
+        "text": "Bit quantity",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "Spinner",
+        "id": "spinnerDataBits",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "textView10",
+        "text": "Stop bit",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "Spinner",
+        "id": "spinnerStopBits",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "textView11",
+        "text": "Parity",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "Spinner",
+        "id": "spinnerParity",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "textPause",
+        "text": "Pause",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "pause",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "alert_dialog_add_wifi.xml": [
+      {
+        "tag": "EditText",
+        "id": "ip",
+        "text": "",
+        "onClick": "",
+        "hint": "IP address"
+      },
+      {
+        "tag": "EditText",
+        "id": "port",
+        "text": "",
+        "onClick": "",
+        "hint": "Port"
+      },
+      {
+        "tag": "CheckBox",
+        "id": "checkBoxRtu",
+        "text": "RTU",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Pause",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "pause",
+        "text": "",
+        "onClick": "",
+        "hint": "0"
+      }
+    ],
+    "dialog_alarm.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_sound_alarm",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Sound notification",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_device",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_device",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address",
+        "text": "Reg:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "reg",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address24",
+        "text": "Bit:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "bit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_archive.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_preference",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Settings",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_device",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_device",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_address",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address",
+        "text": "Reg:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "reg",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address24",
+        "text": "Bit:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "bit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_graph",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Graphic",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_export_csv",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Export to csv",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_background.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "set_image_on_background",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Set an image",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "set_color_on_background",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Use solid color",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_button.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_preference",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Settings",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_device",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_device",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_address",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address",
+        "text": "Address",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_change_image",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address2",
+        "text": "Replace image",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_caller.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_change_phone",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Change the number",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_camera.xml": [
+      {
+        "tag": "EditText",
+        "id": "rtsp_url",
+        "text": "",
+        "onClick": "",
+        "hint": "Rtsp url"
+      }
+    ],
+    "dialog_choose_devices.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "sys",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "System registries",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "d1",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "d1Text",
+        "text": "1",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "d2",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "d2Text",
+        "text": "2",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "d3",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "d3Text",
+        "text": "3",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "d4",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "d4Text",
+        "text": "4",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "d5",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "d5Text",
+        "text": "5",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "d6",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "d6Text",
+        "text": "6",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "d7",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "d7Text",
+        "text": "7",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "d8",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "d8Text",
+        "text": "8",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "d9",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "d9Text",
+        "text": "9",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "d10",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "d10Text",
+        "text": "10",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "d11",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "d11Text",
+        "text": "11",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "d12",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "d12Text",
+        "text": "12",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "d13",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "d13Text",
+        "text": "13",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "d14",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "d14Text",
+        "text": "14",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "d15",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "d15Text",
+        "text": "15",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "d16",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "d16Text",
+        "text": "16",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_choose_image_lamp.xml": [
+      {
+        "tag": "TextView",
+        "id": "title",
+        "text": "Choose from the library or specify the path for your picture.",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "ImageView",
+        "id": "imageGreen",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "ImageView",
+        "id": "imageYellow",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "ImageView",
+        "id": "imageRed",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "ImageView",
+        "id": "imageBlue",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "ImageView",
+        "id": "imageOff",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "Button",
+        "id": "buttonChoosePath",
+        "text": "Specify your picture",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_choose_import_source.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "ll_download",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "\"KaScada Cloud \n(link or QR)\"",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "ll_local_import",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "This device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "ll_local_import_old",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Import .pro (deprecated way)",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_circle_gauge.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_preference",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Settings",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_device",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_device",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address",
+        "text": "Reg:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "reg",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_constant_bool.xml": [
+      {
+        "tag": "TextView",
+        "id": "tittle",
+        "text": "Укажите константу Bool",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "Spinner",
+        "id": "spinnerLogicVarConstant",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "Button",
+        "id": "bOk",
+        "text": "Ok",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_constant_float.xml": [
+      {
+        "tag": "TextView",
+        "id": "tittle",
+        "text": "Укажите константу Int",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "eConstFloatNumber",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "Button",
+        "id": "bOk",
+        "text": "Ok",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_constant_int.xml": [
+      {
+        "tag": "TextView",
+        "id": "tittle",
+        "text": "Укажите константу Int",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "eConstIntNumber",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "Button",
+        "id": "bOk",
+        "text": "Ok",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_dyn_pictures.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_preference",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Settings",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_device",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_device",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address",
+        "text": "Reg:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "reg",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_dyn_text.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_preference",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Settings",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_device",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_device",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address",
+        "text": "Reg:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "reg",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_edit_number.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_preference",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Settings",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_device",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_device",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address",
+        "text": "Reg:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "reg",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_email.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_preference",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Settings",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_device",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_device",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address",
+        "text": "Reg:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "reg",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address_bit",
+        "text": "Bit:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "bit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_gateway.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_preference",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Settings",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_source",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_source",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "Spinner",
+        "id": "spinnerFunctionModbus",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Reg:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "regSource",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_receive",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_receive",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Reg:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "regReceive",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_gateway_bit.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_preference",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Settings",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_source",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_source",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_address_source",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address_source",
+        "text": "Address",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_receive",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_receive",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_address_receive",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address_receive",
+        "text": "Address",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_gauge2.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_preference",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Settings",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_device",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_device",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address",
+        "text": "Reg:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "reg",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_gif.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_preference",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Settings",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_device",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_device",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address",
+        "text": "Reg:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "reg",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address24",
+        "text": "Bit:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "bit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_graph.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_preference",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Settings",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_device",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_device",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address",
+        "text": "Reg:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "reg",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_label.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_preference",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Settings",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_lamp.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_preference",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Settings",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_device",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_device",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address",
+        "text": "Reg:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "reg",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address24",
+        "text": "Bit:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "bit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_change_image",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address2",
+        "text": "Replace image",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_line_level.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_preference",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Settings",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_device",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_device",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address",
+        "text": "Reg:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "reg",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_list.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_preference",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Settings",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_device",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_device",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address",
+        "text": "Reg:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "reg",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_load_voice_model.xml": [
+      {
+        "tag": "TextView",
+        "id": "title",
+        "text": "Wait, file is downloading",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "ContentLoadingProgressBar",
+        "id": "progressFileDownload",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_menu_align_components.xml": [
+      {
+        "tag": "TextView",
+        "id": "title",
+        "text": "Component alignment",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "ImageButton",
+        "id": "alignLeft",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "ImageButton",
+        "id": "alignTop",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "ImageButton",
+        "id": "alignRight",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "ImageButton",
+        "id": "alignVertical",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "ImageButton",
+        "id": "alignBottom",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "ImageButton",
+        "id": "alignHorizontal",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "ImageButton",
+        "id": "alignSpaceHorizontal",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "ImageButton",
+        "id": "alignSpaceVertical",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "ImageButton",
+        "id": "alignHeightMax",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "ImageButton",
+        "id": "alignWidthMax",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_menu_image_lamp.xml": [
+      {
+        "tag": "TextView",
+        "id": "title",
+        "text": "Click on the image to select an image",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "View",
+        "id": "v1",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "textOn",
+        "text": "ON",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "textOff",
+        "text": "OFF",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "ImageView",
+        "id": "imageOn",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "ImageView",
+        "id": "imageOff",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_modbus_slave.xml": [
+      {
+        "tag": "TextView",
+        "id": "text",
+        "text": "Modbus RTU Slave (Wi-Fi)",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "textView18",
+        "text": "Please, specify the port:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "modbus_port",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "CheckBox",
+        "id": "chKaScadaCloud",
+        "text": "KaScadaCloud",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "textKey",
+        "text": "(error key)",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_push_notif.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_preference",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Settings",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_device",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_device",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address",
+        "text": "Reg:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "reg",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address_bit",
+        "text": "Bit:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "bit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_quit.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_preference",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Exit. Save the project?",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "exit_save_as",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Save as...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "exit_no_save",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Do not save",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "exit_yes",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address2",
+        "text": "Yes",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_register.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_preference",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Settings",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_device",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_device",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address",
+        "text": "Reg:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "reg",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_seek_bar.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_preference",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Settings",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_device",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_device",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address",
+        "text": "Reg:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "reg",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_turn",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Rotate",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_set_address.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_address",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address",
+        "text": "Register:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "adrR",
+        "text": "512",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_change_image",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address2",
+        "text": "Bit:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "adrB",
+        "text": "0",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_set_function_and_bit_gatewaybit.xml": [
+      {
+        "tag": "Spinner",
+        "id": "spinnerFunctionModbus",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_address",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address",
+        "text": "Reg:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "reg",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address2",
+        "text": "Bit:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "bit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_set_pause.xml": [
+      {
+        "tag": "TextView",
+        "id": "text",
+        "text": "Pause",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "pause",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "Button",
+        "id": "acceptPause",
+        "text": "Accept",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_set_reg_bool.xml": [
+      {
+        "tag": "Spinner",
+        "id": "spinnerLogicVar",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "Spinner",
+        "id": "spinnerLogicVarConstant",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "textRegLogicVar",
+        "text": "Register",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "logicSetReg",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "textBitLogicVar",
+        "text": "Bit",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "logicSetBit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "Button",
+        "id": "logicSetRegOk",
+        "text": "Ok",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_set_reg_bool_out.xml": [
+      {
+        "tag": "TextView",
+        "id": "textRegLogicVar",
+        "text": "Register",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "logicSetReg",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "textBitLogicVar",
+        "text": "Bit",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "logicSetBit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "Button",
+        "id": "logicSetRegOk",
+        "text": "Ok",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_set_reg_float.xml": [
+      {
+        "tag": "Spinner",
+        "id": "spinnerLogicVarFloat",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "textRegLogicVarFloat",
+        "text": "Register",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "logicSetRegFloat",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "Button",
+        "id": "logicSetRegOk",
+        "text": "Ok",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_set_reg_int.xml": [
+      {
+        "tag": "Spinner",
+        "id": "spinnerLogicVarInt",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "textRegLogicVarInt",
+        "text": "Register",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "logicSetRegInt",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "Button",
+        "id": "logicSetRegOk",
+        "text": "Ok",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_set_reg_out_float.xml": [
+      {
+        "tag": "TextView",
+        "id": "textRegLogicVar",
+        "text": "Register",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "Button",
+        "id": "logicSetRegOk",
+        "text": "Ok",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "logicSetReg",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_set_reg_out_int.xml": [
+      {
+        "tag": "TextView",
+        "id": "textRegLogicVar",
+        "text": "Register",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "Button",
+        "id": "logicSetRegOk",
+        "text": "Ok",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "logicSetReg",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_sms.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_preference",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Settings",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_device",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_device",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address",
+        "text": "Reg:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "reg",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address24",
+        "text": "Bit:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "bit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_sms_receive.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_preference",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Settings",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_device",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_device",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address",
+        "text": "Reg:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "reg",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address_bit",
+        "text": "Bit:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "bit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_sound.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_preference",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Settings",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_device",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_device",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address",
+        "text": "Reg:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "reg",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_switch.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_preference",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Settings",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_device",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_device",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address",
+        "text": "Reg:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "reg",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address24",
+        "text": "Bit:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "bit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_change_image",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address2",
+        "text": "Replace image",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_switch_backup.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_resize",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Resize",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_preference",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Settings",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_device",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_device",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_address",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address",
+        "text": "Address",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_change_image",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address2",
+        "text": "Replace image",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_voice_recognition.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_preference",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Settings",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_device",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_device",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address",
+        "text": "Reg:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "reg",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "dialog_web_view.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_preference",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Settings",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "dialog_set_network_device",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_network_device",
+        "text": "Network device",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "text_address",
+        "text": "Reg:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "reg",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_1.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_edit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Edit",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_invert",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Invert",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_choose_mqtt_server.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "lChooseServer1",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Server 1",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "tvIpServer1",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "lChooseServer2",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Server 2",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "tvIpServer2",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_dt.xml": [
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "IP:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "ip",
+        "text": "10.10.0.1",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_edit_type_sensor",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Model:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "logic_edit_type_sensor_text",
+        "text": "none",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_edit_type_response",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Response:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "logic_edit_type_response_text",
+        "text": "none",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_abs.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_and_or.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_invert",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Invert",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_arithmetic_action.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "arithmeticActionADD",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "+",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "arithmeticActionSUB",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "-",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "arithmeticActionMUL",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "*",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "arithmeticActionDIV",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "/",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_arithmetic_float.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_edit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Edit",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_arithmetic_int.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_edit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Edit",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_array.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_change_f.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_change_i.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_compare.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_edit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Edit",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_invert",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Invert",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_compare_action.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "compareActionGT",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "> (GT)",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "compareActionLT",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "< (LT)",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "compareActionLE",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "<= (LE)",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "compareActionGE",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": ">= (GE)",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "compareActionEQ",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "= (EQ)",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "compareActionNE",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "<> (NE)",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_compare_action_float.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "compareActionGT",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "> (FGT)",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "compareActionLT",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "< (FLT)",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "compareActionLE",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "<= (FLE)",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "compareActionGE",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": ">= (FGE)",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "compareActionEQ",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "= (FEQ)",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "compareActionNE",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "<> (FNE)",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_compare_float.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_edit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Edit",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_invert",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Invert",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_ctu.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_float_to_int.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_int_to_float.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_log.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_macro.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_edit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Edit",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_move.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_mqtt_publisher.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "mqtt_server",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "MQTT server",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "mqttServerIp",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Topic:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "mqtt_topic",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Retain: ",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "CheckBox",
+        "id": "cbMqttTopicRetain",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "type_in",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "tvTypeIn",
+        "text": "Output type",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_mqtt_subscriber.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "mqtt_server",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "MQTT server",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "mqttServerIp",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Topic:",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "mqtt_topic",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "type_q",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "tvTypeQ",
+        "text": "Output type",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_mx.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_pow.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_rs.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_invert",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Invert",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_sel.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_sensor_light.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_sensor_orientation.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_edit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Edit the type",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_sensor_orientation_edit_type.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "sensorActionX",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "X",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "sensorActionY",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Y",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "sensorActionZ",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Z",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_sensor_speed.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_sin.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_sunrise.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_edit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Edit the type",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_sunrise_edit_type.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "sunriseTime",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Sunrise time",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "sunsetTime",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Sunset time",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_timer.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_edit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Edit the type",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_edit_time",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Edit the time type",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_invert",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Invert",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_timer_edit_type.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "timerActionTON",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "TON",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "timerActionTOF",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "TOF",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "timerActionTP",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "TP",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "timerActionBLINK",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "BLINK",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_timer_edit_type_time.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "timerMs",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "ms",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "timerSek",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "sec",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "timerMin",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "min",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_trigger.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_edit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Edit the type",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_invert",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Invert",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_trigger_edit_type.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "timerActionT",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "T_TRIGGER",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "timerActionR",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "R_TRIGGER",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "timerActionF",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "F_TRIGGER",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_var.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_edit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Edit",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_invert",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Invert",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_var_float.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_edit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Edit",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_var_int.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_edit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Edit",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_var_name_in.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_edit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Edit",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_invert",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Invert",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_var_out.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_edit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Edit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_var_out_float.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_edit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Edit",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "textByteOrder",
+        "text": "The byte order",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "CheckBox",
+        "id": "checkHighRegister",
+        "text": "The high-register ahead",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "CheckBox",
+        "id": "checkHighByte",
+        "text": "The high-byte ahead",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_var_out_int.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_edit",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Edit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_word_to_float.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_fb_xor.xml": [
+      {
+        "tag": "LinearLayout",
+        "id": "logic_connect",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Connect to...",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "LinearLayout",
+        "id": "logic_disconnect_out",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "",
+        "text": "Disconnect the exit",
+        "onClick": "",
+        "hint": ""
+      }
+    ],
+    "popup_logic_mqtt_server.xml": [
+      {
+        "tag": "Guideline",
+        "id": "guideline",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "tvIp",
+        "text": "IP: ",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "mqtt_ip",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "tvPort",
+        "text": "Port: ",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "mqtt_port",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "tvLogin",
+        "text": "Login: ",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "mqtt_login",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "TextView",
+        "id": "tvPass",
+        "text": "Pass: ",
+        "onClick": "",
+        "hint": ""
+      },
+      {
+        "tag": "EditText",
+        "id": "mqtt_pass",
+        "text": "",
+        "onClick": "",
+        "hint": ""
+      }
+    ]
+  },
+  "testing_status": "Static source and resource inspection only; emulator not available and no live button presses performed."
+}

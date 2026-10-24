@@ -23,7 +23,7 @@ Manifest names include:
 - network-device, address-connection, server-list, Bluetooth-device, alarm-sound and Wi-Fi-to-USB bridge settings
 - foreground service and Eclipse Paho MQTT service
 
-The manifest declares networking, Wi-Fi state, Bluetooth, storage, location, audio, camera, SMS, wake-lock and notification permissions. BLOODSKY should request only permissions required by enabled features, with runtime permission flows and clear explanations rather than blindly copying every legacy permission.
+The decompiled source manifest declares networking, Wi-Fi state, Bluetooth, storage, location, audio, camera, SMS, wake-lock and notification permissions. BLOODSKY requests INTERNET, ACCESS_FINE_LOCATION, RECORD_AUDIO, SEND_SMS and RECEIVE_SMS for enabled features. SEND_SMS is requested on a configured outgoing event; RECEIVE_SMS is requested only when an enabled incoming-SMS component starts in foreground operator mode, and its dynamic receiver unregisters on pause. Imported Craft ID 18 is disabled until the sender, exact command and local holding-register binding are explicitly configured. READ_SMS is not requested. Telegram notifications use the existing INTERNET permission.
 
 ## Screen/widget inventory (class-name mapping is partly obfuscated)
 
@@ -33,11 +33,12 @@ The original uses many custom view classes in `CustomComponents`. The decompiler
 |---|---|---|
 | `CustomLabel` | `autoResizeText`, `enableFrameLabel`, `timeZ` | Static label/text |
 | `CustomDynText` | text variants `T0`…`T14` | Dynamic text/status text |
-| `CustomList` | register, bit, request type, visible-in-work flags | List/table-like data view |
+| `v` | `max`, `isTurn`, `colorProgress`, `colorBackground`, `colorText` | Craft ID 13 linear setter; horizontal/vertical integer slider, explicit TCP FC03/FC06 mapping required before runtime writes |
+| `CustomList` | 16 labels and selected UINT16 mask, read-only-in-work, visible-in-work | Craft bit list; TCP FC03 read / FC06 mask write in operator mode, imported connection remapped explicitly |
 | `CustomSound` | sound paths and Modbus register/bit fields | Sound/alarm trigger |
 | `a0` | `textVoice0`… | Voice/text announcement-related component |
 | `b0` | `link0`… and URL handling | Link/navigation component |
-| `e` | `imagePosition`, `changeScreen`, `constantRegister` | Image or screen-action component; verify exact role |
+| `e` | `mode`, `changeScreen`, `typeRegister`, `constantRegister`, `constant`, `visibleInWork` | Craft ID 6 button: mode 0 bit toggle, mode 1 screen navigation, mode 2 constant write; mode 2 is implemented with explicit TCP remapping |
 | `g` | `showText`, `sizeText`, `max`, `inColor`, `outColor`, color points | Color/value visualization, likely gauge/scale |
 | `h` | `pathPic_0`… | Multi-state picture/image |
 | `i` | `min`, `max`, `password`, decimal places, edit frame | Numeric entry/setpoint |
@@ -48,7 +49,7 @@ The original uses many custom view classes in `CustomComponents`. The decompiler
 | `r` | `showScale`, `max`, `percentLowScale` | Progress/bar indicator |
 | `u` | `digit`, `divisor`, `typeInt`, register frame | Numeric/register display |
 | `v` | `colorProgress`, `colorBackground`, `max` | Progress/value bar |
-| `w`, `x` | phone, message, command/strobe register settings | SMS/command action; verify exact split |
+| `w`, `x` | phone, message, command/strobe register settings | Outbound `w` is an optional SIM event that reads 1–8 contiguous values and supports `%1`–`%8` templates. Inbound `x` is opt-in and fail-closed; numeric mode writes 1–16 values and can set an optional strobe bit after success. Imported entries require explicit sender/command/binding setup. |
 | `y` | `imagePosition`, visibility in work mode | Image-positioned component |
 | `f` | `rtsp_url` | RTSP/video component |
 | `d` | Archive table and CSV export strings | Archive/history service logic, not necessarily a visual widget |

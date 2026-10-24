@@ -3,21 +3,25 @@ package com.bloodsky.hmi;
 import java.io.IOException;
 
 /**
- * Common Modbus master operations used by widget polling and the register scanner.
- * Implementations must not perform I/O on the Android UI thread.
+ * Minimal common contract for Modbus master transports.
  *
- * TCP: {@link ModbusTcpClient} (fully implemented).
- * RTU: framing exists in {@link ModbusRtu}; a real serial/USB/Bluetooth
- * implementation is deliberately not claimed until hardware transport + tests exist.
+ * TCP: {@link ModbusTcpClient} implements all three methods and retains its
+ * additional FC05/FC15/FC22 operations.
+ *
+ * RTU: BLOODSKY already has a separate validated Android serial path.
+ * This interface alone does not make hardware USB/Bluetooth RTU clients
+ * interchangeable or establish hardware compatibility. An RTU adapter
+ * requires a separately verified port, timeout and lifecycle contract.
+ *
+ * No transport implementation may perform I/O on the Android UI thread.
  */
 public interface ModbusTransport {
-
-    /** Read coils (FC01), discrete inputs (FC02), holding (FC03) or input (FC04) registers. */
+    /** FC01, FC02, FC03 or FC04: zero-based PDU addresses. */
     int[] read(int unit, int address, int quantity, int functionCode) throws IOException;
 
-    /** Write one holding register (FC06). */
+    /** FC06: write exactly one 16-bit holding register. */
     void writeSingle(int unit, int address, int value) throws IOException;
 
-    /** Write multiple holding registers (FC16). */
+    /** FC16: write consecutive 16-bit holding registers. */
     void writeMultiple(int unit, int address, int[] values) throws IOException;
 }

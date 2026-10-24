@@ -17,6 +17,8 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import static org.junit.Assert.*;
 
@@ -92,6 +94,7 @@ public class PortableZipMediaTest {
         }
 
         JSONObject origJson = createTestProjectJson("proj_collision", "Collision Test", file1.getAbsolutePath(), file2.getAbsolutePath(), null);
+        origJson.getJSONArray("screens").getJSONObject(0).put("backgroundImagePath", file1.getAbsolutePath());
 
         ProjectMediaService.MediaResolver resolver = pathOrUri -> {
             File f = new File(pathOrUri);
@@ -129,6 +132,7 @@ public class PortableZipMediaTest {
         assertNotEquals(path0, path1);
         assertTrue(path0.startsWith("media/"));
         assertTrue(path1.startsWith("media/"));
+        assertEquals(path0, importedScreen.getString("backgroundImagePath"));
 
         String relKey0 = path0.substring("media/".length());
         String relKey1 = path1.substring("media/".length());
@@ -138,6 +142,88 @@ public class PortableZipMediaTest {
 
         assertArrayEquals(content1, extractedMedia.get(relKey0));
         assertArrayEquals(content2, extractedMedia.get(relKey1));
+    }
+
+    @Test public void testGifCraftAssetIsIncludedAndReferenceSurvivesZipRoundTrip() throws Exception {
+        byte[] gifBytes = new byte[]{'G', 'I', 'F', '8', '9', 'a', 1, 2, 3};
+        JSONObject widget = new JSONObject().put("type", "GIF Craft").put("text", "Animation")
+                .put("craftGifPath", "/private/animation.gif");
+        JSONObject project = new JSONObject().put("id", "gif-project")
+                .put("screens", new JSONArray().put(new JSONObject()
+                        .put("name", "Main").put("widgets", new JSONArray().put(widget))));
+        ByteArrayOutputStream zip = new ByteArrayOutputStream();
+        ProjectMediaService.exportProjectZipBundle(zip, project.toString(),
+                path -> "/private/animation.gif".equals(path) ? gifBytes : null);
+
+        Map<String, byte[]> importedMedia = new HashMap<>();
+        JSONObject imported = new JSONObject(MainActivity.importProjectFromZip(
+                new ByteArrayInputStream(zip.toByteArray()), importedMedia));
+        JSONObject importedWidget = imported.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0);
+        String path = importedWidget.getString("craftGifPath");
+        assertTrue(path.startsWith("media/"));
+        assertArrayEquals(gifBytes, importedMedia.get(path.substring("media/".length())));
+    }
+
+    @Test public void newlySelectedCraftMediaIsWrittenToProAndBundled() throws Exception {
+        JSONObject source = new JSONObject()
+                .put("TableNameProject", new JSONObject().put("name", "New media")
+                        .put("countScreen", 1))
+                .put("TableConnections", new JSONArray());
+        JSONArray rows = new JSONArray();
+        rows.put(craftMediaRow(16, new JSONObject().put("numScreen", 1).put("pathGif", "")));
+        rows.put(craftMediaRow(17, new JSONObject().put("numScreen", 1).put("typeCommand", 0)));
+        rows.put(craftMediaRow(21, new JSONObject().put("numScreen", 1)));
+        source.put("TableComponent", rows);
+
+        final String[] saved = new String[1];
+        ProjectMediaService.importProjectBundle(rootDir,
+                new ByteArrayInputStream(createCraftProjectZip(source.toString(), "placeholder.bin",
+                        new byte[0])), json -> { saved[0] = json; return true; });
+        JSONObject edited = new JSONObject(saved[0]);
+        JSONArray widgets = edited.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets");
+        String[] selectedPaths = new String[3];
+        byte[][] bytes = {
+                "new-gif".getBytes(StandardCharsets.UTF_8),
+                "new-state-image".getBytes(StandardCharsets.UTF_8),
+                "new-sound".getBytes(StandardCharsets.UTF_8)
+        };
+        String[] names = {"animation.gif", "state.png", "alarm.wav"};
+        for (int i = 0; i < names.length; i++) {
+            selectedPaths[i] = ProjectMediaService.storeSelectedMedia(rootDir, edited.toString(),
+                    names[i], new ByteArrayInputStream(bytes[i]));
+        }
+        widgets.getJSONObject(0).put("craftGifPath", selectedPaths[0]);
+        widgets.getJSONObject(1).getJSONArray("imagePathStates").put(0, selectedPaths[1]);
+        widgets.getJSONObject(2).put("craftSoundPaths", new JSONArray().put(selectedPaths[2]));
+
+        String editedJson = edited.toString();
+        ByteArrayOutputStream exported = new ByteArrayOutputStream();
+        ProjectMediaService.exportCraftProjectZipBundle(exported, editedJson, path ->
+                java.nio.file.Files.readAllBytes(ProjectMediaService.resolveMediaFile(
+                        rootDir, editedJson, path).toPath()));
+        Map<String, byte[]> bundled = new HashMap<>();
+        JSONObject reopened = new JSONObject(MainActivity.importProjectFromZip(
+                new ByteArrayInputStream(exported.toByteArray()), bundled));
+        JSONArray exportedRows = reopened.getJSONObject("craftSource").getJSONArray("TableComponent");
+        assertEquals(selectedPaths[0], exportedRows.getJSONObject(0)
+                .getJSONObject("jsTableComponent_other").getString("pathGif"));
+        assertEquals(selectedPaths[1], exportedRows.getJSONObject(1)
+                .getJSONObject("jsTableComponent_other").getString("pathPic_0"));
+        assertEquals(selectedPaths[2], exportedRows.getJSONObject(2)
+                .getJSONObject("jsTableComponent_other").getString("pathSound_0"));
+        for (int i = 0; i < selectedPaths.length; i++) {
+            String entry = selectedPaths[i];
+            String importedEntry = entry.startsWith("media/") ? entry.substring("media/".length()) : entry;
+            assertTrue("Craft ZIP must include " + entry, bundled.containsKey(importedEntry));
+            assertArrayEquals(bytes[i], bundled.get(importedEntry));
+        }
+    }
+
+    private static JSONObject craftMediaRow(int componentId, JSONObject other) throws Exception {
+        return new JSONObject().put("componentId", componentId).put("text", "Media " + componentId)
+                .put("x", "1").put("y", "2").put("width", "40").put("height", "40")
+                .put("jsTableComponent_other", other);
     }
 
     @Test
@@ -170,6 +256,82 @@ public class PortableZipMediaTest {
         } catch (IllegalArgumentException expected) {
             assertTrue(expected.getMessage().contains("stable id"));
         }
+    }
+
+    @Test
+    public void selectedMediaIsCopiedIntoProjectStorageAndDeduplicated() throws Exception {
+        String projectA = new JSONObject().put("id", "picker-a").toString();
+        String projectB = new JSONObject().put("id", "picker-b").toString();
+        byte[] imageBytes = "portable-picker-image".getBytes(StandardCharsets.UTF_8);
+
+        String pathA;
+        try (InputStream input = new ByteArrayInputStream(imageBytes)) {
+            pathA = ProjectMediaService.storeSelectedMedia(rootDir, projectA, "shared/photo.PNG", input);
+        }
+        String repeated;
+        try (InputStream input = new ByteArrayInputStream(imageBytes)) {
+            repeated = ProjectMediaService.storeSelectedMedia(rootDir, projectA, "renamed.png", input);
+        }
+        String pathB;
+        try (InputStream input = new ByteArrayInputStream(imageBytes)) {
+            pathB = ProjectMediaService.storeSelectedMedia(rootDir, projectB, "photo.png", input);
+        }
+
+        assertEquals(pathA, repeated);
+        assertTrue(pathA.startsWith("media/asset_"));
+        assertTrue(pathA.endsWith(".png"));
+        assertFalse(pathA.contains("content://"));
+        File storedA = ProjectMediaService.resolveMediaFile(rootDir, projectA, pathA);
+        File storedB = ProjectMediaService.resolveMediaFile(rootDir, projectB, pathB);
+        assertNotEquals(storedA.getCanonicalPath(), storedB.getCanonicalPath());
+        assertArrayEquals(imageBytes, java.nio.file.Files.readAllBytes(storedA.toPath()));
+        assertArrayEquals(imageBytes, java.nio.file.Files.readAllBytes(storedB.toPath()));
+        assertEquals(1, ProjectMediaService.getProjectMediaDir(rootDir, projectA).listFiles().length);
+    }
+
+    @Test
+    public void selectedMediaRejectsEmptyAndOversizedFiles() throws Exception {
+        String project = new JSONObject().put("id", "picker-limits").toString();
+        try {
+            ProjectMediaService.storeSelectedMedia(rootDir, project, "empty.png", new ByteArrayInputStream(new byte[0]));
+            fail("Empty selected media must be rejected");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage().contains("empty"));
+        }
+        try {
+            ProjectMediaService.storeSelectedMedia(rootDir, project, "large.bin",
+                    new ByteArrayInputStream(new byte[ProjectMediaService.MAX_BUNDLE_BYTES + 1]));
+            fail("Oversized selected media must be rejected");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage().contains("size limit"));
+        }
+        assertEquals(0, ProjectMediaService.getProjectMediaDir(rootDir, project).listFiles().length);
+    }
+
+    @Test
+    public void canceledPickerCopyDeletesOnlyNewUnreferencedFile() throws Exception {
+        String project = new JSONObject().put("id", "picker-cancel").toString();
+        byte[] bytes = "cancel-cleanup-media".getBytes(StandardCharsets.UTF_8);
+        ProjectMediaService.SelectedMediaCopy created;
+        try (InputStream input = new ByteArrayInputStream(bytes)) {
+            created = ProjectMediaService.storeSelectedMediaCopy(rootDir, project, "alarm.wav", input);
+        }
+        ProjectMediaService.SelectedMediaCopy deduplicated;
+        try (InputStream input = new ByteArrayInputStream(bytes)) {
+            deduplicated = ProjectMediaService.storeSelectedMediaCopy(rootDir, project, "alarm.wav", input);
+        }
+        assertTrue(created.created);
+        assertFalse(deduplicated.created);
+        assertEquals(created.projectPath, deduplicated.projectPath);
+        File stored = ProjectMediaService.resolveMediaFile(rootDir, project, created.projectPath);
+
+        String savedReference = new JSONObject().put("unknownPreservedField", created.projectPath).toString();
+        assertFalse(ProjectMediaService.deleteUnreferencedSelectedMedia(
+                rootDir, project, created.projectPath, savedReference));
+        assertTrue("A saved project reference must preserve the media file", stored.isFile());
+        assertTrue(ProjectMediaService.deleteUnreferencedSelectedMedia(
+                rootDir, project, created.projectPath, new JSONObject().toString()));
+        assertFalse(stored.exists());
     }
 
     @Test
@@ -354,6 +516,439 @@ public class PortableZipMediaTest {
         assertNotEquals(new JSONObject(first[0]).getString("mediaGeneration"), new JSONObject(second[0]).getString("mediaGeneration"));
         assertArrayEquals(new byte[]{9,8,7}, java.nio.file.Files.readAllBytes(prior.toPath()));
         assertNotEquals(prior, ProjectMediaService.resolveMediaFile(rootDir, second[0], "media/state.png"));
+    }
+
+
+    @Test public void deletingProjectRemovesOnlyItsPrivateMediaGenerations() throws Exception {
+        JSONObject deletedProject = new JSONObject().put("id", "delete-me");
+        String generationOne = new JSONObject(deletedProject.toString())
+                .put("mediaGeneration", "11111111-1111-4111-8111-111111111111").toString();
+        String generationTwo = new JSONObject(deletedProject.toString())
+                .put("mediaGeneration", "22222222-2222-4222-8222-222222222222").toString();
+        File generationOneDir = ProjectMediaService.getProjectMediaDir(rootDir, generationOne);
+        File generationTwoDir = ProjectMediaService.getProjectMediaDir(rootDir, generationTwo);
+        assertTrue(generationOneDir.mkdirs() || generationOneDir.isDirectory());
+        assertTrue(generationTwoDir.mkdirs() || generationTwoDir.isDirectory());
+        File markerOne = new File(generationOneDir, "asset-one.png");
+        File markerTwo = new File(generationTwoDir, "asset-two.png");
+        assertTrue(markerOne.createNewFile());
+        assertTrue(markerTwo.createNewFile());
+
+        String otherProject = new JSONObject().put("id", "keep-me").toString();
+        File otherMedia = ProjectMediaService.getProjectMediaDir(rootDir, otherProject);
+        assertTrue(otherMedia.mkdirs() || otherMedia.isDirectory());
+        File otherMarker = new File(otherMedia, "keep.png");
+        assertTrue(otherMarker.createNewFile());
+
+        assertTrue(ProjectMediaService.deleteProjectMedia(rootDir, deletedProject.toString()));
+        assertFalse(markerOne.exists());
+        assertFalse(markerTwo.exists());
+        assertTrue("Another project's media must be preserved", otherMarker.isFile());
+        assertFalse(ProjectMediaService.deleteProjectMedia(rootDir, deletedProject.toString()));
+
+        try {
+            ProjectMediaService.deleteProjectMedia(rootDir, "{}");
+            fail("Project without a stable identity must not target a media directory");
+        } catch (IOException expected) { }
+    }
+
+    @Test public void permanentlyDeletingTrashedProjectCleansItsMediaButKeepsOtherProject() throws Exception {
+        String deletedJson = new JSONObject().put("id", "trash-delete").toString();
+        String otherJson = new JSONObject().put("id", "trash-keep").toString();
+        File deletedGeneration = ProjectMediaService.getProjectMediaDir(rootDir, deletedJson);
+        File otherGeneration = ProjectMediaService.getProjectMediaDir(rootDir, otherJson);
+        assertTrue(deletedGeneration.mkdirs() || deletedGeneration.isDirectory());
+        assertTrue(otherGeneration.mkdirs() || otherGeneration.isDirectory());
+        File deletedAsset = new File(deletedGeneration, "asset.bin");
+        File otherAsset = new File(otherGeneration, "asset.bin");
+        assertTrue(deletedAsset.createNewFile());
+        assertTrue(otherAsset.createNewFile());
+
+        String deletedId = ProjectMediaService.getOrGenerateProjectId(deletedJson);
+        JSONObject deletedFromTrash = ProjectCatalog.permanentlyDeleteFromTrash(
+                new JSONObject().put(deletedId, new JSONObject(deletedJson)).toString(), deletedId);
+        assertTrue(ProjectMediaService.deleteProjectMedia(rootDir,
+                deletedFromTrash.getJSONObject("project").toString()));
+        assertFalse(deletedAsset.exists());
+        assertTrue("Permanent deletion must not cross project identities", otherAsset.isFile());
+    }
+
+    private static byte[] createCraftProjectZip(String projectJson, String mediaPath, byte[] mediaBytes) throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(out)) {
+            zip.putNextEntry(new ZipEntry("TableNameProject.json"));
+            zip.write(projectJson.getBytes(StandardCharsets.UTF_8));
+            zip.closeEntry();
+            zip.putNextEntry(new ZipEntry(mediaPath));
+            zip.write(mediaBytes);
+            zip.closeEntry();
+        }
+        return out.toByteArray();
+    }
+
+    @Test
+    public void testCraftZipUnknownSourceAndId3PlaceholderSurviveEditAndMediaRoundTrip() throws Exception {
+        byte[] sourceImage = new byte[]{0, 1, 2, 3, 10, 20, 30, (byte) 255};
+        JSONObject background = new JSONObject()
+                .put("screen1IsColor", false)
+                .put("screen1PathImage", "bg.png")
+                .put("screen1Color", -1)
+                .put("vendorBackground", new JSONArray().put("legacy").put(7));
+        JSONObject projectMeta = new JSONObject()
+                .put("name", "Sanitized Craft ZIP")
+                .put("countScreen", 1)
+                .put("jsTableNameProject_screenBackground", background)
+                .put("vendorProjectField", new JSONObject().put("plant", "demo").put("revision", 23));
+        JSONObject numericComponent = new JSONObject()
+                .put("componentId", 4)
+                .put("text", "Before edit")
+                .put("x", "12.5").put("y", "8").put("width", "90").put("height", "30")
+                .put("textSize", "18").put("colorText", "#112233").put("colorBackground", "#00000000")
+                .put("jsTableComponent_connectionInfo", new JSONObject()
+                        .put("posDeviceNetworkInList", 5).put("addressRegister", 12).put("typeRequest", 1)
+                        .put("vendorBindingField", new JSONArray().put("unknown").put(41)))
+                .put("jsTableComponent_other", new JSONObject()
+                        .put("numScreen", 1).put("digit", 2)
+                        .put("vendorOther", new JSONObject().put("mode", "preserve").put("flags", new JSONArray().put(1).put(3))))
+                .put("vendorComponentField", "retain-me");
+        JSONObject unresolvedId3 = new JSONObject()
+                .put("componentId", 3)
+                .put("text", "Unknown Craft item")
+                .put("x", "4").put("y", "50").put("width", "70").put("height", "24")
+                .put("textSize", "14").put("colorText", "#ffffff").put("colorBackground", "#00000000")
+                .put("jsTableComponent_connectionInfo", new JSONObject().put("vendorId3Field", "preserve"))
+                .put("jsTableComponent_other", new JSONObject().put("numScreen", 1).put("vendorId3Other", true));
+        JSONObject source = new JSONObject()
+                .put("TableNameProject", projectMeta)
+                .put("TableComponent", new JSONArray().put(numericComponent).put(unresolvedId3))
+                .put("TableConnections", new JSONArray())
+                .put("vendorTopLevel", new JSONObject().put("sequence", new JSONArray().put(4).put(3).put(1)));
+        String sourceCraftJson = source.toString();
+        byte[] inputZip = createCraftProjectZip(sourceCraftJson, "bg.png", sourceImage);
+
+        final String[] initiallyImported = new String[1];
+        ProjectMediaService.importProjectBundle(rootDir, new ByteArrayInputStream(inputZip), json -> {
+            initiallyImported[0] = json;
+            return true;
+        });
+        assertNotNull(initiallyImported[0]);
+        MainActivity.validateImportedProjectStatic(initiallyImported[0]);
+        JSONObject first = new JSONObject(initiallyImported[0]);
+        JSONObject sourceBeforeEdit = first.getJSONObject("craftSource");
+        assertTrue(sourceBeforeEdit.getJSONObject("TableNameProject").has("vendorProjectField"));
+        assertEquals("retain-me", sourceBeforeEdit.getJSONArray("TableComponent")
+                .getJSONObject(0).getString("vendorComponentField"));
+        assertTrue(sourceBeforeEdit.getJSONArray("TableComponent").getJSONObject(0)
+                .getJSONObject("jsTableComponent_other").has("vendorOther"));
+        assertEquals("preserve", sourceBeforeEdit.getJSONArray("TableComponent").getJSONObject(1)
+                .getJSONObject("jsTableComponent_connectionInfo").getString("vendorId3Field"));
+
+        JSONObject firstScreen = first.getJSONArray("screens").getJSONObject(0);
+        assertEquals("bg.png", firstScreen.getString("backgroundImagePath"));
+        assertArrayEquals(sourceImage, java.nio.file.Files.readAllBytes(
+                ProjectMediaService.resolveMediaFile(rootDir, first.toString(), firstScreen.getString("backgroundImagePath")).toPath()));
+
+        JSONArray widgets = firstScreen.getJSONArray("widgets");
+        assertEquals(2, widgets.length());
+        assertTrue("Unknown numeric ID 3 must stay visibly fail-closed",
+                widgets.getJSONObject(1).optBoolean("craftUnsupportedComponent", false));
+        widgets.getJSONObject(0).put("text", "Edited in acceptance test");
+
+        File savedProject = tempFolder.newFile("craft-roundtrip.json");
+        MainActivity.saveProjectAtomic(savedProject, first.toString());
+        String reopened = MainActivity.loadProjectAtomic(savedProject);
+        MainActivity.validateImportedProjectStatic(reopened);
+        assertEquals("Edited in acceptance test", new JSONObject(reopened).getJSONArray("screens")
+                .getJSONObject(0).getJSONArray("widgets").getJSONObject(0).getString("text"));
+
+        ProjectMediaService.MediaResolver resolver = path -> java.nio.file.Files.readAllBytes(
+                ProjectMediaService.resolveMediaFile(rootDir, reopened, path).toPath());
+        ByteArrayOutputStream exportedZip = new ByteArrayOutputStream();
+        ProjectMediaService.exportProjectZipBundle(exportedZip, reopened, resolver);
+
+        final String[] reimported = new String[1];
+        ProjectMediaService.importProjectBundle(rootDir,
+                new ByteArrayInputStream(exportedZip.toByteArray()), json -> {
+                    reimported[0] = json;
+                    return true;
+                });
+        assertNotNull(reimported[0]);
+        MainActivity.validateImportedProjectStatic(reimported[0]);
+        JSONObject second = new JSONObject(reimported[0]);
+        assertEquals("Edited in acceptance test", second.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0).getString("text"));
+        String secondBackgroundPath = second.getJSONArray("screens").getJSONObject(0).getString("backgroundImagePath");
+        assertTrue(secondBackgroundPath.startsWith("media/"));
+        assertEquals(sourceBeforeEdit.toString(), second.getJSONObject("craftSource").toString());
+        assertEquals(2, second.getJSONObject("craftSource").getJSONArray("TableComponent").length());
+        assertTrue(second.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets").getJSONObject(1)
+                .optBoolean("craftUnsupportedComponent", false));
+        assertArrayEquals(sourceImage, java.nio.file.Files.readAllBytes(ProjectMediaService.resolveMediaFile(
+                rootDir, second.toString(), secondBackgroundPath).toPath()));
+
+        ByteArrayOutputStream reexportedCraftZip = new ByteArrayOutputStream();
+        ProjectMediaService.exportCraftProjectZipBundle(reexportedCraftZip, second.toString(), path ->
+                java.nio.file.Files.readAllBytes(ProjectMediaService.resolveMediaFile(
+                        rootDir, second.toString(), path).toPath()));
+        Map<String, byte[]> reexportedCraftMedia = new java.util.HashMap<>();
+        JSONObject reimportedAfterPortableZip = new JSONObject(MainActivity.importProjectFromZip(
+                new ByteArrayInputStream(reexportedCraftZip.toByteArray()), reexportedCraftMedia));
+        assertEquals("bg.png", reimportedAfterPortableZip.getJSONObject("craftSource")
+                .getJSONObject("TableNameProject").getJSONObject("jsTableNameProject_screenBackground")
+                .getString("screen1PathImage"));
+        assertTrue(reexportedCraftMedia.containsKey("bg.png"));
+        assertArrayEquals(sourceImage, reexportedCraftMedia.get("bg.png"));
+
+        JSONObject editedCraftProject = new JSONObject(first.toString());
+        JSONObject editedCraftWidget = editedCraftProject.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0);
+        editedCraftWidget.put("x", 44.5);
+        editedCraftWidget.put("textColor", 0xff123456);
+        ByteArrayOutputStream craftZip = new ByteArrayOutputStream();
+        ProjectMediaService.exportCraftProjectZipBundle(craftZip, editedCraftProject.toString(), path -> {
+            if ("bg.png".equals(path)) return sourceImage;
+            return null;
+        });
+        Map<String, byte[]> craftMedia = new java.util.HashMap<>();
+        JSONObject reimportedCraft = new JSONObject(MainActivity.importProjectFromZip(
+                new ByteArrayInputStream(craftZip.toByteArray()), craftMedia));
+        JSONObject emittedSource = reimportedCraft.getJSONObject("craftSource");
+        JSONObject emittedRow = emittedSource.getJSONArray("TableComponent").getJSONObject(0);
+        assertEquals("Edited in acceptance test", emittedRow.getString("text"));
+        assertEquals("44.5", emittedRow.getString("x"));
+        assertEquals("-15584170", emittedRow.getString("colorText"));
+        assertEquals("retain-me", emittedRow.getString("vendorComponentField"));
+        assertTrue(emittedRow.getJSONObject("jsTableComponent_other").has("vendorOther"));
+        assertTrue(craftMedia.containsKey("bg.png"));
+        assertArrayEquals(sourceImage, craftMedia.get("bg.png"));
+        assertEquals("Edited in acceptance test", reimportedCraft.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0).getString("text"));
+
+        JSONObject deletedWidgetProject = new JSONObject(editedCraftProject.toString());
+        deletedWidgetProject.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets").remove(1);
+        JSONObject deletedSource = new JSONObject(CraftProjectExporter.export(deletedWidgetProject.toString()));
+        assertEquals(1, deletedSource.getJSONArray("TableComponent").length());
+        assertEquals("Edited in acceptance test", deletedSource.getJSONArray("TableComponent")
+                .getJSONObject(0).getString("text"));
+        JSONObject restoredAfterDelete = new JSONObject(CraftProjectImporter.convert(deletedSource.toString()));
+        assertEquals(1, restoredAfterDelete.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").length());
+    }
+
+    @Test public void editedCraftIndicatorImageIsWrittenToProAndBundled() throws Exception {
+        byte[] originalImage = new byte[]{1, 2, 3};
+        byte[] selectedImage = new byte[]{9, 8, 7, 6};
+        JSONObject source = new JSONObject()
+                .put("TableNameProject", new JSONObject().put("name", "Indicator media")
+                        .put("countScreen", 1))
+                .put("TableConnections", new JSONArray())
+                .put("TableComponent", new JSONArray().put(new JSONObject()
+                        .put("componentId", 5).put("text", "Lamp")
+                        .put("x", 1).put("y", 2).put("width", 40).put("height", 40)
+                        .put("jsTableComponent_other", new JSONObject().put("numScreen", 1)
+                                .put("isImageUserOff", false).put("pathOrNameOff", "off")
+                                .put("isImageUserOn", true).put("pathOrNameOn", "original.png")
+                                .put("vendorIndicatorField", "preserve"))));
+        byte[] archive = createCraftProjectZip(source.toString(), "original.png", originalImage);
+        final String[] importedJson = new String[1];
+        ProjectMediaService.importProjectBundle(rootDir, new ByteArrayInputStream(archive), json -> {
+            importedJson[0] = json;
+            return true;
+        });
+        assertNotNull(importedJson[0]);
+
+        JSONObject project = new JSONObject(importedJson[0]).put("id", "indicator-image-roundtrip");
+        JSONObject widget = project.getJSONArray("screens").getJSONObject(0)
+                .getJSONArray("widgets").getJSONObject(0);
+        String selectedPath = ProjectMediaService.storeSelectedMedia(rootDir, project.toString(),
+                "replacement.png", new ByteArrayInputStream(selectedImage));
+        String mediaProject = project.toString();
+        assertArrayEquals(selectedImage, java.nio.file.Files.readAllBytes(
+                ProjectMediaService.resolveMediaFile(rootDir, mediaProject, selectedPath).toPath()));
+        JSONObject edited = OriginalIndicator.withImage(widget, true, true, selectedPath);
+        widget.put("other", edited.getJSONObject("other"));
+        assertEquals("original.png", widget.getJSONObject("craftOther").getString("pathOrNameOn"));
+
+        ByteArrayOutputStream exported = new ByteArrayOutputStream();
+        String editedJson = project.toString();
+        ProjectMediaService.exportCraftProjectZipBundle(exported, editedJson, path -> {
+            if (selectedPath.equals(path)) return selectedImage;
+            if ("original.png".equals(path)) return originalImage;
+            throw new IOException("Unexpected Craft media path: " + path);
+        });
+        Map<String, byte[]> media = new HashMap<>();
+        JSONObject reopened = new JSONObject(MainActivity.importProjectFromZip(
+                new ByteArrayInputStream(exported.toByteArray()), media));
+        JSONObject emittedOther = reopened.getJSONObject("craftSource").getJSONArray("TableComponent")
+                .getJSONObject(0).getJSONObject("jsTableComponent_other");
+        assertEquals(selectedPath, emittedOther.getString("pathOrNameOn"));
+        assertEquals("preserve", emittedOther.getString("vendorIndicatorField"));
+        assertArrayEquals(selectedImage, media.get(selectedPath.substring("media/".length())));
+    }
+
+
+
+    @Test
+    public void sanitizedCraftSampleProjectsPreserveSourceAndMediaAcrossZipRoundTrip() throws Exception {
+        byte[] fixtureImage = new byte[]{11, 22, 33, 44, 55, 66};
+        String catalogJson;
+        try (InputStream input = PortableZipMediaTest.class.getResourceAsStream("/craft_samples.json")) {
+            assertNotNull("Craft fixture catalog must be on the test classpath", input);
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            byte[] buffer = new byte[4096];
+            int count;
+            while ((count = input.read(buffer)) != -1) bytes.write(buffer, 0, count);
+            catalogJson = new String(bytes.toByteArray(), StandardCharsets.UTF_8);
+        }
+
+        JSONObject catalog = new JSONObject(catalogJson);
+        String[] names = new String[]{"home", "gitH", "пож", "home2", "дом 2025"};
+        int[] componentCounts = new int[]{24, 65, 124, 65, 346};
+        int[] screenCounts = new int[]{16, 16, 20, 16, 16};
+        int[] connectionCounts = new int[]{0, 0, 0, 3, 2};
+        int[] bindingCounts = new int[]{24, 46, 43, 46, 122};
+        int[] fbdNodeCounts = new int[]{0, 5, 76, 5, 200};
+        int[] fbdMacroCounts = new int[]{0, 0, 0, 0, 0};
+
+        for (int fixture = 0; fixture < names.length; fixture++) {
+            String name = names[fixture];
+            String sourceJson = catalog.getString(name);
+            JSONObject source = new JSONObject(sourceJson);
+            assertEquals(componentCounts[fixture], source.getJSONArray("TableComponent").length());
+            assertEquals(connectionCounts[fixture], source.getJSONArray("TableConnections").length());
+            int bindingCount = 0;
+            int fbdMacroCount = 0;
+            for (int i = 0; i < source.getJSONArray("TableComponent").length(); i++) {
+                JSONObject component = source.getJSONArray("TableComponent").getJSONObject(i);
+                if (component.optInt("componentId", -1) == 135) fbdMacroCount++;
+                Object binding = component.opt("jsTableComponent_connectionInfo");
+                if (binding != null && !JSONObject.NULL.equals(binding)
+                        && (!(binding instanceof JSONObject) || ((JSONObject) binding).length() > 0)
+                        && (!(binding instanceof String) || !((String) binding).isEmpty())) {
+                    bindingCount++;
+                }
+            }
+            assertEquals(bindingCounts[fixture], bindingCount);
+            assertEquals(fbdMacroCounts[fixture], fbdMacroCount);
+
+            byte[] inputZip = createCraftProjectZip(sourceJson, "fixture.png", fixtureImage);
+            final String[] importedJson = new String[1];
+            ProjectMediaService.importProjectBundle(rootDir, new ByteArrayInputStream(inputZip), json -> {
+                importedJson[0] = json;
+                return true;
+            });
+            assertNotNull(importedJson[0]);
+            MainActivity.validateImportedProjectStatic(importedJson[0]);
+
+            JSONObject imported = new JSONObject(importedJson[0]);
+            JSONObject craftSource = imported.getJSONObject("craftSource");
+            assertEquals(source.toString(), craftSource.toString());
+            assertEquals(componentCounts[fixture], craftSource.getJSONArray("TableComponent").length());
+            assertEquals(source.getJSONArray("TableConnections").length(),
+                    craftSource.getJSONArray("TableConnections").length());
+            assertEquals(screenCounts[fixture], imported.getJSONArray("screens").length());
+            int importedFbdNodes = 0;
+            int importedFbdEdges = 0;
+            JSONArray sourceScreens = imported.getJSONArray("screens");
+            for (int screen = 0; screen < sourceScreens.length(); screen++) {
+                JSONObject importedScreen = sourceScreens.getJSONObject(screen);
+                JSONArray widgets = importedScreen.getJSONArray("widgets");
+                for (int widgetIndex = 0; widgetIndex < widgets.length(); widgetIndex++) {
+                    JSONObject widget = widgets.getJSONObject(widgetIndex);
+                    int componentId = widget.optInt("craftComponentId", -1);
+                    if (componentId >= 101 && componentId <= 140) {
+                        assertTrue(widget.optString("type", "").startsWith("FBD "));
+                        importedFbdNodes++;
+                    }
+                }
+                JSONArray edges = importedScreen.getJSONArray("connections");
+                importedFbdEdges += edges.length();
+                for (int edgeIndex = 0; edgeIndex < edges.length(); edgeIndex++) {
+                    JSONObject edge = edges.getJSONObject(edgeIndex);
+                    assertTrue(edge.getInt("source") >= 0 && edge.getInt("source") < widgets.length());
+                    assertTrue(edge.getInt("target") >= 0 && edge.getInt("target") < widgets.length());
+                    assertFalse(edge.getString("sourcePin").isEmpty());
+                    assertFalse(edge.getString("targetPin").isEmpty());
+                }
+            }
+            assertEquals(fbdNodeCounts[fixture], importedFbdNodes);
+            if (fbdNodeCounts[fixture] > 0) assertTrue("source FBD graph should retain native edges", importedFbdEdges > 0);
+            if (fixture >= 3) {
+                int preservedInactiveBindings = 0;
+                JSONArray importedScreens = imported.getJSONArray("screens");
+                for (int screen = 0; screen < importedScreens.length(); screen++) {
+                    JSONArray widgets = importedScreens.getJSONObject(screen).getJSONArray("widgets");
+                    for (int widgetIndex = 0; widgetIndex < widgets.length(); widgetIndex++) {
+                        JSONObject widget = widgets.getJSONObject(widgetIndex);
+                        if (widget.has("craftConnectionInfo")) {
+                            assertEquals("", widget.optString("connectionInfo", ""));
+                            Object legacyBinding = widget.opt("craftConnectionInfo");
+                            if (legacyBinding != null && !JSONObject.NULL.equals(legacyBinding)
+                                    && (!(legacyBinding instanceof JSONObject)
+                                    || ((JSONObject) legacyBinding).length() > 0)
+                                    && (!(legacyBinding instanceof String)
+                                    || !((String) legacyBinding).isEmpty())) {
+                                preservedInactiveBindings++;
+                            }
+                        }
+                    }
+                }
+                assertEquals(bindingCounts[fixture], preservedInactiveBindings);
+                JSONObject sourceMetadata = craftSource.getJSONObject("TableNameProject");
+                JSONArray deviceSlots = new JSONArray(sourceMetadata.getString("deviceNetwork"));
+                assertEquals(16, deviceSlots.length());
+                assertEquals(sourceMetadata.getInt("countDevice"),
+                        new JSONObject(importedJson[0]).getJSONObject("craftSource")
+                                .getJSONObject("TableNameProject").getInt("countDevice"));
+                for (int slot = 0; slot < deviceSlots.length(); slot++) {
+                    assertEquals(slot, deviceSlots.getJSONObject(slot).getInt("num"));
+                    String endpoint = deviceSlots.getJSONObject(slot).getString("server");
+                    assertTrue(endpoint.isEmpty() || "example.invalid".equals(endpoint));
+                }
+            }
+            String firstBackground = imported.getJSONArray("screens").getJSONObject(0)
+                    .optString("backgroundImagePath", "");
+            if (!firstBackground.isEmpty()) {
+                assertArrayEquals(fixtureImage, java.nio.file.Files.readAllBytes(
+                        ProjectMediaService.resolveMediaFile(rootDir, imported.toString(), firstBackground).toPath()));
+            }
+
+            imported.put("projectName", imported.optString("projectName") + " edited");
+            File savedProject = tempFolder.newFile("craft-fixture-" + name + ".json");
+            MainActivity.saveProjectAtomic(savedProject, imported.toString());
+            String reopened = MainActivity.loadProjectAtomic(savedProject);
+            MainActivity.validateImportedProjectStatic(reopened);
+            assertEquals(imported.optString("projectName"), new JSONObject(reopened).optString("projectName"));
+
+            ProjectMediaService.MediaResolver resolver = mediaPath -> java.nio.file.Files.readAllBytes(
+                    ProjectMediaService.resolveMediaFile(rootDir, reopened, mediaPath).toPath());
+            ByteArrayOutputStream exportedZip = new ByteArrayOutputStream();
+            ProjectMediaService.exportProjectZipBundle(exportedZip, reopened, resolver);
+
+            final String[] reimportedJson = new String[1];
+            ProjectMediaService.importProjectBundle(rootDir,
+                    new ByteArrayInputStream(exportedZip.toByteArray()), json -> {
+                        reimportedJson[0] = json;
+                        return true;
+                    });
+            assertNotNull(reimportedJson[0]);
+            MainActivity.validateImportedProjectStatic(reimportedJson[0]);
+
+            JSONObject reimported = new JSONObject(reimportedJson[0]);
+            assertEquals(imported.optString("projectName"), reimported.optString("projectName"));
+            assertEquals(craftSource.toString(), reimported.getJSONObject("craftSource").toString());
+            assertEquals(componentCounts[fixture],
+                    reimported.getJSONObject("craftSource").getJSONArray("TableComponent").length());
+            assertEquals(screenCounts[fixture], reimported.getJSONArray("screens").length());
+
+            String exportedBackground = reimported.getJSONArray("screens").getJSONObject(0)
+                    .optString("backgroundImagePath", "");
+            if (!firstBackground.isEmpty()) {
+                assertTrue(exportedBackground.startsWith("media/"));
+                assertArrayEquals(fixtureImage, java.nio.file.Files.readAllBytes(
+                        ProjectMediaService.resolveMediaFile(rootDir, reimported.toString(), exportedBackground).toPath()));
+            }
+        }
     }
 
 }

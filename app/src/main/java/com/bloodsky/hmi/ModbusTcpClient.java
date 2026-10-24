@@ -78,6 +78,61 @@ public final class ModbusTcpClient implements ModbusTransport {
         validateWriteEcho(pdu, 16, address, snapshot.length);
     }
 
+    /** Writes one coil using Modbus FC05. */
+    public void writeSingleCoil(int unit, int address, boolean value) throws IOException {
+        validateUnit(unit);
+        validateRange(address, 1, 1);
+        int encoded = value ? 0xff00 : 0;
+        byte[] pdu = exchange(unit, request(5, address, encoded), 6);
+        validateWriteEcho(pdu, 5, address, encoded);
+    }
+
+    /** Writes a packed coil batch using Modbus FC15. Values must be boolean 0/1. */
+    public void writeMultipleCoils(int unit, int address, int[] values) throws IOException {
+        validateUnit(unit);
+        if (values == null) throw new IllegalArgumentException("Coil values are required");
+        int[] snapshot = values.clone();
+        validateRange(address, snapshot.length, 1968);
+        for (int value : snapshot) if (value != 0 && value != 1)
+            throw new IllegalArgumentException("Coil values must be 0 or 1");
+        int byteCount = (snapshot.length + 7) / 8;
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream(6 + byteCount);
+        DataOutputStream out = new DataOutputStream(buffer);
+        out.writeByte(15);
+        out.writeShort(address);
+        out.writeShort(snapshot.length);
+        out.writeByte(byteCount);
+        for (int byteIndex = 0; byteIndex < byteCount; byteIndex++) {
+            int packed = 0;
+            for (int bit = 0; bit < 8; bit++) {
+                int valueIndex = byteIndex * 8 + bit;
+                if (valueIndex < snapshot.length && snapshot[valueIndex] == 1) packed |= 1 << bit;
+            }
+            out.writeByte(packed);
+        }
+        byte[] pdu = exchange(unit, buffer.toByteArray(), 6);
+        validateWriteEcho(pdu, 15, address, snapshot.length);
+    }
+
+    /** Atomic single-bit update of a holding register (Modbus FC22). */
+    public void writeMask(int unit, int address, int andMask, int orMask) throws IOException {
+        validateUnit(unit);
+        validateRange(address, 1, 1);
+        validateValue(andMask);
+        validateValue(orMask);
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream(7);
+        DataOutputStream out = new DataOutputStream(buffer);
+        out.writeByte(22);
+        out.writeShort(address);
+        out.writeShort(andMask);
+        out.writeShort(orMask);
+        byte[] pdu = exchange(unit, buffer.toByteArray(), 8);
+        if (pdu.length != 7 || (pdu[0] & 255) != 22 || u16(pdu, 1) != address
+                || u16(pdu, 3) != (andMask & 65535) || u16(pdu, 5) != (orMask & 65535)) {
+            throw new IOException("Подтверждение масочной записи Modbus не совпадает с запросом");
+        }
+    }
+
     private static void validateUnit(int unit) {
         if (unit < 0 || unit > 255) throw new IllegalArgumentException("Unit must be 0..255");
     }

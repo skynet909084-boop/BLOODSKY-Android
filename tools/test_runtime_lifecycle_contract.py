@@ -9,10 +9,13 @@ class RuntimeLifecycleContractTests(unittest.TestCase):
         pause = source.split('protected void onPause()', 1)[1].split('protected void onDestroy()', 1)[0]
         self.assertIn('activityResumed = false', pause)
         self.assertIn('stopModbusPolling()', pause)
-        self.assertIn('mediaPlayer.release()', pause)
+        self.assertIn('stopFbdSensors()', pause)
+        self.assertIn('resetCraftAlarmEdges()', pause)
+        self.assertIn('stopAllCraftAlarmPlayback()', pause)
         self.assertIn('textToSpeech.stop()', pause)
         resume = source.split('protected void onResume()', 1)[1].split('protected void onPause()', 1)[0]
-        self.assertIn('if (editor != null) startModbusPolling()', resume)
+        self.assertIn('if (editor != null) { startModbusPolling(); startFbdSensors(); startCraftMqtt(); }', resume)
+        self.assertIn('stopCraftMqtt()', pause)
 
     def test_worker_and_ui_both_reject_obsolete_sessions(self):
         source = SOURCE.read_text()

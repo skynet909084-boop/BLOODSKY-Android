@@ -1,5 +1,5 @@
 {
-  "version": "1.0",
+  "version": "2.0",
   "target_application": "KaScada Craft 1.0.7",
   "bloodsky_version": "1.0.0",
   "categories": [
@@ -9,44 +9,51 @@
         {
           "id": "editor.add_component",
           "name": "Add Component Menu",
-          "status": "implemented",
-          "criteria": "Component menu offers available widget/FBD types and creates default geometry."
+          "status": "partial",
+          "criteria": "Component menu offers available widget/FBD types and creates default geometry.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "editor.select_move",
           "name": "Select & Drag Move",
-          "status": "implemented",
-          "criteria": "Selected widget shows highlight border and moves on drag with grid snapping."
+          "status": "partial",
+          "criteria": "Single selection, rectangular center-based multi-select, visible selection borders, and grid-snapped group movement with preserved offsets.",
+          "audit_note": "Single and group movement implemented with original marquee-center semantics; resize, bulk toolbar actions, and side-by-side UI acceptance remain open. See docs/COMPONENT_INTERACTION_AUDIT_20261018.md."
         },
         {
           "id": "editor.resize",
           "name": "Resize Handle",
-          "status": "implemented",
-          "criteria": "Corner handle allows resizing widget dimensions within grid bounds."
+          "status": "partial",
+          "criteria": "Corner handle allows resizing widget dimensions within grid bounds.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "editor.align",
           "name": "Widget Alignment Tools",
-          "status": "implemented",
-          "criteria": "Align selected widgets to Left, Right, Top, Bottom, or Center."
+          "status": "partial",
+          "criteria": "Align selected widgets to Left, Right, Top, Bottom, or Center.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "editor.copy_paste",
           "name": "Copy, Cut & Paste",
-          "status": "implemented",
-          "criteria": "Widget clone retains all properties and extra metadata with offset position."
+          "status": "partial",
+          "criteria": "Widget clone retains all properties and extra metadata with offset position.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "editor.context_menu",
           "name": "Long-press Context Menu",
-          "status": "implemented",
-          "criteria": "Long press opens context menu for properties, copy, and deletion."
+          "status": "partial",
+          "criteria": "Long press opens context menu for properties, copy, and deletion.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "editor.multiscreen",
           "name": "Multiple Screen Navigation",
-          "status": "implemented",
-          "criteria": "Navigation across screens retains per-screen widget collections and background colors."
+          "status": "partial",
+          "criteria": "Navigation across screens retains per-screen widget collections and background colors.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         }
       ]
     },
@@ -56,80 +63,121 @@
         {
           "id": "widget.label",
           "name": "Static Label / Text (CustomLabel)",
-          "status": "implemented",
-          "criteria": "Displays custom text with customizable color, background, and font size."
+          "status": "partial",
+          "criteria": "Displays custom text with customizable color, background, and font size.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "widget.button",
           "name": "Button Control (CustomComponents)",
-          "status": "implemented",
-          "criteria": "Toggleable button state with visual ON/OFF indication and register write-back."
+          "status": "partial",
+          "criteria": "Craft CustomComponents.e modes: mode 0 momentary register-bit set on press and clear on release (FC22 after explicit TCP mapping), mode 1 screen navigation with visibleInWork, and mode 2 constant write (UINT16/Float32).",
+          "audit_note": "Modes 0/1/2 are imported with source metadata and inactive legacy endpoint. Mode 0 requires explicit TCP holding-register remap and opt-in, then FC22 sets/clears on press/release/cancel/pause; native BLOODSKY toggles are preserved. Mode 1 has validated screen picker/URL and preserves visibleInWork. Mode 2 writes FC06/FC16 after remap. Side-by-side UI and hardware acceptance remain open; see docs/BLOODSKY_EXECUTION_STATUS.md."
         },
         {
           "id": "widget.indicator",
           "name": "Two-State Indicator / LED (CustomComponents.q)",
-          "status": "implemented",
-          "criteria": "Visual LED/indicator reflecting discrete state or live Modbus register value."
+          "status": "partial",
+          "criteria": "Visual LED/indicator reflecting discrete state or live Modbus register value.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
-          "id": "widget.setpoint",
-          "name": "Numeric Setpoint / Adjuster (CustomComponents.i)",
-          "status": "implemented",
-          "criteria": "Adjustable setpoint with +/- controls, numerical display, and register write-back."
+          "id": "widget.numeric_input",
+          "name": "Numeric Input (Craft component ID 8 / CustomComponents.i)",
+          "status": "partial",
+          "criteria": "Bounded integer or Float32 entry, numeric state display, and write-back to an explicitly configured endpoint.",
+          "audit_note": "Imported ID8 reads Craft system slot 100 as UINT16/INT16 and source-ordered big-endian Float32 (read starts 0–1998); opt-in writes target only project registers 10–1999, with Float32 pairs starting 10–1998. Service writes and visual/device acceptance remain open. APK/JUnit #1131 passed on `927172c`; focused Craft probe #162 passed but is incomplete (8 states / 7 transitions); Android 11 full smoke #765 passed on `927172c` (run 39367727663). ID8-specific UI comparison and device acceptance remain open. See docs/CRAFT_COMPONENT_ID_FACTORY_MATRIX_20261018.md and docs/KASKADA_SYSTEM_REGISTERS_AUDIT_20261019.md."
+        },
+        {
+          "id": "widget.linear_setpoint",
+          "name": "Linear Setpoint (Craft CustomSeekBar, component ID 13)",
+          "status": "partial",
+          "criteria": "Horizontal/vertical integer slider with configured maximum, persisted value and Modbus holding-register write on commit.",
+          "audit_note": "Importer, palette, range editor and operator slider are implemented. Imported legacy connections remain disabled until an explicit TCP holding-register mapping; visual/device acceptance remains open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "widget.dyntext",
           "name": "Dynamic Text (CustomDynText)",
-          "status": "implemented",
-          "criteria": "Multi-state text updating text and background color based on live register value."
+          "status": "partial",
+          "criteria": "Multi-state text updating text and background color based on live register value.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "widget.gauge",
           "name": "Analog Gauge / Scale (CustomComponents.m)",
-          "status": "implemented",
-          "criteria": "Visual scale/gauge rendering scaled process values."
+          "status": "partial",
+          "criteria": "Visual scale/gauge rendering scaled process values.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "widget.progressbar",
-          "name": "Progress Bar (CustomComponents.v)",
-          "status": "implemented",
-          "criteria": "Horizontal progress bar displaying percentage or scaled value."
+          "name": "Progress Bar (CustomComponents.r / Craft ID 11)",
+          "status": "partial",
+          "criteria": "Horizontal progress bar displaying percentage or scaled value.",
+          "audit_note": "Craft ID11 range, text/scale flags, size, and colors are imported and rendered with clamped numeric progress, source-style gradients and 20 center ticks. Property editor changes, explicit register mapping, and device/visual acceptance remain open."
         },
         {
           "id": "widget.trend",
           "name": "Trend / Chart View (CustomComponents.o)",
-          "status": "implemented",
-          "criteria": "Graph view displaying historical data points over time."
+          "status": "partial",
+          "criteria": "Graph view displaying historical data points over time.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "widget.bitlist",
           "name": "Bit List Widget (CustomList)",
-          "status": "implemented",
-          "criteria": "Displays bit state indicators driven by live Modbus register mask."
+          "status": "partial",
+          "criteria": "Displays Craft's sixteen labelled selections as a UINT16 Modbus register mask, including visible-in-work and read-only-in-work settings.",
+          "audit_note": "Importer and operator multi-select are implemented for explicitly remapped TCP FC03/FC06 holding registers. Automated unit/import tests added; visual and hardware acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "widget.sound",
           "name": "Sound / Alarm Trigger (CustomSound)",
           "status": "partial",
-          "criteria": "Audio/alarm indicator with edge-triggered MediaPlayer tone and alert trigger."
+          "criteria": "Craft ID 9 with threshold-driven edge detection, five bundled Craft alarm presets, looping playback while active, stop on clear, and optional user-selected audio file.",
+          "audit_note": "Import preserves posSound 1–5 while disabling legacy device mapping. The editor now exposes all five presets and a custom-file option; Android unit tests/APK pass in Actions #815. Runtime still uses one shared player, so simultaneous active alarm widgets replace one another. Device and visual acceptance remain open."
         },
         {
           "id": "widget.screen_link",
           "name": "Screen Link / Navigation Button (b0)",
-          "status": "implemented",
-          "criteria": "Screen jump button allowing direct navigation to target screen or external URL."
+          "status": "partial",
+          "criteria": "Screen jump button allowing direct navigation to target screen or external URL.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "widget.multistate_photo",
           "name": "Multi-State Image / Picture (CustomComponents.h)",
           "status": "partial",
-          "criteria": "Multi-state image view decoding file/URI bitmaps with fallback status frame."
+          "criteria": "Multi-state image view decoding file/URI bitmaps with fallback status frame.",
+          "audit_note": "Craft ID17 importer commit 54830d6 maps all 16 pathPic_0..15 references only when a ZIP media path is uniquely resolved; missing or ambiguous paths stay empty, original metadata is preserved, and legacy device binding remains inactive. Source-backed typeCommand selection (numeric index or first set bit) is implemented in PR #143 with unit coverage. Empty/unreadable selected states now render original kc_no_picture with the source 10-pixel image inset. The property editor exposes both modes and documents an explicit TCP binding. Same-density visual/device acceptance, source register mapping and full probe coverage remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "widget.voice_announcement",
-          "name": "Voice Announcement (CustomComponents.a0)",
+          "name": "Voice Recognition (CustomComponents.a0)",
           "status": "partial",
-          "criteria": "Voice announcement trigger with TextToSpeech synthesis and edge-triggering."
+          "criteria": "Craft's ID 27 recognition control reads sixteen textVoice0–textVoice15 phrases and uses the original voice-recognition interaction.",
+          "audit_note": "Craft ID 27 now has editable textVoice0–15, one-shot operator-confirmed on-device recognition, exact unique literal matching, and a local register-bit output. Import is disabled and export round-trips phrases/register data. Original always-listening wake-word mode, # variable interpolation, external command transport, and Android-device acceptance remain open."
+        },
+        {
+          "id": "widget.email_craft",
+          "name": "Email (CustomComponents.j)",
+          "status": "partial",
+          "criteria": "Craft ID 28 edits and round-trips subject/body/recipient, then prepares an email only after a local opt-in and operator confirmation.",
+          "audit_note": "Imported ID28 stays disabled. When explicitly enabled, BLOODSKY validates one recipient and launches a mailto draft after a confirmation; sending still requires the user's mail app. Craft SMTP/device-bit sending and Android mail-client acceptance remain open."
+        },
+        {
+          "id": "widget.sms_in",
+          "name": "Incoming SMS register/bit control",
+          "status": "partial",
+          "criteria": "Opt-in foreground receiver, encrypted sender allowlist, exact command validation, up to 16 signed 16-bit holding-register writes, atomic FC22 bit setting, and optional success strobe; imported Craft ID 18 remains disabled by default.",
+          "audit_note": "Android multipart/PDU device testing, screen diagnostics parity, and real SIM/Modbus hardware validation remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
+        },
+        {
+          "id": "widget.sms_out",
+          "name": "Outgoing SMS with register substitutions",
+          "status": "partial",
+          "criteria": "Optional SIM event reads 1..8 contiguous values from its selected Modbus binding, substitutes %1..%8 or appends values, retains {value}, and requests SEND_SMS at runtime.",
+          "audit_note": "Template and register-read logic are implemented; Android multipart/SIM hardware tests, multi-SIM choice, and exact vendor error UX remain open."
         }
       ]
     },
@@ -139,56 +187,65 @@
         {
           "id": "fbd.boolean",
           "name": "Boolean Logic (AND, OR, NOT, NAND, NOR, XOR)",
-          "status": "implemented",
-          "criteria": "Full logical evaluation of combined inputs."
+          "status": "partial",
+          "criteria": "Full logical evaluation of combined inputs.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "fbd.latches",
           "name": "Flip-Flops (RS, SR)",
-          "status": "implemented",
-          "criteria": "Bistable set/reset logic latches with state memory and state recovery."
+          "status": "partial",
+          "criteria": "Bistable set/reset logic latches with state memory and state recovery.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "fbd.triggers",
           "name": "Edge Triggers (R_TRIG, F_TRIG)",
-          "status": "implemented",
-          "criteria": "Detect rising or falling signal edges across evaluation scans."
+          "status": "partial",
+          "criteria": "Detect rising or falling signal edges across evaluation scans.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "fbd.timers",
           "name": "Timers (TON, TOF, TP)",
-          "status": "implemented",
-          "criteria": "On-delay, off-delay, and pulse timing logic in milliseconds with state recovery."
+          "status": "partial",
+          "criteria": "On-delay, off-delay, and pulse timing logic in milliseconds with state recovery.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "fbd.counters",
           "name": "Counters (CTU, CTD)",
-          "status": "implemented",
-          "criteria": "Up and down counting with configurable preset limit, reset, and state recovery."
+          "status": "partial",
+          "criteria": "Up and down counting with configurable preset limit, reset, and state recovery.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "fbd.comparison",
           "name": "Comparisons (<, <=, >, >=, ==, !=)",
-          "status": "implemented",
-          "criteria": "Numerical comparison of two input values or constants."
+          "status": "partial",
+          "criteria": "Numerical comparison of two input values or constants.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "fbd.arithmetic",
           "name": "Math & Selection (+, -, *, /, ABS, MIN, MAX, MOVE, SEL)",
-          "status": "implemented",
-          "criteria": "Basic arithmetic calculations, division-by-zero safety, and signal selection blocks."
+          "status": "partial",
+          "criteria": "Basic arithmetic calculations, division-by-zero safety, and signal selection blocks.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "fbd.advanced_math",
           "name": "Advanced Math & Conversions (POW, SQRT, SIN, COS, TAN, FloatToInt, IntToFloat)",
-          "status": "implemented",
-          "criteria": "Exponentiation, square root with domain clamping, trigonometric math, and type conversion blocks."
+          "status": "partial",
+          "criteria": "Exponentiation, square root with domain clamping, trigonometric math, and type conversion blocks.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "fbd.wires",
           "name": "Inter-block Wiring & Cycle Prevention",
-          "status": "implemented",
-          "criteria": "Visual wire rendering between blocks with cycle detection rejecting feedback loops."
+          "status": "partial",
+          "criteria": "Visual wire rendering between blocks with cycle detection rejecting feedback loops.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         }
       ]
     },
@@ -198,32 +255,37 @@
         {
           "id": "persistence.json",
           "name": "JSON Project Save/Load",
-          "status": "implemented",
-          "criteria": "Full serialization of screens, widgets, geometries, and FBD connections."
+          "status": "partial",
+          "criteria": "Full serialization of screens, widgets, geometries, and FBD connections.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "persistence.extraFields",
           "name": "Metadata Preservation (deepCopy)",
           "status": "implemented",
-          "criteria": "Unknown or extra JSON metadata preserved across round-trip edits."
+          "criteria": "Unknown or extra JSON metadata preserved across round-trip edits.",
+          "audit_note": "Covered at the stated compatibility boundary by tests; this does not imply full visual or hardware parity."
         },
         {
           "id": "persistence.zip_export",
           "name": "ZIP Project Export/Import",
-          "status": "implemented",
-          "criteria": "ZIP archive packaging TableNameProject JSON and assets safely."
+          "status": "partial",
+          "criteria": "ZIP archive packaging TableNameProject JSON and assets safely.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "persistence.security",
           "name": "Archive Security Validation",
           "status": "implemented",
-          "criteria": "Rejection of traversal paths, duplicate file entries, and oversized files."
+          "criteria": "Rejection of traversal paths, duplicate file entries, and oversized files.",
+          "audit_note": "Covered at the stated compatibility boundary by tests; this does not imply full visual or hardware parity."
         },
         {
           "id": "persistence.atomic",
           "name": "Atomic Write Persistence",
-          "status": "implemented",
-          "criteria": "Atomic project file save preventing file corruption during unexpected termination."
+          "status": "partial",
+          "criteria": "Atomic project file save preventing file corruption during unexpected termination.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         }
       ]
     },
@@ -233,34 +295,47 @@
         {
           "id": "modbus.coils_discrete",
           "name": "Modbus FC01 & FC02 Coils and Discrete Inputs",
-          "status": "implemented",
-          "criteria": "Polling of Coils (FC01) and Discrete Inputs (FC02) using 0-based protocol indexing."
+          "status": "partial",
+          "criteria": "Polling of Coils (FC01) and Discrete Inputs (FC02) using 0-based protocol indexing.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "modbus.tcp_fc03_fc04",
           "name": "Modbus TCP FC03 & FC04",
-          "status": "implemented",
-          "criteria": "Polling of Holding (FC03) and Input (FC04) registers using 0-based protocol indexing."
+          "status": "partial",
+          "criteria": "Polling of Holding (FC03) and Input (FC04) registers using 0-based protocol indexing.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "modbus.tcp_writes",
           "name": "Modbus TCP FC06 & FC16 Writes",
-          "status": "implemented",
-          "criteria": "Writing single (FC06) and multiple (FC16) registers for bound controls and FBD outputs."
+          "status": "partial",
+          "criteria": "Writing single (FC06) and multiple (FC16) registers for bound controls and FBD outputs.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "modbus.rtu_crc",
           "name": "Modbus RTU Transport & CRC16",
-          "status": "implemented",
-          "criteria": "Correct CRC16 calculations and stream transport helper for serial/RTU communication."
+          "status": "partial",
+          "criteria": "Correct CRC16 calculations and stream transport helper for serial/RTU communication.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         },
         {
           "id": "modbus.error_handling",
           "name": "Exception & Timeout Reporting",
-          "status": "implemented",
-          "criteria": "Detailed diagnostic error strings for timeouts, socket failures, and Modbus exceptions."
+          "status": "partial",
+          "criteria": "Detailed diagnostic error strings for timeouts, socket failures, and Modbus exceptions.",
+          "audit_note": "Implemented in part; original-class semantics, full settings, and device/UI acceptance remain open. See docs/KASCADA_FULL_PARITY_AUDIT_20261018.md."
         }
       ]
     }
+  ],
+  "audit_date": "2026-10-18",
+  "audit_basis": [
+    "docs/HMI_KASCADA_MANUAL_CROSSWALK.md",
+    "docs/KASKADA_COMPONENT_REGISTRY.md",
+    "docs/KASKADA_DECOMPILATION_AUDIT.md",
+    "docs/KASCADA_FULL_PARITY_AUDIT_20261018.md",
+    "reference/craft-reference.zip"
   ]
 }

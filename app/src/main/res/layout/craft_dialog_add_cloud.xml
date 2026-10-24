@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout android:orientation="vertical" android:layout_width="match_parent" android:layout_height="wrap_content"
+  xmlns:android="http://schemas.android.com/apk/res/android">
+    <EditText android:id="@+id/craft_identifier" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginLeft="4.0dp" android:layout_marginTop="16.0dp" android:layout_marginRight="4.0dp" android:layout_marginBottom="4.0dp" android:hint="@string/craft_identifier_device" android:maxLength="15" android:inputType="text" />
+    <LinearLayout android:orientation="horizontal" android:layout_width="match_parent" android:layout_height="wrap_content">
+        <CheckBox android:id="@+id/craft_checkBoxRtu" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="RTU" />
+        <TextView android:textSize="20.0dp" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="30.0dp" android:text="@string/craft_pause" />
+        <EditText android:id="@+id/craft_pause" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginLeft="4.0dp" android:layout_marginTop="4.0dp" android:layout_marginRight="4.0dp" android:layout_marginBottom="16.0dp" android:hint="0" android:inputType="number" android:fontFamily="sans-serif" />
+    </LinearLayout>
+</LinearLayout>

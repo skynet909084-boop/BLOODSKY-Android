@@ -12,6 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "app/src/main/java/com/bloodsky/hmi/MainActivity.java"
 WORKFLOW = ROOT / ".github/workflows/android-apk.yml"
 TCP_CLIENT = ROOT / "app/src/main/java/com/bloodsky/hmi/ModbusTcpClient.java"
+MEDIA_SERVICE = ROOT / "app/src/main/java/com/bloodsky/hmi/ProjectMediaService.java"
+WIDGET_CLIPBOARD = ROOT / "app/src/main/java/com/bloodsky/hmi/WidgetClipboard.java"
 
 
 class AndroidSourceContractTests(unittest.TestCase):
@@ -20,6 +22,7 @@ class AndroidSourceContractTests(unittest.TestCase):
         cls.source = SOURCE.read_text(encoding="utf-8")
         cls.workflow = WORKFLOW.read_text(encoding="utf-8")
         cls.tcp_client = TCP_CLIENT.read_text(encoding="utf-8")
+        cls.widget_clipboard = WIDGET_CLIPBOARD.read_text(encoding="utf-8")
 
     def test_project_persistence_serializes_screens_and_widgets(self):
         self.assertIn("private void persistProject()", self.source)
@@ -28,7 +31,7 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn('project.put("currentScreen", currentScreenIndex)', self.source)
 
     def test_project_load_supports_multiscreen_and_legacy_array(self):
-        self.assertIn("private void loadProject()", self.source)
+        self.assertRegex(self.source, r"private (?:void|boolean) loadProject\(\)")
         self.assertIn('project.optJSONArray("screens")', self.source)
         self.assertIn("parsed instanceof JSONArray", self.source)
         self.assertIn("new Screen(\"Экран 1\")", self.source)
@@ -36,6 +39,20 @@ class AndroidSourceContractTests(unittest.TestCase):
     def test_atomic_save_and_load(self):
         self.assertIn("saveProjectAtomic(", self.source)
         self.assertIn("loadProjectAtomic(", self.source)
+
+    def test_project_deletion_moves_project_to_recoverable_trash(self):
+        delete_start = self.source.index("private void deleteSavedProject(")
+        delete_end = self.source.index("private void chooseTrashedProject()", delete_start)
+        delete_method = self.source[delete_start:delete_end]
+        commit = delete_method.index("if (!edit.commit())")
+        self.assertLess(delete_method.index("ProjectCatalog.moveToTrash("), commit)
+        self.assertIn("PROJECT_TRASH", delete_method)
+        self.assertNotIn("ProjectMediaService.deleteProjectMedia(", delete_method)
+        self.assertIn("restoreTrashedProject(", delete_method + self.source[delete_end:])
+        service = MEDIA_SERVICE.read_text(encoding="utf-8")
+        self.assertIn("public static boolean deleteProjectMedia(", service)
+        self.assertIn('new File(appRoot, "projects")', service)
+        self.assertIn("canonical.getPath().startsWith(projectRoot + File.separator)", service)
 
     def test_zip_export_and_import(self):
         self.assertIn("exportProjectToZip(", self.source)
@@ -45,8 +62,43 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("writeModbusRegisterStatic(", self.source)
         self.assertIn("writeModbusMultipleRegistersStatic(", self.source)
 
+    def test_operator_binding_rejects_unsupported_tcp_userinfo(self):
+        start = self.source.index("private BindingRequest parseBinding(")
+        end = self.source.index("private BindingRequest parseProjectBinding(", start)
+        parser = self.source[start:end]
+        self.assertIn("uri.getRawUserInfo() != null", parser)
+        gateway = (ROOT / "app/src/main/java/com/bloodsky/hmi/ModbusPollGateway.java").read_text(encoding="utf-8")
+        self.assertIn("uri.getRawUserInfo() != null", gateway)
+
     def test_modbus_rtu_transport(self):
         self.assertIn("ModbusRtuTransport", self.source)
+
+    def test_paired_bluetooth_rtu_routes_register_and_craft_gateways(self):
+        self.assertIn('BluetoothRtuBinding.parse(binding, quantity)', self.source)
+        self.assertIn('BluetoothModbusConnection.connect(this, address, 3000)', self.source)
+        self.assertIn('optBoolean("craftGatewayEnabled", false)', self.source)
+        self.assertIn('optBoolean("craftBitGatewayEnabled", false)', self.source)
+        self.assertIn('bluetoothConnection(binding.bluetoothAddress).read(binding.unit,', self.source)
+        self.assertIn('bluetoothConnection(binding.bluetoothAddress).writeMultiple(', self.source)
+        self.assertIn('connection.writeMultipleCoils(binding.unit, binding.address, values)', self.source)
+        self.assertIn('operatorMode && hasBluetoothRegisterBinding()', self.source)
+        self.assertIn('ModbusRtuOperatorPolicy.hasGatewayRtuBinding(', self.source)
+        self.assertGreaterEqual(self.source.count('requireGatewayBluetoothSessionAccess();'), 4)
+        self.assertGreaterEqual(self.source.count('ModbusRtuOperatorPolicy.mayRunGateway('), 2)
+        self.assertIn('requireGatewayUsbSessionAccess().read(', self.source)
+        self.assertIn('requireGatewayUsbSessionAccess().writeMultiple(', self.source)
+        self.assertIn('CraftBitGateway.readSystemSource(', self.source)
+        self.assertIn('CraftBitGateway.writeSystemDestination(', self.source)
+        self.assertIn('connection.writeMultipleCoils(binding.unit, binding.address, values)', self.source)
+        self.assertIn('UsbSerialModbusConnection connection = requireGatewayUsbSessionAccess();', self.source)
+        self.assertIn('ModbusRtuOperatorPolicy.mayPollRtu("usb://", operatorMode,', self.source)
+        self.assertIn('manualUsbConnection.isOpen()', self.source)
+        self.assertIn('CraftRegisterGateway.writeSystemDestination(', self.source)
+
+    def test_project_archive_import_disarms_preserved_external_actions(self):
+        self.assertIn("ProjectImportSafety.deactivateExternalActions(json)", self.source)
+        self.assertIn("bloodskyImportedInactiveConnectionInfo", self.source)
+        self.assertIn("bloodskyImportedInactiveArchiveTriggerBinding", self.source)
 
     def test_import_is_validated_before_persisting(self):
         validate_at = self.source.index("validateImportedProject(json);")
@@ -100,6 +152,17 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("FBD FloatToInt", self.source)
         self.assertIn("FBD IntToFloat", self.source)
 
+    def test_macro_editor_is_the_third_palette_page(self):
+        palette = (ROOT / "app/src/main/java/com/bloodsky/hmi/OriginalFbdPalette.java").read_text(encoding="utf-8")
+        self.assertIn("this::showCraftMacroTools", self.source)
+        self.assertIn('"Редактор макросов",macroEditor', palette)
+        self.assertIn('menu.getMenu().add("Другие элементы BLOODSKY")', self.source)
+        self.assertIn("android.widget.GridLayout", self.source)
+        self.assertIn("R.layout.kc_macro_library_card", self.source)
+        self.assertIn("R.drawable.kc_tab_page1", self.source)
+        self.assertIn("createCraftMacroFromSelection()", self.source)
+        self.assertIn("showFbdPalette();", self.source)
+
     def test_original_indicator_picker_has_real_preview_and_click_target(self):
         start = self.source.index("private void showAddWidgetMenu()")
         end = self.source.index("private void addWidget(", start)
@@ -141,16 +204,24 @@ class AndroidSourceContractTests(unittest.TestCase):
     def test_fbd_connections_reject_cycles_and_duplicates(self):
         self.assertIn("reachesFbd(target, source", self.source)
         self.assertIn("Такая связь уже существует", self.source)
-        self.assertIn("screen.connections.add(new FbdConnection(source, target))", self.source)
+        self.assertIn("chooseFbdPins(source, target)", self.source)
+        self.assertIn("screen.connections.add(edge)", self.source)
+        self.assertIn("hasCompatibleKnownFbdPins(json, sourceType, targetType)", self.source)
+        self.assertIn("compatibleFbdTargetPins(", self.source)
+        self.assertRegex(self.source, r"pinnedFbdConnection\(source,\s*(?:sourcePins\[sourceChoice\]|chosenSourcePin)")
+        self.assertIn('edge.extraFields.put("sourceSignalType", sourceSignal)', self.source)
+        self.assertIn('edge.extraFields.put("targetSignalType", targetSignal)', self.source)
 
     def test_deleting_widget_removes_and_reindexes_fbd_edges(self):
-        delete_start = self.source.index("private void deleteSelectedWidget()")
-        delete_end = self.source.index("public static JSONObject widgetToJson", delete_start)
-        delete_method = self.source[delete_start:delete_end]
-        self.assertIn("connection.source == removed || connection.target == removed", delete_method)
-        self.assertIn("if (connection.source > removed) connection.source--;", delete_method)
-        self.assertIn("if (connection.target > removed) connection.target--;", delete_method)
-        self.assertIn("screen.connections.addAll(kept)", delete_method)
+        self.assertIn("WidgetClipboard.deleteSelection(widgets, screen.connections, selection)", self.source)
+        self.assertIn("final ArrayList<FbdConnection> originalEdges", self.source)
+        self.assertIn("originalEdges.get(i).source = originalSources.get(i)", self.source)
+        self.assertIn("originalEdges.get(i).target = originalTargets.get(i)", self.source)
+        self.assertIn("if (!persistProjectNow(true))", self.source)
+        self.assertIn("edge.source == index || edge.target == index", self.widget_clipboard)
+        self.assertIn("if (edge.source > index) edge.source--;", self.widget_clipboard)
+        self.assertIn("if (edge.target > index) edge.target--;", self.widget_clipboard)
+        self.assertIn("FbdResultBinding.afterWidgetRemoved", self.widget_clipboard)
 
     def test_import_rejects_invalid_and_duplicate_fbd_edges_and_cycles(self):
         self.assertIn('throw new IllegalArgumentException("Connection index out of range")', self.source)
@@ -159,13 +230,30 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("if (visitedCount != nodeCount)", self.source)
 
     def test_loading_only_restores_valid_fbd_connections(self):
-        load_start = self.source.index("private void loadProject()")
+        load_start = self.source.index("private boolean loadProject()")
         load_end = self.source.index("public static void validateImportedProjectStatic(", load_start)
         load_method = self.source[load_start:load_end]
         self.assertIn("source < screen.widgets.size()", load_method)
         self.assertIn("target < screen.widgets.size()", load_method)
         self.assertIn("isFbd(screen.widgets.get(source))", load_method)
         self.assertIn("isFbd(screen.widgets.get(target))", load_method)
+
+    def test_canceled_media_picker_cleans_only_new_unreferenced_copies(self):
+        self.assertIn("ProjectMediaService.storeSelectedMediaCopy(", self.source)
+        self.assertIn("cleanupPendingMediaCopies(properties)", self.source)
+        self.assertIn("cleanupUnreferencedMediaCopy(projectJson, copy)", self.source)
+        self.assertIn("waitingDialog != activePropertiesDialog", self.source)
+        self.assertIn("if (copy == null || !copy.created) return", self.source)
+
+    def test_legacy_media_migration_is_checked_before_opening_project(self):
+        load_start = self.source.index("private boolean loadProject()")
+        load_end = self.source.index("public static void validateImportedProjectStatic(", load_start)
+        method = self.source[load_start:load_end]
+        self.assertIn("LegacyProjectMediaMigrator.needsMigration(json)", method)
+        self.assertLess(method.index("migrateLegacyActiveProject(json)"),
+                        method.index("widgets.clear()"))
+        self.assertIn("storeActiveProject(newJson, true)", self.source)
+        self.assertIn("if (!loadProject())", self.source)
 
     def test_ci_runs_python_tests_android_tests_and_builds_apk(self):
         self.assertIn("python -m unittest discover -s tools -p 'test_*.py' -v", self.workflow)

@@ -1,0 +1,47 @@
+<resources>
+    <!-- Extracted from the pinned KaSCADA Craft 1.0.7 apktool resources. -->
+    <color name="craft_main_background">#ff232323</color>
+    <color name="craft_second_background">#303030</color>
+    <color name="craft_select_line">#ff3e3e3e</color>
+    <color name="craft_text_gray">#bbbbbb</color>
+    <color name="craft_text_orange">#edb03b</color>
+    <string name="craft_title">КаСкада</string>
+    <string name="craft_network_devices">Сетевые устройства</string>
+    <string name="craft_server_editor">Редактор серверов</string>
+    <string name="craft_no_connections">Без соединения</string>
+    <string name="craft_count">Количество:</string>
+    <string name="craft_new_connection">Новое подключение</string>
+    <string name="craft_column_name">Имя</string>
+    <string name="craft_column_network_address">Сетевой адрес</string>
+    <string name="craft_column_server">Сервер</string>
+    <string name="craft_pause">Пауза</string>
+    <string name="craft_edit">Редактировать</string>
+    <string name="craft_delete">Удалить</string>
+    <string name="craft_network_device_edit">Редактировать сетевое устройство</string>
+    <string name="craft_network_device_delete">Удалить сетевое устройство</string>
+    <string name="craft_speed">Скорость</string>
+    <string name="craft_count_bit">Количество бит</string>
+    <string name="craft_stop_bit">Стоп бит</string>
+    <string name="craft_parity">Паритет</string>
+    <string name="craft_ip_address">IP адрес</string>
+    <string name="craft_port_502">Порт</string>
+    <string name="craft_identifier_device">Идентификатор</string>
+    <string-array name="craft_new_connection_types">
+        <item>Wi-Fi\\3G\\4G</item>
+        <item>Bluetooth</item>
+        <item>Usb</item>
+        <item>KaScada Cloud</item>
+    </string-array>
+    <string-array name="craft_baud_rates">
+        <item>1200</item><item>1800</item><item>2400</item><item>4800</item><item>7200</item><item>9600</item>
+        <item>14400</item><item>19200</item><item>38400</item><item>57600</item><item>115200</item>
+    </string-array>
+    <string-array name="craft_data_bits"><item>7</item><item>8</item></string-array>
+    <string-array name="craft_stop_bits"><item>1</item><item>1.5</item><item>2</item></string-array>
+    <string-array name="craft_parity"><item>None</item><item>Odd</item><item>Even</item><item>Mark</item><item>Space</item></string-array>
+    <style name="CraftToolBarStyle" parent="Theme.AppCompat">
+        <item name="android:textColorPrimary">@color/craft_text_orange</item>
+        <item name="android:textColorSecondary">@color/craft_text_gray</item>
+        <item name="actionMenuTextColor">@color/craft_text_gray</item>
+    </style>
+</resources>

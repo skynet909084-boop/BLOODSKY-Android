@@ -9,6 +9,7 @@ import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Operator-side Modbus reads for widget bindings.
@@ -25,10 +26,12 @@ import java.util.concurrent.TimeUnit;
 public final class ModbusPollGateway implements Closeable {
     private final Context appContext;
     private final ConcurrentHashMap<String, BluetoothModbusConnection> bluetoothByMac = new ConcurrentHashMap<>();
+    private final AtomicLong bluetoothGeneration = new AtomicLong();
     private volatile String selectedUsbDeviceName;
     private volatile UsbSerialSettings usbSettings =
             new UsbSerialSettings(9600, 8, 1, UsbSerialSettings.Parity.NONE);
     private volatile UsbSerialModbusConnection usbConnection;
+    private volatile UsbSerialModbusConnection selectedUsbConnection;
     private final Object usbLock = new Object();
 
     public ModbusPollGateway(Context context) {
@@ -59,6 +62,14 @@ public final class ModbusPollGateway implements Closeable {
         }
     }
 
+    /**
+     * Use the connection opened by the explicit USB screen. The gateway borrows
+     * this session and never closes it; MainActivity retains ownership.
+     */
+    public void setSelectedUsbConnection(UsbSerialModbusConnection connection) {
+        selectedUsbConnection = connection;
+    }
+
     public List<UsbSerialConnector.DeviceOption> listUsbDevices() {
         return new UsbSerialConnector(appContext).listDevices();
     }
@@ -70,6 +81,12 @@ public final class ModbusPollGateway implements Closeable {
         int[] values = read(endpoint);
         if (values == null || values.length < 1) throw new IOException("Пустой ответ регистра");
         return Integer.toString(values[0]);
+    }
+
+    public int[] read(String binding, int quantity) throws IOException {
+        Endpoint endpoint = Endpoint.parse(binding, quantity);
+        if (endpoint == null) throw new IOException("Неверный binding: " + binding);
+        return read(endpoint);
     }
 
     public int[] read(Endpoint endpoint) throws IOException {
@@ -88,6 +105,11 @@ public final class ModbusPollGateway implements Closeable {
     }
 
     private int[] readUsb(Endpoint endpoint) throws IOException {
+        UsbSerialModbusConnection selected = selectedUsbConnection;
+        if (selected != null) {
+            if (!selected.isOpen()) throw new IOException("Выбранный USB RTU-адаптер отключён");
+            return selected.read(endpoint.unit, endpoint.functionCode, endpoint.address, endpoint.quantity);
+        }
         UsbSerialModbusConnection connection = ensureUsb();
         try {
             return connection.read(endpoint.unit, endpoint.functionCode, endpoint.address, endpoint.quantity);
@@ -119,6 +141,7 @@ public final class ModbusPollGateway implements Closeable {
 
     private int[] readBluetooth(Endpoint endpoint) throws IOException {
         String mac = endpoint.host;
+        long generation = bluetoothGeneration.get();
         BluetoothModbusConnection connection = bluetoothByMac.get(mac);
         if (connection == null || !connection.isOpen()) {
             if (connection != null) {
@@ -126,7 +149,23 @@ public final class ModbusPollGateway implements Closeable {
                 bluetoothByMac.remove(mac, connection);
             }
             connection = BluetoothModbusConnection.connect(appContext, mac, ModbusRtuClient.DEFAULT_TIMEOUT_MS);
-            bluetoothByMac.put(mac, connection);
+            if (generation != bluetoothGeneration.get()) {
+                try { connection.close(); } catch (IOException ignored) { }
+                throw new IOException("Bluetooth RTU operator session ended while connecting");
+            }
+            BluetoothModbusConnection prior = bluetoothByMac.putIfAbsent(mac, connection);
+            if (generation != bluetoothGeneration.get()) {
+                if (bluetoothByMac.remove(mac, connection)) {
+                    try { connection.close(); } catch (IOException ignored) { }
+                }
+                throw new IOException("Bluetooth RTU operator session ended while connecting");
+            }
+            if (prior != null) {
+                try { connection.close(); } catch (IOException ignored) { }
+                if (prior.isOpen()) connection = prior;
+                else if (bluetoothByMac.replace(mac, prior, connection)) { /* use fresh session */ }
+                else throw new IOException("Bluetooth RTU session changed while reconnecting");
+            }
         }
         try {
             return connection.read(endpoint.unit, endpoint.functionCode, endpoint.address, endpoint.quantity);
@@ -145,13 +184,21 @@ public final class ModbusPollGateway implements Closeable {
         }
     }
 
+    /** End cached SPP connections when operator polling stops. */
+    public void closeBluetoothConnections() {
+        bluetoothGeneration.incrementAndGet();
+        for (java.util.Map.Entry<String, BluetoothModbusConnection> entry : bluetoothByMac.entrySet()) {
+            if (bluetoothByMac.remove(entry.getKey(), entry.getValue())) {
+                try { entry.getValue().close(); } catch (IOException ignored) { }
+            }
+        }
+    }
+
     @Override
     public void close() {
         synchronized (usbLock) { closeUsbQuietly(); }
-        for (BluetoothModbusConnection connection : bluetoothByMac.values()) {
-            try { connection.close(); } catch (IOException ignored) { }
-        }
-        bluetoothByMac.clear();
+        selectedUsbConnection = null;
+        closeBluetoothConnections();
     }
 
     /** Parsed widget binding for operator polling. */
@@ -193,31 +240,49 @@ public final class ModbusPollGateway implements Closeable {
         }
 
         public static Endpoint parse(String binding) {
+            return parse(binding, 1);
+        }
+
+        public static Endpoint parse(String binding, int quantity) {
             if (binding == null) return null;
             String value = binding.trim();
-            if (value.startsWith("tcp://")) return parseTcp(value);
+            if (quantity < 1 || quantity > 125) return null;
+            if (value.startsWith("tcp://")) return parseTcp(value, quantity);
             if (value.startsWith("usb://")) {
-                UsbSerialBinding usb = UsbSerialBinding.parse(value, 1);
+                UsbSerialBinding usb = UsbSerialBinding.parse(value, quantity);
                 if (usb == null) return null;
-                return new Endpoint(Scheme.USB, null, 0, usb.unit, usb.address, usb.functionCode, 1);
+                return new Endpoint(Scheme.USB, null, 0, usb.unit, usb.address, usb.functionCode, usb.quantity);
             }
             if (value.startsWith("bt://")) {
-                BluetoothRtuBinding bt = BluetoothRtuBinding.parse(value, 1);
+                BluetoothRtuBinding bt = BluetoothRtuBinding.parse(value, quantity);
                 if (bt == null) return null;
                 return new Endpoint(Scheme.BT, bt.address, 0, bt.unit, bt.registerAddress,
-                        bt.functionCode, 1);
+                        bt.functionCode, bt.quantity);
             }
             return null;
         }
 
-        private static Endpoint parseTcp(String value) {
+        public static Endpoint of(Scheme scheme, String host, int port, int unit,
+                                  int address, int functionCode, int quantity) {
+            if (scheme == null || unit < 0 || unit > 255 || address < 0 || address > 65535
+                    || quantity < 1 || quantity > 125 || address + quantity > 65536
+                    || functionCode < 1 || functionCode > 4) throw new IllegalArgumentException("Invalid Modbus endpoint");
+            if (scheme == Scheme.TCP && (host == null || host.trim().isEmpty() || port < 1 || port > 65535))
+                throw new IllegalArgumentException("Invalid TCP endpoint");
+            if (scheme == Scheme.BT && (host == null || !BluetoothRtuBinding.isMacAddress(host)))
+                throw new IllegalArgumentException("Invalid Bluetooth endpoint");
+            return new Endpoint(scheme, host, port, unit, address, functionCode, quantity);
+        }
+
+        private static Endpoint parseTcp(String value, int quantity) {
             try {
                 java.net.URI uri = java.net.URI.create(value.trim());
                 if (!"tcp".equals(uri.getScheme())) return null;
                 String[] path = uri.getPath() == null ? new String[0] : uri.getPath().split("/", -1);
                 if (uri.getHost() == null || uri.getPort() < 1 || uri.getPort() > 65535
                         || path.length != 3 || !path[0].isEmpty()
-                        || uri.getRawQuery() != null || uri.getRawFragment() != null) return null;
+                        || uri.getRawUserInfo() != null || uri.getRawQuery() != null
+                        || uri.getRawFragment() != null) return null;
                 int unit = Integer.parseInt(path[1]);
                 int enteredAddress = Integer.parseInt(path[2]);
                 if (unit < 0 || unit > 255 || enteredAddress < 0 || enteredAddress > 65535) return null;
@@ -230,10 +295,12 @@ public final class ModbusPollGateway implements Closeable {
                     functionCode = 3;
                     address = enteredAddress - 40001;
                 }
-                return new Endpoint(Scheme.TCP, uri.getHost(), uri.getPort(), unit, address, functionCode, 1);
+                if (quantity < 1 || address + quantity > 65536) return null;
+                return new Endpoint(Scheme.TCP, uri.getHost(), uri.getPort(), unit, address, functionCode, quantity);
             } catch (Exception ignored) {
                 return null;
             }
         }
     }
 }
+

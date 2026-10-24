@@ -16,7 +16,8 @@ class OriginalIndicatorImagesTests(unittest.TestCase):
     def test_custom_file_selection_and_rollback_are_connected_to_real_renderer(self):
         main=(ROOT/'app/src/main/java/com/bloodsky/hmi/MainActivity.java').read_text()
         edit=main.split('private boolean selectIndicatorImage(',1)[1].split('private void editSelectedWidget()',1)[0]
-        self.assertIn('widgets.contains(widget)',edit)
+        self.assertIn('new CraftWidgetDialogGuard(widget).require()',edit)
+        self.assertIn('imageGuard.require()',edit)
         self.assertIn('OriginalIndicator.withImage(old, active, user, value)',edit)
         self.assertIn('persistProjectNow(true)',edit)
         self.assertIn('widget.extraFields = old; projectExtraFields = oldProject; saveActiveScreen()',edit)

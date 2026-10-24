@@ -1,0 +1,650 @@
+# BLOODSKY unified prototype — progress checkpoint (2026-10-20)
+
+## Unified target
+
+- Working integration branch: `prototype/all-in-one-20261020`
+- Stable `main` was not changed.
+- Current prototype code head before the source-view audit checkpoint: `3dbe9cb6e4e9ef3c2e8706595aa49663bb81f1d6`
+- The unified app already contains the current project importer, FBD work, component imports, HMI/runtime changes and media handling described in `KASCADA_FULL_PARITY_AUDIT_20261018.md`.
+
+## Added in this checkpoint
+
+PR [#158](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/158) was merged into the prototype as `d02bcaf`. It adds focused Modbus RTU stream-helper regressions for fragmented reads, request bytes, Unit ID/function/byte-count checks, CRC errors, exception frames, truncated responses and invalid address ranges. It changes tests only; it does not add a live USB, Bluetooth or serial RTU transport.
+
+Exact-head validation passed:
+- Android APK/JUnit run [#1150](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39377234697)
+- Android UI smoke run [#780](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39377234782)
+
+## Branch cleanup
+
+Removed 22 unprotected branch refs after checking ancestry, duplicate SHAs and open PR dependencies:
+- 19 refs whose commits were already contained in the prototype
+- 2 exact duplicate refs
+- the temporary head branch for merged PR #158
+
+Unique branches that contain unmerged work and branches used by open PRs remain. The current inventory has 48 branches. Closed PRs and deleted refs do not imply that every historical task is complete; remaining open PRs still need their own acceptance gates.
+
+## Craft 1.0.7 parity gates still open
+
+The detailed source-backed status is in `KASCADA_FULL_PARITY_AUDIT_20261018.md`. Do not claim full parity until these are accepted:
+
+1. Side-by-side, equal-density visual checks for each component and editor screen; Craft component ID 3 remains unresolved.
+2. FBD source/runtime acceptance for CTU modes `+`, `-`, `R`; RS input order; timers and BLINK; triggers; INT/FLOAT/NaN/overflow behavior; and opaque original macro child records.
+3. Import → edit → save → export → reopen acceptance on all supplied original archives, including media, screens/backgrounds, bindings, FBD, networks and device slots.
+4. Real USB/Bluetooth/serial RTU acceptance. The RTU helper tests above are not transport or device proof.
+5. Remaining device manager, component settings, local services and external integrations listed in the audit.
+
+The original Craft emulator probe work remains in open PRs #149–#151. Keep those branches until the probe runs and artifacts are reviewed; their captured navigation coverage is not a substitute for visual, project round-trip or hardware acceptance.
+
+## Continuation update — 20 Oct 2026
+
+- Merged PR [#159](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/159) into the prototype at `ab9d11c03b0fbf6cab532317793f390438b0b68e`. It carries the pinned, read-only Craft FBD evidence scanner expansion, synthetic ZIP regression tests and math-source audit note.
+- Exact-head source-evidence run [#79](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39379106977) passed. Android APK/JUnit run [#1151](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39379106927) passed. No UI smoke was needed for this PR because it changes no runtime or UI behavior.
+- PRs #134 and #138 were closed as superseded after their source findings and tools were consolidated. Their old PR branches and temporary PR heads were removed.
+- Branch inventory after cleanup: 46 branches; 11 open PRs. Unfinished branches and branches referenced by open PRs were retained.
+- Stable `main` remains at `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+The source findings and extraction tests do not implement INT/FLOAT arithmetic, comparison, CHANGE blocks or conversions in the app. Those remain disabled until the source-backed behavior is implemented and passes the prototype's exact-head runtime and UI acceptance gates.
+
+## Craft emulator follow-up — 20 Oct 2026
+
+- The quick long-press probe run [#52](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39237938241) passed as a workflow, but its FBD direction ended at `state_limit`: 25 captured states, 24 transitions and `coverage_complete=false`. Treat that artifact as partial evidence.
+- Dispatched the exhaustive long-press matrix [#165](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39379411369) from `test/original-craft-long-press-20261019`.
+- Dispatched the exhaustive traversal with stable loading-state detection [#166](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39379432124) from `fix/original-emulator-loading-detection-20261019`.
+- Both full runs were in progress at this update. Review per-direction `ui-audit.json` and artifact coverage before treating any direction as complete.
+
+
+## Source-view audit and picker follow-up — 20 Oct 2026
+
+- Merged PR [#161](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/161) into the prototype as `3dbe9cb6e4e9ef3c2e8706595aa49663bb81f1d6`. It clarifies the source-backed unresolved Craft component ID 3 factory mapping in the existing matrix; no runtime code changed.
+- Ported the MediaStore/document-picker hardening from #136 into PR [#160](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/160), preserving newer prototype smoke coverage. It scans and waits for the fixture, resolves exact grid/list filename nodes, requires app return, adds regressions, and selects the full UI profile for this branch family.
+- PR #160 exact-head `309f159a7c45c7a79ebfa285ece23f32b58d8858`: APK/JUnit run [#1152](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39379640455) passed; full Android UI run [#782](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39379640479) is exercising Android 11. Keep #136 until these exact-head checks pass; then close it as superseded and remove its branch.
+- Removed the merged #161 branch and the old source-view audit branch after verifying no open PR dependency and confirming all their changed file blobs match the prototype. Branch refs were rechecked absent. Inventory: 46 branches; 12 open PRs. Unique unfinished work remains.
+- The duplicate full Craft run #166 was cancelled after confirming #165 is based on the same loading-detection branch and covers the same ten directions plus long-press. Run #165 remains active; review each direction artifact and `ui-audit.json` before claiming coverage.
+- Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+- Audited the leftover `codex/rtu-response-regressions-20261019` branch: its RTU test content already matches the prototype. PR [#162](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/162) adds a regression assertion for the observed timer dialog title. APK/JUnit [#1153](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39380654628) passed. UI smoke [#783](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39380654662) correctly exposed that the actual editor header is `Свойства: FBD Таймер`; the attempted `FBD CRAFT TIMER` label was wrong and has been reverted. Corrected UI run [#784](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39381333825) is running on head `e5ee239f71d4679118c1e29de90e6b7b6d176120`.
+- Current inventory after this cleanup: 44 branches, 12 open PRs. Keep the leftover RTU branch until #162 passes, then remove it after verifying its content is fully represented in the prototype.
+
+
+## Legacy media consolidation — 20 Oct 2026
+
+- Verified that the prototype already contains the tested `LegacyProjectMediaMigrator`, its JUnit suite, the fail-closed open flow, the PNG pixel probe, and the API30 UI scenario that checks the migrated image before and after process restart. Core migrator and test files match the validated PR #93 tree; the prototype's surrounding MainActivity and media service are newer.
+- Closed draft PR [#93](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/93) without merging it into `main`; its implementation was already consolidated in the prototype and its exact-head APK/JUnit + UI checks had passed.
+- Removed the superseded refs `fix/project-legacy-media-migration`, `fix/project-migration-referenced-media-missing`, and `test/project-legacy-media-android-e2e` after confirming #94 was merged and #95/#96 closed, then verified all three refs absent.
+- Current branch inventory: 44 branches; 12 open PRs. Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+- Latest checks: #160 APK/JUnit passed and full UI is running; #162 APK/JUnit and UI are running; Craft #165's ten UI directions are still running. Redundant run #166 is cancelled.
+
+## FBD integration follow-up
+
+- Retargeted draft PR [#69](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/69) from `main` to `prototype/all-in-one-20261020` so its source drawing/editor transaction work is evaluated against the unified app. Its exact head `f8f167c78190c06bcb7b726ec613e6dce02e2402` previously passed APK/JUnit run [#396](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39016734417) and Android 11 smoke [#64](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39016734410) against its old `main` base.
+- After retarget, GitHub reports `mergeable=false`; no PR #69 code was merged. Its MainActivity/editor changes need a deliberate integration pass against the newer prototype, followed by exact-head APK/JUnit and UI checks. Keep the branch and draft open; `main` stays unchanged.
+
+
+## Continuation update — 20 Oct 2026 (later checkpoint)
+
+- PR [#160](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/160) merged into the unified prototype as `b1801047402345af02667e1e7f6017b68de2fe67`. The current synchronized branch tree matches the code tested by full Android 11 UI smoke [#782](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39379640479); the later base sync adds documentation changes. APK/JUnit on synchronized head `dd350b96559874e338249742acac0557e9311bc7`, run [#1155](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39381758009), passed.
+- Superseded PR [#136](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/136) was closed unmerged; its old branch was deleted after the validated prototype replacement landed.
+- PR [#162](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/162) merged as `efc4a057114b414744391a2989d8b1c657dd4fd1`. It adds a one-line regression check for Craft's localized FBD timer palette/property labels; APK/JUnit run [#1156](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39381967912) passed, and corrected Android smoke [#784](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39381333825) passed before a base-only sync. Artifact [#783](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39380654662) established the observed property header is `Свойства: FBD Таймер`; the serialized type is `FBD CRAFT TIMER`.
+- Deleted the merged #160 and #162 feature refs and the old RTU regression ref after checking that its `ModbusRtuTest.java` blob matched the prototype and its remaining differences were the corrected timer smoke label/test. Deleted refs were verified absent.
+- Full Craft run [#165](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39379411369) completed successfully at workflow level across all ten directions. All ten artifacts were reviewed. Each ran offline, seeded its project successfully, captured 100 states / 99 transitions, and ended at `state_limit` with `coverage_limited=true` and `coverage_complete=false`; none hit the 3000-second runtime limit. Long-press actions executed: FBD 19, components 9, runtime 14, exit-policy 2, project-create 14, macros 9, import-paste 2, devices 12, network 56, import-qr 14. Only import-qr recorded one project-loading stall. Treat this as broad partial navigation evidence, not complete coverage.
+
+| Craft direction | States / transitions | Long presses | Seconds | Stalls | Result |
+|---|---:|---:|---:|---:|---|
+| FBD | 100 / 99 | 19 | 1529.3 | 0 | state limit |
+| Components | 100 / 99 | 9 | 1833.5 | 0 | state limit |
+| Runtime | 100 / 99 | 14 | 1402.0 | 0 | state limit |
+| Exit policy | 100 / 99 | 2 | 1685.5 | 0 | state limit |
+| Project create | 100 / 99 | 14 | 1468.4 | 0 | state limit |
+| Macros | 100 / 99 | 9 | 1352.6 | 0 | state limit |
+| Import paste | 100 / 99 | 2 | 1539.7 | 0 | state limit |
+| Devices | 100 / 99 | 12 | 1332.1 | 0 | state limit |
+| Network | 100 / 99 | 56 | 1816.2 | 0 | state limit |
+| Import QR | 100 / 99 | 14 | 1747.1 | 1 | state limit |
+- Latest branch inventory after this cleanup: 31 branches and 9 open PRs. Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+## Next integration queue
+
+- PR [#69](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/69) remains intentionally unmerged. Its ordered/untyped graph drawing and transaction work must be decomposed against the richer prototype FBD implementation before selective porting; rerun APK/JUnit and Android UI smoke on each accepted port.
+- Continue reviewing the remaining Craft 1.0.7 direction artifacts, then raise the FBD probe cap/termination strategy where evidence shows meaningful unexplored states. Keep the original emulator branch until the audit is complete.
+- Stable `main` remains unchanged.
+
+
+## Craft probe state de-duplication — 20 Oct 2026
+
+- Reviewing all ten artifacts from full run [#165](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39379411369) exposed a probe defect: `capture_state` checked whether a signature was already in `seen`, but never inserted newly captured signatures. Repeated visible screens therefore consumed the 100-state budget. The #165 metrics above remain valid as partial evidence, but they are not a reliable count of unique UI states.
+- PR [#151](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/151), head `d4b9af4d7821675b0d1d0afdb652f717dcae26f6`, now records unique signatures before accepting a state, removes duplicate XML captures, and adds a unit regression for first/duplicate/new signatures.
+- Exact-head Android APK/JUnit run [#1157](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39384363621) passed. Ten-direction quick emulator run [#167](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39384363374) is running; manual full-profile retest [#168](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39384420617) is also running on the same head. Neither retest has been accepted yet; inspect each artifact's unique-state count and coverage flags after completion.
+- Deleted temporary branch `fix/craft-probe-state-dedup-20261020` after its changes were ported to #151. Rechecked that the temporary ref, merged timer/RTU refs, and superseded RTU ref are absent. #151/#150/#149 remain open because their evidence and acceptance gates are unfinished.
+- Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+
+## Full branch inventory correction — 20 Oct 2026
+
+- A fresh GitHub inventory returned 40 refs, so the earlier 31-branch count in this log was stale. After the verified deletion below, the current inventory is 39 refs, including `main` and the prototype; the open-PR count remains 9.
+- Compared the full inventory against `prototype/all-in-one-20261020` and checked open PR heads/bases. Deleted `feat/fbd-75-pin-semantics`: its head was 621 commits behind the prototype with no branch-only commits and no open-PR dependency. Rechecked the ref after deletion; it is absent.
+- Retained `feat/craft-screen-navigation-import-20261018` even though its head is 53 commits behind the prototype, because it remains the base of open PR #149. All other non-PR-head branches still have branch-only commits; spot checks of 13 changed-file sets found no file-blob-complete duplicate suitable for cleanup. Open PR heads and their base branches remain intact.
+- Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+
+### Quick profile check after de-duplication — run #167 (9/10 directions complete)
+
+All nine available `ui-audit.json` files had `unique_state_signatures == states_captured`, no probe error, and terminated at the depth/control/cycle boundary rather than the state cap. Each reported `coverage_limited=true`, `coverage_complete=false`, and one project-loading-stalled state; this is a helper regression check, not a complete Craft coverage claim. The network artifact is still pending.
+
+| Direction | States / unique | Transitions | Long presses | Seconds | Loading stalls |
+|---|---:|---:|---:|---:|---:|
+| FBD | 5 / 5 | 19 | 3 | 248.8 | 1 |
+| Components | 10 / 10 | 32 | 15 | 484.1 | 1 |
+| Runtime | 5 / 5 | 19 | 2 | 221.6 | 1 |
+| Exit policy | 12 / 12 | 28 | 7 | 386.3 | 1 |
+| Project create | 7 / 7 | 22 | 6 | 318.8 | 1 |
+| Macros | 11 / 11 | 26 | 7 | 368.4 | 1 |
+| Import paste | 10 / 10 | 29 | 3 | 320.2 | 1 |
+| Devices | 11 / 11 | 26 | 7 | 357.8 | 1 |
+| Import QR | 8 / 8 | 26 | 7 | 333.7 | 1 |
+
+
+### Probe signature audit follow-up
+
+- A further code review found the first de-dup implementation keyed visible text/geometry but omitted interaction attributes. PR #151 now includes package, hint, enabled/clickable/long-clickable, focus, checked/selected, scrollable, and related accessibility fields in each node signature; a unit regression verifies that changing `long-clickable` or `enabled` creates a distinct signature.
+- Quick artifacts from superseded head `d4b9af4d7821675b0d1d0afdb652f717dcae26f6` (run #167) and the partial full run #168 are historical evidence only. They were cancelled after the signature was strengthened; the provisional table above must not be used as final acceptance evidence.
+- Latest probe head: `0406c01c2440d65cd726967744a3d45a27eb04dc`. Exact-head APK/JUnit run [#1159](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39386327606) passed. Fresh quick probe [#170](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39386327522) passed all ten directions; artifact-level results and the full-profile follow-up are recorded below.
+
+
+### Exact-head quick probe results and full-profile follow-up — 20 Oct 2026
+
+- All 10 directions on head `0406c01c2440d65cd726967744a3d45a27eb04dc` completed successfully in quick run [#170](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39386327522); the exact-head APK/JUnit run [#1159](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39386327606) also passed.
+- All ten `ui-audit.json` files report unique signatures equal to captured states, no probe error, and zero or one project-loading stall. Every quick run stopped at the depth/control/cycle boundary with `coverage_limited=true` and `coverage_complete=false`. This confirms the dedup/signature fix and probe execution; it does not establish complete Craft UI coverage.
+
+| Direction | States / unique | Transitions | Long-press controls | Long presses | Seconds | Loading stalls |
+|---|---:|---:|---:|---:|---:|---:|
+| Import paste | 18 / 18 | 46 | 12 | 3 | 630.5 | 0 |
+| Project create | 10 / 10 | 31 | 32 | 2 | 492.1 | 1 |
+| Import QR | 11 / 11 | 34 | 33 | 2 | 534.6 | 1 |
+| Exit policy | 13 / 13 | 36 | 33 | 2 | 537.7 | 1 |
+| FBD | 9 / 9 | 32 | 6 | 3 | 449.3 | 1 |
+| Runtime | 11 / 11 | 34 | 33 | 2 | 502.6 | 1 |
+| Macros | 9 / 9 | 22 | 8 | 3 | 322.4 | 0 |
+| Components | 11 / 11 | 28 | 143 | 8 | 383.5 | 0 |
+| Network | 11 / 11 | 34 | 33 | 2 | 524.9 | 1 |
+| Devices | 8 / 8 | 24 | 31 | 3 | 322.6 | 1 |
+
+- Dispatched full-profile run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39388319775) against the same exact head; it is in progress. Its artifacts must be reviewed per direction before accepting any coverage claim.
+- Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+
+### Interim checkpoint for full Craft run #171
+
+This historical checkpoint was superseded when run #171 finished. The final per-direction audit table and coverage limits are recorded under “Обновление статуса полного Craft UI probe #171 — финальный разбор” below. No active probe jobs remain.
+
+PR [#69](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/69) remains a draft and unmerged. Its old-base checks do not validate the current prototype, and GitHub reported `mergeable=false` against the then-current base. Its generic inverter/ordinal pin model conflicts with the richer typed graph; the narrower failed-save rollback was adapted to current code in draft PR #163. Do not merge PR #69 wholesale.
+
+Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+
+## Portable project media review — 20 Oct 2026
+
+- Reviewed open PRs [#38](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/38) and [#44](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/44). Their base chains are legacy branches; do not merge them wholesale into the unified prototype.
+- The prototype already contains `ProjectMediaService` and wires it into the UI paths: `MainActivity` resolves media for runtime playback/read, calls `importProjectBundle` on project import, and `exportProjectZipBundle` for ZIP export. The service currently uses stable project identity, per-import media generations, bounded reads, media resolution and staged publication/rollback. Its tests include basename collisions and metadata/background preservation, rejection/rollback cases, sources-deleted image/audio resolution followed by re-export, traversal rejection and generation replacement.
+- This supersedes the older service/test payload in PR #44; preserve the open legacy refs for now, but do not duplicate or merge them. The actual original-project acceptance remains open: import → edit → save → export → reopen for each supplied archive, including screens, background/media, bindings, FBD, network and device-slot records. Existing synthetic media tests are not that acceptance.
+
+
+## Craft component ID 3 source follow-up — 20 Oct 2026
+
+- Decompiled-source/Smali follow-up confirms the `mbCanvas.m(...)` factory explicitly handles IDs 1 and 2, then IDs 4–28; ID 3 falls through to its default branch, brings the existing canvases forward, and returns `null`. Reload, import and paste/copy call sites use this factory, so this path has no visible component mapping for ID 3.
+- Enumerated concrete `CustomComponents` classes expose IDs 1, 2 and 4–28; the helper class with ID 14 is a chart helper, not evidence for component ID 3. This still does **not** prove ID 3 is absent app-wide.
+- Keep unsupported ID 3 import fail-closed; do not invent a class or run behavior. Remaining source work: search all other component registries/factories, palette/resource adapters and original `.pro` samples for positive ID 3 evidence. Only a supported class+fields+behavior mapping should justify implementation.
+
+
+### ID 3 search in supplied project samples — 20 Oct 2026
+
+- Parsed the Library-provided projects `home2.pro`, `gitH.pro`, `пож.pro`, and `дом 2025.pro` embedded in its ZIP. Counts: 65, 65, 124 and 346 `TableComponent` records respectively; none contains a record with `componentId=3`.
+- `home2.zip` and `gitH.zip` each contain the paired `.pro` plus one image; their `.pro` files differ. `пож.zip` contains only an empty directory entry, while its separate `.pro` is the 124-component source. The 346-component `дом 2025.pro` is embedded in `дом 2025.zip`.
+- These examples provide no positive mapping for ID 3; absence in these projects does not resolve the app-wide mapping question. Keep it fail-closed and continue registry/factory/resource search.
+
+
+## Original project acceptance gap — 20 Oct 2026
+
+- Existing sanitized CI fixtures cover `home.pro` (24 components), `gitH.pro` (65 components) and standalone `пож.pro` (124 components). PR #166 now runs these through ZIP import → atomic save/reopen → export → re-import, checking component/screen counts, Craft source records and background bytes. It uses a fixture image payload and does not prove the original archives' exact media mapping or full runtime bindings.
+- The separately supplied `home2` and `дом 2025` archives remain outside this CI acceptance; `дом 2025` contains 346 component records. `пож.zip` has no media payload.
+- Remaining acceptance: add sanitized immutable versions of `home2` and `дом 2025` with checksums and expected record/screen/connection counts; verify unknown fields, inactive legacy bindings, original media/backgrounds, device slots and runtime bindings around a deterministic single-field edit. Keep missing-media, size/path, rollback and CRC failure checks intact. Add a focused API30 UI restart pass for a representative original-project fixture.
+- Do not claim original-project parity until these fixture-based gates pass. No raw Library archive has been copied into the repository.
+
+
+### FBD PR #69 selective-port review — 20 Oct 2026
+
+- Current prototype FBD is substantially richer than PR #69's original ordered/untyped graph: it retains named typed pins and unknown edge metadata; validates pin compatibility, occupancy, duplicate endpoints and cycles; renders a broader Craft block set; and already has source-aware timer modes, units and BLINK behavior. The prototype also has its own `invertOut`/`craftTimerUnit` schema. Do not port PR #69's generic boolean inverter, `bloodskyFbdInvertOut`, ordinal pin layout, old timer schema or remove-all-outgoing-edge behavior; those conflict with current semantics or lose edge-selection precision.
+- A narrow gap remains: current FBD connect and selected-edge disconnect mutate the graph and call `persistProject()`, which ignores the boolean returned by `persistProjectNow(false)`. Existing output inversion already performs a rollback. A future fix should snapshot only the typed edge graph and project metadata, use synchronous persistence result, restore safely on failure, and keep undo/redo history coherent. Add injected-save-failure tests for connect and disconnect, then run exact-head APK/JUnit and API30 UI smoke.
+- PR #69 remains open, draft and `mergeable=false`; its old-base checks are not evidence for the current prototype. Do not merge wholesale.
+
+
+#### Source archive manifest for future fixtures
+
+| Source project | Components | Used screen IDs (component counts) | Declared screens | `TableConnections` records | Device slots |
+|---|---:|---|---:|---:|---:|
+| `home2.pro` and paired ZIP | 65 | 1 (53), 2 (7), 3 (5) | 16 | 3 | 16 |
+| `gitH.pro` and paired ZIP | 65 | 1 (53), 2 (7), 3 (5) | 16 | 3 | 16 |
+| `пож.pro` (ZIP has no project/media payload) | 124 | 1 (21), 20 (103) | 16 | 1 | 16 |
+| `дом 2025.pro` embedded in ZIP | 346 | 1 (87), 3 (188), 4 (71) | 16 | 2 | 16 |
+
+These are record counts only; they do not assert the supported runtime semantics of each device/component or prove archive round-trip acceptance.
+
+
+## Обновление: приложенная декомпиляция Craft 1.0.7 — 20 Oct 2026
+
+- Проверен приложенный пользователем Apktool/JADX source archive; SHA-256: `92d12206bde746f5a76c89e0c3311119287b14bb26cdc8ca36d515e2fca01f7a`. Файл остался в пользовательском scratch и не копировался в репозиторий.
+- Независимый Smali cross-check: `smali/ru/himik/nightscream/kascada/mbCanvas.smali`, числовая фабрика `mbCanvas.m(...)`. Условия отдельно обрабатывают IDs 1 и 2; packed-switch покрывает 4–28; default для ID 3 поднимает существующие canvas views и возвращает `null`. Обнаружен и второй маршрут создания `private l(String,int,int,int)`: он выбирает palette-компоненты по строковым именам (`FB_TRIGGER`, `FB_XOR`, `MQTT_PUBLISHER`, `CustomGateway` и др.), создаёт соответствующие классы и сохраняет views в `MyApplication.D` (`SparseArray`). Это отдельный palette adapter, но он не связывает числовой ID 3 с классом. В двух DEX Smali-деревьях literal search нашёл все прямые `CustomComponents/...-><init>` места: вне самих компонентов они относятся к `mbCanvas`/его palette пути и helper-классам; поиски `Class.forName/newInstance`, `ClassLoader.loadClass`, `Constructor.newInstance` и `Method.invoke` не выявили отражённого создания компонентов. Это ограниченный поиск точных Smali opcode/reference patterns, не доказательство отсутствия произвольного obfuscated/indirect пути. Числовая фабрика остаётся fail-closed для ID 3.
+- Ни в приложенных проектных примерах, ни в ранее изученных пользовательских примерах не найдено положительного соответствия ID 3. Числовая фабрика и строковая palette adapter проверены; поиск точных reflective class-construction patterns также завершён. Оставить ID 3 видимым неподдерживаемым/отключённым placeholder и не назначать тип по догадке. Осталось найти реальный Craft проект/каталог с таким ID либо подтверждение из другой версии приложения.
+
+## Обновление: FBD rollback PR #163 — 20 Oct 2026
+
+- Создан узкий draft PR [#163](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/163) в `prototype/all-in-one-20261020`, head `8f7b71339fea7dc65d1afc339e6febbeaa75df10`. Он переносит только атомарность сохранения connect/disconnect рёбер в модель текущего прототипа: неуспешная запись или исключение восстанавливает typed edge JSON и метаданные; undo snapshot добавляется только после успешного сохранения.
+- Точный head прошёл APK/JUnit [#1162](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39392446480). API 30 smoke [#786](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39392008943) прошёл на runtime-identical commit `6568d9a92a6246f31d2548340956a8420b879db4`; последующие коммиты PR меняли только тесты. PR #163 принят и squash-слит в prototype как `91e9996b6fb4904ae2429b1d217604b8a32aa0e5`.
+- PR #69 по-прежнему не вливать целиком: его старая модель рёбер и инвертора несовместима с более богатой текущей FBD-моделью. #163 — адаптированный узкий фикс, а не перенос PR #69.
+
+## Обновление статуса полного Craft UI probe #171 — 20 Oct 2026
+
+- Проверка run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39388319775) подтверждает head `0406c01c2440d65cd726967744a3d45a27eb04dc`. На момент записи завершены 3 из 10 направлений: FBD, exit-policy и macros; остальные 7 ещё в работе.
+- Для FBD: 16/16 уникальных состояний, 115 переходов, 230 доступных long-press controls / 82 выполненных long presses, 1766.4 с, 0 stalled states. Для exit-policy: 15/15, 61, 35/2, 953.2 с, 0 stalls. Для macros: 5/5, 32, 29/3, 484.6 с, 0 stalls. Во всех трёх отчётах нет probe errors; прогоны остановились на depth/control/cycle boundary с `coverage_complete=false`. Это навигационные наблюдения, не доказательство полного UI-паритета.
+- После завершения оставшихся семи направлений перепроверить каждый `ui-audit.json`, добавить все 10 строк и сохранить фактические ограничения покрытия. Главная ветка остаётся на зафиксированном SHA `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+
+
+### Дополнение к source audit ID 3 — 20 Oct 2026
+
+- В двух DEX-деревьях найдено 27 классов, реализующих `CustomComponents/z` и `getIdComponent()`. Их constructor defaults для возвращаемого ID соответствуют 1, 2 и 4–28; ни один default не задаёт ID 3. В нескольких классах соответствующее поле может позднее получить значение из parsed/passed data, поэтому это не раскрывает смысл сериализованного ID 3 и не заменяет поиск реального проекта/каталога с таким ID.
+
+
+## Обновление статуса полного Craft UI probe #171 — финальный разбор
+
+Run [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39388319775) завершился с успехом для всех 10 jobs. Каждый артефакт указывает на один и тот же probe SHA `0406c01c2440d65cd726967744a3d45a27eb04dc`. В каждой строке ниже `unique states = captured states`, `probe_error=""`; однако все отчёты отмечают `coverage_limited=true` и `coverage_complete=false`.
+
+| Направление | Состояния / уникальные | Переходы | Long-press controls / actions | Секунды | Stalls | Seed | Остановка |
+|---|---:|---:|---:|---:|---:|---|---|
+| FBD | 16 / 16 | 115 | 230 / 82 | 1766.4 | 0 | success (21.2s) | depth/control/cycle limit |
+| Exit policy | 15 / 15 | 61 | 35 / 2 | 953.2 | 0 | не запускался | depth/control/cycle limit |
+| Macros | 5 / 5 | 32 | 29 / 3 | 484.6 | 0 | success (26.6s) | depth/control/cycle limit |
+| Runtime | 22 / 22 | 134 | 479 / 109 | 2839.3 | 0 | success (26.4s) | depth/control/cycle limit |
+| Network | 22 / 22 | 151 | 478 / 134 | 3003.8 | 0 | success (22.0s) | runtime limit |
+| Components | 36 / 36 | 177 | 263 / 34 | 3004.1 | 0 | success (22.2s) | runtime limit |
+| Import QR | 26 / 26 | 141 | 426 / 118 | 3092.0 | 1 | не запускался | runtime limit |
+| Devices | 22 / 22 | 136 | 403 / 97 | 3077.0 | 0 | success (26.0s) | runtime limit |
+| Project create | 20 / 20 | 133 | 452 / 117 | 3055.8 | 0 | success (24.0s) | runtime limit |
+| Import paste | 30 / 30 | 161 | 427 / 111 | 3090.8 | 1 | не запускался | runtime limit |
+
+В таблице шесть направлений завершились по 3000-секундному runtime cap; фактическое elapsed может превышать его из-за teardown и записи отчёта. Четыре завершились на границе глубины/контролов/цикла. Import QR и import paste дали по одному stalled state. Успешный статус job означает успешное выполнение probe и загрузку артефакта, не завершение покрытия и не UI-паритет.
+
+Разбор stall-снимков: оба флага относятся к краткому loading overlay на побочном пути создания проекта, а не к подтверждённой длительной блокировке. В Import QR `state-004` показывает меню проекта на PNG, несмотря на XML с `Загрузка проекта, подождите...`; следующий `state-005` после альтернативного CANCEL пути также уже содержит меню. В Import paste `state-009` показывает редактор/тост `The project default Created`, а следующий `state-010` — меню проекта. Логи не содержат исключений. Probe ставит флаг regex-проверкой в момент снимка; 90-секундный persistence wait работает только внутри `seed_project()`, а seed для этих двух направлений не запускался. Это transient loading-overlay observations, не evidence о persistent hang.
+
+
+## P1 sanitized Craft ZIP acceptance — 20 Oct 2026
+
+- PR [#164](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/164) добавил in-memory sanitized Craft ZIP через production import bundle, редактирование, atomic save/reopen, export и повторный import. Тест сравнивает сохранённое `craftSource`, проверяет vendor-поля, fail-closed placeholder для неизвестного ID 3 и исходные байты фонового media. PR слит в prototype как `822f4fb1a60872bf85c4f7077655fa1745185c09`; exact-head APK/JUnit [#1165](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39394794516) прошёл на `744a199f91d2a728dfc778cfbe349a067fc1b190`. UI smoke #791 пропущен path filter, так как менялись только тесты.
+- PR [#165](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/165) добавил явную проверку сохранения обеих исходных Craft component rows на интегрированной базе; APK/JUnit [#1166](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39395670323) и Android 11 UI smoke [#794](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39395670292) прошли. PR слит как `b8c0c84860ecc6a5ecbc290d2d3199861e6420ad`.
+- PR [#166](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/166) расширил ZIP round-trip на три обезличенных каталожных fixture `home`, `gitH`, `пож`: проверяются 24/65/124 component rows, 16/16/20 screens, исходный `craftSource`, явное изменение проекта и байты background media. Exact-head APK/JUnit [#1167](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39396050898) passed; PR слит в prototype как `2a6fda2b864dfeed437dd11e390672fe308394ce`. UI smoke #797 запущен отдельно и проверяется.
+- Эти sanitized fixtures закрывают ZIP round-trip для трёх проектных JSON-примеров, но не полную приёмку отсутствующих `home2` и `дом 2025` архивов, runtime bindings или аппаратного поведения. Оригинальные пользовательские архивы не добавлялись в репозиторий.
+
+
+## Финальная интеграционная проверка текущего prototype — 20 Oct 2026
+
+- Последний code/test integration commit: `2a6fda2b864dfeed437dd11e390672fe308394ce`; этот progress-log checkpoint записан отдельным documentation-only commit. PR #163 FBD rollback, PR #164 sanitized ZIP acceptance, PR #165 интеграционная проверка и PR #166 round-trip трёх sanitized fixtures слиты только в `prototype/all-in-one-20261020`.
+- Интегрированный PR #165 прошёл APK/JUnit #1166 и Android 11 UI smoke #794 на merge ref; PR #166 прошёл exact-head APK/JUnit #1167. UI smoke #797 для #166 выполняется отдельно после merge и не заменяет JUnit.
+- PR #69 остаётся открытым и не слит: переносить целиком несовместимую старую FBD-модель нельзя. Узкий rollback уже реализован и принят через #163.
+- Full Craft UI probe #171 остаётся только частичным навигационным evidence: все 10 jobs успешны, но все направления имеют `coverage_limited=true` и `coverage_complete=false`; полной UI-паритетности не заявлять.
+- `main` не менялась и остаётся `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+
+## Branch convergence review — 20 Oct 2026
+
+- Confirmed current integration head: `prototype/all-in-one-20261020` at `cd9188fe757fdcd917b515bd1dcc3e2b5db6ac96`. Stable `main` remains exactly `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+- There are 9 open PRs: #151, #150, #149, #74, #73, #69, #46, #44 and #38. They are not nine ready-to-merge feature batches; several are probe-only, stacked on older heads, or superseded by newer prototype implementations.
+- #149–#151 are original-Craft emulator probe/tooling branches. Keep them separate from app runtime until their artifacts are accepted; they provide evidence, not application features.
+- #69 is not safe to merge wholesale. Its ordered/untyped graph and ordinal pin/inversion model conflicts with the prototype's typed, named-pin graph. The current prototype already has source-aware FBD menus, timer units/modes and selected-edge edits; the narrow save-failure rollback was adapted and merged through #163.
+- #44's older ZIP media service is superseded by the prototype's generation-based media service and newer ZIP acceptance coverage (#164–#166). #46's backup/rename transaction is based on the older service model and must not overwrite generation isolation without a separate demonstrated bug.
+- #73 adds timer-boundary assertions already present in `FbdPropertyEditsTest`; importing it would duplicate existing coverage. #74 is cloud-agent tooling stacked on the old #69 branch, not an app-runtime feature.
+- #38 is a legacy batch branch. Do not merge its old MainActivity wholesale; map any remaining unique feature against current code before porting.
+- User direction: prioritize consolidating app implementation now. Testing the user's original project archives is deferred to final-app acceptance; do not add those raw archives to the public repository.
+- Next integration rule: port only a clearly missing, bounded feature from a branch, or mark it superseded after confirming equivalent current code/tests. Run exact-head APK/JUnit and UI smoke for runtime/UI changes; leave `main` untouched.
+
+
+### USB/RTU branch check — 20 Oct 2026
+
+- Inspected the USB portion of legacy PR #38 against the current prototype. It manually opens the first attached USB device, selects the first interface and bulk endpoints, and sends a fixed single-register request. The dialog stores baud/parity/stop-bit settings, but this code does not apply them through a serial driver. The current app has no USB serial library or USB transport integration; `ModbusRtuClient` is only a protocol client over already-open byte streams.
+- Do not merge the PR #38 USB code as-is or report USB RTU as implemented. The supported next implementation must use a serial driver, request Android USB permission, apply serial parameters, and connect the existing `ModbusRtuClient` to the opened port; device hardware acceptance remains a separate gate.
+- User direction: defer original project archive testing to final-app acceptance and prioritize app implementation/convergence meanwhile.
+
+
+## Continuation checkpoint — 20 Oct 2026, 14:26 Yekaterinburg
+
+- Integration cleanup is recorded at `a58997c` on `prototype/all-in-one-20261020`; stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+- Removed five unused cloud-agent/DeepSeek workflows from the integration branch and closed superseded PRs #38, #44, #46, #69, #73 and #74. Open PRs #149–151 are retained as original-app evidence probes.
+- A fresh inventory still shows 43 branch refs. They have not been deleted; keep them available as history until a supported ref-deletion operation is available. The integration line remains the only working app prototype.
+- Reviewed the newly supplied decoded source archive (SHA-256 `92d12206bde746f5a76c89e0c3311119287b14bb26cdc8ca36d515e2fca01f7a`). It exposes Craft's USB serial call path and supported CDC ACM, CH34x, CP21xx, FTDI and Prolific drivers. Craft requests USB permission, opens a serial port, applies baud/data/stop/parity settings, then exchanges RTU frames.
+- BLOODSKY still has a stream-level `ModbusRtuClient`, without USB host permission/driver ownership or a device lifecycle. Implement that adapter as the next focused code slice; do not transplant old PR #38 wholesale. Require fake-port tests, exact-head APK/JUnit and UI evidence before calling the runtime path integrated. Hardware acceptance remains separate.
+- This checkpoint changed documentation/workflows only; no Android code changed and no new APK run was started.
+
+
+## USB serial RTU implementation checkpoint — 20 Oct 2026
+
+- Starting point confirmed at `prototype/all-in-one-20261020` SHA `663ec0fdf62ec1be6ec224b45cfc7ea15f82e7ec`; `main` remains pinned to `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+- Local feature branch `feature/usb-serial-rtu-20261020` contains commit `e855961d93ee5d61890725d9f355dd22fd999902`. It adds the pinned upstream `usb-serial-for-android` 3.11.0 dependency and MIT attribution, optional USB-host feature declaration, validated serial framing settings, an explicit-device USB permission/open/detach lifecycle, a serial-port adapter around `ModbusRtuClient`, and fake-port JVM tests for RTU request/response, UART mapping, timeout/error and close behavior.
+- The connector is an API slice only: it exposes device enumeration and cancellable connection creation, but no editor UI or project-binding integration is enabled. Imported USB bindings remain inactive. RTU read support remains FC01–FC04; write functions and physical adapter behavior are not implemented/verified by this change.
+- Validation attempted locally: `git diff --check` passed. Python discovery ran 164 tests and reported 4 failures / 26 errors tied to missing generated Craft reference files and removed workflow/resource expectations; the failing cases did not target the new Java code. Android unit tests/APK build could not run because this environment has no Gradle executable, Gradle wrapper, Java compiler, or configured Android SDK.
+- Exact-head GitHub validation is pending publication of the feature branch. No change was made to the remote prototype or stable `main` in this checkpoint.
+
+- Draft PR [#167](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/167) targets the prototype. Initial APK/JUnit run [#1168](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39403487628) exposed stale Python checks that still required intentionally removed cloud-agent workflows. Updated those checks to assert the automation stays disabled and labeled the old pilot document as paused/history. Exact-head run [#1170](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39404204508) passed the full Python suite, Android unit tests, and debug APK build. Its compiler caught an inner-class constructor reference error in `UsbSerialConnector`; moved connection opening to the outer connector and kept cancellation/resource cleanup explicit.
+- Exact-head Android 11 UI smoke [#801](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39404400404) passed its quick FBD regression profile. The earlier smoke build failure [#798](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39403487707) is superseded by this passing run. No physical USB serial adapter was available, so adapter communication and unplug/reconnect remain unverified hardware gates.
+
+### Final status
+
+- PR [#167](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/167) was merged into `prototype/all-in-one-20261020` as merge commit `c34ab0811460c244d648f58c56ddbfd93d6c0379`. The prototype now includes the USB serial API slice; stable `main` remains pinned to `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+- A documentation-only follow-up restored the complete progress log after the prior long-file transfer was truncated and recorded this final status. No application code changed after the successful exact-head build and smoke run.
+
+
+## USB Modbus RTU writes — 20 Oct 2026
+
+- PR [#168](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/168) adds FC05/FC06 single coil/register writes, FC0F/FC10 batch writes, and FC22 mask writes to `ModbusRtuClient`, then exposes them through the USB session/connection. RTU replies must pass CRC and exact acknowledgement checks; the transaction keeps the existing bounded deadline.
+- Exact-head APK/JUnit [#1175](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39406473632) and Android 11 UI smoke [#808](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39406651996) passed. The smoke is the existing quick FBD regression, not a USB hardware test.
+- PR #168 was merged into `prototype/all-in-one-20261020` as `e337bd86e9cb4af4480d34815abea1c500e55338`. Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`. Project bindings/UI and physical adapter acceptance remain open.
+
+
+## Manual USB RTU screen — 20 Oct 2026
+
+- Added a home-menu entry for a separate USB serial Modbus RTU screen. The operator refreshes supported devices, chooses one adapter, selects baud/parity/stop bits, and explicitly connects; Android USB permission is requested for that selection.
+- Added manual FC03/FC04 register reads with unit/address/quantity validation and visible results, plus disconnect. No project widget binding is activated, and this screen does not issue writes.
+- Back to home, explicit disconnect, and Activity destruction close the owned session. A generation guard closes a late successful connect if the operator has already left the screen.
+- Python suite: 164 tests passed after preparing the pinned Craft reference resources. Local Android Gradle tests/build were not available (no wrapper or installed Gradle); exact-head GitHub Actions APK/JUnit and Android UI smoke are pending.
+- No physical USB adapter or visual parity comparison against Craft was performed. Stable `main` remains pinned at `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+
+## Manual USB RTU screen accepted — 20 Oct 2026
+
+- PR [#169](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/169) merged to `prototype/all-in-one-20261020` as `d42f24aa30f90454bb912cb23c1e7005da593df8`. It adds an explicit manual USB serial Modbus RTU screen for device selection, line settings, connect/disconnect, and FC03/FC04 reads. Imported project bindings remain inactive; no writes are issued by this UI.
+- Exact-head APK/JUnit [#1176](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39407984324) passed Python checks, Android unit tests, and debug APK build. Existing Android 11 quick UI smoke [#810](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39407984254) passed; that profile did not navigate to the USB screen.
+- PR [#170](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/170) then added a hardware-independent USB screen navigation check to the quick UI profile. It merged as `2a63e73ce8d0306f12b604df0be8fbac3a9e183f`; exact-head APK/JUnit [#1177](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39408807345) and Android 11 smoke [#811](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39408807324) both passed. The smoke opened the screen, scrolled to Connect, captured it, and returned home.
+- No USB permission grant, serial transaction, physical adapter, or original-app visual parity was tested. Stable `main` remains pinned at `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+
+## Craft sensor block source drawings — 20 Oct 2026
+
+- Added default source-backed canvas rendering for `FBD CRAFT SENSOR ORIENTATION` and `FBD CRAFT SUNRISE`, based on original `Sensor_Orientation.onDraw/onMeasure`, `Sunrise_GPS.onDraw/onMeasure`, and `OriginalFbdDrawing.draw11`.
+- The caption follows imported axis (`ORIENTATION_X/Y/Z`) and sunrise mode (`SR/SS`). Source-shaped gray body, black outline, and centered Q output are retained; a user-edited caption still uses the editable BLOODSKY appearance.
+- Added JUnit regressions for type coverage, dynamic labels, and custom-caption fallback. Updated the source matrix; the rows remain partial visual parity because there is no same-density side-by-side comparison.
+- PR [#171](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/171) merged to `prototype/all-in-one-20261020` as `62fc2cf91af0355ccaf34ccceae8bdb9e8b56454`.
+- Exact-head APK/JUnit [#1179](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39410385567) passed Python checks, all 503 Android unit tests, and debug APK build. Exact-head Android 11 smoke [#817](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39410545060) passed.
+- Initial APK run #1178 found a test-fixture mismatch: the fixture selected `SS` while retaining text `SR`. The test now asserts custom-caption fallback and then source skin for `SS`; rerun #1179 passed.
+- Local Gradle is unavailable in this checkout. Same-density side-by-side comparison was not performed; visual parity remains partial. Stable `main` remains pinned at `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+
+## Craft light and speed source drawings — 20 Oct 2026
+
+- Extended the same original `draw11` default source skin to `FBD CRAFT SENSOR LIGHT` (`LM`) and `FBD CRAFT SENSOR SPEED` (`SM`). Both expose only the original centered `Q` output and no inputs.
+- Added type/default-caption/pin regression assertions and source matrix rows. No project fields or runtime behavior changed.
+- PR [#172](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/172) merged as `4311ca8d242008f220f0b065be91b09b927e5496`.
+- Exact-head APK/JUnit [#1180](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39411272536) and Android 11 smoke [#818](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39411272541) passed. Local Python gate also passed 164 tests; Gradle is unavailable in the checkout.
+- Visual parity remains partial until same-density comparison.
+
+
+## Craft ODTEMP source drawing — 20 Oct 2026
+
+- Added ODTEMP's original `draw12` default drawing to the same simple source skin: fixed `DT` label, gray body, black outline, and one centered `Q` output. Its source drawing does not add an inversion bubble, so the simple-source rendering suppresses it.
+- Added regression coverage for source type, default caption, and pin contract. Runtime and project metadata are unchanged.
+- Exact-head APK/JUnit [#1181](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39412029438) passed Python checks, all 503 Android unit tests, and debug APK build. Exact-head Android 11 smoke [#819](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39412029888) passed.
+- Local Python gate passed 164 tests and `git diff --check` passed. Visual parity remains partial until same-density comparison. PR [#173](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/173) merged as `585c8529397bf2d2c19b2541dee0c72552d654fd`.
+
+
+## Craft variable block source drawings — 20 Oct 2026
+
+- Added default source-shaped drawings for all eight register and named-variable block types: BOOL, INT, FLOAT, input and output, and named variable input/output.
+- Shape follows the source family: rectangle for BOOL, rounded rectangle for INT, beveled body for FLOAT, and directional polygons for named variables. Captions follow imported `reg`, `bit`, constant, and variable-name fields; custom captions remain editable.
+- Added regressions for the full type family, metadata-derived captions, custom-caption fallback, and pin contracts. Source matrix marks parity partial pending same-density comparison.
+- Local Python tools suite passed 164 tests and `git diff --check` passed. Exact-head APK/JUnit [#1183](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39413007080) and [#1184](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39413210400) passed; Android 11 UI smoke [#822](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39413210428) passed. PR [#174](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/174) merged as `0e9d47c36e14966872c36d8ae3571d99fc1ce5f8`.
+
+
+## Explicit USB RTU project bindings — 20 Oct 2026
+
+- Added strict `usb://<unit>/<register>` endpoints for Craft register variable sources and `FBD Вход`. Zero-based register addresses and standard 3xxxx/4xxxx prefixes map to FC03/FC04; invalid units, quantities, addresses, and URI components fail closed. Other widget integrations continue to accept TCP only.
+- The selected USB RTU session now remains open when returning to home so an operator can load a project; reopening USB settings, disconnecting, or destroying the Activity closes it. USB polling and Craft register variable writes share the existing serialized Modbus executor. Missing sessions surface `ERR: USB RTU не подключён`. Imported Craft metadata is preserved and never auto-converted to an active USB URI.
+- Added parser unit tests and updated the home lifecycle source contract. Local Python suite: 164 tests passed; `git diff --check` passed. Local Android unit tests/APK build are not available because this checkout has no Gradle wrapper or installed Gradle. Exact-head APK/JUnit #1186 and #1187 passed, as did Android 11 UI smoke #825. PR #175 merged to `prototype/all-in-one-20261020` as `976b0afbdb2086132fb38bc05aeb8e37d0480aa2`. No physical USB adapter or original-app visual comparison was performed. Stable `main` remains pinned at `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+
+### Craft BOOL output inversion — 2026-10-20
+
+- Extended Craft `invertOut` evaluation to source-backed BOOL Q blocks: RS, trigger, timer/BLINK, compare, and change detectors. Inversion applies only with complete, type-compatible inputs; numeric outputs stay closed.
+- Added regression coverage for compare inversion, incomplete wiring, mismatched signal types, and numeric output exclusions. Local Python suite: 164 passed. APK/JUnit #1188 and Android 11 UI smoke #826 passed on exact head `1f2aaa27bac7b3ce9519a3e21f9bd5e2695b7626`.
+- PR #176 merged into `prototype/all-in-one-20261020` as `9d8c792328da7e81b8e1431da1c1b4c0d2ba2630`. Craft bubble geometry remains unverified against original screenshots.
+
+### Project media picker portability — 2026-10-20
+
+- New image/audio selections are copied off the UI thread into the active project's private media generation and referenced by relative `media/asset_<sha256>.<ext>` paths. Copies are deduplicated, atomic, bounded by 10 MiB per file/total and 2,048 files; the property editor waits for pending copies before Apply. Existing ZIP packaging handles these paths.
+- Android unit tests cover copy, dedupe, project isolation, resolving references, empty files, and size limits. Local Python suite: 164 passed. APK/JUnit #1193 and Android 11 UI smoke #831 passed on exact head `3d77e6e3a1148b03dc92f244a242778fcea6023d`.
+- PR #177 merged into `prototype/all-in-one-20261020` as `42984dd2b33979133e7ead5f66405f1f31bc2265`. Activity recreation does not restore an open property dialog or pending picker target; canceling edits can leave an unreferenced private copy. Previously saved external content URI references are unchanged.
+- Stable `main` remains pinned at `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+## Craft alarm asynchronous playback and USB detach test — 2026-10-20
+
+- PR #179 added a latch-backed fake-port regression for USB RTU detach during an active read. Closing the session unblocks the read and closes the port exactly once. Exact-head APK/JUnit #1195 and Android 11 UI smoke #833 passed. Merged into \`prototype/all-in-one-20261020\` as \`3b65ccc4cc12c3773fce51e09e35330799238e49\`.
+- PR #178 moved Craft alarm playback to \`MediaPlayer.prepareAsync()\` for built-in, provider URI and project media sources. Prepared/error/completion callbacks verify player identity; lifecycle and fallback paths release owned resources. Exact-head APK/JUnit #1197 and Android 11 UI smoke #836 passed. The local Python suite passed 165 tests; \`git diff --check\` passed. Merged into \`prototype/all-in-one-20261020\` as \`da16f5345901699ed1f29e74da7e6d2015396126\`.
+- The local container has no \`gradle\` executable or Gradle wrapper, so Android validation came from the exact-head CI runs. Physical USB adapter testing remains separate; the new test simulates detach through a fake serial port.
+- Stable \`main\` remains pinned at \`b11fbb9b9bdb35cacbcd466d57d414071d94aa5e\`.
+
+## Canceled project media cleanup — 2026-10-20
+
+- PR #180 tracks whether a picker copy created a new file and removes it on property-dialog dismissal only if the saved active project does not reference that generated path. Dedupe results and any saved JSON reference are retained. A late picker-copy callback also cleans its new unreferenced file if its dialog is already gone.
+- Exact-head APK/JUnit #1198 and Android 11 UI smoke #837 passed. The Python source contract and JUnit cover dialog callback wiring, dedupe, saved-reference preservation and deletion of an unreferenced copy. Merged into \`prototype/all-in-one-20261020\` as \`3dcc7ad5801565bd956e6c18c1a4f172a0588e9a\`.
+- Restoring the open properties dialog and picker target after Activity recreation remains separate work. Stable \`main\` remains pinned at \`b11fbb9b9bdb35cacbcd466d57d414071d94aa5e\`.
+
+## Media property picker Activity restoration — 20 Oct 2026
+
+- PR [#181](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/181) restores the widget properties dialog after Activity recreation while the system media picker is open. It saves the selected widget, media field path, and pending EditText, checkbox, and spinner values, then reopens the editor and dialog before the picker result is handled.
+- Exact-head APK/JUnit run [#1199](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39423529824) passed on `df0529c61eb0a1f8e0096afcb02cd8300117bd7f`; debug APK artifact [12264592473](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39423529824).
+- Exact-head Android 11 UI smoke [#838](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39423529942) passed. The current quick profile does not specifically kill the Activity while DocumentsUI is open, so that exact lifecycle handoff still lacks dedicated emulator coverage.
+- Merged into `prototype/all-in-one-20261020` as `396b820a6343b9ac5b60158cfc9cb79e3f1c8c78`. Stable `main` remains pinned at `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+
+## Media picker process-death smoke — 20 Oct 2026
+
+- PR [#182](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/182) adds full Android 11 UI coverage for restoring the multi-position photo properties dialog, pending caption, and original image field after a PNG is selected from DocumentsUI following app-process death.
+- Run [#842](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39424628594) failed because the smoke used `am kill`; on this Android 11 emulator it force-stopped the package, and logcat recorded `Force removing ActivityRecord ... app died, no saved state`. This test-driver command discarded the Activity state that the scenario was meant to exercise.
+- Fixed the smoke on a separate branch by terminating the background process PID directly, leaving the task and its saved Activity state available to Android. PR [#183](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/183) was used to validate and transfer that exact commit.
+- On exact HEAD `caad4946432f6c72b66864db9ca9bfb10878d747`, APK/JUnit [#1203](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39427122797) and full Android 11 UI smoke [#843](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39427122767) passed. The follow-up APK/JUnit triggered on PR #182 also passed [#1204](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39427959933).
+- PR #182 merged into `prototype/all-in-one-20261020` as `755f020b1ecbdf3aaf04b7b13356cb8c1a6ad6b5`. Stable `main` remains at `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+
+## Единая матрица готовности — 20 Oct 2026
+
+- Добавлена и влита в prototype матрица [#184](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/184) (`a33365b510783a1cc042adcc6c1357f14a9a5c1c`), файл `docs/BLOODSKY_UNIFIED_ACCEPTANCE_MATRIX_20261020.md`.
+- Матрица объединяет 37 проверяемых требований по HMI, проектам, FBD, системным регистрам, компонентам, протоколам, устройствам, дополнительным функциям и приёмке. Единая формула: полный вес требований со статусом «Принято полностью» / общий вес; P0=5, P1=3, P2=1. На эту ревизию закрыт один узкий сценарий Activity recreation (вес 5 из 139), общий результат 3,6%. Автоматические тесты без завершённой строки приёмки не дают частичного процента.
+- Приоритеты и доказательства приведены к источникам/тестам, не к старым статусам. USB/Bluetooth/PLC и same-density visual parity остаются отдельно незакрыты.
+- Обновлённое состояние GitHub: #182 влит и закрыт; #149–151 остаются открытыми draft research PR на отдельных stacked ветках. Стабильный `main` всё ещё `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`. Последний релиз — `kascada-analysis-1`; нового пользовательского release APK нет. Текущий доступный проверенный debug APK/JUnit artifact — run [#1203](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39427122797) на кодовом HEAD `caad4946432f6c72b66864db9ca9bfb10878d747`.
+- Перезапущена углублённая Craft FBD-навигация run [#172](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39429941170), потому что предыдущий quick artifact показал `coverage_complete=false`, не создавал проект и не доходил до FBD. Новая ветка включает full profile для направления FBD; на момент записи десять UI jobs ещё обходят оригинальный UI. Дождаться артефактов и отдельно оценить `coverage_complete`, seed и переходы перед утверждением охвата.
+- Точный HEAD APK/JUnit run #1205 на probe branch завершился до Gradle: шаг Set up Android SDK не смог загрузить command-line tools (HTTP 502 от Google после обнаружения несовпадающей preinstalled sdkmanager); SDK install aborted. Это runner/dependency download failure, тесты не стартовали. Перезапущен только упавший job (attempt 2); результат ожидается. Не приравнивать к дефекту приложения и не считать проверку пройденной до успешного повтора.
+- Следующий шаг: разобрать artifact #172, получить успешную exact-head APK/JUnit проверку исследовательского HEAD, затем продолжить первый источник-подтверждённый кодовый пробел по FBD или регистрам и обновить матрицу по результатам.
+
+
+
+## USB serial status corrected from current source — 20 Oct 2026
+
+- Re-audit of current prototype source found the USB implementation was already present despite stale “not implemented” wording in the older transport audit: explicit device enumeration/selection and permission flow, configured serial port, RTU session read/write, detach/error cleanup, a manual diagnostic screen and USB-bound operator writes.
+- Existing fake-port tests cover UART settings, RTU read/write, timeout, error close, detach unblock and repeated close; binding parsing also has tests. No USB serial adapter is available, and Android UsbManager integration/physical PLC acceptance remain open.
+- Updated the single readiness matrix to status “Код реализован, проверки не завершены”; total readiness remains 3.6% because this criterion has no full acceptance weight until the Android/device gates pass. Updated the transport audit to separate current source from its historical checkpoint.
+- Next USB step is Android instrumentation for permission/denial/cancellation and real detach, followed by physical adapter/PLC acceptance when hardware is available. This does not close the separate 16-slot device-manager requirement.
+
+
+
+## USB transport acceptance evidence corrected — 20 Oct 2026
+
+- The prototype’s USB transport and explicit project bindings were already implemented before this audit. Confirmed merged slices: #167 (connector/session), #168 (RTU writes), #169–170 (manual UI and navigation smoke), #175 (explicit USB endpoints through supported HMI/FBD register paths), and #179 (active-read detach regression). Exact APK/JUnit and relevant Android UI smoke runs passed: #1170/#801, #1175/#808, #1176–1177/#810–811, #1186–1187/#825, and #1195/#833. Details are recorded in `USB_SERIAL_IMPLEMENTATION_SLICE_20261020.md`.
+- The USB fake-port tests are not physical-device proof. Android UsbManager permission/broadcast instrumentation, Activity lifecycle at the permission boundary, and real adapter/PLC read/write/unplug/reconnect remain open. No adapter is currently available. The 16-slot manager is still a separate requirement.
+- PR [#186](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/186) reconciled the old transport audit and readiness row with current source; code status is “implemented, verification incomplete” and overall weighted readiness remains **3.6%**.
+- APK/JUnit run #1205’s first attempt failed before Gradle because Google’s command-line-tools download returned HTTP 502. The targeted second attempt passed. This applies to the research PR #151 merge ref and does not substitute for product prototype validation.
+- Original Craft probe #172: nine of ten directions have completed successfully; the FBD direction is still running the full profile. No completion/coverage claim until its `ui-audit.json` is inspected.
+
+
+
+## Artifact audit and Android 12 CI continuation — 20 Oct 2026
+
+- Audited all ten **Craft emulator probe #172** ZIP artifacts and each `ui-audit.json` / available screen evidence. Only FBD used the full profile (22 unique states, 142 transitions, 125 long presses; ended at a 3,096 s runtime limit). All nine other directions used a quick profile and exposed only 7–17 states each; none reached `coverage_complete=true`. Report and artifact IDs: [CRAFT_PROBE_172_ARTIFACT_AUDIT_20261020.md](CRAFT_PROBE_172_ARTIFACT_AUDIT_20261020.md). The original license screen is an explicit offline blocker; do not infer original FBD/device/macro parity from this probe. The exploration PRs #149–151 remain open pending a targeted, source-backed consolidation.
+- Android 12 PR [#188](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/188): exact-head APK/JUnit [#1219](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39449531746) passed; Android 12 full smoke [#859](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39449531287) **failed** at `UI target not found: Выход FBD`. Artifact `last-ui.xml`, saved project JSON and failure screenshot show that the source block was never selected: editor stayed in the source-selection mode. The test tapped `x+9, y+9` in the corner/pin gutter. Commits `4b636b68a5c934fa8b80d7d0300ea069a071f46f` and `eefa0469b8a2193c8c4dc836f59af5b31032c52d` update the FBD source tap to an interior position and add a coordinate regression. APK/JUnit [#1221](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39452421272) passed; full Android 12 UI smoke [#861](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39452421413) is awaiting final evaluation at this checkpoint. Do not merge #188 or count Android 12 acceptance until that exact-head UI test passes.
+- A debug APK with *all prototype-integrated product code* exists in successful run [#1203](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39427122797), app code commit `caad4946432f6c72b66864db9ca9bfb10878d747`. GitHub commit comparison showed subsequent prototype differences were restricted to the four audit/documentation Markdown files, so this APK matches the tested product code of the current unified branch. This is a testing artifact, not a final signed release and not hardware acceptance.
+- The stable `main` remained on `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`. Unified acceptance stays at **5/139 = 3.6%**. Next action: inspect the outcome/logs/artifacts of #861; only if successful and PR diff remains safe merge #188 into the prototype. Otherwise fix the next observed failure, rerun targeted checks, and keep the stable branch untouched.
+
+
+## Native Craft CTU edge-state persistence — 20 Oct 2026
+
+- PR [#189](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/189) was merged into the unified prototype as `aa8d1aef07755fcb63218b439dedc27fe3729091`.
+- Native `FBD CRAFT CTU` now serializes the independent `+` and `−` edge latches with its 16-bit counter. Older project records default absent fields to false. The legacy `FBD CTU` (`CU/R/PV`) schema is unchanged.
+- Regression coverage verifies JSON round-trip, a held `+` input after reopen does not recount, legacy counter state remains unchanged, and unknown vendor metadata is preserved.
+- Exact-head APK/JUnit run [#1223](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39453546045) passed on `144086dc39253078cbb53ed5066b43c79f33dd25`; debug APK artifact ID `12277999515`. UI run #863 was skipped by the workflow profile; no UI behavior changed.
+- This closes only the CTU edge-latch persistence slice. FBD-01 remains partial; unified acceptance remains **5/139 = 3.6%**.
+- The Craft probe artifact audit is recorded in [CRAFT_PROBE_172_ARTIFACT_AUDIT_20261020.md](CRAFT_PROBE_172_ARTIFACT_AUDIT_20261020.md): all ten artifacts were opened, but all ten report `coverage_complete=false`; no direction is exhaustive.
+- Android 12 UI smoke run [#861](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39452421413) remains the next gate for PR #188. It is running on PR head `eefa0469b8a2193c8c4dc836f59af5b31032c52d`, based before subsequent prototype commits. Do not merge it until the full run passes and the branch is synchronized with the current prototype head.
+- Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+
+## Craft ID16 GIF component implementation — 21 Oct 2026
+
+- Source review confirmed Craft component ID16 (`CustomComponents.n`) stores `pathGif` and renders an animated image. In the unified BLOODSKY editor, ID16 now has an active palette entry, a media picker, bounded GIF decoding/animation, import path preservation, and portable ZIP export/import support.
+- Regression coverage was added for ID16 import and retained vendor fields, valid/invalid GIF headers, and media ZIP round-trip. Local Python tools: 166 passed. Exact-head APK/JUnit [#1285](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39540901127) and generic Android 11 UI smoke [#909](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39540901118) passed at app-code commit `0f2c923`; that smoke did not exercise GIF playback. Gradle unit tests and APK assembly were **NOT RUN** locally because Gradle is unavailable.
+- No GIF-specific emulator playback or original-vs-BLOODSKY visual comparison was run. COMP-03 remains partial and the unified acceptance result remains 5/139 = 3.6%. Stable `main` remains untouched.
+
+## Project deletion media cleanup — 21 Oct 2026
+
+- Issue [#208](https://github.com/skynet909084-boop/BLOODSKY-Android/issues/208) records a confirmed storage lifecycle gap: after a project was removed from the saved catalog, all its app-private media generations remained on disk.
+- A focused change removes only that project's hashed private directory after the catalog commit succeeds, validates canonical paths, and keeps other project directories intact. Regression coverage includes two generations, an unrelated project, repeated deletion and missing identity.
+- Local Python suite: 167 passed; `git diff --check`: passed. Gradle unit tests and APK assembly: **NOT RUN** because Gradle and the wrapper are absent. Exact-head Android CI is pending; no UI or device acceptance is claimed.
+
+
+## HMI integration checkpoint — 2026-10-21
+
+- Integration branch head after current product merges: `452bd7968503d35724bc3db0f432d71210e7a99c`. Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+- PR #204 Craft switch and PR #209 project-media cleanup are merged. PR #207 is merged with GIF ID16 and the digital indicator implementation from PR #205 included on the same tree. PR #205 was closed after its feature was integrated through #207; its standalone exact-head rerun did not pass because an archive contract already required the GIF palette.
+- Combined pre-merge exact head `5e13a4e82910375ae748886f07c7f0d42b44d3b9`: APK/JUnit #1295 passed archive inspector, Android unit tests, debug APK build and artifact upload. Combined UI smoke was skipped; do not claim on-device GIF playback or matched-density visual parity.
+- PR #191 network editor was rebased onto the unified integration tree and squash-merged as `772c3c20848557387a6d5750964c52327af909d0`; stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`. Exact rebased PR head `3e43b0a631145acf10da457b6f611d1b331fda48` passed APK/JUnit #1297 (archive inspector, Android unit tests, debug APK build and artifact upload) and Android 11 UI smoke #923. Local Python suite: 187 passed after `python tools/prepare_craft_resources.py`; `git diff --check` passed. Local Gradle was unavailable, so CI is the build/test evidence.
+- Confirmed scenarios: add Wi-Fi/3G/4G connection, save IP/port/RTU settings, edit the saved row and assign it to a project slot; separate server editor and 1–16 slots are present. Still open: native `deviceNetwork`/server import round-trip, transport behavior, same-density visual comparison and physical Bluetooth/USB acceptance. No hardware transport is claimed for these editor settings.
+- PR #210 added source-backed multi-selection alignment: group edges/centers, maximum width/height, and horizontal/vertical distribution. It was squash-merged as `452bd7968503d35724bc3db0f432d71210e7a99c`; exact head `feec9e5c8d938e7009487e07647adaee8d21f491` passed APK/JUnit #1298 and Android 11 smoke #924. `CanvasGroupAlignmentTest` covers geometry and Craft's spacing fallback; local Python suite 187/187 and `git diff --check` passed. Gradle is unavailable locally; exact-head CI supplied JUnit/APK evidence. Same-density visual comparison remains open.
+- The next task in this checkpoint was native Craft network round-trip; it was completed by PR #211 below. Runtime transport behavior remains separate.
+
+
+## Native Craft network import and round-trip — 21 Oct 2026
+
+- PR [#211](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/211) was squash-merged into `prototype/all-in-one-20261020` as `0fc2e6ce5f546c034d3b9ae4e29a59a4bd262ded`. Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+- Craft import now hydrates the existing network editor from native `deviceNetwork` and `TableConnections`. Project saves synchronize editor changes back into those native records, preserving unknown device/config fields, repeated connector-type IDs, sparse slot numbering, and whether `deviceNetwork` was a JSON string. Ambiguous connector mappings stay unresolved until the user selects a server.
+- Regression tests cover hydrated slot/server fields, changed device and Wi-Fi server values, unknown-field retention, preserved `countDevice`, and duplicate connector ambiguity. Local Python suite: 187/187; `git diff --check`: passed. Local Gradle was unavailable.
+- Exact PR head `77344773dfbe9ab1ad61cc88afab6eedcb4a4d83` passed APK/JUnit run [#1299](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39548787279), including Android unit tests and debug APK build. APK artifact ID: `12322693578` (SHA-256 `5456c5c0565038e58f80e446c3bb75e7602f2879a7adae49894cf320572fec84`). Android 11 UI smoke [#925](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39548787333) also passed.
+- Confirmed editor scenarios: imported Craft network slots and connector rows appear in the project editor; edited names, unit addresses, endpoint parameters and explicit slot assignments serialize back into the nested native Craft source. This is not hardware transport acceptance; runtime binding activation and physical Modbus/Bluetooth/USB remain open. DEV-01 remains partial pending complete slot lifecycle, binding, visual and transport acceptance.
+- Connector-deletion reassignment is now covered by PR #212 below; remaining work is full device-slot add/remove round-trip, server parameter edits after import, hardware transport and visual acceptance.
+
+
+## Craft network assignment after connector deletion — 21 Oct 2026
+
+- PR [#212](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/212) adds a regression proving that deleting a connector clears only slots assigned to the deleted row and keeps later slots linked to the same surviving native endpoint after their editor index shifts. It was squash-merged as `bd8f8fdb90e1492e346b8a5d6c151e42def68a55`.
+- Exact head `70fb81f136004e6a0e5efdd9a6c4155ca976e9ab` passed APK/JUnit [#1300](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39549710012), APK artifact `12322289209`, and Android 11 smoke [#926](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39549710026). The emulator run confirms the generic UI profile; the new native mapping assertion runs in Android JUnit.
+- Next implementation: complete device-slot add/remove round-trip and server parameter edits after import. DEV-01 remains partial; hardware transport and same-density visual acceptance remain separate.
+
+
+## Feature PR integration and active-development test policy — 21 Oct 2026
+
+- PR [#214](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/214) was merged into `prototype/all-in-one-20261020`; exact head `ac905f78d82d35a3e2bffe71cd370056c7ad0bab`, APK/JUnit run run #1306. The policy keeps emulator UI smoke manual during active feature work and retains full Android smoke for PRs to `main` and changes to `main`. No branch-protection rule change was needed; stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+- PR [#213](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/213) adds network-slot add/remove round-trip regression coverage and was merged as `ad03a72f22156b4e2fedda2ac790b39a30f49c7c`; exact head `0297e3a89a78b79332dab285a211e937f3e2669d), APK/JUnit #1301 passed. A previously queued smoke retry completed before the policy transition; it is historical evidence only.
+- PR [#215](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/215) adds Craft ID17's source-backed `kc_no_picture` fallback for valid selected states with missing/unreadable images and the original 10-pixel inset; merged as `692fbe100407e8f4b5076fd74eb58b69bbb57b4e`. Exact head `f2adbc4b0d0e2fd826d2d5000d5b497761e6e0bc`, APK/JUnit #1307 passed, artifact `12323964718`, SHA-256 `daeafa1d37acd61cab6518b09cbb398830a24c54b098969059a7b2f44bc3a8b3`. Local Python suite: 189/189; local Gradle unavailable. No Android smoke, visual comparison or device verification was run.
+- PR [#216](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/216) implements Craft ID11 progress-bar import/rendering with native range, text, scale and color settings; merged as `ad97a720e665dcbc64cff3ce1bfddc12790dcbf5`. Final exact head `0570f5c5c9694470d4e41029eede31d82ea4023e`, APK/JUnit #1309 passed (archive checks, Android unit tests, debug APK build/upload), artifact `12324613538`, SHA-256 `ba3c725b863c4dc01487fa0077b76e4277d058b227942803ecba4621903f973d`. An earlier test-only expected-color mismatch in run #1308 was corrected; the rendering code was unchanged. No Android smoke or visual/device verification was run.
+- Unified acceptance remains 5/139 = 3.6%; no status or score was raised for these partial code deliveries. Stable `main` remains unchanged. This checkpoint is documentation-only after integration.
+- Next implementation: add Craft ID11's confirmed progress-bar properties to the property editor and round-trip edits into the native `other` record, with regression coverage. Keep device-register binding and same-density visual/device acceptance marked open.
+
+
+## Craft ID11 progress bar property editor — 21 Oct 2026
+
+- PR [#217](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/217) adds editor controls for min/max, value text visibility/size/color, scale visibility, fill and track colors. Applying changes updates runtime fields and native `craftOther`, preserving unrelated imported keys. Squash-merged as `e3c32d19e12d7300eadc6861c99ad140d96342dc`; exact PR head `5b245307b815c344206a9704ff0d70cc78ce2c07` passed APK/JUnit [#1310](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39554495495), including archive tests, Android unit tests and debug APK build/upload. APK artifact `12324957393`, SHA-256 `424748a3f96fe2130efe5286778e19201ec4d62b46eb1fc55c79bf593a483dad`.
+- Local Python suite: 189/189; `git diff --check`: passed. Local Gradle unavailable. Android UI smoke, same-density comparison and device testing were not run. Original Craft register/device bindings remain inactive and are not edited by this change.
+- Unified readiness remains 5/139 = 3.6%; stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+- Follow-up completed by PR #218: ID11 now explains manual TCP remapping; regression coverage proves imported Craft bindings remain inactive and explicit TCP remaps survive model serialization. Next implementation: source-backed Craft ID12/24 gauge properties and rendering; same-density visual and device acceptance remain open.
+
+
+## Craft ID11 explicit register remapping — 21 Oct 2026
+
+- PR [#218](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/218) clarifies that the imported Craft slot is informational and inactive; ID11's binding editor directs the operator to enter a BLOODSKY TCP URI explicitly. A regression test verifies Craft device/register metadata remains preserved while the active `connectionInfo` starts empty, and that a manually supplied TCP binding survives model serialization. Squash-merged as `ccc37b9ae21a3fffdbbc1a91ffad7fcd26e007d4`.
+- Exact PR head `5d8667a47ce5cee05b7ff4a29899e27894ee4c46` passed APK/JUnit [#1311](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39555085167), including Python archive checks, Android unit tests and debug APK build/upload. Artifact `12325116607`, SHA-256 `6ddf748fdea5f7bc6cb662be52a4b70ace55838f4bc34f79479880c4d2105e52`. Local Python: 189/189; `git diff --check`: passed. No UI smoke or device test was run.
+- Imported Craft register metadata is still not itself a live Modbus endpoint. Operator must provide a valid explicit BLOODSKY TCP binding; visual/device acceptance remains open.
+- Unified acceptance remains 5/139 = 3.6%; stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+- Next feature after the ID12 implementation: inspect Craft ID24's distinct graduated-gauge source behavior and close the remaining property/rendering gaps; keep visual acceptance separate.
+
+
+## Craft ID12 threshold gauge — 21 Oct 2026
+
+- PR [#220](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/220) imported Craft ID12's 0..max range, text visibility/size/colors, and two zone thresholds; exposed those properties in the editor and round-tripped them into `craftOther` while preserving unknown fields. The canvas now draws the 160° half-dial, five major intervals, threshold-colored arcs, labels, and a clamped needle. ID24 remains on its separate partial graduated-gauge path.
+- Regression coverage: importer source-property mapping, value clamping, tick labels, threshold order validation, native-other round trip and unknown-field preservation. Full Python suite: 189/189; `git diff --check`: passed.
+- Exact PR head `b4ffda4c25f7de665f194e7bf4e8d6c3fce19738` passed APK/JUnit [#1315](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39556414211): archive tests, Android unit tests, debug APK build and upload. APK artifact `12325956806`, SHA-256 `120c58b725fc79e9dc6ce61eb8340d20eceeadb0fd2967becfc261714139d958`.
+- No Android UI smoke, physical device test or original-vs-BLOODSKY visual comparison was run. The unified acceptance matrix remains **5/139 = 3.6%**; no new criterion is claimed fully accepted. Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+- Next task: implement the separate source-confirmed Craft ID24 graduated-gauge properties and rendering, then add focused importer/property tests.
+
+
+## Craft ID24 graduated gauge: source-property slice — 21 Oct 2026
+
+- PR [#223](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/223) adds native import/edit/round-trip for Craft ID24 signed min/max, scale count, source text size and colors, percentage thresholds, background flag and nine indicator names confirmed by the original picker; unknown `craftOther` fields remain preserved. The tick helper mirrors the source's endpoint-only behavior for count values 0–2 and integer interval calculation otherwise.
+- Exact final head `ee0c65023611b2a7a2d0eb108b079ce9ae363e54` passed APK/JUnit [#1319](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39557388926): Python/archive checks, Android unit tests, debug APK build and upload. Artifact `12325494263`, SHA-256 `bdba640b1ac799565f4301f02ffdad25326498e5b0d37192557c9241ece58779`. The test caught and fixed negative minGauge parsing.
+- Not run: Android UI smoke, device test, and original-vs-BLOODSKY visual comparison. ID24 indicator-specific canvas rendering remains partial; weighted matrix stays **5/139 = 3.6%**. Stable `main` remains `b11fbb9b9bdb35cacbcd466d57d414071d94aa5e`.
+- Next task: make ID24 properties drive its canvas gauge and named indicator styles; add drawing geometry tests before visual acceptance.
+
+## Original project fixture batch — 23 Oct 2026
+
+- Added privacy-scrubbed, source-derived `home2` and `дом 2025` JSON fixtures to the project ZIP regression catalog. Archive and normalized-fixture checksums, source record counts, sanitization rules and precise acceptance limits are recorded in `PROJECT_SOURCE_FIXTURE_AUDIT_20261023.md`.
+- Extended the same source-driven import checks to all existing FBD rows: 0/5/76/5/200 nodes across `home`/`gitH`/`пож`/`home2`/`дом 2025`, with typed Craft FBD widgets and valid graph edges for each project containing FBD nodes. These are import/topology checks, not FBD execution or visual acceptance.
+- Extended the production ZIP import → atomic edit/save/reopen → export → re-import regression to five projects. The two new cases verify 16 device slots, 3/2 connection rows, 46/122 legacy bindings retained but inactive, declared device counts, screen/component totals, exact opaque `craftSource` preservation and fixture media bytes.
+- Original binary media, live network endpoints and `.mcr` sidecars are not included. These checks prove structural archive handling only; original-media mapping, active runtime bindings, visual parity and physical-device acceptance remain open.
+- Local validation: `prepare_craft_resources.py` passed; Python archive/tool suite passed (271 tests); fixture privacy scan and `git diff --check` passed. Exact-head Android unit tests/debug APK passed in run [#1681](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39946437756) for PR #388 and [#1682](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39946927726) for PR #389. The first exact-head attempt #1680 was cancelled when a fixture binding-count expectation was corrected before acceptance.
+- Corrected `CRAFT_FBD_SOURCE_MATRIX.md`: ID 135 has a typed visible adapter mapping; only execution stays fail-closed without a matching validated `.mcr`. The matrix now distinguishes existing synthetic macro contracts from missing original-project acceptance.
+
+## Source-project FBD runtime batch — 23 Oct 2026
+
+- PR [#391](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/391) adds an imported `дом 2025` comparator check: Craft action 4 (`>=`) consumes register 10 and constant 2600 through named IN1/IN2 graph edges. Corrected exact-head run [#1685](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39948370969) passed after the first attempt exposed a private test-field access; merged integration commit `a1cf25cd37e6a446d4932a9a461108ed46ff315a`.
+- PR [#392](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/392) extends that same source graph through its BOOL `VarOut`: equality writes register 11 bit 2 and a value below the threshold clears it, using only an explicitly enabled in-memory register bank. Corrected exact-head run [#1687](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39948981503) passed after the initial check confirmed the default evaluator correctly blocks writes; merged commit `48d1e7b00728b373987227d764e9f2d758bab665`.
+- PR [#393](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/393) edits a source comparator `>=` → `>`, exports `compareAction=1`, and re-imports with source key and edge count preserved. Exact-head run [#1688](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39949503890) passed; merged commit `d971ea467c2641787ef74c1e5c0d31b9769ec64c`.
+- PR [#394](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/394) exercises the imported INT division path `reg 110 / 256` into `VarOut` register 114 (512→2, 768→3). Exact-head run [#1689](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39949930332) passed; merged commit `eadf0852f1987a0439f5c47d868ef23f116faad2`.
+- Current integration head is `eadf0852f1987a0439f5c47d868ef23f116faad2`. `main` remains unchanged at `eb2b0dfe8b7f580d35e7a2d6363134db01863c4a`. The readiness score remains **5/139 = 3.6%**; these source tests add project/FBD evidence but do not close full FBD semantics, original media, visual parity, user-device or physical PLC acceptance. The supplied source archives still have no original `.mcr` sidecar or ID 135 macro instance.
+
+## Craft ID19 register gateway: manual RTU and local register destinations — 23 Oct 2026
+
+- PR [#396](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/396) fixed RTU session consent for external Bluetooth endpoints declared inside Craft register/bit gateways and prevented gateway polling outside operator mode. Exact head `1df4a4977c74825957cf4d1d08c9796eabb40cb3` passed APK/JUnit [#1691](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39954413123) and was squash-merged as `7f40fa9d9c3bf7253b1940112201063e1e02089e`.
+- Source-derived sanitized `.pro` samples showed Craft ID19 register gateways commonly use system-register receive endpoints. PR [#397](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/397) adds strict `usb://unit/address` source/holding destination mappings over only the manually selected, already open USB RTU connection, with current-session consent; it also adds local `system://register/N` destinations restricted to project user registers 10–1999. Register batches are validated and committed atomically; service registers 0–9 remain protected. Imported gateways remain inactive and do not open/select external transports.
+- Exact final head `a363cd9d5407650a0656645b838b8b4040558229` passed archive/Python tests, Android unit tests, debug APK build and upload in run [#1694](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39956028914), then squash-merged as `d542e31c43176753b4171ec86293926e702e4906`. Local resource preparation and Python suite also passed (271/271); `git diff --check` passed. Local Gradle was unavailable.
+- Not run: real USB adapter/PLC testing, UsbManager attach/detach instrumentation, Android UI smoke, and visual parity. MOD-01 and MOD-03 remain partial/open; the unified readiness score remains **5/139 = 3.6%**. Current integration head is `d542e31c43176753b4171ec86293926e702e4906`; stable `main` remains `eb2b0dfe8b7f580d35e7a2d6363134db01863c4a`.
+
+## Craft ID22 bit gateway: manual RTU and system-register bits — 23 Oct 2026
+
+- Decompiled Craft 1.0.7 component ID22 stores both endpoints as register/bit pairs, allows FC01/02 source selection, writes FC05/15 coils, and supports continuous, rising-edge and source-change modes. BLOODSKY keeps imported device slots inactive until the operator explicitly remaps endpoints.
+- PR [#399](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/399) adds explicit `usb://unit/address` source/destination endpoints over the already selected manual USB RTU adapter and local `system://register/N/bit/B` endpoints. Local ranges use the project's synchronized register bank, preserve neighboring bits, and cannot address service registers 0–9. Trigger and external RTU access retain the operator-mode and current-session consent gates.
+- Tests cover USB unit/function/address bounds, USB holding-register trigger mapping, 16-bit FC01/02 ranges, local user-register bit addressing, cross-register reads, neighbor preservation, source-only writes and atomic rejection of invalid values. Exact head `4c9bb8b5bb6c756d87f508cbc1d898bd3d77e91e` passed archive/Python checks, Android JUnit, debug APK build/upload in run [#1695](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39957145918), and merged as `d27b0b200d61da9d1aa327c4dcba11fddd466b33`.
+- Local Python suite: 271/271; `prepare_craft_resources.py` and `git diff --check` passed. Local Gradle unavailable. Not run: real USB/Bluetooth adapters or PLC, Android USB permission/attach/detach instrumentation, UI smoke or visual comparison. MOD-01, MOD-03 and SYS-02 remain partial/automatic-only; readiness remains **5/139 = 3.6%**. Integration head `d27b0b200d61da9d1aa327c4dcba11fddd466b33`; `main` remains `eb2b0dfe8b7f580d35e7a2d6363134db01863c4a`.
+
+## Source-project Craft trigger → selector runtime — 23 Oct 2026
+
+- PR [#401](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/401) adds a third executable source graph from sanitized `дом 2025`, screen 4: Craft Var BOOL register 94 → ID 114 mode T → Craft ID 126 selector (I1=109, I2=24) → VarOutInt register 90. The regression verifies the imported nodes and named-pin wiring, then exercises false, rising, held-high, falling and next-rising scans against an in-memory project register bank.
+- The source-path test confirms the toggle remains set across falling input, held-high does not retrigger it, the next rising edge toggles it back, and each selected integer reaches register 90. It does not establish all Craft trigger modes, PLC scan timing, or field-device behavior.
+- Exact final head `a803ef258f82fbb55a414fd03580927c79e6de7d` passed APK/JUnit run [#1698](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39984510168), including archive tests, Android unit tests, debug APK build and upload. PR #401 squash-merged as `1b22a2bcd87fc10ed54f828b50a76bd0f2fe61f9`. Python archive/tool suite remains 271/271 from the same source-fixture batch; local `git diff --check` passed. Local Gradle unavailable.
+- Updated `PROJECT_SOURCE_FIXTURE_AUDIT_20261023.md`, `CRAFT_FBD_SOURCE_MATRIX.md` and the FBD-01 evidence row in the unified matrix. No weighted acceptance status changed: readiness remains **5/139 = 3.6%**. Visual parity, all-mode trigger coverage, Android UI, physical PLC/device acceptance and original media remain open. Integration head `1b22a2bcd87fc10ed54f828b50a76bd0f2fe61f9`; `main` remains `eb2b0dfe8b7f580d35e7a2d6363134db01863c4a`.
+
+## Source-project Craft equality comparator runtime — 23 Oct 2026
+
+- PR [#403](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/403) adds a fourth executable graph from sanitized `дом 2025`, screen 4: Craft VarInt register 92 and constant 6395 feed comparator action 5 (`==`), whose BOOL VarOut writes register 92 bit 1. The test verifies exact-threshold true, false at 6392, and both register-bit writes using only the explicitly enabled in-memory bank.
+- Exact PR head `52c9bbf5ad165d7dd3e5e0e9c25e5a73b233181a` passed APK/JUnit run [#1699](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39985311237): archive tests, Android unit tests, debug APK build and upload. PR #403 squash-merged as `15aece4094ec88fe93bcb3eab76bcda184af26cd`. `prepare_craft_resources.py`, Python suite 271/271 and `git diff --check` passed locally.
+- Updated source fixture audit, component/source matrix, FBD-01/02/03 evidence. This is one equality graph and does not close other comparator modes, exceptional values, scan timing, visual or physical acceptance. Readiness remains **5/139 = 3.6%**. Integration head `15aece4094ec88fe93bcb3eab76bcda184af26cd`; `main` remains `eb2b0dfe8b7f580d35e7a2d6363134db01863c4a`.
+
+## Source-project strict comparator runtime — 23 Oct 2026
+
+- PR [#405](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/405) adds two imported screen-3 Craft comparator graphs from `дом 2025`: action 1 (`register 29 > 230`) and action 2 (`register 29 < 210`). Tests resolve each comparator from imported IDs and named IN1/IN2 edges, then check strict false at the threshold and true for 231/209.
+- The first CI attempt found a checked-exception declaration missing from the test helper; the helper signature was corrected before acceptance. Exact final head `6d6c844478654e9b667219e09f9969cba7abfc96` passed APK/JUnit run [#1701](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39986341238), including archive checks, Android unit tests, debug APK build and upload. PR #405 squash-merged as `52ac66ed07cf7756ffd260ab08f43c600c0ac3bd`. Local Python suite passed 271/271 and `git diff --check` passed.
+- Updated source project audit, comparator source matrix and FBD-02 evidence. This covers only the observed `>`, `<`, `>=`, and `==` paths, not all comparator modes or exceptional values. Weighted readiness stays **5/139 = 3.6%**. Integration head `52ac66ed07cf7756ffd260ab08f43c600c0ac3bd`; `main` remains `eb2b0dfe8b7f580d35e7a2d6363134db01863c4a`.
+
+
+## Source-project independent Craft toggle chains — 23 Oct 2026
+
+- PR [#407](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/407) extends the sanitized `дом 2025` screen-4 runtime regression to both source graphs: BOOL register 94 → Craft T → SEL → VarOutInt register 90, and register 95 → Craft T → SEL → VarOutInt register 91. The test interleaves rising/falling edges and confirms each selector keeps its own toggle state and output value.
+- The initial exact-head CI exposed a checked-exception declaration missing from the path-finding test helper; it was fixed before acceptance. Corrected exact head `3b1d0171ad29c2e1c57cf6f45e4c7286a3e7c029` passed archive tests, Android unit tests and debug APK build in run [#1703](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39987718298). PR #407 squash-merged as `32cb6256870f31ee1682757dd6567480b9ad8467`.
+- The source evidence covers two independent T-mode graphs and selector routing only; it does not establish all trigger modes, PLC scan timing, visual parity or device behavior. The weighted readiness score remains **5/139 = 3.6%**. Integration head `32cb6256870f31ee1682757dd6567480b9ad8467`; `main` remains `eb2b0dfe8b7f580d35e7a2d6363134db01863c4a`.
+
+
+## Source-project four integer division paths — 23 Oct 2026
+
+- PR [#410](https://github.com/skynet909084-boop/BLOODSKY-Android/pull/410) expands the sanitized `дом 2025` screen-4 regression to all four original ID 110 INT division graphs: VarInt registers 110–113 divided by constant 256 feed VarOutInt registers 114–117. Each route checks two distinct quotients, using `512 + 256×path` and `768 + 256×path` as inputs.
+- The first exact-head run exposed an expectation bug in the expanded test: later paths use larger inputs, so their correct quotients are `2 + path` and `3 + path`. The test was corrected and exact head `9a5a99bbf3f31f0fdaf85beb5bcfc24629a9f053` passed archive tests, all 992 Android unit tests, debug APK build and upload in run [#1705](https://github.com/skynet909084-boop/BLOODSKY-Android/actions/runs/39989484840). PR #410 squash-merged as `4ac0bc8c97012f7c2c12521fad88614dfd06d1a7`.
+- This establishes four source-connected arithmetic paths only. Full operator and exceptional-value parity remains open. Weighted readiness stays **5/139 = 3.6%**; stable `main` remains `eb2b0dfe8b7f580d35e7a2d6363134db01863c4a`.

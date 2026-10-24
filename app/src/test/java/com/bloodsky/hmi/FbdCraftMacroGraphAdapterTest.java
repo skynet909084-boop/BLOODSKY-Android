@@ -1,0 +1,545 @@
+package com.bloodsky.hmi;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+import org.junit.Test;
+
+import java.util.Collections;
+
+import static org.junit.Assert.*;
+
+public class FbdCraftMacroGraphAdapterTest {
+    private static JSONObject validMacro() throws Exception {
+        JSONObject child = new JSONObject().put("componentId", 103).put("x", 10).put("y", 20)
+                .put("saveKey", 50).put("keyOut", 900).put("numOnIn", 1)
+                .put("nMcr", "Gate").put("unIdMcr", 7);
+        return new JSONObject().put("name", "Gate").put("uniqueId", 7).put("countIn", 2)
+                .put("nameIn1", "A").put("typeIn1", 1).put("numOnIn1", 1).put("keyOutIn1", 50)
+                .put("nameIn2", "B").put("typeIn2", 1).put("numOnIn2", 2).put("keyOutIn2", 50)
+                .put("nameOut", "Q").put("typeOut", 1).put("saveKeyOut", 900)
+                .put("fbInMacros", new JSONArray().put(child));
+    }
+
+    @Test public void resolvesNestedDefinitionOnlyOnceAndPreservesGraph() throws Exception {
+        FbdCraftMacroDefinition inner = FbdCraftMacroGraphAdapter.expandIfSupported(
+                FbdCraftMacroDefinition.fromJson(validMacro().toString()));
+        JSONObject outer = validMacro();
+        outer.getJSONArray("fbInMacros").getJSONObject(0).put("componentId", 135);
+        int[] calls = {0};
+        FbdCraftMacroDefinition expanded = FbdCraftMacroGraphAdapter.expandIfSupported(
+                FbdCraftMacroDefinition.fromJson(outer.toString()), child -> {
+                    calls[0]++;
+                    return inner;
+                });
+        assertEquals("one resolution per child, including recursive expansion", 1, calls[0]);
+        JSONObject nested = expanded.toJson().getJSONObject("bloodskyGraph")
+                .getJSONArray("widgets").getJSONObject(2);
+        assertEquals(inner.toJson().toString(), nested.getJSONObject("craftMacroDefinition").toString());
+        assertEquals(135, expanded.toJson().getJSONArray("fbInMacros")
+                .getJSONObject(0).getInt("componentId"));
+    }
+
+    @Test public void unresolvedNestedDefinitionsRemainOpaque() throws Exception {
+        JSONObject outer = validMacro();
+        outer.getJSONArray("fbInMacros").getJSONObject(0).put("componentId", 135);
+        FbdCraftMacroDefinition original = FbdCraftMacroDefinition.fromJson(outer.toString());
+        assertNull(FbdCraftMacroGraphAdapter.expandIfSupported(original, child -> null)
+                .toJson().optJSONObject("bloodskyGraph"));
+        assertNull(FbdCraftMacroGraphAdapter.expandIfSupported(original,
+                child -> FbdCraftMacroDefinition.fromJson(validMacro().toString()))
+                .toJson().optJSONObject("bloodskyGraph"));
+        assertNull(FbdCraftMacroGraphAdapter.expandIfSupported(original, child -> {
+            throw new IllegalArgumentException("invalid sidecar");
+        }).toJson().optJSONObject("bloodskyGraph"));
+    }
+
+    @Test public void mapsOriginalCraftTimerContactAndRetainsLegacyPtAlias() {
+        assertArrayEquals(new String[]{"IN", "MS"},
+                MainActivity.knownFbdPins("FBD CRAFT TIMER", false));
+        assertEquals("INT", MainActivity.knownFbdPinType("FBD CRAFT TIMER", "MS", false));
+        assertEquals("INT", MainActivity.knownFbdPinType("FBD CRAFT TIMER", "PT", false));
+        assertEquals(2000L, MainActivity.fbdCraftTimerPresetMs(
+                java.util.Collections.singletonList(2.0), java.util.Collections.singletonList("MS"),
+                1000, "SEK"));
+        assertEquals(3000L, MainActivity.fbdCraftTimerPresetMs(
+                java.util.Collections.singletonList(3.0), java.util.Collections.singletonList("PT"),
+                1000, "SEK"));
+    }
+
+    @Test public void mapsVerifiedCraftComponentIds() throws Exception {
+        assertEquals("FBD AND", FbdCraftMacroGraphAdapter.typeForComponentId(103, null));
+        assertEquals("FBD CRAFT TIMER", FbdCraftMacroGraphAdapter.typeForComponentId(115, null));
+        assertEquals("FBD CRAFT VAR NAME IN FLOAT", FbdCraftMacroGraphAdapter.typeForComponentId(133,
+                new JSONObject().put("typeVar", 3)));
+        assertEquals("FBD CRAFT MX", FbdCraftMacroGraphAdapter.typeForComponentId(128, null));
+        assertEquals("FBD CRAFT MACRO", FbdCraftMacroGraphAdapter.typeForComponentId(135, null));
+        assertNull(FbdCraftMacroGraphAdapter.typeForComponentId(999, null));
+    }
+
+    @Test public void reconstructsInputsAndOutputFromCraftKeys() throws Exception {
+        JSONObject macro = validMacro();
+        JSONObject graph = FbdCraftMacroGraphAdapter.translate(macro, macro.getJSONArray("fbInMacros"));
+        assertNotNull(graph);
+        assertEquals(3, graph.getJSONArray("widgets").length());
+        assertEquals(2, graph.getJSONArray("connections").length());
+        assertEquals(2, graph.getJSONArray("connections").getJSONObject(1).getInt("target"));
+        assertEquals("IN2", graph.getJSONArray("connections").getJSONObject(1).getString("targetPin"));
+        assertEquals(2, graph.getInt("outputNode"));
+        assertEquals("Q", graph.getString("outputPin"));
+    }
+
+    @Test public void expandsOnlyFullyMappedLegacyMacroAndPreservesRawChildren() throws Exception {
+        FbdCraftMacroDefinition expanded = FbdCraftMacroGraphAdapter.expandIfSupported(
+                FbdCraftMacroDefinition.fromJson(validMacro().toString()));
+        assertNotNull(expanded.toJson().optJSONObject("bloodskyGraph"));
+        assertEquals(103, expanded.toJson().getJSONArray("fbInMacros").getJSONObject(0).getInt("componentId"));
+    }
+
+    @Test public void expandsAndExecutesNestedMacroWhenItsDefinitionIsResolved() throws Exception {
+        JSONObject nestedChild = new JSONObject().put("componentId", 105).put("x", 0).put("y", 0)
+                .put("saveKey", 10).put("keyOut", 900).put("numOnIn", 1)
+                .put("reg", 10).put("isConstant", true).put("constant", 31)
+                .put("nMcr", "Inner").put("unIdMcr", 8);
+        JSONObject nestedRoot = new JSONObject().put("name", "Inner").put("uniqueId", 8)
+                .put("countIn", 0).put("typeOut", 2).put("nameOut", "Q").put("saveKeyOut", 900)
+                .put("fbInMacros", new JSONArray().put(nestedChild));
+        final FbdCraftMacroDefinition nestedDefinition = FbdCraftMacroGraphAdapter.expandIfSupported(
+                FbdCraftMacroDefinition.fromJson(nestedRoot.toString()));
+        assertNotNull(nestedDefinition.toJson().optJSONObject("bloodskyGraph"));
+
+        JSONObject nestedInstance = new JSONObject().put("componentId", 135).put("x", 0).put("y", 0)
+                .put("saveKey", 20).put("keyOut", 900).put("numOnIn", 1)
+                .put("name", "Inner").put("nMcr", "Outer").put("unIdMcr", 9);
+        JSONObject outerRoot = new JSONObject().put("name", "Outer").put("uniqueId", 9)
+                .put("countIn", 0).put("typeOut", 2).put("nameOut", "Q").put("saveKeyOut", 900)
+                .put("fbInMacros", new JSONArray().put(nestedInstance));
+        FbdCraftMacroDefinition outerDefinition = FbdCraftMacroGraphAdapter.expandIfSupported(
+                FbdCraftMacroDefinition.fromJson(outerRoot.toString()),
+                child -> "Inner".equals(child.optString("name")) ? nestedDefinition : null);
+        JSONObject graph = outerDefinition.toJson().getJSONObject("bloodskyGraph");
+        assertEquals("FBD CRAFT MACRO", graph.getJSONArray("widgets").getJSONObject(0).getString("type"));
+        assertEquals("Inner", graph.getJSONArray("widgets").getJSONObject(0)
+                .getJSONObject("craftMacroDefinition").getString("name"));
+
+        MainActivity.Widget instance = MainActivity.widgetFromJson(new JSONObject()
+                .put("type", "FBD CRAFT MACRO").put("craftMacroDefinition", outerDefinition.toJson()));
+        double[] numeric = new double[1];
+        MainActivity.evaluateFbdBlock(Collections.singletonList(instance), Collections.emptyList(), 0,
+                new boolean[1], new boolean[1], new boolean[1], numeric,
+                new CraftSystemRegisterBank(), false);
+        assertEquals(31.0, numeric[0], 0.0);
+    }
+
+    @Test public void readsOriginalBoolIntegerAndFloatRegistersInsideImportedMacro() throws Exception {
+        CraftSystemRegisterBank bank = new CraftSystemRegisterBank();
+        bank.writeBit(10, 3, true);
+        bank.writeWord(11, 314);
+        bank.writeFloat32(20, 12.5f, false, false);
+        int[] ids = {101, 105, 108};
+        int[] addresses = {10, 11, 20};
+        int[] types = {1, 2, 3};
+        double[] expected = {1.0, 314.0, 12.5};
+
+        for (int i = 0; i < ids.length; i++) {
+            JSONObject child = new JSONObject().put("componentId", ids[i])
+                    .put("x", 0).put("y", 0).put("saveKey", 50)
+                    .put("keyOut", 900).put("numOnIn", 1)
+                    .put("reg", addresses[i]).put("isConstant", false)
+                    .put("nMcr", "RegisterReader" + i).put("unIdMcr", 30 + i);
+            if (ids[i] == 101) child.put("bit", 3);
+            JSONObject source = new JSONObject().put("name", "RegisterReader" + i)
+                    .put("uniqueId", 30 + i).put("countIn", 0)
+                    .put("typeOut", types[i]).put("nameOut", "Q")
+                    .put("saveKeyOut", 900).put("fbInMacros", new JSONArray().put(child));
+
+            FbdCraftMacroDefinition expanded = FbdCraftMacroGraphAdapter.expandIfSupported(
+                    FbdCraftMacroDefinition.fromJson(source.toString()));
+            assertNotNull("Craft register source ID " + ids[i] + " should be executable",
+                    expanded.toJson().optJSONObject("bloodskyGraph"));
+            MainActivity.Widget macro = MainActivity.widgetFromJson(new JSONObject()
+                    .put("type", "FBD CRAFT MACRO")
+                    .put("craftMacroDefinition", expanded.toJson()));
+            double[] numeric = new double[1];
+            boolean value = MainActivity.evaluateFbdBlock(Collections.singletonList(macro),
+                    Collections.emptyList(), 0, new boolean[1], new boolean[1],
+                    new boolean[1], numeric, bank);
+            assertEquals("typed Craft macro register output ID " + ids[i], expected[i], numeric[0], 0.0);
+            assertEquals(expected[i] != 0.0, value);
+        }
+    }
+
+    @Test public void importedMacroPhoneSensorsJoinOperatorRuntimeSensorPollingSet() throws Exception {
+        int[] ids = {120, 131, 132};
+        String[] types = {"FBD CRAFT SENSOR ORIENTATION", "FBD CRAFT SENSOR LIGHT",
+                "FBD CRAFT SENSOR SPEED"};
+        int[] outputTypes = {3, 2, 3};
+        double[] expected = {271.5, 42.0, 8.25};
+
+        for (int i = 0; i < ids.length; i++) {
+            JSONObject child = new JSONObject().put("componentId", ids[i])
+                    .put("x", 0).put("y", 0).put("saveKey", 50).put("keyOut", 900)
+                    .put("nMcr", "PhoneSensor" + i).put("unIdMcr", 40 + i);
+            if (ids[i] == 120) child.put("type", 3);
+            JSONObject source = new JSONObject().put("name", "PhoneSensor" + i)
+                    .put("uniqueId", 40 + i).put("countIn", 0)
+                    .put("typeOut", outputTypes[i]).put("nameOut", "Q")
+                    .put("saveKeyOut", 900).put("fbInMacros", new JSONArray().put(child));
+            FbdCraftMacroDefinition expanded = FbdCraftMacroGraphAdapter.expandIfSupported(
+                    FbdCraftMacroDefinition.fromJson(source.toString()));
+            assertNotNull("Craft phone sensor ID " + ids[i] + " should be executable",
+                    expanded.toJson().optJSONObject("bloodskyGraph"));
+            MainActivity.Widget macro = MainActivity.widgetFromJson(new JSONObject()
+                    .put("type", "FBD CRAFT MACRO").put("craftMacroDefinition", expanded.toJson()));
+            java.util.List<MainActivity.Widget> runtimeWidgets =
+                    MainActivity.fbdRuntimeWidgetsIncludingMacros(Collections.singletonList(macro));
+            MainActivity.Widget sensor = null;
+            for (MainActivity.Widget candidate : runtimeWidgets)
+                if (types[i].equals(candidate.type)) sensor = candidate;
+            assertNotNull("nested source should be discovered by operator sensor polling", sensor);
+            sensor.craftSensorValid = true;
+            if (ids[i] == 120) sensor.craftOrientationValues[2] = expected[i];
+            else sensor.craftSensorValue = expected[i];
+            double[] numeric = new double[1];
+            MainActivity.evaluateFbdBlock(Collections.singletonList(macro), Collections.emptyList(), 0,
+                    new boolean[1], new boolean[1], new boolean[1], numeric,
+                    new CraftSystemRegisterBank());
+            assertEquals("nested Craft sensor output ID " + ids[i], expected[i], numeric[0], 0.0);
+        }
+    }
+
+    @Test public void importedMacroOdtempUsesRuntimePollTarget() throws Exception {
+        JSONObject odtemp = new JSONObject().put("componentId", 130).put("x", 0).put("y", 0)
+                .put("saveKey", 50).put("keyOut", 900).put("ip", "192.168.1.20")
+                .put("typeSensor", 2).put("typeResponse", 1)
+                .put("nMcr", "RoomTemperature").put("unIdMcr", 51);
+        JSONObject source = new JSONObject().put("name", "RoomTemperature").put("uniqueId", 51)
+                .put("countIn", 0).put("typeOut", 3).put("nameOut", "Q")
+                .put("saveKeyOut", 900).put("fbInMacros", new JSONArray().put(odtemp));
+        FbdCraftMacroDefinition expanded = FbdCraftMacroGraphAdapter.expandIfSupported(
+                FbdCraftMacroDefinition.fromJson(source.toString()));
+        assertNotNull("ODTEMP macro should expand when serviced by the operator poller",
+                expanded.toJson().optJSONObject("bloodskyGraph"));
+        JSONObject nestedJson = expanded.toJson().getJSONObject("bloodskyGraph")
+                .getJSONArray("widgets").getJSONObject(0);
+        assertEquals("FBD CRAFT ODTEMP", nestedJson.getString("type"));
+        assertEquals("192.168.1.20", nestedJson.optString("ip"));
+
+        MainActivity.Widget macro = MainActivity.widgetFromJson(new JSONObject()
+                .put("type", "FBD CRAFT MACRO").put("craftMacroDefinition", expanded.toJson()));
+        java.util.List<MainActivity.Widget> runtimeWidgets =
+                MainActivity.fbdRuntimeWidgetsIncludingMacros(Collections.singletonList(macro));
+        MainActivity.Widget sensor = null;
+        for (MainActivity.Widget candidate : runtimeWidgets)
+            if ("FBD CRAFT ODTEMP".equals(candidate.type)) sensor = candidate;
+        assertNotNull("nested ODTEMP should be reachable by operator polling", sensor);
+        assertEquals(-1, Collections.singletonList(macro).indexOf(sensor));
+        sensor.craftSensorValue = 23.75;
+        sensor.craftSensorValid = true;
+        double[] numeric = new double[1];
+        MainActivity.evaluateFbdBlock(Collections.singletonList(macro), Collections.emptyList(), 0,
+                new boolean[1], new boolean[1], new boolean[1], numeric,
+                new CraftSystemRegisterBank());
+        assertEquals(23.75, numeric[0], 0.0);
+
+    }
+
+    @Test public void importedMacroMqttPublisherKeepsTypedEnAndInEdges() throws Exception {
+        JSONObject publisher = new JSONObject().put("componentId", 140)
+                .put("x", 0).put("y", 0).put("saveKey", 50).put("keyOut", -1)
+                // Original ID140 MQTT_PUBLISHER uses typeIn (not ID139's typeQ).
+                .put("topic", "plant/command").put("typeIn", 3)
+                .put("numMqttServer", 2).put("mqttRetain", true)
+                .put("nMcr", "PublishValue").put("unIdMcr", 53);
+        JSONObject output = new JSONObject().put("componentId", 108)
+                .put("x", 20).put("y", 0).put("saveKey", 60).put("keyOut", 900)
+                .put("isConstant", true).put("constant", 2.5)
+                .put("nMcr", "PublishValue").put("unIdMcr", 53);
+        JSONObject root = new JSONObject().put("name", "PublishValue").put("uniqueId", 53)
+                .put("countIn", 2).put("nameIn1", "EN").put("typeIn1", 1)
+                .put("nameIn2", "IN").put("typeIn2", 3)
+                .put("keyOutIn1", 50).put("numOnIn1", 1)
+                .put("keyOutIn2", 50).put("numOnIn2", 2)
+                .put("typeOut", 3).put("nameOut", "Q").put("saveKeyOut", 900)
+                .put("fbInMacros", new JSONArray().put(publisher).put(output));
+        FbdCraftMacroDefinition expanded = FbdCraftMacroGraphAdapter.expandIfSupported(
+                FbdCraftMacroDefinition.fromJson(root.toString()));
+        assertNotNull("MQTT publisher joins the operator graph scan",
+                expanded.toJson().optJSONObject("bloodskyGraph"));
+        JSONObject graph = expanded.toJson().getJSONObject("bloodskyGraph");
+        JSONObject nestedPublisher = graph.getJSONArray("widgets").getJSONObject(2);
+        assertEquals("FBD CRAFT MQTT PUB FLOAT", nestedPublisher.getString("type"));
+        assertEquals("plant/command", nestedPublisher.getString("craftMqttTopic"));
+        assertEquals(3, nestedPublisher.getInt("craftMqttType"));
+        assertEquals(2, nestedPublisher.getInt("craftMqttServer"));
+        assertTrue(nestedPublisher.getBoolean("craftMqttRetain"));
+
+        JSONArray edges = graph.getJSONArray("connections");
+        assertEquals(2, edges.length());
+        assertEquals("EN", edges.getJSONObject(0).getString("targetPin"));
+        assertEquals("IN", edges.getJSONObject(1).getString("targetPin"));
+        MainActivity.Widget macro = MainActivity.widgetFromJson(new JSONObject()
+                .put("type", "FBD CRAFT MACRO").put("craftMacroDefinition", expanded.toJson()));
+        MainActivity.Widget runtimePublisher = MainActivity.fbdRuntimeWidgetsIncludingMacros(
+                Collections.singletonList(macro)).get(3);
+        assertTrue(MainActivity.isCraftMqttPublisher(runtimePublisher.type));
+    }
+
+    @Test public void importedMacroMqttSubscriberReceivesTypedRuntimeValues() throws Exception {
+        JSONObject originalChild = new JSONObject().put("componentId", 139)
+                .put("x", 0).put("y", 0).put("saveKey", 50).put("keyOut", 900)
+                .put("topic", "plant/temperature").put("typeQ", 1)
+                .put("numMqttServer", 2).put("nMcr", "TemperatureIn")
+                .put("unIdMcr", 52);
+        JSONObject root = new JSONObject().put("name", "TemperatureIn").put("uniqueId", 52)
+                .put("countIn", 0).put("typeOut", 1).put("nameOut", "Q")
+                .put("saveKeyOut", 900).put("fbInMacros", new JSONArray().put(originalChild));
+        FbdCraftMacroDefinition expanded = FbdCraftMacroGraphAdapter.expandIfSupported(
+                FbdCraftMacroDefinition.fromJson(root.toString()));
+        assertNotNull("MQTT subscriber can join the operator subscription lifecycle",
+                expanded.toJson().optJSONObject("bloodskyGraph"));
+
+        JSONObject graphWidget = expanded.toJson().getJSONObject("bloodskyGraph")
+                .getJSONArray("widgets").getJSONObject(0);
+        assertEquals("FBD CRAFT MQTT SUB BOOL", graphWidget.getString("type"));
+        assertEquals("plant/temperature", graphWidget.optString("craftMqttTopic"));
+        assertEquals(1, graphWidget.optInt("craftMqttType"));
+        assertEquals(2, graphWidget.optInt("craftMqttServer"));
+
+        MainActivity.Widget macro = MainActivity.widgetFromJson(new JSONObject()
+                .put("type", "FBD CRAFT MACRO").put("craftMacroDefinition", expanded.toJson()));
+        java.util.List<MainActivity.Widget> runtimeWidgets =
+                MainActivity.fbdRuntimeWidgetsIncludingMacros(Collections.singletonList(macro));
+        MainActivity.Widget subscriber = runtimeWidgets.get(1);
+        assertTrue(MainActivity.isCraftMqttSubscriber(subscriber.type));
+        subscriber.craftMqttValue = 1.0;
+        double[] numeric = new double[1];
+        assertTrue(MainActivity.evaluateFbdBlock(Collections.singletonList(macro), Collections.emptyList(), 0,
+                new boolean[1], new boolean[1], new boolean[1], numeric,
+                new CraftSystemRegisterBank()));
+        assertEquals(1.0, numeric[0], 0.0);
+
+        subscriber.craftMqttValue = null;
+        assertFalse(MainActivity.evaluateFbdBlock(Collections.singletonList(macro), Collections.emptyList(), 0,
+                new boolean[1], new boolean[1], new boolean[1], numeric,
+                new CraftSystemRegisterBank()));
+        assertTrue(Double.isNaN(numeric[0]));
+    }
+
+    @Test public void executesImportedRegisterWritesOnlyDuringOperatorScan() throws Exception {
+        JSONObject literal = new JSONObject().put("componentId", 105).put("x", 0).put("y", 0)
+                .put("saveKey", 10).put("keyOut", 20).put("numOnIn", 1)
+                .put("reg", 10).put("isConstant", true).put("constant", 42)
+                .put("nMcr", "WriteUserRegister").put("unIdMcr", 7);
+        JSONObject registerOutput = new JSONObject().put("componentId", 106).put("x", 10).put("y", 0)
+                .put("saveKey", 20).put("keyOut", -1).put("numOnIn", 1)
+                .put("reg", 11).put("nMcr", "WriteUserRegister").put("unIdMcr", 7);
+        JSONObject macroOutput = new JSONObject().put("componentId", 105).put("x", 20).put("y", 0)
+                .put("saveKey", 30).put("keyOut", 900).put("numOnIn", 1)
+                .put("reg", 10).put("isConstant", true).put("constant", 7)
+                .put("nMcr", "WriteUserRegister").put("unIdMcr", 7);
+        JSONObject source = new JSONObject().put("name", "WriteUserRegister").put("uniqueId", 7)
+                .put("countIn", 0).put("typeOut", 2).put("nameOut", "Q").put("saveKeyOut", 900)
+                .put("fbInMacros", new JSONArray().put(literal).put(registerOutput).put(macroOutput));
+        FbdCraftMacroDefinition expanded = FbdCraftMacroGraphAdapter.expandIfSupported(
+                FbdCraftMacroDefinition.fromJson(source.toString()));
+        assertNotNull("register output blocks have executable pins", expanded.toJson().optJSONObject("bloodskyGraph"));
+
+        CraftSystemRegisterBank bank = new CraftSystemRegisterBank();
+        MainActivity.Widget macro = MainActivity.widgetFromJson(new JSONObject()
+                .put("type", "FBD CRAFT MACRO").put("craftMacroDefinition", expanded.toJson()));
+        double[] numeric = new double[1];
+        MainActivity.evaluateFbdBlock(Collections.singletonList(macro), Collections.emptyList(), 0,
+                new boolean[1], new boolean[1], new boolean[1], numeric, bank, false);
+        assertEquals("editor evaluation must not write the system register", 0, bank.readWord(11));
+
+        macro = MainActivity.widgetFromJson(new JSONObject()
+                .put("type", "FBD CRAFT MACRO").put("craftMacroDefinition", expanded.toJson()));
+        numeric = new double[1];
+        MainActivity.evaluateFbdBlock(Collections.singletonList(macro), Collections.emptyList(), 0,
+                new boolean[1], new boolean[1], new boolean[1], numeric, bank, true);
+        assertEquals(42, bank.readWord(11));
+        assertEquals("macro output still follows its declared output key", 7.0, numeric[0], 0.0);
+    }
+
+    @Test public void usesVerifiedOutputPinNamesForCraftConverterEdges() throws Exception {
+        JSONObject first = new JSONObject().put("componentId", 118).put("x", 0).put("y", 0)
+                .put("saveKey", 50).put("keyOut", 51).put("numOnIn", 1)
+                .put("nMcr", "Gate").put("unIdMcr", 7);
+        JSONObject second = new JSONObject().put("componentId", 121).put("x", 10).put("y", 0)
+                .put("saveKey", 51).put("keyOut", 900).put("numOnIn", 1)
+                .put("nMcr", "Gate").put("unIdMcr", 7);
+        JSONObject macro = new JSONObject().put("countIn", 1).put("nameIn1", "A").put("typeIn1", 2)
+                .put("keyOutIn1", 50).put("numOnIn1", 1).put("saveKeyOut", 900)
+                .put("fbInMacros", new JSONArray().put(first).put(second));
+        JSONObject graph = FbdCraftMacroGraphAdapter.translate(macro, macro.getJSONArray("fbInMacros"));
+        assertNotNull(graph);
+        assertEquals("OUT", graph.getJSONArray("connections").getJSONObject(0).getString("sourcePin"));
+        assertEquals("OUT", graph.getString("outputPin"));
+    }
+
+    @Test public void translatesCraftSensorSunriseAndMqttMetadata() throws Exception {
+        JSONArray children = new JSONArray()
+                .put(new JSONObject().put("componentId", 120).put("x", 0).put("y", 0)
+                        .put("type", 3).put("saveKey", 10).put("keyOut", -1))
+                .put(new JSONObject().put("componentId", 127).put("x", 0).put("y", 0)
+                        .put("type", 2).put("saveKey", 20).put("keyOut", -1)
+                        .put("latitude", 51.5).put("longitude", -0.1))
+                .put(new JSONObject().put("componentId", 139).put("x", 0).put("y", 0)
+                        .put("saveKey", 30).put("keyOut", -1).put("topic", "site/value")
+                        .put("typeQ", 3).put("numMqttServer", 2))
+                .put(new JSONObject().put("componentId", 140).put("x", 0).put("y", 0)
+                        .put("saveKey", 40).put("keyOut", -1).put("topic", "site/out")
+                        .put("typeIn", 1).put("numMqttServer", 2).put("mqttRetain", true))
+                .put(new JSONObject().put("componentId", 109).put("x", 0).put("y", 0)
+                        .put("saveKey", 45).put("keyOut", -1).put("isHighRegister", true)
+                        .put("isHighByte", true))
+                .put(new JSONObject().put("componentId", 114).put("x", 0).put("y", 0)
+                        .put("saveKey", 46).put("keyOut", -1).put("type", 3))
+                .put(new JSONObject().put("componentId", 121).put("x", 0).put("y", 0)
+                        .put("saveKey", 50).put("keyOut", 900));
+        JSONObject root = new JSONObject().put("countIn", 0).put("saveKeyOut", 900)
+                .put("fbInMacros", children);
+        JSONObject graph = FbdCraftMacroGraphAdapter.translate(root, children);
+        assertNotNull(graph);
+        JSONArray widgets = graph.getJSONArray("widgets");
+        assertEquals(3, widgets.getJSONObject(0).getInt("craftSensorAxis"));
+        assertEquals("SS", widgets.getJSONObject(1).getString("craftSunriseMode"));
+        assertEquals("site/value", widgets.getJSONObject(2).getString("craftMqttTopic"));
+        assertEquals(3, widgets.getJSONObject(2).getInt("craftMqttType"));
+        assertEquals(2, widgets.getJSONObject(2).getInt("craftMqttServer"));
+        assertTrue(widgets.getJSONObject(3).getBoolean("craftMqttRetain"));
+        assertTrue(widgets.getJSONObject(4).getBoolean("craftSwapWord"));
+        assertTrue(widgets.getJSONObject(4).getBoolean("craftSwapByte"));
+        assertEquals("F", widgets.getJSONObject(5).getString("craftTriggerMode"));
+    }
+
+    @Test public void exportsEditedMacroFloatOrderAndSensorModesToCraftChildFields() throws Exception {
+        JSONArray children = new JSONArray()
+                .put(new JSONObject().put("componentId", 109).put("x", 0).put("y", 0)
+                        .put("saveKey", 10).put("keyOut", -1).put("isHighRegister", false)
+                        .put("isHighByte", false).put("vendorFloatField", "keep"))
+                .put(new JSONObject().put("componentId", 120).put("x", 0).put("y", 0)
+                        .put("saveKey", 20).put("keyOut", -1).put("type", 1)
+                        .put("vendorAxisField", "keep"))
+                .put(new JSONObject().put("componentId", 127).put("x", 0).put("y", 0)
+                        .put("saveKey", 30).put("keyOut", -1).put("type", 1)
+                        .put("vendorSunriseField", "keep"))
+                .put(new JSONObject().put("componentId", 103).put("x", 0).put("y", 0)
+                        .put("saveKey", 40).put("keyOut", 900));
+        JSONObject root = new JSONObject().put("countIn", 0).put("saveKeyOut", 900)
+                .put("fbInMacros", children);
+        JSONObject graph = FbdCraftMacroGraphAdapter.translate(root, children);
+        assertNotNull(graph);
+        JSONArray widgets = graph.getJSONArray("widgets");
+        widgets.getJSONObject(0).put("craftSwapWord", true).put("craftSwapByte", true);
+        widgets.getJSONObject(1).put("craftSensorAxis", 3);
+        widgets.getJSONObject(2).put("craftSunriseMode", "SS");
+
+        JSONObject exported = FbdCraftMacroGraphAdapter.applyEditedPropertiesToCraftRecords(
+                new JSONObject(root.toString()).put("bloodskyGraph", graph));
+        JSONArray records = exported.getJSONArray("fbInMacros");
+        assertTrue(records.getJSONObject(0).getBoolean("isHighRegister"));
+        assertTrue(records.getJSONObject(0).getBoolean("isHighByte"));
+        assertEquals("keep", records.getJSONObject(0).getString("vendorFloatField"));
+        assertEquals(3, records.getJSONObject(1).getInt("type"));
+        assertEquals("keep", records.getJSONObject(1).getString("vendorAxisField"));
+        assertEquals(2, records.getJSONObject(2).getInt("type"));
+        assertEquals("keep", records.getJSONObject(2).getString("vendorSunriseField"));
+    }
+
+    @Test public void importsAndExportsEditedMacroVariableNamesTypesBitsAndConstants() throws Exception {
+        JSONArray children = new JSONArray()
+                .put(new JSONObject().put("componentId", 101).put("x", 0).put("y", 0)
+                        .put("saveKey", 10).put("keyOut", -1).put("reg", 12).put("bit", 4)
+                        .put("isConstant", false).put("constant", "0"))
+                .put(new JSONObject().put("componentId", 133).put("x", 0).put("y", 0)
+                        .put("saveKey", 20).put("keyOut", -1).put("typeVar", 2)
+                        .put("typeVarValue", "OldInput").put("isConstant", false)
+                        .put("constant", "0"))
+                .put(new JSONObject().put("componentId", 134).put("x", 0).put("y", 0)
+                        .put("saveKey", 30).put("keyOut", -1).put("typeVar", 3)
+                        .put("typeVarValue", "OldOutput"))
+                .put(new JSONObject().put("componentId", 103).put("x", 0).put("y", 0)
+                        .put("saveKey", 40).put("keyOut", 900));
+        JSONObject root = new JSONObject().put("countIn", 0).put("saveKeyOut", 900)
+                .put("fbInMacros", children);
+        JSONObject graph = FbdCraftMacroGraphAdapter.translate(root, children);
+        assertNotNull(graph);
+        JSONArray widgets = graph.getJSONArray("widgets");
+        assertEquals("OldInput", widgets.getJSONObject(1).getString("craftVariableName"));
+        assertEquals("OldOutput", widgets.getJSONObject(2).getString("craftVariableName"));
+        widgets.getJSONObject(0).put("craftVarBit", 7)
+                .put("craftVarConstantMode", true).put("craftVarConstant", "1");
+        widgets.getJSONObject(1).put("type", "FBD CRAFT VAR NAME IN FLOAT")
+                .put("craftVariableName", "NewInput").put("craftNamedConstantMode", true)
+                .put("craftNamedConstant", "1.25");
+        widgets.getJSONObject(2).put("type", "FBD CRAFT VAR NAME OUT INT")
+                .put("craftVariableName", "NewOutput");
+
+        JSONObject exported = FbdCraftMacroGraphAdapter.applyEditedPropertiesToCraftRecords(
+                new JSONObject(root.toString()).put("bloodskyGraph", graph));
+        JSONArray records = exported.getJSONArray("fbInMacros");
+        assertEquals(7, records.getJSONObject(0).getInt("bit"));
+        assertTrue(records.getJSONObject(0).getBoolean("isConstant"));
+        assertEquals("1", records.getJSONObject(0).getString("constant"));
+        assertEquals(3, records.getJSONObject(1).getInt("typeVar"));
+        assertEquals("NewInput", records.getJSONObject(1).getString("typeVarValue"));
+        assertTrue(records.getJSONObject(1).getBoolean("isConstant"));
+        assertEquals("1.25", records.getJSONObject(1).getString("constant"));
+        assertEquals(2, records.getJSONObject(2).getInt("typeVar"));
+        assertEquals("NewOutput", records.getJSONObject(2).getString("typeVarValue"));
+    }
+
+    @Test public void exportsEditedMacroCompareAndArithmeticActionsToCraftCodes() throws Exception {
+        JSONArray children = new JSONArray()
+                .put(new JSONObject().put("componentId", 107).put("x", 0).put("y", 0)
+                        .put("saveKey", 10).put("keyOut", -1).put("compareAction", 1)
+                        .put("vendorCompare", "keep"))
+                .put(new JSONObject().put("componentId", 110).put("x", 0).put("y", 0)
+                        .put("saveKey", 20).put("keyOut", -1).put("compareAction", 1))
+                .put(new JSONObject().put("componentId", 111).put("x", 0).put("y", 0)
+                        .put("saveKey", 30).put("keyOut", -1).put("compareAction", 1))
+                .put(new JSONObject().put("componentId", 112).put("x", 0).put("y", 0)
+                        .put("saveKey", 40).put("keyOut", -1).put("compareAction", 1))
+                .put(new JSONObject().put("componentId", 103).put("x", 0).put("y", 0)
+                        .put("saveKey", 50).put("keyOut", 900));
+        JSONObject root = new JSONObject().put("countIn", 0).put("saveKeyOut", 900)
+                .put("fbInMacros", children);
+        JSONObject graph = FbdCraftMacroGraphAdapter.translate(root, children);
+        assertNotNull(graph);
+        JSONArray widgets = graph.getJSONArray("widgets");
+        widgets.getJSONObject(0).put("compareOperator", "<=");
+        widgets.getJSONObject(1).put("compareOperator", "-");
+        widgets.getJSONObject(2).put("compareOperator", "*");
+        widgets.getJSONObject(3).put("compareOperator", "<>");
+
+        JSONObject exported = FbdCraftMacroGraphAdapter.applyEditedPropertiesToCraftRecords(
+                new JSONObject(root.toString()).put("bloodskyGraph", graph));
+        JSONArray records = exported.getJSONArray("fbInMacros");
+        assertEquals(3, records.getJSONObject(0).getInt("compareAction"));
+        assertEquals("keep", records.getJSONObject(0).getString("vendorCompare"));
+        assertEquals(2, records.getJSONObject(1).getInt("compareAction"));
+        assertEquals(3, records.getJSONObject(2).getInt("compareAction"));
+        assertEquals(6, records.getJSONObject(3).getInt("compareAction"));
+    }
+
+    @Test public void preservesMacrosThatNeedScreenLevelIo() throws Exception {
+        int[] unsupported = {130};
+        for (int id : unsupported) {
+            JSONObject root = validMacro();
+            root.getJSONArray("fbInMacros").getJSONObject(0).put("componentId", id);
+            FbdCraftMacroDefinition expanded = FbdCraftMacroGraphAdapter.expandIfSupported(
+                    FbdCraftMacroDefinition.fromJson(root.toString()));
+            assertNull("ID " + id + " must stay opaque", expanded.toJson().optJSONObject("bloodskyGraph"));
+        }
+    }
+
+    @Test public void failsClosedForUnknownIdsOrBrokenEdges() throws Exception {
+        JSONObject unknown = validMacro();
+        unknown.getJSONArray("fbInMacros").getJSONObject(0).put("componentId", 999);
+        assertNull(FbdCraftMacroGraphAdapter.translate(unknown, unknown.getJSONArray("fbInMacros")));
+        JSONObject broken = validMacro();
+        broken.getJSONArray("fbInMacros").getJSONObject(0).put("keyOut", 123456);
+        assertNull(FbdCraftMacroGraphAdapter.translate(broken, broken.getJSONArray("fbInMacros")));
+    }
+}
