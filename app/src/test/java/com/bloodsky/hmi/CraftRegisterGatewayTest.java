@@ -21,13 +21,18 @@ public class CraftRegisterGatewayTest {
         final List<int[]> writes = new ArrayList<>();
         int sourceValue = 7;
         int triggerValue;
+        int failedWritesRemaining;
         @Override public int[] read(CraftRegisterGateway.Binding binding, int quantity) throws IOException {
             int value = binding.port == 502 && binding.address == 9 ? triggerValue : sourceValue;
             int[] result = new int[quantity];
             for (int i = 0; i < quantity; i++) result[i] = value + i;
             return result;
         }
-        @Override public void write(CraftRegisterGateway.Binding binding, int[] values) {
+        @Override public void write(CraftRegisterGateway.Binding binding, int[] values) throws IOException {
+            if (failedWritesRemaining > 0) {
+                failedWritesRemaining--;
+                throw new IOException("temporary write failure");
+            }
             writes.add(values.clone());
         }
     }
@@ -183,6 +188,35 @@ public class CraftRegisterGatewayTest {
         assertFalse(CraftRegisterGateway.transfer(config, state, io).transferred);
         assertEquals(1, io.writes.size());
         assertArrayEquals(new int[]{12}, io.writes.get(0));
+    }
+
+    @Test public void changeModeRetriesAValueAfterDestinationWriteFailure() throws Exception {
+        CraftRegisterGateway.Config config = config(2, 1);
+        CraftRegisterGateway.State state = new CraftRegisterGateway.State();
+        FakeTransport io = new FakeTransport();
+        assertFalse(CraftRegisterGateway.transfer(config, state, io).transferred);
+        io.sourceValue = 8;
+        io.failedWritesRemaining = 1;
+        assertThrows(IOException.class, () -> CraftRegisterGateway.transfer(config, state, io));
+        assertTrue("The failed value must still differ from the last successfully sent value",
+                CraftRegisterGateway.transfer(config, state, io).transferred);
+        assertEquals(1, io.writes.size());
+        assertArrayEquals(new int[]{8}, io.writes.get(0));
+    }
+
+    @Test public void risingEdgeRetriesWhileTriggerStaysHighAfterWriteFailure() throws Exception {
+        CraftRegisterGateway.Config config = config(1, 1);
+        CraftRegisterGateway.State state = new CraftRegisterGateway.State();
+        FakeTransport io = new FakeTransport();
+        assertFalse(CraftRegisterGateway.transfer(config, state, io).transferred);
+        io.triggerValue = 8;
+        io.failedWritesRemaining = 1;
+        assertThrows(IOException.class, () -> CraftRegisterGateway.transfer(config, state, io));
+        assertTrue("The unacknowledged rising edge must remain pending",
+                CraftRegisterGateway.transfer(config, state, io).transferred);
+        assertEquals(1, io.writes.size());
+        assertArrayEquals(new int[]{7}, io.writes.get(0));
+        assertFalse(CraftRegisterGateway.transfer(config, state, io).transferred);
     }
 
     @Test public void failedReadDoesNotWriteDestination() throws Exception {
