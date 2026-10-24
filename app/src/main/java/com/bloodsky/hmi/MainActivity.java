@@ -11780,10 +11780,12 @@ private String archiveProjectKey() {
             else result = fbdCraftUnaryFloat32(val,
                     "FBD CRAFT ABS".equals(widget.type) ? "ABS" : "SIN");
             cacheNumeric[index] = result;
-            // Source math blocks return a Float for valid Float inputs, including
-            // IEEE NaN/infinity results that remain connected output objects.
-            widget.fbdOutputAvailable = true;
-            widget.fbdOutputAvailabilityExplicit = true;
+            // Source Float-returning blocks keep IEEE results as connected objects.
+            if (!"FBD CRAFT WORD TO FLOAT".equals(widget.type)
+                    && !"FBD CRAFT INT TO FLOAT".equals(widget.type)) {
+                widget.fbdOutputAvailable = true;
+                widget.fbdOutputAvailabilityExplicit = true;
+            }
             return !Double.isNaN(result) && !Double.isInfinite(result) && result != 0.0;
         }
         if ("FBD CRAFT POW".equals(widget.type)) {
