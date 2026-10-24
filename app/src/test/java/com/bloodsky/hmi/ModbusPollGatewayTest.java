@@ -35,6 +35,7 @@ public class ModbusPollGatewayTest {
         assertNull(ModbusPollGateway.Endpoint.parse(null));
         assertNull(ModbusPollGateway.Endpoint.parse("http://x"));
         assertNull(ModbusPollGateway.Endpoint.parse("tcp://host/1/40001"));
+        assertNull(ModbusPollGateway.Endpoint.parse("tcp://user:pass@host:502/1/40001"));
         assertNull(ModbusPollGateway.Endpoint.parse("bt://badmac/1/40001"));
         assertNull(ModbusPollGateway.Endpoint.parse("usb://999/0"));
     }
