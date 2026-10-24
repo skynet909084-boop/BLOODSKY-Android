@@ -101,3 +101,4 @@ jobs:
           name: BLOODSKY-Android-UI-smoke
           path: build-reports/android-ui-smoke/
           if-no-files-found: warn
+          retention-days: 14

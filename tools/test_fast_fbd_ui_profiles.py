@@ -51,3 +51,5 @@ class FastFbdUiGateTests(unittest.TestCase):
             self.assertIn(evidence, full)
 
 
+if __name__ == "__main__":
+    unittest.main()
