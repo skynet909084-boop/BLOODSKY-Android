@@ -12,6 +12,9 @@ public class FbdCraftFloatConversionTest {
         assertEquals(expected, MainActivity.fbdCraftLogFloat32(input), 0.0);
         assertTrue(Double.isNaN(MainActivity.fbdCraftLogFloat32(Double.NaN)));
         assertTrue(Double.isNaN(MainActivity.fbdCraftLogFloat32(-1.0)));
+        assertEquals(Double.NEGATIVE_INFINITY, MainActivity.fbdCraftLogFloat32(0.0), 0.0);
+        assertEquals(Double.POSITIVE_INFINITY,
+                MainActivity.fbdCraftLogFloat32(Double.POSITIVE_INFINITY), 0.0);
     }
 
     @Test public void craftWordToFloatUsesSignedIntegerAndFloat32Rounding() {
@@ -42,9 +45,15 @@ public class FbdCraftFloatConversionTest {
                 MainActivity.fbdCraftUnaryFloat32(x, "SIN"), 0.0);
         assertEquals((double) Math.abs((float) -x),
                 MainActivity.fbdCraftUnaryFloat32(-x, "ABS"), 0.0);
+        assertEquals(Double.POSITIVE_INFINITY,
+                MainActivity.fbdCraftUnaryFloat32(Double.POSITIVE_INFINITY, "ABS"), 0.0);
+        assertTrue(Double.isNaN(MainActivity.fbdCraftUnaryFloat32(
+                Double.POSITIVE_INFINITY, "SIN")));
         assertEquals((double) (float) Math.pow((float) x, 2f),
                 MainActivity.fbdCraftPowFloat32(x, 2.0), 0.0);
         assertTrue(Double.isNaN(MainActivity.fbdCraftPowFloat32(-1.0, 0.5)));
+        assertEquals(Double.POSITIVE_INFINITY,
+                MainActivity.fbdCraftPowFloat32(Double.POSITIVE_INFINITY, 1.0), 0.0);
     }
 
     private static MainActivity.Widget widget(String type) {
@@ -59,6 +68,14 @@ public class FbdCraftFloatConversionTest {
         FbdCraftTestGraphs.Graph graph = FbdCraftTestGraphs.withReadyCraftCounters(nodes, edges);
         int n = graph.widgets.size();
         return MainActivity.evaluateFbdBlockNumeric(graph.widgets, graph.connections, at,
+                new boolean[n], new boolean[n], new boolean[n], new double[n]);
+    }
+
+    private static boolean graphBoolean(List<MainActivity.Widget> nodes,
+                                        List<MainActivity.FbdConnection> edges, int at) {
+        FbdCraftTestGraphs.Graph graph = FbdCraftTestGraphs.withReadyCraftCounters(nodes, edges);
+        int n = graph.widgets.size();
+        return MainActivity.evaluateFbdBlock(graph.widgets, graph.connections, at,
                 new boolean[n], new boolean[n], new boolean[n], new double[n]);
     }
 
@@ -117,5 +134,44 @@ public class FbdCraftFloatConversionTest {
         List<MainActivity.FbdConnection> missingEdges = Arrays.asList(
                 MainActivity.pinnedFbdConnection(0, "Q", 1, "IN"));
         assertTrue(Double.isNaN(graphOutput(missingNodes, missingEdges, 1)));
+    }
+
+    @Test public void craftFloatMathGraphsKeepValidNanAndInfinityOutputsAvailable() throws Exception {
+        MainActivity.Widget one = widget("FBD CRAFT CTU"); one.counterValue = 1;
+        MainActivity.Widget zero = widget("FBD CRAFT CTU"); zero.counterValue = 0;
+        MainActivity.Widget divide = widget("FBD CRAFT ARITHMETIC FLOAT");
+        divide.compareOperator = "/";
+        MainActivity.Widget absolute = widget("FBD CRAFT ABS");
+        MainActivity.Widget convertInfinity = widget("FBD CRAFT FLOAT TO INT");
+        List<MainActivity.Widget> infinityNodes = Arrays.asList(one, zero, divide,
+                absolute, convertInfinity);
+        List<MainActivity.FbdConnection> infinityEdges = Arrays.asList(
+                MainActivity.pinnedFbdConnection(0, "Q", 2, "IN1"),
+                MainActivity.pinnedFbdConnection(1, "Q", 2, "IN2"),
+                MainActivity.pinnedFbdConnection(2, "Q", 3, "IN"),
+                MainActivity.pinnedFbdConnection(3, "Q", 4, "IN"));
+        assertEquals((double) Integer.MAX_VALUE, graphOutput(infinityNodes, infinityEdges, 4), 0.0);
+
+        one.counterValue = 0;
+        MainActivity.Widget log = widget("FBD CRAFT LOG");
+        MainActivity.Widget convertNan = widget("FBD CRAFT FLOAT TO INT");
+        List<MainActivity.Widget> nanNodes = Arrays.asList(one, zero, divide, log, convertNan);
+        List<MainActivity.FbdConnection> nanEdges = Arrays.asList(
+                MainActivity.pinnedFbdConnection(0, "Q", 2, "IN1"),
+                MainActivity.pinnedFbdConnection(1, "Q", 2, "IN2"),
+                MainActivity.pinnedFbdConnection(2, "Q", 3, "IN"),
+                MainActivity.pinnedFbdConnection(3, "Q", 4, "IN"));
+        assertEquals(0.0, graphOutput(nanNodes, nanEdges, 4), 0.0);
+
+        MainActivity.Widget compareNan = widget("FBD CRAFT COMPARE FLOAT");
+        compareNan.compareOperator = ">";
+        List<MainActivity.Widget> compareNodes = Arrays.asList(one, zero, divide, compareNan);
+        List<MainActivity.FbdConnection> compareEdges = Arrays.asList(
+                MainActivity.pinnedFbdConnection(0, "Q", 2, "IN1"),
+                MainActivity.pinnedFbdConnection(1, "Q", 2, "IN2"),
+                MainActivity.pinnedFbdConnection(2, "Q", 3, "IN1"),
+                MainActivity.pinnedFbdConnection(1, "Q", 3, "IN2"));
+        assertTrue("Craft's branch comparison reports NaN > 0 as true",
+                graphBoolean(compareNodes, compareEdges, 3));
     }
 }
