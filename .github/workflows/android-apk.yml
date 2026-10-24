@@ -2,7 +2,9 @@ name: BLOODSKY Android APK
 
 on:
   push:
-    branches: [main]
+    # Validate the real all-in-one build after each merged integration PR.
+    # PR-head CI alone cannot verify the exact combined branch commit.
+    branches: [main, prototype/all-in-one-20261020]
     paths:
       - 'app/**'
       - 'tools/**'
