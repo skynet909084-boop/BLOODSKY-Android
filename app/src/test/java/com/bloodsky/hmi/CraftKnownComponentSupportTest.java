@@ -100,4 +100,74 @@ public final class CraftKnownComponentSupportTest {
         assertFalse(gateway.optBoolean("craftGatewayEnabled", false));
         assertEquals("", gateway.getString("connectionInfo"));
     }
+
+    @Test public void craftMediaAndGaugeFactoriesRoundTripTheirNativeIdentityAndSettings()
+            throws Exception {
+        JSONArray components = new JSONArray();
+        components.put(component(12).put("jsTableComponent_other", new JSONObject()
+                .put("numScreen", 1).put("max", 240).put("showText", false)
+                .put("firstColorPoint", 80).put("secondColorPoint", 190)
+                .put("vendorGauge", "keep-12")));
+        components.put(component(14).put("jsTableComponent_other", new JSONObject()
+                .put("numScreen", 1).put("secondPeriod", 750).put("countPoint", 240)
+                .put("countGraphChannel", 4).put("typeGraph", 2)
+                .put("nameSeries1", "A").put("nameSeries4", "D")
+                .put("colorLabelsXY", -1).put("vendorTrend", "keep-14")));
+        components.put(component(16).put("jsTableComponent_other", new JSONObject()
+                .put("numScreen", 1).put("pathGif", "media/pump.gif")
+                .put("vendorGif", "keep-16")));
+        components.put(component(17).put("jsTableComponent_other", new JSONObject()
+                .put("numScreen", 1).put("typeCommand", 1).put("pathPic_0", "media/off.png")
+                .put("pathPic_15", "media/on.png").put("vendorPictures", "keep-17")));
+        components.put(component(21).put("jsTableComponent_other", new JSONObject()
+                .put("numScreen", 1).put("pathSound_0", "media/low.mp3")
+                .put("pathSound_7", "media/high.mp3").put("vendorSounds", "keep-21")));
+        components.put(component(24).put("jsTableComponent_other", new JSONObject()
+                .put("numScreen", 1).put("minGauge", -20).put("maxGauge", 180)
+                .put("countTextScale", 8).put("indicatorName", "NeedleIndicator")
+                .put("vendorGauge", "keep-24")));
+        JSONObject source = new JSONObject()
+                .put("TableNameProject", new JSONObject().put("name", "Craft factory batch")
+                        .put("countScreen", 1))
+                .put("TableConnections", new JSONArray())
+                .put("TableComponent", components);
+
+        JSONObject imported = new JSONObject(CraftProjectImporter.convert(source.toString()));
+        JSONArray widgets = imported.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets");
+        int[] ids = {12, 14, 16, 17, 21, 24};
+        String[] types = {"Шкала / Стрелка", "График / Тренд", "GIF Craft",
+                "Многопозиционное фото", "Звуковой сигнал Craft", "Шкала / Стрелка"};
+        for (int i = 0; i < ids.length; i++) {
+            JSONObject widget = widgets.getJSONObject(i);
+            assertEquals(types[i], widget.getString("type"));
+            assertEquals(ids[i], widget.getInt("craftComponentId"));
+            assertFalse(widget.optBoolean("craftUnsupportedComponent", false));
+            assertEquals("", widget.getString("connectionInfo"));
+            assertEquals("keep-" + ids[i], widget.getJSONObject("craftOther")
+                    .getString(ids[i] == 12 || ids[i] == 24 ? "vendorGauge"
+                            : ids[i] == 14 ? "vendorTrend"
+                            : ids[i] == 16 ? "vendorGif"
+                            : ids[i] == 17 ? "vendorPictures" : "vendorSounds"));
+        }
+        assertEquals(4, widgets.getJSONObject(1).getInt("craftTrendChannelCount"));
+        assertEquals(8, widgets.getJSONObject(5).getInt("craftGaugeScaleCount"));
+        assertFalse(widgets.getJSONObject(4).getBoolean("craftSoundEnabled"));
+
+        JSONObject exported = new JSONObject(CraftProjectExporter.export(imported.toString()));
+        JSONArray rows = exported.getJSONArray("TableComponent");
+        JSONObject reimported = new JSONObject(CraftProjectImporter.convert(exported.toString()));
+        JSONArray roundTripWidgets = reimported.getJSONArray("screens")
+                .getJSONObject(0).getJSONArray("widgets");
+        for (int i = 0; i < ids.length; i++) {
+            assertEquals(ids[i], rows.getJSONObject(i).getInt("componentId"));
+            JSONObject sourceOther = rows.getJSONObject(i).getJSONObject("jsTableComponent_other");
+            assertEquals("keep-" + ids[i], sourceOther.getString(ids[i] == 12 || ids[i] == 24
+                    ? "vendorGauge" : ids[i] == 14 ? "vendorTrend" : ids[i] == 16 ? "vendorGif"
+                    : ids[i] == 17 ? "vendorPictures" : "vendorSounds"));
+            JSONObject widget = roundTripWidgets.getJSONObject(i);
+            assertEquals(ids[i], widget.getInt("craftComponentId"));
+            assertFalse(widget.optBoolean("craftUnsupportedComponent", false));
+            assertEquals("", widget.getString("connectionInfo"));
+        }
+    }
 }
