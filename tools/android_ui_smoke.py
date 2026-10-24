@@ -417,7 +417,7 @@ class Smoke:
             if not self.source_overflow_checked:
                 required_rows = (
                     'Сетевые устройства', 'Пароль проекта', 'Режим станции: Мастер',
-                    'Показывать тайм-ауты', 'Сетевое управление', 'Работа в фоне')
+                    'Показывать тайм-ауты', 'Modbus TCP Slave: выключен', 'Работа в фоне')
                 visible_text = {node.get('text', '') for node in ET.fromstring(xml).iter('node')
                                 if node.get('bounds') != '[0,0][0,0]'}
                 missing = [label for label in required_rows if label not in visible_text]
@@ -1037,7 +1037,7 @@ class Smoke:
         self.wait_node('Пароль проекта')
         self.wait_node('Режим станции: Мастер')
         self.wait_node('Показывать тайм-ауты')
-        self.wait_node('Сетевое управление')
+        self.wait_node('Modbus TCP Slave: выключен')
         self.wait_node('Работа в фоне')
         self.wait_node('Дополнительные действия BLOODSKY…')
         self.capture('01b-editor-commands')
