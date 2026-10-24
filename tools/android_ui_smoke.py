@@ -242,6 +242,21 @@ class Smoke:
         (self.output / 'last-ui.xml').write_text(last)
         raise AssertionError('UI text fragment not found: ' + fragment)
 
+    def wait_field_prefix(self, description, prefix, timeout=30):
+        deadline = time.monotonic() + timeout
+        last = ''
+        while time.monotonic() < deadline:
+            last = self.dump()
+            fields = matching_nodes(last, class_name='android.widget.EditText',
+                                    description=description)
+            if len(fields) > 1:
+                raise AssertionError('Ambiguous UI field: ' + description)
+            if fields and fields[0].get('text', '').startswith(prefix):
+                return fields[0]
+            time.sleep(0.25)
+        (self.output / 'last-ui.xml').write_text(last)
+        raise AssertionError('UI field did not reach expected prefix: ' + description)
+
     def wait_for_saved_main_activity(self, timeout=15):
         """Wait until ActivityTaskManager has saved MainActivity behind DocumentsUI."""
         deadline = time.monotonic() + timeout
@@ -1132,6 +1147,7 @@ class Smoke:
         self.capture('04f-document-picker')
         self.tap_document('bloodsky-custom.png')
         self.wait_node('Своё изображение')
+        self.wait_field_prefix('Своё изображение индикатора', 'media/asset_')
         self.tap('Применить')
         self.wait_node(description='Изображение ON')
         self.capture('04f-custom-state-image')
