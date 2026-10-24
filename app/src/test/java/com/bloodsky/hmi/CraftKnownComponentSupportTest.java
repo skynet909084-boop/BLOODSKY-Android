@@ -34,6 +34,11 @@ public final class CraftKnownComponentSupportTest {
 
     private static JSONObject importProject(int... ids) throws Exception {
         JSONArray components = new JSONArray();
+        components.put(component(10).put("jsTableComponent_other", new JSONObject()
+                .put("numScreen", 1).put("message", "Alarm %1")
+                .put("phone", "+15551234567").put("option", true)
+                .put("optionRegister", 42).put("optionCountRegister", 3)
+                .put("vendorSms", "keep-10")));
         for (int id : ids) components.put(component(id));
         JSONObject source = new JSONObject()
                 .put("TableNameProject", new JSONObject()
@@ -134,8 +139,8 @@ public final class CraftKnownComponentSupportTest {
 
         JSONObject imported = new JSONObject(CraftProjectImporter.convert(source.toString()));
         JSONArray widgets = imported.getJSONArray("screens").getJSONObject(0).getJSONArray("widgets");
-        int[] ids = {12, 14, 16, 17, 21, 24};
-        String[] types = {"Шкала / Стрелка", "График / Тренд", "GIF Craft",
+        int[] ids = {10, 12, 14, 16, 17, 21, 24};
+        String[] types = {"SMS-уведомление", "Шкала / Стрелка", "График / Тренд", "GIF Craft",
                 "Многопозиционное фото", "Звуковой сигнал Craft", "Шкала / Стрелка"};
         for (int i = 0; i < ids.length; i++) {
             JSONObject widget = widgets.getJSONObject(i);
@@ -144,25 +149,35 @@ public final class CraftKnownComponentSupportTest {
             assertFalse(widget.optBoolean("craftUnsupportedComponent", false));
             assertEquals("", widget.getString("connectionInfo"));
             assertEquals("keep-" + ids[i], widget.getJSONObject("craftOther")
-                    .getString(ids[i] == 12 || ids[i] == 24 ? "vendorGauge"
+                    .getString(ids[i] == 10 ? "vendorSms" : ids[i] == 12 || ids[i] == 24 ? "vendorGauge"
                             : ids[i] == 14 ? "vendorTrend"
                             : ids[i] == 16 ? "vendorGif"
                             : ids[i] == 17 ? "vendorPictures" : "vendorSounds"));
         }
-        assertEquals(4, widgets.getJSONObject(1).getInt("craftTrendChannelCount"));
-        assertEquals(8, widgets.getJSONObject(5).getInt("craftGaugeScaleCount"));
-        assertFalse(widgets.getJSONObject(4).getBoolean("craftSoundEnabled"));
+        assertFalse(widgets.getJSONObject(0).getBoolean("smsEnabled"));
+        assertTrue(widgets.getJSONObject(0).getBoolean("craftSmsOption"));
+        assertEquals(42, widgets.getJSONObject(0).getInt("craftSmsOptionRegister"));
+        assertEquals(3, widgets.getJSONObject(0).getInt("craftSmsOptionCount"));
+        assertEquals(4, widgets.getJSONObject(2).getInt("craftTrendChannelCount"));
+        assertEquals(8, widgets.getJSONObject(6).getInt("craftGaugeScaleCount"));
+        assertFalse(widgets.getJSONObject(5).getBoolean("craftSoundEnabled"));
 
         JSONObject exported = new JSONObject(CraftProjectExporter.export(imported.toString()));
         JSONArray rows = exported.getJSONArray("TableComponent");
+        JSONObject smsOther = rows.getJSONObject(0).getJSONObject("jsTableComponent_other");
+        assertEquals("Alarm %1", smsOther.getString("message"));
+        assertEquals("+15551234567", smsOther.getString("phone"));
+        assertTrue(smsOther.getBoolean("option"));
+        assertEquals(42, smsOther.getInt("optionRegister"));
+        assertEquals(3, smsOther.getInt("optionCountRegister"));
         JSONObject reimported = new JSONObject(CraftProjectImporter.convert(exported.toString()));
         JSONArray roundTripWidgets = reimported.getJSONArray("screens")
                 .getJSONObject(0).getJSONArray("widgets");
         for (int i = 0; i < ids.length; i++) {
             assertEquals(ids[i], rows.getJSONObject(i).getInt("componentId"));
             JSONObject sourceOther = rows.getJSONObject(i).getJSONObject("jsTableComponent_other");
-            assertEquals("keep-" + ids[i], sourceOther.getString(ids[i] == 12 || ids[i] == 24
-                    ? "vendorGauge" : ids[i] == 14 ? "vendorTrend" : ids[i] == 16 ? "vendorGif"
+            assertEquals("keep-" + ids[i], sourceOther.getString(ids[i] == 10 ? "vendorSms"
+                    : ids[i] == 12 || ids[i] == 24 ? "vendorGauge" : ids[i] == 14 ? "vendorTrend" : ids[i] == 16 ? "vendorGif"
                     : ids[i] == 17 ? "vendorPictures" : "vendorSounds"));
             JSONObject widget = roundTripWidgets.getJSONObject(i);
             assertEquals(ids[i], widget.getInt("craftComponentId"));
