@@ -310,9 +310,15 @@ public class MainActivity extends Activity {
     private static final String STATE_RESTORE_MEDIA_PICKER = "restore_media_picker";
     private static final String STATE_MEDIA_WIDGET_INDEX = "media_widget_index";
     private static final String STATE_MEDIA_FIELD_PATH = "media_field_path";
+    private static final String STATE_MEDIA_PICKER_KIND = "media_picker_kind";
+    private static final String STATE_MEDIA_INDICATOR_ACTIVE = "media_indicator_active";
     private static final String STATE_MEDIA_FORM_PATHS = "media_form_paths";
     private static final String STATE_MEDIA_FORM_TYPES = "media_form_types";
     private static final String STATE_MEDIA_FORM_VALUES = "media_form_values";
+    private static final int MEDIA_PICKER_STANDARD_PROPERTIES = 0;
+    private static final int MEDIA_PICKER_INDICATOR_IMAGE = 1;
+    private int pendingMediaPickerKind = MEDIA_PICKER_STANDARD_PROPERTIES;
+    private boolean pendingMediaIndicatorActive;
 
     @Override protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
@@ -327,6 +333,8 @@ public class MainActivity extends Activity {
         outState.putBoolean(STATE_RESTORE_MEDIA_PICKER, true);
         outState.putInt(STATE_MEDIA_WIDGET_INDEX, editor.selected);
         outState.putString(STATE_MEDIA_FIELD_PATH, fieldPath);
+        outState.putInt(STATE_MEDIA_PICKER_KIND, pendingMediaPickerKind);
+        outState.putBoolean(STATE_MEDIA_INDICATOR_ACTIVE, pendingMediaIndicatorActive);
         outState.putStringArrayList(STATE_MEDIA_FORM_PATHS, paths);
         outState.putStringArrayList(STATE_MEDIA_FORM_TYPES, types);
         outState.putStringArrayList(STATE_MEDIA_FORM_VALUES, values);
@@ -340,7 +348,15 @@ public class MainActivity extends Activity {
         editor.selected = widgetIndex;
         editor.selectedWidgets.clear();
         editor.selectedWidgets.add(widgetIndex);
-        editSelectedWidget();
+        int pickerKind = state.getInt(STATE_MEDIA_PICKER_KIND, MEDIA_PICKER_STANDARD_PROPERTIES);
+        if (pickerKind == MEDIA_PICKER_INDICATOR_IMAGE) {
+            Widget widget = widgets.get(widgetIndex);
+            if (!OriginalIndicator.supports(widget.type)) return false;
+            showCustomIndicatorImageDialog(widget, state.getBoolean(STATE_MEDIA_INDICATOR_ACTIVE, true),
+                    () -> showIndicatorImages(widget));
+        } else {
+            editSelectedWidget();
+        }
         if (activePropertiesDialog == null || activePropertiesForm == null) return false;
         restorePropertyFormState(activePropertiesForm,
                 state.getStringArrayList(STATE_MEDIA_FORM_PATHS),
@@ -6259,24 +6275,48 @@ private String archiveProjectKey() {
             }
             public void chooseCustom(boolean active, Runnable changed) {
                 if (!imageGuard.require()) return;
-                LinearLayout form = new LinearLayout(MainActivity.this); form.setOrientation(LinearLayout.VERTICAL);
-                EditText path = propertyField("", InputType.TYPE_CLASS_TEXT);
-                path.setHint("Файл / content URI"); path.setContentDescription("Своё изображение индикатора");
-                form.addView(path); addMediaPicker(form, path, "image/*");
-                AlertDialog custom = new AlertDialog.Builder(MainActivity.this).setTitle("Своё изображение")
-                        .setView(form).setNegativeButton("Отмена", null).setPositiveButton("Применить", null).create();
-                custom.setOnShowListener(shown -> custom.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-                    if (!imageGuard.require()) return;
-                    String selected = path.getText().toString().trim();
-                    imageCache.remove(selected);
-                    if (selected.isEmpty() || loadCachedBitmap(selected) == null) {
-                        Toast.makeText(MainActivity.this, "Выберите доступное изображение", Toast.LENGTH_LONG).show(); return;
-                    }
-                    if (selectIndicatorImage(widget, active, true, selected)) {custom.dismiss();changed.run();}
-                }));
-                custom.show();
+                showCustomIndicatorImageDialog(widget, active, changed);
             }
         });
+    }
+
+    private void showCustomIndicatorImageDialog(Widget widget, boolean active, Runnable changed) {
+        final CraftWidgetDialogGuard imageGuard = new CraftWidgetDialogGuard(widget);
+        if (!imageGuard.require() || !OriginalIndicator.supports(widget.type)) return;
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        EditText path = propertyField("", InputType.TYPE_CLASS_TEXT);
+        path.setHint("Файл / content URI");
+        path.setContentDescription("Своё изображение индикатора");
+        form.addView(path);
+        addMediaPicker(form, path, "image/*");
+        AlertDialog custom = new AlertDialog.Builder(this).setTitle("Своё изображение")
+                .setView(form).setNegativeButton("Отмена", null).setPositiveButton("Применить", null).create();
+        activePropertiesDialog = custom;
+        activePropertiesForm = form;
+        pendingMediaPickerKind = MEDIA_PICKER_INDICATOR_IMAGE;
+        pendingMediaIndicatorActive = active;
+        custom.setOnDismissListener(dismissed -> {
+            if (activePropertiesDialog == custom) {
+                activePropertiesDialog = null;
+                activePropertiesForm = null;
+            }
+            pendingMediaPickerKind = MEDIA_PICKER_STANDARD_PROPERTIES;
+        });
+        custom.setOnShowListener(shown -> custom.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            if (!imageGuard.require()) return;
+            String selected = path.getText().toString().trim();
+            imageCache.remove(selected);
+            if (selected.isEmpty() || loadCachedBitmap(selected) == null) {
+                Toast.makeText(this, "Выберите доступное изображение", Toast.LENGTH_LONG).show();
+                return;
+            }
+            if (selectIndicatorImage(widget, active, true, selected)) {
+                custom.dismiss();
+                changed.run();
+            }
+        }));
+        custom.show();
     }
 
     /**
