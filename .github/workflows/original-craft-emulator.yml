@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       profile:
-        description: 'Quick smoke or exhaustive single-session UI traversal'
+        description: 'Quick smoke on PR; manually request full traversal here'
         required: true
         type: choice
         options: [quick, full]
@@ -20,13 +20,16 @@ permissions:
   actions: read
 
 concurrency:
-  group: original-craft-emulator-${{ github.ref }}
-  cancel-in-progress: true
+  # PR pushes may supersede a prior quick check; a manually launched full run
+  # uses a different group and is never cancelled by subsequent code pushes.
+  group: original-craft-emulator-${{ github.event_name == 'workflow_dispatch' && format('manual-{0}', github.ref) || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   rebuild-and-probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    # Reserve the six-hour budget for an explicitly requested full run only.
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && inputs.profile == 'full' && 360 || 25 }}
     steps:
       - uses: actions/checkout@v4
       - name: Download pinned full Craft 1.0.7 decompilation
@@ -99,7 +102,9 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu software -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: |
-            bash tools/run_original_craft_emulator_probe.sh build-reports/original-craft-1.0.7 ${{ ((github.event_name == 'workflow_dispatch' && inputs.profile == 'full') || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'probe/original-craft-full-'))) && '--full' || '' }}
+            # Every PR push gets a bounded quick scenario, regardless of branch name.
+            # Run a full audit explicitly from Actions > Run workflow > profile: full.
+            bash tools/run_original_craft_emulator_probe.sh build-reports/original-craft-1.0.7 ${{ (github.event_name == 'workflow_dispatch' && inputs.profile == 'full') && '--full' || '' }}
       - name: Upload rebuilt APK and full UI evidence
         if: always()
         uses: actions/upload-artifact@v4
