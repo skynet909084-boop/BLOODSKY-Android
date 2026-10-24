@@ -34,11 +34,6 @@ public final class CraftKnownComponentSupportTest {
 
     private static JSONObject importProject(int... ids) throws Exception {
         JSONArray components = new JSONArray();
-        components.put(component(10).put("jsTableComponent_other", new JSONObject()
-                .put("numScreen", 1).put("message", "Alarm %1")
-                .put("phone", "+15551234567").put("option", true)
-                .put("optionRegister", 42).put("optionCountRegister", 3)
-                .put("vendorSms", "keep-10")));
         for (int id : ids) components.put(component(id));
         JSONObject source = new JSONObject()
                 .put("TableNameProject", new JSONObject()
@@ -109,6 +104,11 @@ public final class CraftKnownComponentSupportTest {
     @Test public void craftMediaAndGaugeFactoriesRoundTripTheirNativeIdentityAndSettings()
             throws Exception {
         JSONArray components = new JSONArray();
+        components.put(component(10).put("jsTableComponent_other", new JSONObject()
+                .put("numScreen", 1).put("message", "Alarm %1")
+                .put("phone", "+15551234567").put("option", true)
+                .put("optionRegister", 42).put("optionCountRegister", 3)
+                .put("vendorSms", "keep-10")));
         components.put(component(12).put("jsTableComponent_other", new JSONObject()
                 .put("numScreen", 1).put("max", 240).put("showText", false)
                 .put("firstColorPoint", 80).put("secondColorPoint", 190)
