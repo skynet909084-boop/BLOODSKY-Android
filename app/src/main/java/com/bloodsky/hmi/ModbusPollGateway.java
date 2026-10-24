@@ -281,7 +281,8 @@ public final class ModbusPollGateway implements Closeable {
                 String[] path = uri.getPath() == null ? new String[0] : uri.getPath().split("/", -1);
                 if (uri.getHost() == null || uri.getPort() < 1 || uri.getPort() > 65535
                         || path.length != 3 || !path[0].isEmpty()
-                        || uri.getRawQuery() != null || uri.getRawFragment() != null) return null;
+                        || uri.getRawUserInfo() != null || uri.getRawQuery() != null
+                        || uri.getRawFragment() != null) return null;
                 int unit = Integer.parseInt(path[1]);
                 int enteredAddress = Integer.parseInt(path[2]);
                 if (unit < 0 || unit > 255 || enteredAddress < 0 || enteredAddress > 65535) return null;

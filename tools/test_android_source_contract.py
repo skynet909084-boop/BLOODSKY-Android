@@ -62,6 +62,14 @@ class AndroidSourceContractTests(unittest.TestCase):
         self.assertIn("writeModbusRegisterStatic(", self.source)
         self.assertIn("writeModbusMultipleRegistersStatic(", self.source)
 
+    def test_operator_binding_rejects_unsupported_tcp_userinfo(self):
+        start = self.source.index("private BindingRequest parseBinding(")
+        end = self.source.index("private BindingRequest parseProjectBinding(", start)
+        parser = self.source[start:end]
+        self.assertIn("uri.getRawUserInfo() != null", parser)
+        gateway = (ROOT / "app/src/main/java/com/bloodsky/hmi/ModbusPollGateway.java").read_text(encoding="utf-8")
+        self.assertIn("uri.getRawUserInfo() != null", gateway)
+
     def test_modbus_rtu_transport(self):
         self.assertIn("ModbusRtuTransport", self.source)
 
