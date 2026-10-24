@@ -71,6 +71,32 @@ public class CraftRegisterGatewayTest {
                 () -> CraftRegisterGateway.readSystemSource(config.destination, 1, project));
     }
 
+    @Test public void systemGatewaySourceExposesUnsignedAtomicModbusWords() throws Exception {
+        CraftRegisterGateway.Binding source = CraftRegisterGateway.parseBinding(
+                "system://register/10", 3, false);
+        CraftSystemRegisterBank project = new CraftSystemRegisterBank();
+        project.writeWord(10, -1);
+        project.writeWord(11, 0x12345);
+        project.writeWord(12, 0x8000);
+
+        assertArrayEquals(new int[]{0xffff, 0x2345, 0x8000},
+                CraftRegisterGateway.readSystemSource(source, 3, project));
+
+        CraftRegisterGateway.Config config = CraftRegisterGateway.validate(true, 0, 3,
+                "system://register/10", "tcp://gateway.local:502/1/40001", "", 0);
+        final int[][] written = new int[1][];
+        CraftRegisterGateway.transfer(config, new CraftRegisterGateway.State(),
+                new CraftRegisterGateway.Transport() {
+                    @Override public int[] read(CraftRegisterGateway.Binding binding, int quantity) {
+                        return CraftRegisterGateway.readSystemSource(binding, quantity, project);
+                    }
+                    @Override public void write(CraftRegisterGateway.Binding binding, int[] values) {
+                        written[0] = values;
+                    }
+                });
+        assertArrayEquals(new int[]{0xffff, 0x2345, 0x8000}, written[0]);
+    }
+
     @Test public void systemUserRegistersCanBeGatewayDestinationsWithoutTouchingServiceRegisters() {
         CraftRegisterGateway.Binding destination = CraftRegisterGateway.parseBinding(
                 "system://register/10", 2, true);

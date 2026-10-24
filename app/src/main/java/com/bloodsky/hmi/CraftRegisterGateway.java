@@ -187,8 +187,16 @@ public final class CraftRegisterGateway {
                 || (long) binding.address + quantity > CraftSystemRegisterBank.SIZE)
             throw new IllegalArgumentException("A bounded Craft system-register source is required");
         int[] values = new int[quantity];
-        for (int i = 0; i < quantity; i++)
-            values[i] = CraftSystemRegisterAccess.readInt(binding.address + i, projectBank);
+        int serviceCount = Math.min(quantity,
+                Math.max(0, CraftSystemRegisterBank.FIRST_USER_REGISTER - binding.address));
+        for (int i = 0; i < serviceCount; i++)
+            values[i] = CraftSystemRegisterAccess.readInt(binding.address + i, projectBank) & 0xffff;
+        if (serviceCount < quantity) {
+            int userAddress = binding.address + serviceCount;
+            if (projectBank == null) throw new IllegalArgumentException("Active project register bank required");
+            int[] userWords = projectBank.readWords(userAddress, quantity - serviceCount);
+            System.arraycopy(userWords, 0, values, serviceCount, userWords.length);
+        }
         return values;
     }
 
