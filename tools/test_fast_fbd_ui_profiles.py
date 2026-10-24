@@ -23,10 +23,10 @@ class FastFbdUiGateTests(unittest.TestCase):
 
     def test_feature_pr_emulator_is_deferred_until_release(self):
         workflow = (ROOT / '.github/workflows/android-ui-smoke.yml').read_text(encoding='utf-8')
-        pr_trigger = workflow.split('  pull_request:', 1)[1].split('  push:', 1)[0]
+        pr_trigger = workflow.split('  pull_request:', 1)[1].split('\n\npermissions:', 1)[0]
         self.assertIn('branches: [main]', pr_trigger)
-        self.assertIn('types: [opened, reopened, synchronize, ready_for_review]', pr_trigger)
-        self.assertNotIn('labeled', pr_trigger)
+        self.assertIn('types: [opened, reopened, synchronize, ready_for_review, labeled]', pr_trigger)
+        self.assertIn("contains(github.event.pull_request.labels.*.name, 'release-candidate')", workflow)
         self.assertNotIn('craft-server-editor', workflow)
         self.assertNotIn('android-smoke', workflow)
         self.assertIn('default: full', workflow)
@@ -39,7 +39,7 @@ class FastFbdUiGateTests(unittest.TestCase):
         self.assertIn('exec python tools/android_ui_fbd_quick.py', runner)
         self.assertIn('exec python tools/android_ui_smoke.py', runner)
         self.assertIn('set -euo pipefail', runner)
-        self.assertIn('  push:\n    branches: [main]', workflow)
+        self.assertNotIn('\n  push:\n', workflow)
         self.assertIn('cancel-in-progress: true', workflow)
         self.assertIn('Save UI screenshots and diagnostics', workflow)
 

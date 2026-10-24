@@ -9,14 +9,14 @@ WORKFLOW = Path(__file__).resolve().parents[1] / '.github/workflows/android-ui-s
 class AndroidUiWorkflowProfileTests(unittest.TestCase):
     def test_no_android_on_feature_or_integration_pull_requests(self):
         workflow = WORKFLOW.read_text(encoding='utf-8')
-        pr_trigger = workflow.split('  pull_request:', 1)[1].split('  push:', 1)[0]
+        pr_trigger = workflow.split('  pull_request:', 1)[1].split('\n\npermissions:', 1)[0]
         self.assertIn('branches: [main]', pr_trigger)
-        self.assertIn('types: [opened, reopened, synchronize, ready_for_review]', pr_trigger)
+        self.assertIn('types: [opened, reopened, synchronize, ready_for_review, labeled]', pr_trigger)
         self.assertNotIn("github.event.action == 'ready_for_review'", workflow)
-        self.assertNotIn("github.event.pull_request.labels.*.name", workflow)
+        self.assertIn("contains(github.event.pull_request.labels.*.name, 'release-candidate')", workflow)
         self.assertNotIn('craft-server-editor', workflow)
         job_header = workflow.split('jobs:', 1)[1].split('    steps:', 1)[0]
-        self.assertNotIn('    if: ', job_header)
+        self.assertIn('    if: github.event_name != \'pull_request\'', job_header)
         self.assertNotIn("default: quick", workflow)
 
     def test_manual_release_profiles_remain_available(self):
@@ -32,8 +32,8 @@ class AndroidUiWorkflowProfileTests(unittest.TestCase):
 
     def test_release_main_gate_and_diagnostics_preserved(self):
         workflow = WORKFLOW.read_text(encoding='utf-8')
-        self.assertIn('  push:\n    branches: [main]', workflow)
         self.assertIn('  pull_request:\n    branches: [main]', workflow)
+        self.assertNotIn('\n  push:\n', workflow)
         self.assertIn('timeout-minutes: 35', workflow)
         self.assertIn('Save UI screenshots and diagnostics', workflow)
         self.assertIn('retention-days: 14', workflow)
