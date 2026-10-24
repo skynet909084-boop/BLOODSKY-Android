@@ -206,15 +206,18 @@ public final class CraftRegisterGateway {
     public static Outcome transfer(Config config, State state, Transport transport) throws IOException {
         if (config == null || state == null || transport == null) throw new IllegalArgumentException("Gateway config/state/transport required");
         state.resetIfChanged(config);
+        boolean risingEdge = false;
         if (config.mode == MODE_RISING_EDGE) {
             int[] trigger = transport.read(config.trigger, 1);
             if (trigger == null || trigger.length != 1 || trigger[0] < 0 || trigger[0] > 65535)
                 throw new IOException("Некорректный ответ триггера шлюза");
             boolean active = ((trigger[0] >>> config.triggerBit) & 1) != 0;
-            boolean rising = state.baselineSet && !state.previousTrigger && active;
+            risingEdge = state.baselineSet && !state.previousTrigger && active;
             state.baselineSet = true;
-            state.previousTrigger = active;
-            if (!rising) return new Outcome(false, 0);
+            if (!risingEdge) {
+                state.previousTrigger = active;
+                return new Outcome(false, 0);
+            }
         }
         int[] values = transport.read(config.source, config.count);
         if (values == null || values.length != config.count)
@@ -222,11 +225,18 @@ public final class CraftRegisterGateway {
         for (int value : values) if (value < 0 || value > 65535) throw new IOException("Значение шлюза выходит за 16 бит");
         if (config.mode == MODE_ON_CHANGE) {
             boolean changed = state.baselineSet && !Arrays.equals(state.previousSource, values);
-            state.baselineSet = true;
-            state.previousSource = values.clone();
+            if (!state.baselineSet) {
+                state.baselineSet = true;
+                state.previousSource = values.clone();
+                return new Outcome(false, 0);
+            }
             if (!changed) return new Outcome(false, 0);
         }
         transport.write(config.destination, values.clone());
+        // Keep the last successfully transferred state. If the read or write
+        // fails, the same changed value or still-high trigger must be retried.
+        if (config.mode == MODE_ON_CHANGE) state.previousSource = values.clone();
+        if (risingEdge) state.previousTrigger = true;
         return new Outcome(true, values.length);
     }
 }
