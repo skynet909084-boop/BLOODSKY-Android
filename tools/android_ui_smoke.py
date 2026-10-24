@@ -1109,7 +1109,7 @@ class Smoke:
         first = widgets[0]
         adb('shell', 'input', 'tap', str(round(left + first['x'] + first['w'] / 2)),
             str(round(top + first['y'] + first['h'] / 2)))
-        self.wait_node('Свойства: Индикатор')
+        self.wait_node('Настройки')
         self.tap('Сменить изображение')
         self.wait_node(description='Изображение ON')
         self.capture('04c-original-on-off')
@@ -1136,6 +1136,16 @@ class Smoke:
         self.wait_node(description='Изображение ON')
         self.capture('04f-custom-state-image')
         adb('shell', 'input', 'keyevent', '4')
+        self.wait_node('Настройки')
+        self.tap('ОТМЕНА')
+        canvas = self.wait_node(description='Редактор экрана')
+        left, top, _, _ = map(int, re.findall(r'\d+', canvas.get('bounds')))
+        adb('shell', 'input', 'swipe',
+            str(round(left + first['x'] + first['w'] / 2)),
+            str(round(top + first['y'] + first['h'] / 2)),
+            str(round(left + first['x'] + first['w'] / 2)),
+            str(round(top + first['y'] + first['h'] / 2)), '700')
+        self.tap(description='Индикатор: Расширенные свойства')
         self.wait_node('Свойства: Индикатор')
         self.replace_property_input('Положение X', '40.125')
         self.replace_property_input('Положение Y', '50.875')
@@ -1195,13 +1205,13 @@ class Smoke:
         left, top, _, _ = map(int, re.findall(r'\d+', canvas.get('bounds')))
         adb('shell', 'input', 'tap', str(round(left + after['x'] + after['w'] / 2)),
             str(round(top + after['y'] + after['h'] / 2)))
-        self.wait_node('Свойства: Индикатор')
+        self.wait_node('Настройки')
         self.tap('Сменить изображение')
         self.wait_node(description='Изображение ON')
         self.capture('04g-custom-image-after-restart')
         adb('shell', 'input', 'keyevent', '4')
-        self.wait_node('Свойства: Индикатор')
-        self.tap('Отмена')
+        self.wait_node('Настройки')
+        self.tap('ОТМЕНА')
         self.capture('04h-original-selection-actions')
         # Copy/cut/paste through the actual original action strip. All non-position
         # fields, including fractional dimensions and project-owned custom ON/OFF media metadata,
