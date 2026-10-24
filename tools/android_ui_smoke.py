@@ -1152,8 +1152,7 @@ class Smoke:
         self.wait_node(description='Изображение ON')
         self.capture('04f-custom-state-image')
         adb('shell', 'input', 'keyevent', '4')
-        self.wait_node('Настройки')
-        self.tap('ОТМЕНА')
+        self.wait_node(description='Редактор экрана')
         canvas = self.wait_node(description='Редактор экрана')
         left, top, _, _ = map(int, re.findall(r'\d+', canvas.get('bounds')))
         adb('shell', 'input', 'swipe',

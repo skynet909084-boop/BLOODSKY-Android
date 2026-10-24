@@ -353,10 +353,7 @@ public class MainActivity extends Activity {
             Widget widget = widgets.get(widgetIndex);
             if (!OriginalIndicator.supports(widget.type)) return false;
             showCustomIndicatorImageDialog(widget, state.getBoolean(STATE_MEDIA_INDICATOR_ACTIVE, true),
-                    () -> {
-                        showOriginalLampSettings(widget);
-                        showIndicatorImages(widget);
-                    });
+                    () -> showIndicatorImages(widget));
         } else {
             editSelectedWidget();
         }
