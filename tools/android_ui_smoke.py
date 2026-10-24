@@ -1039,7 +1039,8 @@ class Smoke:
         self.wait_node('Показывать тайм-ауты')
         self.wait_node('Modbus TCP Slave: выключен')
         self.wait_node('Работа в фоне')
-        self.wait_node('Дополнительные действия BLOODSKY…')
+        # The last action is below the popup's viewport; tap_editor_menu_item
+        # verifies it after scrolling when the smoke flow opens it.
         self.capture('01b-editor-commands')
         adb('shell', 'input', 'keyevent', '4')
         self.tap(description='Калькулятор')
