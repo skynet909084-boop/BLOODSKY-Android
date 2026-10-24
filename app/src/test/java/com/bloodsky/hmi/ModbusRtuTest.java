@@ -45,7 +45,7 @@ public class ModbusRtuTest {
         assertEquals(8, single.length);
         assertTrue(ModbusRtu.isCrcValid(single));
         byte[] multiple = ModbusRtu.buildWriteMultipleFrame(1, 0, new int[] {1, 2, 65535});
-        assertEquals(14, multiple.length);
+        assertEquals(15, multiple.length);
         assertTrue(ModbusRtu.isCrcValid(multiple));
         multiple[multiple.length - 1] ^= 0x01;
         assertFalse(ModbusRtu.isCrcValid(multiple));
